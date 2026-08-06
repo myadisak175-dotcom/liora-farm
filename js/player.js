@@ -15,7 +15,6 @@ const player = (() => {
   }
 
   function setState(state) {
-    // PR #5 เก็บตำแหน่งแบบ screen-space; รับเฉพาะเซฟใหม่ที่ระบุ world-space ชัดเจน
     if (state?.space === "world" && Number.isFinite(state.x) && Number.isFinite(state.y)) {
       x = state.x;
       y = state.y;
@@ -43,8 +42,19 @@ const player = (() => {
     const movement = input.getMovement();
     if (movement.x === 0 && movement.y === 0) return false;
 
-    x += movement.x * SPEED * deltaTime;
-    y += movement.y * SPEED * deltaTime;
+    const deltaX = movement.x * SPEED * deltaTime;
+    const deltaY = movement.y * SPEED * deltaTime;
+    const nextPosition = collision.moveCircle(
+      x,
+      y,
+      deltaX,
+      deltaY,
+      RADIUS,
+      gameMap.getColliders(),
+    );
+
+    x = nextPosition.x;
+    y = nextPosition.y;
     facingX = movement.x;
     facingY = movement.y;
     clampToWorld();
