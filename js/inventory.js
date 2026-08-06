@@ -3,6 +3,10 @@ import { ITEM_IDS, itemCatalog } from "./item-catalog.js";
 const DEFAULT_COUNTS = Object.freeze({
   [ITEM_IDS.STARTER_SEED]: 3,
   [ITEM_IDS.STARTER_CROP]: 0,
+  [ITEM_IDS.DEWLEAF]: 1,
+  [ITEM_IDS.SWEET_ROOT]: 1,
+  [ITEM_IDS.TWIG_BUNDLE]: 1,
+  [ITEM_IDS.GLOW_PETAL]: 1,
 });
 
 function isRecord(value) {
@@ -28,7 +32,7 @@ export const inventory = (() => {
     counts.clear();
 
     itemCatalog.list().forEach((item) => {
-      const fallback = items ? 0 : validCount(DEFAULT_COUNTS[item.id], 0);
+      const fallback = validCount(DEFAULT_COUNTS[item.id], 0);
       counts.set(item.id, validCount(items?.[item.id], fallback));
     });
   }
