@@ -1,15 +1,16 @@
+import { inventory } from "./inventory.js";
+import { ITEM_IDS, itemCatalog } from "./item-catalog.js";
+
 export const GAME_BALANCE = Object.freeze({
   startingCoins: 50,
-  startingSeeds: 3,
-  seedPrice: 10,
-  cropSellPrice: 20,
   cropGrowthDays: 3,
 });
 
 export const economy = (() => {
+  const seedItem = itemCatalog.get(ITEM_IDS.STARTER_SEED);
+  const cropItem = itemCatalog.get(ITEM_IDS.STARTER_CROP);
+
   let coins = GAME_BALANCE.startingCoins;
-  let seeds = GAME_BALANCE.startingSeeds;
-  let crops = 0;
   let shopOpen = false;
   let shopMessage = "ซื้อเมล็ด หรือขายผลผลิตได้ที่นี่";
 
@@ -19,47 +20,36 @@ export const economy = (() => {
 
   function setState(state) {
     coins = validCount(state?.coins, GAME_BALANCE.startingCoins);
-    seeds = validCount(state?.seeds, GAME_BALANCE.startingSeeds);
-    crops = validCount(state?.crops, 0);
     shopOpen = false;
   }
 
   function getState() {
-    return { coins, seeds, crops };
-  }
-
-  function hasSeed() {
-    return seeds > 0;
-  }
-
-  function useSeed() {
-    if (!hasSeed()) return false;
-    seeds -= 1;
-    return true;
-  }
-
-  function addCrop() {
-    crops += 1;
+    return { coins };
   }
 
   function buySeed() {
-    if (coins < GAME_BALANCE.seedPrice) {
+    if (!inventory.canAdd(seedItem.id, 1)) {
+      shopMessage = "กระเป๋าเมล็ดเต็มแล้ว";
+      return false;
+    }
+    if (coins < seedItem.buyPrice) {
       shopMessage = "เงินไม่พอซื้อเมล็ด";
       return false;
     }
-    coins -= GAME_BALANCE.seedPrice;
-    seeds += 1;
+
+    coins -= seedItem.buyPrice;
+    inventory.add(seedItem.id, 1);
     shopMessage = "ซื้อเมล็ด 1 เมล็ดแล้ว!";
     return true;
   }
 
   function sellCrop() {
-    if (crops < 1) {
+    if (!inventory.remove(cropItem.id, 1)) {
       shopMessage = "ไม่มีผลผลิตให้ขาย";
       return false;
     }
-    crops -= 1;
-    coins += GAME_BALANCE.cropSellPrice;
+
+    coins += cropItem.sellPrice;
     shopMessage = "ขายผลผลิต 1 ชิ้นแล้ว!";
     return true;
   }
@@ -119,19 +109,25 @@ export const economy = (() => {
 
   function drawHUD(ctx) {
     const button = getShopButton();
+    const seeds = inventory.getCount(seedItem.id);
+    const crops = inventory.getCount(cropItem.id);
+
     ctx.fillStyle = "rgba(10, 24, 25, 0.76)";
     ctx.fillRect(12, 91, window.innerWidth - 24, 40);
     ctx.fillStyle = "#ffffff";
     ctx.font = "600 14px system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(`🪙 ${coins} · 🌱 ${seeds} · 📦 ${crops}`, 22, 111);
+    ctx.fillText(`🪙 ${coins} · ${seedItem.icon} ${seeds} · ${cropItem.icon} ${crops}`, 22, 111);
     drawButton(ctx, button, "ร้านค้า", "#b46b2c");
   }
 
   function drawShop(ctx) {
     if (!shopOpen) return;
     const layout = getShopLayout();
+    const seeds = inventory.getCount(seedItem.id);
+    const crops = inventory.getCount(cropItem.id);
+
     ctx.fillStyle = "rgba(5, 12, 12, 0.62)";
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
     ctx.fillStyle = "#fff3cf";
@@ -150,17 +146,14 @@ export const economy = (() => {
     ctx.font = "15px system-ui, sans-serif";
     ctx.fillText(shopMessage, window.innerWidth / 2, layout.y + 108);
 
-    drawButton(ctx, layout.sell, `ขายผลผลิต 1 ชิ้น (+${GAME_BALANCE.cropSellPrice})`, "#4f8d46");
-    drawButton(ctx, layout.buy, `ซื้อเมล็ด 1 เมล็ด (-${GAME_BALANCE.seedPrice})`, "#b46b2c");
+    drawButton(ctx, layout.sell, `ขายผลผลิต 1 ชิ้น (+${cropItem.sellPrice})`, "#4f8d46");
+    drawButton(ctx, layout.buy, `ซื้อเมล็ด 1 เมล็ด (-${seedItem.buyPrice})`, "#b46b2c");
     drawButton(ctx, layout.close, "×", "#8c493e");
   }
 
   return {
     setState,
     getState,
-    hasSeed,
-    useSeed,
-    addCrop,
     buySeed,
     sellCrop,
     handleTap,
