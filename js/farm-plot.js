@@ -1,4 +1,10 @@
 import { CROP_IDS, cropCatalog } from "./crop-catalog.js";
+import {
+  createCropGrowthState,
+  getCropGrowth,
+  normalizeCropGrowthState,
+  processDailyCropGrowth,
+} from "./crop-growth.js";
 
 export const SOIL_STATES = Object.freeze({
   UNTILLED: "untilled",
@@ -23,6 +29,8 @@ export function createEmptyFarmPlot() {
     cropId: null,
     plantedDay: null,
     wateredDay: null,
+    growthProgress: 0,
+    lastGrowthProcessedDay: null,
   };
 }
 
@@ -34,11 +42,13 @@ export function createEmptyFarmPlots(count) {
 export function createPlantedFarmPlot(cropId, plantedDay, source = null) {
   if (!cropCatalog.has(cropId) || !validDay(plantedDay)) return null;
   const normalizedSource = normalizeFarmPlot(source);
+  const growthState = createCropGrowthState(cropId, plantedDay);
   return {
     soilState: SOIL_STATES.TILLED,
     cropId,
     plantedDay,
     wateredDay: normalizedSource.wateredDay,
+    ...growthState,
   };
 }
 
@@ -53,6 +63,11 @@ export function normalizeFarmPlot(value) {
   const soilState = validSoilState(value.soilState)
     ? value.soilState
     : hasCrop ? SOIL_STATES.TILLED : SOIL_STATES.UNTILLED;
+  const growthState = normalizeCropGrowthState(
+    hasCrop ? cropId : null,
+    hasCrop ? value.plantedDay : null,
+    value,
+  );
 
   return {
     soilState: hasCrop ? SOIL_STATES.TILLED : soilState,
@@ -61,6 +76,7 @@ export function normalizeFarmPlot(value) {
     wateredDay: soilState === SOIL_STATES.TILLED && validDay(value.wateredDay)
       ? value.wateredDay
       : null,
+    ...growthState,
   };
 }
 
@@ -72,11 +88,20 @@ export function normalizeFarmPlots(value, count) {
 }
 
 export function serializeFarmPlots(plots, count) {
-  return normalizeFarmPlots(plots, count).map(({ soilState, cropId, plantedDay, wateredDay }) => ({
+  return normalizeFarmPlots(plots, count).map(({
     soilState,
     cropId,
     plantedDay,
     wateredDay,
+    growthProgress,
+    lastGrowthProcessedDay,
+  }) => ({
+    soilState,
+    cropId,
+    plantedDay,
+    wateredDay,
+    growthProgress,
+    lastGrowthProcessedDay,
   }));
 }
 
@@ -112,10 +137,31 @@ export function clearFarmPlotCrop(plot) {
     ...normalized,
     cropId: null,
     plantedDay: null,
+    growthProgress: 0,
+    lastGrowthProcessedDay: null,
   };
 }
 
-export function getFarmPlotGrowth(plot, currentDay) {
-  if (isFarmPlotEmpty(plot)) return null;
-  return cropCatalog.getGrowth(plot.cropId, plot.plantedDay, currentDay);
+export function advanceFarmPlotGrowth(plot, currentDay) {
+  const normalized = normalizeFarmPlot(plot);
+  if (isFarmPlotEmpty(normalized)) {
+    return { plot: normalized, processed: false, advanced: false };
+  }
+
+  const result = processDailyCropGrowth(normalized, currentDay);
+  return {
+    plot: {
+      ...normalized,
+      growthProgress: result.growthProgress,
+      lastGrowthProcessedDay: result.lastGrowthProcessedDay,
+    },
+    processed: result.processed,
+    advanced: result.advanced,
+  };
+}
+
+export function getFarmPlotGrowth(plot) {
+  const normalized = normalizeFarmPlot(plot);
+  if (isFarmPlotEmpty(normalized)) return null;
+  return getCropGrowth(normalized.cropId, normalized.growthProgress);
 }

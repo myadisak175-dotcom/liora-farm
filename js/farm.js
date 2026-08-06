@@ -1,5 +1,6 @@
 import { CROP_IDS, CROP_STAGE_IDS, cropCatalog } from "./crop-catalog.js";
 import {
+  advanceFarmPlotGrowth,
   clearFarmPlotCrop,
   createEmptyFarmPlots,
   createPlantedFarmPlot,
@@ -50,7 +51,16 @@ export const farm = (() => {
   }
 
   function update() {
-    return false;
+    const currentDay = time.getDay();
+    let changed = false;
+
+    plots = plots.map((plot) => {
+      const result = advanceFarmPlotGrowth(plot, currentDay);
+      if (result.processed) changed = true;
+      return result.plot;
+    });
+
+    return changed;
   }
 
   function prepareSoil(index) {
@@ -128,7 +138,7 @@ export const farm = (() => {
       return false;
     }
 
-    const growth = getFarmPlotGrowth(plot, time.getDay());
+    const growth = getFarmPlotGrowth(plot);
     if (!growth) return false;
     if (growth.ready) {
       interactions.notify("พืชโตเต็มที่แล้ว พร้อมเก็บเกี่ยว");
@@ -136,7 +146,7 @@ export const farm = (() => {
     }
 
     const moisture = isFarmPlotWatered(plot, time.getDay()) ? " ดินชุ่มน้ำแล้ว" : " ดินยังแห้งอยู่";
-    interactions.notify(`พืชจะโตในอีก ${Math.max(1, growth.daysRemaining)} วัน ·${moisture}`);
+    interactions.notify(`ต้องรดน้ำอีก ${Math.max(1, growth.daysRemaining)} วันเพื่อให้โต ·${moisture}`);
     return false;
   }
 
@@ -147,7 +157,7 @@ export const farm = (() => {
     const tilled = isFarmPlotTilled(plot);
     const watered = isFarmPlotWatered(plot, currentDay);
     const crop = cropCatalog.get(DEFAULT_CROP_ID);
-    const growth = empty ? null : getFarmPlotGrowth(plot, currentDay);
+    const growth = empty ? null : getFarmPlotGrowth(plot);
     const waterAmount = toolSystem.getResourceAmount(TOOL_IDS.WATERING_CAN);
 
     return [
@@ -233,7 +243,7 @@ export const farm = (() => {
         when: () => Boolean(growth?.ready),
         label: "เก็บเกี่ยว",
         execute: () => {
-          const latestGrowth = getFarmPlotGrowth(plots[index], time.getDay());
+          const latestGrowth = getFarmPlotGrowth(plots[index]);
           return latestGrowth?.ready ? harvestPlot(index, latestGrowth) : false;
         },
       },
@@ -314,7 +324,7 @@ export const farm = (() => {
       const row = Math.floor(index / COLUMNS);
       const cellX = WORLD_X + column * (CELL_SIZE + GAP);
       const cellY = WORLD_Y + row * (CELL_SIZE + GAP);
-      const growth = getFarmPlotGrowth(plot, currentDay);
+      const growth = getFarmPlotGrowth(plot);
       const ready = growth?.stage.id === CROP_STAGE_IDS.READY;
 
       drawSoil(ctx, plot, cellX, cellY, currentDay);

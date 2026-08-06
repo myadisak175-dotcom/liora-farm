@@ -71,6 +71,28 @@ function validateCrop(crop) {
 
 Object.values(CROPS).forEach(validateCrop);
 
+function getGrowthByProgress(cropId, growthProgress) {
+  const crop = hasCrop(cropId) ? CROPS[cropId] : null;
+  if (!crop || !Number.isSafeInteger(growthProgress) || growthProgress < 0) {
+    return null;
+  }
+
+  const progress = Math.min(crop.growthDays, growthProgress);
+  let stage = crop.stages[0];
+  crop.stages.forEach((candidate) => {
+    if (candidate.minDays <= progress) stage = candidate;
+  });
+
+  return {
+    crop,
+    stage,
+    progress,
+    daysPassed: progress,
+    daysRemaining: Math.max(0, crop.growthDays - progress),
+    ready: progress >= crop.growthDays,
+  };
+}
+
 function getGrowth(cropId, plantedDay, currentDay) {
   const crop = hasCrop(cropId) ? CROPS[cropId] : null;
   if (
@@ -108,4 +130,5 @@ export const cropCatalog = Object.freeze({
   },
 
   getGrowth,
+  getGrowthByProgress,
 });
