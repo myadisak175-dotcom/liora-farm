@@ -13,8 +13,6 @@ const farm = (() => {
   const READY = "ready";
 
   let plots = createEmptyPlots();
-  let message = "เดินเข้าใกล้แปลงแล้วกด ACTION";
-  let messageUntil = 0;
 
   function createEmptyPlots() {
     return Array.from({ length: ROWS * COLUMNS }, () => ({ state: EMPTY, plantedDay: null }));
@@ -60,21 +58,16 @@ const farm = (() => {
     });
   }
 
-  function showMessage(text) {
-    message = text;
-    messageUntil = performance.now() + 2400;
-  }
-
   function interactPlot(plot) {
     if (plot.state === EMPTY) {
       if (!economy.hasSeed()) {
-        showMessage("ไม่มีเมล็ด ไปซื้อที่ร้าน");
+        interactions.notify("ไม่มีเมล็ด ไปซื้อที่ร้าน");
         return false;
       }
       economy.useSeed();
       plot.plantedDay = time.getDay();
       plot.state = SEED;
-      showMessage("ปลูกเมล็ดแล้ว!");
+      interactions.notify("ปลูกเมล็ดแล้ว!");
       return true;
     }
 
@@ -82,36 +75,36 @@ const farm = (() => {
       economy.addCrop();
       plot.plantedDay = null;
       plot.state = EMPTY;
-      showMessage("เก็บเกี่ยวแล้ว! ได้ผลผลิต 1 ชิ้น");
+      interactions.notify("เก็บเกี่ยวแล้ว! ได้ผลผลิต 1 ชิ้น");
       return true;
     }
 
     const daysLeft = Math.max(1, GROWTH_DAYS - (time.getDay() - plot.plantedDay));
-    showMessage(`พืชจะโตในอีก ${daysLeft} วัน`);
+    interactions.notify(`พืชจะโตในอีก ${daysLeft} วัน`);
     return false;
   }
 
-  function interactNear(playerX, playerY, maxDistance) {
-    let nearest = null;
-    let nearestDistance = Infinity;
+  function getPlotLabel(plot) {
+    if (plot.state === EMPTY) return economy.hasSeed() ? "ปลูก" : "ไม่มีเมล็ด";
+    if (plot.state === READY) return "เก็บเกี่ยว";
+    return "ตรวจดู";
+  }
 
-    plots.forEach((plot, index) => {
+  function getInteractions() {
+    return plots.map((plot, index) => {
       const column = index % COLUMNS;
       const row = Math.floor(index / COLUMNS);
-      const centerX = WORLD_X + column * (CELL_SIZE + GAP) + CELL_SIZE / 2;
-      const centerY = WORLD_Y + row * (CELL_SIZE + GAP) + CELL_SIZE / 2;
-      const distance = Math.hypot(playerX - centerX, playerY - centerY);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearest = plot;
-      }
+      return {
+        id: `farm-plot-${index}`,
+        x: WORLD_X + column * (CELL_SIZE + GAP) + CELL_SIZE / 2,
+        y: WORLD_Y + row * (CELL_SIZE + GAP) + CELL_SIZE / 2,
+        radius: 78,
+        priority: 10,
+        highlightRadius: CELL_SIZE * 0.43,
+        label: () => getPlotLabel(plot),
+        action: () => interactPlot(plot),
+      };
     });
-
-    if (!nearest || nearestDistance > maxDistance) {
-      showMessage("เข้าใกล้แปลงอีกนิด แล้วกด ACTION");
-      return false;
-    }
-    return interactPlot(nearest);
   }
 
   function drawPlant(ctx, plot, centerX, centerY) {
@@ -157,19 +150,5 @@ const farm = (() => {
     });
   }
 
-  function drawMessage(ctx) {
-    if (performance.now() >= messageUntil && messageUntil !== 0) return;
-
-    ctx.font = "600 15px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const width = Math.min(window.innerWidth - 32, ctx.measureText(message).width + 24);
-    const y = Math.max(148, window.innerHeight - 138);
-    ctx.fillStyle = "rgba(10, 24, 25, 0.78)";
-    ctx.fillRect(window.innerWidth / 2 - width / 2, y - 17, width, 34);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(message, window.innerWidth / 2, y);
-  }
-
-  return { setState, getState, getLayout, interactNear, update, draw, drawMessage };
+  return { setState, getState, getLayout, getInteractions, update, draw };
 })();

@@ -5,6 +5,9 @@ economy.setState(loadedSave.economy);
 farm.setState(loadedSave.farm);
 player.setState(loadedSave.player);
 
+interactions.registerMany(farm.getInteractions());
+interactions.registerMany(mapInteractions.getEntries());
+
 const startingPosition = player.getPosition();
 camera.snapTo(startingPosition.x, startingPosition.y);
 
@@ -17,11 +20,14 @@ function update(deltaTime) {
   farm.update();
   player.update(deltaTime, !economy.isShopOpen());
 
-  if (input.consumeAction() && !economy.isShopOpen()) {
-    if (player.interact()) saveGame();
+  const position = player.getPosition();
+  interactions.update(position.x, position.y);
+
+  const actionPressed = input.consumeAction();
+  if (actionPressed && !economy.isShopOpen()) {
+    if (interactions.activateCurrent()) saveGame();
   }
 
-  const position = player.getPosition();
   camera.update(position.x, position.y, deltaTime);
 
   if (dayChanged) saveGame();
@@ -39,6 +45,7 @@ function draw() {
   world.draw(ctx);
   gameMap.drawGround(ctx);
   farm.draw(ctx);
+  interactions.drawWorld(ctx);
 
   const position = player.getPosition();
   gameMap.drawBefore(ctx, position.y);
@@ -54,8 +61,8 @@ function draw() {
 
   time.draw(ctx);
   economy.drawHUD(ctx);
-  farm.drawMessage(ctx);
-  if (!economy.isShopOpen()) input.draw(ctx);
+  interactions.drawMessage(ctx);
+  if (!economy.isShopOpen()) input.draw(ctx, interactions.getPromptLabel());
   economy.drawShop(ctx);
 }
 
