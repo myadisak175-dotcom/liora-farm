@@ -32,8 +32,13 @@ export function createHouseInteriorScene({ requestSceneChange } = {}) {
       radius: 82,
       priority: 10,
       highlightRadius: 31,
-      label: "ออกจากบ้าน",
-      action: () => requestTransition("farm-exterior", { spawnId: "farmhouse-exit" }),
+      actions: [
+        {
+          id: "exit-house",
+          label: "ออกจากบ้าน",
+          execute: () => requestTransition("farm-exterior", { spawnId: "farmhouse-exit" }),
+        },
+      ],
     });
 
     const position = player.getPosition();
