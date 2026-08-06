@@ -9,6 +9,8 @@ import { createSceneTransitionQueue } from "./scene-transition.js";
 import { createFarmExteriorScene } from "./scenes/farm-exterior.js";
 import { createHouseInteriorScene } from "./scenes/house-interior.js";
 import { time } from "./time.js";
+import { toolSelector } from "./tool-selector.js";
+import { toolSystem } from "./tool-system.js";
 
 const TITLE_COLOR = "#ffffff";
 const AUTOSAVE_INTERVAL_MS = 3000;
@@ -39,6 +41,7 @@ export function createGame() {
       time: time.getState(),
       economy: economy.getState(),
       inventory: inventory.getState(),
+      tools: toolSystem.getState(),
       currentScene: sceneSnapshot.currentScene ?? DEFAULT_SCENE_ID,
       scenes: sceneSnapshot.scenes,
     });
@@ -90,6 +93,7 @@ export function createGame() {
     scenes.drawUI(ctx);
 
     if (!economy.isShopOpen()) {
+      toolSelector.draw(ctx);
       input.draw(ctx, scenes.getActionLabel());
     }
     economy.drawShop(ctx);
@@ -123,6 +127,10 @@ export function createGame() {
     }
 
     if (economy.handleTap(point.x, point.y)) saveGame();
+    if (!economy.isShopOpen() && toolSelector.handleTap(point.x, point.y)) {
+      saveGame();
+      return;
+    }
     if (!economy.isShopOpen() && input.pointerDown(event.pointerId, point.x, point.y)) {
       canvas.setPointerCapture(event.pointerId);
     }
@@ -171,6 +179,7 @@ export function createGame() {
     time.setState(loadedSave.global.time);
     economy.setState(loadedSave.global.economy);
     inventory.setState(loadedSave.global.inventory);
+    toolSystem.setState(loadedSave.global.tools);
     scenes.setSaveState(loadedSave.scenes);
 
     const initialSceneId = scenes.has(loadedSave.currentScene)
