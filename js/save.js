@@ -1,4 +1,4 @@
-const save = (() => {
+export const save = (() => {
   const SAVE_KEY = "liora-farm-save";
   const SAVE_VERSION = 2;
   const DEFAULT_TIME = { day: 1, minutes: 6 * 60 };
