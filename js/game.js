@@ -4,7 +4,9 @@ import { input } from "./input.js";
 import { save } from "./save.js";
 import { createSaveSnapshot, DEFAULT_SCENE_ID } from "./save-schema.js";
 import { createSceneManager } from "./scene-manager.js";
+import { createSceneTransitionQueue } from "./scene-transition.js";
 import { createFarmExteriorScene } from "./scenes/farm-exterior.js";
+import { createHouseInteriorScene } from "./scenes/house-interior.js";
 import { time } from "./time.js";
 
 const TITLE_COLOR = "#ffffff";
@@ -12,7 +14,18 @@ const AUTOSAVE_INTERVAL_MS = 3000;
 
 export function createGame() {
   const scenes = createSceneManager();
-  scenes.register(createFarmExteriorScene());
+  const transitions = createSceneTransitionQueue();
+
+  function requestSceneChange(sceneId, options = {}) {
+    if (!scenes.has(sceneId)) {
+      console.warn(`Ignored transition to unknown scene: ${sceneId}`);
+      return false;
+    }
+    return transitions.request(sceneId, options);
+  }
+
+  scenes.register(createFarmExteriorScene({ requestSceneChange }));
+  scenes.register(createHouseInteriorScene({ requestSceneChange }));
 
   let started = false;
   let previousTime = 0;
@@ -33,17 +46,25 @@ export function createGame() {
     return save.save(getSaveSnapshot());
   }
 
+  function applyPendingTransition() {
+    const transition = transitions.consume();
+    if (!transition) return false;
+    return scenes.change(transition.sceneId, transition.payload);
+  }
+
   function update(deltaTime) {
     const dayChanged = time.update(deltaTime);
     const movementEnabled = !economy.isShopOpen();
     scenes.update(deltaTime, { movementEnabled });
 
+    let stateChanged = false;
     const actionPressed = input.consumeAction();
-    if (actionPressed && movementEnabled && scenes.handleAction()) {
-      saveGame();
+    if (actionPressed && movementEnabled) {
+      stateChanged = scenes.handleAction();
     }
 
-    if (dayChanged) saveGame();
+    const sceneChanged = applyPendingTransition();
+    if (stateChanged || sceneChanged || dayChanged) saveGame();
   }
 
   function drawTitle() {
@@ -164,6 +185,7 @@ export function createGame() {
 
   function changeScene(sceneId, payload = {}) {
     if (!started) return false;
+    transitions.clear();
     const changed = scenes.change(sceneId, payload);
     if (changed) saveGame();
     return changed;
@@ -174,6 +196,7 @@ export function createGame() {
 
     saveGame();
     started = false;
+    transitions.clear();
 
     if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
     if (autosaveTimerId !== null) window.clearInterval(autosaveTimerId);
