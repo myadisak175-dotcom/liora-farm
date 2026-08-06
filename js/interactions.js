@@ -43,6 +43,14 @@ export const interactions = (() => {
     return entries.reduce((count, entry) => count + (register(entry) ? 1 : 0), 0);
   }
 
+  function clear() {
+    registry.clear();
+    current = null;
+    lastActivationTime = -Infinity;
+    message = "";
+    messageUntil = 0;
+  }
+
   function update(playerX, playerY) {
     let nearest = null;
     let nearestDistance = Infinity;
@@ -136,6 +144,7 @@ export const interactions = (() => {
   return {
     register,
     registerMany,
+    clear,
     update,
     activateCurrent,
     getPromptLabel,
