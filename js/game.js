@@ -2,11 +2,11 @@ import { canvas, ctx } from "./canvas.js";
 import { economy } from "./economy.js";
 import { input } from "./input.js";
 import { save } from "./save.js";
+import { createSaveSnapshot, DEFAULT_SCENE_ID } from "./save-schema.js";
 import { createSceneManager } from "./scene-manager.js";
 import { createFarmExteriorScene } from "./scenes/farm-exterior.js";
 import { time } from "./time.js";
 
-const DEFAULT_SCENE_ID = "farm-exterior";
 const TITLE_COLOR = "#ffffff";
 const AUTOSAVE_INTERVAL_MS = 3000;
 
@@ -19,14 +19,18 @@ export function createGame() {
   let animationFrameId = null;
   let autosaveTimerId = null;
 
+  function getSaveSnapshot() {
+    const sceneSnapshot = scenes.getSaveState();
+    return createSaveSnapshot({
+      time: time.getState(),
+      economy: economy.getState(),
+      currentScene: sceneSnapshot.currentScene ?? DEFAULT_SCENE_ID,
+      scenes: sceneSnapshot.scenes,
+    });
+  }
+
   function saveGame() {
-    const sceneState = scenes.getSaveState();
-    save.save(
-      time.getState(),
-      sceneState.farm,
-      economy.getState(),
-      sceneState.player,
-    );
+    return save.save(getSaveSnapshot());
   }
 
   function update(deltaTime) {
@@ -141,12 +145,14 @@ export function createGame() {
     if (started) return false;
 
     const loadedSave = save.load();
-    time.setState(loadedSave.time);
-    economy.setState(loadedSave.economy);
-    scenes.change(DEFAULT_SCENE_ID, {
-      farmState: loadedSave.farm,
-      playerState: loadedSave.player,
-    });
+    time.setState(loadedSave.global.time);
+    economy.setState(loadedSave.global.economy);
+    scenes.setSaveState(loadedSave.scenes);
+
+    const initialSceneId = scenes.has(loadedSave.currentScene)
+      ? loadedSave.currentScene
+      : DEFAULT_SCENE_ID;
+    scenes.change(initialSceneId);
 
     started = true;
     previousTime = performance.now();
@@ -154,6 +160,13 @@ export function createGame() {
     autosaveTimerId = window.setInterval(saveGame, AUTOSAVE_INTERVAL_MS);
     animationFrameId = requestAnimationFrame(gameLoop);
     return true;
+  }
+
+  function changeScene(sceneId, payload = {}) {
+    if (!started) return false;
+    const changed = scenes.change(sceneId, payload);
+    if (changed) saveGame();
+    return changed;
   }
 
   function stop() {
@@ -176,6 +189,7 @@ export function createGame() {
     start,
     stop,
     save: saveGame,
+    changeScene,
     getCurrentSceneId: scenes.getCurrentId,
   };
 }
