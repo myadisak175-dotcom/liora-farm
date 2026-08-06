@@ -1,40 +1,45 @@
 const TITLE_COLOR = "#ffffff";
-
 const loadedSave = save.load();
 time.setState(loadedSave.time);
 economy.setState(loadedSave.economy);
 farm.setState(loadedSave.farm);
 player.setState(loadedSave.player);
 
+const startingPosition = player.getPosition();
+camera.snapTo(startingPosition.x, startingPosition.y);
+
 function saveGame() {
-  save.save(
-    time.getState(),
-    farm.getState(),
-    economy.getState(),
-    player.getState(),
-  );
+  save.save(time.getState(), farm.getState(), economy.getState(), player.getState());
 }
 
 function update(deltaTime) {
   const dayChanged = time.update(deltaTime);
   farm.update();
-  const moved = player.update(deltaTime, !economy.isShopOpen());
+  player.update(deltaTime, !economy.isShopOpen());
 
   if (input.consumeAction() && !economy.isShopOpen()) {
     if (player.interact()) saveGame();
   }
 
-  if (dayChanged || moved) saveGame();
+  const position = player.getPosition();
+  camera.update(position.x, position.y, deltaTime);
+
+  if (dayChanged) saveGame();
 }
 
 function draw() {
   const width = window.innerWidth;
   const height = window.innerHeight;
-
   ctx.clearRect(0, 0, width, height);
+
   time.drawBackground(ctx, width, height);
+
+  ctx.save();
+  camera.apply(ctx);
+  world.draw(ctx);
   farm.draw(ctx);
   player.draw(ctx);
+  ctx.restore();
 
   ctx.fillStyle = TITLE_COLOR;
   ctx.font = "700 22px system-ui, sans-serif";
@@ -44,21 +49,19 @@ function draw() {
 
   time.draw(ctx);
   economy.drawHUD(ctx);
+  farm.drawMessage(ctx);
   if (!economy.isShopOpen()) input.draw(ctx);
   economy.drawShop(ctx);
 }
 
 let previousTime = performance.now();
-
 function gameLoop(currentTime) {
   const deltaTime = Math.min(0.05, (currentTime - previousTime) / 1000);
   previousTime = currentTime;
-
   update(deltaTime);
   draw();
   requestAnimationFrame(gameLoop);
 }
-
 requestAnimationFrame(gameLoop);
 
 function pointerPosition(event) {
@@ -88,11 +91,11 @@ canvas.addEventListener("pointermove", (event) => {
   const point = pointerPosition(event);
   input.pointerMove(event.pointerId, point.x, point.y);
 });
-
 canvas.addEventListener("pointerup", (event) => input.pointerUp(event.pointerId));
 canvas.addEventListener("pointercancel", (event) => input.pointerUp(event.pointerId));
 
-window.setInterval(saveGame, 5000);
+// ตำแหน่งผู้เล่นเปลี่ยนทุกเฟรม จึงบันทึกเป็นช่วงแทนการเขียน localStorage 60 ครั้ง/วินาที
+window.setInterval(saveGame, 3000);
 window.addEventListener("pagehide", saveGame);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) saveGame();
