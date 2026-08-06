@@ -1,4 +1,4 @@
-import { CROP_IDS } from "./crop-catalog.js";
+import { CROP_IDS, cropCatalog } from "./crop-catalog.js";
 import { SOIL_STATES } from "./farm-plot.js";
 import { ITEM_IDS } from "./item-catalog.js";
 import { TOOL_IDS, toolCatalog } from "./tool-catalog.js";
@@ -6,7 +6,7 @@ import {
   CURRENT_SAVE_VERSION,
   DEFAULT_SCENE_ID,
   createDefaultSave,
-  normalizeSaveV7,
+  normalizeSaveV8,
 } from "./save-schema.js";
 
 export class UnsupportedSaveVersionError extends Error {
@@ -171,6 +171,61 @@ function migrateV6ToV7(save) {
   };
 }
 
+function migrateFarmPlotsV7ToV8(value, currentDay) {
+  if (!Array.isArray(value)) return value;
+  return value.map((plot) => {
+    const plantedDay = Number.isSafeInteger(plot?.plantedDay) && plot.plantedDay >= 1
+      ? plot.plantedDay
+      : null;
+    const cropId = plantedDay && cropCatalog.has(plot?.cropId)
+      ? plot.cropId
+      : plantedDay ? CROP_IDS.STARTER : null;
+
+    if (!cropId || !plantedDay) {
+      return {
+        ...plot,
+        cropId: null,
+        plantedDay: null,
+        growthProgress: 0,
+        lastGrowthProcessedDay: null,
+      };
+    }
+
+    const crop = cropCatalog.get(cropId);
+    const safeCurrentDay = Number.isSafeInteger(currentDay) && currentDay >= plantedDay
+      ? currentDay
+      : plantedDay;
+    return {
+      ...plot,
+      cropId,
+      plantedDay,
+      growthProgress: Math.min(crop.growthDays, Math.max(0, safeCurrentDay - plantedDay)),
+      lastGrowthProcessedDay: safeCurrentDay,
+    };
+  });
+}
+
+function migrateV7ToV8(save) {
+  const globalState = isRecord(save.global) ? save.global : {};
+  const currentDay = globalState.time?.day;
+  const scenes = isRecord(save.scenes) ? save.scenes : {};
+  const farmScene = isRecord(scenes[DEFAULT_SCENE_ID])
+    ? scenes[DEFAULT_SCENE_ID]
+    : {};
+
+  return {
+    ...save,
+    version: 8,
+    scenes: {
+      ...scenes,
+      [DEFAULT_SCENE_ID]: {
+        ...farmScene,
+        farm: migrateFarmPlotsV7ToV8(farmScene.farm, currentDay),
+      },
+    },
+  };
+}
+
 const MIGRATIONS = new Map([
   [1, migrateV1ToV2],
   [2, migrateV2ToV3],
@@ -178,6 +233,7 @@ const MIGRATIONS = new Map([
   [4, migrateV4ToV5],
   [5, migrateV5ToV6],
   [6, migrateV6ToV7],
+  [7, migrateV7ToV8],
 ]);
 
 export function migrateSave(rawSave) {
@@ -200,7 +256,7 @@ export function migrateSave(rawSave) {
   }
 
   return {
-    save: normalizeSaveV7(migrated),
+    save: normalizeSaveV8(migrated),
     sourceVersion,
   };
 }
