@@ -1,5 +1,6 @@
 const save = (() => {
   const SAVE_KEY = "liora-farm-save";
+  const SAVE_VERSION = 2;
   const DEFAULT_TIME = { day: 1, minutes: 6 * 60 };
 
   function getStoredSave() {
@@ -11,7 +12,6 @@ const save = (() => {
     try {
       const storedSave = getStoredSave();
       const storedTime = storedSave?.time;
-
       if (
         Number.isInteger(storedTime?.day) &&
         storedTime.day >= 1 &&
@@ -20,6 +20,7 @@ const save = (() => {
         storedTime.minutes < 26 * 60
       ) {
         return {
+          version: Number.isInteger(storedSave.version) ? storedSave.version : 1,
           time: { day: storedTime.day, minutes: storedTime.minutes },
           farm: storedSave.farm,
           economy: storedSave.economy,
@@ -31,6 +32,7 @@ const save = (() => {
     }
 
     return {
+      version: SAVE_VERSION,
       time: { ...DEFAULT_TIME },
       farm: undefined,
       economy: undefined,
@@ -43,6 +45,7 @@ const save = (() => {
       localStorage.setItem(
         SAVE_KEY,
         JSON.stringify({
+          version: SAVE_VERSION,
           time: timeState,
           farm: farmState,
           economy: economyState,
