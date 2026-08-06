@@ -1,4 +1,4 @@
-const input = (() => {
+export const input = (() => {
   const keys = new Set();
   let joystickPointerId = null;
   let joystickVector = { x: 0, y: 0 };
