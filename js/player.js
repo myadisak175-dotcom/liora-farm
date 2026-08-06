@@ -1,7 +1,6 @@
 const player = (() => {
   const SPEED = 190;
   const RADIUS = 18;
-  const INTERACTION_DISTANCE = 76;
   const DEFAULT_POSITION = Object.freeze({ x: world.WIDTH / 2, y: 735 });
 
   let x = DEFAULT_POSITION.x;
@@ -61,10 +60,6 @@ const player = (() => {
     return true;
   }
 
-  function interact() {
-    return farm.interactNear(x, y, INTERACTION_DISTANCE);
-  }
-
   function draw(ctx) {
     ctx.save();
     ctx.translate(x, y);
@@ -98,5 +93,5 @@ const player = (() => {
     ctx.restore();
   }
 
-  return { setState, getState, getPosition, update, interact, draw };
+  return { setState, getState, getPosition, update, draw };
 })();
