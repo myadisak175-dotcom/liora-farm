@@ -1,4 +1,4 @@
-const gameMap = (() => {
+export const gameMap = (() => {
   const OBJECTS = [
     {
       id: "farmhouse",
