@@ -2,9 +2,14 @@ const save = (() => {
   const SAVE_KEY = "liora-farm-save";
   const DEFAULT_TIME = { day: 1, minutes: 6 * 60 };
 
+  function getStoredSave() {
+    const storedSave = JSON.parse(localStorage.getItem(SAVE_KEY));
+    return storedSave && typeof storedSave === "object" ? storedSave : {};
+  }
+
   function load() {
     try {
-      const storedSave = JSON.parse(localStorage.getItem(SAVE_KEY));
+      const storedSave = getStoredSave();
       const storedTime = storedSave?.time;
 
       if (
@@ -14,22 +19,28 @@ const save = (() => {
         storedTime.minutes >= 6 * 60 &&
         storedTime.minutes < 26 * 60
       ) {
-        return { day: storedTime.day, minutes: storedTime.minutes };
+        return {
+          time: { day: storedTime.day, minutes: storedTime.minutes },
+          farm: storedSave.farm,
+        };
       }
     } catch (error) {
       console.warn("Could not load the local save; starting a new day.", error);
     }
 
-    return { ...DEFAULT_TIME };
+    return { time: { ...DEFAULT_TIME }, farm: undefined };
   }
 
-  function saveTime(timeState) {
+  function saveGame(timeState, farmState) {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ time: timeState }));
+      localStorage.setItem(
+        SAVE_KEY,
+        JSON.stringify({ time: timeState, farm: farmState }),
+      );
     } catch (error) {
-      console.warn("Could not save the current game time.", error);
+      console.warn("Could not save the current game.", error);
     }
   }
 
-  return { load, save: saveTime };
+  return { load, save: saveGame };
 })();

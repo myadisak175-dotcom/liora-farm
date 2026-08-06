@@ -1,9 +1,17 @@
 const TITLE_COLOR = "#ffffff";
 
-time.setState(save.load());
+const loadedSave = save.load();
+time.setState(loadedSave.time);
+farm.setState(loadedSave.farm);
+
+function saveGame() {
+  save.save(time.getState(), farm.getState());
+}
 
 function update(deltaTime) {
-  if (time.update(deltaTime)) save.save(time.getState());
+  const dayChanged = time.update(deltaTime);
+  farm.update();
+  if (dayChanged) saveGame();
 }
 
 function draw() {
@@ -12,12 +20,13 @@ function draw() {
 
   ctx.clearRect(0, 0, width, height);
   time.drawBackground(ctx, width, height);
+  farm.draw(ctx);
 
   ctx.fillStyle = TITLE_COLOR;
-  ctx.font = "600 32px system-ui, sans-serif";
+  ctx.font = "600 24px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("Liora's Farm", width / 2, height / 2);
+  ctx.textBaseline = "top";
+  ctx.fillText("Liora's Farm", width / 2, 78);
   time.draw(ctx);
 }
 
@@ -34,11 +43,33 @@ function gameLoop(currentTime) {
 
 requestAnimationFrame(gameLoop);
 
+let lastTouchTime = 0;
+
+function handlePointer(clientX, clientY) {
+  const bounds = canvas.getBoundingClientRect();
+  const x = (clientX - bounds.left) * (window.innerWidth / bounds.width);
+  const y = (clientY - bounds.top) * (window.innerHeight / bounds.height);
+  if (farm.handleTap(x, y)) saveGame();
+}
+
+canvas.addEventListener("touchstart", (event) => {
+  event.preventDefault();
+  lastTouchTime = performance.now();
+  const touch = event.changedTouches[0];
+  if (touch) handlePointer(touch.clientX, touch.clientY);
+}, { passive: false });
+canvas.addEventListener("click", (event) => {
+  // Some mobile browsers synthesize a click after touchstart.
+  if (performance.now() - lastTouchTime > 500) {
+    handlePointer(event.clientX, event.clientY);
+  }
+});
+
 // Save regularly so refreshing resumes near the last visible time.
-window.setInterval(() => save.save(time.getState()), 5000);
-window.addEventListener("pagehide", () => save.save(time.getState()));
+window.setInterval(saveGame, 5000);
+window.addEventListener("pagehide", saveGame);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) save.save(time.getState());
+  if (document.hidden) saveGame();
   // Do not count time spent in a background tab as play time.
   previousTime = performance.now();
 });
