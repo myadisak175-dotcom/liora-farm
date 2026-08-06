@@ -1,4 +1,4 @@
-const GAME_BALANCE = Object.freeze({
+export const GAME_BALANCE = Object.freeze({
   startingCoins: 50,
   startingSeeds: 3,
   seedPrice: 10,
@@ -6,7 +6,7 @@ const GAME_BALANCE = Object.freeze({
   cropGrowthDays: 3,
 });
 
-const economy = (() => {
+export const economy = (() => {
   let coins = GAME_BALANCE.startingCoins;
   let seeds = GAME_BALANCE.startingSeeds;
   let crops = 0;

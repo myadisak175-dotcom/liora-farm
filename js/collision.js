@@ -1,4 +1,4 @@
-const collision = (() => {
+export const collision = (() => {
   const EPSILON = 0.01;
 
   function circleIntersectsRect(circleX, circleY, radius, rect) {

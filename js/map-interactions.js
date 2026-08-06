@@ -1,4 +1,6 @@
-const mapInteractions = (() => {
+import { interactions } from "./interactions.js";
+
+export const mapInteractions = (() => {
   const ENTRIES = [
     {
       id: "farmhouse-door",

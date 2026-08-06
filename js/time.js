@@ -1,6 +1,6 @@
-const REAL_SECONDS_PER_DAY = 300;
+export const REAL_SECONDS_PER_DAY = 300;
 
-const time = (() => {
+export const time = (() => {
   const START_MINUTES = 6 * 60;
   const END_MINUTES = 26 * 60;
   const MINUTES_PER_STEP = 10;

@@ -1,4 +1,4 @@
-const interactions = (() => {
+export const interactions = (() => {
   const ACTIVATION_COOLDOWN_MS = 320;
   const registry = new Map();
 

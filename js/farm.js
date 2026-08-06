@@ -1,4 +1,9 @@
-const farm = (() => {
+import { GAME_BALANCE, economy } from "./economy.js";
+import { interactions } from "./interactions.js";
+import { time } from "./time.js";
+import { world } from "./world.js";
+
+export const farm = (() => {
   const ROWS = 4;
   const COLUMNS = 4;
   const GROWTH_DAYS = GAME_BALANCE.cropGrowthDays;

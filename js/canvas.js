@@ -1,6 +1,6 @@
 // จัดเตรียม canvas และ context กลางสำหรับทุกระบบของเกม
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+export const canvas = document.getElementById("game");
+export const ctx = canvas.getContext("2d");
 
 function resizeCanvas() {
   const width = window.innerWidth;
