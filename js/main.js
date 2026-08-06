@@ -1,3 +1,16 @@
+import { camera } from "./camera.js";
+import { canvas, ctx } from "./canvas.js";
+import { economy } from "./economy.js";
+import { farm } from "./farm.js";
+import { input } from "./input.js";
+import { interactions } from "./interactions.js";
+import { gameMap } from "./map.js";
+import { mapInteractions } from "./map-interactions.js";
+import { player } from "./player.js";
+import { save } from "./save.js";
+import { time } from "./time.js";
+import { world } from "./world.js";
+
 const TITLE_COLOR = "#ffffff";
 const loadedSave = save.load();
 time.setState(loadedSave.time);
