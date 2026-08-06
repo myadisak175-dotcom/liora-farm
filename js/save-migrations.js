@@ -1,9 +1,10 @@
+import { CROP_IDS } from "./crop-catalog.js";
 import { ITEM_IDS } from "./item-catalog.js";
 import {
   CURRENT_SAVE_VERSION,
   DEFAULT_SCENE_ID,
   createDefaultSave,
-  normalizeSaveV4,
+  normalizeSaveV5,
 } from "./save-schema.js";
 
 export class UnsupportedSaveVersionError extends Error {
@@ -68,10 +69,45 @@ function migrateV3ToV4(save) {
   };
 }
 
+function migrateFarmPlotsV4ToV5(value) {
+  if (!Array.isArray(value)) return value;
+  return value.map((plot) => {
+    if (!Number.isSafeInteger(plot?.plantedDay) || plot.plantedDay < 1) {
+      return { cropId: null, plantedDay: null };
+    }
+    return {
+      cropId: typeof plot?.cropId === "string" && plot.cropId.trim()
+        ? plot.cropId
+        : CROP_IDS.STARTER,
+      plantedDay: plot.plantedDay,
+    };
+  });
+}
+
+function migrateV4ToV5(save) {
+  const scenes = isRecord(save.scenes) ? save.scenes : {};
+  const farmScene = isRecord(scenes[DEFAULT_SCENE_ID])
+    ? scenes[DEFAULT_SCENE_ID]
+    : {};
+
+  return {
+    ...save,
+    version: 5,
+    scenes: {
+      ...scenes,
+      [DEFAULT_SCENE_ID]: {
+        ...farmScene,
+        farm: migrateFarmPlotsV4ToV5(farmScene.farm),
+      },
+    },
+  };
+}
+
 const MIGRATIONS = new Map([
   [1, migrateV1ToV2],
   [2, migrateV2ToV3],
   [3, migrateV3ToV4],
+  [4, migrateV4ToV5],
 ]);
 
 export function migrateSave(rawSave) {
@@ -94,7 +130,7 @@ export function migrateSave(rawSave) {
   }
 
   return {
-    save: normalizeSaveV4(migrated),
+    save: normalizeSaveV5(migrated),
     sourceVersion,
   };
 }
