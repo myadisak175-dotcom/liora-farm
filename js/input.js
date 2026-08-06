@@ -25,11 +25,12 @@ const input = (() => {
     const dx = x - layout.x;
     const dy = y - layout.y;
     const distance = Math.hypot(dx, dy);
+    const maxDistance = layout.radius;
     if (distance === 0) {
       joystickVector = { x: 0, y: 0 };
       return;
     }
-    const strength = Math.min(1, distance / layout.radius);
+    const strength = Math.min(1, distance / maxDistance);
     joystickVector = {
       x: (dx / distance) * strength,
       y: (dy / distance) * strength,
@@ -82,7 +83,7 @@ const input = (() => {
     return true;
   }
 
-  function draw(ctx) {
+  function draw(ctx, contextualLabel = null) {
     const joystick = getJoystickLayout();
     ctx.fillStyle = "rgba(9, 24, 28, 0.38)";
     ctx.beginPath();
@@ -107,6 +108,19 @@ const input = (() => {
     ctx.strokeStyle = "rgba(255,255,255,0.7)";
     ctx.lineWidth = 3;
     ctx.stroke();
+    if (contextualLabel) {
+      const prompt = `ACTION · ${contextualLabel}`;
+      ctx.font = "700 13px system-ui, sans-serif";
+      const promptWidth = Math.min(170, ctx.measureText(prompt).width + 20);
+      const promptY = action.y - action.radius - 30;
+      ctx.fillStyle = "rgba(9, 24, 28, 0.82)";
+      ctx.fillRect(action.x - promptWidth / 2, promptY - 13, promptWidth, 26);
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(prompt, action.x, promptY, promptWidth - 12);
+    }
+
     ctx.fillStyle = "#ffffff";
     ctx.font = "700 15px system-ui, sans-serif";
     ctx.textAlign = "center";
