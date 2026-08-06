@@ -2,8 +2,8 @@ const farm = (() => {
   const ROWS = 4;
   const COLUMNS = 4;
   const GROWTH_DAYS = GAME_BALANCE.cropGrowthDays;
-  const GAP = 8;
-  const GRID_SIZE = 360;
+  const GAP = 6;
+  const GRID_SIZE = 300;
   const CELL_SIZE = (GRID_SIZE - GAP * (COLUMNS - 1)) / COLUMNS;
   const WORLD_X = world.WIDTH / 2 - GRID_SIZE / 2;
   const WORLD_Y = 340;
