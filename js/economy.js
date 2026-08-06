@@ -3,7 +3,6 @@ import { ITEM_IDS, itemCatalog } from "./item-catalog.js";
 
 export const GAME_BALANCE = Object.freeze({
   startingCoins: 50,
-  cropGrowthDays: 3,
 });
 
 export const economy = (() => {
