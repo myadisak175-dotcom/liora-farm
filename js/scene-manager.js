@@ -21,8 +21,22 @@ function validateScene(scene) {
   });
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function cloneState(value) {
+  if (!isRecord(value)) return {};
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return {};
+  }
+}
+
 export function createSceneManager() {
   const scenes = new Map();
+  const savedStates = new Map();
   let currentScene = null;
 
   function register(scene) {
@@ -34,18 +48,42 @@ export function createSceneManager() {
     return scene;
   }
 
+  function has(sceneId) {
+    return scenes.has(sceneId);
+  }
+
+  function setSaveState(sceneStates = {}) {
+    savedStates.clear();
+    if (!isRecord(sceneStates)) return;
+
+    Object.entries(sceneStates).forEach(([sceneId, state]) => {
+      if (!sceneId.trim() || !isRecord(state)) return;
+      savedStates.set(sceneId, cloneState(state));
+    });
+  }
+
+  function captureCurrentState() {
+    if (!currentScene) return;
+    savedStates.set(currentScene.id, cloneState(currentScene.getSaveState?.()));
+  }
+
   function change(sceneId, payload = {}) {
     const nextScene = scenes.get(sceneId);
     if (!nextScene) throw new Error(`Unknown scene: ${sceneId}`);
-    if (nextScene === currentScene && !payload.forceRestart) return false;
+
+    const { forceRestart = false, sceneState, ...enterPayload } = payload;
+    if (nextScene === currentScene && !forceRestart) return false;
 
     const previousScene = currentScene;
+    captureCurrentState();
     previousScene?.exit?.({ to: sceneId });
     currentScene = nextScene;
 
+    const state = sceneState === undefined ? savedStates.get(sceneId) : sceneState;
     try {
       currentScene.enter?.({
-        ...payload,
+        ...enterPayload,
+        state: cloneState(state),
         from: previousScene?.id ?? null,
       });
     } catch (error) {
@@ -58,6 +96,7 @@ export function createSceneManager() {
 
   function stop() {
     if (!currentScene) return false;
+    captureCurrentState();
     currentScene.exit?.({ to: null });
     currentScene = null;
     return true;
@@ -84,7 +123,13 @@ export function createSceneManager() {
   }
 
   function getSaveState() {
-    return currentScene?.getSaveState?.() ?? {};
+    captureCurrentState();
+    return {
+      currentScene: currentScene?.id ?? null,
+      scenes: Object.fromEntries(
+        [...savedStates.entries()].map(([sceneId, state]) => [sceneId, cloneState(state)]),
+      ),
+    };
   }
 
   function getTitle() {
@@ -97,6 +142,8 @@ export function createSceneManager() {
 
   return {
     register,
+    has,
+    setSaveState,
     change,
     stop,
     update,
