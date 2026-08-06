@@ -1,5 +1,5 @@
 import { migrateSave, UnsupportedSaveVersionError } from "./save-migrations.js";
-import { createDefaultSave, normalizeSaveV6 } from "./save-schema.js";
+import { createDefaultSave, normalizeSaveV7 } from "./save-schema.js";
 
 export const save = (() => {
   const SAVE_KEY = "liora-farm-save";
@@ -45,7 +45,7 @@ export const save = (() => {
     if (writesBlocked) return false;
 
     try {
-      persist(normalizeSaveV6(snapshot));
+      persist(normalizeSaveV7(snapshot));
       return true;
     } catch (error) {
       console.warn("Could not save the current game.", error);
