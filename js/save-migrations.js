@@ -1,10 +1,11 @@
 import { CROP_IDS } from "./crop-catalog.js";
 import { ITEM_IDS } from "./item-catalog.js";
+import { TOOL_IDS } from "./tool-catalog.js";
 import {
   CURRENT_SAVE_VERSION,
   DEFAULT_SCENE_ID,
   createDefaultSave,
-  normalizeSaveV5,
+  normalizeSaveV6,
 } from "./save-schema.js";
 
 export class UnsupportedSaveVersionError extends Error {
@@ -103,11 +104,32 @@ function migrateV4ToV5(save) {
   };
 }
 
+function migrateV5ToV6(save) {
+  const globalState = isRecord(save.global) ? save.global : {};
+  return {
+    ...save,
+    version: 6,
+    global: {
+      ...globalState,
+      tools: {
+        selectedToolId: TOOL_IDS.HAND,
+        unlockedToolIds: [
+          TOOL_IDS.HAND,
+          TOOL_IDS.HOE,
+          TOOL_IDS.WATERING_CAN,
+          TOOL_IDS.AXE,
+        ],
+      },
+    },
+  };
+}
+
 const MIGRATIONS = new Map([
   [1, migrateV1ToV2],
   [2, migrateV2ToV3],
   [3, migrateV3ToV4],
   [4, migrateV4ToV5],
+  [5, migrateV5ToV6],
 ]);
 
 export function migrateSave(rawSave) {
@@ -130,7 +152,7 @@ export function migrateSave(rawSave) {
   }
 
   return {
-    save: normalizeSaveV5(migrated),
+    save: normalizeSaveV6(migrated),
     sourceVersion,
   };
 }
