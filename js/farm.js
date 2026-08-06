@@ -9,7 +9,7 @@ const farm = (() => {
   const READY = "ready";
 
   let plots = createEmptyPlots();
-  let message = "แตะช่องดินเพื่อปลูกเมล็ด";
+  let message = "เดินเข้าใกล้แปลงแล้วกด ACTION";
   let messageUntil = 0;
 
   function createEmptyPlots() {
@@ -40,12 +40,12 @@ const farm = (() => {
   }
 
   function getLayout() {
-    const shortestSide = Math.min(window.innerWidth, window.innerHeight);
-    const gridSize = Math.min(360, Math.max(140, shortestSide - 48));
+    const availableHeight = Math.max(140, window.innerHeight - 300);
+    const gridSize = Math.min(360, window.innerWidth - 48, availableHeight);
     const cellSize = (gridSize - GAP * (COLUMNS - 1)) / COLUMNS;
     return {
       x: (window.innerWidth - gridSize) / 2,
-      y: (window.innerHeight - gridSize) / 2,
+      y: Math.max(150, (window.innerHeight - gridSize) / 2 - 12),
       gridSize,
       cellSize,
     };
@@ -67,21 +67,7 @@ const farm = (() => {
     messageUntil = performance.now() + 2400;
   }
 
-  function handleTap(x, y) {
-    const { x: gridX, y: gridY, gridSize, cellSize } = getLayout();
-    if (x < gridX || y < gridY || x >= gridX + gridSize || y >= gridY + gridSize) {
-      return false;
-    }
-
-    const column = Math.floor((x - gridX) / (cellSize + GAP));
-    const row = Math.floor((y - gridY) / (cellSize + GAP));
-    const cellX = gridX + column * (cellSize + GAP);
-    const cellY = gridY + row * (cellSize + GAP);
-
-    // Taps in the visual gap between plots should not select a neighbouring plot.
-    if (x > cellX + cellSize || y > cellY + cellSize) return false;
-
-    const plot = plots[row * COLUMNS + column];
+  function interactPlot(plot) {
     if (plot.state === EMPTY) {
       if (!economy.hasSeed()) {
         showMessage("ไม่มีเมล็ด ไปซื้อที่ร้าน");
@@ -93,6 +79,7 @@ const farm = (() => {
       showMessage("ปลูกเมล็ดแล้ว!");
       return true;
     }
+
     if (plot.state === READY) {
       economy.addCrop();
       plot.plantedDay = null;
@@ -104,6 +91,31 @@ const farm = (() => {
     const daysLeft = Math.max(1, GROWTH_DAYS - (time.getDay() - plot.plantedDay));
     showMessage(`พืชจะโตในอีก ${daysLeft} วัน`);
     return false;
+  }
+
+  function interactNear(playerX, playerY, maxDistance) {
+    const layout = getLayout();
+    let nearest = null;
+    let nearestDistance = Infinity;
+
+    plots.forEach((plot, index) => {
+      const column = index % COLUMNS;
+      const row = Math.floor(index / COLUMNS);
+      const centerX = layout.x + column * (layout.cellSize + GAP) + layout.cellSize / 2;
+      const centerY = layout.y + row * (layout.cellSize + GAP) + layout.cellSize / 2;
+      const distance = Math.hypot(playerX - centerX, playerY - centerY);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = plot;
+      }
+    });
+
+    if (!nearest || nearestDistance > maxDistance) {
+      showMessage("เข้าใกล้แปลงอีกนิด แล้วกด ACTION");
+      return false;
+    }
+
+    return interactPlot(nearest);
   }
 
   function drawPlant(ctx, plot, centerX, centerY, cellSize) {
@@ -150,17 +162,23 @@ const farm = (() => {
     });
 
     if (performance.now() < messageUntil || messageUntil === 0) {
-      ctx.font = "600 17px system-ui, sans-serif";
+      ctx.font = "600 15px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      const textY = Math.min(window.innerHeight - 14, y + (cellSize + GAP) * ROWS + 38);
+      const textY = Math.min(window.innerHeight - 128, y + (cellSize + GAP) * ROWS + 32);
+      const textWidth = Math.min(window.innerWidth - 32, ctx.measureText(message).width + 24);
       ctx.fillStyle = "rgba(10, 24, 25, 0.78)";
-      const textWidth = ctx.measureText(message).width;
-      ctx.fillRect(window.innerWidth / 2 - textWidth / 2 - 12, textY - 27, textWidth + 24, 34);
+      ctx.fillRect(window.innerWidth / 2 - textWidth / 2, textY - 26, textWidth, 32);
       ctx.fillStyle = "#ffffff";
       ctx.fillText(message, window.innerWidth / 2, textY);
     }
   }
 
-  return { setState, getState, handleTap, update, draw };
+  return {
+    setState,
+    getState,
+    interactNear,
+    update,
+    draw,
+  };
 })();
