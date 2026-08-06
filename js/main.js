@@ -37,8 +37,13 @@ function draw() {
   ctx.save();
   camera.apply(ctx);
   world.draw(ctx);
+  gameMap.drawGround(ctx);
   farm.draw(ctx);
+
+  const position = player.getPosition();
+  gameMap.drawBefore(ctx, position.y);
   player.draw(ctx);
+  gameMap.drawAfter(ctx, position.y);
   ctx.restore();
 
   ctx.fillStyle = TITLE_COLOR;
@@ -94,7 +99,6 @@ canvas.addEventListener("pointermove", (event) => {
 canvas.addEventListener("pointerup", (event) => input.pointerUp(event.pointerId));
 canvas.addEventListener("pointercancel", (event) => input.pointerUp(event.pointerId));
 
-// ตำแหน่งผู้เล่นเปลี่ยนทุกเฟรม จึงบันทึกเป็นช่วงแทนการเขียน localStorage 60 ครั้ง/วินาที
 window.setInterval(saveGame, 3000);
 window.addEventListener("pagehide", saveGame);
 document.addEventListener("visibilitychange", () => {
