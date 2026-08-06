@@ -1,6 +1,7 @@
 import { canvas, ctx } from "./canvas.js";
 import { economy } from "./economy.js";
 import { input } from "./input.js";
+import { inventory } from "./inventory.js";
 import { save } from "./save.js";
 import { createSaveSnapshot, DEFAULT_SCENE_ID } from "./save-schema.js";
 import { createSceneManager } from "./scene-manager.js";
@@ -37,6 +38,7 @@ export function createGame() {
     return createSaveSnapshot({
       time: time.getState(),
       economy: economy.getState(),
+      inventory: inventory.getState(),
       currentScene: sceneSnapshot.currentScene ?? DEFAULT_SCENE_ID,
       scenes: sceneSnapshot.scenes,
     });
@@ -168,6 +170,7 @@ export function createGame() {
     const loadedSave = save.load();
     time.setState(loadedSave.global.time);
     economy.setState(loadedSave.global.economy);
+    inventory.setState(loadedSave.global.inventory);
     scenes.setSaveState(loadedSave.scenes);
 
     const initialSceneId = scenes.has(loadedSave.currentScene)
