@@ -1,5 +1,6 @@
 import { interactions } from "./interactions.js";
 import { TOOL_IDS } from "./tool-catalog.js";
+import { toolSystem } from "./tool-system.js";
 
 export const mapInteractions = (() => {
   function getEntries({ requestSceneChange } = {}) {
@@ -30,26 +31,34 @@ export const mapInteractions = (() => {
         radius: 84,
         priority: 4,
         highlightRadius: 25,
-        actions: [
-          {
-            id: "fill-watering-can",
-            toolIds: [TOOL_IDS.WATERING_CAN],
-            priority: 10,
-            label: "เติมบัวรดน้ำ",
-            execute: () => {
-              interactions.notify("บัวรดน้ำพร้อมใช้งาน ระบบความจุน้ำจะมาในขั้นถัดไป");
-              return false;
+        getActions: () => {
+          const water = toolSystem.getResource(TOOL_IDS.WATERING_CAN);
+          const full = Boolean(water) && water.amount >= water.capacity;
+          return [
+            {
+              id: "fill-watering-can",
+              toolIds: [TOOL_IDS.WATERING_CAN],
+              priority: 10,
+              label: full ? "น้ำเต็มแล้ว" : "เติมบัวรดน้ำ",
+              execute: () => {
+                if (!toolSystem.refillResource(TOOL_IDS.WATERING_CAN)) {
+                  interactions.notify("บัวรดน้ำเต็มอยู่แล้ว");
+                  return false;
+                }
+                interactions.notify(`เติมน้ำเต็ม ${water?.capacity ?? 0} หน่วยแล้ว!`);
+                return true;
+              },
             },
-          },
-          {
-            id: "inspect-well",
-            label: "ตักน้ำ",
-            execute: () => {
-              interactions.notify("เลือกบัวรดน้ำเพื่อเตรียมเติมน้ำ");
-              return false;
+            {
+              id: "inspect-well",
+              label: "ตักน้ำ",
+              execute: () => {
+                interactions.notify("เลือกบัวรดน้ำเพื่อเติมน้ำ");
+                return false;
+              },
             },
-          },
-        ],
+          ];
+        },
       },
     ];
   }

@@ -6,7 +6,8 @@ export const TOOL_IDS = Object.freeze({
 });
 
 function freezeTool(tool) {
-  return Object.freeze({ ...tool });
+  const resource = tool.resource ? Object.freeze({ ...tool.resource }) : null;
+  return Object.freeze({ ...tool, resource });
 }
 
 const TOOLS = Object.freeze({
@@ -27,6 +28,11 @@ const TOOLS = Object.freeze({
     name: "บัวรดน้ำ",
     icon: "🚿",
     order: 2,
+    resource: {
+      id: "water",
+      name: "น้ำ",
+      capacity: 5,
+    },
   }),
   [TOOL_IDS.AXE]: freezeTool({
     id: TOOL_IDS.AXE,
