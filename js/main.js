@@ -2,10 +2,11 @@ const TITLE_COLOR = "#ffffff";
 
 const loadedSave = save.load();
 time.setState(loadedSave.time);
+economy.setState(loadedSave.economy);
 farm.setState(loadedSave.farm);
 
 function saveGame() {
-  save.save(time.getState(), farm.getState());
+  save.save(time.getState(), farm.getState(), economy.getState());
 }
 
 function update(deltaTime) {
@@ -28,6 +29,8 @@ function draw() {
   ctx.textBaseline = "top";
   ctx.fillText("Liora's Farm", width / 2, 78);
   time.draw(ctx);
+  economy.drawHUD(ctx);
+  economy.drawShop(ctx);
 }
 
 let previousTime = performance.now();
@@ -49,7 +52,12 @@ function handlePointer(clientX, clientY) {
   const bounds = canvas.getBoundingClientRect();
   const x = (clientX - bounds.left) * (window.innerWidth / bounds.width);
   const y = (clientY - bounds.top) * (window.innerHeight / bounds.height);
-  if (farm.handleTap(x, y)) saveGame();
+  if (economy.isShopOpen()) {
+    if (economy.handleTap(x, y)) saveGame();
+    return;
+  }
+  if (economy.handleTap(x, y)) saveGame();
+  if (!economy.isShopOpen() && farm.handleTap(x, y)) saveGame();
 }
 
 canvas.addEventListener("touchstart", (event) => {

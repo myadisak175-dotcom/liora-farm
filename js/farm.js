@@ -1,7 +1,7 @@
 const farm = (() => {
   const ROWS = 4;
   const COLUMNS = 4;
-  const GROWTH_DAYS = 3;
+  const GROWTH_DAYS = GAME_BALANCE.cropGrowthDays;
   const GAP = 7;
   const EMPTY = "empty";
   const SEED = "seed";
@@ -83,15 +83,21 @@ const farm = (() => {
 
     const plot = plots[row * COLUMNS + column];
     if (plot.state === EMPTY) {
+      if (!economy.hasSeed()) {
+        showMessage("ไม่มีเมล็ด ไปซื้อที่ร้าน");
+        return false;
+      }
+      economy.useSeed();
       plot.plantedDay = time.getDay();
       plot.state = SEED;
       showMessage("ปลูกเมล็ดแล้ว!");
       return true;
     }
     if (plot.state === READY) {
+      economy.addCrop();
       plot.plantedDay = null;
       plot.state = EMPTY;
-      showMessage("เก็บเกี่ยวแล้ว!");
+      showMessage("เก็บเกี่ยวแล้ว! ได้ผลผลิต 1 ชิ้น");
       return true;
     }
 
