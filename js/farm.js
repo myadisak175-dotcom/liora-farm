@@ -1,17 +1,22 @@
 import { CROP_IDS, CROP_STAGE_IDS, cropCatalog } from "./crop-catalog.js";
 import {
-  createEmptyFarmPlot,
+  clearFarmPlotCrop,
   createEmptyFarmPlots,
   createPlantedFarmPlot,
   getFarmPlotGrowth,
   isFarmPlotEmpty,
+  isFarmPlotTilled,
+  isFarmPlotWatered,
   normalizeFarmPlots,
+  prepareFarmPlot,
   serializeFarmPlots,
+  waterFarmPlot,
 } from "./farm-plot.js";
 import { inventory } from "./inventory.js";
 import { interactions } from "./interactions.js";
 import { time } from "./time.js";
 import { TOOL_IDS } from "./tool-catalog.js";
+import { toolSystem } from "./tool-system.js";
 import { world } from "./world.js";
 
 export const farm = (() => {
@@ -48,16 +53,56 @@ export const farm = (() => {
     return false;
   }
 
+  function prepareSoil(index) {
+    const prepared = prepareFarmPlot(plots[index]);
+    if (!prepared) {
+      interactions.notify("แปลงนี้ไม่ต้องพรวนเพิ่มแล้ว");
+      return false;
+    }
+    plots[index] = prepared;
+    interactions.notify("พรวนดินเรียบร้อย พร้อมปลูกแล้ว!");
+    return true;
+  }
+
   function plantPlot(index, crop) {
+    const plot = plots[index];
+    if (!isFarmPlotTilled(plot)) {
+      interactions.notify("ต้องใช้จอบพรวนดินก่อนปลูก");
+      return false;
+    }
     if (!inventory.has(crop.seedItemId, 1)) {
       interactions.notify("ไม่มีเมล็ด ไปซื้อที่ร้าน");
       return false;
     }
 
-    const plantedPlot = createPlantedFarmPlot(crop.id, time.getDay());
+    const plantedPlot = createPlantedFarmPlot(crop.id, time.getDay(), plot);
     if (!plantedPlot || !inventory.remove(crop.seedItemId, 1)) return false;
     plots[index] = plantedPlot;
     interactions.notify("ปลูกเมล็ดแล้ว!");
+    return true;
+  }
+
+  function waterPlot(index) {
+    const currentDay = time.getDay();
+    const plot = plots[index];
+    if (!isFarmPlotTilled(plot)) {
+      interactions.notify("ต้องพรวนดินก่อนจึงจะรดน้ำได้");
+      return false;
+    }
+    if (isFarmPlotWatered(plot, currentDay)) {
+      interactions.notify("แปลงนี้รดน้ำแล้วสำหรับวันนี้");
+      return false;
+    }
+    if (!toolSystem.hasResource(TOOL_IDS.WATERING_CAN, 1)) {
+      interactions.notify("น้ำในบัวหมดแล้ว ไปเติมที่บ่อน้ำ");
+      return false;
+    }
+
+    const watered = waterFarmPlot(plot, currentDay);
+    if (!watered || !toolSystem.consumeResource(TOOL_IDS.WATERING_CAN, 1)) return false;
+    plots[index] = watered;
+    const remaining = toolSystem.getResourceAmount(TOOL_IDS.WATERING_CAN);
+    interactions.notify(`รดน้ำแล้ว! เหลือน้ำ ${remaining} หน่วย`);
     return true;
   }
 
@@ -69,7 +114,7 @@ export const farm = (() => {
     }
 
     if (!inventory.add(crop.harvestItemId, crop.harvestQuantity)) return false;
-    plots[index] = createEmptyFarmPlot();
+    plots[index] = clearFarmPlotCrop(plots[index]);
     interactions.notify(`เก็บเกี่ยวแล้ว! ได้ผลผลิต ${crop.harvestQuantity} ชิ้น`);
     return true;
   }
@@ -77,7 +122,9 @@ export const farm = (() => {
   function inspectPlot(index) {
     const plot = plots[index];
     if (isFarmPlotEmpty(plot)) {
-      interactions.notify("แปลงนี้ยังว่างอยู่");
+      interactions.notify(isFarmPlotTilled(plot)
+        ? "ดินพร้อมปลูกแล้ว"
+        : "แปลงนี้ยังไม่ได้พรวนดิน");
       return false;
     }
 
@@ -88,29 +135,40 @@ export const farm = (() => {
       return false;
     }
 
-    interactions.notify(`พืชจะโตในอีก ${Math.max(1, growth.daysRemaining)} วัน`);
-    return false;
-  }
-
-  function previewToolAction(message) {
-    interactions.notify(message);
+    const moisture = isFarmPlotWatered(plot, time.getDay()) ? " ดินชุ่มน้ำแล้ว" : " ดินยังแห้งอยู่";
+    interactions.notify(`พืชจะโตในอีก ${Math.max(1, growth.daysRemaining)} วัน ·${moisture}`);
     return false;
   }
 
   function getPlotActions(index) {
     const plot = plots[index];
+    const currentDay = time.getDay();
     const empty = isFarmPlotEmpty(plot);
+    const tilled = isFarmPlotTilled(plot);
+    const watered = isFarmPlotWatered(plot, currentDay);
     const crop = cropCatalog.get(DEFAULT_CROP_ID);
-    const growth = empty ? null : getFarmPlotGrowth(plot, time.getDay());
+    const growth = empty ? null : getFarmPlotGrowth(plot, currentDay);
+    const waterAmount = toolSystem.getResourceAmount(TOOL_IDS.WATERING_CAN);
 
     return [
       {
         id: "plant-crop",
         toolIds: [TOOL_IDS.HAND],
         priority: 100,
-        when: () => empty && Boolean(crop),
+        when: () => empty && tilled && Boolean(crop),
         label: () => crop && inventory.has(crop.seedItemId, 1) ? "ปลูก" : "ไม่มีเมล็ด",
         execute: () => crop ? plantPlot(index, crop) : false,
+      },
+      {
+        id: "soil-needs-preparation",
+        toolIds: [TOOL_IDS.HAND],
+        priority: 100,
+        when: () => empty && !tilled,
+        label: "ต้องพรวนดิน",
+        execute: () => {
+          interactions.notify("เลือกจอบเพื่อพรวนดินก่อนปลูก");
+          return false;
+        },
       },
       {
         id: "inspect-growing-crop",
@@ -124,25 +182,50 @@ export const farm = (() => {
         id: "prepare-soil",
         toolIds: [TOOL_IDS.HOE],
         priority: 100,
-        when: () => empty,
+        when: () => empty && !tilled,
         label: "พรวนดิน",
-        execute: () => previewToolAction("ระบบพรวนดินเตรียมไว้แล้ว จะเชื่อมกับสภาพดินในขั้นถัดไป"),
+        execute: () => prepareSoil(index),
       },
       {
-        id: "water-crop",
+        id: "soil-ready",
+        toolIds: [TOOL_IDS.HOE],
+        priority: 90,
+        when: () => empty && tilled,
+        label: "ดินพร้อมแล้ว",
+        execute: () => {
+          interactions.notify("ดินแปลงนี้พรวนเรียบร้อยแล้ว");
+          return false;
+        },
+      },
+      {
+        id: "water-plot",
         toolIds: [TOOL_IDS.WATERING_CAN],
         priority: 100,
-        when: () => Boolean(growth) && !growth.ready,
-        label: "รดน้ำ",
-        execute: () => previewToolAction("ระบบรดน้ำเตรียมไว้แล้ว จะเพิ่มความชื้นของแปลงในขั้นถัดไป"),
+        when: () => tilled && !watered && !growth?.ready,
+        label: () => waterAmount > 0 ? "รดน้ำ" : "น้ำหมด",
+        execute: () => waterPlot(index),
       },
       {
-        id: "water-empty-plot",
+        id: "plot-already-watered",
+        toolIds: [TOOL_IDS.WATERING_CAN],
+        priority: 95,
+        when: () => tilled && watered && !growth?.ready,
+        label: "รดน้ำแล้ว",
+        execute: () => {
+          interactions.notify("แปลงนี้ชุ่มน้ำแล้วสำหรับวันนี้");
+          return false;
+        },
+      },
+      {
+        id: "water-unprepared-soil",
         toolIds: [TOOL_IDS.WATERING_CAN],
         priority: 90,
-        when: () => empty,
-        label: "ไม่มีพืชให้รดน้ำ",
-        execute: () => previewToolAction("แปลงนี้ยังไม่มีพืช"),
+        when: () => !tilled,
+        label: "ต้องพรวนดินก่อน",
+        execute: () => {
+          interactions.notify("เลือกจอบพรวนดินก่อนรดน้ำ");
+          return false;
+        },
       },
       {
         id: "harvest-crop",
@@ -207,6 +290,23 @@ export const farm = (() => {
     }
   }
 
+  function drawSoil(ctx, plot, cellX, cellY, currentDay) {
+    const tilled = isFarmPlotTilled(plot);
+    const watered = isFarmPlotWatered(plot, currentDay);
+    ctx.fillStyle = !tilled ? "#90633d" : watered ? "#4b392d" : "#704425";
+    ctx.fillRect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+
+    if (!tilled) return;
+    ctx.strokeStyle = watered ? "rgba(116, 174, 197, 0.38)" : "rgba(188, 130, 78, 0.46)";
+    ctx.lineWidth = 2;
+    for (let offset = CELL_SIZE * 0.22; offset < CELL_SIZE; offset += CELL_SIZE * 0.23) {
+      ctx.beginPath();
+      ctx.moveTo(cellX + 7, cellY + offset);
+      ctx.lineTo(cellX + CELL_SIZE - 7, cellY + offset);
+      ctx.stroke();
+    }
+  }
+
   function draw(ctx) {
     const currentDay = time.getDay();
     plots.forEach((plot, index) => {
@@ -217,8 +317,7 @@ export const farm = (() => {
       const growth = getFarmPlotGrowth(plot, currentDay);
       const ready = growth?.stage.id === CROP_STAGE_IDS.READY;
 
-      ctx.fillStyle = "#704425";
-      ctx.fillRect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+      drawSoil(ctx, plot, cellX, cellY, currentDay);
       ctx.strokeStyle = ready ? "#ffe36c" : "#9a6338";
       ctx.lineWidth = ready ? 4 : 2;
       ctx.strokeRect(cellX + 1, cellY + 1, CELL_SIZE - 2, CELL_SIZE - 2);
