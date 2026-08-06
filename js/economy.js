@@ -1,4 +1,3 @@
-// ตัวเลขที่ใช้ปรับสมดุลเกมรวมอยู่ที่เดียว
 const GAME_BALANCE = Object.freeze({
   startingCoins: 50,
   startingSeeds: 3,
@@ -66,7 +65,7 @@ const economy = (() => {
   }
 
   function getShopButton() {
-    return { x: window.innerWidth - 122, y: 16, width: 106, height: 48 };
+    return { x: window.innerWidth - 94, y: 91, width: 82, height: 40 };
   }
 
   function getShopLayout() {
@@ -75,7 +74,10 @@ const economy = (() => {
     const x = (window.innerWidth - width) / 2;
     const y = Math.max(82, (window.innerHeight - height) / 2);
     return {
-      x, y, width, height,
+      x,
+      y,
+      width,
+      height,
       sell: { x: x + 24, y: y + 158, width: width - 48, height: 48 },
       buy: { x: x + 24, y: y + 218, width: width - 48, height: 48 },
       close: { x: x + width - 48, y: y + 12, width: 36, height: 36 },
@@ -87,7 +89,6 @@ const economy = (() => {
       y >= button.y && y <= button.y + button.height;
   }
 
-  // คืนค่า true เฉพาะเมื่อเงินหรือของในกระเป๋าเปลี่ยน เพื่อให้ main บันทึกเกม
   function handleTap(x, y) {
     if (!shopOpen) {
       if (!contains(getShopButton(), x, y)) return false;
@@ -110,23 +111,22 @@ const economy = (() => {
     ctx.fillStyle = color;
     ctx.fillRect(button.x, button.y, button.width, button.height);
     ctx.fillStyle = "#ffffff";
-    ctx.font = "600 17px system-ui, sans-serif";
+    ctx.font = "600 15px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(label, button.x + button.width / 2, button.y + button.height / 2);
   }
 
   function drawHUD(ctx) {
-    const label = `🪙 ${coins}   เมล็ด ${seeds}   ผลผลิต ${crops}`;
-    ctx.font = "600 16px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    const width = ctx.measureText(label).width + 24;
+    const button = getShopButton();
     ctx.fillStyle = "rgba(10, 24, 25, 0.76)";
-    ctx.fillRect(16, 70, width, 40);
+    ctx.fillRect(12, 91, window.innerWidth - 24, 40);
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(label, 28, 81);
-    drawButton(ctx, getShopButton(), "ร้านค้า", "#b46b2c");
+    ctx.font = "600 14px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`🪙 ${coins} · 🌱 ${seeds} · 📦 ${crops}`, 22, 111);
+    drawButton(ctx, button, "ร้านค้า", "#b46b2c");
   }
 
   function drawShop(ctx) {
@@ -150,13 +150,22 @@ const economy = (() => {
     ctx.font = "15px system-ui, sans-serif";
     ctx.fillText(shopMessage, window.innerWidth / 2, layout.y + 108);
 
-    drawButton(ctx, layout.sell, `ขายผลผลิต 1 ชิ้น (+${GAME_BALANCE.cropSellPrice} เหรียญ)`, "#4f8d46");
-    drawButton(ctx, layout.buy, `ซื้อเมล็ด 1 เมล็ด (-${GAME_BALANCE.seedPrice} เหรียญ)`, "#b46b2c");
+    drawButton(ctx, layout.sell, `ขายผลผลิต 1 ชิ้น (+${GAME_BALANCE.cropSellPrice})`, "#4f8d46");
+    drawButton(ctx, layout.buy, `ซื้อเมล็ด 1 เมล็ด (-${GAME_BALANCE.seedPrice})`, "#b46b2c");
     drawButton(ctx, layout.close, "×", "#8c493e");
   }
 
   return {
-    setState, getState, hasSeed, useSeed, addCrop, buySeed, sellCrop,
-    handleTap, drawHUD, drawShop, isShopOpen: () => shopOpen,
+    setState,
+    getState,
+    hasSeed,
+    useSeed,
+    addCrop,
+    buySeed,
+    sellCrop,
+    handleTap,
+    drawHUD,
+    drawShop,
+    isShopOpen: () => shopOpen,
   };
 })();

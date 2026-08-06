@@ -5,7 +5,6 @@ const time = (() => {
   const END_MINUTES = 26 * 60;
   const MINUTES_PER_STEP = 10;
   const STEPS_PER_DAY = (END_MINUTES - START_MINUTES) / MINUTES_PER_STEP;
-  // A 300-second day has 120 ten-minute steps, so each step takes 2.5 seconds.
   const REAL_SECONDS_PER_STEP = REAL_SECONDS_PER_DAY / STEPS_PER_DAY;
 
   const PERIODS = {
@@ -27,21 +26,18 @@ const time = (() => {
 
   function update(deltaTime) {
     if (!Number.isFinite(deltaTime) || deltaTime <= 0) return false;
-
     elapsedSeconds += deltaTime;
     let dayChanged = false;
 
     while (elapsedSeconds >= REAL_SECONDS_PER_STEP) {
       elapsedSeconds -= REAL_SECONDS_PER_STEP;
       minutes += MINUTES_PER_STEP;
-
       if (minutes >= END_MINUTES) {
         day += 1;
         minutes = START_MINUTES;
         dayChanged = true;
       }
     }
-
     return dayChanged;
   }
 
@@ -72,8 +68,7 @@ const time = (() => {
   function getFormattedTime() {
     const hour = getHour();
     const displayHour = hour % 12 || 12;
-    const meridiem = hour < 12 ? "AM" : "PM";
-    return `${displayHour}:${String(getMinute()).padStart(2, "0")} ${meridiem}`;
+    return `${displayHour}:${String(getMinute()).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
   }
 
   function drawBackground(ctx, width, height) {
@@ -83,16 +78,13 @@ const time = (() => {
 
   function draw(ctx) {
     const label = `Day ${day} · ${getFormattedTime()} · ${getPeriod()}`;
-    ctx.font = "600 18px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-
-    const padding = 14;
-    const boxWidth = ctx.measureText(label).width + padding * 2;
-    ctx.fillStyle = "rgba(10, 24, 25, 0.7)";
-    ctx.fillRect(16, 16, boxWidth, 48);
+    ctx.font = "600 14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(10, 24, 25, 0.72)";
+    ctx.fillRect(12, 44, window.innerWidth - 24, 38);
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(label, 16 + padding, 31);
+    ctx.fillText(label, window.innerWidth / 2, 63);
   }
 
   return {
