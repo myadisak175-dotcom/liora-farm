@@ -4,16 +4,31 @@ import { interactions } from "../interactions.js";
 import { gameMap } from "../map.js";
 import { mapInteractions } from "../map-interactions.js";
 import { player } from "../player.js";
+import { createSpawnAnchors } from "../spawn-anchors.js";
 import { world } from "../world.js";
 
-export function createFarmExteriorScene() {
-  function enter({ state } = {}) {
-    farm.setState(state?.farm);
-    player.setState(state?.player);
+const SPAWNS = createSpawnAnchors({
+  default: { x: world.WIDTH / 2, y: 735, facingX: 0, facingY: -1 },
+  "farmhouse-exit": { x: 350, y: 468, facingX: 0, facingY: 1 },
+});
 
+export function createFarmExteriorScene({ requestSceneChange } = {}) {
+  function enter({ state, spawnId } = {}) {
+    farm.setState(state?.farm);
+
+    player.configure({
+      space: "farm-exterior",
+      legacySpaces: ["world"],
+      bounds: { width: world.WIDTH, height: world.HEIGHT },
+      defaultPosition: SPAWNS.resolve(),
+      getColliders: gameMap.getColliders,
+    });
+    player.setState(state?.player, spawnId ? SPAWNS.resolve(spawnId) : null);
+
+    camera.setBounds(world.WIDTH, world.HEIGHT);
     interactions.clear();
     interactions.registerMany(farm.getInteractions());
-    interactions.registerMany(mapInteractions.getEntries());
+    interactions.registerMany(mapInteractions.getEntries({ requestSceneChange }));
 
     const position = player.getPosition();
     interactions.update(position.x, position.y);
