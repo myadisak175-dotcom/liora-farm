@@ -1,4 +1,6 @@
-const camera = (() => {
+import { world } from "./world.js";
+
+export const camera = (() => {
   const FOLLOW_SPEED = 8;
 
   let x = 0;
