@@ -1,11 +1,12 @@
 import { CROP_IDS } from "./crop-catalog.js";
+import { SOIL_STATES } from "./farm-plot.js";
 import { ITEM_IDS } from "./item-catalog.js";
-import { TOOL_IDS } from "./tool-catalog.js";
+import { TOOL_IDS, toolCatalog } from "./tool-catalog.js";
 import {
   CURRENT_SAVE_VERSION,
   DEFAULT_SCENE_ID,
   createDefaultSave,
-  normalizeSaveV6,
+  normalizeSaveV7,
 } from "./save-schema.js";
 
 export class UnsupportedSaveVersionError extends Error {
@@ -124,12 +125,59 @@ function migrateV5ToV6(save) {
   };
 }
 
+function migrateFarmPlotsV6ToV7(value) {
+  if (!Array.isArray(value)) return value;
+  return value.map((plot) => ({
+    soilState: SOIL_STATES.TILLED,
+    cropId: typeof plot?.cropId === "string" ? plot.cropId : null,
+    plantedDay: Number.isSafeInteger(plot?.plantedDay) && plot.plantedDay >= 1
+      ? plot.plantedDay
+      : null,
+    wateredDay: null,
+  }));
+}
+
+function migrateV6ToV7(save) {
+  const globalState = isRecord(save.global) ? save.global : {};
+  const tools = isRecord(globalState.tools) ? globalState.tools : {};
+  const scenes = isRecord(save.scenes) ? save.scenes : {};
+  const farmScene = isRecord(scenes[DEFAULT_SCENE_ID])
+    ? scenes[DEFAULT_SCENE_ID]
+    : {};
+  const wateringCan = toolCatalog.get(TOOL_IDS.WATERING_CAN);
+
+  return {
+    ...save,
+    version: 7,
+    global: {
+      ...globalState,
+      tools: {
+        ...tools,
+        resources: {
+          ...(isRecord(tools.resources) ? tools.resources : {}),
+          [TOOL_IDS.WATERING_CAN]: {
+            amount: wateringCan?.resource?.capacity ?? 5,
+          },
+        },
+      },
+    },
+    scenes: {
+      ...scenes,
+      [DEFAULT_SCENE_ID]: {
+        ...farmScene,
+        farm: migrateFarmPlotsV6ToV7(farmScene.farm),
+      },
+    },
+  };
+}
+
 const MIGRATIONS = new Map([
   [1, migrateV1ToV2],
   [2, migrateV2ToV3],
   [3, migrateV3ToV4],
   [4, migrateV4ToV5],
   [5, migrateV5ToV6],
+  [6, migrateV6ToV7],
 ]);
 
 export function migrateSave(rawSave) {
@@ -152,7 +200,7 @@ export function migrateSave(rawSave) {
   }
 
   return {
-    save: normalizeSaveV6(migrated),
+    save: normalizeSaveV7(migrated),
     sourceVersion,
   };
 }
