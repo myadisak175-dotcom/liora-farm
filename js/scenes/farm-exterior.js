@@ -7,9 +7,9 @@ import { player } from "../player.js";
 import { world } from "../world.js";
 
 export function createFarmExteriorScene() {
-  function enter({ farmState, playerState } = {}) {
-    farm.setState(farmState);
-    player.setState(playerState);
+  function enter({ state } = {}) {
+    farm.setState(state?.farm);
+    player.setState(state?.player);
 
     interactions.clear();
     interactions.registerMany(farm.getInteractions());

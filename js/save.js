@@ -1,61 +1,61 @@
+import { migrateSave, UnsupportedSaveVersionError } from "./save-migrations.js";
+import { createDefaultSave, normalizeSaveV3 } from "./save-schema.js";
+
 export const save = (() => {
   const SAVE_KEY = "liora-farm-save";
-  const SAVE_VERSION = 2;
-  const DEFAULT_TIME = { day: 1, minutes: 6 * 60 };
+  let writesBlocked = false;
 
-  function getStoredSave() {
-    const storedSave = JSON.parse(localStorage.getItem(SAVE_KEY));
-    return storedSave && typeof storedSave === "object" ? storedSave : {};
+  function persist(snapshot) {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
   }
 
   function load() {
+    writesBlocked = false;
+    const storedText = localStorage.getItem(SAVE_KEY);
+    if (storedText === null) return createDefaultSave();
+
+    let parsed;
     try {
-      const storedSave = getStoredSave();
-      const storedTime = storedSave?.time;
-      if (
-        Number.isInteger(storedTime?.day) &&
-        storedTime.day >= 1 &&
-        Number.isInteger(storedTime?.minutes) &&
-        storedTime.minutes >= 6 * 60 &&
-        storedTime.minutes < 26 * 60
-      ) {
-        return {
-          version: Number.isInteger(storedSave.version) ? storedSave.version : 1,
-          time: { day: storedTime.day, minutes: storedTime.minutes },
-          farm: storedSave.farm,
-          economy: storedSave.economy,
-          player: storedSave.player,
-        };
-      }
+      parsed = JSON.parse(storedText);
     } catch (error) {
-      console.warn("Could not load the local save; starting a new day.", error);
+      console.warn("Could not parse the local save; starting a new game.", error);
+      return createDefaultSave();
     }
 
-    return {
-      version: SAVE_VERSION,
-      time: { ...DEFAULT_TIME },
-      farm: undefined,
-      economy: undefined,
-      player: undefined,
-    };
+    try {
+      const result = migrateSave(parsed);
+      try {
+        persist(result.save);
+      } catch (error) {
+        console.warn("The migrated save loaded, but could not be written back.", error);
+      }
+      return result.save;
+    } catch (error) {
+      if (error instanceof UnsupportedSaveVersionError) {
+        writesBlocked = true;
+        console.warn("This save was created by a newer game version; saving is disabled.", error);
+      } else {
+        console.warn("Could not migrate the local save; starting a new game.", error);
+      }
+      return createDefaultSave();
+    }
   }
 
-  function saveGame(timeState, farmState, economyState, playerState) {
+  function saveGame(snapshot) {
+    if (writesBlocked) return false;
+
     try {
-      localStorage.setItem(
-        SAVE_KEY,
-        JSON.stringify({
-          version: SAVE_VERSION,
-          time: timeState,
-          farm: farmState,
-          economy: economyState,
-          player: playerState,
-        }),
-      );
+      persist(normalizeSaveV3(snapshot));
+      return true;
     } catch (error) {
       console.warn("Could not save the current game.", error);
+      return false;
     }
   }
 
-  return { load, save: saveGame };
+  return {
+    load,
+    save: saveGame,
+    isWriteBlocked: () => writesBlocked,
+  };
 })();
