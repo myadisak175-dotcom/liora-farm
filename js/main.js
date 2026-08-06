@@ -4,15 +4,27 @@ const loadedSave = save.load();
 time.setState(loadedSave.time);
 economy.setState(loadedSave.economy);
 farm.setState(loadedSave.farm);
+player.setState(loadedSave.player);
 
 function saveGame() {
-  save.save(time.getState(), farm.getState(), economy.getState());
+  save.save(
+    time.getState(),
+    farm.getState(),
+    economy.getState(),
+    player.getState(),
+  );
 }
 
 function update(deltaTime) {
   const dayChanged = time.update(deltaTime);
   farm.update();
-  if (dayChanged) saveGame();
+  const moved = player.update(deltaTime, !economy.isShopOpen());
+
+  if (input.consumeAction() && !economy.isShopOpen()) {
+    if (player.interact()) saveGame();
+  }
+
+  if (dayChanged || moved) saveGame();
 }
 
 function draw() {
@@ -22,21 +34,24 @@ function draw() {
   ctx.clearRect(0, 0, width, height);
   time.drawBackground(ctx, width, height);
   farm.draw(ctx);
+  player.draw(ctx);
 
   ctx.fillStyle = TITLE_COLOR;
-  ctx.font = "600 24px system-ui, sans-serif";
+  ctx.font = "700 22px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText("Liora's Farm", width / 2, 78);
+  ctx.fillText("Liora's Farm", width / 2, 10);
+
   time.draw(ctx);
   economy.drawHUD(ctx);
+  if (!economy.isShopOpen()) input.draw(ctx);
   economy.drawShop(ctx);
 }
 
 let previousTime = performance.now();
 
 function gameLoop(currentTime) {
-  const deltaTime = (currentTime - previousTime) / 1000;
+  const deltaTime = Math.min(0.05, (currentTime - previousTime) / 1000);
   previousTime = currentTime;
 
   update(deltaTime);
@@ -46,38 +61,40 @@ function gameLoop(currentTime) {
 
 requestAnimationFrame(gameLoop);
 
-let lastTouchTime = 0;
-
-function handlePointer(clientX, clientY) {
+function pointerPosition(event) {
   const bounds = canvas.getBoundingClientRect();
-  const x = (clientX - bounds.left) * (window.innerWidth / bounds.width);
-  const y = (clientY - bounds.top) * (window.innerHeight / bounds.height);
-  if (economy.isShopOpen()) {
-    if (economy.handleTap(x, y)) saveGame();
-    return;
-  }
-  if (economy.handleTap(x, y)) saveGame();
-  if (!economy.isShopOpen() && farm.handleTap(x, y)) saveGame();
+  return {
+    x: (event.clientX - bounds.left) * (window.innerWidth / bounds.width),
+    y: (event.clientY - bounds.top) * (window.innerHeight / bounds.height),
+  };
 }
 
-canvas.addEventListener("touchstart", (event) => {
+canvas.addEventListener("pointerdown", (event) => {
   event.preventDefault();
-  lastTouchTime = performance.now();
-  const touch = event.changedTouches[0];
-  if (touch) handlePointer(touch.clientX, touch.clientY);
-}, { passive: false });
-canvas.addEventListener("click", (event) => {
-  // Some mobile browsers synthesize a click after touchstart.
-  if (performance.now() - lastTouchTime > 500) {
-    handlePointer(event.clientX, event.clientY);
+  const point = pointerPosition(event);
+
+  if (economy.isShopOpen()) {
+    if (economy.handleTap(point.x, point.y)) saveGame();
+    return;
+  }
+
+  if (economy.handleTap(point.x, point.y)) saveGame();
+  if (!economy.isShopOpen() && input.pointerDown(event.pointerId, point.x, point.y)) {
+    canvas.setPointerCapture(event.pointerId);
   }
 });
 
-// Save regularly so refreshing resumes near the last visible time.
+canvas.addEventListener("pointermove", (event) => {
+  const point = pointerPosition(event);
+  input.pointerMove(event.pointerId, point.x, point.y);
+});
+
+canvas.addEventListener("pointerup", (event) => input.pointerUp(event.pointerId));
+canvas.addEventListener("pointercancel", (event) => input.pointerUp(event.pointerId));
+
 window.setInterval(saveGame, 5000);
 window.addEventListener("pagehide", saveGame);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) saveGame();
-  // Do not count time spent in a background tab as play time.
   previousTime = performance.now();
 });
