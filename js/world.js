@@ -1,4 +1,6 @@
-const world = (() => {
+import { time } from "./time.js";
+
+export const world = (() => {
   const WIDTH = 1600;
   const HEIGHT = 1200;
   const TILE_SIZE = 80;
