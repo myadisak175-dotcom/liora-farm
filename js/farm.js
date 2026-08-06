@@ -11,6 +11,7 @@ import {
 import { inventory } from "./inventory.js";
 import { interactions } from "./interactions.js";
 import { time } from "./time.js";
+import { TOOL_IDS } from "./tool-catalog.js";
 import { world } from "./world.js";
 
 export const farm = (() => {
@@ -73,30 +74,93 @@ export const farm = (() => {
     return true;
   }
 
-  function interactPlot(index) {
+  function inspectPlot(index) {
     const plot = plots[index];
     if (isFarmPlotEmpty(plot)) {
-      const crop = cropCatalog.get(DEFAULT_CROP_ID);
-      return crop ? plantPlot(index, crop) : false;
+      interactions.notify("แปลงนี้ยังว่างอยู่");
+      return false;
     }
 
     const growth = getFarmPlotGrowth(plot, time.getDay());
     if (!growth) return false;
-    if (growth.ready) return harvestPlot(index, growth);
+    if (growth.ready) {
+      interactions.notify("พืชโตเต็มที่แล้ว พร้อมเก็บเกี่ยว");
+      return false;
+    }
 
     interactions.notify(`พืชจะโตในอีก ${Math.max(1, growth.daysRemaining)} วัน`);
     return false;
   }
 
-  function getPlotLabel(index) {
-    const plot = plots[index];
-    if (isFarmPlotEmpty(plot)) {
-      const crop = cropCatalog.get(DEFAULT_CROP_ID);
-      return crop && inventory.has(crop.seedItemId, 1) ? "ปลูก" : "ไม่มีเมล็ด";
-    }
+  function previewToolAction(message) {
+    interactions.notify(message);
+    return false;
+  }
 
-    const growth = getFarmPlotGrowth(plot, time.getDay());
-    return growth?.ready ? "เก็บเกี่ยว" : "ตรวจดู";
+  function getPlotActions(index) {
+    const plot = plots[index];
+    const empty = isFarmPlotEmpty(plot);
+    const crop = cropCatalog.get(DEFAULT_CROP_ID);
+    const growth = empty ? null : getFarmPlotGrowth(plot, time.getDay());
+
+    return [
+      {
+        id: "plant-crop",
+        toolIds: [TOOL_IDS.HAND],
+        priority: 100,
+        when: () => empty && Boolean(crop),
+        label: () => crop && inventory.has(crop.seedItemId, 1) ? "ปลูก" : "ไม่มีเมล็ด",
+        execute: () => crop ? plantPlot(index, crop) : false,
+      },
+      {
+        id: "inspect-growing-crop",
+        toolIds: [TOOL_IDS.HAND],
+        priority: 90,
+        when: () => Boolean(growth) && !growth.ready,
+        label: "ตรวจดู",
+        execute: () => inspectPlot(index),
+      },
+      {
+        id: "prepare-soil",
+        toolIds: [TOOL_IDS.HOE],
+        priority: 100,
+        when: () => empty,
+        label: "พรวนดิน",
+        execute: () => previewToolAction("ระบบพรวนดินเตรียมไว้แล้ว จะเชื่อมกับสภาพดินในขั้นถัดไป"),
+      },
+      {
+        id: "water-crop",
+        toolIds: [TOOL_IDS.WATERING_CAN],
+        priority: 100,
+        when: () => Boolean(growth) && !growth.ready,
+        label: "รดน้ำ",
+        execute: () => previewToolAction("ระบบรดน้ำเตรียมไว้แล้ว จะเพิ่มความชื้นของแปลงในขั้นถัดไป"),
+      },
+      {
+        id: "water-empty-plot",
+        toolIds: [TOOL_IDS.WATERING_CAN],
+        priority: 90,
+        when: () => empty,
+        label: "ไม่มีพืชให้รดน้ำ",
+        execute: () => previewToolAction("แปลงนี้ยังไม่มีพืช"),
+      },
+      {
+        id: "harvest-crop",
+        priority: 100,
+        when: () => Boolean(growth?.ready),
+        label: "เก็บเกี่ยว",
+        execute: () => {
+          const latestGrowth = getFarmPlotGrowth(plots[index], time.getDay());
+          return latestGrowth?.ready ? harvestPlot(index, latestGrowth) : false;
+        },
+      },
+      {
+        id: "inspect-plot",
+        priority: -100,
+        label: () => empty ? "ตรวจแปลง" : "ตรวจดู",
+        execute: () => inspectPlot(index),
+      },
+    ];
   }
 
   function getInteractions() {
@@ -110,8 +174,7 @@ export const farm = (() => {
         radius: 78,
         priority: 10,
         highlightRadius: CELL_SIZE * 0.43,
-        label: () => getPlotLabel(index),
-        action: () => interactPlot(index),
+        getActions: () => getPlotActions(index),
       };
     });
   }

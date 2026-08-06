@@ -1,3 +1,6 @@
+import { resolveAction } from "./action-resolver.js";
+import { toolSystem } from "./tool-system.js";
+
 export const interactions = (() => {
   const ACTIVATION_COOLDOWN_MS = 320;
   const registry = new Map();
@@ -21,8 +24,14 @@ export const interactions = (() => {
       : null;
   }
 
+  function hasActionSource(entry) {
+    return typeof entry.action === "function" ||
+      Array.isArray(entry.actions) ||
+      typeof entry.getActions === "function";
+  }
+
   function register(entry) {
-    if (!entry || typeof entry.id !== "string" || typeof entry.action !== "function") {
+    if (!entry || typeof entry.id !== "string" || !hasActionSource(entry)) {
       console.warn("Ignored an invalid interaction entry.", entry);
       return false;
     }
@@ -80,22 +89,52 @@ export const interactions = (() => {
     return current;
   }
 
+  function getResolvedAction(entry) {
+    if (!entry) return null;
+
+    const selectedTool = toolSystem.getSelected();
+    const context = {
+      target: entry,
+      selectedTool,
+      selectedToolId: selectedTool?.id ?? null,
+    };
+    const actionDefinitions = typeof entry.getActions === "function"
+      ? entry.getActions(context)
+      : entry.actions;
+    const resolved = resolveAction(actionDefinitions, context);
+    if (resolved) return resolved;
+
+    if (typeof entry.action !== "function") return null;
+    const label = resolveValue(entry.label, entry);
+    return {
+      id: entry.id,
+      label: typeof label === "string" && label.trim() ? label.trim() : null,
+      execute: entry.action,
+      toolSpecific: false,
+    };
+  }
+
   function activateCurrent() {
     if (!current) {
       notify("ยังไม่มีสิ่งให้ใช้งานใกล้ ๆ", 1300);
       return false;
     }
 
+    const action = getResolvedAction(current.entry);
+    if (!action) {
+      notify("เครื่องมือนี้ยังใช้กับสิ่งนี้ไม่ได้", 1500);
+      return false;
+    }
+
     const now = performance.now();
     if (now - lastActivationTime < ACTIVATION_COOLDOWN_MS) return false;
     lastActivationTime = now;
-    return Boolean(current.entry.action());
+    return Boolean(action.execute());
   }
 
   function getPromptLabel() {
     if (!current) return null;
-    const label = resolveValue(current.entry.label, current.entry);
-    return typeof label === "string" && label.trim() ? label.trim() : null;
+    return getResolvedAction(current.entry)?.label ?? null;
   }
 
   function notify(text, duration = 2200) {
@@ -141,6 +180,10 @@ export const interactions = (() => {
     return current?.entry.id ?? null;
   }
 
+  function getCurrentActionId() {
+    return current ? getResolvedAction(current.entry)?.id ?? null : null;
+  }
+
   return {
     register,
     registerMany,
@@ -149,6 +192,7 @@ export const interactions = (() => {
     activateCurrent,
     getPromptLabel,
     getCurrentId,
+    getCurrentActionId,
     notify,
     drawWorld,
     drawMessage,
