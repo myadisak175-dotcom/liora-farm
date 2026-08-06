@@ -1,4 +1,4 @@
-export const CURRENT_SAVE_VERSION = 3;
+export const CURRENT_SAVE_VERSION = 4;
 export const DEFAULT_SCENE_ID = "farm-exterior";
 
 const DEFAULT_TIME = Object.freeze({ day: 1, minutes: 6 * 60 });
@@ -50,6 +50,7 @@ export function createDefaultSave() {
     global: {
       time: { ...DEFAULT_TIME },
       economy: null,
+      inventory: null,
     },
     currentScene: DEFAULT_SCENE_ID,
     scenes: {
@@ -61,7 +62,7 @@ export function createDefaultSave() {
   };
 }
 
-export function normalizeSaveV3(value) {
+export function normalizeSaveV4(value) {
   const fallback = createDefaultSave();
   const globalState = isRecord(value?.global) ? value.global : {};
   const currentScene = typeof value?.currentScene === "string" && value.currentScene.trim()
@@ -76,16 +77,17 @@ export function normalizeSaveV3(value) {
     global: {
       time: normalizeTime(globalState.time),
       economy: cloneJson(globalState.economy, fallback.global.economy),
+      inventory: cloneJson(globalState.inventory, fallback.global.inventory),
     },
     currentScene,
     scenes,
   };
 }
 
-export function createSaveSnapshot({ time, economy, currentScene, scenes }) {
-  return normalizeSaveV3({
+export function createSaveSnapshot({ time, economy, inventory, currentScene, scenes }) {
+  return normalizeSaveV4({
     version: CURRENT_SAVE_VERSION,
-    global: { time, economy },
+    global: { time, economy, inventory },
     currentScene,
     scenes,
   });
