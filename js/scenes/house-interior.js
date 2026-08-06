@@ -1,34 +1,40 @@
 import { camera } from "../camera.js";
-import { farm } from "../farm.js";
 import { interactions } from "../interactions.js";
-import { gameMap } from "../map.js";
-import { mapInteractions } from "../map-interactions.js";
+import { houseInteriorMap } from "../maps/house-interior-map.js";
 import { player } from "../player.js";
 import { createSpawnAnchors } from "../spawn-anchors.js";
-import { world } from "../world.js";
 
 const SPAWNS = createSpawnAnchors({
-  default: { x: world.WIDTH / 2, y: 735, facingX: 0, facingY: -1 },
-  "farmhouse-exit": { x: 350, y: 468, facingX: 0, facingY: 1 },
+  default: { x: 450, y: 525, facingX: 0, facingY: -1 },
+  entry: { x: 450, y: 525, facingX: 0, facingY: -1 },
 });
 
-export function createFarmExteriorScene({ requestSceneChange } = {}) {
-  function enter({ state, spawnId } = {}) {
-    farm.setState(state?.farm);
+export function createHouseInteriorScene({ requestSceneChange } = {}) {
+  const requestTransition = typeof requestSceneChange === "function"
+    ? requestSceneChange
+    : () => false;
 
+  function enter({ state, spawnId } = {}) {
     player.configure({
-      space: "farm-exterior",
-      legacySpaces: ["world"],
-      bounds: { width: world.WIDTH, height: world.HEIGHT },
+      space: "house-interior",
+      bounds: { width: houseInteriorMap.WIDTH, height: houseInteriorMap.HEIGHT },
       defaultPosition: SPAWNS.resolve(),
-      getColliders: gameMap.getColliders,
+      getColliders: houseInteriorMap.getColliders,
     });
     player.setState(state?.player, spawnId ? SPAWNS.resolve(spawnId) : null);
 
-    camera.setBounds(world.WIDTH, world.HEIGHT);
+    camera.setBounds(houseInteriorMap.WIDTH, houseInteriorMap.HEIGHT);
     interactions.clear();
-    interactions.registerMany(farm.getInteractions());
-    interactions.registerMany(mapInteractions.getEntries({ requestSceneChange }));
+    interactions.register({
+      id: "house-exit-door",
+      x: houseInteriorMap.DOOR_CENTER_X,
+      y: houseInteriorMap.ROOM.y + houseInteriorMap.ROOM.height - 8,
+      radius: 82,
+      priority: 10,
+      highlightRadius: 31,
+      label: "ออกจากบ้าน",
+      action: () => requestTransition("farm-exterior", { spawnId: "farmhouse-exit" }),
+    });
 
     const position = player.getPosition();
     interactions.update(position.x, position.y);
@@ -40,9 +46,7 @@ export function createFarmExteriorScene({ requestSceneChange } = {}) {
   }
 
   function update(deltaTime, { movementEnabled = true } = {}) {
-    farm.update();
     const moved = player.update(deltaTime, movementEnabled);
-
     const position = player.getPosition();
     interactions.update(position.x, position.y);
     camera.update(position.x, position.y, deltaTime);
@@ -52,15 +56,13 @@ export function createFarmExteriorScene({ requestSceneChange } = {}) {
   function draw(ctx) {
     ctx.save();
     camera.apply(ctx);
-    world.draw(ctx);
-    gameMap.drawGround(ctx);
-    farm.draw(ctx);
+    houseInteriorMap.drawGround(ctx);
     interactions.drawWorld(ctx);
 
     const position = player.getPosition();
-    gameMap.drawBefore(ctx, position.y);
+    houseInteriorMap.drawBefore(ctx, position.y);
     player.draw(ctx);
-    gameMap.drawAfter(ctx, position.y);
+    houseInteriorMap.drawAfter(ctx, position.y);
     ctx.restore();
   }
 
@@ -77,15 +79,12 @@ export function createFarmExteriorScene({ requestSceneChange } = {}) {
   }
 
   function getSaveState() {
-    return {
-      farm: farm.getState(),
-      player: player.getState(),
-    };
+    return { player: player.getState() };
   }
 
   return {
-    id: "farm-exterior",
-    title: "Liora's Farm",
+    id: "house-interior",
+    title: "บ้านของ Liora",
     enter,
     exit,
     update,

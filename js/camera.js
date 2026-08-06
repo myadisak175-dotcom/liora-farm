@@ -1,11 +1,21 @@
-import { world } from "./world.js";
-
 export const camera = (() => {
   const FOLLOW_SPEED = 8;
 
   let x = 0;
   let y = 0;
   let initialized = false;
+  let boundsWidth = 0;
+  let boundsHeight = 0;
+
+  function setBounds(width, height) {
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new TypeError("Camera bounds must be positive finite numbers.");
+    }
+    boundsWidth = width;
+    boundsHeight = height;
+    initialized = false;
+    clamp();
+  }
 
   function getVerticalAnchor() {
     return window.innerWidth > window.innerHeight ? 0.78 : 0.68;
@@ -19,8 +29,8 @@ export const camera = (() => {
   }
 
   function clamp() {
-    const maxX = Math.max(0, world.WIDTH - window.innerWidth);
-    const maxY = Math.max(0, world.HEIGHT - window.innerHeight);
+    const maxX = Math.max(0, boundsWidth - window.innerWidth);
+    const maxY = Math.max(0, boundsHeight - window.innerHeight);
     x = Math.min(maxX, Math.max(0, x));
     y = Math.min(maxY, Math.max(0, y));
   }
@@ -55,8 +65,8 @@ export const camera = (() => {
   }
 
   function getState() {
-    return { x, y };
+    return { x, y, boundsWidth, boundsHeight };
   }
 
-  return { snapTo, update, apply, worldToScreen, getState };
+  return { setBounds, snapTo, update, apply, worldToScreen, getState };
 })();
