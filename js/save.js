@@ -23,20 +23,31 @@ const save = (() => {
           time: { day: storedTime.day, minutes: storedTime.minutes },
           farm: storedSave.farm,
           economy: storedSave.economy,
+          player: storedSave.player,
         };
       }
     } catch (error) {
       console.warn("Could not load the local save; starting a new day.", error);
     }
 
-    return { time: { ...DEFAULT_TIME }, farm: undefined, economy: undefined };
+    return {
+      time: { ...DEFAULT_TIME },
+      farm: undefined,
+      economy: undefined,
+      player: undefined,
+    };
   }
 
-  function saveGame(timeState, farmState, economyState) {
+  function saveGame(timeState, farmState, economyState, playerState) {
     try {
       localStorage.setItem(
         SAVE_KEY,
-        JSON.stringify({ time: timeState, farm: farmState, economy: economyState }),
+        JSON.stringify({
+          time: timeState,
+          farm: farmState,
+          economy: economyState,
+          player: playerState,
+        }),
       );
     } catch (error) {
       console.warn("Could not save the current game.", error);
