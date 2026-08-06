@@ -1,33 +1,48 @@
 const player = (() => {
-  const SPEED = 170;
+  const SPEED = 190;
   const RADIUS = 18;
-  const INTERACTION_DISTANCE = 74;
-  let x = window.innerWidth / 2;
-  let y = Math.min(window.innerHeight - 130, window.innerHeight * 0.72);
+  const INTERACTION_DISTANCE = 76;
+  const DEFAULT_POSITION = Object.freeze({ x: world.WIDTH / 2, y: 735 });
+
+  let x = DEFAULT_POSITION.x;
+  let y = DEFAULT_POSITION.y;
   let facingX = 0;
-  let facingY = 1;
+  let facingY = -1;
 
   function clampToWorld() {
-    x = Math.min(window.innerWidth - RADIUS, Math.max(RADIUS, x));
-    y = Math.min(window.innerHeight - RADIUS, Math.max(138 + RADIUS, y));
+    x = world.clampX(x, RADIUS);
+    y = world.clampY(y, RADIUS);
   }
 
   function setState(state) {
-    if (Number.isFinite(state?.x) && Number.isFinite(state?.y)) {
+    // PR #5 เก็บตำแหน่งแบบ screen-space; รับเฉพาะเซฟใหม่ที่ระบุ world-space ชัดเจน
+    if (state?.space === "world" && Number.isFinite(state.x) && Number.isFinite(state.y)) {
       x = state.x;
       y = state.y;
+    } else {
+      x = DEFAULT_POSITION.x;
+      y = DEFAULT_POSITION.y;
     }
     clampToWorld();
   }
 
   function getState() {
-    return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+    return {
+      space: "world",
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+    };
+  }
+
+  function getPosition() {
+    return { x, y };
   }
 
   function update(deltaTime, movementEnabled = true) {
     if (!movementEnabled) return false;
     const movement = input.getMovement();
     if (movement.x === 0 && movement.y === 0) return false;
+
     x += movement.x * SPEED * deltaTime;
     y += movement.y * SPEED * deltaTime;
     facingX = movement.x;
@@ -73,5 +88,5 @@ const player = (() => {
     ctx.restore();
   }
 
-  return { setState, getState, update, interact, draw };
+  return { setState, getState, getPosition, update, interact, draw };
 })();
