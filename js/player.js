@@ -1,4 +1,9 @@
-const player = (() => {
+import { collision } from "./collision.js";
+import { input } from "./input.js";
+import { gameMap } from "./map.js";
+import { world } from "./world.js";
+
+export const player = (() => {
   const SPEED = 190;
   const RADIUS = 18;
   const DEFAULT_POSITION = Object.freeze({ x: world.WIDTH / 2, y: 735 });
