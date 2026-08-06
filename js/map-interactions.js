@@ -1,4 +1,5 @@
 import { interactions } from "./interactions.js";
+import { TOOL_IDS } from "./tool-catalog.js";
 
 export const mapInteractions = (() => {
   function getEntries({ requestSceneChange } = {}) {
@@ -14,8 +15,13 @@ export const mapInteractions = (() => {
         radius: 84,
         priority: 4,
         highlightRadius: 27,
-        label: "เข้าบ้าน",
-        action: () => requestTransition("house-interior", { spawnId: "entry" }),
+        actions: [
+          {
+            id: "enter-house",
+            label: "เข้าบ้าน",
+            execute: () => requestTransition("house-interior", { spawnId: "entry" }),
+          },
+        ],
       },
       {
         id: "well-use",
@@ -24,11 +30,26 @@ export const mapInteractions = (() => {
         radius: 84,
         priority: 4,
         highlightRadius: 25,
-        label: "ตักน้ำ",
-        action: () => {
-          interactions.notify("บ่อน้ำพร้อมแล้ว ระบบรดน้ำจะมาในขั้นถัดไป");
-          return false;
-        },
+        actions: [
+          {
+            id: "fill-watering-can",
+            toolIds: [TOOL_IDS.WATERING_CAN],
+            priority: 10,
+            label: "เติมบัวรดน้ำ",
+            execute: () => {
+              interactions.notify("บัวรดน้ำพร้อมใช้งาน ระบบความจุน้ำจะมาในขั้นถัดไป");
+              return false;
+            },
+          },
+          {
+            id: "inspect-well",
+            label: "ตักน้ำ",
+            execute: () => {
+              interactions.notify("เลือกบัวรดน้ำเพื่อเตรียมเติมน้ำ");
+              return false;
+            },
+          },
+        ],
       },
     ];
   }
