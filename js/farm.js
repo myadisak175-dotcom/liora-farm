@@ -1,4 +1,6 @@
-import { GAME_BALANCE, economy } from "./economy.js";
+import { GAME_BALANCE } from "./economy.js";
+import { inventory } from "./inventory.js";
+import { ITEM_IDS } from "./item-catalog.js";
 import { interactions } from "./interactions.js";
 import { time } from "./time.js";
 import { world } from "./world.js";
@@ -65,11 +67,11 @@ export const farm = (() => {
 
   function interactPlot(plot) {
     if (plot.state === EMPTY) {
-      if (!economy.hasSeed()) {
+      if (!inventory.has(ITEM_IDS.STARTER_SEED)) {
         interactions.notify("ไม่มีเมล็ด ไปซื้อที่ร้าน");
         return false;
       }
-      economy.useSeed();
+      inventory.remove(ITEM_IDS.STARTER_SEED, 1);
       plot.plantedDay = time.getDay();
       plot.state = SEED;
       interactions.notify("ปลูกเมล็ดแล้ว!");
@@ -77,7 +79,7 @@ export const farm = (() => {
     }
 
     if (plot.state === READY) {
-      economy.addCrop();
+      inventory.add(ITEM_IDS.STARTER_CROP, 1);
       plot.plantedDay = null;
       plot.state = EMPTY;
       interactions.notify("เก็บเกี่ยวแล้ว! ได้ผลผลิต 1 ชิ้น");
@@ -90,7 +92,7 @@ export const farm = (() => {
   }
 
   function getPlotLabel(plot) {
-    if (plot.state === EMPTY) return economy.hasSeed() ? "ปลูก" : "ไม่มีเมล็ด";
+    if (plot.state === EMPTY) return inventory.has(ITEM_IDS.STARTER_SEED) ? "ปลูก" : "ไม่มีเมล็ด";
     if (plot.state === READY) return "เก็บเกี่ยว";
     return "ตรวจดู";
   }
