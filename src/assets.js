@@ -1,143 +1,67 @@
-// Runtime-generated fallback textures.
-// This deliberately avoids the old Base64 atlas, which was invalid on GitHub Pages.
-const W = 192;
-const H = 96;
-const KEYS = ["00", "02", "11", "13", "20", "22", "31", "33"];
+// Loads the real hand-painted Liora Farm tile atlas already stored in the repo.
+// The atlas is kept as Base64 text because the GitHub connector writes text files;
+// the browser reconstructs the WebP in memory and slices the original 36 tiles.
 
-function rng(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
+const TILE_W = 192;
+const TILE_H = 96;
+const ATLAS_B64_URL = "assets/atlas-q45.part0";
 
-function diamondPath(ctx) {
-  ctx.beginPath();
-  ctx.moveTo(W / 2, 0);
-  ctx.lineTo(W, H / 2);
-  ctx.lineTo(W / 2, H);
-  ctx.lineTo(0, H / 2);
-  ctx.closePath();
-}
+const FRAMES = {
+  "assets/edges/edge_ne_0.png":[0,0], "assets/edges/edge_ne_1.png":[192,0], "assets/edges/edge_ne_2.png":[384,0],
+  "assets/edges/edge_nw_0.png":[576,0], "assets/edges/edge_nw_1.png":[768,0], "assets/edges/edge_nw_2.png":[960,0],
+  "assets/edges/edge_se_0.png":[0,96], "assets/edges/edge_se_1.png":[192,96], "assets/edges/edge_se_2.png":[384,96],
+  "assets/edges/edge_sw_0.png":[576,96], "assets/edges/edge_sw_1.png":[768,96], "assets/edges/edge_sw_2.png":[960,96],
+  "assets/ground/dirt/dirt_00.png":[0,192], "assets/ground/dirt/dirt_01.png":[192,192], "assets/ground/dirt/dirt_02.png":[384,192], "assets/ground/dirt/dirt_03.png":[576,192],
+  "assets/ground/dirt/dirt_04.png":[768,192], "assets/ground/dirt/dirt_05.png":[960,192], "assets/ground/dirt/dirt_06.png":[0,288], "assets/ground/dirt/dirt_07.png":[192,288],
+  "assets/ground/grass/grass_00.png":[384,288], "assets/ground/grass/grass_01.png":[576,288], "assets/ground/grass/grass_02.png":[768,288], "assets/ground/grass/grass_03.png":[960,288],
+  "assets/ground/grass/grass_04.png":[0,384], "assets/ground/grass/grass_05.png":[192,384], "assets/ground/grass/grass_06.png":[384,384], "assets/ground/grass/grass_07.png":[576,384],
+  "assets/ground/water/water_00.png":[768,384], "assets/ground/water/water_01.png":[960,384], "assets/ground/water/water_02.png":[0,480], "assets/ground/water/water_03.png":[192,480],
+  "assets/ground/water/water_04.png":[384,480], "assets/ground/water/water_05.png":[576,480], "assets/ground/water/water_06.png":[768,480], "assets/ground/water/water_07.png":[960,480]
+};
 
-function makeTile(kind, seed) {
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  const random = rng(seed);
+const GROUND_PATHS = {
+  grass:{"00":"assets/ground/grass/grass_00.png","02":"assets/ground/grass/grass_01.png","11":"assets/ground/grass/grass_02.png","13":"assets/ground/grass/grass_03.png","20":"assets/ground/grass/grass_04.png","22":"assets/ground/grass/grass_05.png","31":"assets/ground/grass/grass_06.png","33":"assets/ground/grass/grass_07.png"},
+  dirt:{"00":"assets/ground/dirt/dirt_00.png","02":"assets/ground/dirt/dirt_01.png","11":"assets/ground/dirt/dirt_02.png","13":"assets/ground/dirt/dirt_03.png","20":"assets/ground/dirt/dirt_04.png","22":"assets/ground/dirt/dirt_05.png","31":"assets/ground/dirt/dirt_06.png","33":"assets/ground/dirt/dirt_07.png"},
+  water:{"00":"assets/ground/water/water_00.png","02":"assets/ground/water/water_01.png","11":"assets/ground/water/water_02.png","13":"assets/ground/water/water_03.png","20":"assets/ground/water/water_04.png","22":"assets/ground/water/water_05.png","31":"assets/ground/water/water_06.png","33":"assets/ground/water/water_07.png"}
+};
 
-  diamondPath(ctx);
-  ctx.clip();
+const EDGE_PATHS = {
+  nw:["assets/edges/edge_nw_0.png","assets/edges/edge_nw_1.png","assets/edges/edge_nw_2.png"],
+  ne:["assets/edges/edge_ne_0.png","assets/edges/edge_ne_1.png","assets/edges/edge_ne_2.png"],
+  se:["assets/edges/edge_se_0.png","assets/edges/edge_se_1.png","assets/edges/edge_se_2.png"],
+  sw:["assets/edges/edge_sw_0.png","assets/edges/edge_sw_1.png","assets/edges/edge_sw_2.png"]
+};
 
-  if (kind === "grass") {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#8fca57");
-    g.addColorStop(1, "#6cab48");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    for (let i = 0; i < 95; i++) {
-      const x = random() * W;
-      const y = random() * H;
-      const size = 1 + random() * 2.6;
-      ctx.strokeStyle = random() > 0.45 ? "rgba(48,112,48,.34)" : "rgba(206,232,105,.28)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, y + size);
-      ctx.lineTo(x - size * 0.35, y - size);
-      ctx.moveTo(x, y + size);
-      ctx.lineTo(x + size * 0.55, y - size * 0.8);
-      ctx.stroke();
-    }
-  } else if (kind === "dirt") {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#c79c65");
-    g.addColorStop(1, "#a8794b");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    for (let i = 0; i < 75; i++) {
-      const x = random() * W;
-      const y = random() * H;
-      const r = 0.6 + random() * 1.6;
-      ctx.fillStyle = random() > 0.5 ? "rgba(104,72,43,.24)" : "rgba(232,197,138,.24)";
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else {
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, "#58b9d5");
-    g.addColorStop(0.5, "#439fc8");
-    g.addColorStop(1, "#3b91bb");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    for (let i = 0; i < 17; i++) {
-      const x = random() * W;
-      const y = random() * H;
-      const len = 6 + random() * 16;
-      ctx.strokeStyle = random() > 0.45 ? "rgba(215,247,255,.34)" : "rgba(24,111,158,.24)";
-      ctx.lineWidth = 1 + random();
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + len * .4, y - 2 - random() * 2, x + len, y);
-      ctx.stroke();
-    }
+async function loadAtlasImage(){
+  const res = await fetch(ATLAS_B64_URL, {cache:"no-cache"});
+  if(!res.ok) throw new Error(`โหลด texture atlas ไม่ได้ (${res.status})`);
+  const b64 = (await res.text()).trim();
+  if(!b64.startsWith("UklG")) throw new Error("texture atlas ไม่ใช่ WebP ที่ถูกต้อง");
+  const image = new Image();
+  image.src = `data:image/webp;base64,${b64}`;
+  await image.decode();
+  if(image.naturalWidth !== 1152 || image.naturalHeight !== 576){
+    throw new Error(`ขนาด texture atlas ผิด: ${image.naturalWidth}x${image.naturalHeight}`);
   }
-
-  ctx.restore?.();
-  diamondPath(ctx);
-  ctx.strokeStyle = kind === "water" ? "rgba(209,247,255,.22)" : "rgba(41,74,35,.11)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  return canvas;
+  return image;
 }
 
-function makeEdge(direction, variant) {
+function slice(atlas,path){
+  const pos = FRAMES[path];
+  if(!pos) throw new Error(`ไม่พบ tile ใน atlas: ${path}`);
   const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  const jitter = variant * 0.9;
-  const edges = {
-    nw: [[0, H / 2], [W / 2, 0]],
-    ne: [[W / 2, 0], [W, H / 2]],
-    se: [[W, H / 2], [W / 2, H]],
-    sw: [[W / 2, H], [0, H / 2]],
-  };
-  const [[x1, y1], [x2, y2]] = edges[direction];
-
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(74,130,48,.92)";
-  ctx.lineWidth = 6 + jitter;
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(154,205,78,.82)";
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(x1, y1 - 1);
-  ctx.lineTo(x2, y2 - 1);
-  ctx.stroke();
+  canvas.width = TILE_W; canvas.height = TILE_H;
+  canvas.getContext("2d").drawImage(atlas,pos[0],pos[1],TILE_W,TILE_H,0,0,TILE_W,TILE_H);
   return canvas;
 }
 
-export async function loadAssets() {
-  const ground = { grass: {}, dirt: {}, water: {} };
-  KEYS.forEach((key, index) => {
-    ground.grass[key] = makeTile("grass", 1100 + index * 37);
-    ground.dirt[key] = makeTile("dirt", 2200 + index * 41);
-    ground.water[key] = makeTile("water", 3300 + index * 43);
-  });
-
+export async function loadAssets(){
+  const atlas = await loadAtlasImage();
+  const ground = {grass:{},dirt:{},water:{}};
+  for(const [layer,variants] of Object.entries(GROUND_PATHS)){
+    for(const [key,path] of Object.entries(variants)) ground[layer][key] = slice(atlas,path);
+  }
   const edges = {};
-  for (const direction of ["nw", "ne", "se", "sw"]) {
-    edges[direction] = [0, 1, 2].map((variant) => makeEdge(direction, variant));
-  }
-  return { ground, edges };
+  for(const [dir,paths] of Object.entries(EDGE_PATHS)) edges[dir] = paths.map(path=>slice(atlas,path));
+  return {ground,edges};
 }
