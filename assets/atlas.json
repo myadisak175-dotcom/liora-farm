@@ -1,5 +1,5 @@
 {
-  "image": "tiles-atlas.webp.b64",
+  "image": "tiles-atlas.webp",
   "tileWidth": 192,
   "tileHeight": 96,
   "frames": {
