@@ -1,5 +1,5 @@
 import { TILE_W, TILE_H, NEIGHBOURS, EDGE_VARIANTS } from "./config.js";
 import { tileToWorld, worldToTile, variantKey, stableIndex } from "./iso.js";
-import { layerAt } from "./map.js";
+import { layerAt } from "./world.js";
 function visibleRange(view){ const corners=[worldToTile(view.x,view.y),worldToTile(view.x+view.w,view.y),worldToTile(view.x,view.y+view.h),worldToTile(view.x+view.w,view.y+view.h)]; const pad=2; return {iMin:Math.floor(Math.min(...corners.map(c=>c.i)))-pad,iMax:Math.ceil(Math.max(...corners.map(c=>c.i)))+pad,jMin:Math.floor(Math.min(...corners.map(c=>c.j)))-pad,jMax:Math.ceil(Math.max(...corners.map(c=>c.j)))+pad}; }
 export function drawGround(ctx,assets,view){ const {iMin,iMax,jMin,jMax}=visibleRange(view); for(let sum=iMin+jMin;sum<=iMax+jMax;sum++){ for(let i=iMin;i<=iMax;i++){ const j=sum-i; if(j<jMin||j>jMax)continue; const layer=layerAt(i,j); const key=variantKey(i,j); const {x,y}=tileToWorld(i,j); ctx.drawImage(assets.ground[layer][key],x,y,TILE_W,TILE_H); if(layer==="grass")continue; for(const [dir,[di,dj]] of Object.entries(NEIGHBOURS)){ if(layerAt(i+di,j+dj)!=="grass")continue; const v=stableIndex(i+di*3,j+dj*5,EDGE_VARIANTS); ctx.drawImage(assets.edges[dir][v],x,y,TILE_W,TILE_H); } } } }
