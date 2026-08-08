@@ -1,4 +1,4 @@
-import { loadAssets } from "./assets.js";
+import { loadAssets } from "./assets.js?v=original-ground-20260809-0023";
 import { Camera } from "./camera.js";
 import { drawGround } from "./ground.js";
 import { loadTreeAsset, drawTrees } from "./trees.js";
