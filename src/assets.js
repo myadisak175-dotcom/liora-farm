@@ -1,10 +1,11 @@
-// Loads the real hand-painted Liora Farm tile atlas already stored in the repo.
-// The atlas is kept as Base64 text because the GitHub connector writes text files;
-// the browser reconstructs the WebP in memory and slices the original 36 tiles.
+// Loads the exact original hand-painted Liora Farm atlas from the known-good
+// liora-farm-test build. The historical repo copy contains the original WebP
+// Base64 payload with only its 16-character WebP header removed.
 
 const TILE_W = 192;
 const TILE_H = 96;
-const ATLAS_B64_URL = "assets/atlas-q45.part0";
+const ORIGINAL_WEBP_HEADER = "UklGRv57BgBXRUJQ";
+const ORIGINAL_ATLAS_TAIL_URL = "https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/242933325bbee41f2eb53c7600ed28ed9144b3ac/assets/tiles-atlas.webp";
 
 const FRAMES = {
   "assets/edges/edge_ne_0.png":[0,0], "assets/edges/edge_ne_1.png":[192,0], "assets/edges/edge_ne_2.png":[384,0],
@@ -33,10 +34,12 @@ const EDGE_PATHS = {
 };
 
 async function loadAtlasImage(){
-  const res = await fetch(ATLAS_B64_URL, {cache:"no-cache"});
-  if(!res.ok) throw new Error(`โหลด texture atlas ไม่ได้ (${res.status})`);
-  const b64 = (await res.text()).trim();
-  if(!b64.startsWith("UklG")) throw new Error("texture atlas ไม่ใช่ WebP ที่ถูกต้อง");
+  const res = await fetch(ORIGINAL_ATLAS_TAIL_URL, { cache: "no-store" });
+  if(!res.ok) throw new Error(`โหลด texture ต้นฉบับไม่ได้ (${res.status})`);
+  const tail = (await res.text()).trim();
+  const b64 = ORIGINAL_WEBP_HEADER + tail;
+  if(!b64.startsWith("UklGRv57BgBXRUJQZCL77")) throw new Error("ข้อมูล texture ต้นฉบับไม่ตรงกับเวอร์ชันที่อนุมัติ");
+
   const image = new Image();
   image.src = `data:image/webp;base64,${b64}`;
   await image.decode();
@@ -50,7 +53,8 @@ function slice(atlas,path){
   const pos = FRAMES[path];
   if(!pos) throw new Error(`ไม่พบ tile ใน atlas: ${path}`);
   const canvas = document.createElement("canvas");
-  canvas.width = TILE_W; canvas.height = TILE_H;
+  canvas.width = TILE_W;
+  canvas.height = TILE_H;
   canvas.getContext("2d").drawImage(atlas,pos[0],pos[1],TILE_W,TILE_H,0,0,TILE_W,TILE_H);
   return canvas;
 }
