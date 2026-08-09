@@ -6,9 +6,14 @@ export const CONFIG = Object.freeze({
   pathSize: 30,
   worldLimit: 18,
   playerHeight: 1.7,
-  walkSpeed: 3.2,
+  walkSpeed: 2.4,
   runSpeed: 5.2,
   runThreshold: 0.78,
+  animationSpeed: {
+    idle: 1,
+    walk: 0.9,
+    run: 1,
+  },
   camera: {
     fov: 38,
     near: 0.1,
