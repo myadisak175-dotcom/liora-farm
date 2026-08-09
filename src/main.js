@@ -83,7 +83,11 @@ try {
 }
 
 const input = createInput();
-const cameraController = createCameraController(camera, CONFIG.camera);
+const cameraController = createCameraController(
+  camera,
+  CONFIG.camera,
+  renderer.domElement
+);
 const clock = new THREE.Clock();
 const target = new THREE.Vector3();
 
