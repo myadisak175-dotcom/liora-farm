@@ -42,8 +42,10 @@ scene.add(ground);
 const pathTexture = await textureLoader.loadAsync(ASSETS.dirtPath);
 pathTexture.colorSpace = THREE.SRGBColorSpace;
 
-const pathMaterial = new THREE.MeshBasicMaterial({
+const pathMaterial = new THREE.MeshStandardMaterial({
   map: pathTexture,
+  roughness: 1,
+  metalness: 0,
   transparent: false,
   alphaTest: CONFIG.depth.pathAlphaTest,
   depthTest: true,
@@ -60,6 +62,7 @@ const path = new THREE.Mesh(
 path.rotation.x = -Math.PI / 2;
 path.position.y = CONFIG.depth.pathY;
 path.renderOrder = CONFIG.depth.pathOrder;
+path.receiveShadow = true;
 scene.add(path);
 
 const status = document.querySelector("#status");
