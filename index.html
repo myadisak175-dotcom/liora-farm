@@ -1,15 +1,27 @@
 <!doctype html>
 <html lang="th">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Liora's Farm — Grass Ground</title>
-<link rel="stylesheet" href="./styles/main.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#a8d8ec">
+  <title>Liora's Farm</title>
+  <link rel="stylesheet" href="./styles/main.css">
 </head>
 <body>
-<div id="info">Liora's Farm — Grass Ground<div id="sub">Three.js 2.5D • Step 1: พื้นหญ้า</div></div>
-<div id="status">Grass texture ✓</div>
-<div id="joy"><div id="stick"></div></div>
-<script type="module" src="./src/main.js"></script>
+  <div id="info">
+    Liora's Farm — Environment Baseline
+    <div id="sub">Locked grass + refined dirt path</div>
+  </div>
+
+  <div id="joy" aria-label="Movement joystick">
+    <div id="stick"></div>
+  </div>
+
+  <div id="zoom" aria-label="Camera zoom controls">
+    <button id="zin" type="button" aria-label="Zoom in">＋</button>
+    <button id="zout" type="button" aria-label="Zoom out">−</button>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
