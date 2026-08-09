@@ -39,7 +39,7 @@ liora-farm/
 └── assets/
     ├── models/
     │   └── player/
-    │       └── liora_all_animations_1k.glb
+    │       └── liora_all_animations_web.glb
     ├── sprites/
     └── textures/
         ├── grass.webp
@@ -52,7 +52,7 @@ liora-farm/
 - `assets/textures/grass.webp` — approved grass
 - `assets/textures/dirt.webp` — approved dirt source
 - `assets/textures/dirt_path_refined.webp` — approved path overlay
-- `assets/models/player/liora_all_animations_1k.glb` — Liora rig + 7 animations
+- `assets/models/player/liora_all_animations_web.glb` — optimized Liora rig + 7 animations for mobile web
 
 ## Maintenance rules
 
