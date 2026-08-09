@@ -21,6 +21,9 @@ export const CONFIG = Object.freeze({
     pitchSensitivity: 0.0045,
     minPitch: THREE.MathUtils.degToRad(28),
     maxPitch: THREE.MathUtils.degToRad(55),
+    followDeadZone: 0.55,
+    followSharpness: 3.2,
+    positionSharpness: 5.5,
   },
   depth: {
     groundOrder: 0,
