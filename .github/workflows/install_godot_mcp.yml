@@ -1,0 +1,41 @@
+name: Install Godot MCP Native
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/install_godot_mcp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  install-addon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Godot MCP Native
+        run: |
+          curl -L https://github.com/yurineko73/Godot-MCP-Native/archive/refs/heads/main.zip -o /tmp/godot-mcp.zip
+          unzip -q /tmp/godot-mcp.zip -d /tmp
+
+      - name: Install addon
+        run: |
+          rm -rf addons/godot_mcp
+          mkdir -p addons
+          cp -R /tmp/Godot-MCP-Native-main/addons/godot_mcp addons/godot_mcp
+
+      - name: Commit addon to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add addons/godot_mcp
+          if git diff --cached --quiet; then
+            echo "No addon changes to commit."
+            exit 0
+          fi
+          git commit -m "Install Godot MCP Native addon"
+          git push
