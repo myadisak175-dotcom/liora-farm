@@ -7,8 +7,12 @@ export function setupLighting(scene, renderer, shadowConfig) {
   scene.add(new THREE.HemisphereLight(0xfff5dd, 0x496448, 2.2));
 
   const sun = new THREE.DirectionalLight(0xffedc4, 2.5);
-  sun.position.set(-7, 12, 7);
   sun.castShadow = true;
+
+  const sunOffset = new THREE.Vector3(-7, 12, 7);
+  const sunTarget = new THREE.Object3D();
+  scene.add(sunTarget);
+  sun.target = sunTarget;
 
   const mapSize = Math.min(
     shadowConfig.mapSize,
@@ -27,5 +31,25 @@ export function setupLighting(scene, renderer, shadowConfig) {
   sun.shadow.radius = shadowConfig.radius;
 
   scene.add(sun);
-  return sun;
+
+  function follow(target) {
+    sunTarget.position.set(target.x, 0, target.z);
+    sun.position.set(
+      target.x + sunOffset.x,
+      sunOffset.y,
+      target.z + sunOffset.z
+    );
+    sunTarget.updateMatrixWorld();
+  }
+
+  // Start centered on the initial gameplay area.
+  follow(new THREE.Vector3(0, 0, 5));
+
+  return {
+    sun,
+    target: sunTarget,
+    update(target) {
+      follow(target);
+    },
+  };
 }
