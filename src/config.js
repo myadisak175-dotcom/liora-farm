@@ -17,6 +17,10 @@ export const CONFIG = Object.freeze({
     minZoom: 0.65,
     maxZoom: 1.55,
     zoomStep: 0.12,
+    orbitSensitivity: 0.006,
+    pitchSensitivity: 0.0045,
+    minPitch: THREE.MathUtils.degToRad(28),
+    maxPitch: THREE.MathUtils.degToRad(55),
   },
   depth: {
     groundOrder: 0,
