@@ -21,7 +21,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 
-setupLighting(scene, renderer, CONFIG.shadows);
+const lighting = setupLighting(scene, renderer, CONFIG.shadows);
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -139,6 +139,7 @@ function animate() {
     );
 
     target.set(player.root.position.x, 0.7, player.root.position.z);
+    lighting.update(player.root.position);
   }
 
   cameraController.update(target, delta);
