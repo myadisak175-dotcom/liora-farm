@@ -16,6 +16,11 @@ export function createCameraController(camera, config, surface) {
   let pinchStart = null;
   let pinchZoom = 1;
 
+  const followTarget = new THREE.Vector3();
+  const desiredFollow = new THREE.Vector3();
+  const deltaToTarget = new THREE.Vector3();
+  let followReady = false;
+
   function setZoom(value) {
     zoom = THREE.MathUtils.clamp(value, config.minZoom, config.maxZoom);
   }
@@ -34,6 +39,31 @@ export function createCameraController(camera, config, surface) {
       Math.sin(pitch) * distance,
       Math.cos(yaw) * horizontal
     );
+  }
+
+  function updateFollow(target, delta) {
+    if (!followReady) {
+      followTarget.copy(target);
+      followReady = true;
+      return;
+    }
+
+    deltaToTarget.copy(target).sub(followTarget);
+    deltaToTarget.y = 0;
+    const distance = deltaToTarget.length();
+
+    if (distance > config.followDeadZone) {
+      desiredFollow.copy(target);
+      desiredFollow.addScaledVector(
+        deltaToTarget,
+        -config.followDeadZone / distance
+      );
+
+      const followAlpha = 1 - Math.exp(-config.followSharpness * delta);
+      followTarget.lerp(desiredFollow, followAlpha);
+    }
+
+    followTarget.y = target.y;
   }
 
   document.querySelector("#zin").onclick = () => setZoom(zoom - config.zoomStep);
@@ -98,12 +128,12 @@ export function createCameraController(camera, config, surface) {
   return {
     reset,
     update(target, delta) {
+      updateFollow(target, delta);
       const offset = currentOffset();
-      camera.position.lerp(
-        target.clone().add(offset),
-        1 - Math.pow(0.002, delta)
-      );
-      camera.lookAt(target);
+      const desiredPosition = followTarget.clone().add(offset);
+      const positionAlpha = 1 - Math.exp(-config.positionSharpness * delta);
+      camera.position.lerp(desiredPosition, positionAlpha);
+      camera.lookAt(followTarget);
     },
   };
 }
