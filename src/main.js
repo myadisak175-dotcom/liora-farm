@@ -147,10 +147,16 @@ function animate() {
       player.fadeTo(
         running ? ANIMATIONS.run : ANIMATIONS.walk,
         0.15,
-        true
+        true,
+        running ? CONFIG.animationSpeed.run : CONFIG.animationSpeed.walk
       );
     } else if (!player.isSpecial()) {
-      player.fadeTo(ANIMATIONS.idle, 0.18, true);
+      player.fadeTo(
+        ANIMATIONS.idle,
+        0.18,
+        true,
+        CONFIG.animationSpeed.idle
+      );
     }
 
     player.mixer.update(delta);
