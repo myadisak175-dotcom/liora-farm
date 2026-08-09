@@ -1,13 +1,13 @@
 # Liora's Farm
 
-Clean Three.js 2.5D web-game baseline.
+Three.js 2.5D web-game baseline, built mobile-first.
 
-## Current baseline
+## Current step
 
-- Three.js 2.5D scene
 - Elevated 3/4 camera
 - Mobile joystick + keyboard movement
-- Simple grass ground and dirt path
+- Seamless stylized grass texture (`assets/textures/grass.webp`)
+- Texture tiled across the ground with `RepeatWrapping`
 - Temporary placeholder player
 - No GLB models yet
 
@@ -17,9 +17,9 @@ Clean Three.js 2.5D web-game baseline.
 index.html
 src/main.js
 styles/main.css
+assets/textures/grass.webp
 assets/models/
-assets/textures/
 assets/sprites/
 ```
 
-Add game assets gradually and keep models outside the HTML so the web build stays lightweight.
+Add assets gradually and keep binary assets outside the HTML so the build stays lightweight.
