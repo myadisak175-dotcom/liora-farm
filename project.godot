@@ -1,20 +1,18 @@
 ; Engine configuration file.
-; Liora Farm - Godot 4.x
+; Minimal Godot 4.x 2D baseline for Liora Farm.
 
 config_version=5
 
 [application]
-config/name="Liora Farm"
-run/main_scene="res://main.tscn"
 
-[display]
-window/size/viewport_width=1280
-window/size/viewport_height=720
-window/size/window_width_override=1280
-window/size/window_height_override=720
-window/stretch/mode="canvas_items"
+config/name="Liora Farm"
+run/main_scene="res://scenes/main.tscn"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 
 [rendering]
+
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-textures/default_filters/use_nearest_mipmap_filter=false
