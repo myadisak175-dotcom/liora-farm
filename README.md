@@ -1,33 +1,21 @@
 # Liora's Farm
 
-Mobile-first 2.5D farming RPG prototype built with Three.js.
+Mobile-first 2.5D/isometric farming RPG prototype built with Three.js.
 
-## Current baseline
+## Locked baseline
 
-Locked environment assets:
-- `assets/textures/grass.webp` — approved main grass texture
-- `assets/textures/dirt.webp` — approved dirt source texture
-- `assets/textures/dirt_path_refined.webp` — approved refined path overlay
+The current approved checkpoint is **Liora Isometric Depth Fixed**.
 
-Current gameplay:
-- elevated 3/4 camera
-- mobile joystick + keyboard movement
-- zoom buttons + pinch-to-zoom
-- animated 3D-player loader with safe placeholder fallback
+Locked behavior:
+- Perspective 3/4 isometric camera
+- original joystick/world-axis movement
+- Grass `renderOrder = 0`
+- Dirt Path `renderOrder = 1`, `y = 0.003`, `alphaTest = 0.28`, `depthWrite = true`
+- Liora `renderOrder = 10`, `depthTest = true`, `depthWrite = true`
+- Idle / Walk / Run switch automatically
+- Pick Up / Pull Radish / Hammer / Mirror are action buttons
 
-## Player model
-
-The player loader expects:
-
-`assets/models/player/meadow_maiden_walk.glb`
-
-The original Meshy walk GLB is about 55 MB because it contains an 8192×8192 embedded texture. For mobile web, use the optimized build with the embedded texture reduced to 1024×1024. The geometry, rig and Casual Walk animation are preserved.
-
-Current test model stats:
-- about 31,125 triangles
-- one skinned mesh
-- one animation: `Armature|Casual_Walk|baselayer`
-- target player height normalized at runtime to 1.7 world units
+See `docs/BASELINE.md` before changing camera, movement, or depth.
 
 ## Project structure
 
@@ -36,14 +24,22 @@ liora-farm/
 ├── index.html
 ├── README.md
 ├── ASSET_GUIDE.md
+├── docs/
+│   └── BASELINE.md
 ├── src/
-│   └── main.js
+│   ├── main.js
+│   ├── config.js
+│   ├── entities/
+│   │   └── player.js
+│   └── systems/
+│       ├── camera.js
+│       └── input.js
 ├── styles/
 │   └── main.css
 └── assets/
     ├── models/
     │   └── player/
-    │       └── meadow_maiden_walk.glb
+    │       └── liora_all_animations_1k.glb
     ├── sprites/
     └── textures/
         ├── grass.webp
@@ -51,12 +47,18 @@ liora-farm/
         └── dirt_path_refined.webp
 ```
 
+## Asset baseline
+
+- `assets/textures/grass.webp` — approved grass
+- `assets/textures/dirt.webp` — approved dirt source
+- `assets/textures/dirt_path_refined.webp` — approved path overlay
+- `assets/models/player/liora_all_animations_1k.glb` — Liora rig + 7 animations
+
 ## Maintenance rules
 
-1. Keep `index.html` small; game logic belongs in `src/`.
-2. Never embed production GLB/images as Base64 in HTML/JS.
-3. Approved assets use stable paths under `assets/`.
-4. Test one asset at a time before expanding the map.
-5. Preserve the approved grass texture and scale unless intentionally revisiting the art direction.
-6. Optimize Meshy textures before committing large GLBs.
-7. Keep player loading isolated so the environment still runs if a model is missing.
+1. Keep configuration and stable paths in `src/config.js`.
+2. Keep input/camera logic under `src/systems/`.
+3. Keep character loading/animation logic under `src/entities/`.
+4. Never embed production GLB or textures as Base64 in HTML/JS.
+5. Change one subsystem at a time and test on mobile before merging.
+6. Preserve the locked grass, path, camera, movement, and depth setup unless intentionally starting a new baseline.
