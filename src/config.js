@@ -30,7 +30,7 @@ export const CONFIG = Object.freeze({
 export const ASSETS = Object.freeze({
   grass: "./assets/textures/grass.webp",
   dirtPath: "./assets/textures/dirt_path_refined.webp",
-  player: "./assets/models/player/liora_all_animations_1k.glb",
+  player: "./assets/models/player/liora_all_animations_web.glb",
 });
 
 export const ANIMATIONS = Object.freeze({
