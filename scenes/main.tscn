@@ -16,6 +16,14 @@
 [ext_resource type="Texture2D" uid="uid://cuo8alofopkvt" path="res://assets/ground/dirt/dirt_04.png" id="14_yc10j"]
 [ext_resource type="Texture2D" uid="uid://7gciayhs07bw" path="res://assets/ground/dirt/dirt_02.png" id="15_jscy8"]
 [ext_resource type="Texture2D" uid="uid://ddaacqlodu7to" path="res://assets/ground/dirt/dirt_00.png" id="16_pm3ni"]
+[ext_resource type="Texture2D" uid="uid://bmb2bjp5q8nn7" path="res://assets/ground/water/water_00.png" id="17_y6deb"]
+[ext_resource type="Texture2D" uid="uid://cqiq35d74ht0s" path="res://assets/ground/water/water_05.png" id="18_og1vs"]
+[ext_resource type="Texture2D" uid="uid://c64jiu2pdsk31" path="res://assets/ground/water/water_02.png" id="19_2wyq8"]
+[ext_resource type="Texture2D" uid="uid://dc07yab8exxof" path="res://assets/ground/water/water_07.png" id="20_vxglm"]
+[ext_resource type="Texture2D" uid="uid://dljylpec86s4v" path="res://assets/ground/water/water_03.png" id="21_2f3dj"]
+[ext_resource type="Texture2D" uid="uid://btpm7xd5usybi" path="res://assets/ground/water/water_06.png" id="22_yq6so"]
+[ext_resource type="Texture2D" uid="uid://dq834r24arsqf" path="res://assets/ground/water/water_01.png" id="23_fv21b"]
+[ext_resource type="Texture2D" uid="uid://dinnbg02bjyjn" path="res://assets/ground/water/water_04.png" id="24_tel4y"]
 
 [node name="Main" type="Node2D" unique_id=59100720]
 metadata/_edit_vertical_guides_ = [108.0]
@@ -586,3 +594,65 @@ texture = ExtResource("9_jbj1t")
 texture_filter = 1
 position = Vector2(672, 928)
 texture = ExtResource("15_jscy8")
+
+[node name="WaterRiver" type="Node2D" parent="." unique_id=2001391448]
+
+[node name="Water_02_01" type="Sprite2D" parent="WaterRiver" unique_id=996955506]
+texture_filter = 1
+position = Vector2(480, 352)
+texture = ExtResource("17_y6deb")
+
+[node name="Water_03_01" type="Sprite2D" parent="WaterRiver" unique_id=1756728525]
+texture_filter = 1
+position = Vector2(384, 400)
+texture = ExtResource("18_og1vs")
+
+[node name="Water_03_02" type="Sprite2D" parent="WaterRiver" unique_id=248840130]
+texture_filter = 1
+position = Vector2(480, 448)
+texture = ExtResource("19_2wyq8")
+
+[node name="Water_04_01" type="Sprite2D" parent="WaterRiver" unique_id=329224179]
+texture_filter = 1
+position = Vector2(288, 448)
+texture = ExtResource("20_vxglm")
+
+[node name="Water_05_01" type="Sprite2D" parent="WaterRiver" unique_id=1951935428]
+texture_filter = 1
+position = Vector2(192, 496)
+texture = ExtResource("21_2f3dj")
+
+[node name="Water_05_02" type="Sprite2D" parent="WaterRiver" unique_id=793265367]
+texture_filter = 1
+position = Vector2(288, 544)
+texture = ExtResource("22_yq6so")
+
+[node name="Water_06_02" type="Sprite2D" parent="WaterRiver" unique_id=687818369]
+texture_filter = 1
+position = Vector2(192, 592)
+texture = ExtResource("23_fv21b")
+
+[node name="Water_06_03" type="Sprite2D" parent="WaterRiver" unique_id=770490213]
+texture_filter = 1
+position = Vector2(288, 640)
+texture = ExtResource("24_tel4y")
+
+[node name="Water_07_02" type="Sprite2D" parent="WaterRiver" unique_id=1422193124]
+texture_filter = 1
+position = Vector2(96, 640)
+texture = ExtResource("22_yq6so")
+
+[node name="Water_08_02" type="Sprite2D" parent="WaterRiver" unique_id=1398768644]
+texture_filter = 1
+position = Vector2(0, 688)
+texture = ExtResource("19_2wyq8")
+
+[node name="Water_08_03" type="Sprite2D" parent="WaterRiver" unique_id=1247029428]
+texture_filter = 1
+position = Vector2(96, 736)
+texture = ExtResource("20_vxglm")
+
+[node name="Water_09_03" type="Sprite2D" parent="WaterRiver" unique_id=894269639]
+texture_filter = 1
+position = Vector2(0, 784)
+texture = ExtResource("17_y6deb")
