@@ -25,6 +25,15 @@ export const CONFIG = Object.freeze({
     pathY: 0.003,
     pathAlphaTest: 0.28,
   },
+  shadows: {
+    mapSize: 2048,
+    bounds: 12,
+    near: 0.5,
+    far: 40,
+    bias: -0.00015,
+    normalBias: 0.035,
+    radius: 2,
+  },
 });
 
 export const ASSETS = Object.freeze({
