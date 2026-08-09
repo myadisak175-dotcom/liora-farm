@@ -90,6 +90,10 @@ const cameraController = createCameraController(
 );
 const clock = new THREE.Clock();
 const target = new THREE.Vector3();
+const cameraForward = new THREE.Vector3();
+const cameraRight = new THREE.Vector3();
+const moveDirection = new THREE.Vector3();
+const worldUp = new THREE.Vector3(0, 1, 0);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
   button.onclick = () => {
@@ -103,6 +107,21 @@ document.querySelectorAll("[data-action]").forEach((button) => {
   };
 });
 
+function getCameraRelativeDirection(direction) {
+  camera.getWorldDirection(cameraForward);
+  cameraForward.y = 0;
+  cameraForward.normalize();
+
+  cameraRight.crossVectors(cameraForward, worldUp).normalize();
+
+  moveDirection.set(0, 0, 0);
+  moveDirection.addScaledVector(cameraRight, direction.x);
+  moveDirection.addScaledVector(cameraForward, -direction.z);
+
+  if (moveDirection.lengthSq() > 0.0001) moveDirection.normalize();
+  return moveDirection;
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.04);
@@ -113,11 +132,12 @@ function animate() {
     if (!player.isSpecial() && direction.m > 0.05) {
       const running = direction.m > CONFIG.runThreshold;
       const speed = running ? CONFIG.runSpeed : CONFIG.walkSpeed;
+      const move = getCameraRelativeDirection(direction);
 
-      player.root.position.x += direction.x * speed * delta;
-      player.root.position.z += direction.z * speed * delta;
+      player.root.position.x += move.x * speed * delta;
+      player.root.position.z += move.z * speed * delta;
 
-      const targetAngle = Math.atan2(direction.x, direction.z);
+      const targetAngle = Math.atan2(move.x, move.z);
       const angleDifference = Math.atan2(
         Math.sin(targetAngle - player.root.rotation.y),
         Math.cos(targetAngle - player.root.rotation.y)
