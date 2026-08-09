@@ -40,12 +40,17 @@ export async function createPlayer({ url, height, renderOrder, animations }) {
   let current = null;
   let special = false;
 
-  function fadeTo(name, duration = 0.18, loop = true) {
+  function fadeTo(name, duration = 0.18, loop = true, timeScale = 1) {
     const next = actions[name];
-    if (!next || current === next) return;
+    if (!next) return;
+
+    next.setEffectiveTimeScale(timeScale);
+    if (current === next) return;
+
     if (current) current.fadeOut(duration);
     next.reset();
     next.enabled = true;
+    next.setEffectiveTimeScale(timeScale);
     next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
     next.clampWhenFinished = !loop;
     next.fadeIn(duration).play();
@@ -55,20 +60,20 @@ export async function createPlayer({ url, height, renderOrder, animations }) {
   function playSpecial(name, onDone) {
     if (special || !actions[name]) return false;
     special = true;
-    fadeTo(name, 0.15, false);
+    fadeTo(name, 0.15, false, 1);
 
     const finished = (event) => {
       if (event.action !== actions[name]) return;
       mixer.removeEventListener("finished", finished);
       special = false;
-      fadeTo(animations.idle, 0.18, true);
+      fadeTo(animations.idle, 0.18, true, 1);
       onDone?.();
     };
     mixer.addEventListener("finished", finished);
     return true;
   }
 
-  fadeTo(animations.idle, 0, true);
+  fadeTo(animations.idle, 0, true, 1);
 
   return {
     root,
