@@ -8,6 +8,14 @@
 [ext_resource type="Texture2D" uid="uid://dri4tj56xeysx" path="res://assets/ground/grass/grass_07.png" id="6_trceg"]
 [ext_resource type="Texture2D" uid="uid://besrntveecuai" path="res://assets/ground/grass/grass_01.png" id="7_a8y0u"]
 [ext_resource type="Texture2D" uid="uid://djgkoujo58v0e" path="res://assets/ground/grass/grass_04.png" id="8_jkv2x"]
+[ext_resource type="Texture2D" uid="uid://brairn8oeqtbs" path="res://assets/ground/dirt/dirt_07.png" id="9_jbj1t"]
+[ext_resource type="Texture2D" uid="uid://fomsbh6ixm43" path="res://assets/ground/dirt/dirt_01.png" id="10_muem4"]
+[ext_resource type="Texture2D" uid="uid://dr3vhk6tynnok" path="res://assets/ground/dirt/dirt_03.png" id="11_dp3eg"]
+[ext_resource type="Texture2D" uid="uid://bthkyt25hrcqf" path="res://assets/ground/dirt/dirt_05.png" id="12_0ld40"]
+[ext_resource type="Texture2D" uid="uid://pjo3ur52auae" path="res://assets/ground/dirt/dirt_06.png" id="13_gqmmt"]
+[ext_resource type="Texture2D" uid="uid://cuo8alofopkvt" path="res://assets/ground/dirt/dirt_04.png" id="14_yc10j"]
+[ext_resource type="Texture2D" uid="uid://7gciayhs07bw" path="res://assets/ground/dirt/dirt_02.png" id="15_jscy8"]
+[ext_resource type="Texture2D" uid="uid://ddaacqlodu7to" path="res://assets/ground/dirt/dirt_00.png" id="16_pm3ni"]
 
 [node name="Main" type="Node2D" unique_id=59100720]
 metadata/_edit_vertical_guides_ = [108.0]
@@ -516,3 +524,65 @@ texture = ExtResource("3_choun")
 texture_filter = 1
 position = Vector2(576, 1072)
 texture = ExtResource("1_tipki")
+
+[node name="DirtFarm" type="Node2D" parent="." unique_id=2064423394]
+
+[node name="Dirt_05_05" type="Sprite2D" parent="DirtFarm" unique_id=1238615250]
+texture_filter = 1
+position = Vector2(576, 688)
+texture = ExtResource("16_pm3ni")
+
+[node name="Dirt_05_06" type="Sprite2D" parent="DirtFarm" unique_id=1148158613]
+texture_filter = 1
+position = Vector2(672, 736)
+texture = ExtResource("12_0ld40")
+
+[node name="Dirt_05_07" type="Sprite2D" parent="DirtFarm" unique_id=1373010273]
+texture_filter = 1
+position = Vector2(768, 784)
+texture = ExtResource("15_jscy8")
+
+[node name="Dirt_05_08" type="Sprite2D" parent="DirtFarm" unique_id=1797298797]
+texture_filter = 1
+position = Vector2(864, 832)
+texture = ExtResource("9_jbj1t")
+
+[node name="Dirt_06_05" type="Sprite2D" parent="DirtFarm" unique_id=1411235124]
+texture_filter = 1
+position = Vector2(480, 736)
+texture = ExtResource("11_dp3eg")
+
+[node name="Dirt_06_06" type="Sprite2D" parent="DirtFarm" unique_id=484891055]
+texture_filter = 1
+position = Vector2(576, 784)
+texture = ExtResource("13_gqmmt")
+
+[node name="Dirt_06_07" type="Sprite2D" parent="DirtFarm" unique_id=1664380133]
+texture_filter = 1
+position = Vector2(672, 832)
+texture = ExtResource("10_muem4")
+
+[node name="Dirt_06_08" type="Sprite2D" parent="DirtFarm" unique_id=709045215]
+texture_filter = 1
+position = Vector2(768, 880)
+texture = ExtResource("14_yc10j")
+
+[node name="Dirt_07_05" type="Sprite2D" parent="DirtFarm" unique_id=1576427143]
+texture_filter = 1
+position = Vector2(384, 784)
+texture = ExtResource("12_0ld40")
+
+[node name="Dirt_07_06" type="Sprite2D" parent="DirtFarm" unique_id=487806484]
+texture_filter = 1
+position = Vector2(480, 832)
+texture = ExtResource("16_pm3ni")
+
+[node name="Dirt_07_07" type="Sprite2D" parent="DirtFarm" unique_id=338699423]
+texture_filter = 1
+position = Vector2(576, 880)
+texture = ExtResource("9_jbj1t")
+
+[node name="Dirt_07_08" type="Sprite2D" parent="DirtFarm" unique_id=1782619790]
+texture_filter = 1
+position = Vector2(672, 928)
+texture = ExtResource("15_jscy8")
