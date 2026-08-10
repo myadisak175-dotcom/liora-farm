@@ -15,6 +15,7 @@ export const SPLAT_LAYERS = Object.freeze({
   SAND: 1,
   ROCK: 2,
   ERASE: 3,
+  GRASS: 4,
 });
 
 const LAYER_INK = Object.freeze({
@@ -67,7 +68,7 @@ export function createSplatPainter({
     const r = Math.max(1, radius * pixelsPerUnit);
     const alpha = Math.min(1, Math.max(0, strength));
 
-    if (layer === SPLAT_LAYERS.ERASE) {
+    if (layer === SPLAT_LAYERS.ERASE || layer === SPLAT_LAYERS.GRASS) {
       stamp(cx, cy, r, radialGradient(cx, cy, r, "0,0,0", "255,255,255"), "multiply", alpha);
       return;
     }
