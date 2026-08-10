@@ -2,7 +2,7 @@
 
 The Builder is a first-class game tool. Keep it isolated from normal gameplay so the game can grow without turning `main.js` into a monolith.
 
-## Accepted UX baseline — Builder v6
+## Accepted UX baseline — Builder v6.5
 
 This is the current approved interaction model.
 
@@ -21,8 +21,10 @@ This is the current approved interaction model.
 - `Done` means Save + Exit Builder + resume gameplay.
 - Layout changes autosave while editing; Done performs an explicit final save.
 - The builder tray remains draggable and resizable for mobile ergonomics.
+- Object creation must remain functional for Tree, Palm, Pine and House catalog entries.
+- Legacy fixed collision helpers/walls from old house, farm, pond or mountain prototypes must stay disabled and must not affect the clean island.
 
-Collision behavior is intentionally not part of the locked Builder UX yet. It can be designed independently later without changing this interaction model.
+Collision behavior for newly placed Builder objects is intentionally not part of the locked Builder UX yet. It can be designed independently later without changing this interaction model.
 
 ## Responsibilities
 
@@ -43,6 +45,7 @@ Collision behavior is intentionally not part of the locked Builder UX yet. It ca
 7. Selection tint must always restore the original material on deselect, asset switch and Builder exit.
 8. Experimental collision and placement rules must remain separate until approved.
 9. `Done` is the single authoritative Save + Exit action.
+10. Never reintroduce fixed-position collision calls from obsolete scene prototypes into the Builder baseline.
 
 ## Production layout
 
