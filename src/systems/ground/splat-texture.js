@@ -43,10 +43,14 @@ export function createSplatPainter({
     return (z + half) * pixelsPerUnit;
   }
 
+  // Softer falloff: solid center, long feathered transition, gentle outer edge.
+  // This keeps painted terrain from looking like circular stickers on mobile.
   function radialGradient(cx, cy, r, innerRgb, outerRgb) {
     const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, r);
     gradient.addColorStop(0, `rgb(${innerRgb})`);
-    gradient.addColorStop(0.65, `rgb(${innerRgb})`);
+    gradient.addColorStop(0.38, `rgb(${innerRgb})`);
+    gradient.addColorStop(0.68, `color-mix(in srgb, rgb(${innerRgb}) 68%, rgb(${outerRgb}))`);
+    gradient.addColorStop(0.86, `color-mix(in srgb, rgb(${innerRgb}) 28%, rgb(${outerRgb}))`);
     gradient.addColorStop(1, `rgb(${outerRgb})`);
     return gradient;
   }
