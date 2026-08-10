@@ -75,6 +75,24 @@ export const CONFIG = Object.freeze({
     skyColor: 0x9bd8f5,
   },
 
+  terrain: {
+    size: 42,
+    segments: 72,
+    renderOrder: 0,
+    minHeight: -0.02,
+    microVariation: 0.035,
+    hills: [
+      { x: 4.5, z: -12.0, radius: 6.5, height: 0.95 },
+      { x: -11.5, z: -8.5, radius: 5.2, height: 0.62 },
+      { x: 12.5, z: 7.5, radius: 5.8, height: 0.48 },
+    ],
+    flatZones: [
+      { x: -5.2, z: -2.8, radius: 3.3, feather: 2.5 },
+      { x: 6.5, z: -6.5, radius: 4.6, feather: 3.0 },
+      { x: 0, z: 1.5, radius: 3.0, feather: 2.8 },
+    ],
+  },
+
   farmPlot: {
     position: { x: -5.2, z: -2.8 },
     y: 0.028,
