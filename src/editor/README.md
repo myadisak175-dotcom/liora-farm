@@ -2,7 +2,7 @@
 
 The Builder is a first-class game tool. Keep it isolated from normal gameplay so the game can grow without turning `main.js` into a monolith.
 
-## Accepted UX baseline — Builder v6.11 Stable Asset Pack
+## Accepted UX baseline — Builder v6.12 Safe Edit
 
 This is the current approved interaction model and test baseline.
 
@@ -17,6 +17,9 @@ This is the current approved interaction model and test baseline.
 - Tapping an already placed object selects that object directly; there is no separate Edit mode the player must choose first.
 - The selected object receives a temporary visual tint so it is obvious which object is being edited.
 - Selected objects can be moved, rotated, scaled, copied or deleted.
+- Entering edit captures the object's original transform (position, rotation and scale).
+- `ยกเลิก` / Cancel Edit restores that captured transform and saves the restored state, protecting against accidental touches or edits.
+- Selecting another object or pressing Done commits the current edit.
 - Tapping empty ground clears selection and restores the object's normal material.
 - `Done` means Save + Exit Builder + resume gameplay.
 - Layout changes autosave while editing; Done performs an explicit final save.
@@ -25,7 +28,7 @@ This is the current approved interaction model and test baseline.
 - Object creation must remain functional for Tree, Palm, Pine, House, House 2, Grass, Crate, Barrel and Path.
 - Legacy fixed collision helpers/walls from old house, farm, pond or mountain prototypes must stay disabled and must not affect the clean island.
 
-Builder v6.11 is the current standalone test reference. Do not regress its create/edit/delete/save/map-backup behavior when migrating assets to production modules.
+Builder v6.12 Safe Edit is the current standalone test reference. Do not regress its create/edit/cancel/delete/save/map-backup behavior when migrating assets to production modules.
 
 Collision behavior for newly placed Builder objects is intentionally not part of the locked Builder UX yet. It can be designed independently later without changing this interaction model.
 
@@ -46,8 +49,8 @@ The current standalone test may embed models so it can be opened directly from a
 
 - `asset-catalog.js` — metadata, model paths and thumbnail paths for every placeable asset.
 - `asset-loader.js` — lazy GLB loading and source-scene caching.
-- `builder-state.js` — contextual state (`idle`, `place`, `edit`), current asset/object and undo history.
-- `builder-controller.js` — add/select/update/duplicate/delete/save transitions without UI or Three.js rendering details.
+- `builder-state.js` — contextual state (`idle`, `place`, `edit`), current asset/object, edit snapshot and undo history.
+- `builder-controller.js` — add/select/update/cancel/duplicate/delete/save transitions without UI or Three.js rendering details.
 - `layout-store.js` — versioned persistence for island layouts.
 - `ui/` — mobile drawer, gesture handling, selection feedback and contextual controls.
 
@@ -66,6 +69,7 @@ The current standalone test may embed models so it can be opened directly from a
 11. A new production GLB must be loadable through `asset-loader.js`; do not add one-off `GLTFLoader.load(...)` blocks to production Builder UI code.
 12. Asset thumbnails are optional; the icon fallback must keep the catalog usable before art thumbnails are ready.
 13. `maps/home-island.json` is canonical map data and must remain independent from Builder code/version changes.
+14. Cancel Edit must restore the exact pre-edit transform and must not delete or recreate the object.
 
 ## Production layout
 
