@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
+import { createFarmPlot } from "../systems/farming/plot.js";
 
 export async function createHomeIsland({ scene, textureLoader, config, assets }) {
   const group = new THREE.Group();
@@ -23,12 +24,19 @@ export async function createHomeIsland({ scene, textureLoader, config, assets })
   ground.renderOrder = config.depth.groundOrder;
   group.add(ground);
 
+  // First farming landmark: a compact 3x3 plot on the left/front side.
+  // The house, paths and utility props can be composed around this later.
+  const farmPlot = createFarmPlot(config.farmPlot);
+  group.add(farmPlot.group);
+
   scene.add(group);
 
   return {
     group,
     ground,
+    farmPlot,
     dispose() {
+      farmPlot.dispose();
       grass.dispose();
       ground.geometry.dispose();
       ground.material.dispose();
