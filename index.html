@@ -1,1 +1,55 @@
-<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Liora's Farm — Orbit Camera</title><link rel="stylesheet" href="./styles/main.css"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><div id="info">Liora's Farm — Orbit Camera<div id="sub">ลากฉาก 1 นิ้วเพื่อหมุน • 2 นิ้วเพื่อซูม • Reset เพื่อกลับมุมเดิม</div></div><div id="status">กำลังโหลด Liora…</div><div id="joy"><div id="stick"></div></div><div id="actions"><button data-action="pickUp">Pick Up</button><button data-action="pullRadish">Pull Radish</button><button data-action="hammer">Hammer</button><button data-action="mirror">Mirror</button></div><div id="zoom"><button id="camera-reset" aria-label="Reset camera">↻</button><button id="zin">＋</button><button id="zout">−</button></div><script type="module" src="./src/main.js"></script></body></html>
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Liora's Farm — Orbit Camera</title><link rel="stylesheet" href="./styles/main.css"></head><body><div id="info">Liora's Farm — Orbit Camera<div id="sub">ลากฉาก 1 นิ้วเพื่อหมุน • 2 นิ้วเพื่อซูม • Reset เพื่อกลับมุมเดิม</div></div><div id="status">กำลังโหลด Liora…</div><div id="joy"><div id="stick"></div></div><div id="actions"><button data-action="pickUp">Pick Up</button><button data-action="pullRadish">Pull Radish</button><button data-action="hammer">Hammer</button><button data-action="mirror">Mirror</button></div><div id="zoom"><button id="camera-reset" aria-label="Reset camera">↻</button><button id="zin">＋</button><button id="zout">−</button></div><script>
+(async()=>{
+  const status=document.querySelector('#status');
+  const sources=[
+    {
+      core:'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js',
+      addons:'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/'
+    },
+    {
+      core:'https://unpkg.com/three@0.180.0/build/three.module.js',
+      addons:'https://unpkg.com/three@0.180.0/examples/jsm/'
+    }
+  ];
+
+  async function usable(url){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),6500);
+    try{
+      const response=await fetch(url,{cache:'force-cache',signal:controller.signal});
+      return response.ok;
+    }catch(_error){
+      return false;
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  let source=null;
+  for(const candidate of sources){
+    if(await usable(candidate.core)){
+      source=candidate;
+      break;
+    }
+  }
+  if(!source)throw new Error('โหลด Three.js ไม่ได้ทั้ง jsDelivr และ unpkg');
+
+  const importMap=document.createElement('script');
+  importMap.type='importmap';
+  importMap.textContent=JSON.stringify({imports:{
+    three:source.core,
+    'three/addons/':source.addons
+  }});
+  document.head.appendChild(importMap);
+
+  const entry=document.createElement('script');
+  entry.type='module';
+  entry.src='./src/main.js';
+  entry.onerror=()=>{status.textContent='โหลด main.js ไม่สำเร็จ';};
+  document.body.appendChild(entry);
+})().catch(error=>{
+  console.error('[boot]',error);
+  const status=document.querySelector('#status');
+  if(status)status.textContent=`เปิดเกมไม่สำเร็จ • ${error.message||error}`;
+});
+</script></body></html>
