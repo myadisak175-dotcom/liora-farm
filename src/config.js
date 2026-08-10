@@ -66,6 +66,26 @@ export const CONFIG = Object.freeze({
     cloudRingRadius: 31,
     cloudHeight: -7,
   },
+  runFx: {
+    maxParticles: 24,
+    spawnInterval: 0.085,
+    life: 0.38,
+    color: 0xe9dfc6,
+    opacity: 0.42,
+    size: 0.32,
+    grow: 0.85,
+    height: 0.11,
+    heightJitter: 0.05,
+    backOffset: 0.28,
+    backJitter: 0.16,
+    sideSpread: 0.42,
+    backwardDrift: 0.38,
+    sideDrift: 0.34,
+    riseSpeed: 0.34,
+    riseJitter: 0.18,
+    gravity: 0.55,
+    renderOrder: 6,
+  },
 });
 
 export const ASSETS = Object.freeze({
