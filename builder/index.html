@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Liora — loading v6.15…</title>
+<title>Liora — loading v6.16…</title>
 <style>
 html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}
 #boot{position:fixed;inset:0;display:grid;place-items:center;color:white;font-weight:800;text-shadow:0 2px 5px #234}
@@ -11,30 +11,62 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
 </style>
 </head>
 <body>
-<div id="boot"><div>กำลังโหลด Liora v6.15…</div></div>
+<div id="boot"><div>กำลังโหลด Liora v6.16…</div></div>
 <script>
 (async()=>{
-  const BASELINE="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/8b2aef1c30935a8c0196aa9930b984930f959459/builder/index.html";
-  const patches=[["Liora — Home Island Builder v6.14 Smooth Walkable Path","Liora — Home Island Builder v6.15 Persistent Asset Pack"],["Builder v6.14 • Smooth Walkable Path • Safe Edit • MapSafe","Builder v6.15 • 6 new assets • Persistent models • MapSafe"],["const embeddedBuilderAssets={grass:\"assets/models/builder/grass.glb\",crate:\"assets/models/builder/crate.glb\",wine_barrel:\"assets/models/builder/wine_barrel.glb\",path_tile:\"assets/models/builder/path_tile.glb\"};","const embeddedBuilderAssets={\n  grass:\"assets/models/builder/grass.glb\",\n  crate:\"assets/models/builder/crate.glb\",\n  wine_barrel:\"assets/models/builder/wine_barrel.glb\",\n  path_tile:\"assets/models/builder/path_tile.glb\",\n  wood_bridge:\"assets/models/builder/wood_bridge.glb\",\n  blue_cottage:\"assets/models/builder/blue_cottage.glb\",\n  wood_fence:\"assets/models/builder/wood_fence.glb\",\n  path_lamp:\"assets/models/builder/path_lamp.glb\",\n  crate_set:\"assets/models/builder/crate_set.glb\",\n  bench:\"assets/models/builder/bench.glb\"\n};"],["const embeddedBuilderCatalog={\n  grass:{height:0.75},\n  crate:{height:1.05},\n  wine_barrel:{height:1.25},\n  path_tile:{height:0.18}\n};","const embeddedBuilderCatalog={\n  grass:{height:0.75},\n  crate:{height:1.05},\n  wine_barrel:{height:1.25},\n  path_tile:{height:0.18},\n  wood_bridge:{height:1.45},\n  blue_cottage:{height:4.4},\n  wood_fence:{height:1.25},\n  path_lamp:{height:2.2},\n  crate_set:{height:1.15},\n  bench:{height:0.95}\n};"],["  templates:{tree:null,palm:null,pine:null,house:null},","  templates:{\n    tree:null,palm:null,pine:null,house:null,house2:null,\n    grass:null,crate:null,wine_barrel:null,path_tile:null,\n    wood_bridge:null,blue_cottage:null,wood_fence:null,\n    path_lamp:null,crate_set:null,bench:null\n  },"],["function registerTemplate(assetId, model){\n  if(builderState.templates[assetId])return;\n  builderState.templates[assetId]=model.clone(true);\n}","function registerTemplate(assetId, model){\n  if(builderState.templates[assetId])return;\n  builderState.templates[assetId]=model.clone(true);\n  tryLoadBuilderLayout();\n}"],["function tryLoadBuilderLayout(){\n  if(builderLoadTried)return;\n  if(builderState.templates.tree&&builderState.templates.palm&&builderState.templates.pine&&builderState.templates.house){\n    builderLoadTried=true;\n    loadLayout();\n  }\n}","const BUILDER_SAVE_ASSET_IDS=[\n  \"tree\",\"palm\",\"pine\",\"house\",\"house2\",\n  \"grass\",\"crate\",\"wine_barrel\",\"path_tile\",\n  \"wood_bridge\",\"blue_cottage\",\"wood_fence\",\"path_lamp\",\"crate_set\",\"bench\"\n];\n\nfunction tryLoadBuilderLayout(){\n  if(builderLoadTried)return;\n  if(BUILDER_SAVE_ASSET_IDS.every(id=>builderState.templates[id])){\n    builderLoadTried=true;\n    loadLayout();\n  }\n}"],["function loadLayout(){\n  const raw=localStorage.getItem(\"liora-home-island-layout-v3-clean\");\n  if(!raw)return;\n  try{\n    const arr=JSON.parse(raw);\n    if(!Array.isArray(arr))return;\n    for(const item of arr){\n      buildObject(item.assetId,item.x,item.z,item.rotation,item.scale);\n    }\n    if(arr.length)setBuilderMessage(`Loaded ${arr.length} saved objects`);\n  }catch(err){console.warn(\"Layout load failed\",err);}\n}","function loadLayout(){\n  const raw=localStorage.getItem(\"liora-home-island-layout-v3-clean\");\n  if(!raw)return;\n  try{\n    const arr=JSON.parse(raw);\n    if(!Array.isArray(arr))return;\n    let restored=0;\n    for(const item of arr){\n      const obj=buildObject(item.assetId,item.x,item.z,item.rotation,item.scale);\n      if(obj)restored++;\n    }\n    if(restored)setBuilderMessage(`Loaded ${restored} saved objects`);\n  }catch(err){console.warn(\"Layout load failed\",err);}\n}"],["if(holder.userData?.assetId!==\"path_tile\")continue;","if(holder.userData?.assetId!==\"path_tile\" && holder.userData?.assetId!==\"wood_bridge\")continue;"],["const surfaceY=holder.userData?.assetId===\"path_tile\"\n    ? getTerrainHeight(x,z)","const surfaceY=(holder.userData?.assetId===\"path_tile\"||holder.userData?.assetId===\"wood_bridge\")\n    ? getTerrainHeight(x,z)"],["if(assetId===\"path_tile\")o.userData.walkableSurface=true;","if(assetId===\"path_tile\"||assetId===\"wood_bridge\")o.userData.walkableSurface=true;"],["function assetPlacementRadius(assetId){\n  return (assetId===\"house\"||assetId===\"house2\") ? 2.65 : 1.15;\n}","function assetPlacementRadius(assetId){\n  if(assetId===\"house\"||assetId===\"house2\"||assetId===\"blue_cottage\")return 2.65;\n  if(assetId===\"wood_bridge\")return 2.25;\n  if(assetId===\"wood_fence\")return .72;\n  if(assetId===\"path_lamp\")return .55;\n  if(assetId===\"bench\")return 1.0;\n  if(assetId===\"crate_set\")return .95;\n  if(assetId===\"grass\")return .45;\n  if(assetId===\"path_tile\")return .4;\n  return 1.15;\n}"],["  for(const o of builderState.placed){\n    if(!o.parent)continue;\n    const dx=o.position.x-x,dz=o.position.z-z;\n    const minDistance=radius+assetPlacementRadius(o.userData.assetId)*.72;\n    if(Math.hypot(dx,dz)<minDistance)return false;\n  }","  const surfaceAssets=new Set([\"path_tile\",\"wood_bridge\"]);\n  for(const o of builderState.placed){\n    if(!o.parent)continue;\n    const existingId=o.userData.assetId;\n    if(surfaceAssets.has(assetId)||surfaceAssets.has(existingId))continue;\n    const dx=o.position.x-x,dz=o.position.z-z;\n    const minDistance=radius+assetPlacementRadius(existingId)*.72;\n    if(Math.hypot(dx,dz)<minDistance)return false;\n  }"],["if(assetId===\"house\"||assetId===\"house2\") ring.scale.setScalar(2.35);","if(assetId===\"house\"||assetId===\"house2\"||assetId===\"blue_cottage\") ring.scale.setScalar(2.35);\n  if(assetId===\"wood_bridge\") ring.scale.setScalar(2.0);"],["if(assetId===\"house\"||assetId===\"house2\") previewRing.scale.setScalar(2.35);","if(assetId===\"house\"||assetId===\"house2\"||assetId===\"blue_cottage\") previewRing.scale.setScalar(2.35);\n  if(assetId===\"wood_bridge\") previewRing.scale.setScalar(2.0);"],["      <button class=\"asset-card\" data-build-asset=\"path_tile\"><span class=\"thumb\">🧱</span><span>Path</span></button>","      <button class=\"asset-card\" data-build-asset=\"path_tile\"><span class=\"thumb\">🧱</span><span>Path</span></button>\n      <button class=\"asset-card\" data-build-asset=\"wood_bridge\"><span class=\"thumb\">🌉</span><span>Bridge</span></button>\n      <button class=\"asset-card\" data-build-asset=\"blue_cottage\"><span class=\"thumb\">🏘️</span><span>Blue Cottage</span></button>\n      <button class=\"asset-card\" data-build-asset=\"wood_fence\"><span class=\"thumb\">🪵</span><span>Fence</span></button>\n      <button class=\"asset-card\" data-build-asset=\"path_lamp\"><span class=\"thumb\">🏮</span><span>Lamp</span></button>\n      <button class=\"asset-card\" data-build-asset=\"crate_set\"><span class=\"thumb\">📦</span><span>Crate Set</span></button>\n      <button class=\"asset-card\" data-build-asset=\"bench\"><span class=\"thumb\">🪑</span><span>Bench</span></button>"],["document.querySelector('#status').textContent=`7 animations • ${(bytes.length/1024/1024).toFixed(1)} MB ✓`;","document.querySelector('#status').textContent=`7 animations ✓`;"],["  URL.revokeObjectURL(modelURL);\n",""]];
+  // Reuse the pinned v6.15 patch manifest, then append only the v6.16 lamp changes.
+  const V615_SOURCE="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/fae401741916474bbaa0cb7bc4f8e17a07b575fe/builder/index.html";
   try{
+    const loaderSource=await fetch(V615_SOURCE,{cache:"no-store"}).then(r=>{
+      if(!r.ok)throw new Error(`v6.15 manifest HTTP ${r.status}`);
+      return r.text();
+    });
+
+    const baselineMatch=loaderSource.match(/const BASELINE="([^"]+)";/);
+    const patchesMatch=loaderSource.match(/const patches=(\[[\s\S]*?\]);\n  try\{/);
+    if(!baselineMatch||!patchesMatch)throw new Error("อ่าน v6.15 patch manifest ไม่สำเร็จ");
+
+    const BASELINE=baselineMatch[1];
+    const patches=Function(`"use strict";return (${patchesMatch[1]});`)();
+
+    patches.push(
+      ["Liora — Home Island Builder v6.15 Persistent Asset Pack","Liora — Home Island Builder v6.16 Night Lamps"],
+      ["Builder v6.15 • 6 new assets • Persistent models • MapSafe","Builder v6.16 • automatic night lamps • Persistent models • MapSafe"],
+      [
+        "  holder.add(model);\n  const ring=createSelectionRing();",
+        "  holder.add(model);\n\n  // v6.16: placed path lamps emit warm light automatically at night.\n  if(assetId===\"path_lamp\"){\n    const lampLight=new THREE.PointLight(0xffb35a,0,7.5,1.7);\n    lampLight.position.set(0,1.72,0);\n    lampLight.castShadow=false;\n    holder.userData.builderLamp=lampLight;\n    holder.add(lampLight);\n  }\n\n  const ring=createSelectionRing();"
+      ],
+      [
+        "// ---------------- Home Island Builder v2 ----------------",
+        "// ---------------- Automatic path lamps ----------------\nfunction getNightLampAmount(hour){\n  if(hour>=19.0 || hour<5.0)return 1;\n  if(hour>=17.5 && hour<19.0)return THREE.MathUtils.smoothstep(hour,17.5,19.0);\n  if(hour>=5.0 && hour<6.5)return 1-THREE.MathUtils.smoothstep(hour,5.0,6.5);\n  return 0;\n}\n\nfunction updateBuilderNightLights(){\n  const amount=getNightLampAmount(gameHour);\n  for(const obj of builderState.placed){\n    const light=obj?.userData?.builderLamp;\n    if(!light)continue;\n    light.intensity=2.4*amount;\n    light.distance=7.5;\n  }\n}\n\n// ---------------- Home Island Builder v2 ----------------"
+      ],
+      [
+        "  renderer.render(scene,camera);",
+        "  updateBuilderNightLights();\n  renderer.render(scene,camera);"
+      ]
+    );
+
     let html=await fetch(BASELINE,{cache:"no-store"}).then(r=>{
       if(!r.ok)throw new Error(`Baseline HTTP ${r.status}`);
       return r.text();
     });
+
     for(let i=0;i<patches.length;i++){
       const [oldText,newText]=patches[i];
-      if(!html.includes(oldText))throw new Error(`v6.15 patch ${i+1} anchor missing`);
+      if(!html.includes(oldText))throw new Error(`v6.16 patch ${i+1} anchor missing`);
       html=html.replace(oldText,newText);
     }
-    if(!html.includes('assets/models/builder/wood_bridge.glb'))throw new Error("New asset catalog missing");
+
+    if(!html.includes('holder.userData.builderLamp=lampLight'))throw new Error("Night lamp code missing");
     if(!html.includes('liora-home-island-layout-v3-clean'))throw new Error("Save key missing");
+    if(!html.includes('assets/models/builder/path_lamp.glb'))throw new Error("Path lamp asset missing");
+
     document.open();
     document.write(html);
     document.close();
   }catch(err){
     console.error(err);
-    document.querySelector("#boot").innerHTML=
-      `<div>โหลด Builder ไม่สำเร็จ<br><small>${String(err.message||err)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`;
+    document.querySelector("#boot").innerHTML=`<div>โหลด Builder ไม่สำเร็จ<br><small>${String(err.message||err)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`;
   }
 })();
 </script>
