@@ -3,11 +3,12 @@ import { CONFIG, ASSETS, ANIMATIONS } from "./config.js";
 import { createInput } from "./systems/input.js";
 import { createCameraController } from "./systems/camera.js";
 import { setupLighting } from "./systems/lighting.js";
+import { createFloatingIsland } from "./systems/floating-island.js";
 import { createPlayer } from "./entities/player.js";
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xa8d8ec);
-scene.fog = new THREE.Fog(0xa8d8ec, 24, 54);
+scene.background = new THREE.Color(CONFIG.island.skyColor);
+scene.fog = new THREE.Fog(CONFIG.island.skyColor, 24, 54);
 
 const camera = new THREE.PerspectiveCamera(
   CONFIG.camera.fov,
@@ -22,6 +23,8 @@ renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
+const island = createFloatingIsland(CONFIG.island);
+scene.add(island);
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -35,6 +38,7 @@ const ground = new THREE.Mesh(
   new THREE.MeshStandardMaterial({ map: grass, roughness: 1 })
 );
 ground.rotation.x = -Math.PI / 2;
+ground.position.y = 0.01;
 ground.receiveShadow = true;
 ground.renderOrder = CONFIG.depth.groundOrder;
 scene.add(ground);
@@ -60,7 +64,7 @@ const path = new THREE.Mesh(
   pathMaterial
 );
 path.rotation.x = -Math.PI / 2;
-path.position.y = CONFIG.depth.pathY;
+path.position.y = CONFIG.depth.pathY + 0.01;
 path.renderOrder = CONFIG.depth.pathOrder;
 path.receiveShadow = true;
 scene.add(path);
