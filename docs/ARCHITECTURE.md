@@ -120,6 +120,18 @@ New buildings, vegetation and decoration are data-driven.
 
 Standalone prototypes may embed models temporarily for direct phone testing, but that is a testing convenience only. Production must use catalog paths and lazy loading instead of allowing the standalone HTML to grow indefinitely.
 
+## Mobile optimized test baseline
+
+`v6.12 Optimized Test` is now the accepted standalone mobile-test baseline because its visual result has been approved after texture compression.
+
+- Functional behavior remains based on v6.12 Safe Edit.
+- The unoptimized v6.12 Safe Edit build remains the MASTER/reference source and must not be discarded.
+- The optimized build is a delivery/testing derivative, not a replacement for the production architecture.
+- Embedded GLB textures may be compressed for mobile standalone builds while mesh geometry, animation, Builder behavior and map schema remain unchanged.
+- Current optimization policy: preserve important character/house textures at up to 1024px and reduce ordinary Builder asset textures to approximately 512px where visually acceptable.
+- Optimization must be tested visually before promotion; material maps must not be degraded blindly.
+- Future production builds should optimize source assets/build output rather than embedding an ever-growing catalog into one HTML file.
+
 ## Locked production baseline
 
 - Home Island grass base
@@ -135,6 +147,7 @@ Standalone prototypes may embed models temporarily for direct phone testing, but
 - Builder v6.12 contextual composition workflow
 - MapSafe Export/Import workflow
 - Safe Edit Cancel snapshot behavior
+- v6.12 Optimized Test accepted as the current standalone mobile testing build
 - Clean-island workflow: permanent composition comes from Builder/map data, not fixed hard-coded object placements
 
 Current Builder test assets include Tree, Palm, Pine, House, House 2, Grass, Crate, Barrel and Path. Their production versions should ultimately be catalog-driven GLB assets.
