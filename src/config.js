@@ -75,6 +75,26 @@ export const CONFIG = Object.freeze({
     skyColor: 0x9bd8f5,
   },
 
+  farmPlot: {
+    position: { x: -5.2, z: -2.8 },
+    y: 0.028,
+    rotation: THREE.MathUtils.degToRad(-8),
+    rows: 3,
+    columns: 3,
+    cellSize: 1.02,
+    gap: 0.16,
+    moundHeight: 0.075,
+    cornerRadius: 0.17,
+    bevelSize: 0.035,
+    bevelThickness: 0.025,
+    soilColor: 0x8a5a36,
+    furrowColor: 0x684127,
+    furrowWidth: 0.055,
+    furrowHeight: 0.018,
+    furrowY: 0.055,
+    renderOrder: 2,
+  },
+
   sky: {
     radius: 85,
     zenithColor: 0x68bdf0,
