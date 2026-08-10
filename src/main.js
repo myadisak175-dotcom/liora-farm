@@ -4,11 +4,12 @@ import { createInput } from "./systems/input.js";
 import { createCameraController } from "./systems/camera.js";
 import { setupLighting } from "./systems/lighting.js";
 import { createFloatingIsland } from "./systems/floating-island.js";
+import { createSky } from "./systems/sky.js";
 import { createPlayer } from "./entities/player.js";
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(CONFIG.island.skyColor);
-scene.fog = new THREE.Fog(CONFIG.island.skyColor, 24, 54);
+scene.background = new THREE.Color(CONFIG.sky.horizonColor);
+scene.fog = new THREE.Fog(CONFIG.sky.horizonColor, 30, 72);
 
 const camera = new THREE.PerspectiveCamera(
   CONFIG.camera.fov,
@@ -25,6 +26,9 @@ document.body.prepend(renderer.domElement);
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
 const island = createFloatingIsland(CONFIG.island);
 scene.add(island);
+
+const sky = createSky(CONFIG.sky);
+scene.add(sky.group);
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -180,6 +184,7 @@ function animate() {
   }
 
   cameraController.update(target, delta);
+  sky.update(camera);
   renderer.render(scene, camera);
 }
 
