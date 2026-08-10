@@ -1,7 +1,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-export async function createPlayer({ url, height, renderOrder, animations }) {
+export async function createPlayer({
+  url,
+  height,
+  groundOffset = 0,
+  renderOrder,
+  animations,
+}) {
   const root = new THREE.Group();
   root.position.set(0, 0, 5);
 
@@ -13,7 +19,11 @@ export async function createPlayer({ url, height, renderOrder, animations }) {
     object.castShadow = true;
     object.receiveShadow = true;
     object.renderOrder = renderOrder;
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+
     for (const material of materials) {
       if (!material) continue;
       material.depthTest = true;
@@ -31,11 +41,14 @@ export async function createPlayer({ url, height, renderOrder, animations }) {
   model.position.x -= center.x;
   model.position.z -= center.z;
   model.position.y -= box.min.y;
+  model.position.y += groundOffset;
   root.add(model);
 
   const mixer = new THREE.AnimationMixer(model);
   const actions = {};
-  for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+  for (const clip of gltf.animations) {
+    actions[clip.name] = mixer.clipAction(clip);
+  }
 
   let current = null;
   let special = false;
@@ -69,6 +82,7 @@ export async function createPlayer({ url, height, renderOrder, animations }) {
       fadeTo(animations.idle, 0.18, true, 1);
       onDone?.();
     };
+
     mixer.addEventListener("finished", finished);
     return true;
   }
@@ -77,6 +91,7 @@ export async function createPlayer({ url, height, renderOrder, animations }) {
 
   return {
     root,
+    model,
     mixer,
     fadeTo,
     playSpecial,
