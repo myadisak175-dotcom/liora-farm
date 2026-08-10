@@ -8,6 +8,7 @@ import { createSky } from "./systems/sky.js";
 import { createDayNight } from "./systems/day-night.js";
 import { createRunFx } from "./systems/run-fx.js";
 import { createContactShadow } from "./systems/contact-shadow.js";
+import { createPond } from "./systems/pond.js";
 import { createPlayer } from "./entities/player.js";
 
 const scene = new THREE.Scene();
@@ -42,12 +43,13 @@ const dayNight = createDayNight({
 
 const runFx = createRunFx(scene, CONFIG.runFx);
 const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
+const pond = createPond(CONFIG.pond);
+scene.add(pond.group);
 
 const textureLoader = new THREE.TextureLoader();
 
 // Home Island starts as a clean grass-only canvas.
-// Keep the dirt-path asset in ASSETS for later layout work after the house,
-// farm and utility areas have fixed positions.
+// Dirt paths remain deferred until the house/farm/utility layout is fixed.
 const grass = await textureLoader.loadAsync(ASSETS.grass);
 grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
 grass.repeat.set(CONFIG.grassRepeat, CONFIG.grassRepeat);
@@ -74,7 +76,7 @@ try {
     animations: ANIMATIONS,
   });
   scene.add(player.root);
-  status.textContent = "Liora ready • Home Island grass base ✓";
+  status.textContent = "Liora ready • Home Island pond prototype ✓";
 } catch (error) {
   console.error(error);
   status.textContent = "Player load failed";
@@ -125,6 +127,7 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.04);
 
   dayNight.update(delta);
+  pond.update(delta);
 
   if (player) {
     const direction = input.get();
