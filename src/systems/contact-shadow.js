@@ -74,8 +74,9 @@ export function createContactShadow(scene, config) {
   return {
     update(position, rotationY = 0, hour = 12) {
       const night = hour >= 19 || hour < 6;
-      body.position.x = position.x;
-      body.position.z = position.z;
+      const groundY = position.y;
+
+      body.position.set(position.x, groundY + config.y, position.z);
       body.material.opacity = night ? config.nightOpacity : config.opacity;
 
       const forwardX = Math.sin(rotationY);
@@ -85,13 +86,13 @@ export function createContactShadow(scene, config) {
 
       leftFoot.position.set(
         position.x - sideX * config.footSide + forwardX * config.footForward,
-        config.footY,
+        groundY + config.footY,
         position.z - sideZ * config.footSide + forwardZ * config.footForward
       );
 
       rightFoot.position.set(
         position.x + sideX * config.footSide + forwardX * config.footForward,
-        config.footY,
+        groundY + config.footY,
         position.z + sideZ * config.footSide + forwardZ * config.footForward
       );
 
