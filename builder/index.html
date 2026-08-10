@@ -1,28 +1,48 @@
-<!doctype html><html lang="th"><head><meta charset="utf-8">
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Liora — loading v6.18…</title>
-<style>html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}#boot{position:fixed;inset:0;display:grid;place-items:center;color:white;font-weight:800;text-shadow:0 2px 5px #234}#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}</style>
-</head><body><div id="boot"><div>กำลังโหลด Liora v6.18…</div></div><script>
+<title>Liora — loading v6.18.1…</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}
+#boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}
+#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}
+</style>
+</head>
+<body>
+<div id="boot"><div>กำลังโหลด Liora v6.18.1…</div></div>
+<script>
 (async()=>{
- const V617="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b5db07b19ece045e3d65c56fa5adb1710a9139ab/builder/index.html";
- const TEX="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/main/builder/assets/textures/dirt_brush.b64";
- try{
-  let [s,b64]=await Promise.all([
-   fetch(V617,{cache:"no-store"}).then(r=>{if(!r.ok)throw Error("v6.17 "+r.status);return r.text()}),
-   fetch(TEX,{cache:"no-store"}).then(r=>{if(!r.ok)throw Error("dirt texture "+r.status);return r.text()})
-  ]);
-  s=s.replaceAll("loading v6.17","loading v6.18")
-     .replaceAll("กำลังโหลด Liora v6.17","กำลังโหลด Liora v6.18")
-     .replaceAll("Liora — Home Island Builder v6.17 Ground Paint","Liora — Home Island Builder v6.18 Textured Dirt Paint")
-     .replaceAll("Builder v6.17 • Dirt Paint • Night Lamps • MapSafe","Builder v6.18 • Textured Dirt • Soft Edge • MapSafe");
-  const a=s.indexOf("function makeDirtTexture(){\\n"),b=s.indexOf("const dirtPaintMaterial=",a);
-  if(a<0||b<0)throw Error("dirt anchors");
-  const f=`function makeDirtTexture(){\\n  const texture=new THREE.TextureLoader().load(\\\"data:image/webp;base64,${b64.trim()}\\\");\\n  texture.colorSpace=THREE.SRGBColorSpace;\\n  texture.wrapS=texture.wrapT=THREE.RepeatWrapping;\\n  texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());\\n  return texture;\\n}\\n\\nfunction makeGroundSoftMask(){\\n  const c=document.createElement(\\\"canvas\\\");c.width=c.height=64;\\n  const x=c.getContext(\\\"2d\\\"),g=x.createRadialGradient(32,32,20,32,32,32);\\n  g.addColorStop(0,\\\"#fff\\\");g.addColorStop(.76,\\\"#fff\\\");g.addColorStop(1,\\\"rgba(255,255,255,0)\\\");\\n  x.fillStyle=g;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);\\n}\\n\\n`;
-  s=s.slice(0,a)+f+s.slice(b);
-  s=s.replace("  map:makeDirtTexture(),\\n  color:0xffffff,","  map:makeDirtTexture(),\\n  alphaMap:makeGroundSoftMask(),\\n  transparent:true,\\n  alphaTest:.02,\\n  color:0xffffff,");
-  s=s.replace("  const s=GROUND_TILE_SIZE,h=s*.5;\\n","  const s=GROUND_TILE_SIZE*1.16,h=s*.5;\\n");
-  s=s.replace("    0,0,1,0,0,1,1,1\\n  ]),2));","    ix*.83,iz*.83,(ix+1)*.83,iz*.83,ix*.83,(iz+1)*.83,(ix+1)*.83,(iz+1)*.83\\n  ]),2));");
-  document.open();document.write(s);document.close();
- }catch(e){console.error(e);document.querySelector("#boot").innerHTML=`<div>โหลดไม่สำเร็จ<br><small>${String(e.message||e)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`}
+  const SRC="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b5db07b19ece045e3d65c56fa5adb1710a9139ab/builder/index.html";
+  try{
+    let s=await fetch(SRC,{cache:"no-store"}).then(r=>{
+      if(!r.ok)throw new Error("v6.17 HTTP "+r.status);
+      return r.text();
+    });
+
+    // Keep v6.17's proven paint/drag/save code unchanged.
+    // Only replace its procedural brown texture with our real seamless dirt asset.
+    const start=s.indexOf("function makeDirtTexture(){\\n");
+    const end=s.indexOf("const dirtPaintMaterial=",start);
+    if(start<0||end<0)throw new Error("Dirt paint texture anchor missing");
+
+    const replacement=`function makeDirtTexture(){\\n  const texture=new THREE.TextureLoader().load(\\\"data:image/webp;base64,UklGRi4SAABXRUJQVlA4ICI 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'\");\n  texture.colorSpace=THREE.SRGBColorSpace;\n  texture.wrapS=texture.wrapT=THREE.RepeatWrapping;\n  texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());\n  return texture;\n}\n\n`;
+
+    s=s.slice(0,start)+replacement+s.slice(end);
+    s=s.replaceAll("loading v6.17","loading v6.18.1");
+    s=s.replaceAll("กำลังโหลด Liora v6.17","กำลังโหลด Liora v6.18.1");
+    s=s.replaceAll("Liora — Home Island Builder v6.17 Ground Paint","Liora — Home Island Builder v6.18.1 Textured Dirt Paint");
+    s=s.replaceAll("Builder v6.17 • Dirt Paint • Night Lamps • MapSafe","Builder v6.18.1 • Textured Dirt Paint • Night Lamps • MapSafe");
+
+    document.open();
+    document.write(s);
+    document.close();
+  }catch(err){
+    console.error(err);
+    document.querySelector("#boot").innerHTML=`<div>โหลด Builder ไม่สำเร็จ<br><small>${String(err.message||err)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`;
+  }
 })();
-</script></body></html>
+</script>
+</body>
+</html>
