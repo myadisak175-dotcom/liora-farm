@@ -7,6 +7,7 @@ import { createFloatingIsland } from "./systems/floating-island.js";
 import { createSky } from "./systems/sky.js";
 import { createDayNight } from "./systems/day-night.js";
 import { createRunFx } from "./systems/run-fx.js";
+import { createContactShadow } from "./systems/contact-shadow.js";
 import { createPlayer } from "./entities/player.js";
 
 const scene = new THREE.Scene();
@@ -40,6 +41,7 @@ const dayNight = createDayNight({
 });
 
 const runFx = createRunFx(scene, CONFIG.runFx);
+const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -198,6 +200,7 @@ function animate() {
     );
 
     runFx.update(player.root.position, moveDirection, runningNow, delta);
+    contactShadow.update(player.root.position, dayNight.getHour());
 
     target.set(player.root.position.x, 0.7, player.root.position.z);
     lighting.update(player.root.position);
