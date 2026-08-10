@@ -5,6 +5,7 @@ import { createCameraController } from "./systems/camera.js";
 import { setupLighting } from "./systems/lighting.js";
 import { createFloatingIsland } from "./systems/floating-island.js";
 import { createSky } from "./systems/sky.js";
+import { createDayNight } from "./systems/day-night.js";
 import { createRunFx } from "./systems/run-fx.js";
 import { createPlayer } from "./entities/player.js";
 
@@ -30,6 +31,13 @@ scene.add(island);
 
 const sky = createSky(CONFIG.sky);
 scene.add(sky.group);
+
+const dayNight = createDayNight({
+  scene,
+  sky,
+  lighting,
+  config: CONFIG.dayNight,
+});
 
 const runFx = createRunFx(scene, CONFIG.runFx);
 
@@ -136,6 +144,8 @@ function getCameraRelativeDirection(direction) {
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.04);
+
+  dayNight.update(delta);
 
   if (player) {
     const direction = input.get();
