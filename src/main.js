@@ -5,6 +5,7 @@ import { createCameraController } from "./systems/camera.js";
 import { setupLighting } from "./systems/lighting.js";
 import { createFloatingIsland } from "./systems/floating-island.js";
 import { createSky } from "./systems/sky.js";
+import { createRunFx } from "./systems/run-fx.js";
 import { createPlayer } from "./entities/player.js";
 
 const scene = new THREE.Scene();
@@ -29,6 +30,8 @@ scene.add(island);
 
 const sky = createSky(CONFIG.sky);
 scene.add(sky.group);
+
+const runFx = createRunFx(scene, CONFIG.runFx);
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -136,11 +139,13 @@ function animate() {
 
   if (player) {
     const direction = input.get();
+    let runningNow = false;
 
     if (!player.isSpecial() && direction.m > 0.05) {
       const running = direction.m > CONFIG.runThreshold;
       const speed = running ? CONFIG.runSpeed : CONFIG.walkSpeed;
       const move = getCameraRelativeDirection(direction);
+      runningNow = running;
 
       player.root.position.x += move.x * speed * delta;
       player.root.position.z += move.z * speed * delta;
@@ -159,12 +164,15 @@ function animate() {
         running ? CONFIG.animationSpeed.run : CONFIG.animationSpeed.walk
       );
     } else if (!player.isSpecial()) {
+      moveDirection.set(0, 0, 0);
       player.fadeTo(
         ANIMATIONS.idle,
         0.18,
         true,
         CONFIG.animationSpeed.idle
       );
+    } else {
+      moveDirection.set(0, 0, 0);
     }
 
     player.mixer.update(delta);
@@ -178,6 +186,8 @@ function animate() {
       -CONFIG.worldLimit,
       CONFIG.worldLimit
     );
+
+    runFx.update(player.root.position, moveDirection, runningNow, delta);
 
     target.set(player.root.position.x, 0.7, player.root.position.z);
     lighting.update(player.root.position);
