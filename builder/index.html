@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Liora — loading v6.21.1…</title>
+<title>Liora — loading Builder Paint v6.23…</title>
 <style>
 html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}
 #boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}
@@ -12,26 +12,21 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
 </style>
 </head>
 <body>
-<div id="boot"><div id="boot-box">กำลังโหลด Liora v6.21.1…<small>Startup Safe + CDN Fallback</small></div></div>
+<div id="boot"><div id="boot-box">กำลังโหลด Builder Paint v6.23…<small>Grass • Dirt • Sand • Rock • Erase</small></div></div>
 <script>
 (async()=>{
   const V617="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b5db07b19ece045e3d65c56fa5adb1710a9139ab/builder/index.html";
   const V616_ORIGINAL="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b0e136b8eb1ed9147ac2dd97928457f2c0f312f1/builder/index.html";
-  const TEX="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/main/builder/assets/textures/dirt_brush.b64";
 
   const bootBox=()=>document.querySelector("#boot-box");
   const showFatal=(message)=>{
     console.error(message);
     const el=bootBox();
-    if(el)el.innerHTML=`เปิดเกมไม่สำเร็จ<small>${String(message)}</small><button onclick="location.reload()" style="margin-top:10px;padding:8px 12px">ลองใหม่</button>`;
+    if(el)el.innerHTML=`เปิด Builder ไม่สำเร็จ<small>${String(message)}</small><button onclick="location.reload()" style="margin-top:10px;padding:8px 12px">ลองใหม่</button>`;
   };
 
-  window.addEventListener("unhandledrejection",e=>{
-    showFatal("Startup promise error: "+(e.reason?.message||e.reason||"unknown"));
-  });
-  window.addEventListener("error",e=>{
-    if(e?.message)showFatal("Startup error: "+e.message);
-  },true);
+  window.addEventListener("unhandledrejection",e=>showFatal("Startup promise error: "+(e.reason?.message||e.reason||"unknown")));
+  window.addEventListener("error",e=>{if(e?.message)showFatal("Startup error: "+e.message);},true);
 
   async function fetchText(url,label,timeoutMs=10000){
     const controller=new AbortController();
@@ -43,19 +38,15 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
     }catch(err){
       if(err?.name==="AbortError")throw new Error(`${label} timeout`);
       throw err;
-    }finally{
-      clearTimeout(timer);
-    }
+    }finally{clearTimeout(timer);}
   }
 
   try{
-    const [sourceRaw,b64,v616Raw]=await Promise.all([
+    const [sourceRaw,v616Raw]=await Promise.all([
       fetchText(V617,"v6.17"),
-      fetchText(TEX,"dirt texture"),
       fetchText(V616_ORIGINAL,"v6.16")
     ]);
 
-    // Harden v6.16 before v6.17 uses it: jsDelivr first, unpkg fallback.
     const writeAnchor='    document.open();\n    document.write(html);\n    document.close();';
     if(!v616Raw.includes(writeAnchor))throw new Error("v6.16 CDN fallback anchor missing");
 
@@ -63,16 +54,10 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
       '    const primaryThree="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";',
       '    const fallbackThree="https://unpkg.com/three@0.180.0/build/three.module.js";',
       '    let primaryOK=false;',
-      '    try{',
-      '      const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);',
-      '      const r=await fetch(primaryThree,{cache:"force-cache",signal:c.signal});clearTimeout(t);primaryOK=r.ok;',
-      '    }catch(_e){primaryOK=false;}',
+      '    try{const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);const r=await fetch(primaryThree,{cache:"force-cache",signal:c.signal});clearTimeout(t);primaryOK=r.ok;}catch(_e){primaryOK=false;}',
       '    if(!primaryOK){',
       '      let fallbackOK=false;',
-      '      try{',
-      '        const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);',
-      '        const r=await fetch(fallbackThree,{cache:"force-cache",signal:c.signal});clearTimeout(t);fallbackOK=r.ok;',
-      '      }catch(_e){fallbackOK=false;}',
+      '      try{const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);const r=await fetch(fallbackThree,{cache:"force-cache",signal:c.signal});clearTimeout(t);fallbackOK=r.ok;}catch(_e){fallbackOK=false;}',
       '      if(!fallbackOK)throw new Error("โหลด Three.js ไม่ได้ทั้ง jsDelivr และ unpkg");',
       '      html=html.replaceAll("https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","https://unpkg.com/three@0.180.0/build/three.module.js");',
       '      html=html.replaceAll("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","https://unpkg.com/three@0.180.0/examples/jsm/");',
@@ -84,49 +69,132 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
 
     const v616Hardened=v616Raw.replace(writeAnchor,cdnFallback);
     const v616BlobURL=URL.createObjectURL(new Blob([v616Hardened],{type:"text/html"}));
-
     let source=sourceRaw.replace(V616_ORIGINAL,v616BlobURL);
     if(source===sourceRaw)throw new Error("v6.17 v6.16 source replacement failed");
 
     const match=source.match(/const groundPatches=(\[[\s\S]*?\]);\n  try\{/);
     if(!match)throw new Error("Ground patch manifest missing");
-
     const patches=JSON.parse(match[1]);
-    const textureURI="data:image/webp;base64,"+b64.trim();
 
     const groundPatch=patches.find(p=>p[1]&&p[1].includes("function makeDirtTexture()"));
     if(!groundPatch)throw new Error("Ground paint patch missing");
 
     groundPatch[1]=groundPatch[1].replace(
       /function makeDirtTexture\(\)\{[\s\S]*?return texture;\n\}/,
-      `function makeDirtTexture(){
-  const texture=new THREE.TextureLoader().load("${textureURI}");
+      `function makeGroundTexture(url){
+  const texture=new THREE.TextureLoader().load(url);
   texture.colorSpace=THREE.SRGBColorSpace;
   texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
   texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   return texture;
-}`
+}
+function makeDirtTexture(){return makeGroundTexture("../assets/textures/dirt.webp");}
+function makeSandTexture(){return makeGroundTexture("../assets/textures/sand.webp");}
+function makeRockTexture(){return makeGroundTexture("../assets/textures/rock.webp");}`
     );
 
-    groundPatch[1]=groundPatch[1].replace('const dirtPaintMaterial=new THREE.MeshStandardMaterial({',`function makeEdgeMask(){
+    groundPatch[1]=groundPatch[1].replace(
+`const dirtPaintMaterial=new THREE.MeshStandardMaterial({
+  map:makeDirtTexture(),
+  color:0xffffff,
+  roughness:1,
+  metalness:0,
+  polygonOffset:true,
+  polygonOffsetFactor:-1,
+  polygonOffsetUnits:-1
+});`,
+`function makePaintMaterial(map){
+  return new THREE.MeshStandardMaterial({map,color:0xffffff,roughness:1,metalness:0,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+}
+function makeEdgeMask(){
   const c=document.createElement("canvas");c.width=c.height=128;
   const x=c.getContext("2d"),g=x.createRadialGradient(64,64,25,64,64,64);
   g.addColorStop(0,"rgba(255,255,255,1)");g.addColorStop(.55,"rgba(255,255,255,.92)");g.addColorStop(.82,"rgba(255,255,255,.45)");g.addColorStop(1,"rgba(255,255,255,0)");
   x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c);
 }
-const edgePaintMaterial=new THREE.MeshStandardMaterial({map:makeDirtTexture(),alphaMap:makeEdgeMask(),transparent:true,alphaTest:.03,roughness:1,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+const dirtPaintMaterial=makePaintMaterial(makeDirtTexture());
+const sandPaintMaterial=makePaintMaterial(makeSandTexture());
+const rockPaintMaterial=makePaintMaterial(makeRockTexture());
+const edgePaintMaterial=new THREE.MeshStandardMaterial({map:makeDirtTexture(),alphaMap:makeEdgeMask(),transparent:true,alphaTest:.03,roughness:1,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});`
+    );
 
-const dirtPaintMaterial=new THREE.MeshStandardMaterial({`);
-    groundPatch[1]=groundPatch[1].replace('const mesh=new THREE.Mesh(geometry,dirtPaintMaterial);','const mesh=new THREE.Mesh(geometry,type==="edge"?edgePaintMaterial:dirtPaintMaterial);');
-    groundPatch[1]=groundPatch[1].replace('else if(groundPaintState.mode==="dirt")createGroundPaintTile(ix,iz,"dirt");','else if(groundPaintState.mode==="dirt")createGroundPaintTile(ix,iz,"dirt");\n      else if(groundPaintState.mode==="edge"){removeGroundPaintTile(ix,iz);createGroundPaintTile(ix,iz,"edge");}');
-    groundPatch[1]=groundPatch[1].replace('const erase=document.querySelector("#ground-erase-btn");','const erase=document.querySelector("#ground-erase-btn");\n  const edge=document.querySelector("#ground-edge-btn");');
-    groundPatch[1]=groundPatch[1].replace('erase?.classList.toggle("active",groundPaintState.mode==="erase");','erase?.classList.toggle("active",groundPaintState.mode==="erase");\n  edge?.classList.toggle("active",groundPaintState.mode==="edge");');
-    groundPatch[1]=groundPatch[1].replace('groundPaintState.mode==="dirt"\n      ?"Dirt Paint • ลากนิ้วบนพื้นเพื่อระบาย"','groundPaintState.mode==="dirt"\n      ?"Dirt Paint • ลากนิ้วบนพื้นเพื่อระบาย"\n      :groundPaintState.mode==="edge"\n      ?"Edge Brush • ลากตามขอบดินเพื่อเก็บขอบเอง"');
-    groundPatch[1]=groundPatch[1].replace('document.querySelector("#ground-erase-btn")?.addEventListener("click",()=>setGroundPaintMode("erase"));','document.querySelector("#ground-erase-btn")?.addEventListener("click",()=>setGroundPaintMode("erase"));\n  document.querySelector("#ground-edge-btn")?.addEventListener("click",()=>setGroundPaintMode("edge"));');
+    groundPatch[1]=groundPatch[1].replace(
+      'const mesh=new THREE.Mesh(geometry,dirtPaintMaterial);',
+      'const paintMaterial=type==="sand"?sandPaintMaterial:type==="rock"?rockPaintMaterial:type==="edge"?edgePaintMaterial:dirtPaintMaterial;\n  const mesh=new THREE.Mesh(geometry,paintMaterial);'
+    );
+
+    groundPatch[1]=groundPatch[1].replace(
+`      if(groundPaintState.mode==="erase")removeGroundPaintTile(ix,iz);
+      else if(groundPaintState.mode==="dirt")createGroundPaintTile(ix,iz,"dirt");`,
+`      if(groundPaintState.mode==="erase"||groundPaintState.mode==="grass")removeGroundPaintTile(ix,iz);
+      else if(groundPaintState.mode==="dirt"||groundPaintState.mode==="sand"||groundPaintState.mode==="rock"){
+        removeGroundPaintTile(ix,iz);
+        createGroundPaintTile(ix,iz,groundPaintState.mode);
+      }else if(groundPaintState.mode==="edge"){
+        removeGroundPaintTile(ix,iz);
+        createGroundPaintTile(ix,iz,"edge");
+      }`
+    );
+
+    groundPatch[1]=groundPatch[1].replace(
+`  const dirt=document.querySelector("#ground-dirt-btn");
+  const erase=document.querySelector("#ground-erase-btn");
+  const brush=document.querySelector("#ground-brush");
+  dirt?.classList.toggle("active",groundPaintState.mode==="dirt");
+  erase?.classList.toggle("active",groundPaintState.mode==="erase");`,
+`  const grass=document.querySelector("#ground-grass-btn");
+  const dirt=document.querySelector("#ground-dirt-btn");
+  const sand=document.querySelector("#ground-sand-btn");
+  const rock=document.querySelector("#ground-rock-btn");
+  const edge=document.querySelector("#ground-edge-btn");
+  const erase=document.querySelector("#ground-erase-btn");
+  const brush=document.querySelector("#ground-brush");
+  grass?.classList.toggle("active",groundPaintState.mode==="grass");
+  dirt?.classList.toggle("active",groundPaintState.mode==="dirt");
+  sand?.classList.toggle("active",groundPaintState.mode==="sand");
+  rock?.classList.toggle("active",groundPaintState.mode==="rock");
+  edge?.classList.toggle("active",groundPaintState.mode==="edge");
+  erase?.classList.toggle("active",groundPaintState.mode==="erase");`
+    );
+
+    groundPatch[1]=groundPatch[1].replace(
+`    groundPaintState.mode==="dirt"
+      ?"Dirt Paint • ลากนิ้วบนพื้นเพื่อระบาย"
+      :groundPaintState.mode==="erase"
+      ?"Erase Ground • ลากนิ้วเพื่อลบพื้นดิน"
+      :"Ground Paint ปิดแล้ว"`,
+`    groundPaintState.mode==="grass"
+      ?"Grass Paint • ลากนิ้วเพื่อคืนพื้นหญ้า"
+      :groundPaintState.mode==="dirt"
+      ?"Dirt Paint • ลากนิ้วบนพื้นเพื่อระบาย"
+      :groundPaintState.mode==="sand"
+      ?"Sand Paint • ลากนิ้วบนพื้นเพื่อระบาย"
+      :groundPaintState.mode==="rock"
+      ?"Rock Paint • ลากนิ้วบนพื้นเพื่อระบาย"
+      :groundPaintState.mode==="edge"
+      ?"Edge Brush • ลากตามขอบเพื่อเก็บขอบ"
+      :groundPaintState.mode==="erase"
+      ?"Erase Ground • ลากนิ้วเพื่อลบพื้น"
+      :"Ground Paint ปิดแล้ว"`
+    );
+
+    groundPatch[1]=groundPatch[1].replace(
+`  document.querySelector("#ground-dirt-btn")?.addEventListener("click",()=>setGroundPaintMode("dirt"));
+  document.querySelector("#ground-erase-btn")?.addEventListener("click",()=>setGroundPaintMode("erase"));`,
+`  document.querySelector("#ground-grass-btn")?.addEventListener("click",()=>setGroundPaintMode("grass"));
+  document.querySelector("#ground-dirt-btn")?.addEventListener("click",()=>setGroundPaintMode("dirt"));
+  document.querySelector("#ground-sand-btn")?.addEventListener("click",()=>setGroundPaintMode("sand"));
+  document.querySelector("#ground-rock-btn")?.addEventListener("click",()=>setGroundPaintMode("rock"));
+  document.querySelector("#ground-edge-btn")?.addEventListener("click",()=>setGroundPaintMode("edge"));
+  document.querySelector("#ground-erase-btn")?.addEventListener("click",()=>setGroundPaintMode("erase"));`
+    );
 
     const uiPatch=patches.find(p=>p[1]&&p[1].includes('id="ground-dirt-btn"'));
     if(!uiPatch)throw new Error("Ground UI patch missing");
-    uiPatch[1]=uiPatch[1].replace('<button class="asset-card" id="ground-erase-btn">','<button class="asset-card" id="ground-edge-btn"><span class="thumb">🖌️</span><span>Edge</span></button>\n      <button class="asset-card" id="ground-erase-btn">');
+    uiPatch[1]=uiPatch[1].replace(
+      '<button class="asset-card" id="ground-dirt-btn"><span class="thumb">🟫</span><span>Dirt</span></button>',
+      '<button class="asset-card" id="ground-grass-btn"><span class="thumb">🌿</span><span>Grass</span></button>\n      <button class="asset-card" id="ground-dirt-btn"><span class="thumb">🟫</span><span>Dirt</span></button>\n      <button class="asset-card" id="ground-sand-btn"><span class="thumb">🏖️</span><span>Sand</span></button>\n      <button class="asset-card" id="ground-rock-btn"><span class="thumb">🪨</span><span>Rock</span></button>\n      <button class="asset-card" id="ground-edge-btn"><span class="thumb">🖌️</span><span>Edge</span></button>'
+    );
 
     patches.push([
       `function getTerrainHeight(x,z){
@@ -138,31 +206,17 @@ const dirtPaintMaterial=new THREE.MeshStandardMaterial({`);
   h*=terrainFlatKeep(x,z);
   return Math.max(-.02,h);
 }`,
-      `function getTerrainHeight(x,z){
-  return 0;
-}`
+      `function getTerrainHeight(x,z){return 0;}`
     ]);
 
-    patches[0]=[
-      "Liora — Home Island Builder v6.16 Night Lamps",
-      "Liora — Home Island Builder v6.21.1 Stable Hardened"
-    ];
-    patches[1]=[
-      "Builder v6.16 • automatic night lamps • Persistent models • MapSafe",
-      "Builder v6.21.1 • Startup Safe • CDN Fallback • MapSafe"
-    ];
+    patches[0]=["Liora — Home Island Builder v6.16 Night Lamps","Liora — Home Island Builder v6.23 Ground Paint 4"];
+    patches[1]=["Builder v6.16 • automatic night lamps • Persistent models • MapSafe","Builder v6.23 • Grass Dirt Sand Rock • Persistent models • MapSafe"];
 
-    const patchedSource=source.replace(
-      match[0],
-      "const groundPatches="+JSON.stringify(patches)+";\n  try{"
-    );
-
+    const patchedSource=source.replace(match[0],"const groundPatches="+JSON.stringify(patches)+";\n  try{");
     document.open();
     document.write(patchedSource);
     document.close();
-  }catch(err){
-    showFatal(err?.message||err);
-  }
+  }catch(err){showFatal(err?.message||err);}
 })();
 </script>
 </body>
