@@ -28,7 +28,7 @@ renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 
 const textureLoader = new THREE.TextureLoader();
-await createHomeIsland({
+const homeIsland = await createHomeIsland({
   scene,
   textureLoader,
   config: CONFIG,
@@ -47,7 +47,11 @@ const dayNight = createDayNight({
 });
 
 const input = createInput();
-const movement = createMovementSystem(camera, CONFIG);
+const movement = createMovementSystem(
+  camera,
+  CONFIG,
+  homeIsland.getGroundHeight
+);
 const cameraController = createCameraController(
   camera,
   CONFIG.camera,
@@ -68,7 +72,7 @@ try {
     animations: ANIMATIONS,
   });
   scene.add(player.root);
-  status.textContent = "Liora ready • Home Island clean baseline ✓";
+  status.textContent = "Liora ready • Home Island terrain ✓";
 } catch (error) {
   console.error(error);
   status.textContent = "Player load failed";
@@ -126,7 +130,11 @@ function updatePlayer(delta) {
     dayNight.getHour()
   );
 
-  cameraTarget.set(player.root.position.x, 0.7, player.root.position.z);
+  cameraTarget.set(
+    player.root.position.x,
+    player.root.position.y + 0.7,
+    player.root.position.z
+  );
   lighting.update(player.root.position);
 }
 
