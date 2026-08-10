@@ -3,25 +3,90 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Liora — loading v6.21…</title>
+<title>Liora — loading v6.21.1…</title>
 <style>
 html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}
 #boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}
-#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}
+#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px;max-width:82vw}
+#boot small{display:block;margin-top:6px;font-weight:500}
 </style>
 </head>
 <body>
-<div id="boot"><div>กำลังโหลด Liora v6.21…</div></div>
+<div id="boot"><div id="boot-box">กำลังโหลด Liora v6.21.1…<small>Startup Safe + CDN Fallback</small></div></div>
 <script>
 (async()=>{
   const V617="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b5db07b19ece045e3d65c56fa5adb1710a9139ab/builder/index.html";
+  const V616_ORIGINAL="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b0e136b8eb1ed9147ac2dd97928457f2c0f312f1/builder/index.html";
   const TEX="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/main/builder/assets/textures/dirt_brush.b64";
 
+  const bootBox=()=>document.querySelector("#boot-box");
+  const showFatal=(message)=>{
+    console.error(message);
+    const el=bootBox();
+    if(el)el.innerHTML=`เปิดเกมไม่สำเร็จ<small>${String(message)}</small><button onclick="location.reload()" style="margin-top:10px;padding:8px 12px">ลองใหม่</button>`;
+  };
+
+  window.addEventListener("unhandledrejection",e=>{
+    showFatal("Startup promise error: "+(e.reason?.message||e.reason||"unknown"));
+  });
+  window.addEventListener("error",e=>{
+    if(e?.message)showFatal("Startup error: "+e.message);
+  },true);
+
+  async function fetchText(url,label,timeoutMs=10000){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{
+      const r=await fetch(url,{cache:"no-store",signal:controller.signal});
+      if(!r.ok)throw new Error(`${label} HTTP ${r.status}`);
+      return await r.text();
+    }catch(err){
+      if(err?.name==="AbortError")throw new Error(`${label} timeout`);
+      throw err;
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
   try{
-    const [source,b64]=await Promise.all([
-      fetch(V617,{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error("v6.17 HTTP "+r.status);return r.text();}),
-      fetch(TEX,{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error("texture HTTP "+r.status);return r.text();})
+    const [sourceRaw,b64,v616Raw]=await Promise.all([
+      fetchText(V617,"v6.17"),
+      fetchText(TEX,"dirt texture"),
+      fetchText(V616_ORIGINAL,"v6.16")
     ]);
+
+    // Harden v6.16 before v6.17 uses it: jsDelivr first, unpkg fallback.
+    const writeAnchor='    document.open();\n    document.write(html);\n    document.close();';
+    if(!v616Raw.includes(writeAnchor))throw new Error("v6.16 CDN fallback anchor missing");
+
+    const cdnFallback=[
+      '    const primaryThree="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";',
+      '    const fallbackThree="https://unpkg.com/three@0.180.0/build/three.module.js";',
+      '    let primaryOK=false;',
+      '    try{',
+      '      const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);',
+      '      const r=await fetch(primaryThree,{cache:"force-cache",signal:c.signal});clearTimeout(t);primaryOK=r.ok;',
+      '    }catch(_e){primaryOK=false;}',
+      '    if(!primaryOK){',
+      '      let fallbackOK=false;',
+      '      try{',
+      '        const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);',
+      '        const r=await fetch(fallbackThree,{cache:"force-cache",signal:c.signal});clearTimeout(t);fallbackOK=r.ok;',
+      '      }catch(_e){fallbackOK=false;}',
+      '      if(!fallbackOK)throw new Error("โหลด Three.js ไม่ได้ทั้ง jsDelivr และ unpkg");',
+      '      html=html.replaceAll("https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","https://unpkg.com/three@0.180.0/build/three.module.js");',
+      '      html=html.replaceAll("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","https://unpkg.com/three@0.180.0/examples/jsm/");',
+      '    }',
+      '    document.open();',
+      '    document.write(html);',
+      '    document.close();'
+    ].join("\n");
+
+    const v616Hardened=v616Raw.replace(writeAnchor,cdnFallback);
+    const v616BlobURL=URL.createObjectURL(new Blob([v616Hardened],{type:"text/html"}));
+
+    let source=sourceRaw.replace(V616_ORIGINAL,v616BlobURL);
+    if(source===sourceRaw)throw new Error("v6.17 v6.16 source replacement failed");
 
     const match=source.match(/const groundPatches=(\[[\s\S]*?\]);\n  try\{/);
     if(!match)throw new Error("Ground patch manifest missing");
@@ -80,11 +145,11 @@ const dirtPaintMaterial=new THREE.MeshStandardMaterial({`);
 
     patches[0]=[
       "Liora — Home Island Builder v6.16 Night Lamps",
-      "Liora — Home Island Builder v6.21 Flat Terrain"
+      "Liora — Home Island Builder v6.21.1 Stable Hardened"
     ];
     patches[1]=[
       "Builder v6.16 • automatic night lamps • Persistent models • MapSafe",
-      "Builder v6.21 • Flat Terrain • Dirt + Edge • MapSafe"
+      "Builder v6.21.1 • Startup Safe • CDN Fallback • MapSafe"
     ];
 
     const patchedSource=source.replace(
@@ -96,9 +161,7 @@ const dirtPaintMaterial=new THREE.MeshStandardMaterial({`);
     document.write(patchedSource);
     document.close();
   }catch(err){
-    console.error(err);
-    document.querySelector("#boot").innerHTML=
-      `<div>โหลด Builder ไม่สำเร็จ<br><small>${String(err.message||err)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`;
+    showFatal(err?.message||err);
   }
 })();
 </script>
