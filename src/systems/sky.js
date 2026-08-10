@@ -4,8 +4,6 @@ export function createSky(config) {
   const group = new THREE.Group();
   group.name = "SkySystem";
 
-  // Full 360° sky sphere. The gradient is based on the sphere's LOCAL
-  // direction, so orbiting or moving the camera never shifts the horizon.
   const skyGeometry = new THREE.SphereGeometry(config.radius, 40, 24);
   const skyMaterial = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -33,7 +31,6 @@ export function createSky(config) {
       void main() {
         float y = clamp(vSkyDirection.y, -1.0, 1.0);
         vec3 color;
-
         if (y >= 0.0) {
           float t = smoothstep(0.0, 0.88, y);
           color = mix(horizonColor, zenithColor, t);
@@ -41,7 +38,6 @@ export function createSky(config) {
           float t = smoothstep(0.0, 0.95, -y);
           color = mix(horizonColor, lowerColor, t);
         }
-
         gl_FragColor = vec4(color, 1.0);
       }
     `,
@@ -52,7 +48,33 @@ export function createSky(config) {
   dome.renderOrder = -1000;
   group.add(dome);
 
-  // Clouds wrap around all azimuths instead of existing only on one side.
+  // Lightweight star field. Visibility is faded by the day/night system.
+  const starCount = config.starCount ?? 220;
+  const starPositions = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i += 1) {
+    const theta = Math.random() * Math.PI * 2;
+    const y = Math.random() * 0.92 + 0.08;
+    const r = Math.sqrt(1 - y * y) * (config.radius - 2);
+    starPositions[i * 3] = Math.cos(theta) * r;
+    starPositions[i * 3 + 1] = y * (config.radius - 2);
+    starPositions[i * 3 + 2] = Math.sin(theta) * r;
+  }
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+  const starMaterial = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: config.starSize ?? 0.32,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  });
+  const stars = new THREE.Points(starGeometry, starMaterial);
+  stars.renderOrder = -900;
+  group.add(stars);
+
   const cloudMaterial = new THREE.MeshBasicMaterial({
     color: config.cloudColor,
     transparent: true,
@@ -93,7 +115,6 @@ export function createSky(config) {
         );
         cloud.add(puff);
       }
-
       group.add(cloud);
     }
   }
@@ -101,8 +122,17 @@ export function createSky(config) {
   return {
     group,
     update(camera) {
-      // Keep the full sky sphere centered on the camera: no edge can ever be reached.
       dome.position.copy(camera.position);
+      stars.position.copy(camera.position);
+    },
+    setColors(zenith, horizon, lower) {
+      skyMaterial.uniforms.zenithColor.value.copy(zenith);
+      skyMaterial.uniforms.horizonColor.value.copy(horizon);
+      skyMaterial.uniforms.lowerColor.value.copy(lower);
+    },
+    setStars(amount) {
+      starMaterial.opacity = THREE.MathUtils.clamp(amount, 0, 1) * (config.starOpacity ?? 0.9);
+      stars.visible = starMaterial.opacity > 0.01;
     },
   };
 }
