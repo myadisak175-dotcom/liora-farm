@@ -101,6 +101,28 @@ export const CONFIG = Object.freeze({
     gravity: 0.55,
     renderOrder: 6,
   },
+  pond: {
+    position: { x: -8.5, z: 7.2 },
+    y: 0.018,
+    outline: [
+      [-2.6, -0.4], [-2.0, -1.7], [-0.7, -2.3], [0.8, -2.1],
+      [2.3, -1.3], [2.7, 0.1], [2.1, 1.5], [0.8, 2.2],
+      [-0.7, 2.0], [-2.1, 1.2]
+    ],
+    shallowColor: 0x7fd7df,
+    deepColor: 0x2b8fa8,
+    highlightColor: 0xdffcff,
+    opacity: 0.9,
+    bankColor: 0x7c684d,
+    stoneColor: 0x8f927f,
+    renderOrder: 2,
+    stones: [
+      { x: -2.15, z: -1.2, sx: 1.2, sy: 0.6, sz: 0.9, rx: 0.2, ry: 0.4, rz: 0.1 },
+      { x: 2.2, z: -0.7, sx: 0.9, sy: 0.55, sz: 1.15, rx: 0.1, ry: 0.8, rz: 0.2 },
+      { x: 1.65, z: 1.5, sx: 1.0, sy: 0.5, sz: 0.8, rx: 0.3, ry: 0.2, rz: 0.1 },
+      { x: -1.3, z: 1.65, sx: 0.8, sy: 0.45, sz: 1.0, rx: 0.15, ry: 1.1, rz: 0.2 }
+    ],
+  },
 });
 
 export const ASSETS = Object.freeze({
