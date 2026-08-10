@@ -55,6 +55,17 @@ export const CONFIG = Object.freeze({
     bottomColor: 0x4f4338,
     skyColor: 0x9bd8f5,
   },
+  sky: {
+    radius: 85,
+    zenithColor: 0x68bdf0,
+    horizonColor: 0xdff4ff,
+    lowerColor: 0xb9dff2,
+    cloudColor: 0xffffff,
+    cloudOpacity: 0.72,
+    cloudCount: 10,
+    cloudRingRadius: 31,
+    cloudHeight: -7,
+  },
 });
 
 export const ASSETS = Object.freeze({
