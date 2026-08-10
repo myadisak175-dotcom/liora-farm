@@ -1,52 +1,28 @@
-<!doctype html>
-<html lang="th">
-<head>
-<meta charset="utf-8">
+<!doctype html><html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Liora — loading v6.17…</title>
-<style>
-html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}
-#boot{position:fixed;inset:0;display:grid;place-items:center;color:white;font-weight:800;text-shadow:0 2px 5px #234}
-#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}
-</style>
-</head>
-<body>
-<div id="boot"><div>กำลังโหลด Liora v6.17…</div></div>
-<script>
+<title>Liora — loading v6.18…</title>
+<style>html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}#boot{position:fixed;inset:0;display:grid;place-items:center;color:white;font-weight:800;text-shadow:0 2px 5px #234}#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}</style>
+</head><body><div id="boot"><div>กำลังโหลด Liora v6.18…</div></div><script>
 (async()=>{
-  const V616_SOURCE="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b0e136b8eb1ed9147ac2dd97928457f2c0f312f1/builder/index.html";
-  const groundPatches=[["Liora — Home Island Builder v6.16 Night Lamps","Liora — Home Island Builder v6.17 Ground Paint"],["Builder v6.16 • automatic night lamps • Persistent models • MapSafe","Builder v6.17 • Dirt Paint • Night Lamps • MapSafe"],["// ---------------- Home Island Builder v2 ----------------","\n// ---------------- Ground Paint v1 ----------------\nconst GROUND_PAINT_SAVE_KEY=\"liora-home-island-ground-v1\";\nconst GROUND_TILE_SIZE=.8;\nconst groundPaintState={\n  mode:\"off\",\n  brushSize:1,\n  tiles:new Map(),\n  pointerId:null,\n  lastKey:null,\n  saveTimer:null\n};\n\nfunction makeDirtTexture(){\n  const canvas=document.createElement(\"canvas\");\n  canvas.width=128;canvas.height=128;\n  const ctx=canvas.getContext(\"2d\");\n  ctx.fillStyle=\"#95653f\";\n  ctx.fillRect(0,0,128,128);\n  let seed=9137;\n  const rand=()=>{\n    seed=(seed*1664525+1013904223)>>>0;\n    return seed/4294967296;\n  };\n  for(let i=0;i<520;i++){\n    const x=rand()*128,y=rand()*128,r=.35+rand()*1.7;\n    const light=rand()>.52;\n    ctx.fillStyle=light?\"rgba(222,176,119,.18)\":\"rgba(74,45,29,.16)\";\n    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();\n  }\n  const texture=new THREE.CanvasTexture(canvas);\n  texture.colorSpace=THREE.SRGBColorSpace;\n  texture.wrapS=texture.wrapT=THREE.RepeatWrapping;\n  texture.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());\n  return texture;\n}\n\nconst dirtPaintMaterial=new THREE.MeshStandardMaterial({\n  map:makeDirtTexture(),\n  color:0xffffff,\n  roughness:1,\n  metalness:0,\n  polygonOffset:true,\n  polygonOffsetFactor:-1,\n  polygonOffsetUnits:-1\n});\n\nfunction groundTileKey(ix,iz){return ix+\",\"+iz;}\n\nfunction createGroundPaintTile(ix,iz,type=\"dirt\"){\n  const key=groundTileKey(ix,iz);\n  if(groundPaintState.tiles.has(key))return groundPaintState.tiles.get(key);\n\n  const s=GROUND_TILE_SIZE,h=s*.5;\n  const cx=ix*s,cz=iz*s;\n  const lift=.026;\n  const y0=getTerrainHeight(cx-h,cz-h)+lift;\n  const y1=getTerrainHeight(cx+h,cz-h)+lift;\n  const y2=getTerrainHeight(cx-h,cz+h)+lift;\n  const y3=getTerrainHeight(cx+h,cz+h)+lift;\n\n  const geometry=new THREE.BufferGeometry();\n  geometry.setAttribute(\"position\",new THREE.BufferAttribute(new Float32Array([\n    cx-h,y0,cz-h,\n    cx+h,y1,cz-h,\n    cx-h,y2,cz+h,\n    cx+h,y3,cz+h\n  ]),3));\n  geometry.setAttribute(\"uv\",new THREE.BufferAttribute(new Float32Array([\n    0,0,1,0,0,1,1,1\n  ]),2));\n  geometry.setIndex([0,2,1,2,3,1]);\n  geometry.computeVertexNormals();\n\n  const mesh=new THREE.Mesh(geometry,dirtPaintMaterial);\n  mesh.userData.groundPaint=true;\n  mesh.userData.groundType=type;\n  mesh.userData.ix=ix;mesh.userData.iz=iz;\n  mesh.receiveShadow=true;\n  mesh.renderOrder=2;\n  scene.add(mesh);\n  groundPaintState.tiles.set(key,mesh);\n  return mesh;\n}\n\nfunction removeGroundPaintTile(ix,iz){\n  const key=groundTileKey(ix,iz);\n  const mesh=groundPaintState.tiles.get(key);\n  if(!mesh)return false;\n  scene.remove(mesh);\n  mesh.geometry?.dispose?.();\n  groundPaintState.tiles.delete(key);\n  return true;\n}\n\nfunction serializeGroundPaint(){\n  return [...groundPaintState.tiles.values()].map(mesh=>({\n    type:mesh.userData.groundType||\"dirt\",\n    ix:mesh.userData.ix,\n    iz:mesh.userData.iz\n  }));\n}\n\nfunction saveGroundPaint(){\n  localStorage.setItem(GROUND_PAINT_SAVE_KEY,JSON.stringify(serializeGroundPaint()));\n}\n\nfunction scheduleGroundPaintSave(){\n  clearTimeout(groundPaintState.saveTimer);\n  groundPaintState.saveTimer=setTimeout(saveGroundPaint,120);\n}\n\nfunction loadGroundPaint(){\n  const raw=localStorage.getItem(GROUND_PAINT_SAVE_KEY);\n  if(!raw)return;\n  try{\n    const arr=JSON.parse(raw);\n    if(!Array.isArray(arr))return;\n    for(const item of arr){\n      if(Number.isFinite(item?.ix)&&Number.isFinite(item?.iz)){\n        createGroundPaintTile(item.ix,item.iz,item.type||\"dirt\");\n      }\n    }\n  }catch(err){console.warn(\"Ground paint load failed\",err);}\n}\n\nfunction paintGroundAt(x,z){\n  const centerX=Math.round(x/GROUND_TILE_SIZE);\n  const centerZ=Math.round(z/GROUND_TILE_SIZE);\n  const radius=Math.max(0,groundPaintState.brushSize-1);\n\n  for(let dx=-radius;dx<=radius;dx++){\n    for(let dz=-radius;dz<=radius;dz++){\n      const ix=centerX+dx,iz=centerZ+dz;\n      if(groundPaintState.mode===\"erase\")removeGroundPaintTile(ix,iz);\n      else if(groundPaintState.mode===\"dirt\")createGroundPaintTile(ix,iz,\"dirt\");\n    }\n  }\n  scheduleGroundPaintSave();\n}\n\nfunction updateGroundPaintUI(){\n  const dirt=document.querySelector(\"#ground-dirt-btn\");\n  const erase=document.querySelector(\"#ground-erase-btn\");\n  const brush=document.querySelector(\"#ground-brush\");\n  dirt?.classList.toggle(\"active\",groundPaintState.mode===\"dirt\");\n  erase?.classList.toggle(\"active\",groundPaintState.mode===\"erase\");\n  if(brush)brush.textContent=\"Brush \"+groundPaintState.brushSize+\"x\";\n}\n\nfunction setGroundPaintMode(mode){\n  if(builderState.ghost)cancelGhost();\n  clearBuilderSelection();\n  builderState.deleteMode=false;\n  groundPaintState.mode=groundPaintState.mode===mode?\"off\":mode;\n  groundPaintState.pointerId=null;\n  groundPaintState.lastKey=null;\n  updateGroundPaintUI();\n  setBuilderContext(\"idle\");\n  setBuilderMessage(\n    groundPaintState.mode===\"dirt\"\n      ?\"Dirt Paint • ลากนิ้วบนพื้นเพื่อระบาย\"\n      :groundPaintState.mode===\"erase\"\n      ?\"Erase Ground • ลากนิ้วเพื่อลบพื้นดิน\"\n      :\"Ground Paint ปิดแล้ว\"\n  );\n}\n\nrenderer.domElement.addEventListener(\"pointerdown\",event=>{\n  if(!builderState.enabled||groundPaintState.mode===\"off\"||builderState.ghost)return;\n  groundPaintState.pointerId=event.pointerId;\n  const hit=screenToTerrain(event);\n  if(hit){\n    paintGroundAt(hit.x,hit.z);\n    groundPaintState.lastKey=Math.round(hit.x/GROUND_TILE_SIZE)+\",\"+Math.round(hit.z/GROUND_TILE_SIZE);\n  }\n  event.preventDefault();\n  event.stopImmediatePropagation();\n},true);\n\nrenderer.domElement.addEventListener(\"pointermove\",event=>{\n  if(!builderState.enabled||groundPaintState.mode===\"off\"||builderState.ghost)return;\n  if(groundPaintState.pointerId!==event.pointerId)return;\n  const hit=screenToTerrain(event);\n  if(!hit)return;\n  const key=Math.round(hit.x/GROUND_TILE_SIZE)+\",\"+Math.round(hit.z/GROUND_TILE_SIZE);\n  if(key!==groundPaintState.lastKey){\n    paintGroundAt(hit.x,hit.z);\n    groundPaintState.lastKey=key;\n  }\n  event.preventDefault();\n  event.stopImmediatePropagation();\n},true);\n\nrenderer.domElement.addEventListener(\"pointerup\",event=>{\n  if(groundPaintState.pointerId===event.pointerId){\n    groundPaintState.pointerId=null;\n    groundPaintState.lastKey=null;\n    scheduleGroundPaintSave();\n  }\n},true);\n\nqueueMicrotask(()=>{\n  document.querySelector(\"#ground-dirt-btn\")?.addEventListener(\"click\",()=>setGroundPaintMode(\"dirt\"));\n  document.querySelector(\"#ground-erase-btn\")?.addEventListener(\"click\",()=>setGroundPaintMode(\"erase\"));\n  document.querySelector(\"#ground-brush\")?.addEventListener(\"click\",()=>{\n    groundPaintState.brushSize=groundPaintState.brushSize%3+1;\n    updateGroundPaintUI();\n  });\n  updateGroundPaintUI();\n});\n\n// ---------------- Home Island Builder v2 ----------------"],["const rayHit=new THREE.Vector3();","const rayHit=new THREE.Vector3();\nloadGroundPaint();"],["      <button class=\"asset-card\" data-build-asset=\"path_tile\"><span class=\"thumb\">🧱</span><span>Path</span></button>","      <button class=\"asset-card\" data-build-asset=\"path_tile\"><span class=\"thumb\">🧱</span><span>Path</span></button>\n      <button class=\"asset-card\" id=\"ground-dirt-btn\"><span class=\"thumb\">🟫</span><span>Dirt</span></button>\n      <button class=\"asset-card\" id=\"ground-erase-btn\"><span class=\"thumb\">🧹</span><span>Erase</span></button>"],["      <button class=\"builder-btn\" id=\"builder-undo\">↶ Undo</button>","      <button class=\"builder-btn\" id=\"ground-brush\">Brush 1x</button>\n      <button class=\"builder-btn\" id=\"builder-undo\">↶ Undo</button>"],["function createGhost(assetId){","function createGhost(assetId){\n  groundPaintState.mode=\"off\";\n  updateGroundPaintUI();"]];
-  try{
-    let loaderSource=await fetch(V616_SOURCE,{cache:"no-store"}).then(r=>{
-      if(!r.ok)throw new Error(`v6.16 manifest HTTP ${r.status}`);
-      return r.text();
-    });
-
-    const marker='    document.open();\n    document.write(html);';
-    if(!loaderSource.includes(marker))throw new Error("v6.16 injection anchor missing");
-
-    const injected=[
-      '    const groundPatches='+JSON.stringify(groundPatches)+';',
-      '    for(let i=0;i<groundPatches.length;i++){',
-      '      const [oldText,newText]=groundPatches[i];',
-      '      if(!html.includes(oldText))throw new Error(`v6.17 patch ${i+1} anchor missing`);',
-      '      html=html.replace(oldText,newText);',
-      '    }',
-      '    if(!html.includes("GROUND_PAINT_SAVE_KEY"))throw new Error("Ground Paint code missing");',
-      '    if(!html.includes("liora-home-island-layout-v3-clean"))throw new Error("Object save key missing");',
-      '    document.open();',
-      '    document.write(html);'
-    ].join("\n");
-
-    loaderSource=loaderSource.replace(marker,injected);
-    document.open();
-    document.write(loaderSource);
-    document.close();
-  }catch(err){
-    console.error(err);
-    document.querySelector("#boot").innerHTML=`<div>โหลด Builder ไม่สำเร็จ<br><small>${String(err.message||err)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`;
-  }
+ const V617="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/b5db07b19ece045e3d65c56fa5adb1710a9139ab/builder/index.html";
+ const TEX="https://raw.githubusercontent.com/myadisak175-dotcom/liora-farm/main/builder/assets/textures/dirt_brush.b64";
+ try{
+  let [s,b64]=await Promise.all([
+   fetch(V617,{cache:"no-store"}).then(r=>{if(!r.ok)throw Error("v6.17 "+r.status);return r.text()}),
+   fetch(TEX,{cache:"no-store"}).then(r=>{if(!r.ok)throw Error("dirt texture "+r.status);return r.text()})
+  ]);
+  s=s.replaceAll("loading v6.17","loading v6.18")
+     .replaceAll("กำลังโหลด Liora v6.17","กำลังโหลด Liora v6.18")
+     .replaceAll("Liora — Home Island Builder v6.17 Ground Paint","Liora — Home Island Builder v6.18 Textured Dirt Paint")
+     .replaceAll("Builder v6.17 • Dirt Paint • Night Lamps • MapSafe","Builder v6.18 • Textured Dirt • Soft Edge • MapSafe");
+  const a=s.indexOf("function makeDirtTexture(){\\n"),b=s.indexOf("const dirtPaintMaterial=",a);
+  if(a<0||b<0)throw Error("dirt anchors");
+  const f=`function makeDirtTexture(){\\n  const texture=new THREE.TextureLoader().load(\\\"data:image/webp;base64,${b64.trim()}\\\");\\n  texture.colorSpace=THREE.SRGBColorSpace;\\n  texture.wrapS=texture.wrapT=THREE.RepeatWrapping;\\n  texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());\\n  return texture;\\n}\\n\\nfunction makeGroundSoftMask(){\\n  const c=document.createElement(\\\"canvas\\\");c.width=c.height=64;\\n  const x=c.getContext(\\\"2d\\\"),g=x.createRadialGradient(32,32,20,32,32,32);\\n  g.addColorStop(0,\\\"#fff\\\");g.addColorStop(.76,\\\"#fff\\\");g.addColorStop(1,\\\"rgba(255,255,255,0)\\\");\\n  x.fillStyle=g;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);\\n}\\n\\n`;
+  s=s.slice(0,a)+f+s.slice(b);
+  s=s.replace("  map:makeDirtTexture(),\\n  color:0xffffff,","  map:makeDirtTexture(),\\n  alphaMap:makeGroundSoftMask(),\\n  transparent:true,\\n  alphaTest:.02,\\n  color:0xffffff,");
+  s=s.replace("  const s=GROUND_TILE_SIZE,h=s*.5;\\n","  const s=GROUND_TILE_SIZE*1.16,h=s*.5;\\n");
+  s=s.replace("    0,0,1,0,0,1,1,1\\n  ]),2));","    ix*.83,iz*.83,(ix+1)*.83,iz*.83,ix*.83,(iz+1)*.83,(ix+1)*.83,(iz+1)*.83\\n  ]),2));");
+  document.open();document.write(s);document.close();
+ }catch(e){console.error(e);document.querySelector("#boot").innerHTML=`<div>โหลดไม่สำเร็จ<br><small>${String(e.message||e)}</small><br><button onclick="location.reload()">ลองใหม่</button></div>`}
 })();
-</script>
-</body>
-</html>
+</script></body></html>
