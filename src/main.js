@@ -45,6 +45,9 @@ const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
 
 const textureLoader = new THREE.TextureLoader();
 
+// Home Island starts as a clean grass-only canvas.
+// Keep the dirt-path asset in ASSETS for later layout work after the house,
+// farm and utility areas have fixed positions.
 const grass = await textureLoader.loadAsync(ASSETS.grass);
 grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
 grass.repeat.set(CONFIG.grassRepeat, CONFIG.grassRepeat);
@@ -60,32 +63,6 @@ ground.receiveShadow = true;
 ground.renderOrder = CONFIG.depth.groundOrder;
 scene.add(ground);
 
-const pathTexture = await textureLoader.loadAsync(ASSETS.dirtPath);
-pathTexture.colorSpace = THREE.SRGBColorSpace;
-
-const pathMaterial = new THREE.MeshStandardMaterial({
-  map: pathTexture,
-  roughness: 1,
-  metalness: 0,
-  transparent: false,
-  alphaTest: CONFIG.depth.pathAlphaTest,
-  depthTest: true,
-  depthWrite: true,
-  polygonOffset: true,
-  polygonOffsetFactor: -1,
-  polygonOffsetUnits: -1,
-});
-
-const path = new THREE.Mesh(
-  new THREE.PlaneGeometry(CONFIG.pathSize, CONFIG.pathSize),
-  pathMaterial
-);
-path.rotation.x = -Math.PI / 2;
-path.position.y = CONFIG.depth.pathY + 0.01;
-path.renderOrder = CONFIG.depth.pathOrder;
-path.receiveShadow = true;
-scene.add(path);
-
 const status = document.querySelector("#status");
 let player;
 
@@ -97,7 +74,7 @@ try {
     animations: ANIMATIONS,
   });
   scene.add(player.root);
-  status.textContent = "Liora ready • 7 animations ✓";
+  status.textContent = "Liora ready • Home Island grass base ✓";
 } catch (error) {
   console.error(error);
   status.textContent = "Player load failed";
