@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { SPLAT_LAYERS } from "./splat-texture.js";
 
 const LAYER_BUTTONS = [
+  { label: "หญ้า", layer: SPLAT_LAYERS.GRASS },
   { label: "ดิน", layer: SPLAT_LAYERS.DIRT },
   { label: "ทราย", layer: SPLAT_LAYERS.SAND },
   { label: "หิน", layer: SPLAT_LAYERS.ROCK },
