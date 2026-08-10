@@ -161,11 +161,13 @@ export const ASSETS = Object.freeze({
 });
 
 export const ANIMATIONS = Object.freeze({
-  idle: "Idle_9",
+  idle: "Idle",
   walk: "Walking",
   run: "Running",
-  pickUp: "Male_Bend_Over_Pick_Up",
-  pullRadish: "Pull_Radish",
-  hammer: "Heavy_Hammer_Swing",
-  mirror: "Mirror_Viewing",
+  pickUp: "PickUp",
+  pullRadish: "PullRadish",
+  mirror: "MirrorViewing",
+  sitToStand: "SitToStand",
+  walkToSit: "WalkToSit",
+  vault: "Vault",
 });
