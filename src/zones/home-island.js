@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
+import { createTerrain } from "../systems/terrain.js";
 import { createFarmPlot } from "../systems/farming/plot.js";
 
 export async function createHomeIsland({ scene, textureLoader, config, assets }) {
@@ -14,32 +15,32 @@ export async function createHomeIsland({ scene, textureLoader, config, assets })
   grass.repeat.set(config.grassRepeat, config.grassRepeat);
   grass.colorSpace = THREE.SRGBColorSpace;
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(config.worldSize, config.worldSize),
-    new THREE.MeshStandardMaterial({ map: grass, roughness: 1 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = 0.01;
-  ground.receiveShadow = true;
-  ground.renderOrder = config.depth.groundOrder;
-  group.add(ground);
+  const terrain = createTerrain({
+    texture: grass,
+    config: config.terrain,
+  });
+  group.add(terrain.mesh);
 
-  // First farming landmark: a compact 3x3 plot on the left/front side.
-  // The house, paths and utility props can be composed around this later.
+  // Keep the first 3x3 farm plot on a deliberately flattened gameplay pad.
   const farmPlot = createFarmPlot(config.farmPlot);
+  farmPlot.group.position.y += terrain.getHeight(
+    config.farmPlot.position.x,
+    config.farmPlot.position.z
+  );
   group.add(farmPlot.group);
 
   scene.add(group);
 
   return {
     group,
-    ground,
+    ground: terrain.mesh,
+    terrain,
     farmPlot,
+    getGroundHeight: terrain.getHeight,
     dispose() {
       farmPlot.dispose();
+      terrain.dispose();
       grass.dispose();
-      ground.geometry.dispose();
-      ground.material.dispose();
       scene.remove(group);
     },
   };
