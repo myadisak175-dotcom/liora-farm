@@ -46,6 +46,14 @@ export const CONFIG = Object.freeze({
     normalBias: 0.035,
     radius: 2,
   },
+  contactShadow: {
+    width: 0.9,
+    depth: 0.58,
+    y: 0.022,
+    opacity: 0.24,
+    nightOpacity: 0.34,
+    renderOrder: 5,
+  },
   island: {
     size: 42,
     cliffDepth: 5.5,
