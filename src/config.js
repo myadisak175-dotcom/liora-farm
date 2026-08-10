@@ -65,6 +65,13 @@ export const CONFIG = Object.freeze({
     cloudCount: 10,
     cloudRingRadius: 31,
     cloudHeight: -7,
+    starCount: 220,
+    starSize: 0.32,
+    starOpacity: 0.9,
+  },
+  dayNight: {
+    startHour: 8,
+    realSecondsPerDay: 1440,
   },
   runFx: {
     maxParticles: 24,
