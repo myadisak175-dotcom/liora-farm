@@ -2,7 +2,7 @@
 
 The Builder is a first-class game tool. Keep it isolated from normal gameplay so the game can grow without turning `main.js` into a monolith.
 
-## Accepted UX baseline — Builder v6.12 Safe Edit
+## Accepted UX baseline — Builder v6.12 Safe Edit (Optimized Mobile Test Approved)
 
 This is the current approved interaction model and test baseline.
 
@@ -28,9 +28,21 @@ This is the current approved interaction model and test baseline.
 - Object creation must remain functional for Tree, Palm, Pine, House, House 2, Grass, Crate, Barrel and Path.
 - Legacy fixed collision helpers/walls from old house, farm, pond or mountain prototypes must stay disabled and must not affect the clean island.
 
-Builder v6.12 Safe Edit is the current standalone test reference. Do not regress its create/edit/cancel/delete/save/map-backup behavior when migrating assets to production modules.
+Builder v6.12 Safe Edit remains the behavior MASTER. The texture-optimized v6.12 mobile test has been visually approved and may be used as the preferred direct-phone test build, but optimization must not change Builder behavior, map data, transforms, animations, meshes or save semantics.
 
 Collision behavior for newly placed Builder objects is intentionally not part of the locked Builder UX yet. It can be designed independently later without changing this interaction model.
+
+## Mobile optimization workflow
+
+The standalone phone test may embed GLBs so it can open directly from `file://`. To keep that build practical on mobile, texture-only compression is approved as a build step.
+
+- Preserve the unoptimized v6.12 Safe Edit source as the behavior MASTER.
+- Generate optimized test builds from a copy; never destructively replace the MASTER.
+- Optimization may resize/re-encode embedded texture images only.
+- Do not alter mesh topology, polygon counts, skeletons, animations, object IDs, Builder logic, map data or transforms during this step.
+- Keep important hero assets such as Liora and primary houses at higher texture limits than minor props when needed.
+- Always visually verify Liora, House/House 2, Path, Barrel, Crate, Grass and major vegetation before promoting an optimized build.
+- Production should ultimately use external catalog assets plus lazy loading/cache; embedded optimized HTML is a mobile testing/development convenience, not the long-term production packaging format.
 
 ## Asset plug-in workflow
 
@@ -70,6 +82,7 @@ The current standalone test may embed models so it can be opened directly from a
 12. Asset thumbnails are optional; the icon fallback must keep the catalog usable before art thumbnails are ready.
 13. `maps/home-island.json` is canonical map data and must remain independent from Builder code/version changes.
 14. Cancel Edit must restore the exact pre-edit transform and must not delete or recreate the object.
+15. Mobile texture optimization is a derived build step only; the unoptimized v6.12 Safe Edit remains the behavioral source of truth until production modules fully replace the standalone workflow.
 
 ## Production layout
 
