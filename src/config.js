@@ -46,6 +46,15 @@ export const CONFIG = Object.freeze({
     normalBias: 0.035,
     radius: 2,
   },
+  island: {
+    size: 42,
+    cliffDepth: 5.5,
+    bottomInset: 5.5,
+    bottomThickness: 1.8,
+    cliffColor: 0x6f5a47,
+    bottomColor: 0x4f4338,
+    skyColor: 0x9bd8f5,
+  },
 });
 
 export const ASSETS = Object.freeze({
