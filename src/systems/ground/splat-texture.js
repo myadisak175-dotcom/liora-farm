@@ -43,14 +43,26 @@ export function createSplatPainter({
     return (z + half) * pixelsPerUnit;
   }
 
-  // Softer falloff: solid center, long feathered transition, gentle outer edge.
-  // This keeps painted terrain from looking like circular stickers on mobile.
+  function parseRgb(rgb) {
+    return rgb.split(",").map(Number);
+  }
+
+  function mixRgb(a, b, amount) {
+    const ca = parseRgb(a);
+    const cb = parseRgb(b);
+    const mixed = ca.map((value, index) => Math.round(value + (cb[index] - value) * amount));
+    return mixed.join(",");
+  }
+
+  // Softer falloff: a smaller solid center and a long feathered transition.
+  // Uses plain rgb() stops for reliable Android/iOS Canvas support.
   function radialGradient(cx, cy, r, innerRgb, outerRgb) {
     const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, r);
     gradient.addColorStop(0, `rgb(${innerRgb})`);
-    gradient.addColorStop(0.38, `rgb(${innerRgb})`);
-    gradient.addColorStop(0.68, `color-mix(in srgb, rgb(${innerRgb}) 68%, rgb(${outerRgb}))`);
-    gradient.addColorStop(0.86, `color-mix(in srgb, rgb(${innerRgb}) 28%, rgb(${outerRgb}))`);
+    gradient.addColorStop(0.34, `rgb(${innerRgb})`);
+    gradient.addColorStop(0.62, `rgb(${mixRgb(innerRgb, outerRgb, 0.35)})`);
+    gradient.addColorStop(0.82, `rgb(${mixRgb(innerRgb, outerRgb, 0.72)})`);
+    gradient.addColorStop(0.94, `rgb(${mixRgb(innerRgb, outerRgb, 0.92)})`);
     gradient.addColorStop(1, `rgb(${outerRgb})`);
     return gradient;
   }
