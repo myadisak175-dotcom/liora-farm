@@ -1,14 +1,13 @@
 # Builder Model Assets
 
-Production Builder GLB files belong in this folder.
+Production Builder GLB files live in this folder.
 
-Expected promoted assets:
+Current promoted assets include Tree, Palm, Pine, House variants, Grass, Bench, Crates, Barrel, Path Lamp, Fence, Path Tile and Wood Bridge.
 
-- `tree.glb` — Tree
-- `palm.glb` — Palm
-- `pine.glb` — Pine
-- `house.glb` — House
+## Rules
 
-The current standalone prototypes embed these models directly. The models have been extracted into a migration pack and should be promoted here as binary GLB files before changing the catalog `modelPath` values from `null`.
-
-Do not point `asset-catalog.js` at a model path until the corresponding GLB exists in this folder. This keeps the production Builder from breaking during migration.
+- Add new production Meshy/environment GLBs here.
+- Register them in `assets/catalog.json` with a stable `id` and `modelPath`.
+- Keep gameplay code independent from individual file names; systems should consume catalog IDs/metadata.
+- Test scale and texture resolution on mobile before treating a new asset as baseline.
+- Do not add new production models under `builder/assets/`; that tree remains only for legacy standalone-test compatibility.
