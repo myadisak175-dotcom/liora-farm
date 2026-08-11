@@ -1,6 +1,11 @@
 import * as THREE from "three";
 
-export function createMovementSystem(camera, config, getGroundHeight = () => 0) {
+export function createMovementSystem(
+  camera,
+  config,
+  getGroundHeight = () => 0,
+  canMoveTo = () => true
+) {
   const cameraForward = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
   const moveDirection = new THREE.Vector3();
@@ -64,12 +69,29 @@ export function createMovementSystem(camera, config, getGroundHeight = () => 0) 
       const speed = running ? config.runSpeed : config.walkSpeed;
       const direction = getCameraRelativeDirection(input);
 
-      player.root.position.addScaledVector(direction, speed * delta);
+      const distance = speed * delta;
+      const startX = player.root.position.x;
+      const startZ = player.root.position.z;
+      const proposedX = startX + direction.x * distance;
+      const proposedZ = startZ + direction.z * distance;
+
+      if (canMoveTo(proposedX, proposedZ)) {
+        player.root.position.x = proposedX;
+        player.root.position.z = proposedZ;
+      } else if (canMoveTo(proposedX, startZ)) {
+        player.root.position.x = proposedX;
+      } else if (canMoveTo(startX, proposedZ)) {
+        player.root.position.z = proposedZ;
+      }
       rotateToward(player.root, direction, delta);
       clampToWorld(player.root);
       snapToTerrain(player.root);
 
-      return { moving: true, running, direction };
+      const moved = Math.hypot(
+        player.root.position.x - startX,
+        player.root.position.z - startZ
+      ) > 0.0001;
+      return { moving: moved, running: moved && running, direction };
     },
   };
 }

@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <title>Liora's Farm — Best of</title>
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}
+  </script>
+  <style>
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#dff4ff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+    canvas{display:block;width:100%;height:100%;touch-action:none}
+    #stage{position:fixed;inset:0}
+    #error{position:fixed;inset:20px;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;border-radius:18px;background:#241b18ed;color:#ffe8d0;font:600 14px/1.5 system-ui;white-space:pre-wrap;text-align:center}
+    #status{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 10px);transform:translateX(-50%);z-index:40;padding:8px 12px;border-radius:999px;background:#173c4bcc;color:#fff;font:700 10px system-ui;white-space:nowrap;pointer-events:none}
+    #mode-toggle{position:fixed;right:14px;top:calc(env(safe-area-inset-top) + 12px);z-index:70;border:1px solid #ffffff99;background:#173c4be8;color:#fff;border-radius:999px;padding:11px 15px;font:800 12px system-ui;box-shadow:0 5px 18px #0003;backdrop-filter:blur(9px)}
+    #mode-toggle.editing{background:#e8a33d;color:#1b1206;border-color:#e8a33d}
+    #play-hint{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 48px);transform:translateX(-50%);z-index:40;padding:7px 11px;border-radius:999px;background:#173c4bb8;color:#fff;font:700 10px system-ui;white-space:nowrap;pointer-events:none}
+    #build-hint{display:none;position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 48px);transform:translateX(-50%);z-index:40;padding:7px 11px;border-radius:999px;background:#173c4bb8;color:#fff;font:700 10px system-ui;white-space:nowrap;pointer-events:none}
+    #joy{position:fixed;z-index:55;left:22px;bottom:calc(env(safe-area-inset-bottom) + 24px);width:112px;height:112px;border-radius:50%;background:#18352d66;border:2px solid #ffffff80;box-shadow:inset 0 0 0 18px #ffffff0d;touch-action:none}
+    #stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px;border-radius:50%;background:#f2efe4d9;border:2px solid #173c4b88;box-shadow:0 4px 12px #0003;pointer-events:none}
+    #zoom{position:fixed;right:18px;bottom:calc(env(safe-area-inset-bottom) + 28px);z-index:55;display:flex;flex-direction:column;gap:9px}
+    #zoom button{width:50px;height:50px;border-radius:50%;border:2px solid #ffffff88;background:#173c4bbb;color:#fff;font-size:24px;font-weight:800}
+    #actions{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 24px);z-index:55;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;width:min(56vw,260px)}
+    #actions button{border:1px solid #ffffff88;background:#173c4bbb;color:#fff;border-radius:12px;padding:8px 9px;font:700 10px system-ui}
+    body:not(.play-mode) #joy,body:not(.play-mode) #actions,body:not(.play-mode) #play-hint{display:none}
+    body.edit-mode #build-hint{display:block}
+    body.play-mode #ui,body.play-mode #ground-paint-ui{display:none!important}
+    @media (max-width:480px){#status{top:calc(env(safe-area-inset-top) + 62px);font-size:9px}#actions{width:58vw}}
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="error"></div>
+  <div id="status">กำลังรวมโลก Liora…</div>
+  <button id="mode-toggle" type="button">🛠️ สร้างเกาะ</button>
+  <div id="play-hint">ลากจอยเพื่อเดิน • ลากฉากเพื่อหมุน • 2 นิ้วเพื่อซูม</div>
+  <div id="build-hint">โหมดสร้าง: แตะเลือกของ แล้ววาง/ย้าย/หมุนได้</div>
+  <div id="joy"><div id="stick"></div></div>
+  <div id="actions">
+    <button data-action="pickUp" type="button">Pick Up</button>
+    <button data-action="pullRadish" type="button">Radish</button>
+    <button data-action="hammer" type="button">Hammer</button>
+    <button data-action="mirror" type="button">Mirror</button>
+  </div>
+  <div id="zoom">
+    <button id="camera-reset" aria-label="Reset camera" type="button">↻</button>
+    <button id="zin" type="button">＋</button>
+    <button id="zout" type="button">−</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { CONFIG, ASSETS, ANIMATIONS } from "../src/config.js";
+    import { createPlayer } from "../src/entities/player.js";
+    import { createHomeIsland } from "../src/zones/home-island.js";
+    import { createInput } from "../src/systems/input.js";
+    import { createMovementSystem } from "../src/systems/movement.js";
+    import { createCameraController } from "../src/systems/camera.js";
+    import { setupLighting } from "../src/systems/lighting.js";
+    import { createSky } from "../src/systems/sky.js";
+    import { createDayNight } from "../src/systems/day-night.js";
+    import { createRunFx } from "../src/systems/run-fx.js";
+    import { createContactShadow } from "../src/systems/contact-shadow.js";
+    import { createBuilderState } from "../src/editor/builder-state.js";
+    import { createBuilderController } from "../src/editor/builder-controller.js";
+    import { createLayoutStore } from "../src/editor/layout-store.js";
+    import { createBuilderAssetLoader } from "../src/editor/asset-loader.js";
+    import { loadCatalog } from "../src/editor/asset-catalog.js";
+    import { createBuilderView } from "../src/editor/builder-view.js";
+    import { createBuilderUI } from "../src/editor/builder-ui.js";
+    import { createGroundPaint } from "../src/editor/ground-paint.js";
+
+    const stage = document.querySelector("#stage");
+    const status = document.querySelector("#status");
+    const errorBox = document.querySelector("#error");
+    const modeToggle = document.querySelector("#mode-toggle");
+    const playHint = document.querySelector("#play-hint");
+    const buildHint = document.querySelector("#build-hint");
+    const BUILDER_ASSETS = {
+      ...ASSETS,
+      player: "../assets/models/player/liora_all_animations_web.glb",
+      ground: {
+        ...ASSETS.ground,
+        grass: "../assets/textures/grass.webp",
+        dirt: "../assets/textures/dirt.webp",
+        sand: "../assets/textures/sand.webp",
+        rock: "../assets/textures/rock.webp",
+      },
+    };
+
+    function showError(error) {
+      console.error("[best-of]", error);
+      errorBox.style.display = "flex";
+      errorBox.textContent = `Liora Best of โหลดไม่สำเร็จ\n${error?.message ?? error}`;
+    }
+
+    async function loadStarterDecor(controller, layoutStore) {
+      controller.load();
+      if (layoutStore.hasSaved()) return;
+
+      try {
+        const legacyRaw = localStorage.getItem("liora-home-island-layout");
+        const legacyPayload = legacyRaw ? JSON.parse(legacyRaw) : null;
+        if (Array.isArray(legacyPayload?.items)) {
+          const legacyScale = {
+            tree: 0.268, pine: 0.327, palm: 0.347, grass: 4.202,
+            house: 0.397, house2: 0.441, blue_cottage: 0.503,
+            bench: 1.625, crate: 3.129, crate_set: 0.624,
+            wine_barrel: 2.163, path_lamp: 0.889, wood_fence: 1.26,
+            wood_bridge: 0.819,
+          };
+          controller.items.splice(0, controller.items.length, ...legacyPayload.items.map((item) => ({
+            ...item,
+            scale: Number(item.scale ?? 1) * (legacyScale[item.assetId] ?? 1),
+          })));
+          controller.save();
+          return;
+        }
+      } catch (error) {
+        console.info("[best-of] legacy layout migration skipped", error.message);
+      }
+
+      try {
+        const response = await fetch("../maps/home-island.json", { cache: "no-store" });
+        if (!response.ok) throw new Error(`Map HTTP ${response.status}`);
+        const payload = await response.json();
+        const houseIds = new Set(["house", "house2", "blue_cottage"]);
+        const legacyScale = { tree: 0.268, pine: 0.327, palm: 0.347 };
+        const objects = (payload.objects ?? [])
+          .filter((item) => !houseIds.has(item.assetId))
+          .map((item) => ({
+            ...item,
+            scale: Number(item.scale ?? 1) * (legacyScale[item.assetId] ?? 1),
+          }));
+        controller.items.splice(0, controller.items.length, ...objects.map((item) => ({ ...item })));
+        controller.save();
+      } catch (error) {
+        console.info("[best-of] no starter decoration map", error.message);
+      }
+    }
+
+    async function boot() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(CONFIG.sky.horizonColor);
+      scene.fog = new THREE.Fog(CONFIG.sky.horizonColor, 30, 72);
+
+      const camera = new THREE.PerspectiveCamera(
+        CONFIG.camera.fov,
+        innerWidth / innerHeight,
+        CONFIG.camera.near,
+        CONFIG.camera.far
+      );
+      camera.position.set(11, 10, 13);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.03;
+      stage.appendChild(renderer.domElement);
+
+      const homeIsland = await createHomeIsland({
+        scene,
+        textureLoader: new THREE.TextureLoader(),
+        config: CONFIG,
+        assets: BUILDER_ASSETS,
+      });
+      const lighting = setupLighting(scene, renderer, CONFIG.shadows);
+      const sky = createSky(CONFIG.sky);
+      scene.add(sky.group);
+      const dayNight = createDayNight({ scene, sky, lighting, config: CONFIG.dayNight });
+
+      const orbit = new OrbitControls(camera, renderer.domElement);
+      orbit.enableDamping = true;
+      orbit.dampingFactor = 0.09;
+      orbit.enablePan = false;
+      orbit.minDistance = 6;
+      orbit.maxDistance = 42;
+      orbit.maxPolarAngle = THREE.MathUtils.degToRad(72);
+      orbit.target.set(0, 0, 0);
+      orbit.update();
+
+      const catalog = await loadCatalog({ url: "../assets/catalog.json", root: "../" });
+      const state = createBuilderState();
+      const layoutStore = createLayoutStore({ storageKey: "liora-home-island-layout-bestof-v1" });
+      const controller = createBuilderController({ state, catalog, layoutStore });
+      const assetLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
+      const view = createBuilderView({ scene, camera, renderer, orbit, assetLoader });
+      const ui = createBuilderUI({ mount: document.body, controller, view, catalog });
+      const groundPaint = createGroundPaint({
+        scene,
+        camera,
+        renderer,
+        orbit,
+        groundMesh: homeIsland.groundMesh,
+        worldSize: CONFIG.worldSize,
+        splatResolution: 512,
+        assetRoot: "../",
+        groundMapUrl: "../maps/home-island-ground.json",
+      });
+
+      controller.enable();
+      await loadStarterDecor(controller, layoutStore);
+      await view.syncItems(controller.items);
+
+      const input = createInput();
+      const movement = createMovementSystem(
+        camera,
+        CONFIG,
+        homeIsland.getGroundHeight,
+        homeIsland.isWalkable
+      );
+      const cameraController = createCameraController(camera, CONFIG.camera, renderer.domElement);
+      const runFx = createRunFx(scene, CONFIG.runFx);
+      const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
+      const cameraTarget = new THREE.Vector3();
+      const gameCameraOffset = CONFIG.camera.baseOffset.clone();
+      let player = null;
+      let loadingPlayer = false;
+      let playMode = false;
+      let downAt = null;
+
+      renderer.domElement.addEventListener("pointerdown", (event) => {
+        if (playMode || groundPaint.mode !== "off" || controller.isPlacing) return;
+        downAt = { x: event.clientX, y: event.clientY };
+      });
+
+      renderer.domElement.addEventListener("pointerup", (event) => {
+        if (playMode || groundPaint.mode !== "off" || controller.isPlacing || !downAt) return;
+        const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y);
+        downAt = null;
+        if (moved >= 10) return;
+        const id = view.pickAt(event.clientX, event.clientY);
+        if (id) {
+          controller.selectItem(id);
+          view.highlight(id);
+          ui.setSelection(id);
+        } else {
+          controller.clearSelection();
+          view.highlight(null);
+          ui.setSelection(null);
+        }
+      });
+
+      async function ensurePlayer() {
+        if (player || loadingPlayer) return player;
+        loadingPlayer = true;
+        try {
+          player = await createPlayer({
+            url: BUILDER_ASSETS.player,
+            height: CONFIG.playerHeight,
+            groundOffset: CONFIG.playerGroundOffset,
+            renderOrder: CONFIG.depth.playerOrder,
+            animations: ANIMATIONS,
+            spawn: { x: 0, y: 0, z: 4.5 },
+          });
+          player.root.visible = false;
+          scene.add(player.root);
+          return player;
+        } finally {
+          loadingPlayer = false;
+        }
+      }
+
+      function setModeLabel() {
+        modeToggle.textContent = playMode ? "🛠️ สร้างเกาะ" : "▶ เล่นเกม";
+        modeToggle.classList.toggle("editing", !playMode);
+        document.body.classList.toggle("play-mode", playMode);
+        document.body.classList.toggle("edit-mode", !playMode);
+        playHint.style.display = playMode ? "block" : "none";
+        buildHint.style.display = playMode ? "none" : "block";
+      }
+
+      async function enterPlay() {
+        const currentPlayer = await ensurePlayer();
+        if (!currentPlayer) return;
+        groundPaint.setMode("off");
+        orbit.enabled = false;
+        playMode = true;
+        currentPlayer.root.visible = true;
+        currentPlayer.root.position.y = homeIsland.getGroundHeight(currentPlayer.root.position.x, currentPlayer.root.position.z);
+        cameraTarget.set(currentPlayer.root.position.x, currentPlayer.root.position.y + 0.7, currentPlayer.root.position.z);
+        cameraController.reset();
+        camera.position.copy(cameraTarget).add(gameCameraOffset);
+        camera.lookAt(cameraTarget);
+        status.textContent = "Liora ready • Best of world";
+        setModeLabel();
+      }
+
+      function enterBuild() {
+        playMode = false;
+        if (player) player.root.visible = false;
+        orbit.enabled = true;
+        orbit.target.set(0, 0, 0);
+        orbit.update();
+        camera.position.set(11, 10, 13);
+        camera.lookAt(orbit.target);
+        status.textContent = "โหมดสร้างเกาะ • บ้านเป็นชิ้นส่วนให้เลือกเอง";
+        setModeLabel();
+      }
+
+      modeToggle.onclick = () => (playMode ? enterBuild() : enterPlay());
+      document.querySelectorAll("[data-action]").forEach((button) => {
+        button.onclick = () => {
+          if (!player) return;
+          const animation = ANIMATIONS[button.dataset.action];
+          if (player.playSpecial(animation, () => button.classList.remove("active"))) {
+            button.classList.add("active");
+          }
+        };
+      });
+
+      await enterPlay();
+
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        const delta = Math.min(clock.getDelta(), 0.04);
+        homeIsland.update(delta);
+        dayNight.update(delta);
+
+        if (playMode && player) {
+          const moveState = movement.update({ player, input: input.get(), delta });
+          if (!player.isSpecial()) {
+            player.fadeTo(
+              moveState.moving
+                ? moveState.running ? ANIMATIONS.run : ANIMATIONS.walk
+                : ANIMATIONS.idle,
+              moveState.moving ? 0.15 : 0.18,
+              true,
+              moveState.running
+                ? CONFIG.animationSpeed.run
+                : moveState.moving ? CONFIG.animationSpeed.walk : CONFIG.animationSpeed.idle
+            );
+          }
+          player.mixer.update(delta);
+          runFx.update(player.root.position, moveState.direction, moveState.running, delta);
+          contactShadow.update(player.root.position, player.root.rotation.y, dayNight.getHour());
+          cameraTarget.set(player.root.position.x, player.root.position.y + 0.7, player.root.position.z);
+          cameraController.update(cameraTarget, delta);
+          lighting.update(player.root.position);
+        } else {
+          orbit.update();
+          view.update();
+        }
+
+        sky.update(camera);
+        renderer.render(scene, camera);
+      });
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+
+      return { scene, renderer, camera, controller, view, ui, homeIsland };
+    }
+
+    boot().catch(showError);
+  </script>
+</body>
+</html>

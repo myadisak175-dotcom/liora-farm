@@ -27,6 +27,10 @@ Runtime checkpoint for this approved feel: `a59c1c2a14b61da6df7ef8d47db13dde6521
 
 See `docs/BASELINE.md` before changing camera, movement, animation speed, depth, or shadows.
 
+## Current canonical page
+
+The root page now opens the combined best-of build at `builder/best-of.html`. It contains the same playable Home Island and Builder, so placed objects, river, bridge and gameplay are no longer split between separate pages. See `docs/BEST_OF.md` for the merge boundary.
+
 ## Project structure
 
 ```text

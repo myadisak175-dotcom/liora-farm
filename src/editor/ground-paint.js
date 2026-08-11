@@ -3,8 +3,8 @@ import { createGroundMaterial } from "../systems/ground/ground-material.js";
 import { createSplatPainter, SPLAT_LAYERS } from "../systems/ground/splat-texture.js";
 import { createGroundStore } from "../systems/ground/ground-store.js";
 
-const WORLD_SIZE = 90;
-const SPLAT_RESOLUTION = 512;
+const DEFAULT_WORLD_SIZE = 90;
+const DEFAULT_SPLAT_RESOLUTION = 512;
 const STORAGE_KEY = "liora-hybrid-ground-splat-v1";
 
 const MODE_TO_LAYER = Object.freeze({
@@ -23,7 +23,18 @@ const LABELS = Object.freeze({
   erase: "ลบ",
 });
 
-export function createGroundPaint({ scene, camera, renderer, orbit, mount = document.body } = {}) {
+export function createGroundPaint({
+  scene,
+  camera,
+  renderer,
+  orbit,
+  mount = document.body,
+  groundMesh: providedGroundMesh = null,
+  worldSize = DEFAULT_WORLD_SIZE,
+  splatResolution = DEFAULT_SPLAT_RESOLUTION,
+  assetRoot = "../",
+  groundMapUrl = "../maps/home-island-ground.json",
+} = {}) {
   if (!scene || !camera || !renderer || !orbit || !mount) {
     throw new Error("createGroundPaint requires scene, camera, renderer, orbit and mount");
   }
@@ -45,7 +56,7 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
   let groundSystem = null;
   let ready = false;
 
-  const groundMesh = scene.children.find((object) =>
+  const groundMesh = providedGroundMesh ?? scene.children.find((object) =>
     object?.isMesh && object.geometry?.type === "PlaneGeometry" && Math.abs(object.rotation.x + Math.PI / 2) < 0.01
   ) ?? null;
 
@@ -207,16 +218,16 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
       groundSystem = await createGroundMaterial({
         textureLoader: new THREE.TextureLoader(),
         paths: {
-          grass: "../assets/textures/grass.webp",
-          dirt: "../assets/textures/dirt.webp",
-          sand: "../assets/textures/sand.webp",
-          rock: "../assets/textures/rock.webp",
+          grass: `${assetRoot}assets/textures/grass.webp`,
+          dirt: `${assetRoot}assets/textures/dirt.webp`,
+          sand: `${assetRoot}assets/textures/sand.webp`,
+          rock: `${assetRoot}assets/textures/rock.webp`,
           tileAtlas: null,
         },
-        worldSize: WORLD_SIZE,
-        gridSize: 90,
+        worldSize,
+        gridSize: worldSize,
         unitsPerRepeat: 2,
-        splatResolution: SPLAT_RESOLUTION,
+        splatResolution,
       });
 
       const oldMaterial = groundMesh.material;
@@ -228,16 +239,16 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
         canvas: groundSystem.splatCanvas,
         context: groundSystem.splatContext,
         commit: groundSystem.commitSplat,
-        worldSize: WORLD_SIZE,
-        resolution: SPLAT_RESOLUTION,
+        worldSize,
+        resolution: splatResolution,
       });
 
       store = createGroundStore({
         painter,
-        url: "../maps/home-island-ground.json",
+        url: groundMapUrl,
         storageKey: STORAGE_KEY,
-        worldSize: WORLD_SIZE,
-        resolution: SPLAT_RESOLUTION,
+        worldSize,
+        resolution: splatResolution,
       });
       await store.loadInitial();
       ready = true;

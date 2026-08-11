@@ -29,6 +29,7 @@ export function createCameraController(camera, config, surface) {
     zoom = 1;
     yaw = initialYaw;
     pitch = initialPitch;
+    followReady = false;
   }
 
   function currentOffset() {

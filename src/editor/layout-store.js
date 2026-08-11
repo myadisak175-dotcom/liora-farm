@@ -48,9 +48,18 @@ export function createLayoutStore({ storageKey = DEFAULT_STORAGE_KEY } = {}) {
     }
   }
 
+  function hasSaved() {
+    try {
+      return Boolean(localStorage.getItem(storageKey));
+    } catch (error) {
+      console.warn("Builder layout presence could not be checked", error);
+      return false;
+    }
+  }
+
   function clear() {
     localStorage.removeItem(storageKey);
   }
 
-  return { save, load, clear, storageKey };
+  return { save, load, hasSaved, clear, storageKey };
 }
