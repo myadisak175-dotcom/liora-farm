@@ -6,10 +6,34 @@ export function createBuilderAssetLoader({ gltfLoader } = {}) {
   const cache = new Map();
   const pending = new Map();
 
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function withRetryQuery(path, attempt) {
+    if (attempt === 0) return path;
+    const join = path.includes("?") ? "&" : "?";
+    return `${path}${join}retry=${Date.now()}-${attempt}`;
+  }
+
   function loadWithThree(path) {
     return new Promise((resolve, reject) => {
       gltfLoader.load(path, resolve, undefined, reject);
     });
+  }
+
+  async function loadWithRetry(path, attempts = 3) {
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        return await loadWithThree(withRetryQuery(path, attempt));
+      } catch (error) {
+        lastError = error;
+        if (attempt >= attempts - 1) break;
+        await delay(attempt === 0 ? 280 : 750);
+      }
+    }
+    throw lastError ?? new Error(`Failed to load ${path}`);
   }
 
   async function load(assetId) {
@@ -27,7 +51,7 @@ export function createBuilderAssetLoader({ gltfLoader } = {}) {
       return scene.clone(true);
     }
 
-    const request = loadWithThree(asset.modelPath).then((gltf) => {
+    const request = loadWithRetry(asset.modelPath, 3).then((gltf) => {
       const scene = gltf.scene;
       scene.traverse((node) => {
         if (!node.isMesh) return;
