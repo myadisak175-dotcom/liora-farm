@@ -66,6 +66,62 @@ const PLAY_CONFIG={
 const PLAY_ANIMS={idle:"Idle",walk:"Walking",run:"Running"};
 const GAME_CAMERA_OFFSET=new THREE.Vector3(8,10,10);
 
+// World v4: designed around Liora = 1.7 m and the real game camera.
+// Empty space is intentional: it is walkable gameplay space and future farm/river room.
+const WORLD_V4=[
+  // Home / focal point
+  {id:"v4-home",assetId:"house",x:-8,z:-8,rotation:.18,scale:1.05},
+  {id:"v4-home-bench",assetId:"bench",x:-4.3,z:-6.1,rotation:-.22,scale:.92},
+  {id:"v4-home-lamp-a",assetId:"path_lamp",x:-4,z:-3.2,rotation:0,scale:1},
+  {id:"v4-home-barrel",assetId:"wine_barrel",x:-10.8,z:-7.4,rotation:.12,scale:.9},
+  {id:"v4-home-crates",assetId:"crate_set",x:-10.6,z:-5.3,rotation:.46,scale:.82},
+
+  // Farm boundary — open centre is reserved for crops / ground paint.
+  {id:"v4-fence-1",assetId:"wood_fence",x:-11,z:-1.2,rotation:0,scale:1},
+  {id:"v4-fence-2",assetId:"wood_fence",x:-8.8,z:-1.2,rotation:0,scale:1},
+  {id:"v4-fence-3",assetId:"wood_fence",x:-6.6,z:-1.2,rotation:0,scale:1},
+  {id:"v4-fence-4",assetId:"wood_fence",x:-4.4,z:-1.2,rotation:0,scale:1},
+
+  // Main route markers; dirt path itself should be painted with Ground Paint.
+  {id:"v4-route-lamp-1",assetId:"path_lamp",x:-1,z:-1.5,rotation:0,scale:1},
+  {id:"v4-route-bench",assetId:"bench",x:3.4,z:1.1,rotation:.72,scale:.9},
+  {id:"v4-route-lamp-2",assetId:"path_lamp",x:5.3,z:3.6,rotation:0,scale:1},
+  {id:"v4-route-crate",assetId:"crate",x:7.2,z:5.2,rotation:.33,scale:.76},
+
+  // Village preview / destination landmark
+  {id:"v4-village-house",assetId:"blue_cottage",x:12.5,z:10.5,rotation:-.58,scale:1},
+  {id:"v4-village-house2",assetId:"house2",x:18,z:8.5,rotation:-.82,scale:1},
+  {id:"v4-village-lamp",assetId:"path_lamp",x:10,z:6.8,rotation:0,scale:1},
+  {id:"v4-village-bench",assetId:"bench",x:13.8,z:5.5,rotation:.12,scale:.9},
+  {id:"v4-village-crates",assetId:"crate_set",x:17.2,z:12,rotation:.4,scale:.8},
+
+  // Western forest mass: blocks the horizon and frames the home farm.
+  {id:"v4-west-tree-1",assetId:"tree",x:-20,z:-13,rotation:.22,scale:1.08},
+  {id:"v4-west-pine-1",assetId:"pine",x:-18,z:-8,rotation:.68,scale:1.02},
+  {id:"v4-west-tree-2",assetId:"tree",x:-20.5,z:-2.5,rotation:1.12,scale:1.15},
+  {id:"v4-west-pine-2",assetId:"pine",x:-18.5,z:3.7,rotation:.35,scale:1.08},
+  {id:"v4-west-tree-3",assetId:"tree",x:-16.5,z:9.5,rotation:.84,scale:1.12},
+  {id:"v4-west-palm",assetId:"palm",x:-13.5,z:14.8,rotation:.45,scale:1.02},
+
+  // North/east forest mass: creates a natural corridor toward the village.
+  {id:"v4-north-tree-1",assetId:"tree",x:-6,z:18,rotation:.4,scale:1.08},
+  {id:"v4-north-pine-1",assetId:"pine",x:1,z:20.5,rotation:1.05,scale:1.12},
+  {id:"v4-north-tree-2",assetId:"tree",x:7.5,z:19.5,rotation:.62,scale:1.04},
+  {id:"v4-east-pine-1",assetId:"pine",x:22,z:15.5,rotation:1.2,scale:1.1},
+  {id:"v4-east-tree-1",assetId:"tree",x:24,z:8,rotation:.3,scale:1.12},
+  {id:"v4-east-palm",assetId:"palm",x:23,z:1.2,rotation:.9,scale:1.03},
+  {id:"v4-east-tree-2",assetId:"tree",x:21,z:-6,rotation:.55,scale:1.1},
+  {id:"v4-east-pine-2",assetId:"pine",x:17,z:-13,rotation:1.28,scale:1.08},
+
+  // Small foreground clusters, kept sparse for readable traversal.
+  {id:"v4-grass-1",assetId:"grass",x:-12.5,z:-11,rotation:.2,scale:.85},
+  {id:"v4-grass-2",assetId:"grass",x:-2,z:-8.8,rotation:1.2,scale:.75},
+  {id:"v4-grass-3",assetId:"grass",x:2.2,z:-4.8,rotation:.7,scale:.82},
+  {id:"v4-grass-4",assetId:"grass",x:8.5,z:1.4,rotation:1.55,scale:.7},
+  {id:"v4-grass-5",assetId:"grass",x:5.5,z:11.8,rotation:.35,scale:.8},
+  {id:"v4-grass-6",assetId:"grass",x:-10.5,z:10.5,rotation:1.05,scale:.72}
+];
+
 function addWorldBackdrop(scene){
   const near=new THREE.MeshStandardMaterial({color:0x84978B,roughness:1,metalness:0,flatShading:true});
   const far=new THREE.MeshStandardMaterial({color:0xA5B3AC,roughness:1,metalness:0,flatShading:true});
@@ -115,6 +171,11 @@ async function boot(){
   const groundPaint=createGroundPaint({scene,camera,renderer,orbit,mount:document.body});
 
   controller.load();
+  const params=new URLSearchParams(location.search);
+  if(params.get("world")==="v4"){
+    controller.items.splice(0,controller.items.length,...WORLD_V4.map(item=>({...item})));
+    controller.save();
+  }
   await view.syncItems(controller.items);
 
   const input=createInput();
