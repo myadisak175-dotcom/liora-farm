@@ -46,6 +46,8 @@ liora-farm/
 │   │   └── character-state-machine.js
 │   ├── core/
 │   │   └── README.md           # runtime/editor dependency boundary
+│   ├── data/
+│   │   └── interactions.js     # assetId -> semantic world action
 │   ├── entities/
 │   │   ├── character.js        # shared Meshy/GLB character runtime
 │   │   ├── player.js           # Liora adapter + compatibility API
@@ -55,6 +57,7 @@ liora-farm/
 │   │   └── home-island.js
 │   ├── systems/
 │   │   ├── movement.js
+│   │   ├── interaction.js      # proximity focus + action dispatch
 │   │   ├── camera.js
 │   │   ├── input.js
 │   │   ├── lighting.js
@@ -68,7 +71,8 @@ liora-farm/
 │   ├── best-of.html            # integrated mobile test/build page
 │   └── assets/                 # legacy standalone-test copies only
 └── docs/
-    └── CHARACTER_SYSTEM.md
+    ├── CHARACTER_SYSTEM.md
+    └── INTERACTION_SYSTEM.md
 ```
 
 ## Architecture rules
@@ -77,13 +81,15 @@ liora-farm/
 2. Stable tuning and core asset paths live in `src/config.js`.
 3. All animated actors use `src/entities/character.js`; Player/NPC/Creature are thin role adapters rather than separate GLB pipelines.
 4. Gameplay talks to semantic character states (`idle`, `walk`, `run`, `interact`, `action`) rather than Three.js `AnimationAction` objects.
-5. Reusable gameplay/rendering behavior belongs under `src/systems/`; NPC AI, creature AI and dialogue must not be embedded in entity loaders.
-6. Zone-specific composition belongs under `src/zones/`.
-7. Builder/editor code stays under `src/editor/`; runtime modules must not depend on Editor UI internals.
-8. Production Builder models live under `assets/models/builder/` and are registered through `assets/catalog.json`.
-9. Saved maps contain stable IDs/transforms, never Three.js object references.
-10. Production GLB/textures are referenced by path; do not embed growing Base64 assets into production HTML.
-11. Change one subsystem at a time and test on mobile before accepting a new baseline.
+5. World interaction uses stable semantic actions (`chop`, `enter`, `sit`, `inspect`, `pick-up`, `talk`) rather than model filenames or mesh names.
+6. Interaction detection only selects/dispatches targets. Inventory, VFX, Audio, dialogue, tree HP and scene transitions belong to their own gameplay handlers/systems.
+7. Reusable gameplay/rendering behavior belongs under `src/systems/`; NPC AI, creature AI and dialogue must not be embedded in entity loaders.
+8. Zone-specific composition belongs under `src/zones/`.
+9. Builder/editor code stays under `src/editor/`; runtime modules must not depend on Editor UI internals.
+10. Production Builder models live under `assets/models/builder/` and are registered through `assets/catalog.json`.
+11. Saved maps contain stable IDs/transforms, never Three.js object references.
+12. Production GLB/textures are referenced by path; do not embed growing Base64 assets into production HTML.
+13. Change one subsystem at a time and test on mobile before accepting a new baseline.
 
 ## Character + animation boundary
 
@@ -96,6 +102,16 @@ liora-farm/
 NPCs and creatures use the same runtime through `createNPC()` and `createCreature()`. Their AI, schedules, dialogue and procedural motion should be separate systems layered on top of the character contract.
 
 See `docs/CHARACTER_SYSTEM.md` for the integration contract.
+
+## Interaction boundary
+
+`src/data/interactions.js` maps stable world asset IDs to semantic actions and presentation metadata such as interaction label, range and preferred animation key.
+
+`src/systems/interaction.js` selects the best nearby target and dispatches its semantic action to a registered gameplay handler. It can discover current Builder-placed roots through `getSceneInteractableRoots(scene)` without importing Builder UI modules.
+
+This means a Meshy tree remains a `chop` target even if the GLB file, mesh hierarchy or visual model is replaced later. The same detector can also serve NPC `talk`, dropped-item `pick-up`, door `enter` and bench `sit` interactions.
+
+See `docs/INTERACTION_SYSTEM.md` for the runtime contract.
 
 ## Asset policy
 
