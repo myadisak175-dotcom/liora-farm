@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<title>Liora — Island Builder</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#BFD9DE}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#stage{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#error{position:fixed;inset:20px;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;border-radius:18px;background:#241B18E8;color:#FFE8D0;font:600 14px/1.5 system-ui;white-space:pre-wrap;text-align:center}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="error"></div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { createBuilderState } from "../src/editor/builder-state.js";
+import { createBuilderController } from "../src/editor/builder-controller.js";
+import { createLayoutStore } from "../src/editor/layout-store.js";
+import { createBuilderAssetLoader } from "../src/editor/asset-loader.js";
+import { loadCatalog } from "../src/editor/asset-catalog.js";
+import { createBuilderView } from "../src/editor/builder-view.js";
+import { createBuilderUI } from "../src/editor/builder-ui.js";
+
+const stage = document.querySelector("#stage");
+const errorBox = document.querySelector("#error");
+
+async function boot() {
+  let catalog;
+  try {
+    catalog = await loadCatalog({ url: "../assets/catalog.json", root: "../" });
+  } catch (error) {
+    errorBox.style.display = "flex";
+    errorBox.textContent = `โหลดรายการ asset ไม่สำเร็จ\n${error?.message ?? error}`;
+    throw error;
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xBFD9DE);
+  scene.fog = new THREE.Fog(0xBFD9DE, 45, 140);
+
+  const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 400);
+  camera.position.set(14, 11, 16);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight, false);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  stage.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xDCEFF2, 0x45503C, 1.7));
+  const sun = new THREE.DirectionalLight(0xFFF0D2, 2.4);
+  sun.position.set(-16, 15, 9);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -34;
+  sun.shadow.camera.right = 34;
+  sun.shadow.camera.top = 34;
+  sun.shadow.camera.bottom = -34;
+  scene.add(sun);
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(70, 70),
+    new THREE.MeshStandardMaterial({ color: 0x7C9B5C, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  const orbit = new OrbitControls(camera, renderer.domElement);
+  orbit.enableDamping = true;
+  orbit.dampingFactor = 0.09;
+  orbit.maxPolarAngle = Math.PI * 0.47;
+  orbit.minDistance = 6;
+  orbit.maxDistance = 46;
+  orbit.target.set(0, 0, 0);
+
+  const state = createBuilderState();
+  const layoutStore = createLayoutStore();
+  const controller = createBuilderController({ state, catalog, layoutStore });
+  const assetLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
+  const view = createBuilderView({ scene, camera, renderer, orbit, assetLoader });
+  const ui = createBuilderUI({ mount: document.body, controller, view, catalog });
+
+  controller.load();
+  await view.syncItems(controller.items);
+
+  orbit.addEventListener("start", () => { ui.element.style.opacity = ".18"; });
+  orbit.addEventListener("end", () => { ui.element.style.opacity = "1"; });
+
+  let downAt = null;
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    downAt = { x: event.clientX, y: event.clientY };
+  });
+  renderer.domElement.addEventListener("pointerup", (event) => {
+    if (!downAt) return;
+    const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y);
+    downAt = null;
+    if (moved >= 10 || controller.isPlacing) return;
+
+    const id = view.pickAt(event.clientX, event.clientY);
+    if (id) {
+      controller.selectItem(id);
+      view.highlight(id);
+      ui.setSelection(id);
+    } else {
+      controller.clearSelection();
+      view.highlight(null);
+      ui.setSelection(null);
+    }
+  });
+
+  function resize() {
+    renderer.setSize(innerWidth, innerHeight, false);
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+  }
+  addEventListener("resize", resize);
+
+  renderer.setAnimationLoop(() => {
+    orbit.update();
+    view.update();
+    renderer.render(scene, camera);
+  });
+}
+
+boot().catch((error) => {
+  console.error("Builder boot failed", error);
+});
+</script>
+</body>
+</html>
