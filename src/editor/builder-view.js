@@ -34,42 +34,27 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     return root;
   }
 
-  function makeCalibratedRoot(model, asset) {
+  // Hybrid rule: preserve the GLB's authored size. Only move the model inside a
+  // transform holder so its lowest rendered point rests on y=0. The holder owns
+  // user scale/rotation, so later resizing keeps the contact point on the ground.
+  function makeGroundedRoot(model, asset) {
     const root = new THREE.Group();
     root.userData.builderAssetId = asset?.id ?? null;
     root.add(model);
     root.updateMatrixWorld(true);
 
-    // 1) Measure the raw model first and normalize its horizontal footprint.
-    let bounds = new THREE.Box3().setFromObject(model);
-    if (!bounds.isEmpty()) {
-      const size = new THREE.Vector3();
-      bounds.getSize(size);
-      const horizontal = Math.max(size.x, size.z);
-      const targetDiameter = Math.max(0.1, Number(asset?.placementRadius ?? 1) * 2);
-      if (Number.isFinite(horizontal) && horizontal > 0.0001) {
-        const baseScale = THREE.MathUtils.clamp(targetDiameter / horizontal, 0.02, 50);
-        model.scale.multiplyScalar(baseScale);
-        model.updateMatrixWorld(true);
-        root.userData.builderBaseScale = baseScale;
-      }
-    }
-
-    // 2) Ground AFTER normalization. Doing this before scaling makes the Y offset
-    // scale too, which is why houses/trees appeared buried or floating.
-    bounds = new THREE.Box3().setFromObject(model);
+    const bounds = new THREE.Box3().setFromObject(model);
     if (!bounds.isEmpty() && Number.isFinite(bounds.min.y)) {
       model.position.y -= bounds.min.y;
       model.updateMatrixWorld(true);
     }
-
     return root;
   }
 
   async function loadGroundedObject(assetId) {
     const asset = getBuildableAsset(assetId);
     const model = cloneRenderableResources(await assetLoader.load(assetId));
-    return makeCalibratedRoot(model, asset);
+    return makeGroundedRoot(model, asset);
   }
 
   function disposeObject(root) {
@@ -119,12 +104,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
 
   function transformOf(root) {
     if (!root) return null;
-    return {
-      x: root.position.x,
-      z: root.position.z,
-      rotation: root.rotation.y,
-      scale: root.scale.x,
-    };
+    return { x: root.position.x, z: root.position.z, rotation: root.rotation.y, scale: root.scale.x };
   }
 
   function sameTransform(a, b) {
@@ -135,10 +115,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
       Math.abs(Number(a.scale??1)-Number(b.scale??1))<e;
   }
 
-  function activeObject() {
-    return preview ?? moving?.object ?? null;
-  }
-
+  function activeObject() { return preview ?? moving?.object ?? null; }
   function activeAsset() {
     if (previewAsset) return previewAsset;
     return moving?.assetId ? getBuildableAsset(moving.assetId) : null;
@@ -176,10 +153,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
 
   async function addPlaced(item) {
     const object = await loadGroundedObject(item.assetId);
-    if (disposed) {
-      disposeObject(object);
-      return;
-    }
+    if (disposed) { disposeObject(object); return; }
     object.userData.builderItemId = item.id;
     object.userData.builderAssetId = item.assetId;
     applyTransform(object, item);
@@ -211,10 +185,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     const loads = [];
     for (const item of items) {
       const entry = placed.get(item.id);
-      if (!entry) {
-        loads.push(addPlaced(item));
-        continue;
-      }
+      if (!entry) { loads.push(addPlaced(item)); continue; }
       if (entry.assetId !== item.assetId) {
         scene.remove(entry.object);
         disposeObject(entry.object);
@@ -238,18 +209,11 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   async function beginPreview(asset) {
     if (!asset?.id) throw new Error("beginPreview requires a catalog asset");
     if (moving) endPreview();
-    if (preview) {
-      scene.remove(preview);
-      disposeObject(preview);
-      preview = null;
-    }
+    if (preview) { scene.remove(preview); disposeObject(preview); preview = null; }
 
     const token = ++previewToken;
     const object = await loadGroundedObject(asset.id);
-    if (disposed || token !== previewToken) {
-      disposeObject(object);
-      return null;
-    }
+    if (disposed || token !== previewToken) { disposeObject(object); return null; }
 
     previewAsset = asset;
     preview = object;
@@ -265,48 +229,25 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
 
   function endPreview() {
     previewToken += 1;
-    if (preview) {
-      scene.remove(preview);
-      disposeObject(preview);
-      preview = null;
-      previewAsset = null;
-    }
+    if (preview) { scene.remove(preview); disposeObject(preview); preview = null; previewAsset = null; }
     if (moving) {
       const entry = placed.get(moving.id);
-      if (entry) {
-        applyTransform(entry.object, moving.original);
-        setGhost(entry.object, false);
-      }
+      if (entry) { applyTransform(entry.object, moving.original); setGhost(entry.object, false); }
       moving = null;
     }
   }
 
-  function getPreviewTransform() {
-    return preview ? transformOf(preview) : moving ? transformOf(moving.object) : null;
-  }
-
-  function rotatePreview(step) {
-    const target = activeObject();
-    if (target) target.rotation.y += Number(step) * Math.PI / 8;
-  }
+  function getPreviewTransform() { return preview ? transformOf(preview) : moving ? transformOf(moving.object) : null; }
+  function rotatePreview(step) { const target = activeObject(); if (target) target.rotation.y += Number(step) * Math.PI / 8; }
 
   function beginMove(id) {
     if (preview) {
-      scene.remove(preview);
-      disposeObject(preview);
-      preview = null;
-      previewAsset = null;
-      previewToken += 1;
+      scene.remove(preview); disposeObject(preview); preview = null; previewAsset = null; previewToken += 1;
     }
     if (moving) endPreview();
     const entry = placed.get(id);
     if (!entry) return null;
-    moving = {
-      id,
-      assetId: entry.assetId,
-      object: entry.object,
-      original: transformOf(entry.object),
-    };
+    moving = { id, assetId: entry.assetId, object: entry.object, original: transformOf(entry.object) };
     setGhost(entry.object, true);
     follow(entry.object);
     return entry.object;
@@ -314,10 +255,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
 
   function pickAt(clientX, clientY) {
     const rect = renderer.domElement.getBoundingClientRect();
-    pointer.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
+    pointer.set(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(Array.from(placed.values(), (entry) => entry.object), true)[0];
     if (!hit) return null;
@@ -327,9 +265,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   }
 
   function highlight(id) {
-    for (const [itemId, entry] of placed) {
-      setEmissive(entry.object, itemId === id ? 0x3A2A00 : 0x000000);
-    }
+    for (const [itemId, entry] of placed) setEmissive(entry.object, itemId === id ? 0x3A2A00 : 0x000000);
   }
 
   function setSnap(value) {
@@ -337,35 +273,19 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     snap = Number.isFinite(next) && next > 0 ? next : 0;
   }
 
-  function update() {
-    if (preview) follow(preview);
-    if (moving) follow(moving.object);
-  }
+  function update() { if (preview) follow(preview); if (moving) follow(moving.object); }
 
   function dispose() {
     if (disposed) return;
     disposed = true;
     endPreview();
-    for (const entry of placed.values()) {
-      scene.remove(entry.object);
-      disposeObject(entry.object);
-    }
+    for (const entry of placed.values()) { scene.remove(entry.object); disposeObject(entry.object); }
     placed.clear();
     warnedInstancing.clear();
   }
 
   return {
-    syncItems,
-    beginPreview,
-    endPreview,
-    getPreviewTransform,
-    rotatePreview,
-    scalePreview,
-    beginMove,
-    pickAt,
-    highlight,
-    setSnap,
-    update,
-    dispose,
+    syncItems, beginPreview, endPreview, getPreviewTransform, rotatePreview, scalePreview,
+    beginMove, pickAt, highlight, setSnap, update, dispose,
   };
 }
