@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Liora — Home Area v1</title>
+<style>html,body{margin:0;width:100%;height:100%;background:#C9DEE0;font-family:system-ui,sans-serif}#boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}</style>
+</head>
+<body>
+<div id="boot"><div>กำลังโหลด Home Area v1…</div></div>
+<script>
+(async()=>{
+  try{
+    let html=await fetch('./index.html?home-v1='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Builder HTTP '+r.status);return r.text();});
+
+    // Force the locked smooth splat painter instead of any stale cached tile painter.
+    html=html.replace(
+      'import {createGroundPaint} from "../src/editor/ground-paint.js";',
+      'import {createGroundPaint} from "../src/editor/ground-paint.js?home-v1-smooth=716053e";'
+    );
+
+    const marker='function addWorldBackdrop(scene)';
+    if(!html.includes(marker))throw new Error('Home Area injection anchor missing');
+
+    const HOME_AREA_V1=[
+      // Liora home / front yard
+      {id:'home1-house',assetId:'house',x:-7.0,z:-7.2,rotation:0.18,scale:1.08},
+      {id:'home1-bench',assetId:'bench',x:-3.7,z:-5.0,rotation:-0.25,scale:0.92},
+      {id:'home1-lamp-a',assetId:'path_lamp',x:-4.7,z:-3.0,rotation:0,scale:1},
+      {id:'home1-lamp-b',assetId:'path_lamp',x:-8.9,z:-2.8,rotation:0,scale:1},
+      {id:'home1-barrel',assetId:'wine_barrel',x:-9.8,z:-6.3,rotation:0.22,scale:0.86},
+      {id:'home1-crates',assetId:'crate_set',x:-10.1,z:-4.8,rotation:0.48,scale:0.78},
+
+      // Farm edge — leave the center open for smooth dirt painting / crops later
+      {id:'home1-fence-1',assetId:'wood_fence',x:-11.0,z:0.0,rotation:0,scale:1},
+      {id:'home1-fence-2',assetId:'wood_fence',x:-8.8,z:0.0,rotation:0,scale:1},
+      {id:'home1-fence-3',assetId:'wood_fence',x:-6.6,z:0.0,rotation:0,scale:1},
+      {id:'home1-fence-4',assetId:'wood_fence',x:-4.4,z:0.0,rotation:0,scale:1},
+      {id:'home1-fence-5',assetId:'wood_fence',x:-2.2,z:0.0,rotation:0,scale:1},
+
+      // Small rest / landmark on the route out
+      {id:'home1-route-bench',assetId:'bench',x:1.7,z:-1.8,rotation:0.65,scale:0.88},
+      {id:'home1-route-lamp',assetId:'path_lamp',x:3.2,z:0.7,rotation:0,scale:1},
+
+      // Tree clusters frame the play space without closing it in
+      {id:'home1-tree-west-a',assetId:'tree',x:-14.5,z:-9.5,rotation:0.25,scale:1.05},
+      {id:'home1-pine-west',assetId:'pine',x:-14.0,z:-4.0,rotation:0.72,scale:1.0},
+      {id:'home1-tree-west-b',assetId:'tree',x:-13.2,z:3.8,rotation:1.0,scale:1.08},
+      {id:'home1-tree-north-a',assetId:'tree',x:-8.7,z:7.7,rotation:0.4,scale:1.03},
+      {id:'home1-pine-north',assetId:'pine',x:-3.7,z:8.8,rotation:1.1,scale:1.05},
+      {id:'home1-tree-east-a',assetId:'tree',x:5.0,z:6.0,rotation:0.55,scale:1.05},
+      {id:'home1-palm-east',assetId:'palm',x:7.0,z:1.8,rotation:0.9,scale:0.98},
+
+      // Sparse clutter only; keep walking routes clear
+      {id:'home1-grass-a',assetId:'grass',x:-11.8,z:-10.6,rotation:0.2,scale:0.72},
+      {id:'home1-grass-b',assetId:'grass',x:-1.0,z:-6.8,rotation:1.2,scale:0.62},
+      {id:'home1-grass-c',assetId:'grass',x:4.3,z:3.8,rotation:0.7,scale:0.66},
+      {id:'home1-grass-d',assetId:'grass',x:-10.8,z:5.7,rotation:1.5,scale:0.65}
+    ];
+
+    html=html.replace(marker,'const HOME_AREA_V1='+JSON.stringify(HOME_AREA_V1)+';\n\n'+marker);
+
+    const oldLoad='controller.load();const params=new URLSearchParams(location.search);if(params.get("world")==="v4"){controller.items.splice(0,controller.items.length,...WORLD_V4.map(item=>({...item})));controller.save()}await view.syncItems(controller.items);';
+    const newLoad='controller.load();const params=new URLSearchParams(location.search);if(params.get("home")==="v1"){controller.items.splice(0,controller.items.length,...HOME_AREA_V1.map(item=>({...item})));controller.save()}else if(params.get("world")==="v4"){controller.items.splice(0,controller.items.length,...WORLD_V4.map(item=>({...item})));controller.save()}await view.syncItems(controller.items);';
+    if(!html.includes(oldLoad))throw new Error('Home Area load anchor missing');
+    html=html.replace(oldLoad,newLoad);
+
+    document.open();document.write(html);document.close();
+  }catch(err){
+    document.querySelector('#boot').innerHTML='<div>โหลด Home Area v1 ไม่สำเร็จ<br><small>'+String(err.message||err)+'</small><br><button onclick="location.reload()">ลองใหม่</button></div>';
+  }
+})();
+</script>
+</body>
+</html>
