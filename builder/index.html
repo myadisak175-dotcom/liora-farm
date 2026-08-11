@@ -19,11 +19,21 @@ body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 #stage{position:fixed;inset:0}
 canvas{display:block;width:100%;height:100%;touch-action:none}
 #error{position:fixed;inset:20px;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;border-radius:18px;background:#241B18E8;color:#FFE8D0;font:600 14px/1.5 system-ui;white-space:pre-wrap;text-align:center}
+#mode-toggle{position:fixed;z-index:60;right:14px;top:calc(env(safe-area-inset-top) + 12px);border:1px solid #ffffff88;background:#173c4be8;color:#fff;border-radius:999px;padding:11px 15px;font:800 12px system-ui;box-shadow:0 5px 18px #0003;backdrop-filter:blur(9px)}
+#mode-toggle.playing{background:#e8a33d;color:#1b1508;border-color:#e8a33d}
+#play-hint{position:fixed;z-index:45;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);display:none;pointer-events:none;padding:8px 12px;border-radius:999px;background:#173c4bcc;color:#fff;font:700 10px system-ui;white-space:nowrap;backdrop-filter:blur(8px)}
+#joy{position:fixed;z-index:55;left:22px;bottom:calc(env(safe-area-inset-bottom) + 24px);width:112px;height:112px;border-radius:50%;display:none;background:#18352d66;border:2px solid #ffffff80;box-shadow:inset 0 0 0 18px #ffffff0d;touch-action:none}
+#stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px;border-radius:50%;background:#f2efe4d9;border:2px solid #173c4b88;box-shadow:0 4px 12px #0003;pointer-events:none}
+body.play-mode #joy,body.play-mode #play-hint{display:block}
+body.play-mode #ui,body.play-mode #ground-paint-ui{display:none!important}
 </style>
 </head>
 <body>
 <div id="stage"></div>
 <div id="error"></div>
+<button id="mode-toggle" type="button">▶ Play</button>
+<div id="play-hint">Liora 1.7 m • Game Camera</div>
+<div id="joy"><div id="stick"></div></div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -36,9 +46,25 @@ import { loadCatalog } from "../src/editor/asset-catalog.js";
 import { createBuilderView } from "../src/editor/builder-view.js";
 import { createBuilderUI } from "../src/editor/builder-ui.js";
 import { createGroundPaint } from "../src/editor/ground-paint.js";
+import { createPlayer } from "../src/entities/player.js";
+import { createInput } from "../src/systems/input.js";
+import { createMovementSystem } from "../src/systems/movement.js";
 
 const stage=document.querySelector("#stage");
 const errorBox=document.querySelector("#error");
+const modeToggle=document.querySelector("#mode-toggle");
+
+const PLAY_CONFIG={
+  worldLimit:42,
+  playerHeight:1.7,
+  playerGroundOffset:-.02,
+  walkSpeed:2.4,
+  runSpeed:5.2,
+  runThreshold:.78,
+  animationSpeed:{idle:1,walk:.9,run:1}
+};
+const PLAY_ANIMS={idle:"Idle",walk:"Walking",run:"Running"};
+const GAME_CAMERA_OFFSET=new THREE.Vector3(8,10,10);
 
 function addWorldBackdrop(scene){
   const near=new THREE.MeshStandardMaterial({color:0x84978B,roughness:1,metalness:0,flatShading:true});
@@ -91,16 +117,83 @@ async function boot(){
   controller.load();
   await view.syncItems(controller.items);
 
-  orbit.addEventListener("start",()=>{if(groundPaint.mode==="off")ui.element.style.opacity=".18";});
+  const input=createInput();
+  const movement=createMovementSystem(camera,PLAY_CONFIG,()=>0);
+  const clock=new THREE.Clock();
+  const cameraTarget=new THREE.Vector3();
+  const desiredCamera=new THREE.Vector3();
+  let player=null;
+  let playMode=false;
+  let loadingPlayer=false;
+
+  async function ensurePlayer(){
+    if(player||loadingPlayer)return player;
+    loadingPlayer=true;
+    modeToggle.textContent="… Liora";
+    try{
+      player=await createPlayer({
+        url:"../assets/models/player/liora_all_animations_web.glb",
+        height:PLAY_CONFIG.playerHeight,
+        groundOffset:PLAY_CONFIG.playerGroundOffset,
+        renderOrder:10,
+        animations:PLAY_ANIMS
+      });
+      player.root.visible=false;
+      scene.add(player.root);
+      return player;
+    }finally{loadingPlayer=false;}
+  }
+
+  async function enterPlay(){
+    const p=await ensurePlayer();
+    if(!p)return;
+    if(groundPaint.mode!=="off")groundPaint.setMode("off");
+    playMode=true;
+    document.body.classList.add("play-mode");
+    modeToggle.classList.add("playing");
+    modeToggle.textContent="✏️ Edit";
+    orbit.enabled=false;
+    p.root.visible=true;
+    camera.fov=38;
+    camera.near=.1;
+    camera.far=100;
+    camera.updateProjectionMatrix();
+    cameraTarget.set(p.root.position.x,p.root.position.y+.7,p.root.position.z);
+    camera.position.copy(cameraTarget).add(GAME_CAMERA_OFFSET);
+    camera.lookAt(cameraTarget);
+  }
+
+  function exitPlay(){
+    playMode=false;
+    document.body.classList.remove("play-mode");
+    modeToggle.classList.remove("playing");
+    modeToggle.textContent="▶ Play";
+    if(player)player.root.visible=false;
+    camera.fov=52;
+    camera.near=.1;
+    camera.far=600;
+    camera.updateProjectionMatrix();
+    orbit.enabled=true;
+    orbit.target.set(0,0,0);
+    camera.position.set(20,15,24);
+    orbit.update();
+  }
+
+  modeToggle.onclick=async()=>{
+    if(playMode)exitPlay();
+    else await enterPlay();
+  };
+
+  orbit.addEventListener("start",()=>{if(!playMode&&groundPaint.mode==="off")ui.element.style.opacity=".18";});
   orbit.addEventListener("end",()=>{ui.element.style.opacity="1";});
 
   let downAt=null;
   renderer.domElement.addEventListener("pointerdown",event=>{
-    if(groundPaint.mode!=="off")return;
+    if(playMode||groundPaint.mode!=="off")return;
     downAt={x:event.clientX,y:event.clientY};
   });
   renderer.domElement.addEventListener("pointerup",event=>{
-    if(groundPaint.mode!=="off")return;
+    if(playMode||groundPaint.mode!=="off")return;
     if(!downAt)return;const moved=Math.hypot(event.clientX-downAt.x,event.clientY-downAt.y);downAt=null;
     if(moved>=10||controller.isPlacing)return;
     const id=view.pickAt(event.clientX,event.clientY);
@@ -108,9 +201,32 @@ async function boot(){
     else{controller.clearSelection();view.highlight(null);ui.setSelection(null);}
   });
 
+  function updatePlay(delta){
+    if(!playMode||!player)return;
+    const state=movement.update({player,input:input.get(),delta});
+    if(!player.isSpecial()){
+      player.fadeTo(
+        state.moving?(state.running?PLAY_ANIMS.run:PLAY_ANIMS.walk):PLAY_ANIMS.idle,
+        state.moving?.15:.18,
+        true,
+        state.running?PLAY_CONFIG.animationSpeed.run:state.moving?PLAY_CONFIG.animationSpeed.walk:PLAY_CONFIG.animationSpeed.idle
+      );
+    }
+    player.mixer.update(delta);
+    cameraTarget.set(player.root.position.x,player.root.position.y+.7,player.root.position.z);
+    desiredCamera.copy(cameraTarget).add(GAME_CAMERA_OFFSET);
+    camera.position.lerp(desiredCamera,1-Math.exp(-5.5*delta));
+    camera.lookAt(cameraTarget);
+  }
+
   function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
   addEventListener("resize",resize);
-  renderer.setAnimationLoop(()=>{orbit.update();view.update();renderer.render(scene,camera);});
+  renderer.setAnimationLoop(()=>{
+    const delta=Math.min(clock.getDelta(),.04);
+    if(playMode)updatePlay(delta);
+    else{orbit.update();view.update();}
+    renderer.render(scene,camera);
+  });
 }
 
 boot().catch(error=>{console.error("Builder boot failed",error);errorBox.style.display="flex";errorBox.textContent=`Builder error\n${error?.message??error}`;});
