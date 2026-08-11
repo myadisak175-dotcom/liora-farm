@@ -40,13 +40,8 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     root.add(model);
     root.updateMatrixWorld(true);
 
+    // 1) Measure the raw model first and normalize its horizontal footprint.
     let bounds = new THREE.Box3().setFromObject(model);
-    if (!bounds.isEmpty() && Number.isFinite(bounds.min.y)) {
-      model.position.y -= bounds.min.y;
-      model.updateMatrixWorld(true);
-      bounds = new THREE.Box3().setFromObject(model);
-    }
-
     if (!bounds.isEmpty()) {
       const size = new THREE.Vector3();
       bounds.getSize(size);
@@ -58,6 +53,14 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
         model.updateMatrixWorld(true);
         root.userData.builderBaseScale = baseScale;
       }
+    }
+
+    // 2) Ground AFTER normalization. Doing this before scaling makes the Y offset
+    // scale too, which is why houses/trees appeared buried or floating.
+    bounds = new THREE.Box3().setFromObject(model);
+    if (!bounds.isEmpty() && Number.isFinite(bounds.min.y)) {
+      model.position.y -= bounds.min.y;
+      model.updateMatrixWorld(true);
     }
 
     return root;
