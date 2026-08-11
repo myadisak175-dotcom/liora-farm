@@ -34,11 +34,6 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     return root;
   }
 
-  // Hybrid calibration rule:
-  // - Liora is the world ruler at 1.7 m.
-  // - Each asset may define its own targetHeight in catalog.json.
-  // - We scale the inner GLB once to that physical target, then ground it.
-  // - The outer holder keeps user scale/rotation independent, so +/- remains free.
   function makeGroundedRoot(model, asset) {
     const root = new THREE.Group();
     root.userData.builderAssetId = asset?.id ?? null;
@@ -167,13 +162,17 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   }
 
   async function addPlaced(item) {
-    const object = await loadGroundedObject(item.assetId);
-    if (disposed) { disposeObject(object); return; }
-    object.userData.builderItemId = item.id;
-    object.userData.builderAssetId = item.assetId;
-    applyTransform(object, item);
-    placed.set(item.id, { object, assetId: item.assetId });
-    scene.add(object);
+    try {
+      const object = await loadGroundedObject(item.assetId);
+      if (disposed) { disposeObject(object); return; }
+      object.userData.builderItemId = item.id;
+      object.userData.builderAssetId = item.assetId;
+      applyTransform(object, item);
+      placed.set(item.id, { object, assetId: item.assetId });
+      scene.add(object);
+    } catch (error) {
+      console.warn(`Builder skipped asset "${item.assetId}" (${item.id}) after load retries`, error);
+    }
   }
 
   async function syncItems(items) {
@@ -218,7 +217,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
       }
       applyTransform(entry.object, item);
     }
-    await Promise.all(loads);
+    await Promise.allSettled(loads);
   }
 
   async function beginPreview(asset) {
