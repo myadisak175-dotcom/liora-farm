@@ -52,6 +52,7 @@ const DEFINITIONS = {
     label: "นั่ง",
     range: 2.0,
     priority: 15,
+    animationKey: "walkToSit",
   },
   crate: {
     type: INTERACTION_TYPES.INSPECT,
