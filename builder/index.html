@@ -39,106 +39,75 @@ import { createBuilderUI } from "../src/editor/builder-ui.js";
 const stage = document.querySelector("#stage");
 const errorBox = document.querySelector("#error");
 
-const WORLD_V1 = [
-  {id:"world-v1-home",assetId:"house",x:-11,z:-9,rotation:.18,scale:1.12},
-  {id:"world-v1-home-bench",assetId:"bench",x:-7,z:-6,rotation:-.2,scale:1},
-  {id:"world-v1-home-lamp-a",assetId:"path_lamp",x:-8,z:-4,rotation:0,scale:1},
-  {id:"world-v1-home-lamp-b",assetId:"path_lamp",x:-13,z:-4,rotation:0,scale:1},
-  {id:"world-v1-home-crate",assetId:"crate_set",x:-15,z:-8,rotation:.55,scale:.9},
-  {id:"world-v1-home-barrel",assetId:"wine_barrel",x:-14,z:-11,rotation:.2,scale:1},
+const WORLD_V2 = [
+  // Home Farm — compact focal area in the south-west.
+  {id:"v2-home",assetId:"house",x:-11,z:-10,rotation:.12,scale:1.15},
+  {id:"v2-home-bench",assetId:"bench",x:-7,z:-8,rotation:-.18,scale:.82},
+  {id:"v2-home-lamp-a",assetId:"path_lamp",x:-8,z:-5,rotation:0,scale:.92},
+  {id:"v2-home-lamp-b",assetId:"path_lamp",x:-13,z:-5,rotation:0,scale:.92},
+  {id:"v2-home-crate",assetId:"crate_set",x:-15,z:-10,rotation:.55,scale:.72},
+  {id:"v2-home-barrel",assetId:"wine_barrel",x:-15,z:-12,rotation:.2,scale:.72},
+  {id:"v2-fence-a",assetId:"wood_fence",x:-14,z:-4,rotation:0,scale:.9},
+  {id:"v2-fence-b",assetId:"wood_fence",x:-12,z:-4,rotation:0,scale:.9},
+  {id:"v2-fence-c",assetId:"wood_fence",x:-10,z:-4,rotation:0,scale:.9},
 
-  {id:"world-v1-path-01",assetId:"path_tile",x:-10,z:-3,rotation:0,scale:1.15},
-  {id:"world-v1-path-02",assetId:"path_tile",x:-9,z:-2,rotation:0,scale:1.15},
-  {id:"world-v1-path-03",assetId:"path_tile",x:-8,z:-1,rotation:0,scale:1.15},
-  {id:"world-v1-path-04",assetId:"path_tile",x:-7,z:0,rotation:0,scale:1.15},
-  {id:"world-v1-path-05",assetId:"path_tile",x:-6,z:1,rotation:0,scale:1.15},
-  {id:"world-v1-path-06",assetId:"path_tile",x:-5,z:2,rotation:0,scale:1.15},
-  {id:"world-v1-path-07",assetId:"path_tile",x:-4,z:3,rotation:0,scale:1.15},
-  {id:"world-v1-path-08",assetId:"path_tile",x:-3,z:4,rotation:0,scale:1.15},
-  {id:"world-v1-path-09",assetId:"path_tile",x:-2,z:5,rotation:0,scale:1.15},
-  {id:"world-v1-path-10",assetId:"path_tile",x:-1,z:6,rotation:0,scale:1.15},
-  {id:"world-v1-path-11",assetId:"path_tile",x:0,z:7,rotation:0,scale:1.15},
-  {id:"world-v1-path-12",assetId:"path_tile",x:1,z:8,rotation:0,scale:1.15},
-  {id:"world-v1-path-13",assetId:"path_tile",x:2,z:9,rotation:0,scale:1.15},
-  {id:"world-v1-path-14",assetId:"path_tile",x:3,z:10,rotation:0,scale:1.15},
-  {id:"world-v1-path-15",assetId:"path_tile",x:4,z:11,rotation:0,scale:1.15},
-  {id:"world-v1-path-16",assetId:"path_tile",x:5,z:12,rotation:0,scale:1.15},
+  // Main path — spaced so it reads as a trail rather than a tiled carpet.
+  {id:"v2-path-1",assetId:"path_tile",x:-9,z:-3,rotation:.08,scale:1.05},
+  {id:"v2-path-2",assetId:"path_tile",x:-7,z:-1,rotation:.12,scale:1.02},
+  {id:"v2-path-3",assetId:"path_tile",x:-5,z:1,rotation:.18,scale:1.05},
+  {id:"v2-path-4",assetId:"path_tile",x:-2,z:3,rotation:.22,scale:1.02},
+  {id:"v2-path-5",assetId:"path_tile",x:1,z:5,rotation:.18,scale:1.04},
+  {id:"v2-path-6",assetId:"path_tile",x:4,z:7,rotation:.12,scale:1.02},
+  {id:"v2-path-7",assetId:"path_tile",x:7,z:9,rotation:.08,scale:1.04},
 
-  {id:"world-v1-bridge",assetId:"wood_bridge",x:0,z:7,rotation:.8,scale:1.15},
-  {id:"world-v1-fence-a",assetId:"wood_fence",x:-15,z:-4,rotation:0,scale:1.15},
-  {id:"world-v1-fence-b",assetId:"wood_fence",x:-13,z:-4,rotation:0,scale:1.15},
-  {id:"world-v1-fence-c",assetId:"wood_fence",x:-11,z:-4,rotation:0,scale:1.15},
-  {id:"world-v1-fence-d",assetId:"wood_fence",x:-9,z:-4,rotation:0,scale:1.15},
+  // Village placeholder — small cluster, not a showroom.
+  {id:"v2-village-house-a",assetId:"house2",x:12,z:12,rotation:-.5,scale:1.08},
+  {id:"v2-village-house-b",assetId:"blue_cottage",x:18,z:8,rotation:-.95,scale:1.03},
+  {id:"v2-village-bench",assetId:"bench",x:11,z:7,rotation:.35,scale:.8},
+  {id:"v2-village-lamp-a",assetId:"path_lamp",x:9,z:10,rotation:0,scale:.9},
+  {id:"v2-village-lamp-b",assetId:"path_lamp",x:14,z:9,rotation:0,scale:.9},
+  {id:"v2-village-crates",assetId:"crate_set",x:17,z:12,rotation:.4,scale:.7},
 
-  {id:"world-v1-village-house-a",assetId:"house2",x:13,z:12,rotation:-.55,scale:1.05},
-  {id:"world-v1-village-house-b",assetId:"blue_cottage",x:17,z:7,rotation:-1.1,scale:1.05},
-  {id:"world-v1-village-bench",assetId:"bench",x:11,z:8,rotation:.35,scale:1},
-  {id:"world-v1-village-lamp-a",assetId:"path_lamp",x:8,z:10,rotation:0,scale:1.1},
-  {id:"world-v1-village-lamp-b",assetId:"path_lamp",x:11,z:13,rotation:0,scale:1.1},
-  {id:"world-v1-village-lamp-c",assetId:"path_lamp",x:15,z:10,rotation:0,scale:1.1},
-  {id:"world-v1-village-crates",assetId:"crate_set",x:18,z:11,rotation:.4,scale:.9},
+  // Forest frame — fewer, larger trees to define space and hide the horizon.
+  {id:"v2-tree-01",assetId:"tree",x:-22,z:-17,rotation:.2,scale:1.65},
+  {id:"v2-tree-02",assetId:"pine",x:-22,z:-9,rotation:.7,scale:1.55},
+  {id:"v2-tree-03",assetId:"tree",x:-20,z:0,rotation:1.1,scale:1.75},
+  {id:"v2-tree-04",assetId:"pine",x:-17,z:10,rotation:.35,scale:1.7},
+  {id:"v2-tree-05",assetId:"tree",x:-10,z:18,rotation:.8,scale:1.8},
+  {id:"v2-tree-06",assetId:"pine",x:0,z:22,rotation:1.3,scale:1.65},
+  {id:"v2-tree-07",assetId:"tree",x:10,z:21,rotation:.4,scale:1.7},
+  {id:"v2-tree-08",assetId:"pine",x:22,z:17,rotation:1.0,scale:1.6},
+  {id:"v2-tree-09",assetId:"tree",x:24,z:5,rotation:.6,scale:1.75},
+  {id:"v2-tree-10",assetId:"pine",x:23,z:-7,rotation:1.2,scale:1.65},
+  {id:"v2-tree-11",assetId:"tree",x:18,z:-18,rotation:.25,scale:1.8},
+  {id:"v2-tree-12",assetId:"pine",x:7,z:-23,rotation:.9,scale:1.6},
+  {id:"v2-tree-13",assetId:"tree",x:-5,z:-23,rotation:.5,scale:1.7},
 
-  {id:"world-v1-tree-01",assetId:"tree",x:-20,z:-16,rotation:.2,scale:1.35},
-  {id:"world-v1-tree-02",assetId:"tree",x:-18,z:-12,rotation:1.1,scale:1.1},
-  {id:"world-v1-tree-03",assetId:"pine",x:-20,z:-7,rotation:.5,scale:1.25},
-  {id:"world-v1-tree-04",assetId:"pine",x:-18,z:-2,rotation:1.5,scale:1.05},
-  {id:"world-v1-tree-05",assetId:"tree",x:-16,z:4,rotation:.9,scale:1.3},
-  {id:"world-v1-tree-06",assetId:"tree",x:-14,z:9,rotation:.3,scale:1.15},
-  {id:"world-v1-tree-07",assetId:"pine",x:-10,z:15,rotation:1.2,scale:1.35},
-  {id:"world-v1-tree-08",assetId:"pine",x:-5,z:18,rotation:.7,scale:1.2},
-  {id:"world-v1-tree-09",assetId:"tree",x:1,z:20,rotation:1.8,scale:1.25},
-  {id:"world-v1-tree-10",assetId:"palm",x:7,z:19,rotation:.4,scale:1.1},
-  {id:"world-v1-tree-11",assetId:"tree",x:20,z:17,rotation:1.3,scale:1.15},
-  {id:"world-v1-tree-12",assetId:"pine",x:22,z:11,rotation:.2,scale:1.25},
-  {id:"world-v1-tree-13",assetId:"tree",x:23,z:4,rotation:1.1,scale:1.3},
-  {id:"world-v1-tree-14",assetId:"palm",x:21,z:-3,rotation:.8,scale:1.15},
-  {id:"world-v1-tree-15",assetId:"tree",x:18,z:-10,rotation:.35,scale:1.25},
-  {id:"world-v1-tree-16",assetId:"pine",x:13,z:-16,rotation:1.4,scale:1.2},
-  {id:"world-v1-tree-17",assetId:"tree",x:6,z:-20,rotation:.6,scale:1.35},
-  {id:"world-v1-tree-18",assetId:"palm",x:-1,z:-21,rotation:1.2,scale:1.05},
-  {id:"world-v1-tree-19",assetId:"tree",x:-8,z:-20,rotation:.1,scale:1.2},
-  {id:"world-v1-tree-20",assetId:"pine",x:-15,z:-19,rotation:.9,scale:1.25},
-
-  {id:"world-v1-grass-01",assetId:"grass",x:-6,z:-9,rotation:.2,scale:1.25},
-  {id:"world-v1-grass-02",assetId:"grass",x:-4,z:-7,rotation:1.2,scale:.95},
-  {id:"world-v1-grass-03",assetId:"grass",x:-2,z:-10,rotation:.7,scale:1.15},
-  {id:"world-v1-grass-04",assetId:"grass",x:3,z:-8,rotation:1.6,scale:1},
-  {id:"world-v1-grass-05",assetId:"grass",x:6,z:-4,rotation:.3,scale:1.3},
-  {id:"world-v1-grass-06",assetId:"grass",x:9,z:1,rotation:1.1,scale:1.1},
-  {id:"world-v1-grass-07",assetId:"grass",x:6,z:6,rotation:.5,scale:1.25},
-  {id:"world-v1-grass-08",assetId:"grass",x:2,z:14,rotation:1.4,scale:1.05},
-  {id:"world-v1-grass-09",assetId:"grass",x:-4,z:12,rotation:.8,scale:1.2},
-  {id:"world-v1-grass-10",assetId:"grass",x:-9,z:8,rotation:.15,scale:1.1}
+  // Ground accents — deliberately sparse for negative space.
+  {id:"v2-grass-01",assetId:"grass",x:-6,z:-11,rotation:.2,scale:.8},
+  {id:"v2-grass-02",assetId:"grass",x:-2,z:-8,rotation:1.2,scale:.72},
+  {id:"v2-grass-03",assetId:"grass",x:3,z:-5,rotation:.7,scale:.78},
+  {id:"v2-grass-04",assetId:"grass",x:7,z:1,rotation:1.6,scale:.75},
+  {id:"v2-grass-05",assetId:"grass",x:3,z:12,rotation:.3,scale:.8},
+  {id:"v2-grass-06",assetId:"grass",x:-7,z:10,rotation:1.1,scale:.74}
 ];
 
 function addWorldBackdrop(scene) {
-  const mountainMaterial = new THREE.MeshStandardMaterial({
-    color: 0x78907B,
-    roughness: 1,
-    metalness: 0,
-    flatShading: true,
-  });
-  const farMountainMaterial = new THREE.MeshStandardMaterial({
-    color: 0x91A69A,
-    roughness: 1,
-    metalness: 0,
-    flatShading: true,
-  });
-  const baseGeometry = new THREE.ConeGeometry(1, 1, 7, 2);
+  const near = new THREE.MeshStandardMaterial({ color:0x7F9586,roughness:1,metalness:0,flatShading:true });
+  const far = new THREE.MeshStandardMaterial({ color:0x9EAEA5,roughness:1,metalness:0,flatShading:true });
+  const geometry = new THREE.ConeGeometry(1,1,7,2);
   const ring = new THREE.Group();
   const mountains = [
-    [-48,-50,16,19,1.15],[-28,-58,13,15,.9],[-6,-61,18,23,1.25],[20,-58,14,18,1],[43,-49,20,25,1.2],
-    [58,-27,14,18,.9],[61,1,19,24,1.1],[58,30,15,20,1],[43,51,18,22,1.15],[18,59,14,18,.9],
-    [-8,62,20,25,1.2],[-34,57,15,19,1],[-53,42,19,23,1.1],[-61,17,14,18,.9],[-61,-15,18,22,1.05]
+    [-78,-72,18,18,1.15],[-42,-88,15,14,.9],[-3,-94,21,22,1.25],[36,-88,16,16,1],[72,-72,22,23,1.2],
+    [90,-38,16,16,.95],[95,2,21,22,1.1],[88,42,17,18,1],[69,76,20,21,1.15],[32,91,16,16,.9],
+    [-8,96,22,23,1.2],[-48,87,17,17,1],[-79,67,21,22,1.1],[-94,28,16,16,.9],[-94,-25,20,20,1.05]
   ];
-  mountains.forEach(([x,z,w,h,d], index) => {
-    const mountain = new THREE.Mesh(baseGeometry, index % 3 === 0 ? farMountainMaterial : mountainMaterial);
-    mountain.position.set(x, h * .46 - 1.5, z);
-    mountain.scale.set(w, h, w * d);
-    mountain.rotation.y = (index * 0.73) % Math.PI;
-    mountain.receiveShadow = false;
-    mountain.castShadow = false;
-    ring.add(mountain);
+  mountains.forEach(([x,z,w,h,d],i)=>{
+    const m = new THREE.Mesh(geometry, i%3===0 ? far : near);
+    m.position.set(x,h*.47-2,z);
+    m.scale.set(w,h,w*d);
+    m.rotation.y=(i*.73)%Math.PI;
+    m.castShadow=false; m.receiveShadow=false; ring.add(m);
   });
   scene.add(ring);
 }
@@ -146,117 +115,91 @@ function addWorldBackdrop(scene) {
 async function boot() {
   let catalog;
   try {
-    catalog = await loadCatalog({ url: "../assets/catalog.json", root: "../" });
+    catalog = await loadCatalog({ url:"../assets/catalog.json",root:"../" });
   } catch (error) {
-    errorBox.style.display = "flex";
-    errorBox.textContent = `โหลดรายการ asset ไม่สำเร็จ\n${error?.message ?? error}`;
+    errorBox.style.display="flex";
+    errorBox.textContent=`โหลดรายการ asset ไม่สำเร็จ\n${error?.message ?? error}`;
     throw error;
   }
 
-  const sky = 0xC9DEE0;
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(sky);
-  scene.fog = new THREE.Fog(sky, 34, 105);
+  const sky=0xC9DEE0;
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(sky);
+  scene.fog=new THREE.Fog(sky,58,165);
 
-  const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 400);
-  camera.position.set(14, 11, 16);
+  const camera=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,500);
+  camera.position.set(18,14,22);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight, false);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight,false);
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.03;
   stage.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xE7F3EF, 0x526146, 1.45));
-  const sun = new THREE.DirectionalLight(0xFFE2A8, 2.65);
-  sun.position.set(-24, 12, 18);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -34;
-  sun.shadow.camera.right = 34;
-  sun.shadow.camera.top = 34;
-  sun.shadow.camera.bottom = -34;
+  scene.add(new THREE.HemisphereLight(0xE7F3EF,0x526146,1.45));
+  const sun=new THREE.DirectionalLight(0xFFE2A8,2.5);
+  sun.position.set(-28,13,20);
+  sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.camera.left=-38; sun.shadow.camera.right=38;
+  sun.shadow.camera.top=38; sun.shadow.camera.bottom=-38;
   scene.add(sun);
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(70, 70),
-    new THREE.MeshStandardMaterial({ color: 0x789A58, roughness: 1 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(82,82),new THREE.MeshStandardMaterial({color:0x789A58,roughness:1}));
+  ground.rotation.x=-Math.PI/2;
+  ground.receiveShadow=true;
   scene.add(ground);
   addWorldBackdrop(scene);
 
-  const orbit = new OrbitControls(camera, renderer.domElement);
-  orbit.enableDamping = true;
-  orbit.dampingFactor = 0.09;
-  orbit.maxPolarAngle = Math.PI * 0.47;
-  orbit.minDistance = 6;
-  orbit.maxDistance = 46;
-  orbit.target.set(0, 0, 0);
+  const orbit=new OrbitControls(camera,renderer.domElement);
+  orbit.enableDamping=true;
+  orbit.dampingFactor=.09;
+  orbit.maxPolarAngle=Math.PI*.47;
+  orbit.minDistance=6;
+  orbit.maxDistance=54;
+  orbit.target.set(0,0,0);
 
-  const state = createBuilderState();
-  const layoutStore = createLayoutStore();
-  const controller = createBuilderController({ state, catalog, layoutStore });
-  const assetLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
-  const view = createBuilderView({ scene, camera, renderer, orbit, assetLoader });
-  const ui = createBuilderUI({ mount: document.body, controller, view, catalog });
+  const state=createBuilderState();
+  const layoutStore=createLayoutStore();
+  const controller=createBuilderController({state,catalog,layoutStore});
+  const assetLoader=createBuilderAssetLoader({gltfLoader:new GLTFLoader()});
+  const view=createBuilderView({scene,camera,renderer,orbit,assetLoader});
+  const ui=createBuilderUI({mount:document.body,controller,view,catalog});
 
   controller.load();
-  const params = new URLSearchParams(location.search);
-  if (params.get("world") === "v1") {
-    controller.items.splice(0, controller.items.length, ...WORLD_V1.map((item) => ({ ...item })));
+  const params=new URLSearchParams(location.search);
+  if(params.get("world")==="v2"){
+    controller.items.splice(0,controller.items.length,...WORLD_V2.map(item=>({...item})));
     controller.save();
-    history.replaceState(null, "", location.pathname);
   }
   await view.syncItems(controller.items);
 
-  orbit.addEventListener("start", () => { ui.element.style.opacity = ".18"; });
-  orbit.addEventListener("end", () => { ui.element.style.opacity = "1"; });
+  orbit.addEventListener("start",()=>{ui.element.style.opacity=".18";});
+  orbit.addEventListener("end",()=>{ui.element.style.opacity="1";});
 
-  let downAt = null;
-  renderer.domElement.addEventListener("pointerdown", (event) => {
-    downAt = { x: event.clientX, y: event.clientY };
-  });
-  renderer.domElement.addEventListener("pointerup", (event) => {
-    if (!downAt) return;
-    const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y);
-    downAt = null;
-    if (moved >= 10 || controller.isPlacing) return;
-
-    const id = view.pickAt(event.clientX, event.clientY);
-    if (id) {
-      controller.selectItem(id);
-      view.highlight(id);
-      ui.setSelection(id);
-    } else {
-      controller.clearSelection();
-      view.highlight(null);
-      ui.setSelection(null);
-    }
+  let downAt=null;
+  renderer.domElement.addEventListener("pointerdown",event=>{downAt={x:event.clientX,y:event.clientY};});
+  renderer.domElement.addEventListener("pointerup",event=>{
+    if(!downAt)return;
+    const moved=Math.hypot(event.clientX-downAt.x,event.clientY-downAt.y);
+    downAt=null;
+    if(moved>=10||controller.isPlacing)return;
+    const id=view.pickAt(event.clientX,event.clientY);
+    if(id){controller.selectItem(id);view.highlight(id);ui.setSelection(id);}
+    else{controller.clearSelection();view.highlight(null);ui.setSelection(null);}
   });
 
-  function resize() {
-    renderer.setSize(innerWidth, innerHeight, false);
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-  }
-  addEventListener("resize", resize);
+  function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
+  addEventListener("resize",resize);
 
-  renderer.setAnimationLoop(() => {
-    orbit.update();
-    view.update();
-    renderer.render(scene, camera);
-  });
+  renderer.setAnimationLoop(()=>{orbit.update();view.update();renderer.render(scene,camera);});
 }
 
-boot().catch((error) => {
-  console.error("Builder boot failed", error);
-});
+boot().catch(error=>{console.error("Builder boot failed",error);errorBox.style.display="flex";errorBox.textContent=`Builder error\n${error?.message ?? error}`;});
 </script>
 </body>
 </html>
