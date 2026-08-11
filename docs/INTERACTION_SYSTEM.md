@@ -15,9 +15,13 @@ Interaction definition
       ↓
 semantic action
       ↓
-registered gameplay handler
+Character interaction bridge
       ↓
-Animation / VFX / Audio / Inventory / Scene transition
+Animation (optional)
+      ↓
+domain callback
+      ↓
+VFX / Audio / Inventory / Scene transition / World state
 ```
 
 ## Files
@@ -27,7 +31,8 @@ src/
 ├── data/
 │   └── interactions.js       # assetId -> semantic interaction metadata
 └── systems/
-    └── interaction.js        # proximity focus + action dispatch
+    ├── interaction.js        # proximity focus + action dispatch
+    └── interaction-actions.js# Character animation -> domain callback bridge
 ```
 
 ## Responsibilities
@@ -55,6 +60,12 @@ The entry is keyed by a stable asset ID such as `tree`, not a GLB filename or Th
 - dispatches a semantic action to a registered handler
 - never edits inventory, destroys trees, opens doors or changes scenes itself
 
+### `systems/interaction-actions.js`
+
+Optional bridge for animated characters. If a definition contains `animationKey`, the matching Character action is played first. The domain callback runs when the one-shot animation finishes.
+
+This gives actions consistent timing without making InteractionSystem depend on AnimationController.
+
 ## Runtime target contract
 
 A Builder-placed object already exposes stable metadata on its root:
@@ -81,21 +92,27 @@ const interactions = createInteractionSystem({
   },
 });
 
-interactions.register("chop", ({ definition }) => {
-  const clip = ANIMATIONS[definition.animationKey];
-  return player.playAction(clip);
+const bindings = bindCharacterInteractions({
+  interaction: interactions,
+  character: player,
+  animations: ANIMATIONS,
+  actions: {
+    chop: ({ target }) => treeSystem.hit(target),
+    enter: ({ assetId }) => doorSystem.enter(assetId),
+    inspect: ({ assetId }) => inspectSystem.open(assetId),
+  },
 });
 
 interactionButton.onclick = () => interactions.perform({ player });
 ```
 
-The animation is only presentation. Resource drops, tool durability, tree HP and VFX should be handled by the `chop` gameplay handler or dedicated systems.
+For a tree, the `hammer` animation can finish before `treeSystem.hit()` applies damage, drops resources and triggers impact feedback. The detector still knows nothing about tree HP or inventory.
 
 ## Current definitions
 
-- Tree / Pine / Palm -> `chop`
+- Tree / Pine / Palm -> `chop` using the existing `hammer` animation key
 - House / House 2 / Blue Cottage -> `enter`
-- Bench -> `sit`
+- Bench -> `sit` using the existing `walkToSit` animation key
 - Crate / Crate Set / Barrel -> `inspect`
 
 The system also reserves semantic types for `pick-up` and `talk` so dropped items and NPCs can plug into the same API later.
@@ -106,5 +123,6 @@ The system also reserves semantic types for `pick-up` and `talk` so dropped item
 2. Detection and action execution remain separate.
 3. InteractionSystem must not own Inventory, Quest, VFX or Audio logic.
 4. A character that is already busy with a one-shot action should not start another action.
-5. New world objects should normally add data + a handler instead of adding `if (assetId === ...)` branches to the game loop.
-6. Builder remains an authoring tool; normal runtime interaction must not depend on Builder UI state.
+5. Animation timing is optional presentation; domain state changes are callbacks owned by their systems.
+6. New world objects should normally add data + a handler instead of adding `if (assetId === ...)` branches to the game loop.
+7. Builder remains an authoring tool; normal runtime interaction must not depend on Builder UI state.
