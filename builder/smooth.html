@@ -3,21 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>Liora — Smooth Live Builder</title>
-<style>html,body{margin:0;width:100%;height:100%;background:#C9DEE0;font-family:system-ui,sans-serif}#boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px}</style>
+<title>Liora — Best-of Live Builder</title>
+<style>html,body{margin:0;width:100%;height:100%;background:#C9DEE0;font-family:system-ui,sans-serif}#boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px;text-align:center}</style>
 </head>
 <body>
-<div id="boot"><div>กำลังโหลด Smooth Live Builder…</div></div>
+<div id="boot"><div>กำลังโหลด Liora Best-of Builder…<br><small>Live Build + Game Camera + Smooth Splat</small></div></div>
 <script>
 (async()=>{
   try{
-    let html=await fetch('./index.html?entry=smooth-v2-'+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Builder HTTP '+r.status);return r.text();});
+    const stamp='bestof-smooth-716053e-3';
+    let html=await fetch('./index.html?entry='+stamp+'-'+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Builder HTTP '+r.status);return r.text();});
     const old='import {createGroundPaint} from "../src/editor/ground-paint.js";';
-    const next='import {createGroundPaint} from "../src/editor/ground-paint.js?smooth=716053e-v2";';
+    const next='import {createGroundPaint} from "../src/editor/ground-paint.js?'+stamp+'";';
     if(!html.includes(old))throw new Error('Ground paint import anchor missing');
     html=html.replace(old,next);
+    html=html.replace('<title>Liora — Live World Builder</title>','<title>Liora — Best-of Live Builder</title>');
     document.open();document.write(html);document.close();
-  }catch(err){document.querySelector('#boot').innerHTML='<div>โหลด Smooth Builder ไม่สำเร็จ<br><small>'+String(err.message||err)+'</small><br><button onclick="location.reload()">ลองใหม่</button></div>';}
+  }catch(err){document.querySelector('#boot').innerHTML='<div>โหลด Best-of Builder ไม่สำเร็จ<br><small>'+String(err.message||err)+'</small><br><button onclick="location.reload()">ลองใหม่</button></div>';}
 })();
 </script>
 </body>
