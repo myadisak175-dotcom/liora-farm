@@ -30,6 +30,13 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
     if(!source.includes(oldLamp))throw new Error('House profile injection anchor missing');
     source=source.replace(oldLamp,houseProfiles);
 
+    // Authoring UX: collider guides are visible by default in the Builder.
+    // The Collision button still toggles them off/on when the view gets busy.
+    const debugOff='const gameplayDebugState={enabled:false,roots:new Map()};';
+    const debugOn='const gameplayDebugState={enabled:true,roots:new Map()};';
+    if(!source.includes(debugOff))throw new Error('Collision debug state anchor missing');
+    source=source.replace(debugOff,debugOn);
+
     source=source.replace('Liora — loading Builder v6.24…','Liora — loading Builder v6.25…');
     source=source.replace('Builder v6.24 • LIVE Collision • Sit • Vault • Ground Paint • MapSafe','Builder v6.25 • Tree Duo + House Compound Collision • MapSafe');
     source=source.replace('Liora — Home Island Builder v6.24 Live Collision','Liora — Home Island Builder v6.25 Compound Collision');
