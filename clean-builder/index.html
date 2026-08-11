@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<title>Liora — Clean Builder v1</title>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}
+</script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#a8d8ec;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:none}canvas{display:block;width:100%;height:100%;touch-action:none}.top{position:fixed;z-index:80;top:calc(env(safe-area-inset-top) + 12px);border:1px solid #ffffff88;background:#173c4be8;color:#fff;border-radius:999px;padding:11px 15px;font-weight:800;box-shadow:0 5px 18px #0003}#build{right:14px}.build-mode #build{background:#e8a33d;color:#1b1508;border-color:#e8a33d}#tag{position:fixed;z-index:70;left:12px;top:calc(env(safe-area-inset-top) + 12px);background:#173c4bcc;color:#fff;padding:9px 12px;border-radius:999px;font-size:10px;font-weight:800;pointer-events:none}#joy{position:fixed;z-index:60;left:22px;bottom:calc(env(safe-area-inset-bottom) + 24px);width:112px;height:112px;border-radius:50%;background:#ffffff35;border:2px solid #ffffff70;touch-action:none}#stick{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px;border-radius:50%;background:#ffffffd0;pointer-events:none}.build-mode #joy{display:none}body:not(.build-mode) #ground-paint-ui{display:none!important}#err{display:none;position:fixed;z-index:200;left:12px;right:12px;top:72px;background:#7b2f2fee;color:#fff;padding:12px;border-radius:14px;font-size:11px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div id="tag">Clean Builder v1 • Camera C</div>
+<button id="build" class="top" type="button">🔨 Build</button>
+<div id="joy"><div id="stick"></div></div>
+<div id="err"></div>
+<script type="module">
+import * as THREE from 'three';
+import {createPlayer} from '../src/entities/player.js';
+import {createGroundPaint} from '../src/editor/ground-paint.js?clean=v1';
+
+const err=document.querySelector('#err');
+function showError(e){err.style.display='block';err.textContent='Clean Builder error\n'+(e?.message||e);console.error(e)}
+window.addEventListener('unhandledrejection',e=>showError(e.reason));
+window.addEventListener('error',e=>showError(e.error||e.message));
+
+try{
+const CONFIG={worldLimit:42,playerHeight:1.7,walkSpeed:3.2,runSpeed:5.2,runThreshold:.78,camera:{fov:38,near:.1,far:120,baseOffset:new THREE.Vector3(8,10,10),minZoom:.65,maxZoom:1.55,followDeadZone:.55,followSharpness:3.2,positionSharpness:5.5}};
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xa8d8ec);scene.fog=new THREE.Fog(0xa8d8ec,35,95);
+const camera=new THREE.PerspectiveCamera(CONFIG.camera.fov,innerWidth/innerHeight,CONFIG.camera.near,CONFIG.camera.far);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xe7f3ef,0x526146,1.45));const sun=new THREE.DirectionalLight(0xffe2a8,2.4);sun.position.set(-24,18,16);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
+const tex=await new THREE.TextureLoader().loadAsync('../assets/textures/grass.webp');tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(18,18);tex.colorSpace=THREE.SRGBColorSpace;const ground=new THREE.Mesh(new THREE.PlaneGeometry(90,90),new THREE.MeshStandardMaterial({map:tex,roughness:1}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+const player=await createPlayer({url:'../assets/models/player/liora_all_animations_web.glb',height:1.7,groundOffset:-.02,renderOrder:10,animations:{idle:'Idle_9',walk:'Walking',run:'Running'},spawn:{x:0,y:0,z:0}});scene.add(player.root);
+
+// Camera C — dead-zone smooth follow
+const C=CONFIG.camera,base=C.baseOffset,follow=new THREE.Vector3(),desired=new THREE.Vector3(),deltaVec=new THREE.Vector3(),target=new THREE.Vector3(),offset=base.clone();let followReady=false;
+function updateCamera(dt){if(!followReady){follow.copy(target);followReady=true}deltaVec.copy(target).sub(follow);deltaVec.y=0;const d=deltaVec.length();if(d>C.followDeadZone){desired.copy(target).addScaledVector(deltaVec,-C.followDeadZone/d);follow.lerp(desired,1-Math.exp(-C.followSharpness*dt))}follow.y=target.y;const want=follow.clone().add(offset);camera.position.lerp(want,1-Math.exp(-C.positionSharpness*dt));camera.lookAt(follow)}
+
+// joystick
+const joy=document.querySelector('#joy'),stick=document.querySelector('#stick');let jid=null,jx=0,jy=0;function center(){const r=joy.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,rad:r.width*.34}}function moveJoy(e){const c=center(),dx=e.clientX-c.x,dy=e.clientY-c.y,l=Math.hypot(dx,dy)||1,k=Math.min(1,c.rad/l),x=dx*k,y=dy*k;jx=x/c.rad;jy=y/c.rad;stick.style.transform=`translate(${x}px,${y}px)`}joy.onpointerdown=e=>{jid=e.pointerId;joy.setPointerCapture?.(jid);moveJoy(e);e.stopPropagation()};joy.onpointermove=e=>{if(e.pointerId===jid){moveJoy(e);e.stopPropagation()}};function endJoy(e){if(e.pointerId!==jid)return;jid=null;jx=jy=0;stick.style.transform='translate(0,0)';e.stopPropagation()}joy.onpointerup=joy.onpointercancel=endJoy;
+
+// Smooth Splat Paint reuses the stable system, but only appears in Build mode.
+const orbitBridge={enabled:false};
+const groundPaint=createGroundPaint({scene,camera,renderer,orbit:orbitBridge,mount:document.body});
+let buildMode=false;const buildBtn=document.querySelector('#build');buildBtn.onclick=()=>{buildMode=!buildMode;document.body.classList.toggle('build-mode',buildMode);buildBtn.textContent=buildMode?'✓ Done':'🔨 Build';jx=jy=0;stick.style.transform='translate(0,0)';if(!buildMode&&groundPaint.mode!=='off')groundPaint.setMode('off')};
+
+const clock=new THREE.Clock(),camForward=new THREE.Vector3(),camRight=new THREE.Vector3(),move=new THREE.Vector3(),up=new THREE.Vector3(0,1,0);function relativeDir(x,z){camera.getWorldDirection(camForward);camForward.y=0;camForward.normalize();camRight.crossVectors(camForward,up).normalize();move.set(0,0,0).addScaledVector(camRight,x).addScaledVector(camForward,z);if(move.lengthSq()>.001)move.normalize();return move}
+function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.04);if(!buildMode){const m=Math.min(1,Math.hypot(jx,jy));if(m>.05){const v=relativeDir(jx,-jy),run=m>CONFIG.runThreshold,s=run?CONFIG.runSpeed:CONFIG.walkSpeed;player.root.position.addScaledVector(v,s*dt);player.root.position.x=THREE.MathUtils.clamp(player.root.position.x,-CONFIG.worldLimit,CONFIG.worldLimit);player.root.position.z=THREE.MathUtils.clamp(player.root.position.z,-CONFIG.worldLimit,CONFIG.worldLimit);const a=Math.atan2(v.x,v.z),df=Math.atan2(Math.sin(a-player.root.rotation.y),Math.cos(a-player.root.rotation.y));player.root.rotation.y+=df*Math.min(1,10*dt);player.fadeTo(run?'Running':'Walking',.15,true)}else player.fadeTo('Idle_9',.18,true)}else player.fadeTo('Idle_9',.18,true);player.mixer.update(dt);target.set(player.root.position.x,player.root.position.y+.7,player.root.position.z);updateCamera(dt);renderer.render(scene,camera)}loop();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+}catch(e){showError(e)}
+</script>
+</body>
+</html>
