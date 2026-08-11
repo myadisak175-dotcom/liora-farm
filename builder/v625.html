@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Liora — loading Builder v6.25…</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-ui,sans-serif}
+#boot{position:fixed;inset:0;display:grid;place-items:center;color:#fff;font-weight:800;text-shadow:0 2px 5px #234}
+#boot>div{background:#173c4bcc;padding:16px 20px;border-radius:18px;max-width:84vw}
+#boot small{display:block;margin-top:6px;font-weight:500}
+</style>
+</head>
+<body>
+<div id="boot"><div id="boot-box">กำลังโหลด Builder v6.25…<small>Tree Duo • House Compound Collision • Door markers</small></div></div>
+<script>
+(async()=>{
+  try{
+    const r=await fetch('./v624.html?v=624gameplay2',{cache:'no-store'});
+    if(!r.ok)throw new Error(`Builder v6.24 HTTP ${r.status}`);
+    let source=await r.text();
+
+    const oldTree=`  tree:{colliders:[\n    {type:\"circle\",x:-.42,z:.02,radius:.34,height:1.5},\n    {type:\"circle\",x:.42,z:-.02,radius:.34,height:1.5}\n  ]},`;
+    const newTree=`  tree:{colliders:[\n    {type:\"circle\",x:-.50,z:.08,radius:.30,height:1.55},\n    {type:\"circle\",x:.56,z:-.08,radius:.30,height:1.55}\n  ]},`;
+    if(!source.includes(oldTree))throw new Error('Tree Duo profile anchor missing');
+    source=source.replace(oldTree,newTree);
+
+    const oldLamp=`  path_lamp:{colliders:[{type:\"circle\",x:0,z:0,radius:.24,height:1.1}]}\n});`;
+    const houseProfiles=`  house:{\n    colliders:[\n      {type:\"box\",x:0,z:.20,width:3.05,depth:2.15,height:3.2},\n      {type:\"box\",x:-1.20,z:-.86,width:.66,depth:.72,height:1.7},\n      {type:\"box\",x:1.20,z:-.86,width:.66,depth:.72,height:1.7}\n    ],\n    interactions:[{type:\"door\",id:\"front_door\",x:0,y:.10,z:-1.28,facing:180,distance:.9}]\n  },\n  house2:{\n    colliders:[\n      {type:\"box\",x:0,z:.16,width:3.10,depth:2.20,height:3.2},\n      {type:\"box\",x:-1.18,z:-.92,width:.68,depth:.74,height:1.6},\n      {type:\"box\",x:1.18,z:-.92,width:.68,depth:.74,height:1.6}\n    ],\n    interactions:[{type:\"door\",id:\"front_door\",x:0,y:.10,z:-1.30,facing:180,distance:.9}]\n  },\n  blue_cottage:{\n    colliders:[\n      {type:\"box\",x:0,z:.18,width:2.95,depth:2.10,height:3.0},\n      {type:\"box\",x:-1.08,z:-.86,width:.62,depth:.70,height:1.5},\n      {type:\"box\",x:1.08,z:-.86,width:.62,depth:.70,height:1.5}\n    ],\n    interactions:[{type:\"door\",id:\"front_door\",x:0,y:.10,z:-1.24,facing:180,distance:.9}]\n  },\n  path_lamp:{colliders:[{type:\"circle\",x:0,z:0,radius:.24,height:1.1}]}\n});`;
+    if(!source.includes(oldLamp))throw new Error('House profile injection anchor missing');
+    source=source.replace(oldLamp,houseProfiles);
+
+    source=source.replace('Liora — loading Builder v6.24…','Liora — loading Builder v6.25…');
+    source=source.replace('Builder v6.24 • LIVE Collision • Sit • Vault • Ground Paint • MapSafe','Builder v6.25 • Tree Duo + House Compound Collision • MapSafe');
+    source=source.replace('Liora — Home Island Builder v6.24 Live Collision','Liora — Home Island Builder v6.25 Compound Collision');
+
+    document.open();
+    document.write(source);
+    document.close();
+  }catch(err){
+    console.error(err);
+    document.querySelector('#boot-box').innerHTML=`เปิด Builder v6.25 ไม่สำเร็จ<small>${String(err?.message||err)}</small><button onclick="location.reload()" style="margin-top:10px;padding:8px 12px">ลองใหม่</button>`;
+  }
+})();
+</script>
+</body>
+</html>
