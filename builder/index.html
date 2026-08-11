@@ -36,135 +36,110 @@ import { loadCatalog } from "../src/editor/asset-catalog.js";
 import { createBuilderView } from "../src/editor/builder-view.js";
 import { createBuilderUI } from "../src/editor/builder-ui.js";
 
-const stage = document.querySelector("#stage");
-const errorBox = document.querySelector("#error");
+const stage=document.querySelector("#stage");
+const errorBox=document.querySelector("#error");
 
-const WORLD_V2 = [
-  // Home Farm — compact focal area in the south-west.
-  {id:"v2-home",assetId:"house",x:-11,z:-10,rotation:.12,scale:1.15},
-  {id:"v2-home-bench",assetId:"bench",x:-7,z:-8,rotation:-.18,scale:.82},
-  {id:"v2-home-lamp-a",assetId:"path_lamp",x:-8,z:-5,rotation:0,scale:.92},
-  {id:"v2-home-lamp-b",assetId:"path_lamp",x:-13,z:-5,rotation:0,scale:.92},
-  {id:"v2-home-crate",assetId:"crate_set",x:-15,z:-10,rotation:.55,scale:.72},
-  {id:"v2-home-barrel",assetId:"wine_barrel",x:-15,z:-12,rotation:.2,scale:.72},
-  {id:"v2-fence-a",assetId:"wood_fence",x:-14,z:-4,rotation:0,scale:.9},
-  {id:"v2-fence-b",assetId:"wood_fence",x:-12,z:-4,rotation:0,scale:.9},
-  {id:"v2-fence-c",assetId:"wood_fence",x:-10,z:-4,rotation:0,scale:.9},
+const WORLD_V3=[
+  // Home farm — one readable focal cluster.
+  {id:"v3-home",assetId:"house",x:-9,z:-8,rotation:.12,scale:1},
+  {id:"v3-home-bench",assetId:"bench",x:-5,z:-7,rotation:-.18,scale:1},
+  {id:"v3-home-lamp",assetId:"path_lamp",x:-6,z:-4.5,rotation:0,scale:1},
+  {id:"v3-home-crates",assetId:"crate_set",x:-12,z:-8,rotation:.45,scale:1},
+  {id:"v3-home-barrel",assetId:"wine_barrel",x:-11,z:-11,rotation:.1,scale:1},
+  {id:"v3-fence-a",assetId:"wood_fence",x:-12,z:-3,rotation:0,scale:1},
+  {id:"v3-fence-b",assetId:"wood_fence",x:-10,z:-3,rotation:0,scale:1},
+  {id:"v3-fence-c",assetId:"wood_fence",x:-8,z:-3,rotation:0,scale:1},
 
-  // Main path — spaced so it reads as a trail rather than a tiled carpet.
-  {id:"v2-path-1",assetId:"path_tile",x:-9,z:-3,rotation:.08,scale:1.05},
-  {id:"v2-path-2",assetId:"path_tile",x:-7,z:-1,rotation:.12,scale:1.02},
-  {id:"v2-path-3",assetId:"path_tile",x:-5,z:1,rotation:.18,scale:1.05},
-  {id:"v2-path-4",assetId:"path_tile",x:-2,z:3,rotation:.22,scale:1.02},
-  {id:"v2-path-5",assetId:"path_tile",x:1,z:5,rotation:.18,scale:1.04},
-  {id:"v2-path-6",assetId:"path_tile",x:4,z:7,rotation:.12,scale:1.02},
-  {id:"v2-path-7",assetId:"path_tile",x:7,z:9,rotation:.08,scale:1.04},
+  // Continuous 1.5 m path: no gaps, one simple bend toward village.
+  {id:"v3-path-01",assetId:"path_tile",x:-6,z:-3,rotation:0,scale:1},
+  {id:"v3-path-02",assetId:"path_tile",x:-4.5,z:-3,rotation:0,scale:1},
+  {id:"v3-path-03",assetId:"path_tile",x:-3,z:-3,rotation:0,scale:1},
+  {id:"v3-path-04",assetId:"path_tile",x:-1.5,z:-3,rotation:0,scale:1},
+  {id:"v3-path-05",assetId:"path_tile",x:0,z:-3,rotation:0,scale:1},
+  {id:"v3-path-06",assetId:"path_tile",x:1.5,z:-3,rotation:0,scale:1},
+  {id:"v3-path-07",assetId:"path_tile",x:1.5,z:-1.5,rotation:0,scale:1},
+  {id:"v3-path-08",assetId:"path_tile",x:1.5,z:0,rotation:0,scale:1},
+  {id:"v3-path-09",assetId:"path_tile",x:1.5,z:1.5,rotation:0,scale:1},
+  {id:"v3-path-10",assetId:"path_tile",x:1.5,z:3,rotation:0,scale:1},
+  {id:"v3-path-11",assetId:"path_tile",x:1.5,z:4.5,rotation:0,scale:1},
+  {id:"v3-path-12",assetId:"path_tile",x:1.5,z:6,rotation:0,scale:1},
+  {id:"v3-path-13",assetId:"path_tile",x:1.5,z:7.5,rotation:0,scale:1},
+  {id:"v3-path-14",assetId:"path_tile",x:3,z:7.5,rotation:0,scale:1},
+  {id:"v3-path-15",assetId:"path_tile",x:4.5,z:7.5,rotation:0,scale:1},
+  {id:"v3-path-16",assetId:"path_tile",x:6,z:7.5,rotation:0,scale:1},
 
-  // Village placeholder — small cluster, not a showroom.
-  {id:"v2-village-house-a",assetId:"house2",x:12,z:12,rotation:-.5,scale:1.08},
-  {id:"v2-village-house-b",assetId:"blue_cottage",x:18,z:8,rotation:-.95,scale:1.03},
-  {id:"v2-village-bench",assetId:"bench",x:11,z:7,rotation:.35,scale:.8},
-  {id:"v2-village-lamp-a",assetId:"path_lamp",x:9,z:10,rotation:0,scale:.9},
-  {id:"v2-village-lamp-b",assetId:"path_lamp",x:14,z:9,rotation:0,scale:.9},
-  {id:"v2-village-crates",assetId:"crate_set",x:17,z:12,rotation:.4,scale:.7},
+  // Small village cluster.
+  {id:"v3-village-a",assetId:"house2",x:9,z:10,rotation:-.45,scale:1},
+  {id:"v3-village-b",assetId:"blue_cottage",x:15,z:8,rotation:-.85,scale:1},
+  {id:"v3-village-bench",assetId:"bench",x:8,z:6,rotation:.3,scale:1},
+  {id:"v3-village-lamp",assetId:"path_lamp",x:6,z:6,rotation:0,scale:1},
+  {id:"v3-village-crates",assetId:"crate_set",x:14,z:11,rotation:.35,scale:1},
 
-  // Forest frame — fewer, larger trees to define space and hide the horizon.
-  {id:"v2-tree-01",assetId:"tree",x:-22,z:-17,rotation:.2,scale:1.65},
-  {id:"v2-tree-02",assetId:"pine",x:-22,z:-9,rotation:.7,scale:1.55},
-  {id:"v2-tree-03",assetId:"tree",x:-20,z:0,rotation:1.1,scale:1.75},
-  {id:"v2-tree-04",assetId:"pine",x:-17,z:10,rotation:.35,scale:1.7},
-  {id:"v2-tree-05",assetId:"tree",x:-10,z:18,rotation:.8,scale:1.8},
-  {id:"v2-tree-06",assetId:"pine",x:0,z:22,rotation:1.3,scale:1.65},
-  {id:"v2-tree-07",assetId:"tree",x:10,z:21,rotation:.4,scale:1.7},
-  {id:"v2-tree-08",assetId:"pine",x:22,z:17,rotation:1.0,scale:1.6},
-  {id:"v2-tree-09",assetId:"tree",x:24,z:5,rotation:.6,scale:1.75},
-  {id:"v2-tree-10",assetId:"pine",x:23,z:-7,rotation:1.2,scale:1.65},
-  {id:"v2-tree-11",assetId:"tree",x:18,z:-18,rotation:.25,scale:1.8},
-  {id:"v2-tree-12",assetId:"pine",x:7,z:-23,rotation:.9,scale:1.6},
-  {id:"v2-tree-13",assetId:"tree",x:-5,z:-23,rotation:.5,scale:1.7},
+  // Forest masses — grouped instead of evenly spaced around a ring.
+  {id:"v3-tree-01",assetId:"tree",x:-20,z:-15,rotation:.2,scale:1.35},
+  {id:"v3-tree-02",assetId:"pine",x:-18,z:-10,rotation:.7,scale:1.25},
+  {id:"v3-tree-03",assetId:"tree",x:-21,z:-4,rotation:1.1,scale:1.45},
+  {id:"v3-tree-04",assetId:"pine",x:-19,z:3,rotation:.35,scale:1.35},
+  {id:"v3-tree-05",assetId:"tree",x:-16,z:10,rotation:.8,scale:1.4},
+  {id:"v3-tree-06",assetId:"pine",x:-11,z:16,rotation:1.3,scale:1.3},
+  {id:"v3-tree-07",assetId:"tree",x:17,z:17,rotation:.4,scale:1.4},
+  {id:"v3-tree-08",assetId:"pine",x:21,z:12,rotation:1,scale:1.3},
+  {id:"v3-tree-09",assetId:"tree",x:22,z:5,rotation:.6,scale:1.45},
+  {id:"v3-tree-10",assetId:"pine",x:21,z:-3,rotation:1.2,scale:1.3},
+  {id:"v3-tree-11",assetId:"tree",x:17,z:-12,rotation:.25,scale:1.45},
+  {id:"v3-tree-12",assetId:"pine",x:10,z:-18,rotation:.9,scale:1.3},
+  {id:"v3-tree-13",assetId:"tree",x:2,z:-21,rotation:.5,scale:1.4},
 
-  // Ground accents — deliberately sparse for negative space.
-  {id:"v2-grass-01",assetId:"grass",x:-6,z:-11,rotation:.2,scale:.8},
-  {id:"v2-grass-02",assetId:"grass",x:-2,z:-8,rotation:1.2,scale:.72},
-  {id:"v2-grass-03",assetId:"grass",x:3,z:-5,rotation:.7,scale:.78},
-  {id:"v2-grass-04",assetId:"grass",x:7,z:1,rotation:1.6,scale:.75},
-  {id:"v2-grass-05",assetId:"grass",x:3,z:12,rotation:.3,scale:.8},
-  {id:"v2-grass-06",assetId:"grass",x:-7,z:10,rotation:1.1,scale:.74}
+  // Sparse ground accents.
+  {id:"v3-grass-01",assetId:"grass",x:-4,z:-11,rotation:.2,scale:1},
+  {id:"v3-grass-02",assetId:"grass",x:-1,z:-8,rotation:1.2,scale:.9},
+  {id:"v3-grass-03",assetId:"grass",x:5,z:-5,rotation:.7,scale:1},
+  {id:"v3-grass-04",assetId:"grass",x:7,z:1,rotation:1.6,scale:.9},
+  {id:"v3-grass-05",assetId:"grass",x:-5,z:9,rotation:.3,scale:1}
 ];
 
-function addWorldBackdrop(scene) {
-  const near = new THREE.MeshStandardMaterial({ color:0x7F9586,roughness:1,metalness:0,flatShading:true });
-  const far = new THREE.MeshStandardMaterial({ color:0x9EAEA5,roughness:1,metalness:0,flatShading:true });
-  const geometry = new THREE.ConeGeometry(1,1,7,2);
-  const ring = new THREE.Group();
-  const mountains = [
-    [-78,-72,18,18,1.15],[-42,-88,15,14,.9],[-3,-94,21,22,1.25],[36,-88,16,16,1],[72,-72,22,23,1.2],
-    [90,-38,16,16,.95],[95,2,21,22,1.1],[88,42,17,18,1],[69,76,20,21,1.15],[32,91,16,16,.9],
-    [-8,96,22,23,1.2],[-48,87,17,17,1],[-79,67,21,22,1.1],[-94,28,16,16,.9],[-94,-25,20,20,1.05]
+function addWorldBackdrop(scene){
+  const near=new THREE.MeshStandardMaterial({color:0x84978B,roughness:1,metalness:0,flatShading:true});
+  const far=new THREE.MeshStandardMaterial({color:0xA5B3AC,roughness:1,metalness:0,flatShading:true});
+  const geometry=new THREE.ConeGeometry(1,1,7,2);
+  const ring=new THREE.Group();
+  const mountains=[
+    [-105,-95,22,20,1.15],[-58,-118,18,16,.9],[-5,-126,26,24,1.25],[48,-116,20,18,1],[96,-92,27,25,1.2],
+    [120,-46,19,18,.95],[128,4,25,23,1.1],[118,55,21,20,1],[91,101,24,22,1.15],[42,121,19,17,.9],
+    [-10,128,27,25,1.2],[-64,116,21,19,1],[-106,88,25,23,1.1],[-126,36,19,18,.9],[-126,-33,24,22,1.05]
   ];
   mountains.forEach(([x,z,w,h,d],i)=>{
-    const m = new THREE.Mesh(geometry, i%3===0 ? far : near);
-    m.position.set(x,h*.47-2,z);
-    m.scale.set(w,h,w*d);
-    m.rotation.y=(i*.73)%Math.PI;
-    m.castShadow=false; m.receiveShadow=false; ring.add(m);
+    const m=new THREE.Mesh(geometry,i%3===0?far:near);
+    m.position.set(x,h*.47-2,z);m.scale.set(w,h,w*d);m.rotation.y=(i*.73)%Math.PI;
+    m.castShadow=false;m.receiveShadow=false;ring.add(m);
   });
   scene.add(ring);
 }
 
-async function boot() {
+async function boot(){
   let catalog;
-  try {
-    catalog = await loadCatalog({ url:"../assets/catalog.json",root:"../" });
-  } catch (error) {
-    errorBox.style.display="flex";
-    errorBox.textContent=`โหลดรายการ asset ไม่สำเร็จ\n${error?.message ?? error}`;
-    throw error;
-  }
+  try{catalog=await loadCatalog({url:"../assets/catalog.json",root:"../"});}
+  catch(error){errorBox.style.display="flex";errorBox.textContent=`โหลดรายการ asset ไม่สำเร็จ\n${error?.message??error}`;throw error;}
 
   const sky=0xC9DEE0;
-  const scene=new THREE.Scene();
-  scene.background=new THREE.Color(sky);
-  scene.fog=new THREE.Fog(sky,58,165);
-
-  const camera=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,500);
-  camera.position.set(18,14,22);
-
+  const scene=new THREE.Scene();scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,62,190);
+  const camera=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,600);camera.position.set(20,15,24);
   const renderer=new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-  renderer.setSize(innerWidth,innerHeight,false);
-  renderer.shadowMap.enabled=true;
-  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace=THREE.SRGBColorSpace;
-  renderer.toneMapping=THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure=1.03;
-  stage.appendChild(renderer.domElement);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight,false);
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.03;stage.appendChild(renderer.domElement);
 
   scene.add(new THREE.HemisphereLight(0xE7F3EF,0x526146,1.45));
-  const sun=new THREE.DirectionalLight(0xFFE2A8,2.5);
-  sun.position.set(-28,13,20);
-  sun.castShadow=true;
-  sun.shadow.mapSize.set(2048,2048);
-  sun.shadow.camera.left=-38; sun.shadow.camera.right=38;
-  sun.shadow.camera.top=38; sun.shadow.camera.bottom=-38;
-  scene.add(sun);
+  const sun=new THREE.DirectionalLight(0xFFE2A8,2.5);sun.position.set(-28,13,20);sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-42;sun.shadow.camera.right=42;sun.shadow.camera.top=42;sun.shadow.camera.bottom=-42;scene.add(sun);
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(82,82),new THREE.MeshStandardMaterial({color:0x789A58,roughness:1}));
-  ground.rotation.x=-Math.PI/2;
-  ground.receiveShadow=true;
-  scene.add(ground);
-  addWorldBackdrop(scene);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(90,90),new THREE.MeshStandardMaterial({color:0x789A58,roughness:1}));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);addWorldBackdrop(scene);
 
-  const orbit=new OrbitControls(camera,renderer.domElement);
-  orbit.enableDamping=true;
-  orbit.dampingFactor=.09;
-  orbit.maxPolarAngle=Math.PI*.47;
-  orbit.minDistance=6;
-  orbit.maxDistance=54;
-  orbit.target.set(0,0,0);
+  const orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.dampingFactor=.09;
+  orbit.maxPolarAngle=Math.PI*.47;orbit.minDistance=6;orbit.maxDistance=58;orbit.target.set(0,0,0);
 
-  const state=createBuilderState();
-  const layoutStore=createLayoutStore();
+  const state=createBuilderState();const layoutStore=createLayoutStore();
   const controller=createBuilderController({state,catalog,layoutStore});
   const assetLoader=createBuilderAssetLoader({gltfLoader:new GLTFLoader()});
   const view=createBuilderView({scene,camera,renderer,orbit,assetLoader});
@@ -172,8 +147,8 @@ async function boot() {
 
   controller.load();
   const params=new URLSearchParams(location.search);
-  if(params.get("world")==="v2"){
-    controller.items.splice(0,controller.items.length,...WORLD_V2.map(item=>({...item})));
+  if(params.get("world")==="v3"){
+    controller.items.splice(0,controller.items.length,...WORLD_V3.map(item=>({...item})));
     controller.save();
   }
   await view.syncItems(controller.items);
@@ -184,9 +159,7 @@ async function boot() {
   let downAt=null;
   renderer.domElement.addEventListener("pointerdown",event=>{downAt={x:event.clientX,y:event.clientY};});
   renderer.domElement.addEventListener("pointerup",event=>{
-    if(!downAt)return;
-    const moved=Math.hypot(event.clientX-downAt.x,event.clientY-downAt.y);
-    downAt=null;
+    if(!downAt)return;const moved=Math.hypot(event.clientX-downAt.x,event.clientY-downAt.y);downAt=null;
     if(moved>=10||controller.isPlacing)return;
     const id=view.pickAt(event.clientX,event.clientY);
     if(id){controller.selectItem(id);view.highlight(id);ui.setSelection(id);}
@@ -195,11 +168,10 @@ async function boot() {
 
   function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
   addEventListener("resize",resize);
-
   renderer.setAnimationLoop(()=>{orbit.update();view.update();renderer.render(scene,camera);});
 }
 
-boot().catch(error=>{console.error("Builder boot failed",error);errorBox.style.display="flex";errorBox.textContent=`Builder error\n${error?.message ?? error}`;});
+boot().catch(error=>{console.error("Builder boot failed",error);errorBox.style.display="flex";errorBox.textContent=`Builder error\n${error?.message??error}`;});
 </script>
 </body>
 </html>
