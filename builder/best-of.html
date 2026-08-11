@@ -12,7 +12,8 @@
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#dff4ff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
     canvas{display:block;width:100%;height:100%;touch-action:none}
     #stage{position:fixed;inset:0}
-    #error{position:fixed;inset:20px;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;border-radius:18px;background:#241b18ed;color:#ffe8d0;font:600 14px/1.5 system-ui;white-space:pre-wrap;text-align:center}
+    #error{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;background:#a8d8ec;color:#173c4b;font:600 14px/1.5 system-ui;text-align:center}
+    .fallback{width:min(92vw,520px);padding:18px;border-radius:24px;background:#ffffffd9;box-shadow:0 12px 35px #173c4b33}.fallback h2{margin:0 0 6px;font-size:20px}.fallback p{margin:6px 0 12px}.fallback canvas{display:block;width:100%;height:auto;border-radius:18px;background:#b9df8c}.fallback small{display:block;margin-top:10px;color:#42636c}
     #status{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 10px);transform:translateX(-50%);z-index:40;padding:8px 12px;border-radius:999px;background:#173c4bcc;color:#fff;font:700 10px system-ui;white-space:nowrap;pointer-events:none}
     #mode-toggle{position:fixed;right:14px;top:calc(env(safe-area-inset-top) + 12px);z-index:70;border:1px solid #ffffff99;background:#173c4be8;color:#fff;border-radius:999px;padding:11px 15px;font:800 12px system-ui;box-shadow:0 5px 18px #0003;backdrop-filter:blur(9px)}
     #mode-toggle.editing{background:#e8a33d;color:#1b1206;border-color:#e8a33d}
@@ -95,7 +96,22 @@
     function showError(error) {
       console.error("[best-of]", error);
       errorBox.style.display = "flex";
-      errorBox.textContent = `Liora Best of โหลดไม่สำเร็จ\n${error?.message ?? error}`;
+      errorBox.innerHTML = `<div class="fallback"><h2>🌱 Liora's Farm</h2><p>เปิดโหมด 2D สำรองให้ดูก่อนนะคะ</p><canvas width="720" height="460" aria-label="Liora farm 2D fallback"></canvas><small>เครื่องนี้เปิดฉาก 3D ไม่ได้ แต่หน้าเกมยังเปิดได้ค่ะ</small></div>`;
+      const canvas = errorBox.querySelector("canvas");
+      const ctx = canvas.getContext("2d");
+      let t = 0;
+      function drawFallback() {
+        t += 0.02;
+        const w = canvas.width, h = canvas.height;
+        ctx.fillStyle = "#b9df8c"; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#7fc4df"; ctx.beginPath(); ctx.moveTo(470, 0); ctx.bezierCurveTo(360, 120, 540, 230, 405, h); ctx.lineTo(w, h); ctx.lineTo(w, 0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#e6c58d"; ctx.beginPath(); ctx.ellipse(270, 250, 180, 120, -0.12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#c7865d"; ctx.fillRect(180, 160, 130, 100); ctx.fillStyle = "#9f5e55"; ctx.beginPath(); ctx.moveTo(160,160);ctx.lineTo(245,95);ctx.lineTo(330,160);ctx.closePath();ctx.fill();
+        ctx.fillStyle = "#4f8652"; for(let i=0;i<8;i++){const x=70+(i*83)%360,y=70+(i*57)%230;ctx.beginPath();ctx.arc(x,y,22,0,Math.PI*2);ctx.fill();}
+        const x=265+Math.sin(t)*8,y=310;ctx.fillStyle="#f5efe4";ctx.beginPath();ctx.arc(x,y,18,0,Math.PI*2);ctx.fill();ctx.fillStyle="#d47b78";ctx.fillRect(x-15,y+15,30,28);
+        requestAnimationFrame(drawFallback);
+      }
+      drawFallback();
     }
 
     async function loadStarterDecor(controller, layoutStore) {
