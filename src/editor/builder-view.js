@@ -38,7 +38,6 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     const root = new THREE.Group();
     root.add(model);
     root.updateMatrixWorld(true);
-
     const bounds = new THREE.Box3().setFromObject(model);
     if (!bounds.isEmpty() && Number.isFinite(bounds.min.y)) {
       model.position.y -= bounds.min.y;
@@ -111,32 +110,27 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   function follow(root) {
     raycaster.setFromCamera(centre, camera);
     if (!raycaster.ray.intersectPlane(groundPlane, groundHit)) return;
-    const q = (value) => (snap ? Math.round(value / snap) * snap : value);
-    root.position.set(q(groundHit.x), 0, q(groundHit.z));
+    const quantize = (value) => snap ? Math.round(value / snap) * snap : value;
+    root.position.x = quantize(groundHit.x);
+    root.position.z = quantize(groundHit.z);
+    root.position.y = 0;
   }
 
-  function activeTransformObject() {
-    return preview ?? moving?.object ?? null;
-  }
-
-  function activeAssetMeta() {
+  function activeObject() { return preview ?? moving?.object ?? null; }
+  function activeAsset() {
     if (previewAsset) return previewAsset;
-    if (moving?.assetId) return getBuildableAsset(moving.assetId);
-    return null;
+    return moving?.assetId ? getBuildableAsset(moving.assetId) : null;
   }
-
-  function clampScale(value, asset = activeAssetMeta()) {
-    const min = Number(asset?.minScale ?? 0.35);
+  function clampedScale(value) {
+    const asset = activeAsset();
+    const min = Number(asset?.minScale ?? .35);
     const max = Number(asset?.maxScale ?? 3);
     return THREE.MathUtils.clamp(value, min, max);
   }
-
   function scalePreview(factor) {
-    const target = activeTransformObject();
-    if (!target) return null;
-    const next = clampScale(target.scale.x * Number(factor || 1));
-    target.scale.setScalar(next);
-    return next;
+    const target = activeObject();
+    if (!target) return;
+    target.scale.setScalar(clampedScale(target.scale.x * Number(factor || 1)));
   }
 
   async function addPlaced(item) {
@@ -152,24 +146,17 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   async function syncItems(items) {
     if (disposed) return;
     const next = new Map(items.map((item) => [item.id, item]));
-
     for (const [id, entry] of placed) {
       if (next.has(id)) continue;
       if (moving?.id === id) moving = null;
-      scene.remove(entry.object);
-      disposeObject(entry.object);
-      placed.delete(id);
+      scene.remove(entry.object); disposeObject(entry.object); placed.delete(id);
     }
-
     const counts = new Map();
     for (const item of items) counts.set(item.assetId, (counts.get(item.assetId) ?? 0) + 1);
-    for (const [assetId, count] of counts) {
-      if (count > 30 && !warnedInstancing.has(assetId)) {
-        warnedInstancing.add(assetId);
-        console.warn(`Builder asset "${assetId}" has ${count} instances; move it to InstancedMesh (threshold: 30).`);
-      }
+    for (const [assetId, count] of counts) if (count > 30 && !warnedInstancing.has(assetId)) {
+      warnedInstancing.add(assetId);
+      console.warn(`Builder asset "${assetId}" has ${count} instances; move it to InstancedMesh (threshold: 30).`);
     }
-
     const loads = [];
     for (const item of items) {
       const entry = placed.get(item.id);
@@ -192,28 +179,22 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     if (!asset?.id) throw new Error("beginPreview requires a catalog asset");
     if (moving) endPreview();
     if (preview) { scene.remove(preview); disposeObject(preview); preview = null; }
-
     const token = ++previewToken;
     const object = await loadGroundedObject(asset.id);
     if (disposed || token !== previewToken) { disposeObject(object); return null; }
-
     previewAsset = asset;
     preview = object;
     preview.userData.builderPreview = true;
     preview.userData.builderAssetId = asset.id;
     preview.rotation.y = 0;
     preview.scale.setScalar(asset.defaultScale ?? 1);
-    setGhost(preview, true);
-    follow(preview);
-    scene.add(preview);
+    setGhost(preview, true); follow(preview); scene.add(preview);
     return preview;
   }
 
   function endPreview() {
     previewToken += 1;
-    if (preview) {
-      scene.remove(preview); disposeObject(preview); preview = null; previewAsset = null;
-    }
+    if (preview) { scene.remove(preview); disposeObject(preview); preview = null; previewAsset = null; }
     if (moving) {
       const entry = placed.get(moving.id);
       if (entry) { applyTransform(entry.object, moving.original); setGhost(entry.object, false); }
@@ -221,64 +202,36 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     }
   }
 
-  function getPreviewTransform() {
-    if (preview) return transformOf(preview);
-    if (moving) return transformOf(moving.object);
-    return null;
-  }
-
-  function rotatePreview(step) {
-    const target = activeTransformObject();
-    if (target) target.rotation.y += Number(step) * Math.PI / 8;
-  }
+  function getPreviewTransform() { return preview ? transformOf(preview) : moving ? transformOf(moving.object) : null; }
+  function rotatePreview(step) { const target = activeObject(); if (target) target.rotation.y += Number(step) * Math.PI / 8; }
 
   function beginMove(id) {
     if (preview) { scene.remove(preview); disposeObject(preview); preview = null; previewAsset = null; previewToken += 1; }
     if (moving) endPreview();
-    const entry = placed.get(id);
-    if (!entry) return null;
+    const entry = placed.get(id); if (!entry) return null;
     moving = { id, assetId: entry.assetId, object: entry.object, original: transformOf(entry.object) };
-    setGhost(entry.object, true);
-    follow(entry.object);
-    return entry.object;
+    setGhost(entry.object, true); follow(entry.object); return entry.object;
   }
 
   function pickAt(clientX, clientY) {
     const rect = renderer.domElement.getBoundingClientRect();
-    pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    pointer.set(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
     raycaster.setFromCamera(pointer, camera);
-    const roots = Array.from(placed.values(), (entry) => entry.object);
-    const hit = raycaster.intersectObjects(roots, true)[0];
+    const hit = raycaster.intersectObjects(Array.from(placed.values(), (entry) => entry.object), true)[0];
     if (!hit) return null;
     let object = hit.object;
     while (object && !object.userData.builderItemId) object = object.parent;
     return object?.userData.builderItemId ?? null;
   }
 
-  function highlight(id) {
-    for (const [itemId, entry] of placed) setEmissive(entry.object, itemId === id ? 0x3A2A00 : 0x000000);
-  }
-
-  function setSnap(value) {
-    const next = Number(value);
-    snap = Number.isFinite(next) && next > 0 ? next : 0;
-  }
-
-  function update() {
-    if (preview) follow(preview);
-    if (moving) follow(moving.object);
-  }
-
+  function highlight(id) { for (const [itemId, entry] of placed) setEmissive(entry.object, itemId === id ? 0x3A2A00 : 0x000000); }
+  function setSnap(value) { const next = Number(value); snap = Number.isFinite(next) && next > 0 ? next : 0; }
+  function update() { if (preview) follow(preview); if (moving) follow(moving.object); }
   function dispose() {
-    if (disposed) return;
-    disposed = true;
-    endPreview();
+    if (disposed) return; disposed = true; endPreview();
     for (const entry of placed.values()) { scene.remove(entry.object); disposeObject(entry.object); }
     placed.clear(); warnedInstancing.clear();
   }
 
-  return {
-    syncItems, beginPreview, endPreview, getPreviewTransform, rotatePreview, scalePreview,
-    beginMove, pickAt, highlight, setSnap, update, dispose,
-  };
+  return { syncItems, beginPreview, endPreview, getPreviewTransform, rotatePreview, scalePreview, beginMove, pickAt, highlight, setSnap, update, dispose };
 }
