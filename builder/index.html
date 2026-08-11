@@ -14,7 +14,7 @@
 </script>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#BFD9DE}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#C9DEE0}
 body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 #stage{position:fixed;inset:0}
 canvas{display:block;width:100%;height:100%;touch-action:none}
@@ -39,6 +39,38 @@ import { createBuilderUI } from "../src/editor/builder-ui.js";
 const stage = document.querySelector("#stage");
 const errorBox = document.querySelector("#error");
 
+function addWorldBackdrop(scene) {
+  const mountainMaterial = new THREE.MeshStandardMaterial({
+    color: 0x78907B,
+    roughness: 1,
+    metalness: 0,
+    flatShading: true,
+  });
+  const farMountainMaterial = new THREE.MeshStandardMaterial({
+    color: 0x91A69A,
+    roughness: 1,
+    metalness: 0,
+    flatShading: true,
+  });
+  const baseGeometry = new THREE.ConeGeometry(1, 1, 7, 2);
+  const ring = new THREE.Group();
+  const mountains = [
+    [-48,-50,16,19,1.15],[-28,-58,13,15,.9],[-6,-61,18,23,1.25],[20,-58,14,18,1],[43,-49,20,25,1.2],
+    [58,-27,14,18,.9],[61,1,19,24,1.1],[58,30,15,20,1],[43,51,18,22,1.15],[18,59,14,18,.9],
+    [-8,62,20,25,1.2],[-34,57,15,19,1],[-53,42,19,23,1.1],[-61,17,14,18,.9],[-61,-15,18,22,1.05]
+  ];
+  mountains.forEach(([x,z,w,h,d], index) => {
+    const mountain = new THREE.Mesh(baseGeometry, index % 3 === 0 ? farMountainMaterial : mountainMaterial);
+    mountain.position.set(x, h * .46 - 1.5, z);
+    mountain.scale.set(w, h, w * d);
+    mountain.rotation.y = (index * 0.73) % Math.PI;
+    mountain.receiveShadow = false;
+    mountain.castShadow = false;
+    ring.add(mountain);
+  });
+  scene.add(ring);
+}
+
 async function boot() {
   let catalog;
   try {
@@ -49,9 +81,10 @@ async function boot() {
     throw error;
   }
 
+  const sky = 0xC9DEE0;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xBFD9DE);
-  scene.fog = new THREE.Fog(0xBFD9DE, 45, 140);
+  scene.background = new THREE.Color(sky);
+  scene.fog = new THREE.Fog(sky, 34, 105);
 
   const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 400);
   camera.position.set(14, 11, 16);
@@ -62,11 +95,13 @@ async function boot() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   stage.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xDCEFF2, 0x45503C, 1.7));
-  const sun = new THREE.DirectionalLight(0xFFF0D2, 2.4);
-  sun.position.set(-16, 15, 9);
+  scene.add(new THREE.HemisphereLight(0xE7F3EF, 0x526146, 1.45));
+  const sun = new THREE.DirectionalLight(0xFFE2A8, 2.65);
+  sun.position.set(-24, 12, 18);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -34;
@@ -77,11 +112,12 @@ async function boot() {
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(70, 70),
-    new THREE.MeshStandardMaterial({ color: 0x7C9B5C, roughness: 1 })
+    new THREE.MeshStandardMaterial({ color: 0x789A58, roughness: 1 })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
+  addWorldBackdrop(scene);
 
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.enableDamping = true;
