@@ -19,6 +19,9 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     #ui #builder-r2{right:26px;bottom:calc(env(safe-area-inset-bottom) + 174px);width:56px;height:56px}
     #ui #builder-r1 em,#ui #builder-r2 em{font-size:20px}
     #ui #builder-esc{left:16px;bottom:calc(env(safe-area-inset-bottom) + 18px);width:60px;height:60px}
+    #ui #builder-s1{left:20px;bottom:calc(env(safe-area-inset-bottom) + 92px);width:50px;height:50px}
+    #ui #builder-s2{left:20px;bottom:calc(env(safe-area-inset-bottom) + 150px);width:50px;height:50px}
+    #ui #builder-s1 em,#ui #builder-s2 em{font-size:24px;font-weight:900}
     #ui #builder-esc em{font-size:22px}
     #ui .hide{display:none!important}
     #ui #builder-reticle{position:fixed;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;pointer-events:none;opacity:0;transition:opacity .18s}
@@ -46,6 +49,8 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     <button class="dot" id="builder-main" type="button"></button>
     <button class="dot" id="builder-r1" type="button"></button>
     <button class="dot" id="builder-r2" type="button"></button>
+    <button class="dot" id="builder-s1" type="button"></button>
+    <button class="dot" id="builder-s2" type="button"></button>
     <button class="dot" id="builder-esc" type="button"></button>
     <div id="builder-scrim"></div>
     <section id="builder-sheet" aria-label="เลือกของที่จะวาง"><div id="builder-tabs"></div><div id="builder-grid"></div></section>
@@ -55,6 +60,8 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
   const main = root.querySelector("#builder-main");
   const r1 = root.querySelector("#builder-r1");
   const r2 = root.querySelector("#builder-r2");
+  const s1 = root.querySelector("#builder-s1");
+  const s2 = root.querySelector("#builder-s2");
   const esc = root.querySelector("#builder-esc");
   const reticle = root.querySelector("#builder-reticle");
   const sheet = root.querySelector("#builder-sheet");
@@ -80,6 +87,27 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
 
   function selectedItem() {
     return controller.items.find((item) => item.id === selectedId) ?? null;
+  }
+
+  function selectedAsset() {
+    const item = selectedItem();
+    return item ? catalog[item.assetId] ?? null : null;
+  }
+
+  function clampScale(value, asset) {
+    const min = Number(asset?.minScale ?? .35);
+    const max = Number(asset?.maxScale ?? 3);
+    return Math.min(max, Math.max(min, value));
+  }
+
+  async function scaleSelected(factor) {
+    const item = selectedItem();
+    const asset = selectedAsset();
+    if (!item || !asset) return;
+    const next = clampScale((Number(item.scale) || 1) * factor, asset);
+    controller.updateSelected({ scale: next });
+    await view.syncItems(controller.items);
+    view.highlight(selectedId);
   }
 
   function openSheet() {
@@ -179,9 +207,7 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
       version: 1,
       mapId: "home-island",
       savedAt: new Date().toISOString(),
-      objects: controller.items.map(({ id, assetId, x, z, rotation, scale }) => ({
-        id, assetId, x, z, rotation, scale,
-      })),
+      objects: controller.items.map(({ id, assetId, x, z, rotation, scale }) => ({ id, assetId, x, z, rotation, scale })),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -203,10 +229,7 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
       tab.type = "button";
       tab.className = `builder-tab${category === activeCategory ? " active" : ""}`;
       tab.textContent = category;
-      tab.onclick = () => {
-        activeCategory = category;
-        renderCatalog();
-      };
+      tab.onclick = () => { activeCategory = category; renderCatalog(); };
       tabs.appendChild(tab);
     }
 
@@ -230,6 +253,8 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
       setButton(main, "✓", "วาง", moving ? confirmMove : confirmPlacement);
       setButton(r1, "↻", "หมุน", () => view.rotatePreview(1));
       setButton(r2, "↺", "หมุน", () => view.rotatePreview(-1));
+      setButton(s1, "−", "เล็กลง", () => view.scalePreview(.9));
+      setButton(s2, "+", "ใหญ่ขึ้น", () => view.scalePreview(1.1));
       setButton(esc, "✕", "ยกเลิก", moving ? cancelMove : cancelPlacement);
       return;
     }
@@ -238,6 +263,8 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
       setButton(main, "✥", "ย้าย", startMove);
       setButton(r1, "↻", "หมุน", () => rotateSelected(1));
       setButton(r2, "⧉", "วางอีก", placeAnother);
+      setButton(s1, "−", "เล็กลง", () => scaleSelected(.9));
+      setButton(s2, "+", "ใหญ่ขึ้น", () => scaleSelected(1.1));
       setButton(esc, "🗑", "ลบ", deleteSelected);
       return;
     }
@@ -245,6 +272,8 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     setButton(main, "▦", "เลือกของ", openSheet);
     setButton(r1, null);
     setButton(r2, null);
+    setButton(s1, null);
+    setButton(s2, null);
     setButton(esc, "⇩", "บันทึกแผนที่", exportMap);
   }
 
@@ -263,9 +292,6 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     refresh,
     setSelection,
     get element() { return root; },
-    dispose() {
-      root.remove();
-      style.remove();
-    },
+    dispose() { root.remove(); style.remove(); },
   };
 }
