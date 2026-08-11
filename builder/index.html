@@ -39,6 +39,78 @@ import { createBuilderUI } from "../src/editor/builder-ui.js";
 const stage = document.querySelector("#stage");
 const errorBox = document.querySelector("#error");
 
+const WORLD_V1 = [
+  {id:"world-v1-home",assetId:"house",x:-11,z:-9,rotation:.18,scale:1.12},
+  {id:"world-v1-home-bench",assetId:"bench",x:-7,z:-6,rotation:-.2,scale:1},
+  {id:"world-v1-home-lamp-a",assetId:"path_lamp",x:-8,z:-4,rotation:0,scale:1},
+  {id:"world-v1-home-lamp-b",assetId:"path_lamp",x:-13,z:-4,rotation:0,scale:1},
+  {id:"world-v1-home-crate",assetId:"crate_set",x:-15,z:-8,rotation:.55,scale:.9},
+  {id:"world-v1-home-barrel",assetId:"wine_barrel",x:-14,z:-11,rotation:.2,scale:1},
+
+  {id:"world-v1-path-01",assetId:"path_tile",x:-10,z:-3,rotation:0,scale:1.15},
+  {id:"world-v1-path-02",assetId:"path_tile",x:-9,z:-2,rotation:0,scale:1.15},
+  {id:"world-v1-path-03",assetId:"path_tile",x:-8,z:-1,rotation:0,scale:1.15},
+  {id:"world-v1-path-04",assetId:"path_tile",x:-7,z:0,rotation:0,scale:1.15},
+  {id:"world-v1-path-05",assetId:"path_tile",x:-6,z:1,rotation:0,scale:1.15},
+  {id:"world-v1-path-06",assetId:"path_tile",x:-5,z:2,rotation:0,scale:1.15},
+  {id:"world-v1-path-07",assetId:"path_tile",x:-4,z:3,rotation:0,scale:1.15},
+  {id:"world-v1-path-08",assetId:"path_tile",x:-3,z:4,rotation:0,scale:1.15},
+  {id:"world-v1-path-09",assetId:"path_tile",x:-2,z:5,rotation:0,scale:1.15},
+  {id:"world-v1-path-10",assetId:"path_tile",x:-1,z:6,rotation:0,scale:1.15},
+  {id:"world-v1-path-11",assetId:"path_tile",x:0,z:7,rotation:0,scale:1.15},
+  {id:"world-v1-path-12",assetId:"path_tile",x:1,z:8,rotation:0,scale:1.15},
+  {id:"world-v1-path-13",assetId:"path_tile",x:2,z:9,rotation:0,scale:1.15},
+  {id:"world-v1-path-14",assetId:"path_tile",x:3,z:10,rotation:0,scale:1.15},
+  {id:"world-v1-path-15",assetId:"path_tile",x:4,z:11,rotation:0,scale:1.15},
+  {id:"world-v1-path-16",assetId:"path_tile",x:5,z:12,rotation:0,scale:1.15},
+
+  {id:"world-v1-bridge",assetId:"wood_bridge",x:0,z:7,rotation:.8,scale:1.15},
+  {id:"world-v1-fence-a",assetId:"wood_fence",x:-15,z:-4,rotation:0,scale:1.15},
+  {id:"world-v1-fence-b",assetId:"wood_fence",x:-13,z:-4,rotation:0,scale:1.15},
+  {id:"world-v1-fence-c",assetId:"wood_fence",x:-11,z:-4,rotation:0,scale:1.15},
+  {id:"world-v1-fence-d",assetId:"wood_fence",x:-9,z:-4,rotation:0,scale:1.15},
+
+  {id:"world-v1-village-house-a",assetId:"house2",x:13,z:12,rotation:-.55,scale:1.05},
+  {id:"world-v1-village-house-b",assetId:"blue_cottage",x:17,z:7,rotation:-1.1,scale:1.05},
+  {id:"world-v1-village-bench",assetId:"bench",x:11,z:8,rotation:.35,scale:1},
+  {id:"world-v1-village-lamp-a",assetId:"path_lamp",x:8,z:10,rotation:0,scale:1.1},
+  {id:"world-v1-village-lamp-b",assetId:"path_lamp",x:11,z:13,rotation:0,scale:1.1},
+  {id:"world-v1-village-lamp-c",assetId:"path_lamp",x:15,z:10,rotation:0,scale:1.1},
+  {id:"world-v1-village-crates",assetId:"crate_set",x:18,z:11,rotation:.4,scale:.9},
+
+  {id:"world-v1-tree-01",assetId:"tree",x:-20,z:-16,rotation:.2,scale:1.35},
+  {id:"world-v1-tree-02",assetId:"tree",x:-18,z:-12,rotation:1.1,scale:1.1},
+  {id:"world-v1-tree-03",assetId:"pine",x:-20,z:-7,rotation:.5,scale:1.25},
+  {id:"world-v1-tree-04",assetId:"pine",x:-18,z:-2,rotation:1.5,scale:1.05},
+  {id:"world-v1-tree-05",assetId:"tree",x:-16,z:4,rotation:.9,scale:1.3},
+  {id:"world-v1-tree-06",assetId:"tree",x:-14,z:9,rotation:.3,scale:1.15},
+  {id:"world-v1-tree-07",assetId:"pine",x:-10,z:15,rotation:1.2,scale:1.35},
+  {id:"world-v1-tree-08",assetId:"pine",x:-5,z:18,rotation:.7,scale:1.2},
+  {id:"world-v1-tree-09",assetId:"tree",x:1,z:20,rotation:1.8,scale:1.25},
+  {id:"world-v1-tree-10",assetId:"palm",x:7,z:19,rotation:.4,scale:1.1},
+  {id:"world-v1-tree-11",assetId:"tree",x:20,z:17,rotation:1.3,scale:1.15},
+  {id:"world-v1-tree-12",assetId:"pine",x:22,z:11,rotation:.2,scale:1.25},
+  {id:"world-v1-tree-13",assetId:"tree",x:23,z:4,rotation:1.1,scale:1.3},
+  {id:"world-v1-tree-14",assetId:"palm",x:21,z:-3,rotation:.8,scale:1.15},
+  {id:"world-v1-tree-15",assetId:"tree",x:18,z:-10,rotation:.35,scale:1.25},
+  {id:"world-v1-tree-16",assetId:"pine",x:13,z:-16,rotation:1.4,scale:1.2},
+  {id:"world-v1-tree-17",assetId:"tree",x:6,z:-20,rotation:.6,scale:1.35},
+  {id:"world-v1-tree-18",assetId:"palm",x:-1,z:-21,rotation:1.2,scale:1.05},
+  {id:"world-v1-tree-19",assetId:"tree",x:-8,z:-20,rotation:.1,scale:1.2},
+  {id:"world-v1-tree-20",assetId:"pine",x:-15,z:-19,rotation:.9,scale:1.25},
+
+  {id:"world-v1-grass-01",assetId:"grass",x:-6,z:-9,rotation:.2,scale:1.25},
+  {id:"world-v1-grass-02",assetId:"grass",x:-4,z:-7,rotation:1.2,scale:.95},
+  {id:"world-v1-grass-03",assetId:"grass",x:-2,z:-10,rotation:.7,scale:1.15},
+  {id:"world-v1-grass-04",assetId:"grass",x:3,z:-8,rotation:1.6,scale:1},
+  {id:"world-v1-grass-05",assetId:"grass",x:6,z:-4,rotation:.3,scale:1.3},
+  {id:"world-v1-grass-06",assetId:"grass",x:9,z:1,rotation:1.1,scale:1.1},
+  {id:"world-v1-grass-07",assetId:"grass",x:6,z:6,rotation:.5,scale:1.25},
+  {id:"world-v1-grass-08",assetId:"grass",x:2,z:14,rotation:1.4,scale:1.05},
+  {id:"world-v1-grass-09",assetId:"grass",x:-4,z:12,rotation:.8,scale:1.2},
+  {id:"world-v1-grass-10",assetId:"grass",x:-9,z:8,rotation:.15,scale:1.1}
+];
+
 function addWorldBackdrop(scene) {
   const mountainMaterial = new THREE.MeshStandardMaterial({
     color: 0x78907B,
@@ -135,6 +207,12 @@ async function boot() {
   const ui = createBuilderUI({ mount: document.body, controller, view, catalog });
 
   controller.load();
+  const params = new URLSearchParams(location.search);
+  if (params.get("world") === "v1") {
+    controller.items.splice(0, controller.items.length, ...WORLD_V1.map((item) => ({ ...item })));
+    controller.save();
+    history.replaceState(null, "", location.pathname);
+  }
   await view.syncItems(controller.items);
 
   orbit.addEventListener("start", () => { ui.element.style.opacity = ".18"; });
