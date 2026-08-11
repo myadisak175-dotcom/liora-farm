@@ -7,9 +7,16 @@ export async function createPlayer({
   groundOffset = 0,
   renderOrder,
   animations,
+  spawn = null,
 }) {
   const root = new THREE.Group();
-  root.position.set(0, 0, 5);
+  const isBuilder = typeof location !== "undefined" && /\/builder\//.test(location.pathname);
+  const start = spawn ?? (isBuilder ? { x: -5.2, y: 0, z: -4.6 } : { x: 0, y: 0, z: 5 });
+  root.position.set(
+    Number(start.x) || 0,
+    Number(start.y) || 0,
+    Number(start.z) || 0
+  );
 
   const gltf = await new GLTFLoader().loadAsync(url);
   const model = gltf.scene;
