@@ -3,294 +3,75 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-<title>Liora — Hybrid Island Builder</title>
+<title>Liora — Live World Builder</title>
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
-  }
-}
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}
 </script>
 <style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#C9DEE0}
-body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
-#stage{position:fixed;inset:0}
-canvas{display:block;width:100%;height:100%;touch-action:none}
-#error{position:fixed;inset:20px;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;border-radius:18px;background:#241B18E8;color:#FFE8D0;font:600 14px/1.5 system-ui;white-space:pre-wrap;text-align:center}
-#mode-toggle{position:fixed;z-index:60;right:14px;top:calc(env(safe-area-inset-top) + 12px);border:1px solid #ffffff88;background:#173c4be8;color:#fff;border-radius:999px;padding:11px 15px;font:800 12px system-ui;box-shadow:0 5px 18px #0003;backdrop-filter:blur(9px)}
-#mode-toggle.playing{background:#e8a33d;color:#1b1508;border-color:#e8a33d}
-#play-hint{position:fixed;z-index:45;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);display:none;pointer-events:none;padding:8px 12px;border-radius:999px;background:#173c4bcc;color:#fff;font:700 10px system-ui;white-space:nowrap;backdrop-filter:blur(8px)}
-#joy{position:fixed;z-index:55;left:22px;bottom:calc(env(safe-area-inset-bottom) + 24px);width:112px;height:112px;border-radius:50%;display:none;background:#18352d66;border:2px solid #ffffff80;box-shadow:inset 0 0 0 18px #ffffff0d;touch-action:none}
-#stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px;border-radius:50%;background:#f2efe4d9;border:2px solid #173c4b88;box-shadow:0 4px 12px #0003;pointer-events:none}
-body.play-mode #joy,body.play-mode #play-hint{display:block}
-body.play-mode #ui,body.play-mode #ground-paint-ui{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#C9DEE0}body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}#stage{position:fixed;inset:0}canvas{display:block;width:100%;height:100%;touch-action:none}#error{position:fixed;inset:20px;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;border-radius:18px;background:#241B18E8;color:#FFE8D0;font:600 14px/1.5 system-ui;white-space:pre-wrap;text-align:center}
+.top-btn{position:fixed;z-index:70;top:calc(env(safe-area-inset-top) + 12px);border:1px solid #ffffff88;background:#173c4be8;color:#fff;border-radius:999px;padding:11px 15px;font:800 12px system-ui;box-shadow:0 5px 18px #0003;backdrop-filter:blur(9px)}#mode-toggle{right:14px}#live-build-toggle{right:102px;display:none}#mode-toggle.playing,#live-build-toggle.active{background:#e8a33d;color:#1b1508;border-color:#e8a33d}
+#play-hint{position:fixed;z-index:45;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);display:none;pointer-events:none;padding:8px 12px;border-radius:999px;background:#173c4bcc;color:#fff;font:700 10px system-ui;white-space:nowrap;backdrop-filter:blur(8px)}#joy{position:fixed;z-index:55;left:22px;bottom:calc(env(safe-area-inset-bottom) + 24px);width:112px;height:112px;border-radius:50%;display:none;background:#18352d66;border:2px solid #ffffff80;box-shadow:inset 0 0 0 18px #ffffff0d;touch-action:none}#stick{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px;border-radius:50%;background:#f2efe4d9;border:2px solid #173c4b88;box-shadow:0 4px 12px #0003;pointer-events:none}
+body.play-mode #play-hint,body.play-mode #live-build-toggle{display:block}body.play-mode:not(.live-build) #joy{display:block}body.play-mode #ui,body.play-mode #ground-paint-ui{display:none!important}body.play-mode.live-build #ui,body.play-mode.live-build #ground-paint-ui{display:block!important}body.live-build #play-hint{display:none}
 </style>
 </head>
 <body>
-<div id="stage"></div>
-<div id="error"></div>
-<button id="mode-toggle" type="button">▶ Play</button>
-<div id="play-hint">Liora 1.7 m • Game Camera</div>
-<div id="joy"><div id="stick"></div></div>
+<div id="stage"></div><div id="error"></div>
+<button id="live-build-toggle" class="top-btn" type="button">🔨 Build</button>
+<button id="mode-toggle" class="top-btn" type="button">▶ Play</button>
+<div id="play-hint">Liora 1.7 m • Game Camera</div><div id="joy"><div id="stick"></div></div>
 <script type="module">
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createBuilderState } from "../src/editor/builder-state.js";
-import { createBuilderController } from "../src/editor/builder-controller.js";
-import { createLayoutStore } from "../src/editor/layout-store.js";
-import { createBuilderAssetLoader } from "../src/editor/asset-loader.js";
-import { loadCatalog } from "../src/editor/asset-catalog.js";
-import { createBuilderView } from "../src/editor/builder-view.js";
-import { createBuilderUI } from "../src/editor/builder-ui.js";
-import { createGroundPaint } from "../src/editor/ground-paint.js";
-import { createPlayer } from "../src/entities/player.js";
-import { createInput } from "../src/systems/input.js";
-import { createMovementSystem } from "../src/systems/movement.js";
+import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+import {createBuilderState} from "../src/editor/builder-state.js";
+import {createBuilderController} from "../src/editor/builder-controller.js";
+import {createLayoutStore} from "../src/editor/layout-store.js";
+import {createBuilderAssetLoader} from "../src/editor/asset-loader.js";
+import {loadCatalog} from "../src/editor/asset-catalog.js";
+import {createBuilderView} from "../src/editor/builder-view.js";
+import {createBuilderUI} from "../src/editor/builder-ui.js";
+import {createGroundPaint} from "../src/editor/ground-paint.js";
+import {createPlayer} from "../src/entities/player.js";
+import {createInput} from "../src/systems/input.js";
+import {createMovementSystem} from "../src/systems/movement.js";
 
-const stage=document.querySelector("#stage");
-const errorBox=document.querySelector("#error");
-const modeToggle=document.querySelector("#mode-toggle");
-
-const PLAY_CONFIG={
-  worldLimit:42,
-  playerHeight:1.7,
-  playerGroundOffset:-.02,
-  walkSpeed:2.4,
-  runSpeed:5.2,
-  runThreshold:.78,
-  animationSpeed:{idle:1,walk:.9,run:1}
-};
+const stage=document.querySelector("#stage"),errorBox=document.querySelector("#error"),modeToggle=document.querySelector("#mode-toggle"),liveBuildToggle=document.querySelector("#live-build-toggle");
+const PLAY_CONFIG={worldLimit:42,playerHeight:1.7,playerGroundOffset:-.02,walkSpeed:2.4,runSpeed:5.2,runThreshold:.78,animationSpeed:{idle:1,walk:.9,run:1}};
 const PLAY_ANIMS={idle:"Idle",walk:"Walking",run:"Running"};
 const GAME_CAMERA_OFFSET=new THREE.Vector3(8,10,10);
 
-// World v4: designed around Liora = 1.7 m and the real game camera.
-// Empty space is intentional: it is walkable gameplay space and future farm/river room.
 const WORLD_V4=[
-  // Home / focal point
-  {id:"v4-home",assetId:"house",x:-8,z:-8,rotation:.18,scale:1.05},
-  {id:"v4-home-bench",assetId:"bench",x:-4.3,z:-6.1,rotation:-.22,scale:.92},
-  {id:"v4-home-lamp-a",assetId:"path_lamp",x:-4,z:-3.2,rotation:0,scale:1},
-  {id:"v4-home-barrel",assetId:"wine_barrel",x:-10.8,z:-7.4,rotation:.12,scale:.9},
-  {id:"v4-home-crates",assetId:"crate_set",x:-10.6,z:-5.3,rotation:.46,scale:.82},
-
-  // Farm boundary — open centre is reserved for crops / ground paint.
-  {id:"v4-fence-1",assetId:"wood_fence",x:-11,z:-1.2,rotation:0,scale:1},
-  {id:"v4-fence-2",assetId:"wood_fence",x:-8.8,z:-1.2,rotation:0,scale:1},
-  {id:"v4-fence-3",assetId:"wood_fence",x:-6.6,z:-1.2,rotation:0,scale:1},
-  {id:"v4-fence-4",assetId:"wood_fence",x:-4.4,z:-1.2,rotation:0,scale:1},
-
-  // Main route markers; dirt path itself should be painted with Ground Paint.
-  {id:"v4-route-lamp-1",assetId:"path_lamp",x:-1,z:-1.5,rotation:0,scale:1},
-  {id:"v4-route-bench",assetId:"bench",x:3.4,z:1.1,rotation:.72,scale:.9},
-  {id:"v4-route-lamp-2",assetId:"path_lamp",x:5.3,z:3.6,rotation:0,scale:1},
-  {id:"v4-route-crate",assetId:"crate",x:7.2,z:5.2,rotation:.33,scale:.76},
-
-  // Village preview / destination landmark
-  {id:"v4-village-house",assetId:"blue_cottage",x:12.5,z:10.5,rotation:-.58,scale:1},
-  {id:"v4-village-house2",assetId:"house2",x:18,z:8.5,rotation:-.82,scale:1},
-  {id:"v4-village-lamp",assetId:"path_lamp",x:10,z:6.8,rotation:0,scale:1},
-  {id:"v4-village-bench",assetId:"bench",x:13.8,z:5.5,rotation:.12,scale:.9},
-  {id:"v4-village-crates",assetId:"crate_set",x:17.2,z:12,rotation:.4,scale:.8},
-
-  // Western forest mass: blocks the horizon and frames the home farm.
-  {id:"v4-west-tree-1",assetId:"tree",x:-20,z:-13,rotation:.22,scale:1.08},
-  {id:"v4-west-pine-1",assetId:"pine",x:-18,z:-8,rotation:.68,scale:1.02},
-  {id:"v4-west-tree-2",assetId:"tree",x:-20.5,z:-2.5,rotation:1.12,scale:1.15},
-  {id:"v4-west-pine-2",assetId:"pine",x:-18.5,z:3.7,rotation:.35,scale:1.08},
-  {id:"v4-west-tree-3",assetId:"tree",x:-16.5,z:9.5,rotation:.84,scale:1.12},
-  {id:"v4-west-palm",assetId:"palm",x:-13.5,z:14.8,rotation:.45,scale:1.02},
-
-  // North/east forest mass: creates a natural corridor toward the village.
-  {id:"v4-north-tree-1",assetId:"tree",x:-6,z:18,rotation:.4,scale:1.08},
-  {id:"v4-north-pine-1",assetId:"pine",x:1,z:20.5,rotation:1.05,scale:1.12},
-  {id:"v4-north-tree-2",assetId:"tree",x:7.5,z:19.5,rotation:.62,scale:1.04},
-  {id:"v4-east-pine-1",assetId:"pine",x:22,z:15.5,rotation:1.2,scale:1.1},
-  {id:"v4-east-tree-1",assetId:"tree",x:24,z:8,rotation:.3,scale:1.12},
-  {id:"v4-east-palm",assetId:"palm",x:23,z:1.2,rotation:.9,scale:1.03},
-  {id:"v4-east-tree-2",assetId:"tree",x:21,z:-6,rotation:.55,scale:1.1},
-  {id:"v4-east-pine-2",assetId:"pine",x:17,z:-13,rotation:1.28,scale:1.08},
-
-  // Small foreground clusters, kept sparse for readable traversal.
-  {id:"v4-grass-1",assetId:"grass",x:-12.5,z:-11,rotation:.2,scale:.85},
-  {id:"v4-grass-2",assetId:"grass",x:-2,z:-8.8,rotation:1.2,scale:.75},
-  {id:"v4-grass-3",assetId:"grass",x:2.2,z:-4.8,rotation:.7,scale:.82},
-  {id:"v4-grass-4",assetId:"grass",x:8.5,z:1.4,rotation:1.55,scale:.7},
-  {id:"v4-grass-5",assetId:"grass",x:5.5,z:11.8,rotation:.35,scale:.8},
-  {id:"v4-grass-6",assetId:"grass",x:-10.5,z:10.5,rotation:1.05,scale:.72}
+{id:"v4-home",assetId:"house",x:-8,z:-8,rotation:.18,scale:1.05},{id:"v4-home-bench",assetId:"bench",x:-4.3,z:-6.1,rotation:-.22,scale:.92},{id:"v4-home-lamp-a",assetId:"path_lamp",x:-4,z:-3.2,rotation:0,scale:1},{id:"v4-home-barrel",assetId:"wine_barrel",x:-10.8,z:-7.4,rotation:.12,scale:.9},{id:"v4-home-crates",assetId:"crate_set",x:-10.6,z:-5.3,rotation:.46,scale:.82},
+{id:"v4-fence-1",assetId:"wood_fence",x:-11,z:-1.2,rotation:0,scale:1},{id:"v4-fence-2",assetId:"wood_fence",x:-8.8,z:-1.2,rotation:0,scale:1},{id:"v4-fence-3",assetId:"wood_fence",x:-6.6,z:-1.2,rotation:0,scale:1},{id:"v4-fence-4",assetId:"wood_fence",x:-4.4,z:-1.2,rotation:0,scale:1},
+{id:"v4-route-lamp-1",assetId:"path_lamp",x:-1,z:-1.5,rotation:0,scale:1},{id:"v4-route-bench",assetId:"bench",x:3.4,z:1.1,rotation:.72,scale:.9},{id:"v4-route-lamp-2",assetId:"path_lamp",x:5.3,z:3.6,rotation:0,scale:1},{id:"v4-route-crate",assetId:"crate",x:7.2,z:5.2,rotation:.33,scale:.76},
+{id:"v4-village-house",assetId:"blue_cottage",x:12.5,z:10.5,rotation:-.58,scale:1},{id:"v4-village-house2",assetId:"house2",x:18,z:8.5,rotation:-.82,scale:1},{id:"v4-village-lamp",assetId:"path_lamp",x:10,z:6.8,rotation:0,scale:1},{id:"v4-village-bench",assetId:"bench",x:13.8,z:5.5,rotation:.12,scale:.9},{id:"v4-village-crates",assetId:"crate_set",x:17.2,z:12,rotation:.4,scale:.8},
+{id:"v4-west-tree-1",assetId:"tree",x:-20,z:-13,rotation:.22,scale:1.08},{id:"v4-west-pine-1",assetId:"pine",x:-18,z:-8,rotation:.68,scale:1.02},{id:"v4-west-tree-2",assetId:"tree",x:-20.5,z:-2.5,rotation:1.12,scale:1.15},{id:"v4-west-pine-2",assetId:"pine",x:-18.5,z:3.7,rotation:.35,scale:1.08},{id:"v4-west-tree-3",assetId:"tree",x:-16.5,z:9.5,rotation:.84,scale:1.12},{id:"v4-west-palm",assetId:"palm",x:-13.5,z:14.8,rotation:.45,scale:1.02},
+{id:"v4-north-tree-1",assetId:"tree",x:-6,z:18,rotation:.4,scale:1.08},{id:"v4-north-pine-1",assetId:"pine",x:1,z:20.5,rotation:1.05,scale:1.12},{id:"v4-north-tree-2",assetId:"tree",x:7.5,z:19.5,rotation:.62,scale:1.04},{id:"v4-east-pine-1",assetId:"pine",x:22,z:15.5,rotation:1.2,scale:1.1},{id:"v4-east-tree-1",assetId:"tree",x:24,z:8,rotation:.3,scale:1.12},{id:"v4-east-palm",assetId:"palm",x:23,z:1.2,rotation:.9,scale:1.03},{id:"v4-east-tree-2",assetId:"tree",x:21,z:-6,rotation:.55,scale:1.1},{id:"v4-east-pine-2",assetId:"pine",x:17,z:-13,rotation:1.28,scale:1.08},
+{id:"v4-grass-1",assetId:"grass",x:-12.5,z:-11,rotation:.2,scale:.85},{id:"v4-grass-2",assetId:"grass",x:-2,z:-8.8,rotation:1.2,scale:.75},{id:"v4-grass-3",assetId:"grass",x:2.2,z:-4.8,rotation:.7,scale:.82},{id:"v4-grass-4",assetId:"grass",x:8.5,z:1.4,rotation:1.55,scale:.7},{id:"v4-grass-5",assetId:"grass",x:5.5,z:11.8,rotation:.35,scale:.8},{id:"v4-grass-6",assetId:"grass",x:-10.5,z:10.5,rotation:1.05,scale:.72}
 ];
 
-function addWorldBackdrop(scene){
-  const near=new THREE.MeshStandardMaterial({color:0x84978B,roughness:1,metalness:0,flatShading:true});
-  const far=new THREE.MeshStandardMaterial({color:0xA5B3AC,roughness:1,metalness:0,flatShading:true});
-  const geometry=new THREE.ConeGeometry(1,1,7,2);
-  const ring=new THREE.Group();
-  const mountains=[
-    [-105,-95,22,20,1.15],[-58,-118,18,16,.9],[-5,-126,26,24,1.25],[48,-116,20,18,1],[96,-92,27,25,1.2],
-    [120,-46,19,18,.95],[128,4,25,23,1.1],[118,55,21,20,1],[91,101,24,22,1.15],[42,121,19,17,.9],
-    [-10,128,27,25,1.2],[-64,116,21,19,1],[-106,88,25,23,1.1],[-126,36,19,18,.9],[-126,-33,24,22,1.05]
-  ];
-  mountains.forEach(([x,z,w,h,d],i)=>{
-    const m=new THREE.Mesh(geometry,i%3===0?far:near);
-    m.position.set(x,h*.47-2,z);m.scale.set(w,h,w*d);m.rotation.y=(i*.73)%Math.PI;
-    m.castShadow=false;m.receiveShadow=false;ring.add(m);
-  });
-  scene.add(ring);
-}
+function addWorldBackdrop(scene){const near=new THREE.MeshStandardMaterial({color:0x84978B,roughness:1,flatShading:true}),far=new THREE.MeshStandardMaterial({color:0xA5B3AC,roughness:1,flatShading:true}),geometry=new THREE.ConeGeometry(1,1,7,2),ring=new THREE.Group();const mountains=[[-105,-95,22,20,1.15],[-58,-118,18,16,.9],[-5,-126,26,24,1.25],[48,-116,20,18,1],[96,-92,27,25,1.2],[120,-46,19,18,.95],[128,4,25,23,1.1],[118,55,21,20,1],[91,101,24,22,1.15],[42,121,19,17,.9],[-10,128,27,25,1.2],[-64,116,21,19,1],[-106,88,25,23,1.1],[-126,36,19,18,.9],[-126,-33,24,22,1.05]];mountains.forEach(([x,z,w,h,d],i)=>{const m=new THREE.Mesh(geometry,i%3===0?far:near);m.position.set(x,h*.47-2,z);m.scale.set(w,h,w*d);m.rotation.y=(i*.73)%Math.PI;ring.add(m)});scene.add(ring)}
 
 async function boot(){
-  let catalog;
-  try{catalog=await loadCatalog({url:"../assets/catalog.json",root:"../"});}
-  catch(error){errorBox.style.display="flex";errorBox.textContent=`โหลดรายการ asset ไม่สำเร็จ\n${error?.message??error}`;throw error;}
-
-  const sky=0xC9DEE0;
-  const scene=new THREE.Scene();scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,62,190);
-  const camera=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,600);camera.position.set(20,15,24);
-  const renderer=new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight,false);
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;
-  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.03;stage.appendChild(renderer.domElement);
-
-  scene.add(new THREE.HemisphereLight(0xE7F3EF,0x526146,1.45));
-  const sun=new THREE.DirectionalLight(0xFFE2A8,2.5);sun.position.set(-28,13,20);sun.castShadow=true;
-  sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-42;sun.shadow.camera.right=42;sun.shadow.camera.top=42;sun.shadow.camera.bottom=-42;scene.add(sun);
-
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(90,90),new THREE.MeshStandardMaterial({color:0x789A58,roughness:1}));
-  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);addWorldBackdrop(scene);
-
-  const orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.dampingFactor=.09;
-  orbit.maxPolarAngle=Math.PI*.47;orbit.minDistance=6;orbit.maxDistance=58;orbit.target.set(0,0,0);
-
-  const state=createBuilderState();const layoutStore=createLayoutStore();
-  const controller=createBuilderController({state,catalog,layoutStore});
-  const assetLoader=createBuilderAssetLoader({gltfLoader:new GLTFLoader()});
-  const view=createBuilderView({scene,camera,renderer,orbit,assetLoader});
-  const ui=createBuilderUI({mount:document.body,controller,view,catalog});
-  const groundPaint=createGroundPaint({scene,camera,renderer,orbit,mount:document.body});
-
-  controller.load();
-  const params=new URLSearchParams(location.search);
-  if(params.get("world")==="v4"){
-    controller.items.splice(0,controller.items.length,...WORLD_V4.map(item=>({...item})));
-    controller.save();
-  }
-  await view.syncItems(controller.items);
-
-  const input=createInput();
-  const movement=createMovementSystem(camera,PLAY_CONFIG,()=>0);
-  const clock=new THREE.Clock();
-  const cameraTarget=new THREE.Vector3();
-  const desiredCamera=new THREE.Vector3();
-  let player=null;
-  let playMode=false;
-  let loadingPlayer=false;
-
-  async function ensurePlayer(){
-    if(player||loadingPlayer)return player;
-    loadingPlayer=true;
-    modeToggle.textContent="… Liora";
-    try{
-      player=await createPlayer({
-        url:"../assets/models/player/liora_all_animations_web.glb",
-        height:PLAY_CONFIG.playerHeight,
-        groundOffset:PLAY_CONFIG.playerGroundOffset,
-        renderOrder:10,
-        animations:PLAY_ANIMS
-      });
-      player.root.visible=false;
-      scene.add(player.root);
-      return player;
-    }finally{loadingPlayer=false;}
-  }
-
-  async function enterPlay(){
-    const p=await ensurePlayer();
-    if(!p)return;
-    if(groundPaint.mode!=="off")groundPaint.setMode("off");
-    playMode=true;
-    document.body.classList.add("play-mode");
-    modeToggle.classList.add("playing");
-    modeToggle.textContent="✏️ Edit";
-    orbit.enabled=false;
-    p.root.visible=true;
-    camera.fov=38;
-    camera.near=.1;
-    camera.far=100;
-    camera.updateProjectionMatrix();
-    cameraTarget.set(p.root.position.x,p.root.position.y+.7,p.root.position.z);
-    camera.position.copy(cameraTarget).add(GAME_CAMERA_OFFSET);
-    camera.lookAt(cameraTarget);
-  }
-
-  function exitPlay(){
-    playMode=false;
-    document.body.classList.remove("play-mode");
-    modeToggle.classList.remove("playing");
-    modeToggle.textContent="▶ Play";
-    if(player)player.root.visible=false;
-    camera.fov=52;
-    camera.near=.1;
-    camera.far=600;
-    camera.updateProjectionMatrix();
-    orbit.enabled=true;
-    orbit.target.set(0,0,0);
-    camera.position.set(20,15,24);
-    orbit.update();
-  }
-
-  modeToggle.onclick=async()=>{
-    if(playMode)exitPlay();
-    else await enterPlay();
-  };
-
-  orbit.addEventListener("start",()=>{if(!playMode&&groundPaint.mode==="off")ui.element.style.opacity=".18";});
-  orbit.addEventListener("end",()=>{ui.element.style.opacity="1";});
-
-  let downAt=null;
-  renderer.domElement.addEventListener("pointerdown",event=>{
-    if(playMode||groundPaint.mode!=="off")return;
-    downAt={x:event.clientX,y:event.clientY};
-  });
-  renderer.domElement.addEventListener("pointerup",event=>{
-    if(playMode||groundPaint.mode!=="off")return;
-    if(!downAt)return;const moved=Math.hypot(event.clientX-downAt.x,event.clientY-downAt.y);downAt=null;
-    if(moved>=10||controller.isPlacing)return;
-    const id=view.pickAt(event.clientX,event.clientY);
-    if(id){controller.selectItem(id);view.highlight(id);ui.setSelection(id);}
-    else{controller.clearSelection();view.highlight(null);ui.setSelection(null);}
-  });
-
-  function updatePlay(delta){
-    if(!playMode||!player)return;
-    const state=movement.update({player,input:input.get(),delta});
-    if(!player.isSpecial()){
-      player.fadeTo(
-        state.moving?(state.running?PLAY_ANIMS.run:PLAY_ANIMS.walk):PLAY_ANIMS.idle,
-        state.moving?.15:.18,
-        true,
-        state.running?PLAY_CONFIG.animationSpeed.run:state.moving?PLAY_CONFIG.animationSpeed.walk:PLAY_CONFIG.animationSpeed.idle
-      );
-    }
-    player.mixer.update(delta);
-    cameraTarget.set(player.root.position.x,player.root.position.y+.7,player.root.position.z);
-    desiredCamera.copy(cameraTarget).add(GAME_CAMERA_OFFSET);
-    camera.position.lerp(desiredCamera,1-Math.exp(-5.5*delta));
-    camera.lookAt(cameraTarget);
-  }
-
-  function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
-  addEventListener("resize",resize);
-  renderer.setAnimationLoop(()=>{
-    const delta=Math.min(clock.getDelta(),.04);
-    if(playMode)updatePlay(delta);
-    else{orbit.update();view.update();}
-    renderer.render(scene,camera);
-  });
+let catalog;try{catalog=await loadCatalog({url:"../assets/catalog.json",root:"../"})}catch(error){errorBox.style.display="flex";errorBox.textContent=`โหลดรายการ asset ไม่สำเร็จ\n${error?.message??error}`;throw error}
+const sky=0xC9DEE0,scene=new THREE.Scene();scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,62,190);
+const camera=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,600);camera.position.set(20,15,24);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight,false);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.03;stage.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xE7F3EF,0x526146,1.45));const sun=new THREE.DirectionalLight(0xFFE2A8,2.5);sun.position.set(-28,13,20);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-42;sun.shadow.camera.right=42;sun.shadow.camera.top=42;sun.shadow.camera.bottom=-42;scene.add(sun);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(90,90),new THREE.MeshStandardMaterial({color:0x789A58,roughness:1}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);addWorldBackdrop(scene);
+const orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.dampingFactor=.09;orbit.maxPolarAngle=Math.PI*.47;orbit.minDistance=6;orbit.maxDistance=58;orbit.target.set(0,0,0);
+const state=createBuilderState(),layoutStore=createLayoutStore(),controller=createBuilderController({state,catalog,layoutStore}),assetLoader=createBuilderAssetLoader({gltfLoader:new GLTFLoader()}),view=createBuilderView({scene,camera,renderer,orbit,assetLoader}),ui=createBuilderUI({mount:document.body,controller,view,catalog}),groundPaint=createGroundPaint({scene,camera,renderer,orbit,mount:document.body});
+controller.load();const params=new URLSearchParams(location.search);if(params.get("world")==="v4"){controller.items.splice(0,controller.items.length,...WORLD_V4.map(item=>({...item})));controller.save()}await view.syncItems(controller.items);
+const input=createInput(),movement=createMovementSystem(camera,PLAY_CONFIG,()=>0),clock=new THREE.Clock(),cameraTarget=new THREE.Vector3(),desiredCamera=new THREE.Vector3();let player=null,playMode=false,liveBuild=false,loadingPlayer=false;
+async function ensurePlayer(){if(player||loadingPlayer)return player;loadingPlayer=true;modeToggle.textContent="… Liora";try{player=await createPlayer({url:"../assets/models/player/liora_all_animations_web.glb",height:PLAY_CONFIG.playerHeight,groundOffset:PLAY_CONFIG.playerGroundOffset,renderOrder:10,animations:PLAY_ANIMS});player.root.position.set(-5.2,0,-4.6);player.root.visible=false;scene.add(player.root);return player}finally{loadingPlayer=false}}
+async function enterPlay(){const p=await ensurePlayer();if(!p)return;if(groundPaint.mode!=="off")groundPaint.setMode("off");playMode=true;liveBuild=false;document.body.classList.add("play-mode");document.body.classList.remove("live-build");modeToggle.classList.add("playing");modeToggle.textContent="✏️ Edit";liveBuildToggle.classList.remove("active");liveBuildToggle.textContent="🔨 Build";orbit.enabled=false;p.root.visible=true;camera.fov=38;camera.near=.1;camera.far=100;camera.updateProjectionMatrix();cameraTarget.set(p.root.position.x,p.root.position.y+.7,p.root.position.z);camera.position.copy(cameraTarget).add(GAME_CAMERA_OFFSET);camera.lookAt(cameraTarget)}
+function exitPlay(){playMode=false;liveBuild=false;document.body.classList.remove("play-mode","live-build");modeToggle.classList.remove("playing");modeToggle.textContent="▶ Play";liveBuildToggle.classList.remove("active");if(player)player.root.visible=false;camera.fov=52;camera.near=.1;camera.far=600;camera.updateProjectionMatrix();orbit.enabled=true;orbit.target.set(0,0,0);camera.position.set(20,15,24);orbit.update()}
+function toggleLiveBuild(){if(!playMode)return;liveBuild=!liveBuild;document.body.classList.toggle("live-build",liveBuild);liveBuildToggle.classList.toggle("active",liveBuild);liveBuildToggle.textContent=liveBuild?"✓ Done":"🔨 Build";if(groundPaint.mode!=="off"&&!liveBuild)groundPaint.setMode("off");orbit.enabled=false}
+modeToggle.onclick=async()=>playMode?exitPlay():await enterPlay();liveBuildToggle.onclick=toggleLiveBuild;
+orbit.addEventListener("start",()=>{if(!playMode&&groundPaint.mode==="off")ui.element.style.opacity=".18"});orbit.addEventListener("end",()=>ui.element.style.opacity="1");
+let downAt=null;renderer.domElement.addEventListener("pointerdown",event=>{if((playMode&&!liveBuild)||groundPaint.mode!=="off")return;downAt={x:event.clientX,y:event.clientY}});renderer.domElement.addEventListener("pointerup",event=>{if((playMode&&!liveBuild)||groundPaint.mode!=="off")return;if(!downAt)return;const moved=Math.hypot(event.clientX-downAt.x,event.clientY-downAt.y);downAt=null;if(moved>=10||controller.isPlacing)return;const id=view.pickAt(event.clientX,event.clientY);if(id){controller.selectItem(id);view.highlight(id);ui.setSelection(id)}else{controller.clearSelection();view.highlight(null);ui.setSelection(null)}});
+function updatePlay(delta){if(!playMode||!player)return;if(!liveBuild){const moveState=movement.update({player,input:input.get(),delta});if(!player.isSpecial())player.fadeTo(moveState.moving?(moveState.running?PLAY_ANIMS.run:PLAY_ANIMS.walk):PLAY_ANIMS.idle,moveState.moving?.15:.18,true,moveState.running?PLAY_CONFIG.animationSpeed.run:moveState.moving?PLAY_CONFIG.animationSpeed.walk:PLAY_CONFIG.animationSpeed.idle);player.mixer.update(delta);cameraTarget.set(player.root.position.x,player.root.position.y+.7,player.root.position.z);desiredCamera.copy(cameraTarget).add(GAME_CAMERA_OFFSET);camera.position.lerp(desiredCamera,1-Math.exp(-5.5*delta));camera.lookAt(cameraTarget)}else{player.fadeTo(PLAY_ANIMS.idle,.15,true,1);player.mixer.update(delta);view.update()}}
+function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener("resize",resize);renderer.setAnimationLoop(()=>{const delta=Math.min(clock.getDelta(),.04);if(playMode)updatePlay(delta);else{orbit.update();view.update()}renderer.render(scene,camera)})
 }
-
-boot().catch(error=>{console.error("Builder boot failed",error);errorBox.style.display="flex";errorBox.textContent=`Builder error\n${error?.message??error}`;});
-</script>
-</body>
-</html>
+boot().catch(error=>{console.error("Builder boot failed",error);errorBox.style.display="flex";errorBox.textContent=`Builder error\n${error?.message??error}`});
+</script></body></html>
