@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { createAnimationController } from "../animation/animation-controller.js";
 
 export async function createPlayer({
   url,
@@ -51,47 +52,30 @@ export async function createPlayer({
   model.position.y += groundOffset;
   root.add(model);
 
-  const mixer = new THREE.AnimationMixer(model);
-  const actions = {};
-  for (const clip of gltf.animations) {
-    actions[clip.name] = mixer.clipAction(clip);
-  }
+  const animation = createAnimationController({
+    model,
+    clips: gltf.animations,
+  });
 
-  let current = null;
-  let special = false;
-
+  // Keep the old Player API stable while routing the implementation through
+  // AnimationController. Existing gameplay pages can migrate gradually.
   function fadeTo(name, duration = 0.18, loop = true, timeScale = 1) {
-    const next = actions[name];
-    if (!next) return;
-
-    next.setEffectiveTimeScale(timeScale);
-    if (current === next) return;
-
-    if (current) current.fadeOut(duration);
-    next.reset();
-    next.enabled = true;
-    next.setEffectiveTimeScale(timeScale);
-    next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
-    next.clampWhenFinished = !loop;
-    next.fadeIn(duration).play();
-    current = next;
+    return animation.play(name, {
+      fade: duration,
+      loop,
+      timeScale,
+    });
   }
 
   function playSpecial(name, onDone) {
-    if (special || !actions[name]) return false;
-    special = true;
-    fadeTo(name, 0.15, false, 1);
-
-    const finished = (event) => {
-      if (event.action !== actions[name]) return;
-      mixer.removeEventListener("finished", finished);
-      special = false;
-      fadeTo(animations.idle, 0.18, true, 1);
-      onDone?.();
-    };
-
-    mixer.addEventListener("finished", finished);
-    return true;
+    return animation.playOnce(name, {
+      fade: 0.15,
+      timeScale: 1,
+      returnTo: animations.idle,
+      returnFade: 0.18,
+      returnTimeScale: 1,
+      onDone,
+    });
   }
 
   fadeTo(animations.idle, 0, true, 1);
@@ -99,9 +83,10 @@ export async function createPlayer({
   return {
     root,
     model,
-    mixer,
+    animation,
+    mixer: animation.mixer,
     fadeTo,
     playSpecial,
-    isSpecial: () => special,
+    isSpecial: animation.isSpecial,
   };
 }
