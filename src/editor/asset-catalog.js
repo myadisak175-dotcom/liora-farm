@@ -23,6 +23,8 @@ function normalize(raw, root) {
     maxScale: Number(raw.maxScale ?? 2),
     defaultScale: Number(raw.defaultScale ?? 1),
     terrainSnap: raw.terrainSnap !== false,
+    gridSize: Number(raw.gridSize ?? 0),
+    lockScale: raw.lockScale === true,
   });
 }
 
@@ -51,30 +53,12 @@ export async function loadCatalog({ url, root = "" } = {}) {
   return ASSETS;
 }
 
-export function getCatalogMap() {
-  return ASSETS;
-}
-
-export function getCatalogCategories() {
-  return CATEGORIES;
-}
-
-export function getBuildableAsset(id) {
-  return ASSETS[id] ?? null;
-}
-
-export function getBuildableAssets() {
-  return Object.values(ASSETS);
-}
-
+export function getCatalogMap() { return ASSETS; }
+export function getCatalogCategories() { return CATEGORIES; }
+export function getBuildableAsset(id) { return ASSETS[id] ?? null; }
+export function getBuildableAssets() { return Object.values(ASSETS); }
 export function getBuildableAssetsByCategory(category) {
   return Object.values(ASSETS).filter((a) => a.category === category);
 }
-
-export function hasExternalModel(asset) {
-  return Boolean(asset?.modelPath);
-}
-
-export function getAssetThumbnail(asset) {
-  return asset?.thumbnailPath ?? null;
-}
+export function hasExternalModel(asset) { return Boolean(asset?.modelPath); }
+export function getAssetThumbnail(asset) { return asset?.thumbnailPath ?? null; }
