@@ -85,6 +85,35 @@ export const CONFIG = Object.freeze({
     renderOrder: 0,
   },
 
+  river: {
+    width: 4.4,
+    bankWidth: 0.62,
+    waterY: 0.026,
+    bankY: 0.006,
+    samplesPerSegment: 12,
+    points: [
+      [-20, 9.8],
+      [-13, 9.0],
+      [-5, 10.0],
+      [3, 9.2],
+      [11, 10.1],
+      [20, 9.3],
+    ],
+    deepColor: 0x2e87ae,
+    shallowColor: 0x6fc6d4,
+    highlightColor: 0xd7f7ef,
+    bankColor: 0x9b8159,
+    opacity: 0.94,
+    bridge: {
+      pathIndex: 36,
+      width: 5.2,
+      depth: 1.7,
+      y: 0.14,
+      deckColor: 0x8b5a36,
+      railColor: 0x684127,
+    },
+  },
+
   farmPlot: {
     position: { x: -5.2, z: -2.8 },
     y: 0.028,
@@ -166,6 +195,7 @@ export const ANIMATIONS = Object.freeze({
   run: "Running",
   pickUp: "PickUp",
   pullRadish: "PullRadish",
+  hammer: "Hammer_Swing",
   mirror: "MirrorViewing",
   sitToStand: "SitToStand",
   walkToSit: "WalkToSit",

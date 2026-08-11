@@ -68,6 +68,11 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
   const scrim = root.querySelector("#builder-scrim");
   const tabs = root.querySelector("#builder-tabs");
   const grid = root.querySelector("#builder-grid");
+  const importInput = document.createElement("input");
+  importInput.type = "file";
+  importInput.accept = "application/json,.json";
+  importInput.hidden = true;
+  root.appendChild(importInput);
 
   let selectedId = null;
   let activeAsset = null;
@@ -195,6 +200,36 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     refresh();
   }
 
+  async function undo() {
+    if (!controller.undo()) return;
+    selectedId = null;
+    activeAsset = null;
+    moving = false;
+    view.highlight(null);
+    await view.syncItems(controller.items);
+    refresh();
+  }
+
+  async function importMap(file) {
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      const objects = Array.isArray(payload) ? payload : payload.objects ?? payload.items;
+      controller.importItems(objects);
+      selectedId = null;
+      activeAsset = null;
+      moving = false;
+      view.highlight(null);
+      await view.syncItems(controller.items);
+      refresh();
+    } catch (error) {
+      console.warn("Builder map import failed", error);
+      window.alert(`นำเข้าแผนที่ไม่สำเร็จ\n${error?.message ?? error}`);
+    } finally {
+      importInput.value = "";
+    }
+  }
+
   async function placeAnother() {
     const item = selectedItem();
     if (!item) return;
@@ -244,6 +279,8 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     }
   }
 
+  importInput.onchange = () => importMap(importInput.files?.[0]);
+
   function refresh() {
     const placing = controller.isPlacing && !moving;
     const editing = controller.isEditing && !moving;
@@ -270,9 +307,9 @@ export function createBuilderUI({ mount, controller, view, catalog }) {
     }
 
     setButton(main, "▦", "เลือกของ", openSheet);
-    setButton(r1, null);
+    setButton(r1, "↶", "ย้อนกลับ", undo);
     setButton(r2, null);
-    setButton(s1, null);
+    setButton(s1, "⇧", "นำเข้า", () => importInput.click());
     setButton(s2, null);
     setButton(esc, "⇩", "บันทึกแผนที่", exportMap);
   }

@@ -66,7 +66,8 @@ async function bootstrap() {
   const movement = createMovementSystem(
     camera,
     CONFIG,
-    homeIsland.getGroundHeight
+    homeIsland.getGroundHeight,
+    homeIsland.isWalkable
   );
   const cameraController = createCameraController(
     camera,
@@ -180,6 +181,7 @@ async function bootstrap() {
   function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.04);
+    homeIsland.update(delta);
     dayNight.update(delta);
     updatePlayer(delta);
     cameraController.update(cameraTarget, delta);

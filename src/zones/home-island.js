@@ -3,6 +3,7 @@ import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createFarmPlot } from "../systems/farming/plot.js";
 import { createGroundMaterial } from "../systems/ground/ground-material.js";
+import { createRiver } from "../systems/river.js";
 
 export async function createHomeIsland({ scene, textureLoader, config, assets }) {
   const group = new THREE.Group();
@@ -32,6 +33,9 @@ export async function createHomeIsland({ scene, textureLoader, config, assets })
   });
   group.add(terrain.mesh);
 
+  const river = createRiver(config.river);
+  group.add(river.group);
+
   const farmPlot = createFarmPlot(config.farmPlot);
   farmPlot.group.position.y += terrain.getHeight(
     config.farmPlot.position.x,
@@ -46,12 +50,20 @@ export async function createHomeIsland({ scene, textureLoader, config, assets })
     ground,
     groundMesh: terrain.mesh,
     terrain,
+    river,
     farmPlot,
     getGroundHeight: terrain.getHeight,
+    isWalkable(x, z) {
+      return !river.isBlocked(x, z);
+    },
+    update(delta) {
+      river.update(delta);
+    },
     dispose() {
       farmPlot.dispose();
       terrain.dispose();
       ground.dispose();
+      river.dispose();
       scene.remove(group);
     },
   };

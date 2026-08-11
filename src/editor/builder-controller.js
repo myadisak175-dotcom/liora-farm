@@ -101,7 +101,9 @@ export function createBuilderController({
   function updateSelected(transform) {
     const item = items.find((entry) => entry.id === state.selectedObjectId);
     if (!item) return null;
+    const before = { ...item };
     Object.assign(item, transform);
+    pushBuilderHistory(state, { type: "update", before, after: { ...item } });
     save();
     onSelectionChange(item);
     return item;
@@ -130,6 +132,54 @@ export function createBuilderController({
     return removed;
   }
 
+  function undo() {
+    const action = state.history[state.history.length - 1];
+    if (!action) return false;
+    if (!["add", "delete", "update", "replace"].includes(action.type)) return false;
+    state.history.pop();
+
+    if (action.type === "add") {
+      const index = items.findIndex((item) => item.id === action.item.id);
+      if (index >= 0) items.splice(index, 1);
+    } else if (action.type === "delete") {
+      items.push({ ...action.item });
+    } else if (action.type === "update") {
+      const item = items.find((entry) => entry.id === action.before.id);
+      if (item) Object.assign(item, action.before);
+    } else if (action.type === "replace") {
+      items.splice(0, items.length, ...action.before.map((item) => ({ ...item })));
+    enterIdleContext(state);
+    onSelectionChange(null);
+    onPreviewChange(null);
+    save();
+    onLayoutChange(items, null);
+    emitContext();
+    return true;
+  }
+
+  function importItems(nextItems) {
+    if (!Array.isArray(nextItems)) throw new Error("Imported map must contain an objects array");
+    const normalized = nextItems
+      .map((item) => ({
+        id: item.id ?? crypto.randomUUID(),
+        assetId: item.assetId,
+        x: Number(item.x),
+        z: Number(item.z),
+        rotation: Number(item.rotation ?? 0),
+        scale: Number(item.scale ?? 1),
+      }))
+      .filter((item) => catalog[item.assetId] && [item.x, item.z, item.rotation, item.scale].every(Number.isFinite));
+    pushBuilderHistory(state, { type: "replace", before: items.map((item) => ({ ...item })), after: normalized.map((item) => ({ ...item })) });
+    items.splice(0, items.length, ...normalized);
+    enterIdleContext(state);
+    onSelectionChange(null);
+    onPreviewChange(null);
+    save();
+    onLayoutChange(items, null);
+    emitContext();
+    return items;
+  }
+
   function load() {
     items.splice(0, items.length, ...layoutStore.load());
     enterIdleContext(state);
@@ -154,6 +204,8 @@ export function createBuilderController({
     updateSelected,
     duplicateSelected,
     deleteSelected,
+    undo,
+    importItems,
     get context() {
       return state.context;
     },

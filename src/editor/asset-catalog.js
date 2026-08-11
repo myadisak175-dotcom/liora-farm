@@ -19,6 +19,7 @@ function normalize(raw, root) {
     modelPath: root + raw.modelPath,
     thumbnailPath: raw.thumbnailPath ? root + raw.thumbnailPath : null,
     placementRadius: Number(raw.footprint ?? 1),
+    targetHeight: Number(raw.targetHeight ?? 0),
     minScale: Number(raw.minScale ?? 0.5),
     maxScale: Number(raw.maxScale ?? 2),
     defaultScale: Number(raw.defaultScale ?? 1),
