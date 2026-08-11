@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
 </style>
 </head>
 <body>
-<div id="boot"><div id="boot-box">กำลังโหลด Builder v6.24…<small>Collision • Sit • Vault • Gameplay markers</small></div></div>
+<div id="boot"><div id="boot-box">กำลังโหลด Builder v6.24…<small>Live Collision • Sit • Vault • Gameplay markers</small></div></div>
 <script>
 (async()=>{
   const BASE="./index.html?v=623";
@@ -34,11 +34,14 @@ html,body{margin:0;width:100%;height:100%;background:#a8d8ec;font-family:system-
     const gameplayCode=`
 // ---------------- Gameplay Collision + Interaction v1 ----------------
 const GAMEPLAY_ASSET_PROFILES=Object.freeze({
-  tree:{colliders:[{type:"circle",x:0,z:0,radius:.55,height:1.5}]},
-  palm:{colliders:[{type:"circle",x:0,z:0,radius:.5,height:1.5}]},
-  pine:{colliders:[{type:"circle",x:0,z:0,radius:.52,height:1.6}]},
-  crate:{colliders:[{type:"box",x:0,z:0,width:.9,depth:.9,height:1.0}]},
-  wine_barrel:{colliders:[{type:"circle",x:0,z:0,radius:.48,height:1.15}]},
+  tree:{colliders:[
+    {type:"circle",x:-.42,z:.02,radius:.34,height:1.5},
+    {type:"circle",x:.42,z:-.02,radius:.34,height:1.5}
+  ]},
+  palm:{colliders:[{type:"circle",x:0,z:0,radius:.38,height:1.5}]},
+  pine:{colliders:[{type:"circle",x:0,z:0,radius:.40,height:1.6}]},
+  crate:{colliders:[{type:"box",x:0,z:0,width:.82,depth:.82,height:1.0}]},
+  wine_barrel:{colliders:[{type:"circle",x:0,z:0,radius:.42,height:1.15}]},
   crate_set:{colliders:[
     {type:"box",x:-.55,z:.02,width:.82,depth:.78,height:1.05},
     {type:"box",x:.42,z:-.18,width:.82,depth:.78,height:1.05},
@@ -60,6 +63,9 @@ const GAMEPLAY_ASSET_PROFILES=Object.freeze({
 
 const gameplayDebugState={enabled:false,roots:new Map()};
 const cloneGameplayProfile=profile=>profile?JSON.parse(JSON.stringify(profile)):null;
+const PLAYER_COLLISION_RADIUS=.28;
+const _gameplayLocalPoint=new THREE.Vector3();
+const _gameplayWorldPoint=new THREE.Vector3();
 
 function attachGameplayProfile(holder){
   if(!holder||holder.userData?.gameplayProfile)return holder;
@@ -67,6 +73,82 @@ function attachGameplayProfile(holder){
   if(profile)holder.userData.gameplayProfile=cloneGameplayProfile(profile);
   return holder;
 }
+
+function resolvePlayerGameplayCollisions(target=player){
+  if(!target||typeof builderState==="undefined"||!Array.isArray(builderState.placed))return false;
+  let collided=false;
+
+  // A few lightweight passes are enough for corners and grouped assets.
+  for(let pass=0;pass<3;pass++){
+    let movedThisPass=false;
+    for(const holder of builderState.placed){
+      if(!holder?.parent)continue;
+      attachGameplayProfile(holder);
+      const profile=holder.userData?.gameplayProfile;
+      if(!profile?.colliders?.length)continue;
+
+      holder.updateWorldMatrix(true,false);
+      const uniformScale=Math.max(.0001,Math.abs(holder.scale.x)||1);
+      const playerRadiusLocal=PLAYER_COLLISION_RADIUS/uniformScale;
+
+      _gameplayWorldPoint.set(target.position.x,target.position.y,target.position.z);
+      _gameplayLocalPoint.copy(_gameplayWorldPoint);
+      holder.worldToLocal(_gameplayLocalPoint);
+
+      for(const c of profile.colliders){
+        let pushed=false;
+
+        if(c.type==="circle"){
+          const cx=c.x||0,cz=c.z||0;
+          const minR=(c.radius||.5)+playerRadiusLocal;
+          let dx=_gameplayLocalPoint.x-cx;
+          let dz=_gameplayLocalPoint.z-cz;
+          let d=Math.hypot(dx,dz);
+          if(d<minR){
+            if(d<.0001){dx=1;dz=0;d=1;}
+            const k=minR/d;
+            _gameplayLocalPoint.x=cx+dx*k;
+            _gameplayLocalPoint.z=cz+dz*k;
+            pushed=true;
+          }
+        }else if(c.type==="box"){
+          const cx=c.x||0,cz=c.z||0;
+          const hx=(c.width||1)*.5+playerRadiusLocal;
+          const hz=(c.depth||1)*.5+playerRadiusLocal;
+          const lx=_gameplayLocalPoint.x-cx;
+          const lz=_gameplayLocalPoint.z-cz;
+          if(Math.abs(lx)<hx&&Math.abs(lz)<hz){
+            const penX=hx-Math.abs(lx);
+            const penZ=hz-Math.abs(lz);
+            if(penX<penZ){
+              _gameplayLocalPoint.x=cx+(lx<0?-hx:hx);
+            }else{
+              _gameplayLocalPoint.z=cz+(lz<0?-hz:hz);
+            }
+            pushed=true;
+          }
+        }
+
+        if(pushed){
+          _gameplayWorldPoint.copy(_gameplayLocalPoint);
+          holder.localToWorld(_gameplayWorldPoint);
+          target.position.x=_gameplayWorldPoint.x;
+          target.position.z=_gameplayWorldPoint.z;
+          collided=true;
+          movedThisPass=true;
+
+          // Recalculate local position after every push so multi-collider sets work correctly.
+          _gameplayWorldPoint.set(target.position.x,target.position.y,target.position.z);
+          _gameplayLocalPoint.copy(_gameplayWorldPoint);
+          holder.worldToLocal(_gameplayLocalPoint);
+        }
+      }
+    }
+    if(!movedThisPass)break;
+  }
+  return collided;
+}
+window.resolveLioraBuilderCollisions=resolvePlayerGameplayCollisions;
 
 function makeGameplayDebugRoot(holder){
   const profile=holder?.userData?.gameplayProfile;
@@ -172,7 +254,7 @@ queueMicrotask(()=>{
 
 // ---------------- Home Island Builder v2 ----------------`;
 
-    const injected=`    patches.push([\n      \"// ---------------- Home Island Builder v2 ----------------\",\n      ${JSON.stringify(gameplayCode)}\n    ]);\n\n    patches.push([\n      '<button class=\"builder-btn\" id=\"builder-undo\">↶ Undo</button>',\n      '<button class=\"builder-btn\" id=\"builder-gameplay-toggle\">◎ Collision</button>\\n      <button class=\"builder-btn\" id=\"builder-undo\">↶ Undo</button>'\n    ]);\n\n    patches.push([\n      '  updateBuilderNightLights();\\n  renderer.render(scene,camera);',\n      '  updateBuilderNightLights();\\n  updateGameplayDebugTransforms();\\n  renderer.render(scene,camera);'\n    ]);\n\n    patches[0]=[\"Liora — Home Island Builder v6.16 Night Lamps\",\"Liora — Home Island Builder v6.24 Gameplay Collision\"];\n    patches[1]=[\"Builder v6.16 • automatic night lamps • Persistent models • MapSafe\",\"Builder v6.24 • Collision • Sit • Vault • Ground Paint • MapSafe\"];`;
+    const injected=`    patches.push([\n      \"// ---------------- Home Island Builder v2 ----------------\",\n      ${JSON.stringify(gameplayCode)}\n    ]);\n\n    patches.push([\n      '<button class=\"builder-btn\" id=\"builder-undo\">↶ Undo</button>',\n      '<button class=\"builder-btn\" id=\"builder-gameplay-toggle\">◎ Collision</button>\\n      <button class=\"builder-btn\" id=\"builder-undo\">↶ Undo</button>'\n    ]);\n\n    patches.push([\n      '    player.position.x+=moveDir.x*speed*dt;\\n    player.position.z+=moveDir.z*speed*dt;',\n      '    player.position.x+=moveDir.x*speed*dt;\\n    player.position.z+=moveDir.z*speed*dt;\\n    resolvePlayerGameplayCollisions(player);'\n    ]);\n\n    patches.push([\n      '  updateBuilderNightLights();\\n  renderer.render(scene,camera);',\n      '  updateBuilderNightLights();\\n  updateGameplayDebugTransforms();\\n  renderer.render(scene,camera);'\n    ]);\n\n    patches[0]=[\"Liora — Home Island Builder v6.16 Night Lamps\",\"Liora — Home Island Builder v6.24 Live Collision\"];\n    patches[1]=[\"Builder v6.16 • automatic night lamps • Persistent models • MapSafe\",\"Builder v6.24 • LIVE Collision • Sit • Vault • Ground Paint • MapSafe\"];`;
 
     source=source.replace(anchor,injected);
     source=source.replace("กำลังโหลด Builder Paint v6.23…","กำลังโหลด Builder v6.24…");
