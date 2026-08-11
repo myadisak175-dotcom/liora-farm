@@ -33,6 +33,25 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     return root;
   }
 
+  function makeGroundedRoot(model) {
+    const root = new THREE.Group();
+    root.add(model);
+    root.updateMatrixWorld(true);
+
+    const bounds = new THREE.Box3().setFromObject(model);
+    if (!bounds.isEmpty() && Number.isFinite(bounds.min.y)) {
+      model.position.y -= bounds.min.y;
+      model.updateMatrixWorld(true);
+    }
+
+    return root;
+  }
+
+  async function loadGroundedObject(assetId) {
+    const model = cloneRenderableResources(await assetLoader.load(assetId));
+    return makeGroundedRoot(model);
+  }
+
   function disposeObject(root) {
     if (!root) return;
     root.traverse((node) => {
@@ -56,27 +75,17 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
 
   function setGhost(root, on) {
     if (!root) return;
-    eachMaterial(root, (material, mesh) => {
+    root.traverse((node) => {
+      if (!node.isMesh) return;
       if (on) {
-        if (material.userData.builderOpacity == null) {
-          material.userData.builderOpacity = material.opacity;
-          material.userData.builderTransparent = material.transparent;
+        if (node.userData.builderCastShadow == null) {
+          node.userData.builderCastShadow = node.castShadow;
         }
-        material.transparent = true;
-        material.opacity = 0.55;
-        material.depthWrite = false;
-        mesh.castShadow = false;
-      } else {
-        if (material.userData.builderOpacity != null) {
-          material.opacity = material.userData.builderOpacity;
-          material.transparent = material.userData.builderTransparent;
-          delete material.userData.builderOpacity;
-          delete material.userData.builderTransparent;
-        }
-        material.depthWrite = true;
-        mesh.castShadow = true;
+        node.castShadow = false;
+      } else if (node.userData.builderCastShadow != null) {
+        node.castShadow = node.userData.builderCastShadow;
+        delete node.userData.builderCastShadow;
       }
-      material.needsUpdate = true;
     });
   }
 
@@ -123,7 +132,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   }
 
   async function addPlaced(item) {
-    const object = cloneRenderableResources(await assetLoader.load(item.assetId));
+    const object = await loadGroundedObject(item.assetId);
     if (disposed) {
       disposeObject(object);
       return;
@@ -200,7 +209,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     }
 
     const token = ++previewToken;
-    const object = cloneRenderableResources(await assetLoader.load(asset.id));
+    const object = await loadGroundedObject(asset.id);
     if (disposed || token !== previewToken) {
       disposeObject(object);
       return null;
