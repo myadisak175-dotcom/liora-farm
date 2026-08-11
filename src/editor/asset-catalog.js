@@ -1,97 +1,74 @@
 export const BUILD_CATEGORIES = Object.freeze({
   NATURE: "nature",
   BUILDINGS: "buildings",
-  FARMING: "farming",
   DECOR: "decor",
+  PATH: "path",
 });
 
-function defineAsset({
-  id,
-  label,
-  category,
-  icon,
-  modelPath = null,
-  thumbnailPath = null,
-  placementRadius,
-  minScale,
-  maxScale,
-  defaultScale = 1,
-  terrainSnap = true,
-}) {
+let ASSETS = Object.freeze({});
+let CATEGORIES = Object.freeze([]);
+
+function normalize(raw, root) {
+  if (!raw || typeof raw.id !== "string") return null;
+  if (typeof raw.modelPath !== "string") return null;
   return Object.freeze({
-    id,
-    label,
-    category,
-    icon,
-    modelPath,
-    thumbnailPath,
-    placementRadius,
-    minScale,
-    maxScale,
-    defaultScale,
-    terrainSnap,
+    id: raw.id,
+    label: raw.label ?? raw.id,
+    category: raw.category ?? BUILD_CATEGORIES.DECOR,
+    icon: raw.icon ?? "▪",
+    modelPath: root + raw.modelPath,
+    thumbnailPath: raw.thumbnailPath ? root + raw.thumbnailPath : null,
+    placementRadius: Number(raw.footprint ?? 1),
+    minScale: Number(raw.minScale ?? 0.5),
+    maxScale: Number(raw.maxScale ?? 2),
+    defaultScale: Number(raw.defaultScale ?? 1),
+    terrainSnap: raw.terrainSnap !== false,
   });
 }
 
-export const BUILDABLE_ASSETS = Object.freeze({
-  tree: defineAsset({
-    id: "tree",
-    label: "Tree",
-    category: BUILD_CATEGORIES.NATURE,
-    icon: "🌳",
-    modelPath: null,
-    thumbnailPath: null,
-    placementRadius: 1.15,
-    minScale: 0.45,
-    maxScale: 2.25,
-  }),
-  palm: defineAsset({
-    id: "palm",
-    label: "Palm",
-    category: BUILD_CATEGORIES.NATURE,
-    icon: "🌴",
-    modelPath: null,
-    thumbnailPath: null,
-    placementRadius: 1.15,
-    minScale: 0.45,
-    maxScale: 2.25,
-  }),
-  pine: defineAsset({
-    id: "pine",
-    label: "Pine",
-    category: BUILD_CATEGORIES.NATURE,
-    icon: "🌲",
-    modelPath: null,
-    thumbnailPath: null,
-    placementRadius: 1.15,
-    minScale: 0.45,
-    maxScale: 2.25,
-  }),
-  house: defineAsset({
-    id: "house",
-    label: "House",
-    category: BUILD_CATEGORIES.BUILDINGS,
-    icon: "🏡",
-    modelPath: null,
-    thumbnailPath: null,
-    placementRadius: 2.65,
-    minScale: 0.7,
-    maxScale: 1.5,
-  }),
-});
+export async function loadCatalog({ url, root = "" } = {}) {
+  if (!url) throw new Error("loadCatalog requires a url");
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Catalog HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data?.assets)) throw new Error("Catalog has no assets array");
 
-export function getBuildableAsset(id) {
-  return BUILDABLE_ASSETS[id] ?? null;
+  const map = {};
+  for (const raw of data.assets) {
+    const asset = normalize(raw, root);
+    if (!asset) {
+      console.warn("Skipping malformed catalog entry", raw);
+      continue;
+    }
+    if (map[asset.id]) throw new Error(`Duplicate asset id: ${asset.id}`);
+    map[asset.id] = asset;
+  }
+
+  ASSETS = Object.freeze(map);
+  CATEGORIES = Object.freeze(
+    Array.isArray(data.categories) ? [...data.categories] : []
+  );
+  return ASSETS;
 }
 
-export function getBuildableAssetsByCategory(category) {
-  return Object.values(BUILDABLE_ASSETS).filter(
-    (asset) => asset.category === category
-  );
+export function getCatalogMap() {
+  return ASSETS;
+}
+
+export function getCatalogCategories() {
+  return CATEGORIES;
+}
+
+export function getBuildableAsset(id) {
+  return ASSETS[id] ?? null;
 }
 
 export function getBuildableAssets() {
-  return Object.values(BUILDABLE_ASSETS);
+  return Object.values(ASSETS);
+}
+
+export function getBuildableAssetsByCategory(category) {
+  return Object.values(ASSETS).filter((a) => a.category === category);
 }
 
 export function hasExternalModel(asset) {
