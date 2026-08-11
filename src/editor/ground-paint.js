@@ -3,7 +3,6 @@ import * as THREE from "three";
 // Best-of ground paint:
 // - interaction model from Builder v6.17-v6.19 (paint while playing/building)
 // - real project textures for all four ground types
-// - adjustable per-tile opacity/strength
 // - current Hybrid/Live Build API
 const STORAGE_KEY = "liora-bestof-play-ground-v1";
 const TILE_SIZE = 0.8;
@@ -30,46 +29,30 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
   const tiles = new Map();
   let mode = "off";
   let brushSize = 1;
-  let strength = 0.8;
   let pointerId = null;
   let lastKey = null;
   let saveTimer = null;
 
-  function loadTexture(url) {
+  function makeMaterial(url) {
     const map = textureLoader.load(url);
     map.colorSpace = THREE.SRGBColorSpace;
     map.wrapS = map.wrapT = THREE.RepeatWrapping;
     map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    return map;
-  }
-
-  const textures = {
-    dirt: loadTexture("../assets/textures/dirt.webp"),
-    sand: loadTexture("../assets/textures/sand.webp"),
-    rock: loadTexture("../assets/textures/rock.webp"),
-  };
-
-  // Reuse materials by 5% opacity buckets so hundreds of paint tiles do not
-  // each allocate a unique material.
-  const materialCache = new Map();
-  function materialFor(type, opacity = 1) {
-    const bucket = Math.round(THREE.MathUtils.clamp(opacity, 0.2, 1) * 20) / 20;
-    const cacheKey = `${type}:${bucket.toFixed(2)}`;
-    if (materialCache.has(cacheKey)) return materialCache.get(cacheKey);
-    const material = new THREE.MeshStandardMaterial({
-      map: textures[type],
+    return new THREE.MeshStandardMaterial({
+      map,
       roughness: 1,
       metalness: 0,
-      transparent: bucket < 0.999,
-      opacity: bucket,
-      depthWrite: bucket >= 0.999,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     });
-    materialCache.set(cacheKey, material);
-    return material;
   }
+
+  const materials = {
+    dirt: makeMaterial("../assets/textures/dirt.webp"),
+    sand: makeMaterial("../assets/textures/sand.webp"),
+    rock: makeMaterial("../assets/textures/rock.webp"),
+  };
 
   const style = document.createElement("style");
   style.textContent = `
@@ -83,10 +66,6 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
     .ground-mode{flex:0 0 62px;border:1px solid #ffffff38;background:#101a16;color:#f2efe4;border-radius:12px;padding:7px 3px;font-size:10px;font-weight:800;min-height:50px}
     .ground-mode span{display:block;font-size:20px;line-height:1.1;margin-bottom:3px}
     .ground-mode.active{outline:2px solid #fff;background:#426153}
-    #ground-paint-strength-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:8px;padding:7px 8px;border-radius:11px;background:#101a16}
-    #ground-paint-strength-row label{font-size:10px;font-weight:800;white-space:nowrap}
-    #ground-strength{width:100%;accent-color:#e8a33d}
-    #ground-strength-value{min-width:36px;text-align:right;font-size:10px;font-weight:900;color:#e8a33d}
     #ground-paint-tools{display:flex;gap:6px;margin-top:7px;overflow-x:auto}
     #ground-paint-tools button{flex:1 0 auto;border:1px solid #ffffff38;background:#29463a;color:#fff;border-radius:11px;padding:9px 10px;font-weight:800;font-size:11px}
     #ground-paint-hint{margin-top:6px;font-size:10px;opacity:.76;text-align:center}
@@ -105,17 +84,12 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
         <button class="ground-mode" data-mode="rock" type="button"><span>🪨</span>หิน</button>
         <button class="ground-mode" data-mode="erase" type="button"><span>🧹</span>ลบ</button>
       </div>
-      <div id="ground-paint-strength-row">
-        <label for="ground-strength">เข้ม–จาง</label>
-        <input id="ground-strength" type="range" min="20" max="100" step="5" value="80" />
-        <span id="ground-strength-value">80%</span>
-      </div>
       <div id="ground-paint-tools">
         <button id="ground-brush" type="button">Brush 1×</button>
         <button id="ground-undo" type="button">↶ Undo</button>
         <button id="ground-close" type="button">✓ Done</button>
       </div>
-      <div id="ground-paint-hint">เลือกพื้น • ปรับเข้ม–จาง • แล้วลากนิ้วระบายได้ทันที</div>
+      <div id="ground-paint-hint">แบบ Play Builder เดิม • เลือกพื้นแล้วลากนิ้วระบายได้ทันที</div>
     </div>
   `;
   mount.appendChild(ui);
@@ -125,8 +99,6 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
   const brush = ui.querySelector("#ground-brush");
   const undo = ui.querySelector("#ground-undo");
   const close = ui.querySelector("#ground-close");
-  const strengthInput = ui.querySelector("#ground-strength");
-  const strengthValue = ui.querySelector("#ground-strength-value");
   const modeButtons = [...ui.querySelectorAll(".ground-mode")];
   const history = [];
 
@@ -136,48 +108,36 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
     const k = key(ix, iz);
     const mesh = tiles.get(k);
     if (!mesh) return false;
-    if (record) history.push({
-      type: "restore", ix, iz,
-      groundType: mesh.userData.groundType,
-      opacity: mesh.userData.groundOpacity ?? 1,
-    });
+    if (record) history.push({ type: "restore", ix, iz, groundType: mesh.userData.groundType });
     scene.remove(mesh);
     mesh.geometry.dispose();
     tiles.delete(k);
     return true;
   }
 
-  function setTile(ix, iz, type, opacity = strength, record = true) {
+  function setTile(ix, iz, type, record = true) {
     const existing = tiles.get(key(ix, iz));
     if (type === "grass" || type === "erase") {
       removeTile(ix, iz, record);
       return;
     }
-    if (!textures[type]) return;
-
-    const nextOpacity = Math.round(THREE.MathUtils.clamp(opacity, 0.2, 1) * 20) / 20;
-    if (existing?.userData.groundType === type && Math.abs((existing.userData.groundOpacity ?? 1) - nextOpacity) < 0.001) return;
-
+    if (!materials[type]) return;
+    if (existing?.userData.groundType === type) return;
     if (record) {
       history.push(existing
-        ? {
-            type: "restore", ix, iz,
-            groundType: existing.userData.groundType,
-            opacity: existing.userData.groundOpacity ?? 1,
-          }
+        ? { type: "restore", ix, iz, groundType: existing.userData.groundType }
         : { type: "remove", ix, iz });
     }
     if (existing) removeTile(ix, iz, false);
 
     const geometry = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
     geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, materialFor(type, nextOpacity));
+    const mesh = new THREE.Mesh(geometry, materials[type]);
     mesh.position.set(ix * TILE_SIZE, LIFT, iz * TILE_SIZE);
     mesh.receiveShadow = true;
     mesh.renderOrder = 2;
     mesh.userData.groundPaint = true;
     mesh.userData.groundType = type;
-    mesh.userData.groundOpacity = nextOpacity;
     mesh.userData.ix = ix;
     mesh.userData.iz = iz;
     scene.add(mesh);
@@ -187,7 +147,6 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
   function serialize() {
     return [...tiles.values()].map(mesh => ({
       type: mesh.userData.groundType,
-      opacity: mesh.userData.groundOpacity ?? 1,
       ix: mesh.userData.ix,
       iz: mesh.userData.iz,
     }));
@@ -211,8 +170,8 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
       if (!Array.isArray(data)) return;
       for (const item of data) {
         if (!Number.isFinite(item?.ix) || !Number.isFinite(item?.iz)) continue;
-        if (!textures[item.type]) continue;
-        setTile(item.ix, item.iz, item.type, Number(item.opacity ?? 1), false);
+        if (!materials[item.type]) continue;
+        setTile(item.ix, item.iz, item.type, false);
       }
       history.length = 0;
     } catch (error) { console.warn("Ground paint load failed", error); }
@@ -221,8 +180,6 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
   function updateUI() {
     for (const button of modeButtons) button.classList.toggle("active", button.dataset.mode === mode);
     brush.textContent = `Brush ${brushSize}×`;
-    strengthValue.textContent = `${Math.round(strength * 100)}%`;
-    strengthInput.value = String(Math.round(strength * 100));
     toggle.textContent = mode === "off" ? "🎨 Paint" : `🎨 ${LABELS[mode] ?? "Paint"}`;
   }
 
@@ -250,7 +207,7 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
     const radius = Math.max(0, brushSize - 1);
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dz = -radius; dz <= radius; dz++) {
-        setTile(cx + dx, cz + dz, mode, strength, true);
+        setTile(cx + dx, cz + dz, mode, true);
       }
     }
     scheduleSave();
@@ -299,7 +256,7 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
     }
     for (const op of ops) {
       if (op.type === "remove") removeTile(op.ix, op.iz, false);
-      else if (op.type === "restore") setTile(op.ix, op.iz, op.groundType, op.opacity ?? 1, false);
+      else if (op.type === "restore") setTile(op.ix, op.iz, op.groundType, false);
     }
     save();
   }
@@ -309,10 +266,6 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
   for (const button of modeButtons) button.onclick = () => setMode(button.dataset.mode);
   brush.onclick = () => { brushSize = brushSize % 3 + 1; updateUI(); };
   undo.onclick = undoStroke;
-  strengthInput.oninput = () => {
-    strength = THREE.MathUtils.clamp((Number(strengthInput.value) || 80) / 100, 0.2, 1);
-    updateUI();
-  };
 
   renderer.domElement.addEventListener("pointerdown", onPointerDown, true);
   renderer.domElement.addEventListener("pointermove", onPointerMove, true);
@@ -344,9 +297,10 @@ export function createGroundPaint({ scene, camera, renderer, orbit, mount = docu
       orbit.enabled = true;
       ui.remove();
       style.remove();
-      for (const texture of Object.values(textures)) texture.dispose?.();
-      for (const material of materialCache.values()) material.dispose?.();
-      materialCache.clear();
+      for (const material of Object.values(materials)) {
+        material.map?.dispose?.();
+        material.dispose();
+      }
     },
   };
 }
