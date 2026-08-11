@@ -34,16 +34,31 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     return root;
   }
 
-  // Hybrid rule: preserve the GLB's authored size. Only move the model inside a
-  // transform holder so its lowest rendered point rests on y=0. The holder owns
-  // user scale/rotation, so later resizing keeps the contact point on the ground.
+  // Hybrid calibration rule:
+  // - Liora is the world ruler at 1.7 m.
+  // - Each asset may define its own targetHeight in catalog.json.
+  // - We scale the inner GLB once to that physical target, then ground it.
+  // - The outer holder keeps user scale/rotation independent, so +/- remains free.
   function makeGroundedRoot(model, asset) {
     const root = new THREE.Group();
     root.userData.builderAssetId = asset?.id ?? null;
     root.add(model);
     root.updateMatrixWorld(true);
 
-    const bounds = new THREE.Box3().setFromObject(model);
+    let bounds = new THREE.Box3().setFromObject(model);
+    if (!bounds.isEmpty()) {
+      const size = bounds.getSize(new THREE.Vector3());
+      const targetHeight = Number(asset?.targetHeight ?? 0);
+      if (targetHeight > 0 && Number.isFinite(size.y) && size.y > 0.0001) {
+        const baseScale = targetHeight / size.y;
+        model.scale.multiplyScalar(baseScale);
+        model.updateMatrixWorld(true);
+        root.userData.builderBaseScale = baseScale;
+        root.userData.builderTargetHeight = targetHeight;
+      }
+    }
+
+    bounds = new THREE.Box3().setFromObject(model);
     if (!bounds.isEmpty() && Number.isFinite(bounds.min.y)) {
       model.position.y -= bounds.min.y;
       model.updateMatrixWorld(true);
