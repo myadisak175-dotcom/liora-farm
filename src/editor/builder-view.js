@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getBuildableAsset } from "./asset-catalog.js";
 
 export function createBuilderView({ scene, camera, renderer, orbit, assetLoader }) {
   if (!scene || !camera || !renderer || !orbit || !assetLoader) {
@@ -12,6 +13,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   const centre = new THREE.Vector2(0, 0);
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const groundHit = new THREE.Vector3();
+  const pinchPointers = new Map();
 
   let preview = null;
   let previewAsset = null;
@@ -19,6 +21,9 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   let moving = null;
   let snap = 1;
   let disposed = false;
+  let pinchStartDistance = 0;
+  let pinchStartScale = 1;
+  let pinchActive = false;
 
   function cloneRenderableResources(root) {
     root.traverse((node) => {
@@ -131,6 +136,71 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     root.position.y = 0;
   }
 
+  function activeTransformObject() {
+    return preview ?? moving?.object ?? null;
+  }
+
+  function activeAssetMeta() {
+    if (previewAsset) return previewAsset;
+    if (moving?.assetId) return getBuildableAsset(moving.assetId);
+    return null;
+  }
+
+  function clampScale(value) {
+    const asset = activeAssetMeta();
+    const min = Number(asset?.minScale ?? 0.35);
+    const max = Number(asset?.maxScale ?? 3);
+    return THREE.MathUtils.clamp(value, min, max);
+  }
+
+  function scaleActiveTo(value) {
+    const target = activeTransformObject();
+    if (!target) return;
+    target.scale.setScalar(clampScale(Number(value) || 1));
+  }
+
+  function pointerDistance() {
+    const points = Array.from(pinchPointers.values());
+    if (points.length < 2) return 0;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  }
+
+  function onPointerDown(event) {
+    if (!activeTransformObject()) return;
+    pinchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinchPointers.size === 2) {
+      pinchStartDistance = pointerDistance();
+      pinchStartScale = activeTransformObject()?.scale.x ?? 1;
+      pinchActive = pinchStartDistance > 0;
+      if (pinchActive) orbit.enabled = false;
+    }
+  }
+
+  function onPointerMove(event) {
+    if (!pinchPointers.has(event.pointerId)) return;
+    pinchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!pinchActive || pinchPointers.size < 2 || pinchStartDistance <= 0) return;
+    const distance = pointerDistance();
+    if (distance <= 0) return;
+    scaleActiveTo(pinchStartScale * (distance / pinchStartDistance));
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function finishPointer(event) {
+    pinchPointers.delete(event.pointerId);
+    if (pinchPointers.size < 2 && pinchActive) {
+      pinchActive = false;
+      pinchStartDistance = 0;
+      orbit.enabled = true;
+    }
+  }
+
+  renderer.domElement.addEventListener("pointerdown", onPointerDown, true);
+  renderer.domElement.addEventListener("pointermove", onPointerMove, true);
+  renderer.domElement.addEventListener("pointerup", finishPointer, true);
+  renderer.domElement.addEventListener("pointercancel", finishPointer, true);
+
   async function addPlaced(item) {
     const object = await loadGroundedObject(item.assetId);
     if (disposed) {
@@ -229,6 +299,9 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
 
   function endPreview() {
     previewToken += 1;
+    pinchPointers.clear();
+    pinchActive = false;
+    orbit.enabled = true;
     if (preview) {
       scene.remove(preview);
       disposeObject(preview);
@@ -252,7 +325,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   }
 
   function rotatePreview(step) {
-    const target = preview ?? moving?.object;
+    const target = activeTransformObject();
     if (!target) return;
     target.rotation.y += Number(step) * Math.PI / 8;
   }
@@ -270,6 +343,7 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
     if (!entry) return null;
     moving = {
       id,
+      assetId: entry.assetId,
       object: entry.object,
       original: transformOf(entry.object),
     };
@@ -312,6 +386,10 @@ export function createBuilderView({ scene, camera, renderer, orbit, assetLoader 
   function dispose() {
     if (disposed) return;
     disposed = true;
+    renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
+    renderer.domElement.removeEventListener("pointermove", onPointerMove, true);
+    renderer.domElement.removeEventListener("pointerup", finishPointer, true);
+    renderer.domElement.removeEventListener("pointercancel", finishPointer, true);
     endPreview();
     for (const entry of placed.values()) {
       scene.remove(entry.object);
