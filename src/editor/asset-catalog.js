@@ -13,11 +13,18 @@ function defineAsset({
   icon,
   file,
   placementRadius,
-  minScale = 0.45,
-  maxScale = 2.25,
   defaultScale = 1,
+  minScale = null,
+  maxScale = null,
+  scaleStep = null,
+  sizeAxis = "height",
+  sizeInPlayers = 1,
   terrainSnap = true,
 }) {
+  const resolvedMinScale = minScale ?? defaultScale * 0.4;
+  const resolvedMaxScale = maxScale ?? defaultScale * 2.5;
+  const resolvedScaleStep = scaleStep ?? defaultScale * 0.05;
+
   return Object.freeze({
     id,
     label,
@@ -26,9 +33,12 @@ function defineAsset({
     modelPath: `${ASSETS.modelDir}/${file}`,
     thumbnailPath: null,
     placementRadius,
-    minScale,
-    maxScale,
+    minScale: resolvedMinScale,
+    maxScale: resolvedMaxScale,
     defaultScale,
+    scaleStep: resolvedScaleStep,
+    sizeAxis,
+    sizeInPlayers,
     terrainSnap,
   });
 }
@@ -42,6 +52,7 @@ export const BUILDABLE_ASSETS = Object.freeze({
     file: "tree.glb",
     placementRadius: 1.15,
     defaultScale: 1.7,
+    sizeInPlayers: 2.4,
   }),
   pine: defineAsset({
     id: "pine",
@@ -51,6 +62,7 @@ export const BUILDABLE_ASSETS = Object.freeze({
     file: "pine.glb",
     placementRadius: 1.15,
     defaultScale: 1.9,
+    sizeInPlayers: 2.8,
   }),
   palm: defineAsset({
     id: "palm",
@@ -60,6 +72,7 @@ export const BUILDABLE_ASSETS = Object.freeze({
     file: "palm.glb",
     placementRadius: 1.15,
     defaultScale: 1.2,
+    sizeInPlayers: 2.6,
   }),
   grass: defineAsset({
     id: "grass",
@@ -68,8 +81,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     icon: "🌾",
     file: "grass.glb",
     placementRadius: 0.6,
-    minScale: 0.3,
-    maxScale: 2,
+    defaultScale: 1,
+    sizeInPlayers: 0.45,
   }),
   house: defineAsset({
     id: "house",
@@ -78,9 +91,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     icon: "🏡",
     file: "house.glb",
     placementRadius: 2.65,
-    minScale: 0.7,
-    maxScale: 1.5,
     defaultScale: 1.2,
+    sizeInPlayers: 2.3,
   }),
   house2: defineAsset({
     id: "house2",
@@ -89,9 +101,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     icon: "🏠",
     file: "house2.glb",
     placementRadius: 2.65,
-    minScale: 0.7,
-    maxScale: 1.5,
     defaultScale: 1.2,
+    sizeInPlayers: 2.3,
   }),
   path_tile: defineAsset({
     id: "path_tile",
@@ -100,8 +111,9 @@ export const BUILDABLE_ASSETS = Object.freeze({
     icon: "🧱",
     file: "path_tile.glb",
     placementRadius: 0.7,
-    minScale: 0.5,
-    maxScale: 2.5,
+    defaultScale: 1,
+    sizeAxis: "footprint",
+    sizeInPlayers: 1.15,
   }),
   crate: defineAsset({
     id: "crate",
@@ -110,8 +122,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     icon: "📦",
     file: "crate.glb",
     placementRadius: 0.6,
-    minScale: 0.4,
-    maxScale: 1.8,
+    defaultScale: 1,
+    sizeInPlayers: 0.55,
   }),
   wine_barrel: defineAsset({
     id: "wine_barrel",
@@ -120,8 +132,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     icon: "🛢️",
     file: "wine_barrel.glb",
     placementRadius: 0.65,
-    minScale: 0.4,
-    maxScale: 1.8,
+    defaultScale: 1,
+    sizeInPlayers: 0.75,
   }),
 });
 
