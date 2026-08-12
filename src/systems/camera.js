@@ -15,6 +15,7 @@ export function createCameraController(camera, config, surface) {
 
   let pinchStart = null;
   let pinchZoom = 1;
+  let orbitEnabled = true;
 
   const followTarget = new THREE.Vector3();
   const desiredFollow = new THREE.Vector3();
@@ -71,6 +72,7 @@ export function createCameraController(camera, config, surface) {
   document.querySelector("#camera-reset").onclick = reset;
 
   surface.addEventListener("pointerdown", (event) => {
+    if (!orbitEnabled) return;
     if (event.pointerType === "touch" && event.isPrimary === false) return;
     orbitPointer = event.pointerId;
     lastX = event.clientX;
@@ -127,6 +129,11 @@ export function createCameraController(camera, config, surface) {
 
   return {
     reset,
+    // Build mode takes over one-finger drags; two-finger pinch stays live.
+    setOrbitEnabled(value) {
+      orbitEnabled = Boolean(value);
+      if (!orbitEnabled) orbitPointer = null;
+    },
     update(target, delta) {
       updateFollow(target, delta);
       const offset = currentOffset();

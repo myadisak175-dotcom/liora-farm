@@ -75,22 +75,23 @@ export const CONFIG = Object.freeze({
     skyColor: 0x9bd8f5,
   },
 
+  // Ground is deliberately dead flat. Shape is expressed by painting
+  // surfaces, not by height. getHeight() always returns 0.
   terrain: {
     size: 42,
-    segments: 72,
+    segments: 1,
     renderOrder: 0,
-    minHeight: -0.02,
-    microVariation: 0.035,
-    hills: [
-      { x: 4.5, z: -12.0, radius: 6.5, height: 0.95 },
-      { x: -11.5, z: -8.5, radius: 5.2, height: 0.62 },
-      { x: 12.5, z: 7.5, radius: 5.8, height: 0.48 },
-    ],
-    flatZones: [
-      { x: -5.2, z: -2.8, radius: 3.3, feather: 2.5 },
-      { x: 6.5, z: -6.5, radius: 4.6, feather: 3.0 },
-      { x: 0, z: 1.5, radius: 3.0, feather: 2.8 },
-    ],
+  },
+
+  // Free-brush splat painting over the single ground mesh.
+  groundPaint: {
+    resolution: 1024,
+    textureRepeat: 8,
+    minRadius: 0.5,
+    maxRadius: 4.5,
+    defaultRadius: 1.6,
+    strength: 0.85,
+    storageKey: "liora.ground-paint.v1",
   },
 
   farmPlot: {
@@ -111,6 +112,13 @@ export const CONFIG = Object.freeze({
     furrowHeight: 0.018,
     furrowY: 0.055,
     renderOrder: 2,
+  },
+
+  builder: {
+    storageKey: "liora.island-layout.v1",
+    defaultMap: "./maps/home-island.json",
+    ghostOpacity: 0.55,
+    selectionColor: 0x7ce0ff,
   },
 
   sky: {
@@ -155,10 +163,18 @@ export const CONFIG = Object.freeze({
   },
 });
 
+// Model binaries live under builder/assets/ because that is where they were
+// uploaded. Only these two constants need to change if they ever move.
+const MODEL_DIR = "./builder/assets/models/builder";
+const TEXTURE_DIR = "./assets/textures";
+
 export const ASSETS = Object.freeze({
-  grass: "./assets/textures/grass.webp",
-  dirtPath: "./assets/textures/dirt_path_refined.webp",
+  grass: `${TEXTURE_DIR}/grass.webp`,
+  dirt: `${TEXTURE_DIR}/dirt.webp`,
+  sand: `${TEXTURE_DIR}/sand.webp`,
+  rock: `${TEXTURE_DIR}/rock.webp`,
   player: "./assets/models/player/liora_all_animations_web.glb",
+  modelDir: MODEL_DIR,
 });
 
 export const ANIMATIONS = Object.freeze({

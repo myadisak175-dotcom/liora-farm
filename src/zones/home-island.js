@@ -1,7 +1,15 @@
 import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
+import { createGroundPaint } from "../systems/ground-paint.js";
 import { createFarmPlot } from "../systems/farming/plot.js";
+
+function tile(texture, repeat) {
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat, repeat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 export async function createHomeIsland({ scene, textureLoader, config, assets }) {
   const group = new THREE.Group();
@@ -10,23 +18,31 @@ export async function createHomeIsland({ scene, textureLoader, config, assets })
   const island = createFloatingIsland(config.island);
   group.add(island);
 
-  const grass = await textureLoader.loadAsync(assets.grass);
-  grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
-  grass.repeat.set(config.grassRepeat, config.grassRepeat);
-  grass.colorSpace = THREE.SRGBColorSpace;
+  const [grass, dirt, sand, rock] = await Promise.all(
+    [assets.grass, assets.dirt, assets.sand, assets.rock].map((url) =>
+      textureLoader.loadAsync(url)
+    )
+  );
+  const repeat = config.groundPaint.textureRepeat;
+  const textures = {
+    grass: tile(grass, repeat),
+    dirt: tile(dirt, repeat),
+    sand: tile(sand, repeat),
+    rock: tile(rock, repeat),
+  };
 
-  const terrain = createTerrain({
-    texture: grass,
-    config: config.terrain,
+  const terrain = createTerrain({ texture: textures.grass, config: config.terrain });
+
+  const paint = createGroundPaint({
+    config: config.groundPaint,
+    worldSize: config.terrain.size,
+    textures,
   });
+  paint.applyTo(terrain.material);
+
   group.add(terrain.mesh);
 
-  // Keep the first 3x3 farm plot on a deliberately flattened gameplay pad.
   const farmPlot = createFarmPlot(config.farmPlot);
-  farmPlot.group.position.y += terrain.getHeight(
-    config.farmPlot.position.x,
-    config.farmPlot.position.z
-  );
   group.add(farmPlot.group);
 
   scene.add(group);
@@ -35,12 +51,14 @@ export async function createHomeIsland({ scene, textureLoader, config, assets })
     group,
     ground: terrain.mesh,
     terrain,
+    paint,
     farmPlot,
     getGroundHeight: terrain.getHeight,
     dispose() {
       farmPlot.dispose();
+      paint.dispose();
       terrain.dispose();
-      grass.dispose();
+      for (const texture of Object.values(textures)) texture.dispose();
       scene.remove(group);
     },
   };

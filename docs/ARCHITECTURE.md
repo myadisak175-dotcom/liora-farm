@@ -1,155 +1,74 @@
-# Liora's Farm — Project Architecture
+# Liora's Farm — architecture
 
-The production code is organized so new features can be added without retuning the locked movement/camera feel. The Home Island Builder is a first-class subsystem, map data is kept independent from Builder code, and placeable content is data-driven through the asset catalog.
+One page, one scene, one renderer. `index.html` is the only entry point.
+There are no separate builder / test pages any more.
 
-## Production structure
+## Layout
 
 ```text
+index.html              single entry: canvas + play HUD + build panel
+styles/main.css         all UI styling
+maps/home-island.json   default island layout (data only)
+assets/textures/        ground surfaces: grass, dirt, sand, rock
+assets/models/player/   Liora (7 animations)
+builder/assets/models/  placeable GLBs — path lives in config.js ASSETS.modelDir
 src/
-├── main.js                    # composition + game loop only
-├── config.js                  # approved tuning and core asset paths
-├── entities/
-│   └── player.js              # Liora model loading + animations
-├── zones/
-│   └── home-island.js         # Home Island environment/ground
-├── systems/
-│   ├── input.js               # joystick/input
-│   ├── movement.js            # camera-relative movement + world bounds
-│   ├── camera.js              # orbit/pinch/smooth follow
-│   ├── lighting.js            # sun, shadows, environment lighting
-│   ├── sky.js                 # 360° procedural sky
-│   ├── day-night.js           # global game time
-│   ├── terrain.js             # reusable terrain height/mesh logic
-│   ├── run-fx.js              # running particles
-│   ├── contact-shadow.js      # grounded body + foot contact shadows
-│   └── farming/
-│       └── plot.js            # reusable farming plot geometry
-├── editor/
-│   ├── asset-catalog.js       # placeable-object metadata/model paths
-│   ├── asset-loader.js        # lazy GLB loading + source-scene cache
-│   ├── builder-state.js       # contextual idle/place/edit state + undo
-│   ├── builder-controller.js  # placement/edit/save transitions
-│   ├── layout-store.js        # versioned layout persistence
-│   ├── README.md              # Builder boundaries + maintenance rules
-│   └── ui/
-│       ├── builder-panel.js    # contextual mobile drawer
-│       ├── builder-gestures.js # drag/twist/pinch controls
-│       └── builder-panel.css
-└── experiments/
-    └── pond-v1.js             # unfinished pond prototype, not production
-
-maps/
-└── home-island.json           # canonical Home Island composition data
-
-assets/
-├── models/
-│   └── builder/               # GLB files for placeable Builder assets
-└── ui/
-    └── builder-thumbnails/    # optional asset preview images
+  config.js             every tunable number and asset path
+  main.js               bootstrap, mode switching, render loop
+  entities/player.js    model load + animation state
+  zones/home-island.js  builds the world: island + terrain + paint + farm plot
+  systems/              gameplay + rendering, one concern per file
+  editor/               the build mode
 ```
 
-## Architecture rules
+## Modes
 
-1. `main.js` coordinates systems only; it must not accumulate feature implementation details.
-2. Locked gameplay values live in `config.js`; avoid hard-coded movement/camera tuning elsewhere.
-3. Zone-specific environment content belongs under `src/zones/`.
-4. Reusable gameplay/rendering behavior belongs under `src/systems/`.
-5. Player/model behavior belongs under `src/entities/`.
-6. Home Island creation/editing belongs under `src/editor/`; normal gameplay must not depend on editor UI internals.
-7. New placeable content is registered through `editor/asset-catalog.js`; production UI must not add one-off asset buttons or loader blocks.
-8. `asset-loader.js` owns GLB loading and caching. Production assets should be lazy-loaded from paths in the catalog.
-9. Saved layouts contain stable data only (`id`, `assetId`, `x`, `z`, `rotation`, `scale`) and never Three.js object references.
-10. Persisted layout data is schema-versioned so future game versions can migrate saves safely.
-11. `maps/home-island.json` is canonical map data and must remain independent from Builder code/version changes.
-12. Binary assets stay under `assets/`; source code refers to them through catalog/config identifiers.
-13. Unapproved prototypes belong under `src/experiments/` and must not be imported by production `main.js`.
-14. Test one subsystem at a time before promoting it from experiments to production.
-15. Legacy fixed-position invisible collision helpers from old scene prototypes must not be reintroduced.
-16. Collision for newly placed Builder objects is a separate subsystem and remains deferred until explicitly approved.
+`document.body.dataset.mode` is either `play` or `build`. `main.js` owns the
+switch and nothing else reads it directly.
 
-## Builder design — accepted baseline v6.12 Safe Edit
+- **play** — joystick, action buttons, one-finger drag orbits the camera.
+- **build** — build panel visible, one-finger drag belongs to the builder.
+  Two-finger pinch still controls the camera in both modes.
 
-The Builder uses contextual UI rather than separate Build/Edit/Delete mode screens.
+`cameraController.setOrbitEnabled(false)` is the single line that hands the
+one-finger gesture over. There is no event-priority fight between the two.
 
-### Idle
+## Ground
 
-- Opening `Edit Island` shows the asset drawer, Undo and Done.
-- Placeable content is rendered from the asset catalog.
-- The drawer remains draggable/resizable for mobile ergonomics.
+The ground is one flat `PlaneGeometry`. `terrain.getHeight()` always returns 0 —
+it stays in the API so movement and placement never need to know that.
 
-### Place
+Surface variety comes from `systems/ground-paint.js`: a canvas splat map
+(R = dirt, G = sand, B = rock, black = grass) blended inside the *single*
+ground material via `onBeforeCompile`. No overlay tiles, so edges stay soft.
+Strokes are stored as data and replayed, which is why undo works and why the
+paint survives a reload.
 
-- Tapping an asset immediately creates a ghost preview.
-- One-finger drag moves the preview.
-- Two-finger twist rotates continuously.
-- Two-finger pinch scales the preview.
-- Valid/invalid placement feedback must be clear.
-- While placing, only contextual placement controls are shown.
-- Confirm places the object; Cancel abandons the preview.
+## Build mode
 
-### Edit
+Four files, strictly separated:
 
-- Tapping an already placed object selects it directly; the player does not enter a separate Edit mode first.
-- The selected object receives temporary visual feedback/tint.
-- Selected objects can be moved, rotated, scaled, duplicated or deleted.
-- Selection stores an edit snapshot of the original position, rotation and scale.
-- `Cancel Edit` restores that snapshot exactly if the player moved or transformed an object accidentally.
-- Tapping empty ground clears selection and restores the object's original material.
-- Selecting another object or pressing Done commits the current edit.
+- `asset-catalog.js` — what can be placed. Adding an asset = one entry here.
+- `asset-loader.js` — lazy GLB load + cache.
+- `builder-state.js` / `builder-controller.js` — the rules. No DOM, no Three.js.
+- `builder-view.js` — the Three.js side: spawn, ghost preview, selection tint.
+- `builder-ui.js` — the only file that touches builder DOM and touch events.
 
-### Save and map safety
+Saved layouts contain data only: `id`, `assetId`, `x`, `z`, `rotation`, `scale`.
+Never a mesh, never a material.
 
-- Layout changes autosave during editing.
-- `Done` is the single authoritative Save + Exit action and returns to gameplay.
-- Export Map writes portable `home-island.json` composition data.
-- Import Map restores portable map data into the Builder.
-- `maps/home-island.json` in GitHub is the canonical project map and is not tied to a standalone HTML version.
-- Builder code may change without requiring the map to be rebuilt from scratch.
+## Persistence
 
-## Asset plug-in workflow
+- Layout → `localStorage` (`liora.island-layout.v1`), seeded from
+  `maps/home-island.json` on first run.
+- Ground paint → `localStorage` (`liora.ground-paint.v1`).
+- **บันทึกแผนที่** downloads `home-island.json` so a layout can be committed
+  to the repo as the new default.
 
-New buildings, vegetation and decoration are data-driven.
+## Rules
 
-1. Put the `.glb` under `assets/models/builder/`.
-2. Put an optional preview image under `assets/ui/builder-thumbnails/`.
-3. Add one entry to `asset-catalog.js` with a stable `id`, label, category, `modelPath`, optional `thumbnailPath`, scale limits and placement metadata.
-4. The asset drawer renders from the catalog and falls back to an icon if no thumbnail exists.
-5. `asset-loader.js` lazy-loads the model on demand and caches the source scene for repeated placement.
-6. Saved maps store only `assetId` and transforms, never the binary model.
-7. Adding a new production asset must not require changes to movement, camera, map schema or normal gameplay systems.
-
-Standalone prototypes may embed models temporarily for direct phone testing, but that is a testing convenience only. Production must use catalog paths and lazy loading instead of allowing the standalone HTML to grow indefinitely.
-
-## Mobile optimized test baseline
-
-`v6.12 Optimized Test` is now the accepted standalone mobile-test baseline because its visual result has been approved after texture compression.
-
-- Functional behavior remains based on v6.12 Safe Edit.
-- The unoptimized v6.12 Safe Edit build remains the MASTER/reference source and must not be discarded.
-- The optimized build is a delivery/testing derivative, not a replacement for the production architecture.
-- Embedded GLB textures may be compressed for mobile standalone builds while mesh geometry, animation, Builder behavior and map schema remain unchanged.
-- Current optimization policy: preserve important character/house textures at up to 1024px and reduce ordinary Builder asset textures to approximately 512px where visually acceptable.
-- Optimization must be tested visually before promotion; material maps must not be degraded blindly.
-- Future production builds should optimize source assets/build output rather than embedding an ever-growing catalog into one HTML file.
-
-## Locked production baseline
-
-- Home Island grass base
-- Camera-relative movement
-- Walk speed 2.4
-- Run speed 5.2
-- Walk animation 0.9x
-- Orbit camera + pinch zoom + smooth follow
-- 360° sky + day/night
-- Running FX
-- Dynamic shadows
-- Approved grounded Liora offset and compact foot contact shadows
-- Builder v6.12 contextual composition workflow
-- MapSafe Export/Import workflow
-- Safe Edit Cancel snapshot behavior
-- v6.12 Optimized Test accepted as the current standalone mobile testing build
-- Clean-island workflow: permanent composition comes from Builder/map data, not fixed hard-coded object placements
-
-Current Builder test assets include Tree, Palm, Pine, House, House 2, Grass, Crate, Barrel and Path. Their production versions should ultimately be catalog-driven GLB assets.
-
-The pond remains experimental until terrain supports a proper cutout/basin instead of placing water beneath an uncut grass plane.
+1. New placeable content goes in the catalog, never hard-coded into the UI.
+2. Numbers live in `config.js`, not scattered through systems.
+3. `builder-controller` must stay free of DOM and Three.js.
+4. A system file does one thing. If it grows a second job, split it.
+5. No second HTML page. New features become a mode or a system, not a page.
