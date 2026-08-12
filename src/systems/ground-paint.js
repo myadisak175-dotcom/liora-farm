@@ -56,12 +56,18 @@ export function createGroundPaint({ config, worldSize, textures }) {
 
   function gradient(cx, cy, r, innerRgb, outerRgb) {
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, `rgb(${innerRgb})`);
-    g.addColorStop(0.34, `rgb(${innerRgb})`);
-    g.addColorStop(0.62, `rgb(${mixRgb(innerRgb, outerRgb, 0.35)})`);
-    g.addColorStop(0.82, `rgb(${mixRgb(innerRgb, outerRgb, 0.72)})`);
-    g.addColorStop(0.94, `rgb(${mixRgb(innerRgb, outerRgb, 0.92)})`);
-    g.addColorStop(1, `rgb(${outerRgb})`);
+    // Very soft feather: keep only a small solid core and spend most of the
+    // brush radius transitioning gradually into the surrounding surface.
+    g.addColorStop(0.00, `rgb(${innerRgb})`);
+    g.addColorStop(0.08, `rgb(${innerRgb})`);
+    g.addColorStop(0.20, `rgb(${mixRgb(innerRgb, outerRgb, 0.08)})`);
+    g.addColorStop(0.34, `rgb(${mixRgb(innerRgb, outerRgb, 0.18)})`);
+    g.addColorStop(0.50, `rgb(${mixRgb(innerRgb, outerRgb, 0.34)})`);
+    g.addColorStop(0.66, `rgb(${mixRgb(innerRgb, outerRgb, 0.54)})`);
+    g.addColorStop(0.80, `rgb(${mixRgb(innerRgb, outerRgb, 0.72)})`);
+    g.addColorStop(0.90, `rgb(${mixRgb(innerRgb, outerRgb, 0.86)})`);
+    g.addColorStop(0.97, `rgb(${mixRgb(innerRgb, outerRgb, 0.96)})`);
+    g.addColorStop(1.00, `rgb(${outerRgb})`);
     return g;
   }
 
@@ -182,7 +188,7 @@ diffuseColor *= vec4(surface, 1.0);
 `
         );
     };
-    material.customProgramCacheKey = () => "liora-ground-splat-v6-opaque-dirt";
+    material.customProgramCacheKey = () => "liora-ground-splat-v7-soft-feather";
     material.needsUpdate = true;
   }
 
