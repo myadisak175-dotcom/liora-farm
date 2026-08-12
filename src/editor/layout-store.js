@@ -33,6 +33,10 @@ export function createLayoutStore({ storageKey = DEFAULT_STORAGE_KEY } = {}) {
     return payload;
   }
 
+  function hasSavedLayout() {
+    return localStorage.getItem(storageKey) !== null;
+  }
+
   function load() {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return [];
@@ -52,5 +56,5 @@ export function createLayoutStore({ storageKey = DEFAULT_STORAGE_KEY } = {}) {
     localStorage.removeItem(storageKey);
   }
 
-  return { save, load, clear, storageKey };
+  return { save, load, clear, hasSavedLayout, storageKey };
 }
