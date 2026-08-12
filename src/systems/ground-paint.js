@@ -136,6 +136,11 @@ export function createGroundPaint({ config, worldSize, textures }) {
    */
   function applyTo(material) {
     material.onBeforeCompile = (shader) => {
+      if (!shader.fragmentShader.includes("#include <map_fragment>")) {
+        console.error("Ground paint: shader anchor <map_fragment> not found");
+        return;
+      }
+
       shader.uniforms.uSplat = { value: texture };
       shader.uniforms.uGrass = { value: textures.grass };
       shader.uniforms.uDirt = { value: textures.dirt };
@@ -157,8 +162,11 @@ uniform float uRepeat;`
         .replace(
           "#include <map_fragment>",
           `
-vec2 splatUv = vMapUv;
-vec2 tileUv = splatUv * uRepeat;
+// vMapUv already carries the grass map's repeat transform, so it runs
+// 0..uRepeat across the ground. Divide it back down for the splat lookup
+// and use it as-is for the tiled surface lookup.
+vec2 splatUv = vMapUv / uRepeat;
+vec2 tileUv = vMapUv;
 vec3 splat = texture2D(uSplat, splatUv).rgb;
 float wDirt = splat.r;
 float wSand = splat.g;
