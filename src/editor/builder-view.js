@@ -17,6 +17,15 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   let ghostAsset = null;
   let highlighted = null;
 
+  function groundModel(model) {
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    if (Number.isFinite(box.min.y)) {
+      model.position.y -= box.min.y;
+      model.updateMatrixWorld(true);
+    }
+  }
+
   function applyTransform(object, item) {
     object.position.set(item.x, getGroundHeight(item.x, item.z), item.z);
     object.rotation.y = item.rotation;
@@ -66,6 +75,7 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   async function spawn(item) {
     if (objects.has(item.id)) return objects.get(item.id);
     const model = await loader.load(item.assetId);
+    groundModel(model);
     const holder = new THREE.Group();
     holder.name = `builder:${item.assetId}`;
     holder.userData.itemId = item.id;
@@ -103,6 +113,7 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   async function showGhost(asset) {
     clearGhost();
     const model = await loader.load(asset.id);
+    groundModel(model);
     ghost = new THREE.Group();
     ghost.add(model);
     ghost.userData.rotation = 0;
