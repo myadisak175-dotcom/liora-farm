@@ -17,19 +17,24 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   let ghostAsset = null;
   let highlighted = null;
 
-  function groundModel(model) {
-    model.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(model);
+  function snapToGround(object, x, z) {
+    const groundY = getGroundHeight(x, z);
+    object.position.x = x;
+    object.position.z = z;
+    object.position.y = groundY;
+    object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(object, true);
     if (Number.isFinite(box.min.y)) {
-      model.position.y -= box.min.y;
-      model.updateMatrixWorld(true);
+      object.position.y += groundY - box.min.y;
+      object.updateMatrixWorld(true);
     }
   }
 
   function applyTransform(object, item) {
-    object.position.set(item.x, getGroundHeight(item.x, item.z), item.z);
     object.rotation.y = item.rotation;
     object.scale.setScalar(item.scale);
+    snapToGround(object, item.x, item.z);
   }
 
   function setGhostAppearance(object) {
@@ -75,13 +80,12 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   async function spawn(item) {
     if (objects.has(item.id)) return objects.get(item.id);
     const model = await loader.load(item.assetId);
-    groundModel(model);
     const holder = new THREE.Group();
     holder.name = `builder:${item.assetId}`;
     holder.userData.itemId = item.id;
     holder.add(model);
-    applyTransform(holder, item);
     group.add(holder);
+    applyTransform(holder, item);
     objects.set(item.id, holder);
     return holder;
   }
@@ -113,22 +117,22 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   async function showGhost(asset) {
     clearGhost();
     const model = await loader.load(asset.id);
-    groundModel(model);
     ghost = new THREE.Group();
     ghost.add(model);
     ghost.userData.rotation = 0;
     ghost.userData.scale = asset.defaultScale;
-    setGhostAppearance(ghost);
-    ghost.scale.setScalar(asset.defaultScale);
-    ghost.position.set(0, 0, 0);
     ghostAsset = asset;
+    setGhostAppearance(ghost);
     scene.add(ghost);
+    ghost.rotation.y = 0;
+    ghost.scale.setScalar(asset.defaultScale);
+    snapToGround(ghost, 0, 0);
     return ghost;
   }
 
   function moveGhost(x, z) {
     if (!ghost) return;
-    ghost.position.set(x, getGroundHeight(x, z), z);
+    snapToGround(ghost, x, z);
   }
 
   function nudgeGhost({ rotation = 0, scale = 0 }) {
@@ -146,6 +150,7 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
       ghost.userData.scale = next;
       ghost.scale.setScalar(next);
     }
+    snapToGround(ghost, ghost.position.x, ghost.position.z);
   }
 
   function getGhostTransform() {
