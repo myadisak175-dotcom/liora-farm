@@ -21,6 +21,66 @@ function mixRgb(a, b, amount) {
     .join(",");
 }
 
+function gradientProfile(layer) {
+  switch (layer) {
+    case PAINT_LAYERS.DIRT:
+      // Longest feather: dirt should melt into grass the most.
+      return [
+        [0.00, 0.00],
+        [0.08, 0.00],
+        [0.20, 0.08],
+        [0.34, 0.18],
+        [0.50, 0.34],
+        [0.66, 0.54],
+        [0.80, 0.72],
+        [0.90, 0.86],
+        [0.97, 0.96],
+        [1.00, 1.00],
+      ];
+    case PAINT_LAYERS.SAND:
+      // Medium soft: still fluffy, but keep shoreline/path shape a bit clearer.
+      return [
+        [0.00, 0.00],
+        [0.12, 0.00],
+        [0.26, 0.10],
+        [0.42, 0.24],
+        [0.58, 0.42],
+        [0.74, 0.62],
+        [0.86, 0.80],
+        [0.94, 0.92],
+        [1.00, 1.00],
+      ];
+    case PAINT_LAYERS.ROCK:
+      // Shorter feather: reduce the grey halo around rock edges.
+      return [
+        [0.00, 0.00],
+        [0.18, 0.00],
+        [0.34, 0.10],
+        [0.52, 0.26],
+        [0.68, 0.46],
+        [0.82, 0.68],
+        [0.92, 0.86],
+        [0.98, 0.96],
+        [1.00, 1.00],
+      ];
+    case PAINT_LAYERS.GRASS:
+    default:
+      // Grass erase should feel forgiving like dirt.
+      return [
+        [0.00, 0.00],
+        [0.08, 0.00],
+        [0.20, 0.08],
+        [0.34, 0.18],
+        [0.50, 0.34],
+        [0.66, 0.54],
+        [0.80, 0.72],
+        [0.90, 0.86],
+        [0.97, 0.96],
+        [1.00, 1.00],
+      ];
+  }
+}
+
 /**
  * Free-brush splat painting for the single ground mesh.
  * Owns the splat canvas + stroke history only. It never touches the DOM,
@@ -54,20 +114,17 @@ export function createGroundPaint({ config, worldSize, textures }) {
     ctx.restore();
   }
 
-  function gradient(cx, cy, r, innerRgb, outerRgb) {
+  function gradient(cx, cy, r, innerRgb, outerRgb, layer) {
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    // Very soft feather: keep only a small solid core and spend most of the
-    // brush radius transitioning gradually into the surrounding surface.
-    g.addColorStop(0.00, `rgb(${innerRgb})`);
-    g.addColorStop(0.08, `rgb(${innerRgb})`);
-    g.addColorStop(0.20, `rgb(${mixRgb(innerRgb, outerRgb, 0.08)})`);
-    g.addColorStop(0.34, `rgb(${mixRgb(innerRgb, outerRgb, 0.18)})`);
-    g.addColorStop(0.50, `rgb(${mixRgb(innerRgb, outerRgb, 0.34)})`);
-    g.addColorStop(0.66, `rgb(${mixRgb(innerRgb, outerRgb, 0.54)})`);
-    g.addColorStop(0.80, `rgb(${mixRgb(innerRgb, outerRgb, 0.72)})`);
-    g.addColorStop(0.90, `rgb(${mixRgb(innerRgb, outerRgb, 0.86)})`);
-    g.addColorStop(0.97, `rgb(${mixRgb(innerRgb, outerRgb, 0.96)})`);
-    g.addColorStop(1.00, `rgb(${outerRgb})`);
+    for (const [stop, mix] of gradientProfile(layer)) {
+      const rgb =
+        mix <= 0
+          ? innerRgb
+          : mix >= 1
+            ? outerRgb
+            : mixRgb(innerRgb, outerRgb, mix);
+      g.addColorStop(stop, `rgb(${rgb})`);
+    }
     return g;
   }
 
@@ -89,14 +146,35 @@ export function createGroundPaint({ config, worldSize, textures }) {
     const alpha = THREE.MathUtils.clamp(strength, 0, 1);
 
     if (layer === PAINT_LAYERS.GRASS) {
-      stamp(cx, cy, r, gradient(cx, cy, r, "0,0,0", "255,255,255"), "multiply", alpha);
+      stamp(
+        cx,
+        cy,
+        r,
+        gradient(cx, cy, r, "0,0,0", "255,255,255", layer),
+        "multiply",
+        alpha
+      );
       return;
     }
 
     const ink = INK[layer];
     if (!ink) return;
-    stamp(cx, cy, r, gradient(cx, cy, r, ink, "255,255,255"), "multiply", alpha);
-    stamp(cx, cy, r, gradient(cx, cy, r, ink, "0,0,0"), "lighter", alpha);
+    stamp(
+      cx,
+      cy,
+      r,
+      gradient(cx, cy, r, ink, "255,255,255", layer),
+      "multiply",
+      alpha
+    );
+    stamp(
+      cx,
+      cy,
+      r,
+      gradient(cx, cy, r, ink, "0,0,0", layer),
+      "lighter",
+      alpha
+    );
   }
 
   function replay() {
@@ -188,7 +266,8 @@ diffuseColor *= vec4(surface, 1.0);
 `
         );
     };
-    material.customProgramCacheKey = () => "liora-ground-splat-v7-soft-feather";
+    material.customProgramCacheKey = () =>
+      "liora-ground-splat-v7-per-layer-feather";
     material.needsUpdate = true;
   }
 
