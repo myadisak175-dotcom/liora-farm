@@ -292,12 +292,43 @@ function exportMap(items) {
 // -------------------------------------------------------------------- mode
 let mode = "play";
 
+// The builder UI keeps canvas listeners attached even when its panel is hidden.
+// Wrap every mutating builder/paint action plus builder-only camera panning so
+// Play mode is a true read-only world rather than just a hidden editor.
+function buildOnly(target, name, fallback = null) {
+  const original = target[name]?.bind(target);
+  if (!original) return;
+  target[name] = (...args) => (mode === "build" ? original(...args) : fallback);
+}
+
+for (const name of [
+  "beginPlacement",
+  "selectItem",
+  "updateSelected",
+  "duplicateSelected",
+  "deleteSelected",
+  "undo",
+]) {
+  buildOnly(builder, name);
+}
+for (const name of ["beginStroke", "strokeTo", "undo", "clear"]) {
+  buildOnly(world.paint, name, false);
+}
+buildOnly(cameraController, "pan");
+
 function setMode(next) {
+  const buildMode = next === "build";
   mode = next;
   document.body.dataset.mode = next;
-  cameraController.setOrbitEnabled(next === "play");
-  if (next === "play") cameraController.clearPan();
-  builderUI.show(next === "build");
+
+  // Build state is disabled in Play mode, not merely hidden. This flushes any
+  // pending layout edit and clears placement/selection before gameplay resumes.
+  if (buildMode) builder.enable();
+  else builder.disable({ saveLayout: true });
+
+  cameraController.setOrbitEnabled(!buildMode);
+  if (!buildMode) cameraController.clearPan();
+  builderUI.show(buildMode);
   for (const button of document.querySelectorAll("[data-mode]")) {
     button.classList.toggle("active", button.dataset.mode === next);
   }
