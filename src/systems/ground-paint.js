@@ -151,13 +151,7 @@ export function createGroundPaint({ config, worldSize, textures }) {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          `#include <common>
-uniform sampler2D uSplat;
-uniform sampler2D uGrass;
-uniform sampler2D uDirt;
-uniform sampler2D uSand;
-uniform sampler2D uRock;
-uniform float uRepeat;`
+          `#include <common>\nuniform sampler2D uSplat;\nuniform sampler2D uGrass;\nuniform sampler2D uDirt;\nuniform sampler2D uSand;\nuniform sampler2D uRock;\nuniform float uRepeat;`
         )
         .replace(
           "#include <map_fragment>",
@@ -172,17 +166,34 @@ float wDirt = splat.r;
 float wSand = splat.g;
 float wRock = splat.b;
 float wGrass = 1.0 - clamp(wDirt + wSand + wRock, 0.0, 1.0);
+
+vec3 grassColor = texture2D(uGrass, tileUv).rgb;
+vec4 dirtTexel = texture2D(uDirt, tileUv);
+vec3 sandColor = texture2D(uSand, tileUv).rgb;
+vec3 rockColor = texture2D(uRock, tileUv).rgb;
+
+// Some WebP dirt assets contain very dark/transparent RGB pixels that can
+// turn a painted stroke nearly black when sampled directly. Keep the texture
+// detail, but rescue only those near-black/transparent texels with a warm
+// soil fallback. This affects rendering only; the binary texture is untouched.
+float dirtLuma = dot(dirtTexel.rgb, vec3(0.2126, 0.7152, 0.0722));
+float darkRescue = 1.0 - smoothstep(0.035, 0.12, dirtLuma);
+float alphaRescue = 1.0 - dirtTexel.a;
+float dirtRescue = clamp(max(darkRescue, alphaRescue), 0.0, 1.0);
+vec3 dirtFallback = vec3(0.48, 0.29, 0.15);
+vec3 dirtColor = mix(dirtTexel.rgb, dirtFallback, dirtRescue * 0.92);
+
 vec3 surface =
-  texture2D(uGrass, tileUv).rgb * wGrass +
-  texture2D(uDirt, tileUv).rgb * wDirt +
-  texture2D(uSand, tileUv).rgb * wSand +
-  texture2D(uRock, tileUv).rgb * wRock;
+  grassColor * wGrass +
+  dirtColor * wDirt +
+  sandColor * wSand +
+  rockColor * wRock;
 surface /= max(wGrass + wDirt + wSand + wRock, 0.001);
 diffuseColor *= vec4(surface, 1.0);
 `
         );
     };
-    material.customProgramCacheKey = () => "liora-ground-splat-v1";
+    material.customProgramCacheKey = () => "liora-ground-splat-v2-dirt-rescue";
     material.needsUpdate = true;
   }
 
