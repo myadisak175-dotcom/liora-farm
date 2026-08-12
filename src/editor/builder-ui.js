@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { BUILDER_CONTEXTS } from "./builder-state.js";
 import { getBuildableAssets, getBuildableAsset } from "./asset-catalog.js?v=scale1";
-import { PAINT_LAYERS } from "../systems/ground-paint.js";
+import { PAINT_LAYERS } from "../systems/ground-paint.js?v=builderfix1";
 
 const PAINT_BUTTONS = [
   { layer: PAINT_LAYERS.GRASS, label: "🌿 หญ้า" },
@@ -45,6 +45,7 @@ export function createBuilderUI({
   let lastPaintZ = 0;
   let currentAssetId = null;
   let selectedId = null;
+  let notice = "";
 
   function groundPoint(event) {
     const rect = surface.getBoundingClientRect();
@@ -54,6 +55,31 @@ export function createBuilderUI({
     return raycaster.intersectObject(ground, false)[0]?.point ?? null;
   }
 
+  function validationMessage(result) {
+    if (result?.ok) return "";
+    switch (result?.code) {
+      case "edge":
+        return "วางไม่ได้ — สิ่งของจะล้นขอบเกาะ";
+      case "collision":
+        return "วางไม่ได้ — ชนกับสิ่งของชิ้นอื่น";
+      case "scale":
+        return "ขนาดนี้อยู่นอกช่วงที่อนุญาต";
+      default:
+        return "วางตรงนี้ไม่ได้";
+    }
+  }
+
+  function setNotice(text = "") {
+    notice = text;
+    renderHint();
+  }
+
+  function validateGhost() {
+    const transform = view.getGhostTransform();
+    if (!currentAssetId || !transform) return { ok: false, code: "invalid-transform" };
+    return controller.validatePlacement(currentAssetId, transform);
+  }
+
   function buildAssetStrip() {
     assetStrip.replaceChildren(
       ...getBuildableAssets().map((asset) => {
@@ -61,7 +87,10 @@ export function createBuilderUI({
         button.type = "button";
         button.dataset.assetId = asset.id;
         button.innerHTML = `<span class="glyph">${asset.icon}</span><span>${asset.label}</span>`;
-        button.onclick = () => controller.beginPlacement(asset.id);
+        button.onclick = () => {
+          notice = "";
+          controller.beginPlacement(asset.id);
+        };
         return button;
       })
     );
@@ -75,6 +104,7 @@ export function createBuilderUI({
       button.textContent = label;
       button.onclick = () => {
         paintLayer = layer;
+        notice = "";
         render();
       };
       return button;
@@ -121,6 +151,29 @@ export function createBuilderUI({
     return asset.defaultScale * (percent / 100);
   }
 
+  function updateGhostValidation() {
+    const result = validateGhost();
+    setNotice(validationMessage(result));
+    return result;
+  }
+
+  function updateSelectedTransform(transform) {
+    const item = controller.items.find((entry) => entry.id === selectedId);
+    if (!item) return null;
+    const candidate = { ...item, ...transform };
+    const result = controller.validatePlacement(item.assetId, candidate, item.id);
+    if (!result.ok) {
+      setNotice(validationMessage(result));
+      return null;
+    }
+    const next = controller.updateSelected(transform);
+    if (next) {
+      notice = "";
+      view.update(next);
+    }
+    return next;
+  }
+
   function scaleControl(asset, currentScale, onScale) {
     const label = document.createElement("label");
     label.className = "range size-range";
@@ -140,11 +193,32 @@ export function createBuilderUI({
     range.oninput = () => {
       const next = scaleFromPercent(asset, Number(range.value));
       setText(next);
-      onScale(next);
+      const accepted = onScale(next);
+      if (accepted === false) render();
     };
 
     label.append(text, range);
     return label;
+  }
+
+  async function duplicateSelected() {
+    const duplicate = controller.duplicateSelected();
+    if (!duplicate) {
+      setNotice("ทำซ้ำไม่ได้ — รอบ ๆ ไม่มีพื้นที่ว่างพอ");
+      return;
+    }
+    await view.spawn(duplicate);
+    controller.selectItem(duplicate.id);
+    notice = "";
+    render();
+  }
+
+  function deleteSelected() {
+    const removed = controller.deleteSelected();
+    if (!removed) return;
+    view.remove(removed.id);
+    notice = "";
+    render();
   }
 
   function renderActions() {
@@ -169,21 +243,34 @@ export function createBuilderUI({
       }
 
       actions.replaceChildren(
-        actionButton("↺", () => view.nudgeGhost({ rotation: -Math.PI / 12 })),
-        actionButton("↻", () => view.nudgeGhost({ rotation: Math.PI / 12 })),
+        actionButton("↺", () => {
+          view.nudgeGhost({ rotation: -Math.PI / 12 });
+          updateGhostValidation();
+        }),
+        actionButton("↻", () => {
+          view.nudgeGhost({ rotation: Math.PI / 12 });
+          updateGhostValidation();
+        }),
         actionButton("−", () => {
           const liveScale = view.getGhostTransform()?.scale ?? asset.defaultScale;
           view.setGhostScale(liveScale - asset.scaleStep);
+          updateGhostValidation();
           render();
         }),
-        scaleControl(asset, currentScale, (next) => view.setGhostScale(next)),
+        scaleControl(asset, currentScale, (next) => {
+          view.setGhostScale(next);
+          updateGhostValidation();
+          return true;
+        }),
         actionButton("＋", () => {
           const liveScale = view.getGhostTransform()?.scale ?? asset.defaultScale;
           view.setGhostScale(liveScale + asset.scaleStep);
+          updateGhostValidation();
           render();
         }),
         actionButton("100%", () => {
           view.setGhostScale(asset.defaultScale);
+          updateGhostValidation();
           render();
         }),
         actionButton("วางตรงนี้", commitPlacement, "primary"),
@@ -206,17 +293,17 @@ export function createBuilderUI({
         actionButton("↻", () => nudgeSelected({ rotation: Math.PI / 12 })),
         actionButton("−", () => nudgeSelected({ scale: -asset.scaleStep })),
         scaleControl(asset, item.scale, (nextScale) => {
-          const next = controller.updateSelected({ scale: nextScale });
-          if (next) view.update(next);
+          const next = updateSelectedTransform({ scale: nextScale });
+          if (next) renderHint();
+          return Boolean(next);
         }),
         actionButton("＋", () => nudgeSelected({ scale: asset.scaleStep })),
         actionButton("100%", () => {
-          const next = controller.updateSelected({ scale: asset.defaultScale });
-          if (next) view.update(next);
+          updateSelectedTransform({ scale: asset.defaultScale });
           render();
         }),
-        actionButton("ทำซ้ำ", () => controller.duplicateSelected()),
-        actionButton("ลบ", () => controller.deleteSelected(), "danger"),
+        actionButton("ทำซ้ำ", duplicateSelected),
+        actionButton("ลบ", deleteSelected, "danger"),
         actionButton("เสร็จ", () => controller.clearSelection(), "primary")
       );
       return;
@@ -228,19 +315,17 @@ export function createBuilderUI({
   }
 
   function renderHint() {
+    let base = "";
     if (tab === "paint") {
-      hint.textContent = `ลากนิ้วเดียวบนพื้นเพื่อระบาย • ${paint.strokeCount} รอย`;
-      return;
+      base = `ลากนิ้วเดียวบนพื้นเพื่อระบาย • ${paint.strokeCount} รอย`;
+    } else if (controller.context === BUILDER_CONTEXTS.PLACE) {
+      base = "ขนาด 100% = สัดส่วนแนะนำเทียบ Liora • ลากเพื่อย้าย แล้วกด วางตรงนี้";
+    } else if (controller.context === BUILDER_CONTEXTS.EDIT) {
+      base = "ปรับขนาดเป็น % เทียบสัดส่วน Liora • ลากเพื่อย้าย • สองนิ้วซูมกล้อง";
+    } else {
+      base = `แตะสิ่งของเพื่อแก้ไข • ทั้งหมด ${controller.items.length} ชิ้น`;
     }
-    if (controller.context === BUILDER_CONTEXTS.PLACE) {
-      hint.textContent = "ขนาด 100% = สัดส่วนแนะนำเทียบ Liora • ลากเพื่อย้าย แล้วกด วางตรงนี้";
-      return;
-    }
-    if (controller.context === BUILDER_CONTEXTS.EDIT) {
-      hint.textContent = "ปรับขนาดเป็น % เทียบสัดส่วน Liora • ลากเพื่อย้าย • สองนิ้วซูมกล้อง";
-      return;
-    }
-    hint.textContent = `แตะสิ่งของเพื่อแก้ไข • ทั้งหมด ${controller.items.length} ชิ้น`;
+    hint.textContent = notice ? `${base} • ${notice}` : base;
   }
 
   function render() {
@@ -264,12 +349,24 @@ export function createBuilderUI({
 
   async function commitPlacement() {
     const transform = view.getGhostTransform();
-    if (!transform) return;
-    if (!currentAssetId) return;
+    if (!transform || !currentAssetId) return;
+
+    const validation = controller.validatePlacement(currentAssetId, transform);
+    if (!validation.ok) {
+      setNotice(validationMessage(validation));
+      return;
+    }
+
     const assetId = currentAssetId;
-    view.clearGhost();
     const item = controller.addItem({ assetId, ...transform });
+    if (!item) {
+      setNotice("วางตรงนี้ไม่ได้");
+      return;
+    }
+
+    view.clearGhost();
     await view.spawn(item);
+    notice = "";
     render();
   }
 
@@ -277,13 +374,18 @@ export function createBuilderUI({
     const item = controller.items.find((entry) => entry.id === selectedId);
     if (!item) return;
     const asset = getBuildableAsset(item.assetId);
-    const next = controller.updateSelected({
+    const transform = {
       rotation: item.rotation + rotation,
       scale: scale
         ? THREE.MathUtils.clamp(item.scale + scale, asset.minScale, asset.maxScale)
         : item.scale,
-    });
-    if (next) view.update(next);
+    };
+    if (!scale) {
+      const next = controller.updateSelected({ rotation: transform.rotation });
+      if (next) view.update(next);
+    } else {
+      updateSelectedTransform(transform);
+    }
     render();
   }
 
@@ -310,16 +412,19 @@ export function createBuilderUI({
       if (!point) return;
       dragging = true;
       view.moveGhost(point.x, point.z);
+      updateGhostValidation();
       return;
     }
 
     raycaster.setFromCamera(ndc, camera);
     const hitId = view.pick(raycaster);
     if (hitId) {
+      notice = "";
       controller.selectItem(hitId);
       dragging = true;
       return;
     }
+    notice = "";
     controller.clearSelection();
   }
 
@@ -339,12 +444,13 @@ export function createBuilderUI({
 
     if (controller.context === BUILDER_CONTEXTS.PLACE) {
       view.moveGhost(point.x, point.z);
+      updateGhostValidation();
       return;
     }
 
     if (controller.context === BUILDER_CONTEXTS.EDIT) {
-      const next = controller.updateSelected({ x: point.x, z: point.z });
-      if (next) view.update(next);
+      const next = updateSelectedTransform({ x: point.x, z: point.z });
+      if (next) renderHint();
     }
   }
 
@@ -360,10 +466,12 @@ export function createBuilderUI({
 
   tabPlace.onclick = () => {
     tab = "place";
+    notice = "";
     render();
   };
   tabPaint.onclick = () => {
     tab = "paint";
+    notice = "";
     controller.cancelPlacement();
     controller.clearSelection();
     render();
@@ -376,8 +484,15 @@ export function createBuilderUI({
     render,
     setPreview(preview) {
       currentAssetId = preview?.assetId ?? null;
-      if (preview) view.showGhost(preview.asset).then(render);
-      else view.clearGhost();
+      notice = "";
+      if (preview) {
+        view.showGhost(preview.asset).then(() => {
+          updateGhostValidation();
+          render();
+        });
+      } else {
+        view.clearGhost();
+      }
       render();
     },
     setSelection(item) {
@@ -388,6 +503,7 @@ export function createBuilderUI({
     show(visible) {
       root.classList.toggle("on", visible);
       if (!visible) {
+        notice = "";
         controller.cancelPlacement();
         controller.clearSelection();
         view.clearGhost();
