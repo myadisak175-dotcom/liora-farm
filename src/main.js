@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { CONFIG, ASSETS, ANIMATIONS } from "./config.js?v=dirt-ground1";
 import { createPlayer } from "./entities/player.js";
-import { createHomeIsland } from "./zones/home-island.js?v=paintblend2";
+import { createHomeIsland } from "./zones/home-island.js?v=builderfix1";
 import { createInput } from "./systems/input.js";
 import { createMovementSystem } from "./systems/movement.js";
 import { createCameraController } from "./systems/camera.js";
@@ -14,10 +14,10 @@ import { createContactShadow } from "./systems/contact-shadow.js";
 import { BUILDABLE_ASSETS } from "./editor/asset-catalog.js?v=scale1";
 import { createBuilderAssetLoader } from "./editor/asset-loader.js";
 import { createBuilderState } from "./editor/builder-state.js";
-import { createBuilderController } from "./editor/builder-controller.js";
-import { createLayoutStore } from "./editor/layout-store.js";
+import { createBuilderController } from "./editor/builder-controller.js?v=builderfix1";
+import { createLayoutStore } from "./editor/layout-store.js?v=builderfix1";
 import { createBuilderView } from "./editor/builder-view.js?v=scale1";
-import { createBuilderUI } from "./editor/builder-ui.js?v=scale1";
+import { createBuilderUI } from "./editor/builder-ui.js?v=builderfix1";
 
 const status = document.querySelector("#status");
 const setStatus = (text) => {
@@ -109,6 +109,7 @@ const builder = createBuilderController({
   state: builderState,
   catalog: BUILDABLE_ASSETS,
   layoutStore,
+  worldHalfSize: CONFIG.terrain.size / 2,
   onContextChange: () => builderUI?.render(),
   onSelectionChange: (item) => builderUI?.setSelection(item),
   onPreviewChange: (preview) => builderUI?.setPreview(preview),
@@ -126,16 +127,25 @@ builderUI = createBuilderUI({
 });
 
 async function loadLayout() {
-  let items = layoutStore.load();
-
-  if (!items.length) {
+  if (!layoutStore.hasSavedLayout()) {
     try {
       const response = await fetch(CONFIG.builder.defaultMap, { cache: "no-store" });
       if (response.ok) {
         const map = await response.json();
         if (Array.isArray(map.objects)) {
-          for (const object of map.objects) builder.addItem(object);
-          items = builder.items;
+          for (const object of map.objects) {
+            builder.addItem(object, {
+              validate: false,
+              saveLayout: false,
+              recordHistory: false,
+            });
+          }
+          // Saving even an empty array marks the user's intentionally empty
+          // layout as initialized, so the default map will not respawn later.
+          builder.save();
+        }
+        if (map.groundPaint) {
+          world.paint.importData(map.groundPaint);
         }
       }
     } catch (error) {
@@ -166,6 +176,7 @@ function exportMap(items) {
       rotation: +rotation.toFixed(4),
       scale: +scale.toFixed(3),
     })),
+    groundPaint: world.paint.exportData(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
