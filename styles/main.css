@@ -181,6 +181,8 @@ body[data-mode="build"] :is(#joy, #actions, #zoom) { display: none; }
   font-weight: 700;
 }
 .strip .range input { width: 84px; }
+.strip .size-range span { min-width: 72px; text-align: right; }
+.strip .size-range input { width: 132px; }
 
 body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-strip { display: none; }
 body[data-mode="build"] #build-panel:not([data-tab="paint"]) #paint-strip { display: none; }
