@@ -11,13 +11,13 @@ import { createSky } from "./systems/sky.js";
 import { createDayNight } from "./systems/day-night.js";
 import { createRunFx } from "./systems/run-fx.js";
 import { createContactShadow } from "./systems/contact-shadow.js";
-import { BUILDABLE_ASSETS } from "./editor/asset-catalog.js";
+import { BUILDABLE_ASSETS } from "./editor/asset-catalog.js?v=scale1";
 import { createBuilderAssetLoader } from "./editor/asset-loader.js";
 import { createBuilderState } from "./editor/builder-state.js";
 import { createBuilderController } from "./editor/builder-controller.js";
 import { createLayoutStore } from "./editor/layout-store.js";
-import { createBuilderView } from "./editor/builder-view.js?v=grounding2";
-import { createBuilderUI } from "./editor/builder-ui.js";
+import { createBuilderView } from "./editor/builder-view.js?v=scale1";
+import { createBuilderUI } from "./editor/builder-ui.js?v=scale1";
 
 const status = document.querySelector("#status");
 const setStatus = (text) => {
@@ -100,6 +100,7 @@ const builderView = createBuilderView({
   loader: builderLoader,
   getGroundHeight: world.getGroundHeight,
   config: CONFIG.builder,
+  playerHeight: CONFIG.playerHeight,
 });
 
 let builderUI = null;
