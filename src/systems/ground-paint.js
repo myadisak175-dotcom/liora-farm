@@ -197,14 +197,41 @@ export function createGroundPaint({ config, worldSize, textures }) {
     }, 250);
   }
 
+  function normalizeStroke(stroke) {
+    if (!Array.isArray(stroke) || stroke.length < 5) return null;
+    const x = Number(stroke[0]);
+    const z = Number(stroke[1]);
+    const radius = Number(stroke[2]);
+    const layer = Number(stroke[3]);
+    const strength = Number(stroke[4]);
+    if (![x, z, radius, layer, strength].every(Number.isFinite)) return null;
+    if (![PAINT_LAYERS.DIRT, PAINT_LAYERS.SAND, PAINT_LAYERS.ROCK, PAINT_LAYERS.GRASS].includes(layer)) {
+      return null;
+    }
+    return [x, z, radius, layer, THREE.MathUtils.clamp(strength, 0, 1)];
+  }
+
+  function exportData() {
+    return {
+      version: 1,
+      strokes: strokes.map((stroke) => [...stroke]),
+    };
+  }
+
+  function importData(data, { save = true } = {}) {
+    if (data?.version !== 1 || !Array.isArray(data.strokes)) return false;
+    const normalized = data.strokes.map(normalizeStroke).filter(Boolean);
+    strokes.splice(0, strokes.length, ...normalized);
+    replay();
+    if (save) scheduleSave();
+    return true;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(config.storageKey);
       if (!raw) return;
-      const data = JSON.parse(raw);
-      if (data?.version !== 1 || !Array.isArray(data.strokes)) return;
-      strokes.push(...data.strokes);
-      replay();
+      importData(JSON.parse(raw), { save: false });
     } catch (error) {
       console.warn("Ground paint could not be loaded", error);
     }
@@ -274,6 +301,8 @@ diffuseColor *= vec4(surface, 1.0);
   return {
     texture,
     applyTo,
+    exportData,
+    importData,
     get strokeCount() {
       return strokes.length;
     },
