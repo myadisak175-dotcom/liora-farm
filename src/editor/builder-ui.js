@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BUILDER_CONTEXTS } from "./builder-state.js";
-import { getBuildableAssets, getBuildableAsset } from "./asset-catalog.js";
+import { getBuildableAssets, getBuildableAsset } from "./asset-catalog.js?v=scale1";
 import { PAINT_LAYERS } from "../systems/ground-paint.js";
 
 const PAINT_BUTTONS = [
@@ -113,6 +113,40 @@ export function createBuilderUI({
     return button;
   }
 
+  function scalePercent(asset, scale) {
+    return Math.round((scale / asset.defaultScale) * 100);
+  }
+
+  function scaleFromPercent(asset, percent) {
+    return asset.defaultScale * (percent / 100);
+  }
+
+  function scaleControl(asset, currentScale, onScale) {
+    const label = document.createElement("label");
+    label.className = "range size-range";
+
+    const text = document.createElement("span");
+    const setText = (scale) => {
+      text.textContent = `ขนาด ${scalePercent(asset, scale)}%`;
+    };
+    setText(currentScale);
+
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = String(scalePercent(asset, asset.minScale));
+    range.max = String(scalePercent(asset, asset.maxScale));
+    range.step = "1";
+    range.value = String(scalePercent(asset, currentScale));
+    range.oninput = () => {
+      const next = scaleFromPercent(asset, Number(range.value));
+      setText(next);
+      onScale(next);
+    };
+
+    label.append(text, range);
+    return label;
+  }
+
   function renderActions() {
     if (tab === "paint") {
       actions.replaceChildren(
@@ -125,11 +159,31 @@ export function createBuilderUI({
     }
 
     if (controller.context === BUILDER_CONTEXTS.PLACE) {
+      const asset = getBuildableAsset(currentAssetId);
+      const transform = view.getGhostTransform();
+      const currentScale = transform?.scale ?? asset?.defaultScale ?? 1;
+
+      if (!asset) {
+        actions.replaceChildren(actionButton("ยกเลิก", () => controller.cancelPlacement()));
+        return;
+      }
+
       actions.replaceChildren(
         actionButton("↺", () => view.nudgeGhost({ rotation: -Math.PI / 12 })),
         actionButton("↻", () => view.nudgeGhost({ rotation: Math.PI / 12 })),
-        actionButton("−", () => view.nudgeGhost({ scale: -0.1 })),
-        actionButton("＋", () => view.nudgeGhost({ scale: 0.1 })),
+        actionButton("−", () => {
+          view.setGhostScale(currentScale - asset.scaleStep);
+          render();
+        }),
+        scaleControl(asset, currentScale, (next) => view.setGhostScale(next)),
+        actionButton("＋", () => {
+          view.setGhostScale(currentScale + asset.scaleStep);
+          render();
+        }),
+        actionButton("100%", () => {
+          view.setGhostScale(asset.defaultScale);
+          render();
+        }),
         actionButton("วางตรงนี้", commitPlacement, "primary"),
         actionButton("ยกเลิก", () => controller.cancelPlacement())
       );
@@ -137,11 +191,28 @@ export function createBuilderUI({
     }
 
     if (controller.context === BUILDER_CONTEXTS.EDIT) {
+      const item = controller.items.find((entry) => entry.id === selectedId);
+      const asset = item ? getBuildableAsset(item.assetId) : null;
+
+      if (!item || !asset) {
+        actions.replaceChildren(actionButton("เสร็จ", () => controller.clearSelection(), "primary"));
+        return;
+      }
+
       actions.replaceChildren(
         actionButton("↺", () => nudgeSelected({ rotation: -Math.PI / 12 })),
         actionButton("↻", () => nudgeSelected({ rotation: Math.PI / 12 })),
-        actionButton("−", () => nudgeSelected({ scale: -0.1 })),
-        actionButton("＋", () => nudgeSelected({ scale: 0.1 })),
+        actionButton("−", () => nudgeSelected({ scale: -asset.scaleStep })),
+        scaleControl(asset, item.scale, (nextScale) => {
+          const next = controller.updateSelected({ scale: nextScale });
+          if (next) view.update(next);
+        }),
+        actionButton("＋", () => nudgeSelected({ scale: asset.scaleStep })),
+        actionButton("100%", () => {
+          const next = controller.updateSelected({ scale: asset.defaultScale });
+          if (next) view.update(next);
+          render();
+        }),
         actionButton("ทำซ้ำ", () => controller.duplicateSelected()),
         actionButton("ลบ", () => controller.deleteSelected(), "danger"),
         actionButton("เสร็จ", () => controller.clearSelection(), "primary")
@@ -160,11 +231,11 @@ export function createBuilderUI({
       return;
     }
     if (controller.context === BUILDER_CONTEXTS.PLACE) {
-      hint.textContent = "ลากนิ้วเดียวเพื่อเลื่อนตำแหน่ง แล้วกด วางตรงนี้";
+      hint.textContent = "ขนาด 100% = สัดส่วนแนะนำเทียบ Liora • ลากเพื่อย้าย แล้วกด วางตรงนี้";
       return;
     }
     if (controller.context === BUILDER_CONTEXTS.EDIT) {
-      hint.textContent = "ลากเพื่อย้าย • สองนิ้วหมุนกล้อง";
+      hint.textContent = "ปรับขนาดเป็น % เทียบสัดส่วน Liora • ลากเพื่อย้าย • สองนิ้วซูมกล้อง";
       return;
     }
     hint.textContent = `แตะสิ่งของเพื่อแก้ไข • ทั้งหมด ${controller.items.length} ชิ้น`;
@@ -211,6 +282,7 @@ export function createBuilderUI({
         : item.scale,
     });
     if (next) view.update(next);
+    render();
   }
 
   function onPointerDown(event) {
