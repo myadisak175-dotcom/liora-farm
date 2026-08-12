@@ -1,11 +1,18 @@
 import * as THREE from "three";
+import { getBuildableAsset } from "./asset-catalog.js?v=scale1";
 
 /**
  * Owns the Three.js side of the builder: spawning placed objects, the
  * ghost preview and selection tint. It holds no UI and no builder rules —
  * builder-controller.js decides what exists, this decides how it looks.
  */
-export function createBuilderView({ scene, loader, getGroundHeight, config }) {
+export function createBuilderView({
+  scene,
+  loader,
+  getGroundHeight,
+  config,
+  playerHeight = 1.7,
+}) {
   const group = new THREE.Group();
   group.name = "BuilderObjects";
   scene.add(group);
@@ -16,6 +23,25 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   let ghost = null;
   let ghostAsset = null;
   let highlighted = null;
+
+  function measureSourceSize(model, asset) {
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model, true);
+    const size = box.getSize(new THREE.Vector3());
+    if (asset?.sizeAxis === "footprint") return Math.max(size.x, size.z);
+    return size.y;
+  }
+
+  function getScaleNormalization(model, asset) {
+    if (!asset) return 1;
+    const sourceSize = measureSourceSize(model, asset);
+    if (!Number.isFinite(sourceSize) || sourceSize <= 0.0001) return 1;
+
+    // 100% means the authored game-world size relative to Liora's height,
+    // independent of whatever unit/scale the source GLB happened to use.
+    const targetSize = playerHeight * asset.sizeInPlayers;
+    return targetSize / (sourceSize * asset.defaultScale);
+  }
 
   function snapToGround(object, x, z) {
     const groundY = getGroundHeight(x, z);
@@ -32,8 +58,9 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
   }
 
   function applyTransform(object, item) {
+    const normalization = object.userData.scaleNormalization ?? 1;
     object.rotation.y = item.rotation;
-    object.scale.setScalar(item.scale);
+    object.scale.setScalar(item.scale * normalization);
     snapToGround(object, item.x, item.z);
   }
 
@@ -79,10 +106,12 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
 
   async function spawn(item) {
     if (objects.has(item.id)) return objects.get(item.id);
+    const asset = getBuildableAsset(item.assetId);
     const model = await loader.load(item.assetId);
     const holder = new THREE.Group();
     holder.name = `builder:${item.assetId}`;
     holder.userData.itemId = item.id;
+    holder.userData.scaleNormalization = getScaleNormalization(model, asset);
     holder.add(model);
     group.add(holder);
     applyTransform(holder, item);
@@ -121,11 +150,12 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
     ghost.add(model);
     ghost.userData.rotation = 0;
     ghost.userData.scale = asset.defaultScale;
+    ghost.userData.scaleNormalization = getScaleNormalization(model, asset);
     ghostAsset = asset;
     setGhostAppearance(ghost);
     scene.add(ghost);
     ghost.rotation.y = 0;
-    ghost.scale.setScalar(asset.defaultScale);
+    ghost.scale.setScalar(asset.defaultScale * ghost.userData.scaleNormalization);
     snapToGround(ghost, 0, 0);
     return ghost;
   }
@@ -135,22 +165,22 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
     snapToGround(ghost, x, z);
   }
 
+  function setGhostScale(value) {
+    if (!ghost || !ghostAsset) return;
+    const next = THREE.MathUtils.clamp(value, ghostAsset.minScale, ghostAsset.maxScale);
+    ghost.userData.scale = next;
+    ghost.scale.setScalar(next * (ghost.userData.scaleNormalization ?? 1));
+    snapToGround(ghost, ghost.position.x, ghost.position.z);
+  }
+
   function nudgeGhost({ rotation = 0, scale = 0 }) {
     if (!ghost) return;
     if (rotation) {
       ghost.userData.rotation += rotation;
       ghost.rotation.y = ghost.userData.rotation;
     }
-    if (scale) {
-      const next = THREE.MathUtils.clamp(
-        ghost.userData.scale + scale,
-        ghostAsset.minScale,
-        ghostAsset.maxScale
-      );
-      ghost.userData.scale = next;
-      ghost.scale.setScalar(next);
-    }
-    snapToGround(ghost, ghost.position.x, ghost.position.z);
+    if (scale) setGhostScale(ghost.userData.scale + scale);
+    else snapToGround(ghost, ghost.position.x, ghost.position.z);
   }
 
   function getGhostTransform() {
@@ -189,6 +219,7 @@ export function createBuilderView({ scene, loader, getGroundHeight, config }) {
     highlight,
     showGhost,
     moveGhost,
+    setGhostScale,
     nudgeGhost,
     getGhostTransform,
     clearGhost,
