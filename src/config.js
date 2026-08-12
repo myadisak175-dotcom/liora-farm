@@ -90,7 +90,7 @@ export const CONFIG = Object.freeze({
     minRadius: 0.5,
     maxRadius: 4.5,
     defaultRadius: 1.6,
-    strength: 0.85,
+    strength: 1,
     storageKey: "liora.ground-paint.v1",
   },
 
