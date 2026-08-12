@@ -16,7 +16,7 @@ import { createBuilderAssetLoader } from "./editor/asset-loader.js";
 import { createBuilderState } from "./editor/builder-state.js";
 import { createBuilderController } from "./editor/builder-controller.js";
 import { createLayoutStore } from "./editor/layout-store.js";
-import { createBuilderView } from "./editor/builder-view.js";
+import { createBuilderView } from "./editor/builder-view.js?v=grounding2";
 import { createBuilderUI } from "./editor/builder-ui.js";
 
 const status = document.querySelector("#status");
