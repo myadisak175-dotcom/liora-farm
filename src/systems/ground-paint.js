@@ -168,20 +168,20 @@ float wRock = splat.b;
 float wGrass = 1.0 - clamp(wDirt + wSand + wRock, 0.0, 1.0);
 
 vec3 grassColor = texture2D(uGrass, tileUv).rgb;
-vec4 dirtTexel = texture2D(uDirt, tileUv);
+vec3 dirtRaw = texture2D(uDirt, tileUv).rgb;
 vec3 sandColor = texture2D(uSand, tileUv).rgb;
 vec3 rockColor = texture2D(uRock, tileUv).rgb;
 
-// Some WebP dirt assets contain very dark/transparent RGB pixels that can
-// turn a painted stroke nearly black when sampled directly. Keep the texture
-// detail, but rescue only those near-black/transparent texels with a warm
-// soil fallback. This affects rendering only; the binary texture is untouched.
-float dirtLuma = dot(dirtTexel.rgb, vec3(0.2126, 0.7152, 0.0722));
-float darkRescue = 1.0 - smoothstep(0.035, 0.12, dirtLuma);
-float alphaRescue = 1.0 - dirtTexel.a;
-float dirtRescue = clamp(max(darkRescue, alphaRescue), 0.0, 1.0);
-vec3 dirtFallback = vec3(0.48, 0.29, 0.15);
-vec3 dirtColor = mix(dirtTexel.rgb, dirtFallback, dirtRescue * 0.92);
+// dirt.webp is an opaque ground texture, but its source tones are much darker
+// than the other terrain maps. Remap its luminance into a warm soil range so
+// the original texture pattern stays visible instead of collapsing to black
+// or to a flat fallback color.
+float dirtLuma = dot(dirtRaw, vec3(0.2126, 0.7152, 0.0722));
+float dirtDetail = smoothstep(0.012, 0.30, dirtLuma);
+dirtDetail = pow(dirtDetail, 0.72);
+vec3 dirtDark = vec3(0.30, 0.14, 0.055);
+vec3 dirtLight = vec3(0.72, 0.47, 0.25);
+vec3 dirtColor = mix(dirtDark, dirtLight, dirtDetail);
 
 vec3 surface =
   grassColor * wGrass +
@@ -193,7 +193,7 @@ diffuseColor *= vec4(surface, 1.0);
 `
         );
     };
-    material.customProgramCacheKey = () => "liora-ground-splat-v2-dirt-rescue";
+    material.customProgramCacheKey = () => "liora-ground-splat-v3-dirt-detail";
     material.needsUpdate = true;
   }
 
