@@ -170,7 +170,7 @@ const TEXTURE_DIR = "./assets/textures";
 
 export const ASSETS = Object.freeze({
   grass: `${TEXTURE_DIR}/grass.webp`,
-  dirt: `${TEXTURE_DIR}/dirt_path_refined.webp`,
+  dirt: `${TEXTURE_DIR}/dirt_ground.png`,
   sand: `${TEXTURE_DIR}/sand.webp`,
   rock: `${TEXTURE_DIR}/rock.webp`,
   player: "./assets/models/player/liora_all_animations_web.glb",
