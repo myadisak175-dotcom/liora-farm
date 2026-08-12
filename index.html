@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#173c4b">
 <title>Liora's Farm</title>
-<link rel="stylesheet" href="./styles/main.css?v=scale1">
+<link rel="stylesheet" href="./styles/main.css?v=fixedsys1">
 <script type="importmap">
 {"imports":{
   "three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
@@ -15,17 +16,20 @@
 <body data-mode="play">
 
 <div id="status">กำลังโหลด…</div>
+<div id="pouch" hidden><span class="glyph">🥕</span><span id="pouch-count">0</span></div>
 
 <nav id="mode-bar">
   <button type="button" data-mode="play" class="active">เล่น</button>
   <button type="button" data-mode="build">สร้าง</button>
 </nav>
 
+<button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button>
+
 <!-- play mode -->
 <div id="joy"><div id="stick"></div></div>
 <div id="actions">
+  <button data-action="farm">ถอนผัก</button>
   <button data-action="pickUp">เก็บของ</button>
-  <button data-action="pullRadish">ถอนผัก</button>
   <button data-action="hammer">ทุบ</button>
   <button data-action="mirror">ส่องกระจก</button>
 </div>
@@ -42,11 +46,26 @@
     <button type="button" id="tab-paint">ระบายพื้น</button>
   </div>
   <div id="build-hint"></div>
+  <div id="asset-cats" class="strip cats"></div>
   <div id="asset-strip" class="strip"></div>
   <div id="paint-strip" class="strip"></div>
   <div id="build-actions" class="strip"></div>
 </section>
 
-<script type="module" src="./src/main.js?v=builderfix1"></script>
+<div id="toast" aria-live="polite"></div>
+
+<script>
+// three.js comes from a CDN. If that request never lands the page used to sit
+// on "กำลังโหลด…" forever with nothing in the UI to explain why.
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    if (window.__lioraBooted) return;
+    const status = document.querySelector("#status");
+    status.textContent = "โหลดไม่สำเร็จ — เช็คเน็ตแล้วรีโหลดหน้า";
+    status.classList.add("error");
+  }, 12000);
+});
+</script>
+<script type="module" src="./src/main.js?v=fixedsys1"></script>
 </body>
 </html>

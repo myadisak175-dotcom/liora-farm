@@ -6,13 +6,29 @@ export const BUILD_CATEGORIES = Object.freeze({
   DECOR: "decor",
 });
 
+/**
+ * Three radii, because they answer three different questions. The old single
+ * `placementRadius` tried to answer all three and ended up wrong for each:
+ * a house got a 5.3 m no-build bubble around a 3.9 m building, so a path
+ * could never reach its door.
+ *
+ *   footprintRadius — how much ground the base really covers. Used to keep an
+ *                     object on the island and to space out duplicates.
+ *                     Measured from the GLB's lowest 15% of geometry.
+ *   blockRadius     — refuses to overlap another blocking object. Only
+ *                     buildings block; nature and decor may overlap freely,
+ *                     which is how decorating actually works.
+ *   walkRadius      — solid to the player in play mode. 0 = walk through.
+ */
 function defineAsset({
   id,
   label,
   category,
   icon,
   file,
-  placementRadius,
+  footprintRadius,
+  blockRadius = 0,
+  walkRadius = 0,
   defaultScale = 1,
   minScale = null,
   maxScale = null,
@@ -32,7 +48,9 @@ function defineAsset({
     icon,
     modelPath: `${ASSETS.modelDir}/${file}`,
     thumbnailPath: null,
-    placementRadius,
+    footprintRadius,
+    blockRadius,
+    walkRadius,
     minScale: resolvedMinScale,
     maxScale: resolvedMaxScale,
     defaultScale,
@@ -50,7 +68,9 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.NATURE,
     icon: "🌳",
     file: "tree.glb",
-    placementRadius: 1.15,
+    // Canopy is 5.6 m wide but the trunk is what you bump into.
+    footprintRadius: 2.25,
+    walkRadius: 0.55,
     defaultScale: 1.7,
     sizeInPlayers: 2.4,
   }),
@@ -60,7 +80,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.NATURE,
     icon: "🌲",
     file: "pine.glb",
-    placementRadius: 1.15,
+    footprintRadius: 0.4,
+    walkRadius: 0.4,
     defaultScale: 1.9,
     sizeInPlayers: 2.8,
   }),
@@ -70,7 +91,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.NATURE,
     icon: "🌴",
     file: "palm.glb",
-    placementRadius: 1.15,
+    footprintRadius: 0.55,
+    walkRadius: 0.45,
     defaultScale: 1.2,
     sizeInPlayers: 2.6,
   }),
@@ -80,7 +102,7 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.NATURE,
     icon: "🌾",
     file: "grass.glb",
-    placementRadius: 0.6,
+    footprintRadius: 0.2,
     defaultScale: 1,
     sizeInPlayers: 0.45,
   }),
@@ -90,7 +112,9 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.BUILDINGS,
     icon: "🏡",
     file: "house.glb",
-    placementRadius: 2.65,
+    footprintRadius: 2.25,
+    blockRadius: 2.25,
+    walkRadius: 2.1,
     defaultScale: 1.2,
     sizeInPlayers: 2.3,
   }),
@@ -100,7 +124,9 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.BUILDINGS,
     icon: "🏠",
     file: "house2.glb",
-    placementRadius: 2.65,
+    footprintRadius: 1.9,
+    blockRadius: 1.9,
+    walkRadius: 1.8,
     defaultScale: 1.2,
     sizeInPlayers: 2.3,
   }),
@@ -110,7 +136,7 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.DECOR,
     icon: "🧱",
     file: "path_tile.glb",
-    placementRadius: 0.7,
+    footprintRadius: 1,
     defaultScale: 1,
     sizeAxis: "footprint",
     sizeInPlayers: 1.15,
@@ -121,7 +147,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.DECOR,
     icon: "📦",
     file: "crate.glb",
-    placementRadius: 0.6,
+    footprintRadius: 0.5,
+    walkRadius: 0.45,
     defaultScale: 1,
     sizeInPlayers: 0.55,
   }),
@@ -131,7 +158,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.DECOR,
     icon: "🛢️",
     file: "wine_barrel.glb",
-    placementRadius: 0.65,
+    footprintRadius: 0.5,
+    walkRadius: 0.45,
     defaultScale: 1,
     sizeInPlayers: 0.75,
   }),

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getBuildableAsset } from "./asset-catalog.js?v=scale1";
+import { getBuildableAsset } from "./asset-catalog.js";
 
 /**
  * Owns the Three.js side of the builder: spawning placed objects, the
@@ -19,15 +19,32 @@ export function createBuilderView({
 
   const objects = new Map(); // itemId -> Object3D
   const originalMaterials = new WeakMap();
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
 
   let ghost = null;
   let ghostAsset = null;
   let highlighted = null;
 
+  function disposeMaterial(material) {
+    for (const entry of Array.isArray(material) ? material : [material]) {
+      entry?.dispose?.();
+    }
+  }
+
+  /** Cloned materials are per-instance, so they have to be handed back. */
+  function disposeClonedMaterials(object) {
+    object.traverse((node) => {
+      if (!node.isMesh || !node.userData.materialIsClone) return;
+      disposeMaterial(node.material);
+      node.userData.materialIsClone = false;
+    });
+  }
+
   function measureSourceSize(model, asset) {
     model.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(model, true);
-    const size = box.getSize(new THREE.Vector3());
+    box.setFromObject(model, true);
+    box.getSize(size);
     if (asset?.sizeAxis === "footprint") return Math.max(size.x, size.z);
     return size.y;
   }
@@ -43,25 +60,34 @@ export function createBuilderView({
     return targetSize / (sourceSize * asset.defaultScale);
   }
 
-  function snapToGround(object, x, z) {
-    const groundY = getGroundHeight(x, z);
-    object.position.x = x;
-    object.position.z = z;
-    object.position.y = groundY;
-    object.updateMatrixWorld(true);
+  /**
+   * Sitting an object on the ground used to cost two full Box3.setFromObject
+   * traversals per pointermove. The base offset is a property of the model, so
+   * it is measured once at spawn and reused — rotation is around Y, which
+   * cannot change the lowest point.
+   */
+  function cacheBaseOffset(holder, model) {
+    holder.position.set(0, 0, 0);
+    holder.scale.setScalar(1);
+    holder.rotation.set(0, 0, 0);
+    holder.updateMatrixWorld(true);
+    box.setFromObject(model, true);
+    holder.userData.baseOffset = Number.isFinite(box.min.y) ? box.min.y : 0;
+  }
 
-    const box = new THREE.Box3().setFromObject(object, true);
-    if (Number.isFinite(box.min.y)) {
-      object.position.y += groundY - box.min.y;
-      object.updateMatrixWorld(true);
-    }
+  function snapToGround(object, x, z, totalScale) {
+    const groundY = getGroundHeight(x, z);
+    const baseOffset = object.userData.baseOffset ?? 0;
+    object.position.set(x, groundY - baseOffset * totalScale, z);
+    object.updateMatrixWorld(true);
   }
 
   function applyTransform(object, item) {
     const normalization = object.userData.scaleNormalization ?? 1;
+    const totalScale = item.scale * normalization;
     object.rotation.y = item.rotation;
-    object.scale.setScalar(item.scale * normalization);
-    snapToGround(object, item.x, item.z);
+    object.scale.setScalar(totalScale);
+    snapToGround(object, item.x, item.z, totalScale);
   }
 
   function setGhostAppearance(object) {
@@ -70,14 +96,15 @@ export function createBuilderView({
       node.castShadow = false;
       node.receiveShadow = false;
       const materials = Array.isArray(node.material) ? node.material : [node.material];
-      node.material = materials.map((material) => {
+      const clones = materials.map((material) => {
         const clone = material.clone();
         clone.transparent = true;
         clone.opacity = config.ghostOpacity;
         clone.depthWrite = false;
         return clone;
       });
-      if (node.material.length === 1) node.material = node.material[0];
+      node.material = clones.length === 1 ? clones[0] : clones;
+      node.userData.materialIsClone = true;
     });
   }
 
@@ -97,10 +124,16 @@ export function createBuilderView({
           return clone;
         });
         node.material = tinted.length === 1 ? tinted[0] : tinted;
+        node.userData.materialIsClone = true;
         return;
       }
       const source = originalMaterials.get(node);
-      if (source) node.material = source;
+      if (!source) return;
+      if (node.userData.materialIsClone) {
+        disposeMaterial(node.material);
+        node.userData.materialIsClone = false;
+      }
+      node.material = source;
     });
   }
 
@@ -114,6 +147,7 @@ export function createBuilderView({
     holder.userData.scaleNormalization = getScaleNormalization(model, asset);
     holder.add(model);
     group.add(holder);
+    cacheBaseOffset(holder, model);
     applyTransform(holder, item);
     objects.set(item.id, holder);
     return holder;
@@ -128,6 +162,7 @@ export function createBuilderView({
     const object = objects.get(id);
     if (!object) return;
     if (highlighted === object) highlight(null);
+    disposeClonedMaterials(object);
     group.remove(object);
     objects.delete(id);
   }
@@ -143,34 +178,53 @@ export function createBuilderView({
     if (highlighted) tint(highlighted, true);
   }
 
-  async function showGhost(asset) {
+  /**
+   * The ghost used to always appear at world origin, so tapping an asset while
+   * standing anywhere else looked like nothing happened. It now appears
+   * wherever the camera is looking.
+   */
+  async function showGhost(asset, start = {}) {
     clearGhost();
     const model = await loader.load(asset.id);
+    const rotation = Number.isFinite(start.rotation) ? start.rotation : 0;
+    const scale = THREE.MathUtils.clamp(
+      Number.isFinite(start.scale) ? start.scale : asset.defaultScale,
+      asset.minScale,
+      asset.maxScale
+    );
+
     ghost = new THREE.Group();
     ghost.add(model);
-    ghost.userData.rotation = 0;
-    ghost.userData.scale = asset.defaultScale;
+    ghost.userData.rotation = rotation;
+    ghost.userData.scale = scale;
     ghost.userData.scaleNormalization = getScaleNormalization(model, asset);
     ghostAsset = asset;
     setGhostAppearance(ghost);
     scene.add(ghost);
-    ghost.rotation.y = 0;
-    ghost.scale.setScalar(asset.defaultScale * ghost.userData.scaleNormalization);
-    snapToGround(ghost, 0, 0);
+    cacheBaseOffset(ghost, model);
+    ghost.rotation.y = rotation;
+    const totalScale = scale * ghost.userData.scaleNormalization;
+    ghost.scale.setScalar(totalScale);
+    snapToGround(ghost, start.x ?? 0, start.z ?? 0, totalScale);
     return ghost;
+  }
+
+  function ghostTotalScale() {
+    return (ghost?.userData.scale ?? 1) * (ghost?.userData.scaleNormalization ?? 1);
   }
 
   function moveGhost(x, z) {
     if (!ghost) return;
-    snapToGround(ghost, x, z);
+    snapToGround(ghost, x, z, ghostTotalScale());
   }
 
   function setGhostScale(value) {
     if (!ghost || !ghostAsset) return;
     const next = THREE.MathUtils.clamp(value, ghostAsset.minScale, ghostAsset.maxScale);
     ghost.userData.scale = next;
-    ghost.scale.setScalar(next * (ghost.userData.scaleNormalization ?? 1));
-    snapToGround(ghost, ghost.position.x, ghost.position.z);
+    const totalScale = next * (ghost.userData.scaleNormalization ?? 1);
+    ghost.scale.setScalar(totalScale);
+    snapToGround(ghost, ghost.position.x, ghost.position.z, totalScale);
   }
 
   function nudgeGhost({ rotation = 0, scale = 0 }) {
@@ -180,7 +234,6 @@ export function createBuilderView({
       ghost.rotation.y = ghost.userData.rotation;
     }
     if (scale) setGhostScale(ghost.userData.scale + scale);
-    else snapToGround(ghost, ghost.position.x, ghost.position.z);
   }
 
   function getGhostTransform() {
@@ -195,6 +248,7 @@ export function createBuilderView({
 
   function clearGhost() {
     if (!ghost) return;
+    disposeClonedMaterials(ghost);
     scene.remove(ghost);
     ghost = null;
     ghostAsset = null;

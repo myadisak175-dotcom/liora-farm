@@ -12,35 +12,19 @@ function segment(hour, start, end) {
   return (hour - start) / (end - start);
 }
 
-export function createDayNight({ scene, sky, lighting, config }) {
+const PRESET_HOURS = [6.5, 12, 18.25, 22];
+
+/**
+ * Owns the time of day and the palette that comes with it. It used to build
+ * its own floating clock button with inline styles, which is why that button
+ * never matched the rest of the UI and stayed on screen in build mode. The
+ * label now goes out through onLabelChange and the HUD owns the markup.
+ */
+export function createDayNight({ scene, sky, lighting, config, onLabelChange = () => {} }) {
   let hour = config.startHour;
   let paused = false;
-
-  const clockEl = document.createElement("button");
-  clockEl.type = "button";
-  clockEl.setAttribute("aria-label", "Change game time");
-  Object.assign(clockEl.style, {
-    position: "fixed",
-    top: "58px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: "20",
-    border: "1px solid rgba(255,255,255,.65)",
-    borderRadius: "999px",
-    padding: "7px 11px",
-    background: "rgba(23,60,75,.72)",
-    color: "white",
-    font: "700 12px system-ui,sans-serif",
-    backdropFilter: "blur(5px)",
-  });
-  document.body.appendChild(clockEl);
-
-  const presets = [6.5, 12, 18.25, 22];
   let presetIndex = 0;
-  clockEl.addEventListener("click", () => {
-    hour = presets[presetIndex];
-    presetIndex = (presetIndex + 1) % presets.length;
-  });
+  let lastLabel = "";
 
   function paletteForTime(h) {
     let zenith = 0x68bdf0;
@@ -134,8 +118,13 @@ export function createDayNight({ scene, sky, lighting, config }) {
 
     const hh = Math.floor(hour) % 24;
     const mm = Math.floor((hour - Math.floor(hour)) * 60);
-    const label = hour >= 5 && hour < 8 ? "Morning" : hour < 17 ? "Day" : hour < 20 ? "Sunset" : "Night";
-    clockEl.textContent = `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")} • ${label}`;
+    const phase =
+      hour >= 5 && hour < 8 ? "เช้า" : hour < 17 ? "กลางวัน" : hour < 20 ? "เย็น" : "กลางคืน";
+    const label = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} • ${phase}`;
+    if (label !== lastLabel) {
+      lastLabel = label;
+      onLabelChange(label);
+    }
   }
 
   apply();
@@ -146,6 +135,13 @@ export function createDayNight({ scene, sky, lighting, config }) {
         hour = (hour + delta * (DAY / config.realSecondsPerDay)) % DAY;
       }
       apply();
+    },
+    /** Cycles morning -> noon -> sunset -> night, for skipping the dark. */
+    nextPreset() {
+      hour = PRESET_HOURS[presetIndex];
+      presetIndex = (presetIndex + 1) % PRESET_HOURS.length;
+      apply();
+      return hour;
     },
     setHour(value) { hour = ((value % DAY) + DAY) % DAY; apply(); },
     getHour() { return hour; },

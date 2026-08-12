@@ -1,12 +1,26 @@
 import * as THREE from "three";
 
+// One screen-wide switch: coarse pointer (phone/tablet) gets the cheaper
+// renderer settings. Everything else is authored once and scaled from here,
+// so there is no second "mobile config" to keep in sync.
+const IS_TOUCH =
+  typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+
+export const QUALITY = Object.freeze({
+  isTouch: IS_TOUCH,
+  maxPixelRatio: IS_TOUCH ? 1.5 : 2,
+  antialias: !IS_TOUCH,
+  shadowMapSize: IS_TOUCH ? 1024 : 2048,
+});
+
 export const CONFIG = Object.freeze({
-  worldSize: 42,
-  grassRepeat: 8,
-  worldLimit: 18,
+  // Half-width of the walkable area. The build limit and the visible cliff
+  // edge are derived from terrain.size so they can never drift apart again.
+  worldLimit: 19.5,
 
   playerHeight: 1.7,
   playerGroundOffset: -0.02,
+  playerRadius: 0.34,
   walkSpeed: 2.4,
   runSpeed: 5.2,
   runThreshold: 0.78,
@@ -32,15 +46,17 @@ export const CONFIG = Object.freeze({
     followDeadZone: 0.55,
     followSharpness: 3.2,
     positionSharpness: 5.5,
+    // Build mode: one finger on empty ground pans, two fingers rotate.
+    panLimit: 21,
+    twoFingerRotateSensitivity: 0.005,
   },
 
   depth: {
-    groundOrder: 0,
     playerOrder: 10,
   },
 
   shadows: {
-    mapSize: 2048,
+    mapSize: QUALITY.shadowMapSize,
     bounds: 12,
     near: 0.5,
     far: 40,
@@ -92,6 +108,9 @@ export const CONFIG = Object.freeze({
     defaultRadius: 1.6,
     strength: 1,
     storageKey: "liora.ground-paint.v1",
+    // Replaying every stroke got slow past a few hundred strokes, so the
+    // canvas is snapshotted every N strokes and replay starts from there.
+    snapshotInterval: 40,
   },
 
   farmPlot: {
@@ -112,6 +131,21 @@ export const CONFIG = Object.freeze({
     furrowHeight: 0.018,
     furrowY: 0.055,
     renderOrder: 2,
+    // Nothing may be built on the plot: the beds are 3.4 m across, plus a
+    // little margin so a wall never crowds the rows.
+    reservedRadius: 2.4,
+  },
+
+  // The first real gameplay loop: plant -> wait -> harvest -> pouch.
+  farming: {
+    reach: 2.1,
+    growSeconds: 40,
+    seedColor: 0x6fae54,
+    leafColor: 0x4f9440,
+    rootColor: 0xe3705a,
+    sproutHeight: 0.18,
+    ripeHeight: 0.44,
+    storageKey: "liora.farm.v1",
   },
 
   builder: {
@@ -119,6 +153,10 @@ export const CONFIG = Object.freeze({
     defaultMap: "./maps/home-island.json",
     ghostOpacity: 0.55,
     selectionColor: 0x7ce0ff,
+    saveDebounceMs: 250,
+    gridSize: 0.5,
+    snapDefault: false,
+    historyLimit: 50,
   },
 
   sky: {
@@ -130,7 +168,8 @@ export const CONFIG = Object.freeze({
     cloudOpacity: 0.72,
     cloudCount: 10,
     cloudRingRadius: 31,
-    cloudHeight: -7,
+    // Was -7, i.e. underneath the island where the camera never looks.
+    cloudHeight: 9,
     starCount: 220,
     starSize: 0.32,
     starOpacity: 0.9,
@@ -160,6 +199,13 @@ export const CONFIG = Object.freeze({
     riseJitter: 0.18,
     gravity: 0.55,
     renderOrder: 6,
+  },
+
+  // Fog used to start at 30 on a 42-wide island, which washed the far edge
+  // out to flat sky colour. Pushed back so the island stays readable.
+  fog: {
+    near: 46,
+    far: 96,
   },
 });
 

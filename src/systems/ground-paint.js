@@ -102,8 +102,22 @@ export function createGroundPaint({ config, worldSize, textures }) {
   texture.magFilter = THREE.LinearFilter;
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
 
-  const strokes = [];
+  // `stamps` is every circle ever drawn; `groups` records how many stamps each
+  // finger-drag produced. Undo pops a whole drag — one swipe used to cost 19
+  // taps of ↶ because every stamp was its own undo step.
+  const stamps = [];
+  const groups = [];
   let saveTimer = null;
+  let openGroup = null;
+
+  // Undo used to redraw every stroke from scratch, and each stroke is two
+  // radial gradients — a long painting session made undo hitch for a second.
+  // One rolling snapshot means replay only ever redraws the tail.
+  const snapshotInterval = Math.max(1, config.snapshotInterval ?? 40);
+  const snapshotCanvas = document.createElement("canvas");
+  snapshotCanvas.width = snapshotCanvas.height = size;
+  const snapshotCtx = snapshotCanvas.getContext("2d");
+  let snapshotCount = 0;
 
   function clearCanvas() {
     ctx.save();
@@ -112,6 +126,27 @@ export function createGroundPaint({ config, worldSize, textures }) {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, size, size);
     ctx.restore();
+  }
+
+  function clearSnapshot() {
+    snapshotCtx.save();
+    snapshotCtx.globalCompositeOperation = "source-over";
+    snapshotCtx.globalAlpha = 1;
+    snapshotCtx.fillStyle = "#000";
+    snapshotCtx.fillRect(0, 0, size, size);
+    snapshotCtx.restore();
+    snapshotCount = 0;
+  }
+
+  // `count` is how many stamps the snapshot represents — not always the
+  // current stroke count, since a rebuild snapshots an earlier boundary.
+  function takeSnapshot(count = stamps.length) {
+    snapshotCtx.save();
+    snapshotCtx.globalCompositeOperation = "copy";
+    snapshotCtx.globalAlpha = 1;
+    snapshotCtx.drawImage(canvas, 0, 0);
+    snapshotCtx.restore();
+    snapshotCount = count;
   }
 
   function gradient(cx, cy, r, innerRgb, outerRgb, layer) {
@@ -177,9 +212,41 @@ export function createGroundPaint({ config, worldSize, textures }) {
     );
   }
 
-  function replay() {
+  function replayAll() {
     clearCanvas();
-    for (const stroke of strokes) drawStroke(...stroke);
+    clearSnapshot();
+    for (let i = 0; i < stamps.length; i += 1) {
+      drawStroke(...stamps[i]);
+      // Must be i + 1, not the default: the snapshot represents the stamps
+      // drawn so far, not the whole list. Labelling it with the full length
+      // made the first undo after a reload silently drop the stamps between
+      // the last boundary and the end.
+      if ((i + 1) % snapshotInterval === 0) takeSnapshot(i + 1);
+    }
+    texture.needsUpdate = true;
+  }
+
+  function replay() {
+    // Undoing back past the snapshot means the snapshot is stale; rebuild it
+    // once at the nearest boundary instead of on every subsequent undo.
+    if (snapshotCount > stamps.length) {
+      const boundary =
+        Math.floor(stamps.length / snapshotInterval) * snapshotInterval;
+      clearCanvas();
+      clearSnapshot();
+      for (let i = 0; i < boundary; i += 1) drawStroke(...stamps[i]);
+      takeSnapshot(boundary);
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = "copy";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(snapshotCanvas, 0, 0);
+    ctx.restore();
+
+    for (let i = snapshotCount; i < stamps.length; i += 1) {
+      drawStroke(...stamps[i]);
+    }
     texture.needsUpdate = true;
   }
 
@@ -189,7 +256,7 @@ export function createGroundPaint({ config, worldSize, textures }) {
       try {
         localStorage.setItem(
           config.storageKey,
-          JSON.stringify({ version: 1, strokes })
+          JSON.stringify(exportData())
         );
       } catch (error) {
         console.warn("Ground paint could not be saved", error);
@@ -214,15 +281,44 @@ export function createGroundPaint({ config, worldSize, textures }) {
   function exportData() {
     return {
       version: 1,
-      strokes: strokes.map((stroke) => [...stroke]),
+      strokes: stamps.map((stamp) => [...stamp]),
+      // Added alongside `strokes` rather than as a new schema version: an older
+      // build ignores this field and simply undoes stamp by stamp again.
+      groups: [...groups],
     };
+  }
+
+  function normalizeGroups(rawGroups, total) {
+    const sizes = [];
+    let counted = 0;
+    for (const value of Array.isArray(rawGroups) ? rawGroups : []) {
+      const size = Math.floor(Number(value));
+      if (!Number.isFinite(size) || size < 1) continue;
+      if (counted + size > total) break;
+      sizes.push(size);
+      counted += size;
+    }
+    // Anything not covered (older saves, or a truncated list) falls back to one
+    // stamp per undo step, which is what those saves meant anyway.
+    while (counted < total) {
+      sizes.push(1);
+      counted += 1;
+    }
+    return sizes;
   }
 
   function importData(data, { save = true } = {}) {
     if (data?.version !== 1 || !Array.isArray(data.strokes)) return false;
     const normalized = data.strokes.map(normalizeStroke).filter(Boolean);
-    strokes.splice(0, strokes.length, ...normalized);
-    replay();
+    const sameLength = normalized.length === data.strokes.length;
+    stamps.splice(0, stamps.length, ...normalized);
+    groups.splice(
+      0,
+      groups.length,
+      ...normalizeGroups(sameLength ? data.groups : null, stamps.length)
+    );
+    openGroup = null;
+    replayAll();
     if (save) scheduleSave();
     return true;
   }
@@ -238,6 +334,9 @@ export function createGroundPaint({ config, worldSize, textures }) {
   }
 
   clearCanvas();
+  // The snapshot has to start as opaque black too — replay copies it wholesale
+  // over the live canvas, and a transparent snapshot would wipe the base.
+  clearSnapshot();
   texture.needsUpdate = true;
   load();
 
@@ -298,37 +397,118 @@ diffuseColor *= vec4(surface, 1.0);
     material.needsUpdate = true;
   }
 
+  function addStamp(x, z, layer, radius, strength) {
+    const entry = [
+      +x.toFixed(2),
+      +z.toFixed(2),
+      +radius.toFixed(2),
+      layer,
+      +strength.toFixed(2),
+    ];
+    stamps.push(entry);
+    drawStroke(...entry);
+    if (stamps.length - snapshotCount >= snapshotInterval) takeSnapshot();
+    if (openGroup) openGroup.count += 1;
+    return entry;
+  }
+
+  function beginStroke({ layer, radius, strength = config.strength }) {
+    if (openGroup) endStroke();
+    openGroup = { layer, radius, strength, count: 0, x: null, z: null };
+  }
+
+  /**
+   * Extends the current drag to (x, z), filling in the space since the last
+   * point. Without this the brush only stamped where the finger happened to be
+   * reported: a fast swipe (or one dropped frame) left a visible hole in the
+   * middle of the stroke.
+   */
+  function strokeTo(x, z) {
+    if (!openGroup) return 0;
+    const { layer, radius, strength } = openGroup;
+    const spacing = Math.max(0.05, radius / 3);
+
+    if (openGroup.x === null) {
+      addStamp(x, z, layer, radius, strength);
+      openGroup.x = x;
+      openGroup.z = z;
+      texture.needsUpdate = true;
+      return 1;
+    }
+
+    const dx = x - openGroup.x;
+    const dz = z - openGroup.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance < spacing) return 0;
+
+    // Guard against a pathological jump (e.g. a camera cut) turning into
+    // thousands of stamps in one event.
+    const steps = Math.min(96, Math.floor(distance / spacing));
+    for (let i = 1; i <= steps; i += 1) {
+      const t = (i * spacing) / distance;
+      addStamp(
+        openGroup.x + dx * t,
+        openGroup.z + dz * t,
+        layer,
+        radius,
+        strength
+      );
+    }
+    openGroup.x += dx * ((steps * spacing) / distance);
+    openGroup.z += dz * ((steps * spacing) / distance);
+    texture.needsUpdate = true;
+    return steps;
+  }
+
+  function endStroke() {
+    if (!openGroup) return false;
+    const { count } = openGroup;
+    openGroup = null;
+    if (count > 0) {
+      groups.push(count);
+      scheduleSave();
+      return true;
+    }
+    return false;
+  }
+
   return {
     texture,
     applyTo,
     exportData,
     importData,
+    beginStroke,
+    strokeTo,
+    endStroke,
+    /** Number of undo steps — one per finger-drag, not per stamp. */
     get strokeCount() {
-      return strokes.length;
+      return groups.length + (openGroup && openGroup.count ? 1 : 0);
     },
+    get stampCount() {
+      return stamps.length;
+    },
+    /** One-shot dab, used by tests and any caller that is not dragging. */
     paintAt(x, z, { layer, radius, strength = config.strength }) {
-      const stroke = [
-        +x.toFixed(2),
-        +z.toFixed(2),
-        +radius.toFixed(2),
-        layer,
-        +strength.toFixed(2),
-      ];
-      strokes.push(stroke);
-      drawStroke(...stroke);
-      texture.needsUpdate = true;
-      scheduleSave();
+      beginStroke({ layer, radius, strength });
+      strokeTo(x, z);
+      endStroke();
     },
     undo() {
-      if (!strokes.length) return false;
-      strokes.pop();
+      endStroke();
+      if (!groups.length) return false;
+      const count = groups.pop();
+      stamps.splice(Math.max(0, stamps.length - count), count);
       replay();
       scheduleSave();
       return true;
     },
     clear() {
-      strokes.length = 0;
-      replay();
+      openGroup = null;
+      stamps.length = 0;
+      groups.length = 0;
+      clearCanvas();
+      clearSnapshot();
+      texture.needsUpdate = true;
       scheduleSave();
     },
     dispose() {

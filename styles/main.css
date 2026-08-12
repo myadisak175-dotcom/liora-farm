@@ -6,6 +6,16 @@
   --accent: rgba(70, 132, 112, 0.96);
   --danger: rgba(150, 62, 62, 0.94);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* The three bottom HUD zones are laid out from these, so they cannot
+     overlap again: the joystick owns the bottom-left square, the zoom column
+     owns the bottom-right strip, and the action row sits above both. */
+  --joy-size: 130px;
+  --joy-inset: 20px;
+  --joy-bottom: 26px;
+  --zoom-width: 50px;
+  --zoom-inset: 18px;
+  --actions-bottom: calc(var(--joy-bottom) + var(--joy-size) + 12px);
 }
 
 html, body {
@@ -33,6 +43,7 @@ button {
 button.active { outline: 2px solid #fff; }
 button.primary { background: var(--accent); }
 button.danger { background: var(--danger); }
+button:disabled { opacity: 0.4; }
 button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 #status {
@@ -46,7 +57,29 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
   font-size: 12px;
   z-index: 30;
   pointer-events: none;
+  transition: opacity 0.4s;
 }
+#status.hidden { opacity: 0; }
+#status.error { background: var(--danger); }
+
+#pouch {
+  position: fixed;
+  right: 12px;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 30;
+  pointer-events: none;
+}
+#pouch[hidden] { display: none; }
+#pouch .glyph { font-size: 15px; }
 
 #mode-bar {
   position: fixed;
@@ -58,22 +91,57 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 }
 #mode-bar button { padding: 8px 16px; font-size: 13px; }
 
+/* Second row, so it never fights the mode buttons or the status chip on a
+   narrow phone. */
+#clock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(58px + env(safe-area-inset-top, 0px));
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  z-index: 30;
+  backdrop-filter: blur(5px);
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  transform: translate(-50%, 8px);
+  top: calc(96px + env(safe-area-inset-top, 0px));
+  background: rgba(23, 60, 75, 0.94);
+  color: var(--ink);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 31;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+}
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+
 /* ---------------------------------------------------------- play mode */
 #joy {
   position: fixed;
-  left: 20px;
-  bottom: calc(26px + var(--safe-bottom));
-  width: 126px;
-  height: 126px;
+  left: var(--joy-inset);
+  bottom: calc(var(--joy-bottom) + var(--safe-bottom));
+  width: var(--joy-size);
+  height: var(--joy-size);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.21);
   border: 2px solid rgba(255, 255, 255, 0.4);
-  z-index: 10;
+  /* Above the action row on purpose: if the two ever overlap again, the
+     joystick wins rather than silently eating movement input. */
+  z-index: 12;
 }
 #stick {
   position: absolute;
-  left: 39px;
-  top: 39px;
+  left: 50%;
+  top: 50%;
+  margin: -24px 0 0 -24px;
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -82,7 +150,7 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 #zoom {
   position: fixed;
-  right: 18px;
+  right: var(--zoom-inset);
   bottom: calc(28px + var(--safe-bottom));
   display: flex;
   flex-direction: column;
@@ -90,35 +158,49 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
   z-index: 10;
 }
 #zoom button {
-  width: 50px;
-  height: 50px;
+  width: var(--zoom-width);
+  height: var(--zoom-width);
   border-radius: 50%;
   font-size: 24px;
 }
 
+/* Sits above the joystick and left of nothing — full width, wraps instead of
+   hiding buttons in a horizontal scroller. */
 #actions {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(18px + var(--safe-bottom));
+  left: 12px;
+  right: calc(var(--zoom-inset) + var(--zoom-width) + 12px);
+  bottom: calc(var(--actions-bottom) + var(--safe-bottom));
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-content: flex-end;
   gap: 7px;
-  max-width: 56vw;
-  overflow-x: auto;
-  padding: 4px;
   z-index: 11;
 }
 #actions button {
-  padding: 9px 11px;
+  padding: 10px 13px;
   border-radius: 14px;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
+  min-height: 44px;
   flex: 0 0 auto;
 }
+#actions button.ready { background: var(--accent); }
 
-body[data-mode="build"] :is(#joy, #actions, #zoom) { display: none; }
+body[data-mode="build"] :is(#joy, #actions, #pouch) { display: none; }
 
 /* --------------------------------------------------------- build mode */
+/* Zoom stays available in build mode — it used to be hidden along with the
+   joystick, which left pinch as the only way to move the camera at all. It
+   moves to the right edge because the build panel owns the bottom of the
+   screen and its height changes with the tab. */
+body[data-mode="build"] #zoom {
+  top: calc(96px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  right: 12px;
+}
+
 #build-panel {
   position: fixed;
   left: 8px;
@@ -146,6 +228,7 @@ body[data-mode="build"] :is(#joy, #actions, #zoom) { display: none; }
   font-weight: 600;
   padding: 0 2px;
 }
+#build-hint .notice { color: #ffd9d0; }
 
 .strip {
   display: flex;
@@ -170,6 +253,17 @@ body[data-mode="build"] :is(#joy, #actions, #zoom) { display: none; }
   font-size: 10px;
 }
 #asset-strip .glyph { font-size: 19px; }
+
+.strip.cats button {
+  min-height: 34px;
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  opacity: 0.75;
+}
+.strip.cats button.active { opacity: 1; background: var(--accent); }
+
+body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-cats { display: none; }
 
 .strip .range {
   flex: 0 0 auto;

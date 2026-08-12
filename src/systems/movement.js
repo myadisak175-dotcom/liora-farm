@@ -1,6 +1,11 @@
 import * as THREE from "three";
 
-export function createMovementSystem(camera, config, getGroundHeight = () => 0) {
+export function createMovementSystem(
+  camera,
+  config,
+  getGroundHeight = () => 0,
+  getColliders = () => []
+) {
   const cameraForward = new THREE.Vector3();
   const cameraRight = new THREE.Vector3();
   const moveDirection = new THREE.Vector3();
@@ -43,6 +48,39 @@ export function createMovementSystem(camera, config, getGroundHeight = () => 0) 
     );
   }
 
+  /**
+   * Placed objects used to be pure decoration — Liora walked straight through
+   * houses. Each solid object is a circle; overlapping just pushes her back out
+   * along the normal, which reads as sliding along the wall rather than
+   * stopping dead.
+   */
+  function resolveCollisions(root) {
+    const colliders = getColliders();
+    if (!colliders.length) return;
+    const playerRadius = config.playerRadius ?? 0.3;
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      let moved = false;
+      for (const collider of colliders) {
+        const minDistance = collider.radius + playerRadius;
+        let dx = root.position.x - collider.x;
+        let dz = root.position.z - collider.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance >= minDistance) continue;
+
+        if (distance < 1e-4) {
+          dx = 1;
+          dz = 0;
+        }
+        const length = Math.hypot(dx, dz) || 1;
+        root.position.x = collider.x + (dx / length) * minDistance;
+        root.position.z = collider.z + (dz / length) * minDistance;
+        moved = true;
+      }
+      if (!moved) break;
+    }
+  }
+
   function snapToTerrain(root) {
     root.position.y = getGroundHeight(root.position.x, root.position.z);
   }
@@ -66,6 +104,7 @@ export function createMovementSystem(camera, config, getGroundHeight = () => 0) 
 
       player.root.position.addScaledVector(direction, speed * delta);
       rotateToward(player.root, direction, delta);
+      resolveCollisions(player.root);
       clampToWorld(player.root);
       snapToTerrain(player.root);
 
