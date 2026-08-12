@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
-import { createGroundPaint } from "../systems/ground-paint.js?v=dirt2";
+import { createGroundPaint } from "../systems/ground-paint.js?v=dirt3";
 import { createFarmPlot } from "../systems/farming/plot.js";
 
 function tile(texture, repeat) {
