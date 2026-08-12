@@ -172,12 +172,14 @@ export function createBuilderUI({
         actionButton("↺", () => view.nudgeGhost({ rotation: -Math.PI / 12 })),
         actionButton("↻", () => view.nudgeGhost({ rotation: Math.PI / 12 })),
         actionButton("−", () => {
-          view.setGhostScale(currentScale - asset.scaleStep);
+          const liveScale = view.getGhostTransform()?.scale ?? asset.defaultScale;
+          view.setGhostScale(liveScale - asset.scaleStep);
           render();
         }),
         scaleControl(asset, currentScale, (next) => view.setGhostScale(next)),
         actionButton("＋", () => {
-          view.setGhostScale(currentScale + asset.scaleStep);
+          const liveScale = view.getGhostTransform()?.scale ?? asset.defaultScale;
+          view.setGhostScale(liveScale + asset.scaleStep);
           render();
         }),
         actionButton("100%", () => {
