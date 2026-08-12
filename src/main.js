@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CONFIG, ASSETS, ANIMATIONS } from "./config.js?v=dirt-alpha1";
+import { CONFIG, ASSETS, ANIMATIONS } from "./config.js?v=dirt-ground1";
 import { createPlayer } from "./entities/player.js";
-import { createHomeIsland } from "./zones/home-island.js?v=dirt-alpha1";
+import { createHomeIsland } from "./zones/home-island.js?v=dirt-ground1";
 import { createInput } from "./systems/input.js";
 import { createMovementSystem } from "./systems/movement.js";
 import { createCameraController } from "./systems/camera.js";
