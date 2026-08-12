@@ -168,19 +168,9 @@ float wRock = splat.b;
 float wGrass = 1.0 - clamp(wDirt + wSand + wRock, 0.0, 1.0);
 
 vec3 grassColor = texture2D(uGrass, tileUv).rgb;
-vec4 dirtTexel = texture2D(uDirt, tileUv);
+vec3 dirtColor = texture2D(uDirt, tileUv).rgb;
 vec3 sandColor = texture2D(uSand, tileUv).rgb;
 vec3 rockColor = texture2D(uRock, tileUv).rgb;
-
-// The refined dirt asset is different from sand/rock: it contains an alpha
-// channel. Hidden RGB under transparent pixels can be black, so sampling RGB
-// alone turns the painted ground black. Composite the visible dirt detail over
-// a soil base using the texture alpha instead of treating transparent RGB as
-// real color. This preserves the actual dirt pattern while avoiding black.
-vec3 dirtBase = vec3(0.38, 0.21, 0.10);
-float dirtAlpha = smoothstep(0.0, 0.72, dirtTexel.a);
-vec3 dirtDetail = clamp(dirtTexel.rgb * 1.08, 0.0, 1.0);
-vec3 dirtColor = mix(dirtBase, dirtDetail, dirtAlpha);
 
 vec3 surface =
   grassColor * wGrass +
@@ -192,7 +182,7 @@ diffuseColor *= vec4(surface, 1.0);
 `
         );
     };
-    material.customProgramCacheKey = () => "liora-ground-splat-v5-dirt-alpha";
+    material.customProgramCacheKey = () => "liora-ground-splat-v6-opaque-dirt";
     material.needsUpdate = true;
   }
 
