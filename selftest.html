@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Liora Farm Smoke Test</title>
+<style>
+html,body{margin:0;background:#102b36;color:#eef9fc;font-family:system-ui,-apple-system,"Noto Sans Thai",sans-serif}main{max-width:720px;margin:auto;padding:16px}h1{font-size:20px}button{min-height:46px;padding:10px 16px;border-radius:12px;border:1px solid #ffffff55;background:#2c715b;color:white;font:inherit;font-weight:700}li{margin:8px 0;padding:9px;border-radius:10px;background:#ffffff0d}.ok{color:#76e7aa}.bad{color:#ff9d8e}iframe{position:fixed;width:100%;height:100%;left:-200vw;top:0;border:0}
+</style>
+</head>
+<body><main><h1>ตรวจสภาพ Liora Farm</h1><button id="run">เริ่มตรวจ</button><p id="summary">ยังไม่ได้ตรวจ</p><ul id="out"></ul></main><iframe id="game" title="game test"></iframe>
+<script>
+const run=document.querySelector('#run'),out=document.querySelector('#out'),summary=document.querySelector('#summary'),frame=document.querySelector('#game');
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+function row(name,ok,detail=''){const li=document.createElement('li');li.className=ok?'ok':'bad';li.textContent=`${ok?'✓':'✗'} ${name}${detail?` — ${detail}`:''}`;out.append(li);return ok;}
+async function waitFor(fn,ms=15000){const t=Date.now();while(Date.now()-t<ms){try{if(fn())return true}catch{}await sleep(150)}return false}
+function onScreen(win,el){const r=el.getBoundingClientRect();return r.left>=-1&&r.right<=win.innerWidth+1&&r.top>=-1&&r.bottom<=win.innerHeight+1}
+run.onclick=async()=>{run.disabled=true;out.replaceChildren();let pass=0,fail=0;frame.src=`./index.html?smoke=${Date.now()}`;await new Promise(r=>frame.onload=r);const w=frame.contentWindow,d=w.document;const check=(n,c,x='')=>row(n,c,x)?pass++:fail++;
+check('เกมบูตขึ้น',await waitFor(()=>w.__lioraBooted));
+check('มี canvas',Boolean(d.querySelector('canvas')));
+const build=d.querySelector('#mode-bar [data-mode="build"]');build?.click();await sleep(250);
+check('เปิดโหมดสร้างได้',getComputedStyle(d.querySelector('#build-panel')).display!=='none');
+check('มีแท็บปั้นพื้น',Boolean(d.querySelector('#tab-sculpt')));
+d.querySelector('#tab-sculpt')?.click();await sleep(120);
+check('มีเครื่องมือปั้นครบ 4 แบบ',d.querySelectorAll('#sculpt-strip [data-sculpt-tool]').length===4);
+const primary=[...d.querySelectorAll('#build-actions button')];check('ปุ่มหลักอยู่ในจอ',primary.length>0&&primary.every(b=>onScreen(w,b)));
+check('ปุ่มหลักสูงอย่างน้อย 44px',primary.every(b=>b.getBoundingClientRect().height>=44));
+d.querySelector('#mode-bar [data-mode="play"]')?.click();await sleep(120);
+check('กลับ Play แล้วซ่อน Builder',getComputedStyle(d.querySelector('#build-panel')).display==='none');
+summary.textContent=`ผ่าน ${pass} / ${pass+fail}${fail?' — มีจุดต้องตรวจ':' — พร้อมทดสอบบนมือถือ'}`;run.disabled=false;};
+</script></body></html>
