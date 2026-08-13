@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createFantasyHorizon } from "./background/fantasy-horizon.js";
 
 export function createSky(config) {
   const group = new THREE.Group();
@@ -119,16 +120,24 @@ export function createSky(config) {
     }
   }
 
+  // Prototype background: cloud sea, distant low-poly mountains and three
+  // floating islands. It is world-space scenery only, so it never affects
+  // sculpting, collision, saving or the builder.
+  const fantasyHorizon = createFantasyHorizon();
+  group.add(fantasyHorizon.group);
+
   return {
     group,
     update(camera) {
       dome.position.copy(camera.position);
       stars.position.copy(camera.position);
+      fantasyHorizon.update();
     },
     setColors(zenith, horizon, lower) {
       skyMaterial.uniforms.zenithColor.value.copy(zenith);
       skyMaterial.uniforms.horizonColor.value.copy(horizon);
       skyMaterial.uniforms.lowerColor.value.copy(lower);
+      fantasyHorizon.setAtmosphere(horizon, lower);
     },
     setStars(amount) {
       starMaterial.opacity = THREE.MathUtils.clamp(amount, 0, 1) * (config.starOpacity ?? 0.9);
