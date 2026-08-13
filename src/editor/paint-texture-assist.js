@@ -48,6 +48,10 @@ function mount() {
     });
   }
 
+  for (const tab of document.querySelectorAll("#build-tabs button")) {
+    tab.addEventListener("click", () => queueMicrotask(sync));
+  }
+
   strip.append(...extraButtons);
   emitVariant(BASE_DIRT);
   sync();
