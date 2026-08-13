@@ -290,51 +290,34 @@ function exportMap(items) {
 }
 
 // -------------------------------------------------------------------- mode
-let mode = "play";
+let mode = null;
 
-// The builder UI keeps canvas listeners attached even when its panel is hidden.
-// Wrap every mutating builder/paint action plus builder-only camera panning so
-// Play mode is a true read-only world rather than just a hidden editor.
-function buildOnly(target, name, fallback = null) {
-  const original = target[name]?.bind(target);
-  if (!original) return;
-  target[name] = (...args) => (mode === "build" ? original(...args) : fallback);
-}
-
-for (const name of [
-  "beginPlacement",
-  "selectItem",
-  "updateSelected",
-  "duplicateSelected",
-  "deleteSelected",
-  "undo",
-]) {
-  buildOnly(builder, name);
-}
-for (const name of ["beginStroke", "strokeTo", "undo", "clear"]) {
-  buildOnly(world.paint, name, false);
-}
-buildOnly(cameraController, "pan");
+// Scoped to the nav on purpose. A bare `[data-mode]` also matches
+// <body data-mode="play">, so every tap anywhere on the screen re-ran
+// setMode() — which re-entered build mode and threw away whatever was being
+// placed. That is why the build panel could never reach "วางตรงนี้".
+const modeButtons = document.querySelectorAll("#mode-bar [data-mode]");
 
 function setMode(next) {
+  if (next === mode) return;
   const buildMode = next === "build";
   mode = next;
   document.body.dataset.mode = next;
 
-  // Build state is disabled in Play mode, not merely hidden. This flushes any
-  // pending layout edit and clears placement/selection before gameplay resumes.
+  // Build state is disabled in Play mode, not merely hidden: builder-ui stops
+  // listening to the canvas entirely, so Play mode is a read-only world.
   if (buildMode) builder.enable();
   else builder.disable({ saveLayout: true });
 
   cameraController.setOrbitEnabled(!buildMode);
   if (!buildMode) cameraController.clearPan();
   builderUI.show(buildMode);
-  for (const button of document.querySelectorAll("[data-mode]")) {
+  for (const button of modeButtons) {
     button.classList.toggle("active", button.dataset.mode === next);
   }
 }
 
-for (const button of document.querySelectorAll("[data-mode]")) {
+for (const button of modeButtons) {
   button.onclick = () => setMode(button.dataset.mode);
 }
 
