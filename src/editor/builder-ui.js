@@ -46,6 +46,7 @@ export function createBuilderUI({
   const categoryStrip = document.querySelector("#asset-cats");
   const assetStrip = document.querySelector("#asset-strip");
   const paintStrip = document.querySelector("#paint-strip");
+  const tools = document.querySelector("#build-tools");
   const actions = document.querySelector("#build-actions");
   const hint = document.querySelector("#build-hint");
   const tabPlace = document.querySelector("#tab-place");
@@ -55,6 +56,10 @@ export function createBuilderUI({
   const ndc = new THREE.Vector2();
   const activePointers = new Set();
 
+  // Play mode must be a read-only world. These listeners live on the canvas for
+  // the whole session, so they check this instead of relying on the panel being
+  // hidden — that was how a tap in Play mode could still select, move or paint.
+  let active = false;
   let tab = "place";
   let category = ALL_CATEGORY;
   let paintLayer = PAINT_LAYERS.DIRT;
@@ -173,26 +178,27 @@ export function createBuilderUI({
 
     const sizeLabel = document.createElement("label");
     sizeLabel.className = "range";
+    const readout = document.createElement("span");
+    const setReadout = (value) => {
+      readout.textContent = `${value.toFixed(1)} ม.`;
+    };
+    setReadout(paintRadius);
+
     const range = document.createElement("input");
     range.type = "range";
     range.min = String(paintConfig.minRadius);
     range.max = String(paintConfig.maxRadius);
     range.step = "0.1";
     range.value = String(paintRadius);
+    range.setAttribute("aria-label", "ขนาดหัวแปรง");
     range.oninput = () => {
       paintRadius = Number(range.value);
+      setReadout(paintRadius);
     };
-    sizeLabel.append("ขนาด", range);
+    sizeLabel.append("หัวแปรง", range, readout);
 
-    const undo = document.createElement("button");
-    undo.type = "button";
-    undo.textContent = "↶ ย้อน";
-    undo.onclick = () => {
-      paint.undo();
-      render();
-    };
-
-    paintStrip.replaceChildren(...buttons, sizeLabel, undo);
+    // Undo lives in the action row now, where it cannot scroll out of reach.
+    paintStrip.replaceChildren(...buttons, sizeLabel);
   }
 
   function actionButton(label, handler, variant = "") {
@@ -205,10 +211,15 @@ export function createBuilderUI({
   }
 
   function snapButton() {
-    const button = actionButton(snapEnabled ? "📐 กริด" : "📐 อิสระ", () => {
+    const button = actionButton("📐", () => {
       snapEnabled = !snapEnabled;
       render();
-    });
+    }, "icon");
+    button.setAttribute(
+      "aria-label",
+      snapEnabled ? "ปิดการเข้ากริด" : "เปิดการเข้ากริด"
+    );
+    button.title = snapEnabled ? "กริด 0.5 ม." : "วางอิสระ";
     button.classList.toggle("active", snapEnabled);
     return button;
   }
@@ -244,31 +255,54 @@ export function createBuilderUI({
     return next;
   }
 
-  function scaleControl(asset, currentScale, onScale) {
-    const label = document.createElement("label");
-    label.className = "range size-range";
+  /**
+   * The size slider used to eat 200px of a 284px-wide strip, which is how the
+   * "วางตรงนี้" button ended up 265px off the right edge of the phone. Three
+   * small buttons do the same job: − / the current % (tap to reset) / ＋.
+   */
+  function scaleStepper(asset, currentScale, onScale) {
+    const wrap = document.createElement("div");
+    wrap.className = "stepper";
 
-    const text = document.createElement("span");
+    const readout = document.createElement("button");
+    readout.type = "button";
+    readout.className = "readout";
     const setText = (scale) => {
-      text.textContent = `ขนาด ${scalePercent(asset, scale)}%`;
+      readout.textContent = `${scalePercent(asset, scale)}%`;
     };
     setText(currentScale);
-
-    const range = document.createElement("input");
-    range.type = "range";
-    range.min = String(scalePercent(asset, asset.minScale));
-    range.max = String(scalePercent(asset, asset.maxScale));
-    range.step = "1";
-    range.value = String(scalePercent(asset, currentScale));
-    range.oninput = () => {
-      const next = scaleFromPercent(asset, Number(range.value));
-      setText(next);
-      const accepted = onScale(next);
-      if (accepted === false) render();
+    readout.onclick = () => {
+      onScale(asset.defaultScale);
+      render();
     };
 
-    label.append(text, range);
-    return label;
+    const step = (delta) => {
+      const from = currentScaleOf(asset);
+      const next = THREE.MathUtils.clamp(
+        from + delta,
+        asset.minScale,
+        asset.maxScale
+      );
+      setText(next);
+      onScale(next);
+      render();
+    };
+
+    const minus = actionButton("−", () => step(-asset.scaleStep));
+    const plus = actionButton("＋", () => step(asset.scaleStep));
+    minus.setAttribute("aria-label", "เล็กลง");
+    plus.setAttribute("aria-label", "ใหญ่ขึ้น");
+
+    wrap.append(minus, readout, plus);
+    return wrap;
+  }
+
+  function currentScaleOf(asset) {
+    if (controller.context === BUILDER_CONTEXTS.PLACE) {
+      return view.getGhostTransform()?.scale ?? asset.defaultScale;
+    }
+    const item = controller.items.find((entry) => entry.id === selectedId);
+    return item?.scale ?? asset.defaultScale;
   }
 
   async function duplicateSelected() {
@@ -305,10 +339,73 @@ export function createBuilderUI({
     render();
   }
 
+  function iconButton(label, title, handler) {
+    const button = actionButton(label, handler, "icon");
+    button.setAttribute("aria-label", title);
+    return button;
+  }
+
+  /**
+   * Two rows, and the split is the whole point: fiddly controls may scroll,
+   * the button that actually commits the action never can.
+   */
+  function renderTools() {
+    if (tab === "paint") {
+      tools.replaceChildren();
+      return;
+    }
+
+    if (controller.context === BUILDER_CONTEXTS.PLACE) {
+      const asset = getBuildableAsset(currentAssetId);
+      if (!asset) {
+        tools.replaceChildren();
+        return;
+      }
+      tools.replaceChildren(
+        iconButton("↺", "หมุนซ้าย", () => {
+          view.nudgeGhost({ rotation: -Math.PI / 12 });
+          updateGhostValidation();
+        }),
+        iconButton("↻", "หมุนขวา", () => {
+          view.nudgeGhost({ rotation: Math.PI / 12 });
+          updateGhostValidation();
+        }),
+        scaleStepper(asset, currentScaleOf(asset), (next) => {
+          view.setGhostScale(next);
+          updateGhostValidation();
+        }),
+        snapButton()
+      );
+      return;
+    }
+
+    if (controller.context === BUILDER_CONTEXTS.EDIT) {
+      const item = controller.items.find((entry) => entry.id === selectedId);
+      const asset = item ? getBuildableAsset(item.assetId) : null;
+      if (!item || !asset) {
+        tools.replaceChildren();
+        return;
+      }
+      tools.replaceChildren(
+        iconButton("↺", "หมุนซ้าย", () => nudgeSelected({ rotation: -Math.PI / 12 })),
+        iconButton("↻", "หมุนขวา", () => nudgeSelected({ rotation: Math.PI / 12 })),
+        scaleStepper(asset, item.scale, (next) => {
+          updateSelectedTransform({ scale: next }, { recordHistory: true });
+        }),
+        snapButton()
+      );
+      return;
+    }
+
+    const undoButton = iconButton("↶", "ย้อนกลับ", undo);
+    undoButton.disabled = !controller.canUndo;
+    tools.replaceChildren(snapButton(), undoButton);
+  }
+
   function renderActions() {
     if (tab === "paint") {
       actions.replaceChildren(
-        actionButton("↶ ย้อน", () => {
+        actionButton("↶ ย้อนรอยล่าสุด", () => {
           paint.undo();
           render();
         }),
@@ -322,91 +419,30 @@ export function createBuilderUI({
     }
 
     if (controller.context === BUILDER_CONTEXTS.PLACE) {
-      const asset = getBuildableAsset(currentAssetId);
-      const transform = view.getGhostTransform();
-      const currentScale = transform?.scale ?? asset?.defaultScale ?? 1;
-
-      if (!asset) {
-        actions.replaceChildren(actionButton("ยกเลิก", () => controller.cancelPlacement()));
-        return;
-      }
-
       actions.replaceChildren(
-        actionButton("↺", () => {
-          view.nudgeGhost({ rotation: -Math.PI / 12 });
-          updateGhostValidation();
-        }),
-        actionButton("↻", () => {
-          view.nudgeGhost({ rotation: Math.PI / 12 });
-          updateGhostValidation();
-        }),
-        actionButton("−", () => {
-          const liveScale = view.getGhostTransform()?.scale ?? asset.defaultScale;
-          view.setGhostScale(liveScale - asset.scaleStep);
-          updateGhostValidation();
-          render();
-        }),
-        scaleControl(asset, currentScale, (next) => {
-          view.setGhostScale(next);
-          updateGhostValidation();
-          return true;
-        }),
-        actionButton("＋", () => {
-          const liveScale = view.getGhostTransform()?.scale ?? asset.defaultScale;
-          view.setGhostScale(liveScale + asset.scaleStep);
-          updateGhostValidation();
-          render();
-        }),
-        actionButton("100%", () => {
-          view.setGhostScale(asset.defaultScale);
-          updateGhostValidation();
-          render();
-        }),
-        snapButton(),
-        actionButton("วางตรงนี้", commitPlacement, "primary"),
-        actionButton("ยกเลิก", () => controller.cancelPlacement())
+        actionButton("ยกเลิก", () => controller.cancelPlacement()),
+        actionButton("✓ วางตรงนี้", commitPlacement, "primary")
       );
       return;
     }
 
     if (controller.context === BUILDER_CONTEXTS.EDIT) {
       const item = controller.items.find((entry) => entry.id === selectedId);
-      const asset = item ? getBuildableAsset(item.assetId) : null;
-
-      if (!item || !asset) {
-        actions.replaceChildren(actionButton("เสร็จ", () => controller.clearSelection(), "primary"));
+      if (!item) {
+        actions.replaceChildren(
+          actionButton("เสร็จ", () => controller.clearSelection(), "primary")
+        );
         return;
       }
-
       actions.replaceChildren(
-        actionButton("↺", () => nudgeSelected({ rotation: -Math.PI / 12 })),
-        actionButton("↻", () => nudgeSelected({ rotation: Math.PI / 12 })),
-        actionButton("−", () => nudgeSelected({ scale: -asset.scaleStep })),
-        scaleControl(asset, item.scale, (nextScale) => {
-          const next = updateSelectedTransform({ scale: nextScale });
-          if (next) renderHint();
-          return Boolean(next);
-        }),
-        actionButton("＋", () => nudgeSelected({ scale: asset.scaleStep })),
-        actionButton("100%", () => {
-          updateSelectedTransform({ scale: asset.defaultScale });
-          render();
-        }),
-        snapButton(),
-        actionButton("ทำซ้ำ", duplicateSelected),
-        actionButton("↶ ย้อน", undo),
         actionButton("ลบ", deleteSelected, "danger"),
+        actionButton("ทำซ้ำ", duplicateSelected),
         actionButton("เสร็จ", () => controller.clearSelection(), "primary")
       );
       return;
     }
 
-    const undoButton = actionButton("↶ ย้อน", undo);
-    undoButton.disabled = !controller.canUndo;
-
     actions.replaceChildren(
-      snapButton(),
-      undoButton,
       actionButton("บันทึกแผนที่", () => onExport?.(controller.items)),
       actionButton("รีเซ็ตแผนที่", async () => {
         if (!confirm("ล้างสิ่งของทั้งหมดแล้วโหลดแผนที่เริ่มต้นใหม่?\n(สีที่ระบายบนพื้นจะยังอยู่)")) return;
@@ -420,13 +456,13 @@ export function createBuilderUI({
   function renderHint() {
     let base = "";
     if (tab === "paint") {
-      base = `ลากนิ้วเดียวบนพื้นเพื่อระบาย • สองนิ้ว = ซูม/หมุนกล้อง • ${paint.strokeCount} รอย`;
+      base = `ลากนิ้วเดียวเพื่อระบาย • สองนิ้ว = ซูม/หมุนกล้อง • ${paint.strokeCount} รอย`;
     } else if (controller.context === BUILDER_CONTEXTS.PLACE) {
-      base = "ลากบนพื้นเพื่อย้าย แล้วกด วางตรงนี้ • วางซ้ำได้เรื่อย ๆ จนกว่าจะกดยกเลิก";
+      base = "ลากบนพื้นเพื่อเลือกจุด แล้วกด วางตรงนี้ • วางซ้ำได้จนกว่าจะกดยกเลิก";
     } else if (controller.context === BUILDER_CONTEXTS.EDIT) {
-      base = "ลากเพื่อย้าย • ปรับขนาดเป็น % เทียบสัดส่วน Liora • สองนิ้ว = ซูม/หมุนกล้อง";
+      base = "ลากเพื่อย้าย • ขนาดเป็น % เทียบ Liora • สองนิ้ว = ซูม/หมุนกล้อง";
     } else {
-      base = `แตะสิ่งของเพื่อแก้ไข • ลากพื้นว่างเพื่อเลื่อนกล้อง • ทั้งหมด ${controller.items.length} ชิ้น`;
+      base = `แตะสิ่งของเพื่อแก้ไข • ลากพื้นเพื่อเลื่อนกล้อง • ${controller.items.length} ชิ้น`;
     }
     hint.innerHTML = notice
       ? `${base} • <span class="notice">${notice}</span>`
@@ -435,6 +471,9 @@ export function createBuilderUI({
 
   function render() {
     root.dataset.tab = tab;
+    // While positioning something the picker rows are dead weight — hiding them
+    // keeps the panel from eating half the screen on a small phone.
+    root.dataset.context = tab === "paint" ? "paint" : controller.context;
     tabPlace.classList.toggle("active", tab === "place");
     tabPaint.classList.toggle("active", tab === "paint");
 
@@ -451,6 +490,7 @@ export function createBuilderUI({
       button.classList.toggle("active", button.dataset.assetId === currentAssetId);
     }
 
+    renderTools();
     renderActions();
     renderHint();
   }
@@ -506,6 +546,7 @@ export function createBuilderUI({
   }
 
   function onPointerDown(event) {
+    if (!active) return;
     activePointers.add(event.pointerId);
     if (activePointers.size > 1) {
       dragMode = null;
@@ -554,7 +595,7 @@ export function createBuilderUI({
   }
 
   function onPointerMove(event) {
-    if (!dragMode || activePointers.size > 1) return;
+    if (!active || !dragMode || activePointers.size > 1) return;
 
     if (dragMode === "pan") {
       cameraController.pan(event.clientX - lastPanX, event.clientY - lastPanY);
@@ -607,6 +648,7 @@ export function createBuilderUI({
   }
 
   function onPointerEnd(event) {
+    if (!active) return;
     activePointers.delete(event.pointerId);
     if (dragMode === "paint") {
       paint.endStroke();
@@ -667,6 +709,7 @@ export function createBuilderUI({
       render();
     },
     show(visible) {
+      active = Boolean(visible);
       root.classList.toggle("on", visible);
       if (!visible) {
         notice = "";
