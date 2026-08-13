@@ -1,1 +1,72 @@
-<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#173c4b"><title>Liora's Farm</title><link rel="stylesheet" href="./styles/main.css?v=sculpt1"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body data-mode="play"><div id="status">กำลังโหลด…</div><div id="pouch" hidden><span class="glyph">🥕</span><span id="pouch-count">0</span></div><nav id="mode-bar"><button type="button" data-mode="play" class="active">เล่น</button><button type="button" data-mode="build">สร้าง</button></nav><button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button><div id="joy"><div id="stick"></div></div><div id="actions"><button data-action="farm">ถอนผัก</button><button data-action="pickUp">เก็บของ</button><button data-action="hammer">ทุบ</button><button data-action="mirror">ส่องกระจก</button></div><div id="zoom"><button id="camera-reset" aria-label="รีเซ็ตมุมกล้อง">↻</button><button id="zin" aria-label="ซูมเข้า">＋</button><button id="zout" aria-label="ซูมออก">−</button></div><section id="build-panel" aria-label="โหมดสร้าง"><div id="build-tabs"><button type="button" id="tab-place" class="active">วางของ</button><button type="button" id="tab-paint">ระบายพื้น</button><button type="button" id="tab-sculpt">ปั้นพื้น</button></div><div id="build-hint"></div><div id="asset-cats" class="strip cats"></div><div id="asset-strip" class="strip"></div><div id="paint-strip" class="brushes"></div><div id="paint-size" class="sizerow"></div><div id="sculpt-strip" class="brushes"></div><div id="sculpt-size" class="sizerow"></div><div id="build-tools" class="strip tools"></div><div id="build-actions" class="actions"></div></section><div id="toast" aria-live="polite"></div><script>window.addEventListener("load",()=>{setTimeout(()=>{if(window.__lioraBooted)return;const status=document.querySelector("#status");status.textContent="โหลดไม่สำเร็จ — เช็คเน็ตแล้วรีโหลดหน้า";status.classList.add("error")},12000)});</script><script type="module" src="./src/main.js?v=sculpt1"></script></body></html>
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#173c4b">
+<title>Liora's Farm</title>
+<link rel="stylesheet" href="./styles/main.css?v=sculpt1">
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+}}
+</script>
+</head>
+<body data-mode="play">
+
+<div id="status">กำลังโหลด…</div>
+<div id="pouch" hidden><span class="glyph">🥕</span><span id="pouch-count">0</span></div>
+
+<nav id="mode-bar">
+  <button type="button" data-mode="play" class="active">เล่น</button>
+  <button type="button" data-mode="build">สร้าง</button>
+</nav>
+
+<button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button>
+
+<div id="joy"><div id="stick"></div></div>
+<div id="actions">
+  <button data-action="farm">ถอนผัก</button>
+  <button data-action="pickUp">เก็บของ</button>
+  <button data-action="hammer">ทุบ</button>
+  <button data-action="mirror">ส่องกระจก</button>
+</div>
+<div id="zoom">
+  <button id="camera-reset" aria-label="รีเซ็ตมุมกล้อง">↻</button>
+  <button id="zin" aria-label="ซูมเข้า">＋</button>
+  <button id="zout" aria-label="ซูมออก">−</button>
+</div>
+
+<section id="build-panel" aria-label="โหมดสร้าง">
+  <div id="build-tabs">
+    <button type="button" id="tab-place" class="active">วางของ</button>
+    <button type="button" id="tab-paint">ระบายพื้น</button>
+    <button type="button" id="tab-sculpt">ปั้นพื้น</button>
+  </div>
+  <div id="build-hint"></div>
+  <div id="asset-cats" class="strip cats"></div>
+  <div id="asset-strip" class="strip"></div>
+  <div id="paint-strip" class="brushes"></div>
+  <div id="paint-size" class="sizerow"></div>
+  <div id="sculpt-strip" class="brushes"></div>
+  <div id="sculpt-size" class="sizerow"></div>
+  <div id="build-tools" class="strip tools"></div>
+  <div id="build-actions" class="actions"></div>
+</section>
+
+<div id="toast" aria-live="polite"></div>
+<script>
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    if (window.__lioraBooted) return;
+    const status = document.querySelector("#status");
+    status.textContent = "โหลดไม่สำเร็จ — เช็คเน็ตแล้วรีโหลดหน้า";
+    status.classList.add("error");
+  }, 12000);
+});
+</script>
+<script type="module" src="./src/main.js?v=water-sculpt3"></script>
+<script type="module" src="./src/editor/sculpt-assist.js?v=water-sculpt3"></script>
+</body>
+</html>
