@@ -15,77 +15,37 @@ function tile(texture, repeat) {
   return texture;
 }
 
-export async function createHomeIsland({
-  scene,
-  textureLoader,
-  config,
-  assets,
-  reservedAreas = [],
-  onCropsChange,
-}) {
+export async function createHomeIsland({ scene, textureLoader, config, assets, reservedAreas = [], onCropsChange }) {
   const group = new THREE.Group();
   group.name = "HomeIslandZone";
-
   const island = createFloatingIsland(config.island);
   group.add(island);
 
-  const [grass, dirt, sand, rock] = await Promise.all(
-    [assets.grass, assets.dirt, assets.sand, assets.rock].map((url) =>
-      textureLoader.loadAsync(url)
-    )
-  );
+  const urls = [assets.grass, assets.dirt, assets.sand, assets.rock, "./assets/textures/dirt.webp", "./assets/textures/dirt_path_refined.webp"];
+  const [grass, dirt, sand, rock, dirtSoft, dirtPath] = await Promise.all(urls.map((url) => textureLoader.loadAsync(url)));
   const repeat = config.groundPaint.textureRepeat;
   const textures = {
     grass: tile(grass, repeat),
     dirt: tile(dirt, repeat),
     sand: tile(sand, repeat),
     rock: tile(rock, repeat),
+    dirtSoft: tile(dirtSoft, repeat),
+    dirtPath: tile(dirtPath, repeat),
   };
 
-  const height = createTerrainHeight({
-    config: config.sculpt,
-    worldSize: config.terrain.size,
-    spacing: config.terrain.spacing,
-    reservedAreas,
-  });
-
-  const terrain = createTerrain({
-    texture: textures.grass,
-    config: config.terrain,
-    height,
-  });
-
-  const paint = createGroundPaint({
-    config: config.groundPaint,
-    worldSize: config.terrain.size,
-    textures,
-  });
+  const height = createTerrainHeight({ config: config.sculpt, worldSize: config.terrain.size, spacing: config.terrain.spacing, reservedAreas });
+  const terrain = createTerrain({ texture: textures.grass, config: config.terrain, height });
+  const paint = createGroundPaint({ config: config.groundPaint, worldSize: config.terrain.size, textures });
   paint.applyTo(terrain.material);
-
-  const water = createAnimatedWater({
-    size: config.terrain.size,
-    config: config.water,
-  });
-
+  const water = createAnimatedWater({ size: config.terrain.size, config: config.water });
   group.add(water.mesh);
   group.add(terrain.mesh);
 
   const farmPlot = createFarmPlot(config.farmPlot);
   group.add(farmPlot.group);
-
   scene.add(group);
-
-  const brushCursor = createBrushCursor({
-    scene,
-    getGroundHeight: (x, z) => height.sample(x, z),
-    config: config.brushCursor,
-  });
-
-  const crops = createCrops({
-    plot: farmPlot,
-    config: config.farming,
-    onChange: onCropsChange,
-  });
+  const brushCursor = createBrushCursor({ scene, getGroundHeight: (x, z) => height.sample(x, z), config: config.brushCursor });
+  const crops = createCrops({ plot: farmPlot, config: config.farming, onChange: onCropsChange });
 
   return {
     group,
@@ -98,7 +58,6 @@ export async function createHomeIsland({
     farmPlot,
     crops,
     getGroundHeight: (x, z) => height.sample(x, z),
-    /** Render loop calls this every frame; terrain rebuilds only when sculpted. */
     refresh() {
       water.update();
       const changed = terrain.refresh();
