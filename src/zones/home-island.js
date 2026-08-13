@@ -61,6 +61,25 @@ export async function createHomeIsland({
   });
   paint.applyTo(terrain.material);
 
+  const waterGeometry = new THREE.PlaneGeometry(config.terrain.size, config.terrain.size);
+  const waterMaterial = new THREE.MeshStandardMaterial({
+    color: config.water.color,
+    transparent: true,
+    opacity: config.water.opacity,
+    roughness: config.water.roughness,
+    metalness: config.water.metalness,
+    emissive: config.water.emissive,
+    emissiveIntensity: config.water.emissiveIntensity,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+  waterMesh.name = "HomeIslandWater";
+  waterMesh.rotation.x = -Math.PI / 2;
+  waterMesh.position.y = config.water.level;
+  waterMesh.renderOrder = config.water.renderOrder ?? 1;
+
+  group.add(waterMesh);
   group.add(terrain.mesh);
 
   const farmPlot = createFarmPlot(config.farmPlot);
@@ -85,6 +104,7 @@ export async function createHomeIsland({
     ground: terrain.mesh,
     terrain,
     height,
+    water: { mesh: waterMesh, level: config.water.level },
     paint,
     brushCursor,
     farmPlot,
@@ -103,6 +123,8 @@ export async function createHomeIsland({
       paint.dispose();
       height.dispose();
       terrain.dispose();
+      waterGeometry.dispose();
+      waterMaterial.dispose();
       for (const texture of Object.values(textures)) texture.dispose();
       scene.remove(group);
     },
