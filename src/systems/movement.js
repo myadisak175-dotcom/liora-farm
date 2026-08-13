@@ -85,6 +85,55 @@ export function createMovementSystem(
     root.position.y = getGroundHeight(root.position.x, root.position.z);
   }
 
+  /** Steepness of the ground itself at a point, by central difference. */
+  function groundSlope(x, z) {
+    const step = 0.5;
+    const dx =
+      (getGroundHeight(x + step, z) - getGroundHeight(x - step, z)) / (2 * step);
+    const dz =
+      (getGroundHeight(x, z + step) - getGroundHeight(x, z - step)) / (2 * step);
+    return Math.hypot(dx, dz);
+  }
+
+  /**
+   * Two rules, both needed:
+   *   - the destination must not be ground too steep to stand on, otherwise a
+   *     wall can be zigzagged up diagonally (a diagonal path across a 45° face
+   *     measures as only 35°, which is technically true and reads as cheating);
+   *   - the step itself must not be a cliff, which catches ledges between two
+   *     otherwise flat areas.
+   * Both are symmetric — free descent would turn a sculpted pit into a trap you
+   * can drop into but never climb out of.
+   */
+  function walkable(fromX, fromZ, toX, toZ) {
+    const limit = config.maxWalkSlope;
+    if (!Number.isFinite(limit)) return true;
+    if (groundSlope(toX, toZ) > limit) return false;
+    const run = Math.hypot(toX - fromX, toZ - fromZ);
+    if (run < 1e-5) return true;
+    const rise = getGroundHeight(toX, toZ) - getGroundHeight(fromX, fromZ);
+    return Math.abs(rise) / run <= limit;
+  }
+
+  /**
+   * Too steep head-on? Try each axis on its own, which reads as sliding along
+   * the contour instead of sticking to the hillside.
+   */
+  function resolveSlope(root, fromX, fromZ) {
+    const { x, z } = root.position;
+    if (walkable(fromX, fromZ, x, z)) return;
+    if (walkable(fromX, fromZ, x, fromZ)) {
+      root.position.z = fromZ;
+      return;
+    }
+    if (walkable(fromX, fromZ, fromX, z)) {
+      root.position.x = fromX;
+      return;
+    }
+    root.position.x = fromX;
+    root.position.z = fromZ;
+  }
+
   return {
     update({ player, input, delta }) {
       if (!player) {
@@ -102,10 +151,14 @@ export function createMovementSystem(
       const speed = running ? config.runSpeed : config.walkSpeed;
       const direction = getCameraRelativeDirection(input);
 
+      const fromX = player.root.position.x;
+      const fromZ = player.root.position.z;
+
       player.root.position.addScaledVector(direction, speed * delta);
       rotateToward(player.root, direction, delta);
       resolveCollisions(player.root);
       clampToWorld(player.root);
+      resolveSlope(player.root, fromX, fromZ);
       snapToTerrain(player.root);
 
       return { moving: true, running, direction };

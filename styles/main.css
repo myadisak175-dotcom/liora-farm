@@ -342,18 +342,57 @@ body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-cats { displ
 .strip .range input { width: 110px; height: 32px; }
 
 body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-strip { display: none; }
-body[data-mode="build"] #build-panel:not([data-tab="paint"]) #paint-strip { display: none; }
+body[data-mode="build"] #build-panel:not([data-tab="paint"]) :is(#paint-strip, #paint-size) { display: none; }
+body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip, #sculpt-size) { display: none; }
+
+/* Brushes as a fixed grid, never a scroller. A size slider parked at the end
+   of a scrolling strip is exactly how the place button ended up off-screen —
+   the same mistake, one tab over. */
+.brushes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.brushes button {
+  min-height: 46px;
+  padding: 6px 2px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sizerow { display: flex; }
+/* The label is the flex item, so it has to be the flex container too —
+   otherwise the slider keeps its default ~130px width and the row looks
+   half empty on a phone. */
+.sizerow label {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sizerow input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+}
+.sizerow .value { min-width: 56px; text-align: right; }
+#build-tabs button { min-height: 44px; }
 /* An empty tool row would otherwise leave a gap above the action buttons. */
 #build-tools:empty { display: none; }
 
 /* Short screens (iPhone SE and friends): the picker state was taking over half
    the display. Trim the chrome, never the action row. */
 @media (max-height: 640px) {
-  #build-panel { gap: 5px; padding: 7px; }
+  #build-panel { gap: 4px; padding: 7px; }
   #build-tabs button { padding: 8px; }
   #build-hint { -webkit-line-clamp: 1; font-size: 11px; }
-  .strip.cats button { min-height: 36px; padding: 4px 10px; }
-  #asset-strip button { min-height: 46px; min-width: 58px; }
+  .strip.cats button { min-height: 34px; padding: 3px 10px; font-size: 11px; }
+  #asset-strip button { min-height: 44px; min-width: 56px; }
   #asset-strip .glyph { font-size: 19px; }
   .strip.tools button.icon { min-width: 44px; min-height: 44px; }
 }

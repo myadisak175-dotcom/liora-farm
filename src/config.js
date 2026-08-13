@@ -24,6 +24,9 @@ export const CONFIG = Object.freeze({
   walkSpeed: 2.4,
   runSpeed: 5.2,
   runThreshold: 0.78,
+  // Steeper than this and Liora walks along the slope instead of up it —
+  // without a limit you can climb a sculpted wall like a ladder.
+  maxWalkSlope: 0.75,
 
   animationSpeed: {
     idle: 1,
@@ -91,12 +94,42 @@ export const CONFIG = Object.freeze({
     skyColor: 0x9bd8f5,
   },
 
-  // Ground is deliberately dead flat. Shape is expressed by painting
-  // surfaces, not by height. getHeight() always returns 0.
+  // Ground shape comes from the height field, sampled by both the geometry and
+  // by getHeight(). 0.5 m spacing over 42 m = an 85x85 grid, 7,225 vertices.
   terrain: {
     size: 42,
-    segments: 1,
+    spacing: 0.5,
     renderOrder: 0,
+  },
+
+  // Sculpting brushes. Heights are metres.
+  sculpt: {
+    minRadius: 1,
+    maxRadius: 6,
+    defaultRadius: 3,
+    // Metres per second of held brush, at the centre of the falloff.
+    strength: 0.9,
+    smoothRate: 3.2,
+    flattenRate: 2.6,
+    minHeight: -3,
+    maxHeight: 7,
+    // The rim has to fall back to 0 or the island silhouette breaks away from
+    // the fixed cliff geometry underneath it.
+    edgeMargin: 4,
+    // Reserved ground (the farm beds) stays flat, with a soft ramp around it.
+    reservedFeather: 1.6,
+    undoLimit: 12,
+    storageKey: "liora.terrain-height.v1",
+  },
+
+  // The ring that shows where a brush will land and how wide it is.
+  brushCursor: {
+    segments: 48,
+    color: 0xffffff,
+    blockedColor: 0xff8a72,
+    opacity: 0.85,
+    lift: 0.05,
+    renderOrder: 8,
   },
 
   // Free-brush splat painting over the single ground mesh.

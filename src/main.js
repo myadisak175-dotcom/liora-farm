@@ -63,6 +63,17 @@ document.body.prepend(renderer.domElement);
 // ------------------------------------------------------------------- world
 const textureLoader = new THREE.TextureLoader();
 
+// Ground that is off limits to both the builder and the sculpting brushes.
+// The vegetable beds are modelled flat, so a hill under them would tear.
+const RESERVED_AREAS = [
+  {
+    x: CONFIG.farmPlot.position.x,
+    z: CONFIG.farmPlot.position.z,
+    radius: CONFIG.farmPlot.reservedRadius,
+    label: "แปลงผัก",
+  },
+];
+
 let world = null;
 try {
   world = await createHomeIsland({
@@ -70,6 +81,7 @@ try {
     textureLoader,
     config: CONFIG,
     assets: ASSETS,
+    reservedAreas: RESERVED_AREAS,
     onCropsChange: () => refreshFarmHud(),
   });
 } catch (error) {
@@ -126,14 +138,7 @@ const builder = createBuilderController({
   // Same number the player is clamped to, so nothing can be placed in a ring
   // Liora can never walk to.
   worldHalfSize: CONFIG.worldLimit,
-  reservedAreas: [
-    {
-      x: CONFIG.farmPlot.position.x,
-      z: CONFIG.farmPlot.position.z,
-      radius: CONFIG.farmPlot.reservedRadius,
-      label: "แปลงผัก",
-    },
-  ],
+  reservedAreas: RESERVED_AREAS,
   gridSize: CONFIG.builder.gridSize,
   saveDebounceMs: CONFIG.builder.saveDebounceMs,
   onContextChange: () => builderUI?.render(),
@@ -152,6 +157,10 @@ builderUI = createBuilderUI({
   view: builderView,
   paint: world.paint,
   paintConfig: CONFIG.groundPaint,
+  height: world.height,
+  sculptConfig: CONFIG.sculpt,
+  brushCursor: world.brushCursor,
+  reservedAreas: RESERVED_AREAS,
   builderConfig: CONFIG.builder,
   ground: world.ground,
   camera,
@@ -159,6 +168,10 @@ builderUI = createBuilderUI({
   surface: renderer.domElement,
   onExport: exportMap,
   onResetLayout: resetLayout,
+  onTerrainChange: () => {
+    // Objects sit on the ground, so a sculpted hill moves whatever stands on it.
+    for (const item of builder.items) builderView.update(item);
+  },
 });
 
 const movement = createMovementSystem(
@@ -221,6 +234,13 @@ async function loadLayout() {
       if (map.groundPaint) {
         world.paint.importData(map.groundPaint);
       }
+      if (map.terrainHeight) {
+        if (!world.height.importData(map.terrainHeight)) {
+          console.warn("Default map terrain height could not be loaded");
+        }
+      } else if (!world.height.isFlat()) {
+        world.height.clear();
+      }
     } catch (error) {
       console.warn("Default map could not be loaded", error);
     }
@@ -256,6 +276,13 @@ async function resetLayout() {
     // ground paint as a side effect of resetting the object layout is not what
     // the button says it does.
     if (map.groundPaint) world.paint.importData(map.groundPaint);
+    if (map.terrainHeight) {
+      if (!world.height.importData(map.terrainHeight)) {
+        console.warn("Default map terrain height could not be loaded");
+      }
+    } else if (!world.height.isFlat()) {
+      world.height.clear();
+    }
     await spawnAll();
     toast("โหลดแผนที่เริ่มต้นแล้ว");
   } catch (error) {
@@ -278,6 +305,7 @@ function exportMap(items) {
       scale: +scale.toFixed(3),
     })),
     groundPaint: world.paint.exportData(),
+    terrainHeight: world.height.exportData(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
@@ -321,7 +349,10 @@ for (const button of modeButtons) {
   button.onclick = () => setMode(button.dataset.mode);
 }
 
-addEventListener("pagehide", () => builder.flushSave());
+addEventListener("pagehide", () => {
+  builder.flushSave();
+  world.height.flushSave();
+});
 
 // ------------------------------------------------------------ action bar
 const farmButton = document.querySelector('[data-action="farm"]');
@@ -461,6 +492,8 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.04);
 
   dayNight.update(delta);
+  // Rebuilds the ground mesh only on the frames where something was sculpted.
+  world.refresh();
   updatePlayer(delta);
   world.crops.update(delta);
   if (mode === "play") updateFarmTarget(delta);

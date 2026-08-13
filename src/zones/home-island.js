@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
+import { createTerrainHeight } from "../systems/terrain-height.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
+import { createBrushCursor } from "../systems/brush-cursor.js";
 import { createFarmPlot } from "../systems/farming/plot.js";
 import { createCrops } from "../systems/farming/crops.js";
 
@@ -12,7 +14,14 @@ function tile(texture, repeat) {
   return texture;
 }
 
-export async function createHomeIsland({ scene, textureLoader, config, assets, onCropsChange }) {
+export async function createHomeIsland({
+  scene,
+  textureLoader,
+  config,
+  assets,
+  reservedAreas = [],
+  onCropsChange,
+}) {
   const group = new THREE.Group();
   group.name = "HomeIslandZone";
 
@@ -32,7 +41,18 @@ export async function createHomeIsland({ scene, textureLoader, config, assets, o
     rock: tile(rock, repeat),
   };
 
-  const terrain = createTerrain({ texture: textures.grass, config: config.terrain });
+  const height = createTerrainHeight({
+    config: config.sculpt,
+    worldSize: config.terrain.size,
+    spacing: config.terrain.spacing,
+    reservedAreas,
+  });
+
+  const terrain = createTerrain({
+    texture: textures.grass,
+    config: config.terrain,
+    height,
+  });
 
   const paint = createGroundPaint({
     config: config.groundPaint,
@@ -48,6 +68,12 @@ export async function createHomeIsland({ scene, textureLoader, config, assets, o
 
   scene.add(group);
 
+  const brushCursor = createBrushCursor({
+    scene,
+    getGroundHeight: (x, z) => height.sample(x, z),
+    config: config.brushCursor,
+  });
+
   const crops = createCrops({
     plot: farmPlot,
     config: config.farming,
@@ -58,14 +84,24 @@ export async function createHomeIsland({ scene, textureLoader, config, assets, o
     group,
     ground: terrain.mesh,
     terrain,
+    height,
     paint,
+    brushCursor,
     farmPlot,
     crops,
-    getGroundHeight: terrain.getHeight,
+    getGroundHeight: (x, z) => height.sample(x, z),
+    /** Render loop calls this; it is a no-op unless something was sculpted. */
+    refresh() {
+      const changed = terrain.refresh();
+      if (changed) brushCursor.refresh();
+      return changed;
+    },
     dispose() {
+      brushCursor.dispose();
       crops.dispose();
       farmPlot.dispose();
       paint.dispose();
+      height.dispose();
       terrain.dispose();
       for (const texture of Object.values(textures)) texture.dispose();
       scene.remove(group);

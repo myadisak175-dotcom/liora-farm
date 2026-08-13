@@ -246,8 +246,12 @@ export function createBuilderController({
         dz = 0;
         length = 1;
       }
-      x = other.x + (dx / length) * minDistance;
-      z = other.z + (dz / length) * minDistance;
+      // Push a hair past the limit. Landing exactly on it means the distance
+      // can round back under when validatePlacement recomputes it, and a move
+      // gets refused immediately after being resolved.
+      const clearance = minDistance + 1e-3;
+      x = other.x + (dx / length) * clearance;
+      z = other.z + (dz / length) * clearance;
     }
 
     x = Math.min(limit, Math.max(-limit, x));
