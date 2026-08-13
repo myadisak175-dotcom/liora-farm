@@ -102,6 +102,18 @@ export const CONFIG = Object.freeze({
     renderOrder: 0,
   },
 
+  // Fixed water surface: dig the terrain below this level and water appears.
+  water: {
+    level: -0.6,
+    color: 0x55b7df,
+    opacity: 0.72,
+    roughness: 0.28,
+    metalness: 0.03,
+    emissive: 0x123e55,
+    emissiveIntensity: 0.12,
+    renderOrder: 1,
+  },
+
   // Sculpting brushes. Heights are metres.
   sculpt: {
     minRadius: 1,
@@ -109,6 +121,9 @@ export const CONFIG = Object.freeze({
     defaultRadius: 3,
     // Metres per second of held brush, at the centre of the falloff.
     strength: 0.9,
+    // Kept beside the brush controls so the mobile hint can show the threshold.
+    // Must match CONFIG.water.level.
+    waterLevel: -0.6,
     smoothRate: 3.2,
     flattenRate: 2.6,
     minHeight: -3,
