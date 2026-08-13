@@ -7,7 +7,20 @@ export const PAINT_LAYERS = Object.freeze({
   GRASS: 3,
 });
 
-const INK = { 0: "255,0,0", 1: "0,255,0", 2: "0,0,255" };
+export const DIRT_VARIANTS = Object.freeze({
+  DIRT: "dirt",
+  SOFT_DIRT: "dirtSoft",
+  DIRT_PATH: "dirtPath",
+});
+
+const PRIMARY_INK = { 0: "255,0,0", 1: "0,255,0", 2: "0,0,255" };
+const EXTRA_INK = {
+  [DIRT_VARIANTS.SOFT_DIRT]: "255,0,0",
+  [DIRT_VARIANTS.DIRT_PATH]: "0,255,0",
+};
+const VALID_LAYERS = new Set(Object.values(PAINT_LAYERS));
+const VALID_DIRT_VARIANTS = new Set(Object.values(DIRT_VARIANTS));
+const VARIANT_EVENT = "liora-paint-variant";
 
 function parseRgb(rgb) {
   return rgb.split(",").map(Number);
@@ -24,146 +37,136 @@ function mixRgb(a, b, amount) {
 function gradientProfile(layer) {
   switch (layer) {
     case PAINT_LAYERS.DIRT:
-      // Longest feather: dirt should melt into grass the most.
       return [
-        [0.00, 0.00],
-        [0.08, 0.00],
-        [0.20, 0.08],
-        [0.34, 0.18],
-        [0.50, 0.34],
-        [0.66, 0.54],
-        [0.80, 0.72],
-        [0.90, 0.86],
-        [0.97, 0.96],
-        [1.00, 1.00],
+        [0.00, 0.00], [0.08, 0.00], [0.20, 0.08], [0.34, 0.18],
+        [0.50, 0.34], [0.66, 0.54], [0.80, 0.72], [0.90, 0.86],
+        [0.97, 0.96], [1.00, 1.00],
       ];
     case PAINT_LAYERS.SAND:
-      // Medium soft: still fluffy, but keep shoreline/path shape a bit clearer.
       return [
-        [0.00, 0.00],
-        [0.12, 0.00],
-        [0.26, 0.10],
-        [0.42, 0.24],
-        [0.58, 0.42],
-        [0.74, 0.62],
-        [0.86, 0.80],
-        [0.94, 0.92],
+        [0.00, 0.00], [0.12, 0.00], [0.26, 0.10], [0.42, 0.24],
+        [0.58, 0.42], [0.74, 0.62], [0.86, 0.80], [0.94, 0.92],
         [1.00, 1.00],
       ];
     case PAINT_LAYERS.ROCK:
-      // Shorter feather: reduce the grey halo around rock edges.
       return [
-        [0.00, 0.00],
-        [0.18, 0.00],
-        [0.34, 0.10],
-        [0.52, 0.26],
-        [0.68, 0.46],
-        [0.82, 0.68],
-        [0.92, 0.86],
-        [0.98, 0.96],
+        [0.00, 0.00], [0.18, 0.00], [0.34, 0.10], [0.52, 0.26],
+        [0.68, 0.46], [0.82, 0.68], [0.92, 0.86], [0.98, 0.96],
         [1.00, 1.00],
       ];
     case PAINT_LAYERS.GRASS:
     default:
-      // Grass erase should feel forgiving like dirt.
       return [
-        [0.00, 0.00],
-        [0.08, 0.00],
-        [0.20, 0.08],
-        [0.34, 0.18],
-        [0.50, 0.34],
-        [0.66, 0.54],
-        [0.80, 0.72],
-        [0.90, 0.86],
-        [0.97, 0.96],
-        [1.00, 1.00],
+        [0.00, 0.00], [0.08, 0.00], [0.20, 0.08], [0.34, 0.18],
+        [0.50, 0.34], [0.66, 0.54], [0.80, 0.72], [0.90, 0.86],
+        [0.97, 0.96], [1.00, 1.00],
       ];
   }
 }
 
-/**
- * Free-brush splat painting for the single ground mesh.
- * Owns the splat canvas + stroke history only. It never touches the DOM,
- * the camera or the builder; the caller decides when a stroke happens.
- */
-export function createGroundPaint({ config, worldSize, textures }) {
-  const size = config.resolution;
-  const half = worldSize / 2;
-  const pixelsPerUnit = size / worldSize;
-
+function makeMask(size) {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.NoColorSpace;
   texture.generateMipmaps = false;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+  return { canvas, ctx, texture };
+}
 
-  // `stamps` is every circle ever drawn; `groups` records how many stamps each
-  // finger-drag produced. Undo pops a whole drag — one swipe used to cost 19
-  // taps of ↶ because every stamp was its own undo step.
+function clearBlack(ctx, size) {
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, size, size);
+  ctx.restore();
+}
+
+function copyCanvas(targetCtx, sourceCanvas) {
+  targetCtx.save();
+  targetCtx.globalCompositeOperation = "copy";
+  targetCtx.globalAlpha = 1;
+  targetCtx.drawImage(sourceCanvas, 0, 0);
+  targetCtx.restore();
+}
+
+function v2StorageKey(key) {
+  return /\.v1$/.test(key) ? key.replace(/\.v1$/, ".v2") : `${key}.v2`;
+}
+
+/**
+ * Paint V2 keeps the original RGB splat untouched in concept and adds a second
+ * RGB mask for optional texture variants. The old V1 localStorage key remains
+ * read-only so rolling back to the stable build restores the old paint safely.
+ */
+export function createGroundPaint({ config, worldSize, textures }) {
+  const size = config.resolution;
+  const half = worldSize / 2;
+  const pixelsPerUnit = size / worldSize;
+
+  const primary = makeMask(size);
+  const extra = makeMask(size);
+  const texture = primary.texture;
+  const extraTexture = extra.texture;
+
   const stamps = [];
   const groups = [];
   let saveTimer = null;
   let openGroup = null;
+  let currentDirtVariant = DIRT_VARIANTS.DIRT;
 
-  // Undo used to redraw every stroke from scratch, and each stroke is two
-  // radial gradients — a long painting session made undo hitch for a second.
-  // One rolling snapshot means replay only ever redraws the tail.
   const snapshotInterval = Math.max(1, config.snapshotInterval ?? 40);
-  const snapshotCanvas = document.createElement("canvas");
-  snapshotCanvas.width = snapshotCanvas.height = size;
-  const snapshotCtx = snapshotCanvas.getContext("2d");
+  const primarySnapshot = document.createElement("canvas");
+  const extraSnapshot = document.createElement("canvas");
+  primarySnapshot.width = primarySnapshot.height = size;
+  extraSnapshot.width = extraSnapshot.height = size;
+  const primarySnapshotCtx = primarySnapshot.getContext("2d");
+  const extraSnapshotCtx = extraSnapshot.getContext("2d");
   let snapshotCount = 0;
 
-  function clearCanvas() {
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, size, size);
-    ctx.restore();
+  const legacyKey = config.storageKey;
+  const storageKey = v2StorageKey(legacyKey);
+
+  function markDirty() {
+    texture.needsUpdate = true;
+    extraTexture.needsUpdate = true;
   }
 
-  function clearSnapshot() {
-    snapshotCtx.save();
-    snapshotCtx.globalCompositeOperation = "source-over";
-    snapshotCtx.globalAlpha = 1;
-    snapshotCtx.fillStyle = "#000";
-    snapshotCtx.fillRect(0, 0, size, size);
-    snapshotCtx.restore();
+  function clearCanvases() {
+    clearBlack(primary.ctx, size);
+    clearBlack(extra.ctx, size);
+  }
+
+  function clearSnapshots() {
+    clearBlack(primarySnapshotCtx, size);
+    clearBlack(extraSnapshotCtx, size);
     snapshotCount = 0;
   }
 
-  // `count` is how many stamps the snapshot represents — not always the
-  // current stroke count, since a rebuild snapshots an earlier boundary.
   function takeSnapshot(count = stamps.length) {
-    snapshotCtx.save();
-    snapshotCtx.globalCompositeOperation = "copy";
-    snapshotCtx.globalAlpha = 1;
-    snapshotCtx.drawImage(canvas, 0, 0);
-    snapshotCtx.restore();
+    copyCanvas(primarySnapshotCtx, primary.canvas);
+    copyCanvas(extraSnapshotCtx, extra.canvas);
     snapshotCount = count;
   }
 
-  function gradient(cx, cy, r, innerRgb, outerRgb, layer) {
+  function gradient(ctx, cx, cy, r, innerRgb, outerRgb, layer) {
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
     for (const [stop, mix] of gradientProfile(layer)) {
-      const rgb =
-        mix <= 0
-          ? innerRgb
-          : mix >= 1
-            ? outerRgb
-            : mixRgb(innerRgb, outerRgb, mix);
+      const rgb = mix <= 0
+        ? innerRgb
+        : mix >= 1
+          ? outerRgb
+          : mixRgb(innerRgb, outerRgb, mix);
       g.addColorStop(stop, `rgb(${rgb})`);
     }
     return g;
   }
 
-  function stamp(cx, cy, r, fill, mode, alpha) {
+  function stamp(ctx, cx, cy, r, fill, mode, alpha) {
     ctx.save();
     ctx.globalCompositeOperation = mode;
     ctx.globalAlpha = alpha;
@@ -174,94 +177,113 @@ export function createGroundPaint({ config, worldSize, textures }) {
     ctx.restore();
   }
 
-  function drawStroke(x, z, radius, layer, strength) {
+  function eraseMask(ctx, cx, cy, r, layer, alpha) {
+    stamp(
+      ctx,
+      cx,
+      cy,
+      r,
+      gradient(ctx, cx, cy, r, "0,0,0", "255,255,255", layer),
+      "multiply",
+      alpha
+    );
+  }
+
+  function paintInk(ctx, cx, cy, r, layer, alpha, ink) {
+    stamp(
+      ctx,
+      cx,
+      cy,
+      r,
+      gradient(ctx, cx, cy, r, ink, "255,255,255", layer),
+      "multiply",
+      alpha
+    );
+    stamp(
+      ctx,
+      cx,
+      cy,
+      r,
+      gradient(ctx, cx, cy, r, ink, "0,0,0", layer),
+      "lighter",
+      alpha
+    );
+  }
+
+  function normalizeVariant(layer, variant) {
+    if (layer !== PAINT_LAYERS.DIRT) return null;
+    return VALID_DIRT_VARIANTS.has(variant) ? variant : DIRT_VARIANTS.DIRT;
+  }
+
+  function drawStroke(x, z, radius, layer, strength, variant = null) {
     const cx = (x + half) * pixelsPerUnit;
     const cy = (z + half) * pixelsPerUnit;
     const r = Math.max(1, radius * pixelsPerUnit);
     const alpha = THREE.MathUtils.clamp(strength, 0, 1);
 
     if (layer === PAINT_LAYERS.GRASS) {
-      stamp(
-        cx,
-        cy,
-        r,
-        gradient(cx, cy, r, "0,0,0", "255,255,255", layer),
-        "multiply",
-        alpha
-      );
+      eraseMask(primary.ctx, cx, cy, r, layer, alpha);
+      eraseMask(extra.ctx, cx, cy, r, layer, alpha);
       return;
     }
 
-    const ink = INK[layer];
+    const dirtVariant = normalizeVariant(layer, variant);
+    if (layer === PAINT_LAYERS.DIRT && dirtVariant !== DIRT_VARIANTS.DIRT) {
+      eraseMask(primary.ctx, cx, cy, r, layer, alpha);
+      paintInk(extra.ctx, cx, cy, r, layer, alpha, EXTRA_INK[dirtVariant]);
+      return;
+    }
+
+    const ink = PRIMARY_INK[layer];
     if (!ink) return;
-    stamp(
-      cx,
-      cy,
-      r,
-      gradient(cx, cy, r, ink, "255,255,255", layer),
-      "multiply",
-      alpha
-    );
-    stamp(
-      cx,
-      cy,
-      r,
-      gradient(cx, cy, r, ink, "0,0,0", layer),
-      "lighter",
-      alpha
-    );
+    eraseMask(extra.ctx, cx, cy, r, layer, alpha);
+    paintInk(primary.ctx, cx, cy, r, layer, alpha, ink);
   }
 
   function replayAll() {
-    clearCanvas();
-    clearSnapshot();
+    clearCanvases();
+    clearSnapshots();
     for (let i = 0; i < stamps.length; i += 1) {
       drawStroke(...stamps[i]);
-      // Must be i + 1, not the default: the snapshot represents the stamps
-      // drawn so far, not the whole list. Labelling it with the full length
-      // made the first undo after a reload silently drop the stamps between
-      // the last boundary and the end.
       if ((i + 1) % snapshotInterval === 0) takeSnapshot(i + 1);
     }
-    texture.needsUpdate = true;
+    markDirty();
   }
 
   function replay() {
-    // Undoing back past the snapshot means the snapshot is stale; rebuild it
-    // once at the nearest boundary instead of on every subsequent undo.
     if (snapshotCount > stamps.length) {
-      const boundary =
-        Math.floor(stamps.length / snapshotInterval) * snapshotInterval;
-      clearCanvas();
-      clearSnapshot();
+      const boundary = Math.floor(stamps.length / snapshotInterval) * snapshotInterval;
+      clearCanvases();
+      clearSnapshots();
       for (let i = 0; i < boundary; i += 1) drawStroke(...stamps[i]);
       takeSnapshot(boundary);
     }
 
-    ctx.save();
-    ctx.globalCompositeOperation = "copy";
-    ctx.globalAlpha = 1;
-    ctx.drawImage(snapshotCanvas, 0, 0);
-    ctx.restore();
+    copyCanvas(primary.ctx, primarySnapshot);
+    copyCanvas(extra.ctx, extraSnapshot);
+    for (let i = snapshotCount; i < stamps.length; i += 1) drawStroke(...stamps[i]);
+    markDirty();
+  }
 
-    for (let i = snapshotCount; i < stamps.length; i += 1) {
-      drawStroke(...stamps[i]);
+  function exportData() {
+    return {
+      version: 1,
+      strokes: stamps.map((entry) => [...entry]),
+      groups: [...groups],
+    };
+  }
+
+  function persist() {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(exportData()));
+    } catch (error) {
+      console.warn("Ground paint V2 could not be saved", error);
     }
-    texture.needsUpdate = true;
   }
 
   function scheduleSave() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(
-          config.storageKey,
-          JSON.stringify(exportData())
-        );
-      } catch (error) {
-        console.warn("Ground paint could not be saved", error);
-      }
-    }, 250);
+    saveTimer = setTimeout(persist, 250);
   }
 
   function normalizeStroke(stroke) {
@@ -272,34 +294,21 @@ export function createGroundPaint({ config, worldSize, textures }) {
     const layer = Number(stroke[3]);
     const strength = Number(stroke[4]);
     if (![x, z, radius, layer, strength].every(Number.isFinite)) return null;
-    if (![PAINT_LAYERS.DIRT, PAINT_LAYERS.SAND, PAINT_LAYERS.ROCK, PAINT_LAYERS.GRASS].includes(layer)) {
-      return null;
-    }
-    return [x, z, radius, layer, THREE.MathUtils.clamp(strength, 0, 1)];
-  }
-
-  function exportData() {
-    return {
-      version: 1,
-      strokes: stamps.map((stamp) => [...stamp]),
-      // Added alongside `strokes` rather than as a new schema version: an older
-      // build ignores this field and simply undoes stamp by stamp again.
-      groups: [...groups],
-    };
+    if (!VALID_LAYERS.has(layer)) return null;
+    const variant = normalizeVariant(layer, stroke[5]);
+    return [x, z, radius, layer, THREE.MathUtils.clamp(strength, 0, 1), variant];
   }
 
   function normalizeGroups(rawGroups, total) {
     const sizes = [];
     let counted = 0;
     for (const value of Array.isArray(rawGroups) ? rawGroups : []) {
-      const size = Math.floor(Number(value));
-      if (!Number.isFinite(size) || size < 1) continue;
-      if (counted + size > total) break;
-      sizes.push(size);
-      counted += size;
+      const groupSize = Math.floor(Number(value));
+      if (!Number.isFinite(groupSize) || groupSize < 1) continue;
+      if (counted + groupSize > total) break;
+      sizes.push(groupSize);
+      counted += groupSize;
     }
-    // Anything not covered (older saves, or a truncated list) falls back to one
-    // stamp per undo step, which is what those saves meant anyway.
     while (counted < total) {
       sizes.push(1);
       counted += 1;
@@ -325,25 +334,24 @@ export function createGroundPaint({ config, worldSize, textures }) {
 
   function load() {
     try {
-      const raw = localStorage.getItem(config.storageKey);
-      if (!raw) return;
-      importData(JSON.parse(raw), { save: false });
+      const v2 = localStorage.getItem(storageKey);
+      if (v2) {
+        importData(JSON.parse(v2), { save: false });
+        return;
+      }
+      const legacy = localStorage.getItem(legacyKey);
+      if (!legacy) return;
+      if (importData(JSON.parse(legacy), { save: false })) scheduleSave();
     } catch (error) {
       console.warn("Ground paint could not be loaded", error);
     }
   }
 
-  clearCanvas();
-  // The snapshot has to start as opaque black too — replay copies it wholesale
-  // over the live canvas, and a transparent snapshot would wipe the base.
-  clearSnapshot();
-  texture.needsUpdate = true;
+  clearCanvases();
+  clearSnapshots();
+  markDirty();
   load();
 
-  /**
-   * Blends grass/dirt/sand/rock inside ONE ground material.
-   * No overlay tiles, so painted edges stay soft.
-   */
   function applyTo(material) {
     material.onBeforeCompile = (shader) => {
       if (!shader.fragmentShader.includes("#include <map_fragment>")) {
@@ -352,58 +360,67 @@ export function createGroundPaint({ config, worldSize, textures }) {
       }
 
       shader.uniforms.uSplat = { value: texture };
+      shader.uniforms.uSplatExtra = { value: extraTexture };
       shader.uniforms.uGrass = { value: textures.grass };
       shader.uniforms.uDirt = { value: textures.dirt };
       shader.uniforms.uSand = { value: textures.sand };
       shader.uniforms.uRock = { value: textures.rock };
+      shader.uniforms.uSoftDirt = { value: textures.dirtSoft };
+      shader.uniforms.uDirtPath = { value: textures.dirtPath };
       shader.uniforms.uRepeat = { value: config.textureRepeat };
 
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          `#include <common>\nuniform sampler2D uSplat;\nuniform sampler2D uGrass;\nuniform sampler2D uDirt;\nuniform sampler2D uSand;\nuniform sampler2D uRock;\nuniform float uRepeat;`
+          `#include <common>\nuniform sampler2D uSplat;\nuniform sampler2D uSplatExtra;\nuniform sampler2D uGrass;\nuniform sampler2D uDirt;\nuniform sampler2D uSand;\nuniform sampler2D uRock;\nuniform sampler2D uSoftDirt;\nuniform sampler2D uDirtPath;\nuniform float uRepeat;`
         )
         .replace(
           "#include <map_fragment>",
           `
-// vMapUv already carries the grass map's repeat transform, so it runs
-// 0..uRepeat across the ground. Divide it back down for the splat lookup
-// and use it as-is for the tiled surface lookup.
 vec2 splatUv = vMapUv / uRepeat;
 vec2 tileUv = vMapUv;
 vec3 splat = texture2D(uSplat, splatUv).rgb;
+vec3 splatExtra = texture2D(uSplatExtra, splatUv).rgb;
+
 float wDirt = splat.r;
 float wSand = splat.g;
 float wRock = splat.b;
-float wGrass = 1.0 - clamp(wDirt + wSand + wRock, 0.0, 1.0);
+float wSoftDirt = splatExtra.r;
+float wDirtPath = splatExtra.g;
+float painted = wDirt + wSand + wRock + wSoftDirt + wDirtPath;
+float wGrass = 1.0 - clamp(painted, 0.0, 1.0);
 
 vec3 grassColor = texture2D(uGrass, tileUv).rgb;
 vec3 dirtColor = texture2D(uDirt, tileUv).rgb;
 vec3 sandColor = texture2D(uSand, tileUv).rgb;
 vec3 rockColor = texture2D(uRock, tileUv).rgb;
+vec3 softDirtColor = texture2D(uSoftDirt, tileUv).rgb;
+vec3 dirtPathColor = texture2D(uDirtPath, tileUv).rgb;
 
 vec3 surface =
   grassColor * wGrass +
   dirtColor * wDirt +
   sandColor * wSand +
-  rockColor * wRock;
-surface /= max(wGrass + wDirt + wSand + wRock, 0.001);
+  rockColor * wRock +
+  softDirtColor * wSoftDirt +
+  dirtPathColor * wDirtPath;
+surface /= max(wGrass + painted, 0.001);
 diffuseColor *= vec4(surface, 1.0);
 `
         );
     };
-    material.customProgramCacheKey = () =>
-      "liora-ground-splat-v7-per-layer-feather";
+    material.customProgramCacheKey = () => "liora-ground-splat-v8-extra-textures";
     material.needsUpdate = true;
   }
 
-  function addStamp(x, z, layer, radius, strength) {
+  function addStamp(x, z, layer, radius, strength, variant) {
     const entry = [
       +x.toFixed(2),
       +z.toFixed(2),
       +radius.toFixed(2),
       layer,
       +strength.toFixed(2),
+      normalizeVariant(layer, variant),
     ];
     stamps.push(entry);
     drawStroke(...entry);
@@ -414,25 +431,27 @@ diffuseColor *= vec4(surface, 1.0);
 
   function beginStroke({ layer, radius, strength = config.strength }) {
     if (openGroup) endStroke();
-    openGroup = { layer, radius, strength, count: 0, x: null, z: null };
+    openGroup = {
+      layer,
+      radius,
+      strength,
+      variant: normalizeVariant(layer, currentDirtVariant),
+      count: 0,
+      x: null,
+      z: null,
+    };
   }
 
-  /**
-   * Extends the current drag to (x, z), filling in the space since the last
-   * point. Without this the brush only stamped where the finger happened to be
-   * reported: a fast swipe (or one dropped frame) left a visible hole in the
-   * middle of the stroke.
-   */
   function strokeTo(x, z) {
     if (!openGroup) return 0;
-    const { layer, radius, strength } = openGroup;
+    const { layer, radius, strength, variant } = openGroup;
     const spacing = Math.max(0.05, radius / 3);
 
     if (openGroup.x === null) {
-      addStamp(x, z, layer, radius, strength);
+      addStamp(x, z, layer, radius, strength, variant);
       openGroup.x = x;
       openGroup.z = z;
-      texture.needsUpdate = true;
+      markDirty();
       return 1;
     }
 
@@ -441,8 +460,6 @@ diffuseColor *= vec4(surface, 1.0);
     const distance = Math.hypot(dx, dz);
     if (distance < spacing) return 0;
 
-    // Guard against a pathological jump (e.g. a camera cut) turning into
-    // thousands of stamps in one event.
     const steps = Math.min(96, Math.floor(distance / spacing));
     for (let i = 1; i <= steps; i += 1) {
       const t = (i * spacing) / distance;
@@ -451,12 +468,13 @@ diffuseColor *= vec4(surface, 1.0);
         openGroup.z + dz * t,
         layer,
         radius,
-        strength
+        strength,
+        variant
       );
     }
     openGroup.x += dx * ((steps * spacing) / distance);
     openGroup.z += dz * ((steps * spacing) / distance);
-    texture.needsUpdate = true;
+    markDirty();
     return steps;
   }
 
@@ -472,22 +490,29 @@ diffuseColor *= vec4(surface, 1.0);
     return false;
   }
 
+  function onVariantChange(event) {
+    const variant = event?.detail?.variant;
+    currentDirtVariant = VALID_DIRT_VARIANTS.has(variant)
+      ? variant
+      : DIRT_VARIANTS.DIRT;
+  }
+  window.addEventListener(VARIANT_EVENT, onVariantChange);
+
   return {
     texture,
+    extraTexture,
     applyTo,
     exportData,
     importData,
     beginStroke,
     strokeTo,
     endStroke,
-    /** Number of undo steps — one per finger-drag, not per stamp. */
     get strokeCount() {
       return groups.length + (openGroup && openGroup.count ? 1 : 0);
     },
     get stampCount() {
       return stamps.length;
     },
-    /** One-shot dab, used by tests and any caller that is not dragging. */
     paintAt(x, z, { layer, radius, strength = config.strength }) {
       beginStroke({ layer, radius, strength });
       strokeTo(x, z);
@@ -506,14 +531,20 @@ diffuseColor *= vec4(surface, 1.0);
       openGroup = null;
       stamps.length = 0;
       groups.length = 0;
-      clearCanvas();
-      clearSnapshot();
-      texture.needsUpdate = true;
+      clearCanvases();
+      clearSnapshots();
+      markDirty();
       scheduleSave();
+    },
+    flushSave() {
+      clearTimeout(saveTimer);
+      persist();
     },
     dispose() {
       clearTimeout(saveTimer);
+      window.removeEventListener(VARIANT_EVENT, onVariantChange);
       texture.dispose();
+      extraTexture.dispose();
     },
   };
 }
