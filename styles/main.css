@@ -199,6 +199,9 @@ body[data-mode="build"] #zoom {
   top: calc(96px + env(safe-area-inset-top, 0px));
   bottom: auto;
   right: 12px;
+  /* Laid out across instead of down: a 168px-tall column reached down into the
+     build panel on a small phone. */
+  flex-direction: row;
 }
 
 #build-panel {
@@ -209,8 +212,8 @@ body[data-mode="build"] #zoom {
   z-index: 20;
   display: none;
   flex-direction: column;
-  gap: 7px;
-  padding: 9px;
+  gap: 6px;
+  padding: 8px;
   border-radius: 18px;
   background: var(--panel-solid);
   border: 1px solid var(--edge);
@@ -220,13 +223,19 @@ body[data-mode="build"] #zoom {
 #build-panel.on { display: flex; }
 
 #build-tabs { display: flex; gap: 6px; }
-#build-tabs button { flex: 1; padding: 9px; font-size: 13px; }
+#build-tabs button { flex: 1; padding: 10px; font-size: 13px; }
 
 #build-hint {
   color: #d9f6ff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.35;
   padding: 0 2px;
+  /* Two lines maximum, or a long hint pushes the panel over half the screen. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 #build-hint .notice { color: #ffd9d0; }
 
@@ -249,37 +258,105 @@ body[data-mode="build"] #zoom {
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  min-width: 58px;
+  min-width: 62px;
+  min-height: 52px;
   font-size: 10px;
 }
-#asset-strip .glyph { font-size: 19px; }
+#asset-strip .glyph { font-size: 22px; }
+
+/* The row that commits the action. It must never scroll: the place button
+   used to sit 265px past the right edge of a phone, so the build mode looked
+   like it simply could not place anything. */
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.actions button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 52px;
+  padding: 8px 6px;
+  font-size: 14px;
+  border-radius: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Secondary controls: fiddly, small, allowed to scroll. */
+.strip.tools { gap: 8px; }
+.strip.tools button.icon {
+  min-width: 46px;
+  min-height: 46px;
+  font-size: 19px;
+  padding: 0;
+}
+.strip.tools button.icon.active { background: var(--accent); outline: none; }
+.stepper {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.09);
+}
+.stepper button {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 20px;
+  padding: 0;
+}
+.stepper .readout {
+  min-width: 54px;
+  font-size: 13px;
+  background: transparent;
+  border-color: transparent;
+}
 
 .strip.cats button {
-  min-height: 34px;
-  padding: 5px 10px;
-  font-size: 11px;
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 12px;
   border-radius: 999px;
-  opacity: 0.75;
+  opacity: 0.72;
 }
 .strip.cats button.active { opacity: 1; background: var(--accent); }
 
 body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-cats { display: none; }
+/* Picking rows are only useful while browsing; once an object is being placed
+   or edited they just push the panel taller. */
+#build-panel[data-context="place"] :is(#asset-cats, #asset-strip),
+#build-panel[data-context="edit"] :is(#asset-cats, #asset-strip) { display: none; }
 
 .strip .range {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   color: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
-.strip .range input { width: 84px; }
-.strip .size-range span { min-width: 72px; text-align: right; }
-.strip .size-range input { width: 132px; }
+.strip .range input { width: 110px; height: 32px; }
 
 body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-strip { display: none; }
 body[data-mode="build"] #build-panel:not([data-tab="paint"]) #paint-strip { display: none; }
+/* An empty tool row would otherwise leave a gap above the action buttons. */
+#build-tools:empty { display: none; }
+
+/* Short screens (iPhone SE and friends): the picker state was taking over half
+   the display. Trim the chrome, never the action row. */
+@media (max-height: 640px) {
+  #build-panel { gap: 5px; padding: 7px; }
+  #build-tabs button { padding: 8px; }
+  #build-hint { -webkit-line-clamp: 1; font-size: 11px; }
+  .strip.cats button { min-height: 36px; padding: 4px 10px; }
+  #asset-strip button { min-height: 46px; min-width: 58px; }
+  #asset-strip .glyph { font-size: 19px; }
+  .strip.tools button.icon { min-width: 44px; min-height: 44px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
