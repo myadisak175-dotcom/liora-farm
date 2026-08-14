@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export function createAnimatedWater({ size, config, terrainField }) {
+export function createAnimatedWater({ size, config, terrainField, texture = null }) {
   const segments = Math.max(8, Math.round(config.segments ?? 28));
   const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
   const material = new THREE.MeshStandardMaterial({
@@ -24,6 +24,12 @@ export function createAnimatedWater({ size, config, terrainField }) {
   const shallowColor = new THREE.Color(config.shallowColor ?? 0x8ee4ef);
   const deepColor = new THREE.Color(config.deepColor ?? 0x287aa8);
   const foamColor = new THREE.Color(config.foamColor ?? 0xf4ffff);
+  const textureRepeat = Math.max(0.25, config.textureRepeat ?? 4);
+  const textureStrength = THREE.MathUtils.clamp(config.textureStrength ?? 0.35, 0, 1);
+  const textureSpeed = new THREE.Vector2(
+    config.textureSpeedX ?? 0.008,
+    config.textureSpeedY ?? -0.006
+  );
   let shaderRef = null;
 
   material.onBeforeCompile = (shader) => {
@@ -39,6 +45,29 @@ export function createAnimatedWater({ size, config, terrainField }) {
     shader.uniforms.uShallowColor = { value: shallowColor };
     shader.uniforms.uDeepColor = { value: deepColor };
     shader.uniforms.uFoamColor = { value: foamColor };
+
+    let textureUniforms = "";
+    let textureBlend = "";
+    if (texture) {
+      shader.uniforms.uWaterTexture = { value: texture };
+      shader.uniforms.uWaterTextureRepeat = { value: textureRepeat };
+      shader.uniforms.uWaterTextureStrength = { value: textureStrength };
+      shader.uniforms.uWaterTextureSpeed = { value: textureSpeed };
+      textureUniforms = `
+       uniform sampler2D uWaterTexture;
+       uniform float uWaterTextureRepeat;
+       uniform float uWaterTextureStrength;
+       uniform vec2 uWaterTextureSpeed;`;
+      textureBlend = `
+       vec2 waterDetailUv = vWaterUv * uWaterTextureRepeat
+         + uWaterTextureSpeed * uWaterTime;
+       vec3 waterDetail = texture2D(uWaterTexture, waterDetailUv).rgb;
+       diffuseColor.rgb = mix(
+         diffuseColor.rgb,
+         waterDetail,
+         uWaterTextureStrength * wet
+       );`;
+    }
 
     shader.vertexShader = shader.vertexShader.replace(
       "#include <common>",
@@ -76,7 +105,7 @@ export function createAnimatedWater({ size, config, terrainField }) {
        uniform vec3 uDeepColor;
        uniform vec3 uFoamColor;
        varying vec2 vWaterCoord;
-       varying vec2 vWaterUv;`
+       varying vec2 vWaterUv;${textureUniforms}`
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <color_fragment>",
@@ -86,6 +115,7 @@ export function createAnimatedWater({ size, config, terrainField }) {
        float deepMix = smoothstep(0.10, min(1.7, uTerrainMaxDepth), depth);
        diffuseColor.rgb = mix(uShallowColor, uDeepColor, deepMix);
        diffuseColor.a *= wet;
+       ${textureBlend}
 
        float shimmerT = uWaterTime * uWaveSpeed;
        float rippleA = 0.5 + 0.5 * sin(vWaterCoord.x * 0.92 + vWaterCoord.y * 0.38 + shimmerT * 1.85);
@@ -101,7 +131,8 @@ export function createAnimatedWater({ size, config, terrainField }) {
     );
     shaderRef = shader;
   };
-  material.customProgramCacheKey = () => "liora-depth-water-v2";
+  material.customProgramCacheKey = () =>
+    `liora-depth-water-v3-${texture ? "textured" : "plain"}`;
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "HomeIslandWater";
@@ -120,6 +151,7 @@ export function createAnimatedWater({ size, config, terrainField }) {
     dispose() {
       geometry.dispose();
       material.dispose();
+      texture?.dispose();
     },
   };
 }

@@ -55,6 +55,20 @@ export async function createHomeIsland({
   );
   baseMap.needsUpdate = true;
 
+  let waterTexture = null;
+  if (config.water.texture) {
+    try {
+      waterTexture = await textureLoader.loadAsync(
+        `${assets.textureDir}/${config.water.texture}`
+      );
+      waterTexture.wrapS = waterTexture.wrapT = THREE.RepeatWrapping;
+      waterTexture.colorSpace = THREE.SRGBColorSpace;
+      waterTexture.anisotropy = anisotropy;
+    } catch (error) {
+      console.warn(`Water texture missing: ${config.water.texture}`, error);
+    }
+  }
+
   const height = createTerrainHeight({
     config: config.sculpt,
     worldSize: config.terrain.size,
@@ -87,6 +101,7 @@ export async function createHomeIsland({
     size: config.terrain.size,
     config: config.water,
     terrainField,
+    texture: waterTexture,
   });
 
   group.add(water.mesh);
