@@ -46,9 +46,9 @@ one-finger gesture over. There is no event-priority fight between the two.
 
 ## Ground
 
-`systems/terrain-height.js` owns an 85x85 `Float32Array` over the island (0.5 m
-spacing) and one bilinear `sample()`. That single array is both the shape of the
-mesh and the answer to `getHeight()`.
+The Home Island is **56 x 56 m**. `systems/terrain-height.js` owns a 113x113
+`Float32Array` over that island at 0.5 m spacing and one bilinear `sample()`.
+That single array is both the shape of the mesh and the answer to `getHeight()`.
 
 Heights are written into the plane's **position attribute**, never a vertex
 shader. A shader-displaced ground looks right and breaks everything else: the
@@ -69,9 +69,9 @@ Constraints applied on every brush stroke:
 
 Sculpting is rate-based: `beginStroke` / `moveTo` / `tick(dt)` / `endStroke`.
 Per-event brushes feel dead when the finger holds still and bite twice as hard
-on a faster phone. Undo keeps whole-grid snapshots (29 KB each), bounded by `sculpt.undoLimit` in
+on a faster phone. Undo keeps whole-grid snapshots (about 50 KB each), bounded by `sculpt.undoLimit` in
 `config.js` — far simpler than replaying strokes, and instant. The save is Int16 centimetres in
-base64, about 19 KB.
+base64, about 34 KB.
 
 `movement.js` refuses ground steeper than `maxWalkSlope` and tries each axis
 alone first, which reads as sliding along the contour. The rule is symmetric so
