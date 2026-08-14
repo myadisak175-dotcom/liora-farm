@@ -114,7 +114,7 @@ export const CONFIG = Object.freeze({
   fog: { near: 46, far: 96 },
 });
 
-const MODEL_DIR = "./builder/assets/models/builder";
+const MODEL_DIR = "./assets/models/builder";
 const TEXTURE_DIR = "./assets/textures";
 export const ASSETS = Object.freeze({
   textureDir: TEXTURE_DIR,

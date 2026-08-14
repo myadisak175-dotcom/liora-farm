@@ -63,6 +63,51 @@ export class Vector3 {
     this.y = y;
     this.z = z;
   }
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  }
+  copy(v) {
+    return this.set(v.x, v.y, v.z);
+  }
+}
+
+export class Vector2 {
+  constructor(x = 0, y = 0) {
+    this.x = x;
+    this.y = y;
+  }
+  set(x, y) {
+    this.x = x;
+    this.y = y;
+    return this;
+  }
+}
+
+/**
+ * Enough of a Raycaster for builder-ui: it only reads `ray.origin` and
+ * `ray.direction` after setFromCamera, then hands the whole object to
+ * builder-view.pick(). The stub camera is {position, dir}.
+ */
+export class Raycaster {
+  constructor() {
+    this.ray = { origin: new Vector3(), direction: new Vector3(0, -1, 0) };
+  }
+  setFromCamera(ndc, camera) {
+    this.ray.origin.copy(camera.position ?? { x: 0, y: 10, z: 10 });
+    const d = camera.stubDirection ?? { x: 0, y: -0.7071, z: -0.7071 };
+    this.ray.direction.copy(d);
+    this.lastNdc = { x: ndc.x, y: ndc.y };
+    return this;
+  }
+  intersectObjects() {
+    return [];
+  }
+  intersectObject() {
+    return [];
+  }
 }
 
 MathUtils.degToRad = (deg) => (deg * Math.PI) / 180;

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>terrain height tests</title></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+import { createTerrainHeight, SCULPT_TOOLS } from "../../src/systems/terrain-height.js";
+import { CONFIG } from "../../src/config.js";
+const results = [];
+const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
+const near = (a, b, eps = 1e-3) => Math.abs(a - b) <= eps;
+const make = (reservedAreas = []) => createTerrainHeight({
+  config: { ...CONFIG.sculpt, storageKey: `test.height.${Math.random()}` },
+  worldSize: CONFIG.terrain.size,
+  spacing: CONFIG.terrain.spacing,
+  reservedAreas,
+});
+
+const flat = make();
+let hit = flat.raycast({ x: 2, y: 10, z: -3 }, { x: 0, y: -1, z: 0 });
+ok("vertical ray hits flat terrain", hit && near(hit.x, 2) && near(hit.y, 0) && near(hit.z, -3), JSON.stringify(hit));
+
+// One high vertex is enough to make a very narrow bilinear ridge. The old
+// long-step ray march jumped completely over this ridge and returned the flat
+// ground near x=4. The DDA solver must return the first ridge hit instead.
+const ridge = make();
+const ix = Math.round((0 + CONFIG.terrain.size / 2) / CONFIG.terrain.spacing);
+const iz = ix;
+ridge.heights[iz * ridge.cells + ix] = 8;
+const inv = 1 / Math.hypot(12, 8);
+hit = ridge.raycast({ x: -8, y: 8, z: 0 }, { x: 12 * inv, y: -8 * inv, z: 0 });
+ok("raycast returns the nearest narrow-ridge hit", hit && hit.x < -0.2 && hit.x > -0.45 && hit.y > 2.5,
+  JSON.stringify(hit));
+
+// tick() promises actual mutation, not merely "a stroke exists". A fully
+// reserved brush changes nothing and should not trigger object re-seating.
+const blocked = make([{ x: 0, z: 0, radius: 5 }]);
+blocked.beginStroke({ tool: SCULPT_TOOLS.RAISE, radius: 1.5, strength: 1, x: 0, z: 0 });
+ok("tick is false when constraints prevent every change", blocked.tick(0.2) === false);
+ok("no-op stroke does not create an undo step", blocked.endStroke() === false && blocked.undoDepth === 0,
+  `undoDepth=${blocked.undoDepth}`);
+
+const raised = make();
+raised.beginStroke({ tool: SCULPT_TOOLS.RAISE, radius: 1.5, strength: 1, x: 0, z: 0 });
+ok("tick is true when terrain actually changes", raised.tick(0.2) === true);
+ok("changed stroke closes normally", raised.endStroke() === true && raised.undoDepth === 1,
+  `undoDepth=${raised.undoDepth}`);
+
+window.__results = results;
+window.__done = true;
+document.querySelector("#out").textContent = JSON.stringify(results, null, 1);
+</script></body></html>

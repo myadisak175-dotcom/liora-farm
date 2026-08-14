@@ -37,10 +37,10 @@ function throws(name, fn) {
 const SHIPPED = CONFIG.groundPaint.layers.map((l) => ({ ...l, texture: `../../assets/textures/${l.texture}` }));
 const shipped = createGroundLayers(SHIPPED, { maxLayers: CONFIG.groundPaint.maxLayers });
 
-eq("shipped: 4 layers", shipped.all.length, 4);
-eq("shipped: 3 paintable", shipped.paintable.length, 3);
+eq("shipped: 8 layers", shipped.all.length, 8);
+eq("shipped: 7 paintable", shipped.paintable.length, 7);
 eq("shipped: base is grass", shipped.base.key, "grass");
-eq("shipped: needs 1 page", shipped.pageCount, 1);
+eq("shipped: needs 3 pages", shipped.pageCount, 3);
 // The whole point of the id/channel split: legacy save ids must map to the
 // exact channels the old hardcoded shader used.
 eq("legacy dirt -> channel 0", shipped.get(0).channel, 0);
@@ -48,6 +48,10 @@ eq("legacy sand -> channel 1", shipped.get(1).channel, 1);
 eq("legacy rock -> channel 2", shipped.get(2).channel, 2);
 eq("legacy grass -> no channel", shipped.get(3).channel, -1);
 eq("grass page is -1", shipped.pageOf(3), -1);
+eq("cracked dirt -> page 1", shipped.pageOf(4), 1);
+eq("flower grass -> page 1", shipped.pageOf(5), 1);
+eq("meadow grass -> page 1", shipped.pageOf(6), 1);
+eq("cobblestone -> page 2", shipped.pageOf(7), 2);
 
 throws("duplicate id is fatal", () =>
   createGroundLayers([
@@ -245,9 +249,9 @@ const arr = await createGroundTextureArray({
   tileSize: 64,
   anisotropy: 4,
 });
-eq("array has one slice per layer", arr.texture.image.depth, 4);
+eq("array has one slice per layer", arr.texture.image.depth, shipped.all.length);
 eq("array is square at tileSize", `${arr.texture.image.width}x${arr.texture.image.height}`, "64x64");
-eq("array byte length", arr.texture.image.data.length, 64 * 64 * 4 * 4);
+eq("array byte length", arr.texture.image.data.length, 64 * 64 * 4 * shipped.all.length);
 eq("no textures were missing", arr.missing.length, 0);
 eq("array asks for mipmaps", arr.texture.generateMipmaps, true);
 

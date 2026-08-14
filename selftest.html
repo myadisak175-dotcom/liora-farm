@@ -44,6 +44,34 @@ if(L?.paint&&layers){
 d.querySelector('#tab-sculpt')?.click();await sleep(120);
 const primary=[...d.querySelectorAll('#build-actions button')];check('ปุ่มหลักอยู่ในจอ',primary.length>0&&primary.every(b=>onScreen(w,b)));
 check('ปุ่มหลักสูงอย่างน้อย 44px',primary.every(b=>b.getBoundingClientRect().height>=44));
+// --- HUD budget: the panel must leave the player most of the screen ---
+const panel=d.querySelector('#build-panel');
+const share=()=>panel.getBoundingClientRect().height/w.innerHeight;
+check('แผงปั้นพื้นกินจอไม่เกิน 40%',share()<=0.40,`${Math.round(share()*100)}%`);
+d.querySelector('#tab-place')?.click();await sleep(120);
+check('แผงวางของกินจอไม่เกิน 40%',share()<=0.40,`${Math.round(share()*100)}%`);
+const collapse=d.querySelector('#build-collapse');
+collapse?.click();await sleep(120);
+check('ย่อแผงแล้วเหลือไม่เกิน 15%',Boolean(collapse)&&share()<=0.15,`${Math.round(share()*100)}%`);
+check('ย่อแล้วแท็บยังกดได้',onScreen(w,d.querySelector('#tab-sculpt')));
+collapse?.click();await sleep(120);
+// --- sculpt presets must NOT live in the four-tool row ---
+check('พรีเซ็ตแยกออกจากแถวเครื่องมือ',d.querySelectorAll('#sculpt-strip button').length===4,`${d.querySelectorAll('#sculpt-strip button').length} ปุ่ม`);
+// --- height-field DDA ground pick, replacing the 14k-triangle mesh raycast ---
+const H=L?.height;
+if(H?.raycast){
+  const hit=H.raycast({x:6,y:9,z:6},(()=>{const v={x:-6,y:-9,z:-6},l=Math.hypot(v.x,v.y,v.z);return{x:v.x/l,y:v.y/l,z:v.z/l};})());
+  check('ยิงหาพื้นด้วย height field ได้',Boolean(hit)&&Math.abs(hit.x)<0.01&&Math.abs(hit.z)<0.01,hit?`(${hit.x.toFixed(3)}, ${hit.z.toFixed(3)})`:'ไม่โดน');
+  const t0=performance.now();for(let i=0;i<2000;i++)H.raycast({x:6,y:9,z:6},{x:-0.5,y:-0.71,z:-0.5});
+  const per=(performance.now()-t0)/2000;
+  check('ยิงหาพื้นเร็วพอสำหรับลากนิ้ว',per<0.05,`${(per*1000).toFixed(0)}µs ต่อครั้ง`);
+}
+// --- tick() has to report that it changed the field, or objects never re-seat ---
+if(H){
+  H.beginStroke({tool:'raise',radius:2,x:14,z:14});
+  check('tick() บอกเด่ว่าพื่นเปลี่ยน',H.tick(0.1)===true&&H.tick(0)===false);
+  H.endStroke();H.undo();
+}
 d.querySelector('#mode-bar [data-mode="play"]')?.click();await sleep(120);
 check('กลับ Play แล้วซ่อน Builder',getComputedStyle(d.querySelector('#build-panel')).display==='none');
 summary.textContent=`ผ่าน ${pass} / ${pass+fail}${fail?' — มีจุดต้องตรวจ':' — พร้อมทดสอบบนมือถือ'}`;run.disabled=false;};

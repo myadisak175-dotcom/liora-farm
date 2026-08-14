@@ -103,7 +103,7 @@ const syncBuilderToTerrain = () => { for (const item of builder.items) builderVi
 builderUI = createBuilderUI({
   controller: builder, view: builderView, paint: world.paint, paintConfig: CONFIG.groundPaint,
   height: world.height, sculptConfig: CONFIG.sculpt, brushCursor: world.brushCursor,
-  reservedAreas: RESERVED_AREAS, builderConfig: CONFIG.builder, ground: world.ground,
+  reservedAreas: RESERVED_AREAS, builderConfig: CONFIG.builder,
   camera, cameraController, surface: renderer.domElement,
   onExport: exportMap, onResetLayout: resetLayout, onTerrainChange: syncBuilderToTerrain,
 });
@@ -157,17 +157,26 @@ async function loadLayout() {
     toast("แผนที่เดิมคนละเวอร์ชัน สำรองไว้แล้ว");
   }
 }
+/**
+ * "รีเซ็ตแผนที่" restores placed objects only. Painted and sculpted ground
+ * belong to the player's island and survive this action. Flattening terrain
+ * remains an explicit sculpt command.
+ *
+ * This rule is intentionally independent of the contents of home-island.json:
+ * even if a future default map ships groundPaint/terrainHeight, reset must not
+ * silently overwrite the user's surface work.
+ */
 async function resetLayout() {
   try {
     const map = await fetchDefaultMap();
-    builderView.clear(); builder.resetTo(Array.isArray(map.objects) ? map.objects : []);
-    if (map.groundPaint) world.paint.importData(map.groundPaint);
-    if (map.terrainHeight) {
-      if (!world.height.importData(map.terrainHeight)) console.warn("Default map terrain height could not be loaded");
-    } else if (!world.height.isFlat()) world.height.clear();
-    await spawnAll(); toast("โหลดแผนที่เริ่มต้นแล้ว");
+    builderView.clear();
+    builder.resetTo(Array.isArray(map.objects) ? map.objects : []);
+    await spawnAll();
+    syncBuilderToTerrain();
+    toast("โหลดสิ่งของเริ่มต้นแล้ว — พื้นที่ระบายและปั้นไว้ยังอยู่");
   } catch (error) { console.warn("Default map could not be loaded", error); toast("โหลดแผนที่เริ่มต้นไม่สำเร็จ"); }
 }
+
 function exportMap(items) {
   const payload = {
     version: 1, mapId: "home-island", savedAt: new Date().toISOString(),

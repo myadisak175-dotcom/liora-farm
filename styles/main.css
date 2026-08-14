@@ -192,17 +192,21 @@ body[data-mode="build"] :is(#joy, #actions, #pouch) { display: none; }
 
 /* --------------------------------------------------------- build mode */
 /* Zoom stays available in build mode — it used to be hidden along with the
-   joystick, which left pinch as the only way to move the camera at all. It
-   moves to the right edge because the build panel owns the bottom of the
-   screen and its height changes with the tab. */
+   joystick, which left pinch as the only way to move the camera at all.
+   It rides on the clock's row instead of a row of its own: at top:96px it
+   claimed a third band of the screen and sat underneath the toast. The clock
+   is hidden while building, so this row is free. */
+body[data-mode="build"] #clock { display: none; }
 body[data-mode="build"] #zoom {
-  top: calc(96px + env(safe-area-inset-top, 0px));
+  top: calc(58px + env(safe-area-inset-top, 0px));
   bottom: auto;
   right: 12px;
   /* Laid out across instead of down: a 168px-tall column reached down into the
      build panel on a small phone. */
   flex-direction: row;
+  gap: 7px;
 }
+body[data-mode="build"] #zoom button { width: 42px; height: 42px; font-size: 21px; }
 
 #build-panel {
   position: fixed;
@@ -222,8 +226,37 @@ body[data-mode="build"] #zoom {
 }
 #build-panel.on { display: flex; }
 
-#build-tabs { display: flex; gap: 6px; }
+/* Everything between the tabs and the action row. Collapsing hides this and
+   nothing else, so the tabs stay reachable and the action row goes with it.
+   The cap is a hard promise: the panel can never eat more than 42% of the
+   screen no matter how much a tab wants to show. */
+#build-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#build-panel.collapsed #build-body,
+#build-panel.collapsed #build-actions { display: none; }
+
+#build-tabs { display: flex; gap: 6px; align-items: stretch; }
 #build-tabs button { flex: 1; padding: 10px; font-size: 13px; }
+/* The two chips never grow: they are 44px squares pinned to the right. */
+#build-tabs button.chip {
+  flex: 0 0 44px;
+  min-width: 44px;
+  padding: 0;
+  font-size: 17px;
+}
+#build-tabs button.chip[hidden] { display: none; }
+#build-tabs button.chip.active { background: var(--accent); outline: none; }
+
+/* The "เพิ่มเติม" drawer. Closed by default — presets and the fine sliders
+   are not worth three permanent rows of a 667px screen. */
+#sculpt-extra { display: none; flex-direction: column; gap: 6px; }
+#build-panel.more[data-tab="sculpt"] #sculpt-extra { display: flex; }
 
 #build-hint {
   color: #d9f6ff;
@@ -231,9 +264,10 @@ body[data-mode="build"] #zoom {
   font-weight: 600;
   line-height: 1.35;
   padding: 0 2px;
-  /* Two lines maximum, or a long hint pushes the panel over half the screen. */
+  /* One line. The hints were rewritten to fit; a second line of advice is not
+     worth 16px of a phone screen every frame you are building. */
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -283,6 +317,10 @@ body[data-mode="build"] #zoom {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Icons in the action row keep a fixed square so the labelled buttons next to
+   them get the width instead of all four splitting it evenly. */
+.actions button.icon { flex: 0 0 58px; font-size: 20px; padding: 0; }
+.actions button.icon.active { background: var(--accent); outline: none; }
 
 /* Secondary controls: fiddly, small, allowed to scroll. */
 .strip.tools { gap: 8px; }
@@ -343,7 +381,7 @@ body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-cats { displ
 
 body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-strip { display: none; }
 body[data-mode="build"] #build-panel:not([data-tab="paint"]) :is(#paint-strip, #paint-size) { display: none; }
-body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip, #sculpt-size) { display: none; }
+body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip, #sculpt-size, #sculpt-extra) { display: none; }
 
 /* Brushes as a grid, never a horizontal scroller. A size slider parked at the
    end of a scrolling strip is exactly how the place button ended up off-screen
@@ -377,7 +415,25 @@ body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip,
   text-overflow: ellipsis;
 }
 .brushes .glyph { font-size: 17px; line-height: 1.1; }
+/* The four sculpt tools: one row, always, never a grid. Four 44px targets fit
+   across every phone width down to 320px. */
+.toolrow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.toolrow button {
+  min-height: 46px;
+  padding: 5px 2px;
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.toolrow button.active { background: var(--accent); outline: none; }
+
 .sizerow { display: flex; }
+.sizerow.stack { flex-direction: column; gap: 4px; }
 /* The label is the flex item, so it has to be the flex container too —
    otherwise the slider keeps its default ~130px width and the row looks
    half empty on a phone. */
@@ -401,19 +457,26 @@ body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip,
 /* An empty tool row would otherwise leave a gap above the action buttons. */
 #build-tools:empty { display: none; }
 
-/* Short screens (iPhone SE and friends): the picker state was taking over half
-   the display. Trim the chrome, never the action row. */
-@media (max-height: 640px) {
+/* Short screens. The cutoff used to be 640px, which meant the iPhone SE — the
+   smallest screen anyone actually holds, at 667px — never qualified and got
+   the full-fat layout. 740px covers SE, iPhone 8, and every small Android. */
+@media (max-height: 740px) {
   #build-panel { gap: 4px; padding: 7px; }
-  #build-tabs button { padding: 8px; }
-  #build-hint { -webkit-line-clamp: 1; font-size: 11px; }
+  #build-body { gap: 4px; max-height: 38vh; }
+  #build-tabs button { padding: 8px; font-size: 12px; }
+  #build-hint { font-size: 11px; }
   .strip.cats button { min-height: 34px; padding: 3px 10px; font-size: 11px; }
   #asset-strip button { min-height: 44px; min-width: 56px; }
   #asset-strip .glyph { font-size: 19px; }
   .strip.tools button.icon { min-width: 44px; min-height: 44px; }
-  /* One and a half rows of brushes here, not two and a half. */
-  .brushes { max-height: 100px; }
+  .actions button { min-height: 46px; font-size: 13px; }
+  /* Just under two rows of brushes, so the grid always reads as "there is more
+     below" AND the paint tab stays inside the 40% budget. At 100px the tab
+     measured 41% on a 667px screen — the cap is the thing that pays for it. */
+  .brushes { max-height: 84px; }
+  .brushes button { min-height: 44px; }
   .brushes .glyph { font-size: 15px; }
+  .toolrow button { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

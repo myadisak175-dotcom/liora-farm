@@ -31,7 +31,9 @@ const CHROME =
 const PAGES = [
   { file: "tools/test/ground-layers.test.html", viewports: [[900, 800]] },
   { file: "tools/test/ground-shader.test.html", viewports: [[900, 800]] },
-  // The paint panel is the one thing that can only fail at a real phone size.
+  { file: "tools/test/terrain-height.test.html", viewports: [[900, 800]] },
+  // Real mobile HUD contracts need an actual phone viewport.
+  { file: "tools/test/builder-hud.test.html", viewports: [[375, 667]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
 ];
 

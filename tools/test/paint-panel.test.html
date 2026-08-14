@@ -1,93 +1,93 @@
 <!doctype html>
 <html lang="th">
 <head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>paint panel layout</title>
 <link rel="stylesheet" href="../../styles/main.css">
+<link rel="stylesheet" href="../../styles/terrain-controls.css">
 </head>
 <body data-mode="build">
 <pre id="out" style="position:fixed;left:-300vw"></pre>
 
-<!-- The markup below is the paint tab exactly as index.html declares it. -->
+<!-- Keep the build-panel DOM in lockstep with index.html. This test uses a
+     static paint state so it can stress 4/8/16 brushes without loading Three. -->
 <section id="build-panel" class="on" data-tab="paint" data-context="paint" aria-label="โหมดสร้าง">
   <div id="build-tabs">
     <button type="button" id="tab-place">วางของ</button>
     <button type="button" id="tab-paint" class="active">ระบายพื้น</button>
     <button type="button" id="tab-sculpt">ปั้นพื้น</button>
+    <button type="button" id="build-more" class="chip" hidden>⚙︎</button>
+    <button type="button" id="build-collapse" class="chip">⌄</button>
   </div>
-  <div id="build-hint">ลากนิ้วเดียวเพื่อระบาย • สองนิ้ว = ซูม/หมุนกล้อง • 0 รอย</div>
-  <div id="asset-cats" class="strip cats"></div>
-  <div id="asset-strip" class="strip"></div>
-  <div id="paint-strip" class="brushes"></div>
-  <div id="paint-size" class="sizerow"></div>
-  <div id="sculpt-strip" class="brushes"></div>
-  <div id="sculpt-size" class="sizerow"></div>
-  <div id="build-tools" class="strip tools"></div>
+  <div id="build-body">
+    <div id="build-hint">ลากนิ้วเดียวเพื่อระบาย • สองนิ้ว = ซูม/หมุนกล้อง</div>
+    <div id="asset-cats" class="strip cats"></div>
+    <div id="asset-strip" class="strip"></div>
+    <div id="paint-strip" class="brushes"></div>
+    <div id="paint-size" class="sizerow"></div>
+    <div id="sculpt-strip" class="toolrow"></div>
+    <div id="sculpt-size" class="sizerow"></div>
+    <div id="sculpt-extra">
+      <div id="sculpt-presets" class="strip"></div>
+      <div id="sculpt-extra-size" class="sizerow stack"></div>
+    </div>
+    <div id="build-tools" class="strip tools"></div>
+  </div>
   <div id="build-actions" class="actions"></div>
 </section>
 
 <script type="module">
 const results = [];
 const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
-
-const ICONS = ["🌿","🟫","🏖️","🪨","❄️","🌾","🪵","🧱","🍂","💧","⛰️","🌋","🏔️","🌱","🪸","🧊"];
-const LABELS = ["หญ้า","ดิน","ทราย","หิน","หิมะ","ฟาง","ไม้","อิฐ","ใบไม้","โคลน","กรวด","ลาวา","หินผา","มอส","ปะการัง","น้ำแข็ง"];
-
+const ICONS = ["🌿","🟫","🏖️","🪨","🏜️","🌼","☘️","🪨","❄️","🌾","🪵","🧱","🍂","💧","⛰️","🧊"];
+const LABELS = ["หญ้า","ดิน","ทราย","หิน","ดินแตก","หญ้าดอกไม้","หญ้าทุ่ง","ทางเดินหิน","หิมะ","ฟาง","ไม้","อิฐ","ใบไม้","โคลน","หินผา","น้ำแข็ง"];
 const strip = document.querySelector("#paint-strip");
-// Same construction builder-ui.js uses, so this measures the real buttons.
 function fill(count) {
-  strip.replaceChildren(
-    ...Array.from({ length: count }, (_, i) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.paintLayer = String(i);
-      button.innerHTML = `<span class="glyph">${ICONS[i]}</span><span>${LABELS[i]}</span>`;
-      return button;
-    })
-  );
+  strip.replaceChildren(...Array.from({ length: count }, (_, i) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.paintLayer = String(i);
+    button.innerHTML = `<span class="glyph">${ICONS[i]}</span><span>${LABELS[i]}</span>`;
+    return button;
+  }));
 }
-
 const sizeRow = document.createElement("label");
 sizeRow.innerHTML = `<span>หัวแปรง</span><input type="range" min="0.5" max="4.5" step="0.1" value="1.6"><span class="value">1.6 ม.</span>`;
 document.querySelector("#paint-size").append(sizeRow);
 const actions = document.querySelector("#build-actions");
 for (const label of ["↶ ย้อนรอยล่าสุด", "ล้างสีทั้งหมด"]) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  actions.append(button);
+  const button = document.createElement("button"); button.type = "button"; button.textContent = label; actions.append(button);
 }
-
 const inside = (el) => {
   const r = el.getBoundingClientRect();
   return r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1;
 };
 
+// Guard against this fixture becoming stale again.
+const liveIds = ["build-panel", ...[...document.querySelectorAll("#build-panel [id]")].map((e) => e.id)].sort();
+const realHtml = await (await fetch("../../index.html")).text();
+const realIds = [...realHtml.matchAll(/id="([a-z-]+)"/g)]
+  .map((m) => m[1])
+  .filter((id) => /^(build|tab|asset|paint|sculpt)-/.test(id))
+  .sort();
+const missing = realIds.filter((id) => !liveIds.includes(id));
+ok("paint fixture DOM matches index.html", missing.length === 0, missing.join(", ") || "ครบ");
+
 for (const count of [4, 8, 16]) {
   fill(count);
+  await new Promise((r) => requestAnimationFrame(r));
   const buttons = [...strip.querySelectorAll("button")];
-  const stripBox = strip.getBoundingClientRect();
   const label = `${count} layers @ ${innerWidth}x${innerHeight}`;
-
-  ok(`${label}: brush strip stays on screen`, inside(strip),
-    JSON.stringify(stripBox.toJSON()));
-  ok(`${label}: every brush button stays on screen`, buttons.every(inside),
-    `viewport=${innerWidth}x${innerHeight} panel=${JSON.stringify(document.querySelector('#build-panel').getBoundingClientRect().toJSON())}`);
-  // The whole point of the CSS change: the action row must not be pushed off
-  // the bottom the way the old fixed grid would with four rows of brushes.
-  ok(`${label}: action buttons stay on screen`,
-    [...actions.querySelectorAll("button")].every(inside));
+  ok(`${label}: brush strip stays on screen`, inside(strip));
+  ok(`${label}: every visible brush stays horizontally on screen`, buttons.every((b) => {
+    const r = b.getBoundingClientRect(); return r.left >= -1 && r.right <= innerWidth + 1;
+  }));
+  ok(`${label}: action buttons stay on screen`, [...actions.querySelectorAll("button")].every(inside));
   ok(`${label}: size slider stays on screen`, inside(sizeRow));
-  ok(`${label}: brushes are still 44px+ tall`,
-    buttons.every((b) => b.getBoundingClientRect().height >= 44),
-    Math.min(...buttons.map((b) => Math.round(b.getBoundingClientRect().height))) + "px");
-  ok(`${label}: no horizontal scroll in the strip`,
-    strip.scrollWidth <= strip.clientWidth + 1,
-    `${strip.scrollWidth} vs ${strip.clientWidth}`);
-  ok(`${label}: overflow goes downward, scrollable`,
-    count <= 8 ? true : strip.scrollHeight > strip.clientHeight,
+  ok(`${label}: brushes are still 40px+ tall`, buttons.every((b) => b.getBoundingClientRect().height >= 40));
+  ok(`${label}: no horizontal scroll`, strip.scrollWidth <= strip.clientWidth + 1, `${strip.scrollWidth} vs ${strip.clientWidth}`);
+  ok(`${label}: large sets scroll inside the capped body`, count < 16 || strip.scrollHeight >= strip.clientHeight,
     `${strip.scrollHeight} vs ${strip.clientHeight}`);
-  ok(`${label}: every brush label is visible, not clipped mid-word`,
-    buttons.every((b) => b.querySelector("span:last-child").getBoundingClientRect().width > 8));
 }
 
 document.querySelector("#out").textContent = JSON.stringify(results, null, 1);

@@ -602,7 +602,16 @@ export function createGroundPaint({
         ? [...pages.values()]
         : [pages.get(layers.pageOf(removed[0]?.[3]))].filter(Boolean);
       for (const page of touched) {
-        page.stamps.splice(Math.max(0, page.stamps.length - removed.length));
+        // Drop exactly the entries this group put on THIS page — not a blind
+        // "last N", which over-removed on pages created after the strokes were
+        // laid down and silently ate other layers' work.
+        let dropped = 0;
+        for (let i = page.stamps.length - 1; i >= 0 && dropped < removed.length; i -= 1) {
+          if (removed.includes(page.stamps[i])) {
+            page.stamps.splice(i, 1);
+            dropped += 1;
+          }
+        }
         replayPage(page);
       }
       rebuildManualOverride();

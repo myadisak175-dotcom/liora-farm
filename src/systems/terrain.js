@@ -9,7 +9,9 @@ export function createTerrain({ texture, config, height }) {
   mesh.name = "HomeIslandTerrain";
   mesh.rotation.x = -Math.PI / 2;
   mesh.receiveShadow = true;
-  mesh.castShadow = false;
+  // Sculpted mountains have to cast shadows onto the land below them, otherwise
+  // even a 6 m peak reads as a flat painted blob under the top-down camera.
+  mesh.castShadow = true;
   mesh.renderOrder = config.renderOrder;
 
   height.applyTo(geometry);

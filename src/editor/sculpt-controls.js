@@ -2,10 +2,18 @@
  * Explicit sculpt UI wiring. Unlike the old sculpt-assist module this is
  * initialized by main after BuilderUI exists: no MutationObserver and no
  * mutation of CONFIG.
+ *
+ * Everything here goes into #sculpt-extra, the "เพิ่มเติม" drawer — NOT into
+ * #sculpt-strip. Appending presets next to the four sculpt tools made nine
+ * identical-looking buttons in one grid, so there was no way to tell a tool
+ * ("ยก") from a preset ("ภูเขา") from a one-shot command ("ธรรมชาติ"), and it
+ * pushed the panel three rows taller on the smallest screens.
  */
 export function createSculptControls({ height, paint, sculptConfig, onTerrainChange = () => {}, onRender = () => {} }) {
-  const strip = document.querySelector("#sculpt-strip");
-  const size = document.querySelector("#sculpt-size");
+  const strip = document.querySelector("#sculpt-presets");
+  const size = document.querySelector("#sculpt-extra-size");
+  const toolStrip = document.querySelector("#sculpt-strip");
+  const brushSize = document.querySelector("#sculpt-size");
   if (!strip || !size) return { dispose() {} };
 
   const presets = [
@@ -58,15 +66,19 @@ export function createSculptControls({ height, paint, sculptConfig, onTerrainCha
   size.append(strengthRow.wrap, roughnessRow.wrap);
   height.setBrushProfile({ strength, roughness });
 
+  // The brush-size slider belongs to builder-ui and lives in #sculpt-size.
+  // Driving it through a real "input" event keeps builder-ui's own radius
+  // state and the brush cursor in sync — a preset must not set the number
+  // behind the UI's back.
   function setRadius(value) {
-    const input = size.querySelector('label:not(.terrain-control) input[type="range"]');
+    const input = brushSize?.querySelector('input[type="range"]');
     if (!input) return;
     input.value = String(value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   function chooseTool(tool) {
-    strip.querySelector(`[data-sculpt-tool="${tool}"]`)?.click();
+    toolStrip?.querySelector(`[data-sculpt-tool="${tool}"]`)?.click();
   }
 
   function applyPreset(preset) {

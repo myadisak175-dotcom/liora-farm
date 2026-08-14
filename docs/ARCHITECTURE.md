@@ -11,7 +11,7 @@ styles/main.css         all UI styling
 maps/home-island.json   default island layout (data only)
 assets/textures/        ground surfaces — the list lives in config.js groundPaint.layers
 assets/models/player/   Liora (7 animations)
-builder/assets/models/  placeable GLBs — path lives in config.js ASSETS.modelDir
+assets/models/builder/  placeable GLBs — path lives in config.js ASSETS.modelDir
 src/
   config.js             every tunable number and asset path
   main.js               bootstrap, mode switching, render loop
@@ -69,8 +69,8 @@ Constraints applied on every brush stroke:
 
 Sculpting is rate-based: `beginStroke` / `moveTo` / `tick(dt)` / `endStroke`.
 Per-event brushes feel dead when the finger holds still and bite twice as hard
-on a faster phone. Undo keeps whole-grid snapshots (29 KB each, 12 deep) — far
-simpler than replaying strokes, and instant. The save is Int16 centimetres in
+on a faster phone. Undo keeps whole-grid snapshots (29 KB each), bounded by `sculpt.undoLimit` in
+`config.js` — far simpler than replaying strokes, and instant. The save is Int16 centimetres in
 base64, about 19 KB.
 
 `movement.js` refuses ground steeper than `maxWalkSlope` and tries each axis
@@ -98,6 +98,10 @@ Four files, strictly separated:
 - `builder-state.js` / `builder-controller.js` — the rules. No DOM, no Three.js.
 - `builder-view.js` — the Three.js side: spawn, ghost preview, selection tint.
 - `builder-ui.js` — the only file that touches builder DOM and touch events.
+  It also owns the HUD height budget: the collapse chevron, the "เพิ่มเติม"
+  drawer and the rule that the action row never scrolls.
+- `sculpt-controls.js` — sculpt presets and fine sliders. Renders into
+  `#sculpt-extra` (the drawer) only — never into the four-tool row.
 
 Saved layouts contain data only: `id`, `assetId`, `x`, `z`, `rotation`, `scale`.
 Never a mesh, never a material.

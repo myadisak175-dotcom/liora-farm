@@ -72,6 +72,159 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
     return Math.hypot(dx, dz);
   }
 
+  /**
+   * Where a ray first meets the editable height field, without touching the
+   * rendered mesh.
+   *
+   * Pointer painting calls this every move, so using THREE.Raycaster against
+   * ~14,000 triangles was needlessly expensive. A naive long-step ray march is
+   * fast but can jump over a narrow ridge and hit the ground behind it. This
+   * version walks the X/Z grid cell-by-cell (2D DDA) and solves the bilinear
+   * height patch in each visited cell. That guarantees the nearest top-surface
+   * hit, including thin peaks that are only one terrain cell wide.
+   *
+   * `origin`/`direction` are any {x,y,z}; direction must be normalized.
+   * Returns {x, y, z, distance} or null.
+   */
+  function raycast(origin, direction, { maxDistance = 140 } = {}) {
+    if (!(direction.y < 0) || !(maxDistance > 0)) return null;
+
+    const EPS = 1e-8;
+
+    // Clip the ray against the square X/Z domain first. Outside the terrain
+    // there is no top surface, and sample() intentionally clamps for gameplay
+    // queries, so using it before this clip would invent ground beyond the rim.
+    let enter = 0;
+    let exit = maxDistance;
+    for (const [o, d] of [[origin.x, direction.x], [origin.z, direction.z]]) {
+      if (Math.abs(d) < EPS) {
+        if (o < -half || o > half) return null;
+        continue;
+      }
+      let a = (-half - o) / d;
+      let b = (half - o) / d;
+      if (a > b) [a, b] = [b, a];
+      enter = Math.max(enter, a);
+      exit = Math.min(exit, b);
+      if (enter > exit) return null;
+    }
+    if (exit < 0) return null;
+    let t = Math.max(0, enter);
+    const tEnd = Math.min(maxDistance, exit);
+    if (t > tEnd) return null;
+
+    const signedHeight = (time) => {
+      const x = origin.x + direction.x * time;
+      const y = origin.y + direction.y * time;
+      const z = origin.z + direction.z * time;
+      return y - sample(x, z);
+    };
+
+    // If the ray enters the clipped terrain from the side already below the
+    // height field, it cannot hit the top later because it is travelling down.
+    // A value near zero is a legitimate edge hit.
+    const startAbove = signedHeight(t);
+    if (startAbove < -1e-6) return null;
+    if (Math.abs(startAbove) <= 1e-6) {
+      const x = origin.x + direction.x * t;
+      const z = origin.z + direction.z * t;
+      return { x, y: sample(x, z), z, distance: t };
+    }
+
+    // Pick the cell just *inside* the travel direction when starting exactly
+    // on a grid line. This avoids a zero-length first cell and keeps DDA stable.
+    const probeT = Math.min(tEnd, t + 1e-7);
+    const probeX = origin.x + direction.x * probeT;
+    const probeZ = origin.z + direction.z * probeT;
+    let ix = clamp(Math.floor(gridX(probeX)), 0, cells - 2);
+    let iz = clamp(Math.floor(gridZ(probeZ)), 0, cells - 2);
+
+    const stepX = direction.x > EPS ? 1 : direction.x < -EPS ? -1 : 0;
+    const stepZ = direction.z > EPS ? 1 : direction.z < -EPS ? -1 : 0;
+    const deltaTX = stepX ? spacing / Math.abs(direction.x) : Infinity;
+    const deltaTZ = stepZ ? spacing / Math.abs(direction.z) : Infinity;
+    let nextTX = stepX > 0
+      ? (worldX(ix + 1) - origin.x) / direction.x
+      : stepX < 0 ? (worldX(ix) - origin.x) / direction.x : Infinity;
+    let nextTZ = stepZ > 0
+      ? (worldZ(iz + 1) - origin.z) / direction.z
+      : stepZ < 0 ? (worldZ(iz) - origin.z) / direction.z : Infinity;
+
+    function firstRootInCell(cellX, cellZ, fromT, toT) {
+      if (toT < fromT - EPS) return null;
+      const x0 = worldX(cellX);
+      const z0 = worldZ(cellZ);
+      const h00 = at(cellX, cellZ);
+      const h10 = at(cellX + 1, cellZ);
+      const h01 = at(cellX, cellZ + 1);
+      const h11 = at(cellX + 1, cellZ + 1);
+      const a = h00;
+      const b = h10 - h00;
+      const c = h01 - h00;
+      const d = h11 - h10 - h01 + h00;
+      const u0 = (origin.x - x0) / spacing;
+      const v0 = (origin.z - z0) / spacing;
+      const du = direction.x / spacing;
+      const dv = direction.z / spacing;
+
+      // f(t) = rayY(t) - bilinearHeight(rayX(t), rayZ(t)).
+      const q2 = -(d * du * dv);
+      const q1 = direction.y - (b * du + c * dv + d * (u0 * dv + v0 * du));
+      const q0 = origin.y - (a + b * u0 + c * v0 + d * u0 * v0);
+      const roots = [];
+      if (Math.abs(q2) < 1e-12) {
+        if (Math.abs(q1) < 1e-12) {
+          if (Math.abs(q0) <= 1e-7) roots.push(fromT);
+        } else {
+          roots.push(-q0 / q1);
+        }
+      } else {
+        const disc = q1 * q1 - 4 * q2 * q0;
+        if (disc >= -1e-10) {
+          const sqrtDisc = Math.sqrt(Math.max(0, disc));
+          roots.push((-q1 - sqrtDisc) / (2 * q2), (-q1 + sqrtDisc) / (2 * q2));
+        }
+      }
+      let best = Infinity;
+      for (const root of roots) {
+        if (root >= fromT - 1e-7 && root <= toT + 1e-7 && root < best) best = root;
+      }
+      return Number.isFinite(best) ? clamp(best, fromT, toT) : null;
+    }
+
+    // A vertical ray never changes X/Z, so the first cell contains the whole
+    // useful interval. The same solver handles it without special sampling.
+    if (!stepX && !stepZ) {
+      const hit = firstRootInCell(ix, iz, t, tEnd);
+      if (hit == null) return null;
+      const x = origin.x + direction.x * hit;
+      const z = origin.z + direction.z * hit;
+      return { x, y: sample(x, z), z, distance: hit };
+    }
+
+    while (t <= tEnd + EPS && ix >= 0 && ix < cells - 1 && iz >= 0 && iz < cells - 1) {
+      const cellEnd = Math.min(nextTX, nextTZ, tEnd);
+      const hit = firstRootInCell(ix, iz, t, cellEnd);
+      if (hit != null) {
+        const x = origin.x + direction.x * hit;
+        const z = origin.z + direction.z * hit;
+        return { x, y: sample(x, z), z, distance: hit };
+      }
+      if (cellEnd >= tEnd - EPS) break;
+
+      t = cellEnd;
+      if (nextTX <= cellEnd + EPS) {
+        ix += stepX;
+        nextTX += deltaTX;
+      }
+      if (nextTZ <= cellEnd + EPS) {
+        iz += stepZ;
+        nextTZ += deltaTZ;
+      }
+    }
+    return null;
+  }
+
   function edgeFactor(x, z) {
     const margin = config.edgeMargin;
     const inner = half - margin;
@@ -99,8 +252,12 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
     const x = worldX(ix);
     const z = worldZ(iz);
     const allowed = edgeFactor(x, z) * reservedFactor(x, z);
-    heights[iz * cells + ix] = clamp(value * allowed, config.minHeight, config.maxHeight);
+    const index = iz * cells + ix;
+    const next = clamp(value * allowed, config.minHeight, config.maxHeight);
+    if (Math.abs(next - heights[index]) <= 1e-7) return false;
+    heights[index] = next;
     markDirty(ix, iz, ix, iz);
+    return true;
   }
 
   function falloff(distance, radius) {
@@ -159,6 +316,7 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
     const maxIx = Math.min(cells - 1, Math.ceil(gridX(x + radius)));
     const minIz = Math.max(0, Math.floor(gridZ(z - radius)));
     const maxIz = Math.min(cells - 1, Math.ceil(gridZ(z + radius)));
+    let changed = false;
     for (let iz = minIz; iz <= maxIz; iz += 1) {
       for (let ix = minIx; ix <= maxIx; ix += 1) {
         const wx = worldX(ix);
@@ -181,9 +339,10 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
           const pull = clamp(weight * amount * config.flattenRate, 0, 1);
           next = current + (target - current) * pull;
         }
-        writeCell(ix, iz, next);
+        if (writeCell(ix, iz, next)) changed = true;
       }
     }
+    return changed;
   }
 
   function pushUndo() {
@@ -204,20 +363,31 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
     return true;
   }
 
+  /**
+   * Applies one frame of the open stroke. Returns TRUE when the height field
+   * actually changed, which is what the caller uses to decide whether placed
+   * objects need re-seating on the new ground:
+   *
+   *   if (height.tick(dt)) onTerrainChange();
+   *
+   * This used to `return 0` on every path, so that call was dead code and
+   * buildings only caught up with the terrain when the finger was lifted.
+   */
   function tick(dt) {
-    if (!openStroke || !(dt > 0)) return 0;
+    if (!openStroke || !(dt > 0)) return false;
     const { x, z, appliedX, appliedZ, radius, strength } = openStroke;
     const distance = Math.hypot(x - appliedX, z - appliedZ);
     const steps = clamp(Math.ceil(distance / Math.max(0.1, radius / 3)), 1, 12);
     const amount = (strength * dt) / steps;
+    let changed = false;
     for (let i = 1; i <= steps; i += 1) {
       const t = i / steps;
-      stamp(appliedX + (x - appliedX) * t, appliedZ + (z - appliedZ) * t, amount);
+      if (stamp(appliedX + (x - appliedX) * t, appliedZ + (z - appliedZ) * t, amount)) changed = true;
     }
     openStroke.appliedX = x;
     openStroke.appliedZ = z;
-    openStroke.touched = true;
-    return 0;
+    if (changed) openStroke.touched = true;
+    return changed;
   }
 
   function endStroke() {
@@ -428,7 +598,7 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
 
   load();
   return {
-    cells, spacing, heights, SCULPT_TOOLS, sample, slopeAt, applyTo,
+    cells, spacing, heights, SCULPT_TOOLS, sample, slopeAt, raycast, applyTo,
     beginStroke, moveTo, tick, endStroke, undo, clear, naturalize,
     setBrushProfile({ strength, roughness } = {}) {
       if (Number.isFinite(strength)) defaultStrength = clamp(strength, 0.05, 3);

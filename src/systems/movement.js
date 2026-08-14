@@ -92,9 +92,39 @@ export function createMovementSystem(
     return Math.abs(rise) / run <= limit;
   }
 
+  /**
+   * Keeps the player off ground that is too steep to walk — but never at the
+   * cost of trapping her.
+   *
+   * The old version had no escape hatch: if the square she was standing on was
+   * itself steeper than maxWalkSlope, the full move failed, both axis-slides
+   * failed (their destinations were just as steep), and the fallback reset her
+   * to a position that was ALSO unwalkable. Every direction was refused, every
+   * frame, forever — sculpting a mountain under Liora meant reloading the page.
+   *
+   * Now, when she is already standing somewhere illegal, downhill always wins:
+   * any move that lowers her is allowed so she can walk herself out.
+   */
   function resolveWalkability(root, fromX, fromZ) {
     const { x, z } = root.position;
     if (walkable(fromX, fromZ, x, z)) return;
+
+    const stuck = groundSlope(fromX, fromZ) > config.maxWalkSlope;
+    if (stuck) {
+      // Escaping a steep patch: accept anything that does not climb.
+      if (getGroundHeight(x, z) <= getGroundHeight(fromX, fromZ)) return;
+      if (getGroundHeight(x, fromZ) <= getGroundHeight(fromX, fromZ)) {
+        root.position.z = fromZ;
+        return;
+      }
+      if (getGroundHeight(fromX, z) <= getGroundHeight(fromX, fromZ)) {
+        root.position.x = fromX;
+        return;
+      }
+      // Nowhere lower nearby (a pit). Let her move anyway rather than freeze.
+      return;
+    }
+
     if (walkable(fromX, fromZ, x, fromZ)) {
       root.position.z = fromZ;
       return;

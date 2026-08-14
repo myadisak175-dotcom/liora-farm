@@ -1,25 +1,27 @@
-/* Sculpt controls added by the terrain upgrade. Kept separate so the core mobile HUD stays stable. */
-#build-panel[data-tab="sculpt"] #sculpt-size {
+/* Sculpt extras. Kept separate so the core mobile HUD stays stable.
+   These controls live in the "เพิ่มเติม" drawer (#sculpt-extra), never in the
+   four-tool row — see sculpt-controls.js for why. */
+#sculpt-extra-size {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-#build-panel[data-tab="sculpt"] #sculpt-size label {
+#sculpt-extra-size label {
   min-height: 34px;
 }
-#sculpt-strip button.preset,
-#sculpt-strip button.terrain-action {
+#sculpt-presets button.preset,
+#sculpt-presets button.terrain-action {
   background: rgba(255, 255, 255, 0.11);
 }
-#sculpt-strip button.preset.active,
-#sculpt-strip button.terrain-action.active {
+#sculpt-presets button.preset.active,
+#sculpt-presets button.terrain-action.active {
   background: var(--accent);
-  outline: 2px solid rgba(255,255,255,.75);
+  outline: 2px solid rgba(255, 255, 255, 0.75);
 }
-#sculpt-size .terrain-control .value {
+#sculpt-extra-size .terrain-control .value {
   min-width: 56px;
 }
-@media (max-height: 640px) {
-  #build-panel[data-tab="sculpt"] #sculpt-size { gap: 2px; }
-  #build-panel[data-tab="sculpt"] #sculpt-size label { min-height: 30px; }
+@media (max-height: 740px) {
+  #sculpt-extra-size { gap: 2px; }
+  #sculpt-extra-size label { min-height: 30px; }
 }

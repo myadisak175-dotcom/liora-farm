@@ -5,13 +5,43 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#173c4b">
 <title>Liora's Farm</title>
-<link rel="stylesheet" href="./styles/main.css?v=terrain3">
-<link rel="stylesheet" href="./styles/terrain-controls.css?v=terrain3">
-<script type="importmap">
-{"imports":{
-  "three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
-}}
+<link rel="stylesheet" href="./styles/main.css?v=hud3">
+<link rel="stylesheet" href="./styles/terrain-controls.css?v=hud3">
+<script>
+/*
+ * Three.js resolution, local copy first.
+ *
+ * The import map used to point straight at a CDN with no alternative, so a
+ * slow train, a captive portal or a blocked jsdelivr meant the whole game was
+ * just the text "โหลดไม่สำเร็จ". Now: if vendor/three/three.module.js has been
+ * dropped into the repo, use it; otherwise fall back to the CDN. The import
+ * map has to exist before any module script runs, so both it and the entry
+ * script are injected from here.
+ */
+(async () => {
+  const LOCAL = "./vendor/three/";
+  const CDN = "https://cdn.jsdelivr.net/npm/three@0.180.0/";
+  let base = CDN;
+  try {
+    const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store" });
+    if (probe.ok) base = LOCAL;
+  } catch { /* no local copy — CDN it is */ }
+
+  const map = document.createElement("script");
+  map.type = "importmap";
+  map.textContent = JSON.stringify({
+    imports: {
+      three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
+      "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
+    },
+  });
+  document.head.append(map);
+
+  const entry = document.createElement("script");
+  entry.type = "module";
+  entry.src = "./src/main.js?v=hud3";
+  document.head.append(entry);
+})();
 </script>
 </head>
 <body data-mode="play">
@@ -39,15 +69,25 @@
     <button type="button" id="tab-place" class="active">วางของ</button>
     <button type="button" id="tab-paint">ระบายพื้น</button>
     <button type="button" id="tab-sculpt">ปั้นพื้น</button>
+    <button type="button" id="build-more" class="chip" aria-label="ตัวเลือกเพิ่มเติม" aria-expanded="false" hidden>⚙︎</button>
+    <button type="button" id="build-collapse" class="chip" aria-label="ย่อแผงเครื่องมือ" aria-expanded="true">⌄</button>
   </div>
-  <div id="build-hint"></div>
-  <div id="asset-cats" class="strip cats"></div>
-  <div id="asset-strip" class="strip"></div>
-  <div id="paint-strip" class="brushes"></div>
-  <div id="paint-size" class="sizerow"></div>
-  <div id="sculpt-strip" class="brushes"></div>
-  <div id="sculpt-size" class="sizerow"></div>
-  <div id="build-tools" class="strip tools"></div>
+  <div id="build-body">
+    <div id="build-hint"></div>
+    <div id="asset-cats" class="strip cats"></div>
+    <div id="asset-strip" class="strip"></div>
+    <div id="paint-strip" class="brushes"></div>
+    <div id="paint-size" class="sizerow"></div>
+    <div id="sculpt-strip" class="toolrow"></div>
+    <div id="sculpt-size" class="sizerow"></div>
+    <!-- "เพิ่มเติม" drawer: presets and the fine-tuning sliders. Hidden by
+         default so the sculpt tab stays four rows tall on a small phone. -->
+    <div id="sculpt-extra">
+      <div id="sculpt-presets" class="strip"></div>
+      <div id="sculpt-extra-size" class="sizerow stack"></div>
+    </div>
+    <div id="build-tools" class="strip tools"></div>
+  </div>
   <div id="build-actions" class="actions"></div>
 </section>
 <div id="toast" aria-live="polite"></div>
@@ -61,6 +101,5 @@ window.addEventListener("load", () => {
   }, 12000);
 });
 </script>
-<script type="module" src="./src/main.js?v=terrain3"></script>
 </body>
 </html>
