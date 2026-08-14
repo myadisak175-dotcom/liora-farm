@@ -9,15 +9,15 @@ How the painted ground works, and how to add a surface.
 2. Add one row to `CONFIG.groundPaint.layers` in `src/config.js`:
 
 ```js
-{ id: 4, key: "snow", label: "หิมะ", icon: "❄️", texture: "snow.webp", feather: "medium" },
+{ id: 8, key: "snow", label: "หิมะ", icon: "❄️", texture: "snow.webp", feather: "medium" },
 ```
 
 That is the whole change. The brush button, the splat channel, the texture
 array slot and the fragment shader are all generated from that row.
 
 **Never reuse or renumber an `id`.** It is what every stroke is saved as, so
-changing one repaints existing worlds with the wrong surface. Take the next
-free number; the config comment tracks it.
+changing one repaints existing worlds with the wrong surface. The next free id
+is currently `8`; keep increasing from there as new surfaces are added.
 
 `feather` picks how softly the brush melts into the surrounding ground:
 `"long"` for paths and soil, `"medium"` for shorelines, `"short"` for hard
