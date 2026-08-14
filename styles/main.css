@@ -345,22 +345,38 @@ body[data-mode="build"] #build-panel:not([data-tab="place"]) #asset-strip { disp
 body[data-mode="build"] #build-panel:not([data-tab="paint"]) :is(#paint-strip, #paint-size) { display: none; }
 body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip, #sculpt-size) { display: none; }
 
-/* Brushes as a fixed grid, never a scroller. A size slider parked at the end
-   of a scrolling strip is exactly how the place button ended up off-screen —
-   the same mistake, one tab over. */
+/* Brushes as a grid, never a horizontal scroller. A size slider parked at the
+   end of a scrolling strip is exactly how the place button ended up off-screen
+   — the same mistake, one tab over. Past four surfaces the grid wraps and
+   scrolls DOWN instead, which leaves the slider and the action row where they
+   were. The cap is ~2.5 rows so it always reads as "there is more below". */
 .brushes {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+  max-height: 152px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 .brushes button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
   min-height: 46px;
-  padding: 6px 2px;
-  font-size: 11px;
+  padding: 5px 2px;
+  font-size: 10px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
+.brushes button > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brushes .glyph { font-size: 17px; line-height: 1.1; }
 .sizerow { display: flex; }
 /* The label is the flex item, so it has to be the flex container too —
    otherwise the slider keeps its default ~130px width and the row looks
@@ -395,6 +411,9 @@ body[data-mode="build"] #build-panel:not([data-tab="sculpt"]) :is(#sculpt-strip,
   #asset-strip button { min-height: 44px; min-width: 56px; }
   #asset-strip .glyph { font-size: 19px; }
   .strip.tools button.icon { min-width: 44px; min-height: 44px; }
+  /* One and a half rows of brushes here, not two and a half. */
+  .brushes { max-height: 100px; }
+  .brushes .glyph { font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

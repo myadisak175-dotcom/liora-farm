@@ -81,6 +81,7 @@ try {
     textureLoader,
     config: CONFIG,
     assets: ASSETS,
+    anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
     reservedAreas: RESERVED_AREAS,
     onCropsChange: () => refreshFarmHud(),
   });
@@ -89,6 +90,15 @@ try {
   setStatus("โหลดพื้นไม่สำเร็จ — เช็คไฟล์ใน assets/textures/");
   throw error;
 }
+
+// Handles the smoke test needs to reach. Kept to the two objects it actually
+// asserts on rather than the whole world, so this does not quietly become a
+// second public API.
+window.__liora = {
+  get paint() { return world.paint; },
+  get layers() { return world.layers; },
+  get missingTextures() { return world.missingTextures; },
+};
 
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
 const sky = createSky(CONFIG.sky);

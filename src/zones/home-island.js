@@ -3,6 +3,8 @@ import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
+import { createGroundLayers } from "../systems/ground-layers.js";
+import { createGroundTextureArray } from "../systems/ground-texture-array.js";
 import { createBrushCursor } from "../systems/brush-cursor.js";
 import { createAnimatedWater } from "../systems/water.js";
 import { createFarmPlot } from "../systems/farming/plot.js";
@@ -20,6 +22,7 @@ export async function createHomeIsland({
   textureLoader,
   config,
   assets,
+  anisotropy = 1,
   reservedAreas = [],
   onCropsChange,
 }) {
@@ -29,18 +32,32 @@ export async function createHomeIsland({
   const island = createFloatingIsland(config.island);
   group.add(island);
 
-  const [grass, dirt, sand, rock] = await Promise.all(
-    [assets.grass, assets.dirt, assets.sand, assets.rock].map((url) =>
-      textureLoader.loadAsync(url)
-    )
+  const layers = createGroundLayers(
+    config.groundPaint.layers.map((layer) => ({
+      ...layer,
+      texture: `${assets.textureDir}/${layer.texture}`,
+    })),
+    { maxLayers: config.groundPaint.maxLayers }
   );
+
   const repeat = config.groundPaint.textureRepeat;
-  const textures = {
-    grass: tile(grass, repeat),
-    dirt: tile(dirt, repeat),
-    sand: tile(sand, repeat),
-    rock: tile(rock, repeat),
-  };
+  const groundTextures = await createGroundTextureArray({
+    layers,
+    textureLoader,
+    tileSize: config.groundPaint.tileSize,
+    anisotropy,
+  });
+
+  // The mesh still needs a plain 2D map: it is what makes three declare vMapUv,
+  // and every UV in the splat shader is derived from that. The base layer is
+  // the natural choice — it is also what shows through everywhere unpainted.
+  // Built from the image the array already downloaded rather than loading the
+  // file a second time.
+  const baseMap = tile(
+    new THREE.Texture(groundTextures.images.get(layers.base.key)),
+    repeat
+  );
+  baseMap.needsUpdate = true;
 
   const height = createTerrainHeight({
     config: config.sculpt,
@@ -50,7 +67,7 @@ export async function createHomeIsland({
   });
 
   const terrain = createTerrain({
-    texture: textures.grass,
+    texture: baseMap,
     config: config.terrain,
     height,
   });
@@ -58,7 +75,8 @@ export async function createHomeIsland({
   const paint = createGroundPaint({
     config: config.groundPaint,
     worldSize: config.terrain.size,
-    textures,
+    layers,
+    layerArray: groundTextures.texture,
   });
   paint.applyTo(terrain.material);
 
@@ -91,6 +109,9 @@ export async function createHomeIsland({
     group,
     ground: terrain.mesh,
     terrain,
+    layers,
+    /** Layers whose texture file was missing — surfaced by the smoke test. */
+    missingTextures: groundTextures.missing,
     height,
     water,
     paint,
@@ -113,7 +134,8 @@ export async function createHomeIsland({
       height.dispose();
       terrain.dispose();
       water.dispose();
-      for (const texture of Object.values(textures)) texture.dispose();
+      groundTextures.dispose();
+      baseMap.dispose();
       scene.remove(group);
     },
   };

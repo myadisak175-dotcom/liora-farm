@@ -148,7 +148,36 @@ export const CONFIG = Object.freeze({
   },
 
   // Free-brush splat painting over the single ground mesh.
+  //
+  // TO ADD A SURFACE: drop a square, seamlessly tiling image in assets/textures
+  // and add one row to `layers` below. Nothing else needs editing — the brush
+  // buttons, the splat channels and the fragment shader are all generated from
+  // this table.
+  //
+  //   id       NEVER reuse or renumber. It is what strokes are saved as, so
+  //            changing one repaints existing worlds with the wrong surface.
+  //            Next free id is 4.
+  //   base     Exactly one layer. It has no splat channel of its own — it is
+  //            whatever the painted layers leave over, which also makes its
+  //            brush the eraser.
+  //   feather  "long" melts into the base most (paths, soil), "medium" keeps a
+  //            shoreline readable, "short" cuts the halo around hard surfaces.
+  //            An explicit [[stop, mix], ...] array works too.
+  //
+  // Cost: three painted layers share one 1024² splat page, and pages are only
+  // allocated once something is actually painted on them. Declaring 16 layers
+  // costs nothing until they are used.
   groundPaint: {
+    maxLayers: 16,
+    layers: [
+      { id: 3, key: "grass", label: "หญ้า", icon: "🌿", texture: "grass.webp", feather: "long", base: true },
+      { id: 0, key: "dirt", label: "ดิน", icon: "🟫", texture: "dirt_ground.webp", feather: "long" },
+      { id: 1, key: "sand", label: "ทราย", icon: "🏖️", texture: "sand.webp", feather: "medium" },
+      { id: 2, key: "rock", label: "หิน", icon: "🪨", texture: "rock.webp", feather: "short" },
+    ],
+    // Every layer is resampled to this square size so they can share one array
+    // texture. 512 over an 8x-repeated tile is already denser than the screen.
+    tileSize: 512,
     resolution: 1024,
     textureRepeat: 8,
     minRadius: 0.5,
@@ -263,10 +292,10 @@ const MODEL_DIR = "./builder/assets/models/builder";
 const TEXTURE_DIR = "./assets/textures";
 
 export const ASSETS = Object.freeze({
-  grass: `${TEXTURE_DIR}/grass.webp`,
-  dirt: `${TEXTURE_DIR}/dirt_ground.png`,
-  sand: `${TEXTURE_DIR}/sand.webp`,
-  rock: `${TEXTURE_DIR}/rock.webp`,
+  // Ground surfaces are no longer listed one by one here: CONFIG.groundPaint
+  // .layers owns that list, and each row's `texture` is a file name resolved
+  // against this directory.
+  textureDir: TEXTURE_DIR,
   player: "./assets/models/player/liora_all_animations_web.glb",
   modelDir: MODEL_DIR,
 });

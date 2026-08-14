@@ -9,7 +9,7 @@ There are no separate builder / test pages any more.
 index.html              single entry: canvas + play HUD + build panel
 styles/main.css         all UI styling
 maps/home-island.json   default island layout (data only)
-assets/textures/        ground surfaces: grass, dirt, sand, rock
+assets/textures/        ground surfaces — the list lives in config.js groundPaint.layers
 assets/models/player/   Liora (7 animations)
 builder/assets/models/  placeable GLBs — path lives in config.js ASSETS.modelDir
 src/
@@ -18,6 +18,7 @@ src/
   entities/player.js    model load + animation state
   zones/home-island.js  builds the world: island + terrain + paint + farm plot
   systems/              gameplay + rendering, one concern per file
+  tools/test/           headless checks — node tools/test/run.mjs
   editor/               the build mode
 ```
 
@@ -76,11 +77,17 @@ base64, about 19 KB.
 alone first, which reads as sliding along the contour. The rule is symmetric so
 a sculpted pit cannot become a trap.
 
-Surface variety comes from `systems/ground-paint.js`: a canvas splat map
-(R = dirt, G = sand, B = rock, black = grass) blended inside the *single*
-ground material via `onBeforeCompile`. No overlay tiles, so edges stay soft.
-Strokes are stored as data and replayed, which is why undo works and why the
-paint survives a reload.
+Surface variety comes from `systems/ground-paint.js`: canvas splat maps
+blended inside the *single* ground material via `onBeforeCompile`. No overlay
+tiles, so edges stay soft. Strokes are stored as data and replayed, which is
+why undo works and why the paint survives a reload.
+
+Layers are declared once in `CONFIG.groundPaint.layers` — adding a surface is
+one row there and an image file, nothing else. Three painted layers share one
+RGB splat page and pages are allocated only when painted on; the base layer
+(grass) has no channel of its own, which is what makes its brush the eraser.
+All surfaces ship to the GPU as one `sampler2DArray` so the layer count does
+not eat texture units. See `docs/GROUND-LAYERS.md`.
 
 ## Build mode
 

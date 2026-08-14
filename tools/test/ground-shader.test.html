@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ground shader tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
+<body>
+<pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<canvas id="gl" width="8" height="8"></canvas>
+<script type="module">
+import { createGroundLayers } from "../../src/systems/ground-layers.js";
+import { createGroundPaint } from "../../src/systems/ground-paint.js";
+import { CONFIG } from "../../src/config.js";
+
+const results = [];
+const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
+const eq = (name, actual, expected) => ok(name, Object.is(actual, expected), `got ${actual}, want ${expected}`);
+
+// A worst case that the game can legally reach: the declared cap, every layer
+// painted, so the shader samples the maximum number of pages.
+const LAYERS = createGroundLayers(
+  [
+    { id: 3, key: "grass", texture: "grass.webp", base: true },
+    ...Array.from({ length: 15 }, (_, i) => ({
+      id: [0, 1, 2][i] ?? i + 2,
+      key: `layer${[0, 1, 2][i] ?? i + 2}`,
+      texture: "grass.webp",
+    })),
+  ],
+  { maxLayers: CONFIG.groundPaint.maxLayers }
+);
+
+localStorage.removeItem("test.shader");
+const paint = createGroundPaint({
+  config: { ...CONFIG.groundPaint, resolution: 64, storageKey: "test.shader" },
+  worldSize: 42,
+  layers: LAYERS,
+  layerArray: null,
+});
+for (const layer of LAYERS.paintable) {
+  paint.paintAt(0, 0, { layer: layer.id, radius: 1, strength: 1 });
+}
+eq("all 15 layers painted -> 5 pages", paint.pageCount, 5);
+
+const material = { needsUpdate: false };
+paint.applyTo(material);
+const stub = {
+  uniforms: {},
+  fragmentShader:
+    "#include <common>\nvoid main(){\ndiffuseColor = vec4(1.0);\n#include <map_fragment>\nfragColor = diffuseColor;\n}",
+};
+material.onBeforeCompile(stub);
+
+const PRELUDE = `precision highp float;
+#define texture2D texture
+in vec2 vMapUv;
+out vec4 fragColor;
+vec4 diffuseColor;`;
+const fragmentSource =
+  "#version 300 es\n" + stub.fragmentShader.replace("#include <common>", PRELUDE);
+
+const VERTEX = `#version 300 es
+in vec2 aPos;
+out vec2 vMapUv;
+void main(){ vMapUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+// ---------------------------------------------------------------- real GL
+const canvas = document.querySelector("#gl");
+const gl = canvas.getContext("webgl2", { antialias: false, preserveDrawingBuffer: true });
+ok("webgl2 context", Boolean(gl));
+if (!gl) { report(); throw new Error("no webgl2"); }
+
+const units = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+// 5 splat pages + 1 array + whatever MeshStandardMaterial binds must fit.
+ok("array texture keeps us well inside the unit budget", units >= 16, `MAX_TEXTURE_IMAGE_UNITS=${units}`);
+
+function compile(type, source, label) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  const good = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+  ok(`${label} compiles`, good, good ? "" : gl.getShaderInfoLog(shader));
+  return good ? shader : null;
+}
+
+const vs = compile(gl.VERTEX_SHADER, VERTEX, "vertex shader");
+const fs = compile(gl.FRAGMENT_SHADER, fragmentSource, "generated fragment shader");
+let program = null;
+if (vs && fs) {
+  program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.bindAttribLocation(program, 0, "aPos");
+  gl.linkProgram(program);
+  const linked = gl.getProgramParameter(program, gl.LINK_STATUS);
+  ok("program links", linked, linked ? "" : gl.getProgramInfoLog(program));
+  if (!linked) program = null;
+}
+
+if (program) {
+  gl.useProgram(program);
+
+  // --- the layer array, one flat colour per slice so blending is checkable
+  const TILE = 4;
+  const depth = LAYERS.all.length;
+  const data = new Uint8Array(TILE * TILE * 4 * depth);
+  const sliceValue = (slot) => 8 + slot * 15; // distinct, and never 0 or 255
+  for (let slot = 0; slot < depth; slot += 1) {
+    const value = sliceValue(slot);
+    for (let p = 0; p < TILE * TILE; p += 1) {
+      const at = (slot * TILE * TILE + p) * 4;
+      data[at] = value;
+      data[at + 1] = value;
+      data[at + 2] = value;
+      data[at + 3] = 255;
+    }
+  }
+  const arrayTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, arrayTex);
+  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, TILE, TILE, depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  // This is the call the real texture depends on: three asks the driver to
+  // build mips for the whole array, and without them the ground shimmers.
+  eq("generateMipmap on a 16-slice array is clean", gl.getError(), gl.NO_ERROR);
+  gl.uniform1i(gl.getUniformLocation(program, "uLayers"), 0);
+  gl.uniform1f(gl.getUniformLocation(program, "uRepeat"), 1.0);
+
+  // --- splat pages: page 0 red = layer id 0, everything else empty
+  const splats = [];
+  for (const page of [0, 1, 2, 3, 4]) {
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1 + page);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.uniform1i(gl.getUniformLocation(program, `uSplat${page}`), 1 + page);
+    splats.push({ page, tex });
+  }
+  function setSplat(page, rgb) {
+    const px = new Uint8Array(4 * 4);
+    for (let i = 0; i < 4; i += 1) {
+      px[i * 4] = rgb[0]; px[i * 4 + 1] = rgb[1]; px[i * 4 + 2] = rgb[2]; px[i * 4 + 3] = 255;
+    }
+    gl.activeTexture(gl.TEXTURE1 + page);
+    gl.bindTexture(gl.TEXTURE_2D, splats[page].tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  }
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  function render() {
+    gl.viewport(0, 0, 8, 8);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const out = new Uint8Array(4);
+    gl.readPixels(4, 4, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out);
+    return out[0];
+  }
+
+  const baseSlot = LAYERS.base.slot;
+  const dirtSlot = LAYERS.get(0).slot;
+  const near = (a, b, tol = 3) => Math.abs(a - b) <= tol;
+
+  // nothing painted -> pure base layer
+  for (const page of [0, 1, 2, 3, 4]) setSplat(page, [0, 0, 0]);
+  const blank = render();
+  ok("unpainted ground is exactly the base layer", near(blank, sliceValue(baseSlot)),
+    `got ${blank}, want ${sliceValue(baseSlot)}`);
+
+  // fully painted with layer id 0 -> that layer, base gone
+  setSplat(0, [255, 0, 0]);
+  const full = render();
+  ok("weight 1.0 replaces the base entirely", near(full, sliceValue(dirtSlot)),
+    `got ${full}, want ${sliceValue(dirtSlot)}`);
+
+  // half weight -> a real blend of layer and base
+  setSplat(0, [128, 0, 0]);
+  const half = render();
+  const wantHalf = sliceValue(dirtSlot) * (128 / 255) + sliceValue(baseSlot) * (1 - 128 / 255);
+  ok("half weight blends layer and base", near(half, wantHalf), `got ${half}, want ~${wantHalf.toFixed(1)}`);
+
+  // the top page: layer id 16 lives on page 4 and must reach the shader
+  setSplat(0, [0, 0, 0]);
+  const topLayer = LAYERS.paintable[LAYERS.paintable.length - 1];
+  eq("top layer is on page 4", Math.floor(topLayer.channel / 3), 4);
+  const component = topLayer.channel % 3;
+  setSplat(4, [component === 0 ? 255 : 0, component === 1 ? 255 : 0, component === 2 ? 255 : 0]);
+  const top = render();
+  ok("the 15th painted layer renders from page 4", near(top, sliceValue(topLayer.slot)),
+    `got ${top}, want ${sliceValue(topLayer.slot)}`);
+
+  // two layers on different pages -> weights add and normalise
+  setSplat(0, [255, 0, 0]);
+  const both = render();
+  const wantBoth = (sliceValue(dirtSlot) + sliceValue(topLayer.slot)) / 2;
+  ok("two full layers average instead of over-brightening", near(both, wantBoth),
+    `got ${both}, want ~${wantBoth.toFixed(1)}`);
+
+  eq("no GL errors after drawing", gl.getError(), gl.NO_ERROR);
+}
+
+function report() {
+  document.querySelector("#out").textContent = JSON.stringify(results, null, 1);
+  window.__results = results;
+  window.__source = fragmentSource;
+  if (location.search.includes("source")) document.querySelector("#out").textContent = fragmentSource;
+  window.__done = true;
+}
+report();
+</script>
+</body>
+</html>

@@ -37,5 +37,6 @@ Before treating a terrain version as stable:
 2. Parse the default map JSON.
 3. Verify terrain export/import round-trip within 1 cm.
 4. Verify reserved farm ground cannot be sculpted.
-5. Run `selftest.html` in a browser.
-6. Do a hands-on phone pass for drag, pinch, brush feel, placing on slopes and Play-mode lockout.
+5. Run `node tools/test/run.mjs` (registry, paint, generated GLSL, phone panel).
+6. Run `selftest.html` in a browser.
+7. Do a hands-on phone pass for drag, pinch, brush feel, placing on slopes and Play-mode lockout.

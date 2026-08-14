@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ground layer tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
+<body>
+<pre id="out">running…</pre>
+<script>
+// A module that throws mid-file leaves the page looking merely slow, which is
+// indistinguishable from a hang in a headless run.
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import { createGroundLayers, CHANNELS_PER_PAGE } from "../../src/systems/ground-layers.js";
+import { createGroundPaint } from "../../src/systems/ground-paint.js";
+import { createGroundTextureArray } from "../../src/systems/ground-texture-array.js";
+import { TextureLoader } from "./three-stub.js";
+import { CONFIG } from "../../src/config.js";
+
+const results = [];
+const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
+function eq(name, actual, expected) {
+  ok(name, Object.is(actual, expected) , `got ${actual}, want ${expected}`);
+}
+function throws(name, fn) {
+  try { fn(); ok(name, false, "did not throw"); }
+  catch (e) { ok(name, true, e.message); }
+}
+
+// ---------------------------------------------------------------- registry
+// Same table the game ships, with the texture paths resolved the way
+// home-island.js resolves them (relative to this test page).
+const SHIPPED = CONFIG.groundPaint.layers.map((l) => ({ ...l, texture: `../../assets/textures/${l.texture}` }));
+const shipped = createGroundLayers(SHIPPED, { maxLayers: CONFIG.groundPaint.maxLayers });
+
+eq("shipped: 4 layers", shipped.all.length, 4);
+eq("shipped: 3 paintable", shipped.paintable.length, 3);
+eq("shipped: base is grass", shipped.base.key, "grass");
+eq("shipped: needs 1 page", shipped.pageCount, 1);
+// The whole point of the id/channel split: legacy save ids must map to the
+// exact channels the old hardcoded shader used.
+eq("legacy dirt -> channel 0", shipped.get(0).channel, 0);
+eq("legacy sand -> channel 1", shipped.get(1).channel, 1);
+eq("legacy rock -> channel 2", shipped.get(2).channel, 2);
+eq("legacy grass -> no channel", shipped.get(3).channel, -1);
+eq("grass page is -1", shipped.pageOf(3), -1);
+
+throws("duplicate id is fatal", () =>
+  createGroundLayers([
+    { id: 0, key: "a", texture: "a.png", base: true },
+    { id: 0, key: "b", texture: "b.png" },
+  ]));
+throws("two base layers is fatal", () =>
+  createGroundLayers([
+    { id: 0, key: "a", texture: "a.png", base: true },
+    { id: 1, key: "b", texture: "b.png", base: true },
+  ]));
+throws("no base layer is fatal", () =>
+  createGroundLayers([{ id: 0, key: "a", texture: "a.png" }]));
+throws("missing texture is fatal", () =>
+  createGroundLayers([{ id: 0, key: "a", base: true }]));
+throws("over the cap is fatal", () =>
+  createGroundLayers(
+    Array.from({ length: 17 }, (_, i) => ({ id: i, key: `k${i}`, texture: "t.png", base: i === 0 })),
+    { maxLayers: 16 }
+  ));
+
+// A full 16-layer table: 15 paintable -> 5 pages.
+const BIG = [
+  { id: 3, key: "grass", label: "grass", texture: "grass.webp", base: true },
+  ...Array.from({ length: 15 }, (_, i) => {
+    const id = [0, 1, 2][i] ?? i + 2; // reuse the shipped ids, then 5..16
+    return { id, key: `layer${id}`, label: `L${id}`, texture: "grass.webp", feather: "medium" };
+  }),
+];
+const big = createGroundLayers(BIG, { maxLayers: 16 });
+eq("big: 16 layers", big.all.length, 16);
+eq("big: 15 paintable", big.paintable.length, 15);
+eq("big: 5 pages", big.pageCount, 5);
+eq("big: highest layer on page 4", big.pageOf(15), 4);
+eq("big: slots are 0..15", big.all.map((l) => l.slot).join(","), "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15");
+// Slot order must follow id order or the shader indexes the wrong image.
+eq("big: slot order follows id", big.all.every((l, i) => i === 0 || l.id > big.all[i - 1].id), true);
+
+// ---------------------------------------------------------------- paint
+const PAINT_CONFIG = { ...CONFIG.groundPaint, resolution: 256, snapshotInterval: 5, storageKey: "test.paint" };
+const fakeArray = { isDataArrayTexture: true };
+function makePaint(layers, key = "test.paint") {
+  localStorage.removeItem(key);
+  return createGroundPaint({
+    config: { ...PAINT_CONFIG, storageKey: key },
+    worldSize: 42,
+    layers,
+    layerArray: fakeArray,
+  });
+}
+
+// Read the splat pages back so tests assert on pixels, not on bookkeeping.
+const PIXELS_PER_UNIT = PAINT_CONFIG.resolution / 42;
+function readPixel(paint, pageIndex, x, z) {
+  const canvas = paint.pageCanvas(pageIndex);
+  if (!canvas) return [-1, -1, -1, -1];
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const px = Math.round((x + 21) * PIXELS_PER_UNIT);
+  const py = Math.round((z + 21) * PIXELS_PER_UNIT);
+  return [...ctx.getImageData(px, py, 1, 1).data];
+}
+function hashPage(paint, pageIndex) {
+  const canvas = paint.pageCanvas(pageIndex);
+  if (!canvas) return "none";
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let h = 2166136261;
+  for (let i = 0; i < data.length; i += 4) {
+    h = Math.imul(h ^ data[i], 16777619);
+    h = Math.imul(h ^ data[i + 1], 16777619);
+    h = Math.imul(h ^ data[i + 2], 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+
+function grabShader(paint) {
+  const material = { needsUpdate: false };
+  paint.applyTo(material);
+  const shader = {
+    uniforms: {},
+    fragmentShader: "#include <common>\nvoid main(){\n#include <map_fragment>\n}",
+  };
+  material.onBeforeCompile(shader);
+  return { source: shader.fragmentShader, uniforms: shader.uniforms, key: material.customProgramCacheKey() };
+}
+
+const p1 = makePaint(shipped, "test.p1");
+eq("fresh world has 1 page", p1.pageCount, 1);
+p1.paintAt(0, 0, { layer: 0, radius: 3, strength: 1 });
+eq("one dab is one undo step", p1.strokeCount, 1);
+eq("dirt did not add a page", p1.pageCount, 1);
+
+const before = grabShader(p1);
+ok("shader declares the array sampler", before.source.includes("uniform sampler2DArray uLayers;"));
+ok("shader declares array precision", before.source.includes("precision highp sampler2DArray;"));
+ok("shader declares page 0 only", before.source.includes("uniform sampler2D uSplat0;") && !before.source.includes("uSplat1"));
+ok("shader samples with textureGrad", before.source.includes("textureGrad(uLayers"));
+ok("shader takes derivatives outside the branch",
+  before.source.indexOf("vec2 tileDx = dFdx(tileUv);") < before.source.indexOf("if (w_dirt"));
+ok("base layer is sampled at its slot", before.source.includes(`vec3(tileUv, ${shipped.base.slot}.0)`));
+
+// undo/redo fidelity ------------------------------------------------------
+const p2 = makePaint(shipped, "test.p2");
+const snap = () => hashPage(p2, 0);
+p2.paintAt(-4, 2, { layer: 0, radius: 2.5, strength: 1 });
+p2.paintAt(3, -1, { layer: 1, radius: 2, strength: 0.8 });
+const stable = snap();
+p2.paintAt(1, 1, { layer: 2, radius: 2, strength: 1 });
+ok("painting changed the page", snap() !== stable);
+p2.undo();
+eq("undo restores the exact pixels", snap(), stable);
+eq("undo pops one step", p2.strokeCount, 2);
+
+// snapshot boundary: interval is 5, so a long drag crosses it
+const p3 = makePaint(shipped, "test.p3");
+p3.paintAt(-6, -6, { layer: 0, radius: 1, strength: 1 });
+const base3 = hashPage(p3, 0);
+p3.beginStroke({ layer: 1, radius: 1, strength: 1 });
+for (let i = 0; i < 40; i += 1) p3.strokeTo(-6 + i * 0.4, -6 + i * 0.2);
+p3.endStroke();
+ok("a drag is one undo step", p3.strokeCount === 2, `steps=${p3.strokeCount} stamps=${p3.stampCount}`);
+p3.undo();
+eq("undo across snapshot boundary is exact", hashPage(p3, 0), base3);
+
+// multi-page ---------------------------------------------------------------
+const p4 = makePaint(big, "test.p4");
+eq("big world still starts at 1 page", p4.pageCount, 1);
+p4.paintAt(0, 0, { layer: 15, radius: 3, strength: 1 });
+eq("painting layer 15 allocates its page", p4.pageCount, 2);
+const after = grabShader(p4);
+ok("shader now declares page 4", after.source.includes("uniform sampler2D uSplat4;"));
+ok("shader skips unallocated pages", !after.source.includes("uSplat1;") && !after.source.includes("uSplat3;"));
+ok("cache key moved with the pages", after.key !== grabShaderKeyOf(p1), `${after.key}`);
+function grabShaderKeyOf(paint) { return grabShader(paint).key; }
+eq("page 4 uniform is bound", Boolean(after.uniforms.uSplat4), true);
+eq("page 0 uniform is bound", Boolean(after.uniforms.uSplat0), true);
+
+// eraser spans every allocated page ---------------------------------------
+const p5 = makePaint(big, "test.p5");
+p5.paintAt(0, 0, { layer: 0, radius: 4, strength: 1 });   // page 0
+p5.paintAt(0, 0, { layer: 15, radius: 4, strength: 1 });  // page 4
+eq("two pages allocated", p5.pageCount, 2);
+// Which byte carries a layer's weight depends on its channel, not its page.
+const C0 = big.componentOf(0), C15 = big.componentOf(15);
+eq("layer 0 uses the red channel", C0, 0);
+eq("layer 15 uses the green channel", C15, 1);
+const inked0 = readPixel(p5, 0, 0, 0);
+const inked4 = readPixel(p5, 4, 0, 0);
+ok("page 0 has ink", inked0[C0] > 200, JSON.stringify(inked0));
+ok("page 4 has ink", inked4[C15] > 200, JSON.stringify(inked4));
+p5.paintAt(0, 0, { layer: 3, radius: 4, strength: 1 });   // base = eraser
+ok("eraser cleared page 0", readPixel(p5, 0, 0, 0)[C0] < 12, JSON.stringify(readPixel(p5, 0, 0, 0)));
+ok("eraser cleared page 4", readPixel(p5, 4, 0, 0)[C15] < 12, JSON.stringify(readPixel(p5, 4, 0, 0)));
+p5.undo();
+ok("undoing the eraser restores page 0", readPixel(p5, 0, 0, 0)[C0] > 200, JSON.stringify(readPixel(p5, 0, 0, 0)));
+ok("undoing the eraser restores page 4", readPixel(p5, 4, 0, 0)[C15] > 200, JSON.stringify(readPixel(p5, 4, 0, 0)));
+
+// save format --------------------------------------------------------------
+const p6 = makePaint(big, "test.p6");
+p6.paintAt(-2, 3, { layer: 0, radius: 2, strength: 1 });
+p6.paintAt(5, 5, { layer: 15, radius: 2, strength: 0.5 });
+const dump = p6.exportData();
+eq("export is version 1", dump.version, 1);
+eq("export keeps layer ids", dump.strokes.map((s) => s[3]).join(","), "0,15");
+const p7 = makePaint(big, "test.p7");
+ok("import accepts the dump", p7.importData(dump, { save: false }));
+eq("import rebuilt both pages", p7.pageCount, 2);
+eq("import reproduces page 0", hashPage(p7, 0), hashPage(p6, 0));
+eq("import reproduces page 4", hashPage(p7, 4), hashPage(p6, 4));
+eq("import restores undo steps", p7.strokeCount, p6.strokeCount);
+
+// a save written by the old 4-layer build
+const LEGACY = { version: 1, strokes: [[0, 0, 2, 0, 1], [1, 1, 2, 1, 1], [2, 2, 2, 2, 1], [3, 3, 2, 3, 1]], groups: [1, 1, 1, 1] };
+const p8 = makePaint(shipped, "test.p8");
+ok("legacy save loads", p8.importData(LEGACY, { save: false }));
+eq("legacy save keeps all 4 strokes", p8.stampCount, 4);
+// and the same save read by a build where a layer was deleted from the config
+const trimmed = createGroundLayers(SHIPPED.filter((l) => l.key !== "rock"), { maxLayers: 16 });
+const p9 = makePaint(trimmed, "test.p9");
+ok("save with an unknown layer still loads", p9.importData(LEGACY, { save: false }));
+eq("unknown layer's strokes are dropped, not drawn", p9.stampCount, 3);
+
+// clear --------------------------------------------------------------------
+const p10 = makePaint(big, "test.p10");
+const blank = hashPage(p10, 0);
+p10.paintAt(0, 0, { layer: 0, radius: 3, strength: 1 });
+p10.clear();
+eq("clear returns page 0 to blank", hashPage(p10, 0), blank);
+eq("clear empties the history", p10.strokeCount, 0);
+
+// ---------------------------------------------------------------- array tex
+const arr = await createGroundTextureArray({
+  layers: shipped,
+  textureLoader: new TextureLoader(),
+  tileSize: 64,
+  anisotropy: 4,
+});
+eq("array has one slice per layer", arr.texture.image.depth, 4);
+eq("array is square at tileSize", `${arr.texture.image.width}x${arr.texture.image.height}`, "64x64");
+eq("array byte length", arr.texture.image.data.length, 64 * 64 * 4 * 4);
+eq("no textures were missing", arr.missing.length, 0);
+eq("array asks for mipmaps", arr.texture.generateMipmaps, true);
+
+const missingArr = await createGroundTextureArray({
+  layers: createGroundLayers([
+    { id: 3, key: "grass", texture: "../../assets/textures/grass.webp", base: true },
+    { id: 0, key: "ghost", texture: "../../assets/textures/does-not-exist.png" },
+  ]),
+  textureLoader: new TextureLoader(),
+  tileSize: 32,
+});
+eq("a missing texture is reported, not thrown", missingArr.missing.join(","), "ghost");
+eq("missing slice still fills the array", missingArr.texture.image.data.length, 32 * 32 * 4 * 2);
+
+document.querySelector("#out").textContent = JSON.stringify(results, null, 1);
+window.__results = results;
+window.__shaderSource = grabShader(makeBigPaint()).source;
+function makeBigPaint(){const p=makePaint(big,"test.shader");for(const l of big.paintable)p.paintAt(0,0,{layer:l.id,radius:1,strength:1});return p;}
+window.__done = true;
+</script>
+</body>
+</html>

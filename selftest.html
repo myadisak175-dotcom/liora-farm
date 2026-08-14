@@ -23,6 +23,25 @@ check('เปิดโหมดสร้างได้',getComputedStyle(d.quer
 check('มีแท็บปั้นพื้น',Boolean(d.querySelector('#tab-sculpt')));
 d.querySelector('#tab-sculpt')?.click();await sleep(120);
 check('มีเครื่องมือปั้นครบ 4 แบบ',d.querySelectorAll('#sculpt-strip [data-sculpt-tool]').length===4);
+const L=w.__liora;
+d.querySelector('#tab-paint')?.click();await sleep(120);
+const layers=L?.layers;
+check('มีปุ่มระบายครบทุกชั้นในคอนฟิก',Boolean(layers)&&d.querySelectorAll('#paint-strip [data-paint-layer]').length===layers.all.length,layers?`${d.querySelectorAll('#paint-strip [data-paint-layer]').length}/${layers.all.length}`:'ไม่มี __liora');
+check('ทุกปุ่มระบายผูกกับ id จริง',Boolean(layers)&&[...d.querySelectorAll('#paint-strip [data-paint-layer]')].every(b=>layers.isValidId(Number(b.dataset.paintLayer))));
+const brushes=d.querySelector('#paint-strip');
+check('แถวแปรงไม่ล้นออกนอกจอ',Boolean(brushes)&&brushes.getBoundingClientRect().right<=w.innerWidth+1&&brushes.scrollHeight<=brushes.clientHeight+1||Boolean(brushes)&&getComputedStyle(brushes).overflowY==='auto','เลื่อนลงได้');
+check('ปุ่มระบายยังสูงพอสำหรับนิ้ว',[...d.querySelectorAll('#paint-strip button')].every(b=>b.getBoundingClientRect().height>=44));
+check('ไฟล์ texture ครบทุกชั้น',Array.isArray(L?.missingTextures)&&L.missingTextures.length===0,L?.missingTextures?.join(', ')||'');
+if(L?.paint&&layers){
+  const paint=L.paint,before=paint.exportData(),pages=paint.pageCount;
+  const target=layers.paintable[layers.paintable.length-1];
+  paint.paintAt(9.5,9.5,{layer:target.id,radius:1.5,strength:1});
+  check('ระบายชั้นสุดท้ายแล้วจอง splat page ให้เอง',paint.pageCount>=Math.max(pages,layers.pageOf(target.id)+1),`pages=${paint.pageCount}`);
+  const dump=paint.exportData();
+  check('export เก็บ id ของชั้นที่เพิ่งระบาย',dump.strokes.at(-1)?.[3]===target.id,`${dump.strokes.at(-1)?.[3]} vs ${target.id}`);
+  check('undo คืนสภาพกลับเท่าเดิม',paint.undo()&&JSON.stringify(paint.exportData())===JSON.stringify(before));
+}
+d.querySelector('#tab-sculpt')?.click();await sleep(120);
 const primary=[...d.querySelectorAll('#build-actions button')];check('ปุ่มหลักอยู่ในจอ',primary.length>0&&primary.every(b=>onScreen(w,b)));
 check('ปุ่มหลักสูงอย่างน้อย 44px',primary.every(b=>b.getBoundingClientRect().height>=44));
 d.querySelector('#mode-bar [data-mode="play"]')?.click();await sleep(120);
