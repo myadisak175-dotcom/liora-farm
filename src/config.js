@@ -11,7 +11,7 @@ export const QUALITY = Object.freeze({
 });
 
 export const CONFIG = Object.freeze({
-  worldLimit: 19.5,
+  worldLimit: 26.5,
   playerHeight: 1.7,
   playerGroundOffset: -0.02,
   playerRadius: 0.34,
@@ -27,7 +27,7 @@ export const CONFIG = Object.freeze({
     orbitSensitivity: 0.006, pitchSensitivity: 0.0045,
     minPitch: THREE.MathUtils.degToRad(28), maxPitch: THREE.MathUtils.degToRad(55),
     followDeadZone: 0.55, followSharpness: 3.2, positionSharpness: 5.5,
-    panLimit: 21, twoFingerRotateSensitivity: 0.005,
+    panLimit: 28, twoFingerRotateSensitivity: 0.005,
   },
   depth: { playerOrder: 10 },
   shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2 },
@@ -36,11 +36,11 @@ export const CONFIG = Object.freeze({
     footWidth: 0.18, footDepth: 0.12, footY: 0.026, footOpacity: 0.34,
     footNightOpacity: 0.4, footSide: 0.115, footForward: 0.035, renderOrder: 5,
   },
-  island: { size: 42, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
-  terrain: { size: 42, spacing: 0.5, renderOrder: 0 },
+  island: { size: 56, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
+  terrain: { size: 56, spacing: 0.5, renderOrder: 0 },
   water: {
     level: -0.6, color: 0x55b7df, shallowColor: 0x8ee4ef, deepColor: 0x287aa8, foamColor: 0xf4ffff,
-    texture: "clear_water.webp", textureRepeat: 4.5, textureStrength: 0.38,
+    texture: "clear_water.webp", textureRepeat: 6, textureStrength: 0.38,
     textureSpeedX: 0.008, textureSpeedY: -0.006,
     opacity: 0.74, roughness: 0.28, metalness: 0.03, emissive: 0x123e55, emissiveIntensity: 0.12,
     shoreFade: 0.18, foamDepth: 0.15, waveHeight: 0.055, waveScale: 0.58, waveSpeed: 0.7,
@@ -75,7 +75,7 @@ export const CONFIG = Object.freeze({
       { id: 6, key: "meadow_grass", label: "หญ้าทุ่ง", icon: "☘️", texture: "meadow_grass.webp", feather: "long" },
       { id: 7, key: "cobblestone_path", label: "ทางเดินหิน", icon: "🪨", texture: "cobblestone_path.webp", feather: "medium" },
     ],
-    tileSize: 512, resolution: 1024, textureRepeat: 8,
+    tileSize: 512, resolution: 1024, textureRepeat: 10.67,
     minRadius: 0.5, maxRadius: 4.5, defaultRadius: 1.6, strength: 1,
     storageKey: "liora.ground-paint.v1", snapshotInterval: 40,
   },
@@ -97,7 +97,7 @@ export const CONFIG = Object.freeze({
   },
   sky: {
     radius: 85, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
-    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 10, cloudRingRadius: 31,
+    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 10, cloudRingRadius: 38,
     cloudHeight: 9, starCount: 220, starSize: 0.32, starOpacity: 0.9,
   },
   dayNight: { startHour: 8, realSecondsPerDay: 1440 },
