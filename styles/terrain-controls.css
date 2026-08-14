@@ -1,0 +1,25 @@
+/* Sculpt controls added by the terrain upgrade. Kept separate so the core mobile HUD stays stable. */
+#build-panel[data-tab="sculpt"] #sculpt-size {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#build-panel[data-tab="sculpt"] #sculpt-size label {
+  min-height: 34px;
+}
+#sculpt-strip button.preset,
+#sculpt-strip button.terrain-action {
+  background: rgba(255, 255, 255, 0.11);
+}
+#sculpt-strip button.preset.active,
+#sculpt-strip button.terrain-action.active {
+  background: var(--accent);
+  outline: 2px solid rgba(255,255,255,.75);
+}
+#sculpt-size .terrain-control .value {
+  min-width: 56px;
+}
+@media (max-height: 640px) {
+  #build-panel[data-tab="sculpt"] #sculpt-size { gap: 2px; }
+  #build-panel[data-tab="sculpt"] #sculpt-size label { min-height: 30px; }
+}

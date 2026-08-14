@@ -1,8 +1,5 @@
 import * as THREE from "three";
 
-// One screen-wide switch: coarse pointer (phone/tablet) gets the cheaper
-// renderer settings. Everything else is authored once and scaled from here,
-// so there is no second "mobile config" to keep in sync.
 const IS_TOUCH =
   typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
@@ -14,159 +11,56 @@ export const QUALITY = Object.freeze({
 });
 
 export const CONFIG = Object.freeze({
-  // Half-width of the walkable area. The build limit and the visible cliff
-  // edge are derived from terrain.size so they can never drift apart again.
   worldLimit: 19.5,
-
   playerHeight: 1.7,
   playerGroundOffset: -0.02,
   playerRadius: 0.34,
   walkSpeed: 2.4,
   runSpeed: 5.2,
   runThreshold: 0.78,
-  // Steeper than this and Liora walks along the slope instead of up it —
-  // without a limit you can climb a sculpted wall like a ladder.
   maxWalkSlope: 0.75,
-
-  animationSpeed: {
-    idle: 1,
-    walk: 0.9,
-    run: 1,
-  },
-
+  animationSpeed: { idle: 1, walk: 0.9, run: 1 },
   camera: {
-    fov: 38,
-    near: 0.1,
-    far: 100,
+    fov: 38, near: 0.1, far: 100,
     baseOffset: new THREE.Vector3(8, 10, 10),
-    minZoom: 0.65,
-    maxZoom: 1.55,
-    zoomStep: 0.12,
-    orbitSensitivity: 0.006,
-    pitchSensitivity: 0.0045,
-    minPitch: THREE.MathUtils.degToRad(28),
-    maxPitch: THREE.MathUtils.degToRad(55),
-    followDeadZone: 0.55,
-    followSharpness: 3.2,
-    positionSharpness: 5.5,
-    // Build mode: one finger on empty ground pans, two fingers rotate.
-    panLimit: 21,
-    twoFingerRotateSensitivity: 0.005,
+    minZoom: 0.65, maxZoom: 1.55, zoomStep: 0.12,
+    orbitSensitivity: 0.006, pitchSensitivity: 0.0045,
+    minPitch: THREE.MathUtils.degToRad(28), maxPitch: THREE.MathUtils.degToRad(55),
+    followDeadZone: 0.55, followSharpness: 3.2, positionSharpness: 5.5,
+    panLimit: 21, twoFingerRotateSensitivity: 0.005,
   },
-
-  depth: {
-    playerOrder: 10,
-  },
-
-  shadows: {
-    mapSize: QUALITY.shadowMapSize,
-    bounds: 12,
-    near: 0.5,
-    far: 40,
-    bias: -0.00015,
-    normalBias: 0.035,
-    radius: 2,
-  },
-
+  depth: { playerOrder: 10 },
+  shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2 },
   contactShadow: {
-    width: 0.72,
-    depth: 0.4,
-    y: 0.022,
-    opacity: 0.31,
-    nightOpacity: 0.38,
-    footWidth: 0.18,
-    footDepth: 0.12,
-    footY: 0.026,
-    footOpacity: 0.34,
-    footNightOpacity: 0.4,
-    footSide: 0.115,
-    footForward: 0.035,
-    renderOrder: 5,
+    width: 0.72, depth: 0.4, y: 0.022, opacity: 0.31, nightOpacity: 0.38,
+    footWidth: 0.18, footDepth: 0.12, footY: 0.026, footOpacity: 0.34,
+    footNightOpacity: 0.4, footSide: 0.115, footForward: 0.035, renderOrder: 5,
   },
-
-  island: {
-    size: 42,
-    cliffDepth: 5.5,
-    bottomInset: 5.5,
-    bottomThickness: 1.8,
-    cliffColor: 0x6f5a47,
-    bottomColor: 0x4f4338,
-    skyColor: 0x9bd8f5,
-  },
-
-  // Ground shape comes from the height field, sampled by both the geometry and
-  // by getHeight(). 0.5 m spacing over 42 m = an 85x85 grid, 7,225 vertices.
-  terrain: {
-    size: 42,
-    spacing: 0.5,
-    renderOrder: 0,
-  },
-
-  // Fixed water surface: dig the terrain below this level and water appears.
+  island: { size: 42, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
+  terrain: { size: 42, spacing: 0.5, renderOrder: 0 },
   water: {
-    level: -0.6,
-    color: 0x55b7df,
-    opacity: 0.72,
-    roughness: 0.28,
-    metalness: 0.03,
-    emissive: 0x123e55,
-    emissiveIntensity: 0.12,
-    renderOrder: 1,
+    level: -0.6, color: 0x55b7df, shallowColor: 0x8ee4ef, deepColor: 0x287aa8, foamColor: 0xf4ffff,
+    opacity: 0.74, roughness: 0.28, metalness: 0.03, emissive: 0x123e55, emissiveIntensity: 0.12,
+    shoreFade: 0.18, foamDepth: 0.15, waveHeight: 0.055, waveScale: 0.58, waveSpeed: 0.7,
+    shimmerStrength: 0.18, renderOrder: 1,
+    player: { slowStart: 0.08, runDepth: 0.16, maxWadeDepth: 0.9, minSpeedMultiplier: 0.45 },
   },
-
-  // Sculpting brushes. Heights are metres.
+  terrainField: {
+    maxDepth: 3.5, rockSlope: 0.6, rockFeather: 0.12, sandFeather: 0.18,
+    sandLayerId: 1, rockLayerId: 2, enabledByDefault: true,
+  },
   sculpt: {
-    minRadius: 1,
-    maxRadius: 6,
-    defaultRadius: 3,
-    // Metres per second of held brush, at the centre of the falloff.
-    strength: 0.9,
-    // Kept beside the brush controls so the mobile hint can show the threshold.
-    // Must match CONFIG.water.level.
-    waterLevel: -0.6,
-    smoothRate: 3.2,
-    flattenRate: 2.6,
-    minHeight: -3,
-    maxHeight: 7,
-    // The rim has to fall back to 0 or the island silhouette breaks away from
-    // the fixed cliff geometry underneath it.
-    edgeMargin: 4,
-    // Reserved ground (the farm beds) stays flat, with a soft ramp around it.
-    reservedFeather: 1.6,
-    undoLimit: 12,
-    storageKey: "liora.terrain-height.v1",
+    minRadius: 1, maxRadius: 6, defaultRadius: 3, strength: 0.9, waterLevel: -0.6,
+    smoothRate: 3.2, flattenRate: 2.6, minHeight: -3, maxHeight: 7,
+    edgeMargin: 4, reservedFeather: 1.6, defaultRoughness: 0.55,
+    noiseScale: 0.22, noiseOctaves: 4, noiseAmplitude: 0.72, noiseSeed: 17,
+    erosionIterations: 8, erosionTalus: 0.28, erosionRate: 0.24,
+    undoLimit: 40, storageKey: "liora.terrain-height.v1",
   },
-
-  // The ring that shows where a brush will land and how wide it is.
   brushCursor: {
-    segments: 48,
-    color: 0xffffff,
-    blockedColor: 0xff8a72,
-    opacity: 0.85,
-    lift: 0.05,
-    renderOrder: 8,
+    segments: 48, color: 0xffffff, blockedColor: 0xff8a72, waterColor: 0x66d9ff,
+    waterLevel: -0.6, opacity: 0.85, lift: 0.05, renderOrder: 8,
   },
-
-  // Free-brush splat painting over the single ground mesh.
-  //
-  // TO ADD A SURFACE: drop a square, seamlessly tiling image in assets/textures
-  // and add one row to `layers` below. Nothing else needs editing — the brush
-  // buttons, the splat channels and the fragment shader are all generated from
-  // this table.
-  //
-  //   id       NEVER reuse or renumber. It is what strokes are saved as, so
-  //            changing one repaints existing worlds with the wrong surface.
-  //            Next free id is 4.
-  //   base     Exactly one layer. It has no splat channel of its own — it is
-  //            whatever the painted layers leave over, which also makes its
-  //            brush the eraser.
-  //   feather  "long" melts into the base most (paths, soil), "medium" keeps a
-  //            shoreline readable, "short" cuts the halo around hard surfaces.
-  //            An explicit [[stop, mix], ...] array works too.
-  //
-  // Cost: three painted layers share one 1024² splat page, and pages are only
-  // allocated once something is actually painted on them. Declaring 16 layers
-  // costs nothing until they are used.
   groundPaint: {
     maxLayers: 16,
     layers: [
@@ -175,137 +69,53 @@ export const CONFIG = Object.freeze({
       { id: 1, key: "sand", label: "ทราย", icon: "🏖️", texture: "sand.webp", feather: "medium" },
       { id: 2, key: "rock", label: "หิน", icon: "🪨", texture: "rock.webp", feather: "short" },
     ],
-    // Every layer is resampled to this square size so they can share one array
-    // texture. 512 over an 8x-repeated tile is already denser than the screen.
-    tileSize: 512,
-    resolution: 1024,
-    textureRepeat: 8,
-    minRadius: 0.5,
-    maxRadius: 4.5,
-    defaultRadius: 1.6,
-    strength: 1,
-    storageKey: "liora.ground-paint.v1",
-    // Replaying every stroke got slow past a few hundred strokes, so the
-    // canvas is snapshotted every N strokes and replay starts from there.
-    snapshotInterval: 40,
+    tileSize: 512, resolution: 1024, textureRepeat: 8,
+    minRadius: 0.5, maxRadius: 4.5, defaultRadius: 1.6, strength: 1,
+    storageKey: "liora.ground-paint.v1", snapshotInterval: 40,
   },
-
   farmPlot: {
-    position: { x: -5.2, z: -2.8 },
-    y: 0.028,
-    rotation: THREE.MathUtils.degToRad(-8),
-    rows: 3,
-    columns: 3,
-    cellSize: 1.02,
-    gap: 0.16,
-    moundHeight: 0.075,
-    cornerRadius: 0.17,
-    bevelSize: 0.035,
-    bevelThickness: 0.025,
-    soilColor: 0x8a5a36,
-    furrowColor: 0x684127,
-    furrowWidth: 0.055,
-    furrowHeight: 0.018,
-    furrowY: 0.055,
-    renderOrder: 2,
-    // Nothing may be built on the plot: the beds are 3.4 m across, plus a
-    // little margin so a wall never crowds the rows.
-    reservedRadius: 2.4,
+    position: { x: -5.2, z: -2.8 }, y: 0.028, rotation: THREE.MathUtils.degToRad(-8),
+    rows: 3, columns: 3, cellSize: 1.02, gap: 0.16, moundHeight: 0.075,
+    cornerRadius: 0.17, bevelSize: 0.035, bevelThickness: 0.025,
+    soilColor: 0x8a5a36, furrowColor: 0x684127, furrowWidth: 0.055,
+    furrowHeight: 0.018, furrowY: 0.055, renderOrder: 2, reservedRadius: 2.4,
   },
-
-  // The first real gameplay loop: plant -> wait -> harvest -> pouch.
   farming: {
-    reach: 2.1,
-    growSeconds: 40,
-    seedColor: 0x6fae54,
-    leafColor: 0x4f9440,
-    rootColor: 0xe3705a,
-    sproutHeight: 0.18,
-    ripeHeight: 0.44,
-    storageKey: "liora.farm.v1",
+    reach: 2.1, growSeconds: 40, seedColor: 0x6fae54, leafColor: 0x4f9440,
+    rootColor: 0xe3705a, sproutHeight: 0.18, ripeHeight: 0.44, storageKey: "liora.farm.v1",
   },
-
   builder: {
-    storageKey: "liora.island-layout.v1",
-    defaultMap: "./maps/home-island.json",
-    ghostOpacity: 0.55,
-    selectionColor: 0x7ce0ff,
-    saveDebounceMs: 250,
-    gridSize: 0.5,
-    snapDefault: false,
-    historyLimit: 50,
+    storageKey: "liora.island-layout.v1", defaultMap: "./maps/home-island.json",
+    ghostOpacity: 0.55, selectionColor: 0x7ce0ff, saveDebounceMs: 250,
+    gridSize: 0.5, snapDefault: false, historyLimit: 50,
   },
-
   sky: {
-    radius: 85,
-    zenithColor: 0x68bdf0,
-    horizonColor: 0xdff4ff,
-    lowerColor: 0xb9dff2,
-    cloudColor: 0xffffff,
-    cloudOpacity: 0.72,
-    cloudCount: 10,
-    cloudRingRadius: 31,
-    // Was -7, i.e. underneath the island where the camera never looks.
-    cloudHeight: 9,
-    starCount: 220,
-    starSize: 0.32,
-    starOpacity: 0.9,
+    radius: 85, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
+    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 10, cloudRingRadius: 31,
+    cloudHeight: 9, starCount: 220, starSize: 0.32, starOpacity: 0.9,
   },
-
-  dayNight: {
-    startHour: 8,
-    realSecondsPerDay: 1440,
-  },
-
+  dayNight: { startHour: 8, realSecondsPerDay: 1440 },
   runFx: {
-    maxParticles: 24,
-    spawnInterval: 0.085,
-    life: 0.38,
-    color: 0xe9dfc6,
-    opacity: 0.42,
-    size: 0.32,
-    grow: 0.85,
-    height: 0.11,
-    heightJitter: 0.05,
-    backOffset: 0.28,
-    backJitter: 0.16,
-    sideSpread: 0.42,
-    backwardDrift: 0.38,
-    sideDrift: 0.34,
-    riseSpeed: 0.34,
-    riseJitter: 0.18,
-    gravity: 0.55,
-    renderOrder: 6,
+    maxParticles: 24, spawnInterval: 0.085, life: 0.38, color: 0xe9dfc6, opacity: 0.42,
+    size: 0.32, grow: 0.85, height: 0.11, heightJitter: 0.05, backOffset: 0.28,
+    backJitter: 0.16, sideSpread: 0.42, backwardDrift: 0.38, sideDrift: 0.34,
+    riseSpeed: 0.34, riseJitter: 0.18, gravity: 0.55,
+    waterMinDepth: 0.06, waterSpawnInterval: 0.075, waterColor: 0xcff8ff,
+    waterOpacity: 0.68, waterSize: 0.23, waterLife: 0.3, waterHeight: 0.035,
+    waterHeightJitter: 0.035, waterBackwardDrift: 0.2, waterSideDrift: 0.5,
+    waterRiseSpeed: 0.55, waterRiseJitter: 0.25, renderOrder: 6,
   },
-
-  // Fog used to start at 30 on a 42-wide island, which washed the far edge
-  // out to flat sky colour. Pushed back so the island stays readable.
-  fog: {
-    near: 46,
-    far: 96,
-  },
+  fog: { near: 46, far: 96 },
 });
 
-// Model binaries live under builder/assets/ because that is where they were
-// uploaded. Only these two constants need to change if they ever move.
 const MODEL_DIR = "./builder/assets/models/builder";
 const TEXTURE_DIR = "./assets/textures";
-
 export const ASSETS = Object.freeze({
-  // Ground surfaces are no longer listed one by one here: CONFIG.groundPaint
-  // .layers owns that list, and each row's `texture` is a file name resolved
-  // against this directory.
   textureDir: TEXTURE_DIR,
   player: "./assets/models/player/liora_all_animations_web.glb",
   modelDir: MODEL_DIR,
 });
-
 export const ANIMATIONS = Object.freeze({
-  idle: "Idle_9",
-  walk: "Walking",
-  run: "Running",
-  pickUp: "Male_Bend_Over_Pick_Up",
-  pullRadish: "Pull_Radish",
-  hammer: "Heavy_Hammer_Swing",
-  mirror: "Mirror_Viewing",
+  idle: "Idle_9", walk: "Walking", run: "Running", pickUp: "Male_Bend_Over_Pick_Up",
+  pullRadish: "Pull_Radish", hammer: "Heavy_Hammer_Swing", mirror: "Mirror_Viewing",
 });

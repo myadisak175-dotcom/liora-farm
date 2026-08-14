@@ -1,16 +1,5 @@
 import * as THREE from "three";
 
-/**
- * A ring on the ground showing where the brush will land and how wide it is.
- *
- * Painting and sculpting both had the same problem: the only way to learn what
- * "3.0 ม." meant was to apply it and undo. Worse on a phone, where the finger
- * covers the exact spot being worked on — the ring is visible around the
- * fingertip even when the middle is hidden.
- *
- * It follows the height field, so on a slope it drapes instead of cutting
- * through the hill.
- */
 export function createBrushCursor({ scene, getGroundHeight, config }) {
   const segments = config.segments;
   const positions = new Float32Array((segments + 1) * 3);
@@ -48,17 +37,29 @@ export function createBrushCursor({ scene, getGroundHeight, config }) {
     geometry.computeBoundingSphere();
   }
 
+  function setState(state) {
+    if (state === true) state = "blocked";
+    if (state === false || !state) state = "normal";
+    if (state === "normal" && Number.isFinite(config.waterLevel) && getGroundHeight(x, z) <= config.waterLevel) state = "water";
+    const color =
+      state === "blocked"
+        ? config.blockedColor
+        : state === "water"
+          ? config.waterColor
+          : config.color;
+    material.color.set(color);
+  }
+
   return {
     ring,
-    show(nextX, nextZ, nextRadius, blocked = false) {
+    show(nextX, nextZ, nextRadius, state = "normal") {
       x = nextX;
       z = nextZ;
       radius = Math.max(0.05, nextRadius);
-      material.color.set(blocked ? config.blockedColor : config.color);
+      setState(state);
       ring.visible = true;
       rebuild();
     },
-    /** Same spot, new size — used while dragging the size slider. */
     resize(nextRadius) {
       if (!ring.visible) return;
       radius = Math.max(0.05, nextRadius);

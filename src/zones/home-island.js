@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
+import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
 import { createGroundLayers } from "../systems/ground-layers.js";
 import { createGroundTextureArray } from "../systems/ground-texture-array.js";
@@ -48,11 +49,6 @@ export async function createHomeIsland({
     anisotropy,
   });
 
-  // The mesh still needs a plain 2D map: it is what makes three declare vMapUv,
-  // and every UV in the splat shader is derived from that. The base layer is
-  // the natural choice — it is also what shows through everywhere unpainted.
-  // Built from the image the array already downloaded rather than loading the
-  // file a second time.
   const baseMap = tile(
     new THREE.Texture(groundTextures.images.get(layers.base.key)),
     repeat
@@ -66,23 +62,31 @@ export async function createHomeIsland({
     reservedAreas,
   });
 
-  const terrain = createTerrain({
-    texture: baseMap,
-    config: config.terrain,
+  const terrainField = createTerrainField({
     height,
+    worldSize: config.terrain.size,
+    config: {
+      ...config.terrainField,
+      waterLevel: config.water.level,
+    },
   });
+
+  const terrain = createTerrain({ texture: baseMap, config: config.terrain, height });
 
   const paint = createGroundPaint({
     config: config.groundPaint,
     worldSize: config.terrain.size,
     layers,
     layerArray: groundTextures.texture,
+    terrainField,
+    autoSurfaceConfig: config.terrainField,
   });
   paint.applyTo(terrain.material);
 
   const water = createAnimatedWater({
     size: config.terrain.size,
     config: config.water,
+    terrainField,
   });
 
   group.add(water.mesh);
@@ -90,7 +94,6 @@ export async function createHomeIsland({
 
   const farmPlot = createFarmPlot(config.farmPlot);
   group.add(farmPlot.group);
-
   scene.add(group);
 
   const brushCursor = createBrushCursor({
@@ -110,20 +113,22 @@ export async function createHomeIsland({
     ground: terrain.mesh,
     terrain,
     layers,
-    /** Layers whose texture file was missing — surfaced by the smoke test. */
     missingTextures: groundTextures.missing,
     height,
+    terrainField,
     water,
     paint,
     brushCursor,
     farmPlot,
     crops,
     getGroundHeight: (x, z) => height.sample(x, z),
-    /** Render loop calls this every frame; terrain rebuilds only when sculpted. */
     refresh() {
       water.update();
       const changed = terrain.refresh();
-      if (changed) brushCursor.refresh();
+      if (changed) {
+        terrainField.refresh();
+        brushCursor.refresh();
+      }
       return changed;
     },
     dispose() {
@@ -134,6 +139,7 @@ export async function createHomeIsland({
       height.dispose();
       terrain.dispose();
       water.dispose();
+      terrainField.dispose();
       groundTextures.dispose();
       baseMap.dispose();
       scene.remove(group);
