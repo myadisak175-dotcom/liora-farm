@@ -26,6 +26,8 @@ export function createGroundPaint({
   const half = worldSize / 2;
   const pixelsPerUnit = size / worldSize;
   const snapshotInterval = Math.max(1, config.snapshotInterval ?? 40);
+  const manualOverrideSize = Math.max(64, Math.min(size, config.manualOverrideResolution ?? 256));
+  const manualPixelsPerUnit = manualOverrideSize / worldSize;
   const stamps = [];
   const groups = [];
   const pages = new Map();
@@ -35,6 +37,54 @@ export function createGroundPaint({
   let pageRevision = 0;
   let autoSurfaceEnabled = Boolean(autoSurfaceConfig?.enabledByDefault ?? true);
   const autoSurfaceUniform = { value: autoSurfaceEnabled ? 1 : 0 };
+
+  // Manual paint must always win over slope/depth-driven Auto Surface.
+  // Painted non-base layers already carry explicit splat weights, but the base
+  // layer (grass) is represented by "whatever is left", so it needs a tiny
+  // coverage mask to distinguish "untouched grass" from "the player painted
+  // grass here on purpose". 256² is plenty for a soft brush and costs only
+  // ~0.25 MB as RGBA8. The mask is rebuilt from the existing stroke history,
+  // so the save schema does not change.
+  const manualCanvas = document.createElement("canvas");
+  manualCanvas.width = manualCanvas.height = manualOverrideSize;
+  const manualCtx = manualCanvas.getContext("2d", { willReadFrequently: true });
+  const manualTexture = new THREE.CanvasTexture(manualCanvas);
+  manualTexture.colorSpace = THREE.NoColorSpace;
+  manualTexture.generateMipmaps = false;
+  manualTexture.minFilter = THREE.LinearFilter;
+  manualTexture.magFilter = THREE.LinearFilter;
+  manualTexture.wrapS = manualTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+  function clearManualOverride() {
+    manualCtx.save();
+    manualCtx.globalCompositeOperation = "copy";
+    manualCtx.globalAlpha = 1;
+    manualCtx.fillStyle = "#000";
+    manualCtx.fillRect(0, 0, manualOverrideSize, manualOverrideSize);
+    manualCtx.restore();
+    manualTexture.needsUpdate = true;
+  }
+
+  function paintManualOverride(entry) {
+    const [x, z, radius, , strength] = entry;
+    const cx = (x + half) * manualPixelsPerUnit;
+    const cy = (z + half) * manualPixelsPerUnit;
+    const r = Math.max(1, radius * manualPixelsPerUnit);
+    const alpha = THREE.MathUtils.clamp(strength, 0, 1);
+    const g = manualCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, "rgb(255,255,255)");
+    g.addColorStop(0.72, "rgb(255,255,255)");
+    g.addColorStop(1, "rgb(0,0,0)");
+    stamp(manualCtx, cx, cy, r, g, "lighter", alpha);
+    manualTexture.needsUpdate = true;
+  }
+
+  function rebuildManualOverride() {
+    clearManualOverride();
+    for (const entry of stamps) paintManualOverride(entry);
+  }
+
+  clearManualOverride();
 
   function blankCanvas() {
     const canvas = document.createElement("canvas");
@@ -160,7 +210,7 @@ export function createGroundPaint({
     );
   }
 
-  function drawStroke(entry, { record = true } = {}) {
+  function drawStroke(entry, { record = true, recordManual = true } = {}) {
     const [x, z, radius, layerId, strength] = entry;
     const layer = layers.get(layerId);
     if (!layer) return;
@@ -168,6 +218,7 @@ export function createGroundPaint({
     const cy = (z + half) * pixelsPerUnit;
     const r = Math.max(1, radius * pixelsPerUnit);
     const alpha = THREE.MathUtils.clamp(strength, 0, 1);
+    if (recordManual) paintManualOverride(entry);
 
     if (layer.base) {
       for (const page of pages.values()) {
@@ -253,6 +304,7 @@ export function createGroundPaint({
   }
 
   function replayAll() {
+    clearManualOverride();
     for (const page of pages.values()) {
       page.stamps.length = 0;
       fillBlack(page.ctx);
@@ -376,12 +428,16 @@ export function createGroundPaint({
       );
     }
 
-    lines.push("float proceduralLeft = 1.0 - clamp(painted, 0.0, 1.0);");
+    lines.push(
+      "float proceduralLeft = 1.0 - clamp(painted, 0.0, 1.0);",
+      "float manualOverride = texture2D(uManualOverride, splatUv).r;",
+      "float autoRoom = proceduralLeft * (1.0 - manualOverride);"
+    );
     if (hasProceduralSurface) {
       lines.push(
         "vec4 terrainField = texture2D(uTerrainField, splatUv);",
-        "float autoRock = terrainField.b * uAutoSurfaceEnabled * proceduralLeft;",
-        "float autoSand = terrainField.g * uAutoSurfaceEnabled * proceduralLeft;",
+        "float autoRock = terrainField.b * uAutoSurfaceEnabled * autoRoom;",
+        "float autoSand = terrainField.g * uAutoSurfaceEnabled * autoRoom;",
         `if (autoRock > ${WEIGHT_EPSILON}) {`,
         `  surface += textureGrad(uLayers, vec3(tileUv, ${rockLayer.slot}.0), tileDx, tileDy).rgb * autoRock;`,
         "  total += autoRock;",
@@ -413,6 +469,7 @@ export function createGroundPaint({
       const used = activePages();
       shader.uniforms.uLayers = { value: layerArray };
       shader.uniforms.uRepeat = { value: config.textureRepeat };
+      shader.uniforms.uManualOverride = { value: manualTexture };
       for (const page of used) shader.uniforms[`uSplat${page.index}`] = { value: page.texture };
       if (hasProceduralSurface) {
         shader.uniforms.uTerrainField = { value: terrainField.texture };
@@ -423,6 +480,7 @@ export function createGroundPaint({
         "precision highp sampler2DArray;",
         "uniform sampler2DArray uLayers;",
         "uniform float uRepeat;",
+        "uniform sampler2D uManualOverride;",
         ...used.map((page) => `uniform sampler2D uSplat${page.index};`),
         ...(hasProceduralSurface
           ? ["uniform sampler2D uTerrainField;", "uniform float uAutoSurfaceEnabled;"]
@@ -434,7 +492,7 @@ export function createGroundPaint({
         .replace("#include <map_fragment>", `\n${buildFragmentChunk()}\n`);
     };
     material.customProgramCacheKey = () =>
-      `liora-ground-splat-v9:${layers.all.length}:${activePages().map((page) => page.index).join("-")}:${pageRevision}:${hasProceduralSurface ? 1 : 0}`;
+      `liora-ground-splat-v10:${layers.all.length}:${activePages().map((page) => page.index).join("-")}:${pageRevision}:${hasProceduralSurface ? 1 : 0}`;
     material.needsUpdate = true;
   }
 
@@ -507,6 +565,7 @@ export function createGroundPaint({
     setAutoSurfaceEnabled(enabled) {
       autoSurfaceEnabled = Boolean(enabled);
       autoSurfaceUniform.value = autoSurfaceEnabled ? 1 : 0;
+      scheduleSave();
       return autoSurfaceEnabled;
     },
     get autoSurfaceEnabled() {
@@ -517,6 +576,9 @@ export function createGroundPaint({
     },
     pageCanvas(index) {
       return pages.get(index)?.canvas ?? null;
+    },
+    manualOverrideCanvas() {
+      return manualCanvas;
     },
     get strokeCount() {
       return groups.length + (openGroup && openGroup.count ? 1 : 0);
@@ -543,6 +605,7 @@ export function createGroundPaint({
         page.stamps.splice(Math.max(0, page.stamps.length - removed.length));
         replayPage(page);
       }
+      rebuildManualOverride();
       scheduleSave();
       return true;
     },
@@ -550,6 +613,7 @@ export function createGroundPaint({
       openGroup = null;
       stamps.length = 0;
       groups.length = 0;
+      clearManualOverride();
       for (const page of pages.values()) {
         page.stamps.length = 0;
         fillBlack(page.ctx);
@@ -562,6 +626,7 @@ export function createGroundPaint({
       clearTimeout(saveTimer);
       for (const page of pages.values()) page.texture.dispose();
       pages.clear();
+      manualTexture.dispose();
     },
   };
 }
