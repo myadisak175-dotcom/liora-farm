@@ -29,6 +29,11 @@ const catalog = {
     id: "path", defaultScale: 1, minScale: 0.5, maxScale: 2,
     footprintRadius: 1, blockRadius: 0, walkRadius: 0,
   },
+  tree: {
+    id: "tree", defaultScale: 1, minScale: 0.5, maxScale: 2,
+    footprintRadius: 0.6, blockRadius: 0, walkRadius: 0.3,
+    maxGroundSlope: null,
+  },
 };
 function store() {
   let saved = [];
@@ -54,6 +59,12 @@ test("steep ground rejects a house", () => {
   const c = controller({ ground: (x) => x * 0.5 });
   const result = c.validatePlacement("house", { x: 0, z: 0, scale: 1 });
   assert(!result.ok && result.code === "slope", `expected slope, got ${result.code}`);
+});
+
+test("null slope limit stays opt-in", () => {
+  const c = controller({ ground: (x) => x * 0.8 });
+  const result = c.validatePlacement("tree", { x: 0, z: 0, scale: 1 });
+  assert(result.ok, `tree inherited an unintended slope limit: ${result.code}`);
 });
 
 test("path duplicates cannot nearly stack", () => {
