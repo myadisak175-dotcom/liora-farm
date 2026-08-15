@@ -29,15 +29,14 @@ const CHROME =
   );
 
 const PAGES = [
+  { file: "tools/test/builder-controller.test.html", viewports: [[900, 800]] },
   { file: "tools/test/ground-layers.test.html", viewports: [[900, 800]] },
   { file: "tools/test/ground-shader.test.html", viewports: [[900, 800]] },
   { file: "tools/test/terrain-height.test.html", viewports: [[900, 800]] },
-  // Real mobile HUD contracts need an actual phone viewport.
   { file: "tools/test/builder-hud.test.html", viewports: [[375, 667]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
 ];
 
-// --------------------------------------------------------------- static host
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".png": "image/png",
@@ -55,14 +54,12 @@ const server = http.createServer((request, response) => {
 server.listen(PORT);
 await once(server, "listening");
 
-// ------------------------------------------------------------------- browser
 if (!CHROME) {
   console.error("No Chromium found. Pass --chrome <path> or set CHROME_PATH.");
   process.exit(2);
 }
 const chrome = spawn(CHROME, [
   "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
-  // SwiftShader so the WebGL2 shader test runs on machines without a GPU.
   "--enable-unsafe-swiftshader", "--use-gl=angle", "--use-angle=swiftshader",
   "--remote-debugging-port=0", "--user-data-dir=" + fs.mkdtempSync("/tmp/liora-test-"),
   "about:blank",
@@ -96,7 +93,6 @@ const send = (method, params = {}, sessionId) =>
     socket.send(JSON.stringify({ id, method, params, sessionId }));
   });
 
-// ---------------------------------------------------------------------- run
 let failures = 0;
 let total = 0;
 
