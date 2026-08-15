@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>World V2 nature tests</title></head>
+<body><pre id="out"></pre>
+<script type="module">
+import { getBuildableAsset, getBuildableAssets } from "../../src/editor/asset-catalog.js";
+import { createBuilderAssetLoader } from "../../src/editor/asset-loader.js";
+
+const results = [];
+const out = document.querySelector("#out");
+async function test(name, fn) {
+  try {
+    await fn();
+    results.push({ name, pass: true, detail: "" });
+  } catch (error) {
+    results.push({ name, pass: false, detail: String(error?.message ?? error) });
+  }
+}
+function assert(value, message) { if (!value) throw new Error(message); }
+
+const v2 = getBuildableAssets().filter((asset) => asset.worldV2);
+await test("catalog exposes all 55 World V2 objects", () => {
+  assert(v2.length === 55, `expected 55, got ${v2.length}`);
+  assert(new Set(v2.map((asset) => asset.id)).size === 55, "duplicate v2 ids");
+});
+
+await test("World V2 catalog points at 12 shared GLBs", () => {
+  const paths = new Set(v2.map((asset) => asset.modelPath));
+  assert(paths.size === 12, `expected 12 source files, got ${paths.size}`);
+  assert(v2.every((asset) => asset.nodeName), "missing nodeName");
+  assert(v2.every((asset) => asset.modelPath.includes("/world-v2/nature/")), "wrong model root");
+});
+
+await test("loader fetches one shared GLB for sibling variants", async () => {
+  let loads = 0;
+  function node(name) {
+    return {
+      name,
+      clone() { return { name, traverse(fn) { fn({ isMesh: false }); } }; },
+    };
+  }
+  const nodes = new Map([
+    ["BirchTree_1", node("BirchTree_1")],
+    ["BirchTree_2", node("BirchTree_2")],
+  ]);
+  const scene = {
+    getObjectByName(name) { return nodes.get(name) ?? null; },
+    clone() { return this; },
+  };
+  const gltfLoader = {
+    load(path, resolve) {
+      loads += 1;
+      queueMicrotask(() => resolve({ scene }));
+    },
+  };
+  const loader = createBuilderAssetLoader({ gltfLoader });
+  const a = await loader.load("v2-birchtree-1");
+  const b = await loader.load("v2-birchtree-2");
+  assert(a.name === "BirchTree_1" && b.name === "BirchTree_2", "wrong named node cloned");
+  assert(loads === 1, `shared GLB fetched ${loads} times`);
+  assert(loader.has("v2-birchtree-1"), "shared source not cached");
+});
+
+await test("legacy catalog remains available during migration", () => {
+  assert(getBuildableAsset("tree")?.modelPath?.includes("/builder/"), "legacy tree missing");
+  assert(getBuildableAsset("house")?.modelPath?.includes("/builder/"), "legacy house missing");
+});
+
+window.__results = results;
+window.__done = true;
+out.textContent = results.map((r) => `${r.pass ? "PASS" : "FAIL"} ${r.name}${r.detail ? ` | ${r.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>
