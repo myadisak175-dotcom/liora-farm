@@ -21,7 +21,16 @@ import { createBuilderView } from "./editor/builder-view.js";
 import { createBuilderUI } from "./editor/builder-ui.js";
 import { createSculptControls } from "./editor/sculpt-controls.js";
 
-window.__lioraBooted = true;
+window.__lioraBooted = false;
+window.__lioraBootState = "starting";
+window.__lioraBootError = null;
+function setBootState(state) {
+  window.__lioraBootState = state;
+}
+function setBootError(error) {
+  window.__lioraBootError = String(error?.message ?? error ?? "unknown error");
+}
+
 const status = document.querySelector("#status");
 const pouchEl = document.querySelector("#pouch");
 const pouchCount = document.querySelector("#pouch-count");
@@ -37,6 +46,7 @@ function toast(text) {
   toastTimer = setTimeout(() => toastEl.classList.remove("on"), 1400);
 }
 
+setBootState("renderer");
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(CONFIG.sky.horizonColor);
 scene.fog = new THREE.Fog(CONFIG.sky.horizonColor, CONFIG.fog.near, CONFIG.fog.far);
@@ -54,6 +64,7 @@ const RESERVED_AREAS = [{
   label: "แปลงผัก",
 }];
 
+setBootState("world");
 let world = null;
 try {
   world = await createHomeIsland({
@@ -63,6 +74,7 @@ try {
     onCropsChange: () => refreshFarmHud(),
   });
 } catch (error) {
+  setBootError(error);
   console.error(error); setStatus("โหลดพื้นไม่สำเร็จ — เช็คไฟล์ใน assets/textures/"); throw error;
 }
 window.__liora = {
@@ -73,6 +85,7 @@ window.__liora = {
   get missingTextures() { return world.missingTextures; },
 };
 
+setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
 const sky = createSky(CONFIG.sky); scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
@@ -113,14 +126,16 @@ createSculptControls({
 });
 const movement = createMovementSystem(camera, CONFIG, world.getGroundHeight, () => colliders);
 
+setBootState("player");
 let player = null;
 try {
   player = await createPlayer({
     url: ASSETS.player, height: CONFIG.playerHeight, groundOffset: CONFIG.playerGroundOffset,
     renderOrder: CONFIG.depth.playerOrder, animations: ANIMATIONS,
   });
-  scene.add(player.root); setStatus("พร้อมเล่น", { autoHide: true }); pouchEl.hidden = false;
+  scene.add(player.root); pouchEl.hidden = false;
 } catch (error) {
+  setBootError(error);
   console.error(error); setStatus("โหลดตัวละครไม่สำเร็จ — เช็ค assets/models/player/");
 }
 
@@ -169,15 +184,7 @@ async function loadLayout() {
     toast("แผนที่เดิมคนละเวอร์ชัน สำรองไว้แล้ว");
   }
 }
-/**
- * "รีเซ็ตแผนที่" restores placed objects only. Painted and sculpted ground
- * belong to the player's island and survive this action. Flattening terrain
- * remains an explicit sculpt command.
- *
- * This rule is intentionally independent of the contents of home-island.json:
- * even if a future default map ships groundPaint/terrainHeight, reset must not
- * silently overwrite the user's surface work.
- */
+
 async function resetLayout() {
   try {
     const map = await fetchDefaultMap();
@@ -288,4 +295,13 @@ function animate() {
   cameraController.update(cameraTarget, delta); sky.update(camera); renderer.render(scene, camera);
 }
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-setMode("play"); refreshFarmHud(); animate(); await loadLayout();
+
+setMode("play");
+refreshFarmHud();
+setBootState("layout");
+setStatus("กำลังโหลดแผนที่…");
+await loadLayout();
+setBootState(player ? "ready" : "ready-degraded");
+window.__lioraBooted = true;
+if (player) setStatus("พร้อมเล่น", { autoHide: true });
+animate();
