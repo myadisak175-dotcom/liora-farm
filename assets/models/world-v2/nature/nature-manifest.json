@@ -1,0 +1,117 @@
+{
+  "birch-trees": {
+    "file": "birch-trees.glb",
+    "objects": [
+      { "name": "BirchTree_3", "height": 5.75, "width": 3.43, "tris": 6818 },
+      { "name": "BirchTree_5", "height": 5.52, "width": 3.58, "tris": 4520 },
+      { "name": "BirchTree_4", "height": 4.21, "width": 2.78, "tris": 3562 },
+      { "name": "BirchTree_1", "height": 5.45, "width": 2.71, "tris": 4598 },
+      { "name": "BirchTree_2", "height": 7.57, "width": 3.35, "tris": 7660 }
+    ]
+  },
+  "bushes": {
+    "file": "bushes.glb",
+    "objects": [
+      { "name": "Plant_1", "height": 0.69, "width": 1.24, "tris": 420 },
+      { "name": "Bush", "height": 0.69, "width": 1.09, "tris": 400 },
+      { "name": "Bush_Flowers", "height": 0.76, "width": 1.11, "tris": 478 }
+    ]
+  },
+  "dead-trees-2": {
+    "file": "dead-trees-2.glb",
+    "objects": [
+      { "name": "DeadTree_10", "height": 7.13, "width": 5.46, "tris": 3208 },
+      { "name": "DeadTree_9", "height": 3.3, "width": 2.06, "tris": 824 },
+      { "name": "DeadTree_8", "height": 6.28, "width": 8.17, "tris": 4944 },
+      { "name": "DeadTree_7", "height": 6.31, "width": 6.14, "tris": 3504 },
+      { "name": "DeadTree_6", "height": 6.41, "width": 5.41, "tris": 2984 }
+    ]
+  },
+  "dead-trees-1": {
+    "file": "dead-trees-1.glb",
+    "objects": [
+      { "name": "DeadTree_5", "height": 2.6, "width": 1.53, "tris": 1360 },
+      { "name": "DeadTree_4", "height": 4.61, "width": 4.85, "tris": 3528 },
+      { "name": "DeadTree_3", "height": 4.96, "width": 4.22, "tris": 4928 },
+      { "name": "DeadTree_2", "height": 6.2, "width": 3.42, "tris": 5344 },
+      { "name": "DeadTree_1", "height": 6.2, "width": 3.09, "tris": 4792 }
+    ]
+  },
+  "flower-bushes": {
+    "file": "flower-bushes.glb",
+    "objects": [
+      { "name": "Petals_1", "height": 0.63, "width": 0.67, "tris": 90 },
+      { "name": "Plant_2", "height": 0.55, "width": 1.47, "tris": 160 },
+      { "name": "Plant_Flowers", "height": 1.18, "width": 1.53, "tris": 330 }
+    ]
+  },
+  "flowers": {
+    "file": "flowers.glb",
+    "objects": [
+      { "name": "Flower_5_Clump", "height": 0.45, "width": 0.43, "tris": 136 },
+      { "name": "Flower_4_Clump", "height": 0.45, "width": 0.43, "tris": 136 },
+      { "name": "Flower_3_Clump", "height": 0.45, "width": 0.43, "tris": 136 },
+      { "name": "Flower_2_Clump", "height": 0.45, "width": 0.43, "tris": 136 },
+      { "name": "Flower_2", "height": 0.36, "width": 0.25, "tris": 34 },
+      { "name": "Flower_1_Clump", "height": 0.67, "width": 0.47, "tris": 620 },
+      { "name": "Flower_1", "height": 0.49, "width": 0.27, "tris": 162 }
+    ]
+  },
+  "grass": {
+    "file": "grass.glb",
+    "objects": [
+      { "name": "Grass_Large_Extruded", "height": 0.51, "width": 0.74, "tris": 516 },
+      { "name": "Grass_Small", "height": 0.39, "width": 0.47, "tris": 58 }
+    ]
+  },
+  "maple-trees": {
+    "file": "maple-trees.glb",
+    "objects": [
+      { "name": "MapleTree_5", "height": 7.28, "width": 7.01, "tris": 4504 },
+      { "name": "MapleTree_4", "height": 3.59, "width": 2.77, "tris": 1256 },
+      { "name": "MapleTree_3", "height": 6.99, "width": 8.98, "tris": 6678 },
+      { "name": "MapleTree_2", "height": 6.71, "width": 6.7, "tris": 4800 },
+      { "name": "MapleTree_1", "height": 6.64, "width": 6.23, "tris": 3848 }
+    ]
+  },
+  "palm-trees": {
+    "file": "palm-trees.glb",
+    "objects": [
+      { "name": "PalmTree_3", "height": 4.67, "width": 4.47, "tris": 344 },
+      { "name": "PalmTree_5", "height": 1.8, "width": 3.62, "tris": 264 },
+      { "name": "PalmTree_4", "height": 3.65, "width": 4.95, "tris": 472 },
+      { "name": "PalmTree_1", "height": 5.1, "width": 5.09, "tris": 472 },
+      { "name": "PalmTree_2", "height": 5.28, "width": 5.58, "tris": 368 }
+    ]
+  },
+  "pine-trees": {
+    "file": "pine-trees.glb",
+    "objects": [
+      { "name": "PineTree_5", "height": 4.3, "width": 3.31, "tris": 838 },
+      { "name": "PineTree_4", "height": 4.48, "width": 4.84, "tris": 2686 },
+      { "name": "PineTree_3", "height": 2.35, "width": 1.76, "tris": 1998 },
+      { "name": "PineTree_1", "height": 4.5, "width": 3.03, "tris": 2128 },
+      { "name": "PineTree_2", "height": 6.91, "width": 3.28, "tris": 2716 }
+    ]
+  },
+  "rocks": {
+    "file": "rocks.glb",
+    "objects": [
+      { "name": "Rock_4", "height": 2.15, "width": 0.86, "tris": 456 },
+      { "name": "Rock_1", "height": 1.08, "width": 0.89, "tris": 228 },
+      { "name": "Rock_2", "height": 1.12, "width": 1.08, "tris": 202 },
+      { "name": "Rock_3", "height": 1.31, "width": 0.9, "tris": 712 },
+      { "name": "Rock_5", "height": 1.69, "width": 1.32, "tris": 632 }
+    ]
+  },
+  "trees": {
+    "file": "trees.glb",
+    "objects": [
+      { "name": "NormalTree_1", "height": 6.87, "width": 4.05, "tris": 8520 },
+      { "name": "NormalTree_2", "height": 6.56, "width": 4.55, "tris": 8084 },
+      { "name": "NormalTree_3", "height": 5.28, "width": 5.04, "tris": 7096 },
+      { "name": "NormalTree_4", "height": 5.1, "width": 5.67, "tris": 6338 },
+      { "name": "NormalTree_5", "height": 2.98, "width": 3.1, "tris": 2182 }
+    ]
+  }
+}
