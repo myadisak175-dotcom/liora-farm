@@ -106,6 +106,7 @@ export function createBuilderUI({
   let currentAssetId = null;
   let selectedId = null;
   let notice = "";
+  let previewRequest = 0;
 
   // --------------------------------------------------------------- picking
 
@@ -471,8 +472,15 @@ export function createBuilderUI({
   }
 
   async function commitPlacement() {
+    if (!currentAssetId) {
+      setNotice("เลือกสิ่งของก่อนวาง");
+      return;
+    }
     const transform = view.getGhostTransform();
-    if (!transform || !currentAssetId) return;
+    if (!transform) {
+      setNotice("โมเดลยังโหลดไม่สำเร็จ — ลองเลือกสิ่งของใหม่");
+      return;
+    }
     const validation = controller.validatePlacement(currentAssetId, transform);
     if (!validation.ok) {
       setNotice(validationMessage(validation));
@@ -920,15 +928,27 @@ export function createBuilderUI({
     render,
 
     setPreview(preview) {
+      const requestId = ++previewRequest;
       currentAssetId = preview?.assetId ?? null;
       notice = "";
       if (preview) {
         const focus = cameraController.getFocus();
         const start = preview.transform ?? { x: focus.x, z: focus.z };
-        view.showGhost(preview.asset, start).then(() => {
-          updateGhostValidation();
-          render();
-        });
+        view.showGhost(preview.asset, start)
+          .then(() => {
+            if (requestId !== previewRequest || currentAssetId !== preview.assetId) return;
+            updateGhostValidation();
+            render();
+          })
+          .catch((error) => {
+            if (requestId !== previewRequest) return;
+            console.error(`Builder ghost failed to load: ${preview.asset.id}`, error);
+            view.clearGhost();
+            controller.cancelPlacement();
+            currentAssetId = null;
+            setNotice(`โหลดโมเดล ${preview.asset.label} ไม่สำเร็จ`);
+            render();
+          });
       } else {
         view.clearGhost();
       }
