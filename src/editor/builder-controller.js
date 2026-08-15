@@ -16,9 +16,8 @@ export function createBuilderController({
   catalog,
   layoutStore,
   worldHalfSize = Infinity,
-  // Fixed world features nothing may be built on — the vegetable plot, for a
-  // start. Without this a house could be dropped straight on top of the farm.
   reservedAreas = [],
+  getGroundHeight = null,
   edgePadding = 0.25,
   collisionGap = 0.08,
   gridSize = 0.5,
@@ -43,10 +42,6 @@ export function createBuilderController({
     onContextChange(state.context, state);
   }
 
-  // Dragging an object used to write the whole layout to localStorage on every
-  // pointermove — roughly 60 synchronous writes a second. Now the writes are
-  // coalesced and flushed on anything that matters (place, delete, undo, mode
-  // switch, page hide).
   function save({ immediate = false } = {}) {
     savePending = true;
     if (saveTimer) clearTimeout(saveTimer);
@@ -130,15 +125,53 @@ export function createBuilderController({
   }
 
   /**
-   * Two copies of the same model sitting on the exact same spot is never
-   * intentional — for a flat thing like a path tile it also z-fights. They may
-   * still overlap generously, just not stack.
+   * Flat-footed assets opt into a terrain slope limit in the catalog. Sample
+   * the centre plus a ring under the base; this stays numeric and testable and
+   * does not couple the controller to Three.js or the rendered terrain mesh.
+   */
+  function groundConflict(assetId, x, z, scale) {
+    const asset = catalog[assetId];
+    const maxSlope = Number(asset?.maxGroundSlope);
+    if (!Number.isFinite(maxSlope) || typeof getGroundHeight !== "function") return null;
+
+    const authoredProbe = Number(asset.groundProbeRadius ?? asset.footprintRadius ?? 0);
+    const radius = Math.max(0, authoredProbe * scaleRatio(asset, scale));
+    if (radius <= 0.05) return null;
+
+    const center = Number(getGroundHeight(x, z));
+    if (!Number.isFinite(center)) return { slope: Infinity, maxSlope };
+
+    const diagonal = radius * Math.SQRT1_2;
+    const offsets = [
+      [radius, 0], [-radius, 0], [0, radius], [0, -radius],
+      [diagonal, diagonal], [-diagonal, diagonal],
+      [diagonal, -diagonal], [-diagonal, -diagonal],
+    ];
+    let worstSlope = 0;
+    let minHeight = center;
+    let maxHeight = center;
+    for (const [ox, oz] of offsets) {
+      const height = Number(getGroundHeight(x + ox, z + oz));
+      if (!Number.isFinite(height)) return { slope: Infinity, maxSlope };
+      minHeight = Math.min(minHeight, height);
+      maxHeight = Math.max(maxHeight, height);
+      worstSlope = Math.max(worstSlope, Math.abs(height - center) / radius);
+    }
+
+    return worstSlope > maxSlope
+      ? { slope: worstSlope, maxSlope, minHeight, maxHeight }
+      : null;
+  }
+
+  /**
+   * Same-model duplicates may overlap visually, but not enough to occupy
+   * nearly the same footprint. The old 0.5 factor let flat path tiles z-fight.
    */
   function stackConflict(assetId, x, z, scale, ignoreId) {
     const asset = catalog[assetId];
     const minDistance = Math.max(
       0.2,
-      radiusOf(asset, scale, "footprintRadius") * 0.5
+      radiusOf(asset, scale, "footprintRadius") * 0.9
     );
     for (const other of items) {
       if (
@@ -156,7 +189,7 @@ export function createBuilderController({
   function blockingConflict(assetId, x, z, scale, ignoreId) {
     const asset = catalog[assetId];
     const radius = radiusOf(asset, scale, "blockRadius");
-    if (radius <= 0) return null; // decor and nature never fight for space
+    if (radius <= 0) return null;
 
     for (const other of items) {
       if (other.id === ignoreId || inactiveItemIds.has(other.id)) continue;
@@ -198,8 +231,16 @@ export function createBuilderController({
       return { ok: false, code: "reserved", label: reserved.other.label };
     }
 
-    // Buildings first: "ทับอาคารหลังอื่น" is more useful than "ซ้อนชิ้นเดิม"
-    // when the thing in the way is a building that genuinely blocks.
+    const ground = groundConflict(assetId, x, z, scale);
+    if (ground) {
+      return {
+        ok: false,
+        code: "slope",
+        slope: ground.slope,
+        maxSlope: ground.maxSlope,
+      };
+    }
+
     const conflict = blockingConflict(assetId, x, z, scale, ignoreId);
     if (conflict) {
       return {
@@ -219,10 +260,9 @@ export function createBuilderController({
   }
 
   /**
-   * Dragging used to stop dead the moment a position failed validation, which
-   * felt like the object had snagged on nothing. Now the requested position is
-   * pushed out of whatever it overlaps and clamped to the island, so the
-   * object keeps following the finger and slides along the obstacle instead.
+   * Resolve movable-object overlaps while keeping the candidate inside the
+   * island on every pass. Clamping only once after all pushes could shove an
+   * object back into the obstacle at the rim and make dragging appear stuck.
    */
   function resolvePlacement(assetId, transform, ignoreId = null) {
     const asset = catalog[assetId];
@@ -235,8 +275,13 @@ export function createBuilderController({
 
     const footprint = radiusOf(asset, scale, "footprintRadius");
     const limit = Math.max(0, edgeLimit() - footprint);
+    const clampToEdge = () => {
+      x = Math.min(limit, Math.max(-limit, x));
+      z = Math.min(limit, Math.max(-limit, z));
+    };
+    clampToEdge();
 
-    for (let pass = 0; pass < 6; pass += 1) {
+    for (let pass = 0; pass < 8; pass += 1) {
       const conflict =
         blockingConflict(assetId, x, z, scale, ignoreId) ??
         reservedConflict(assetId, x, z, scale) ??
@@ -251,26 +296,16 @@ export function createBuilderController({
         dz = 0;
         length = 1;
       }
-      // Push a hair past the limit. Landing exactly on it means the distance
-      // can round back under when validatePlacement recomputes it, and a move
-      // gets refused immediately after being resolved.
       const clearance = minDistance + 1e-3;
       x = other.x + (dx / length) * clearance;
       z = other.z + (dz / length) * clearance;
+      clampToEdge();
     }
-
-    x = Math.min(limit, Math.max(-limit, x));
-    z = Math.min(limit, Math.max(-limit, z));
 
     const resolved = { ...transform, x, z, scale };
     return validatePlacement(assetId, resolved, ignoreId).ok ? resolved : null;
   }
 
-  /**
-   * Models that failed to spawn remain in the saved layout so a temporary load
-   * error never destroys the user's map. Mark them inactive instead: they do
-   * not block placement or player movement until a later load succeeds.
-   */
   function setInactiveItems(ids = []) {
     inactiveItemIds.clear();
     for (const id of ids) {
@@ -279,7 +314,6 @@ export function createBuilderController({
     return inactiveItemIds.size;
   }
 
-  /** Circles the player cannot walk through, in world units. */
   function getColliders({ excludeIds = null } = {}) {
     const excluded = excludeIds instanceof Set ? excludeIds : new Set(excludeIds ?? []);
     const colliders = [];
@@ -308,11 +342,6 @@ export function createBuilderController({
     emitContext();
   }
 
-  /**
-   * `transform` re-arms the ghost with the rotation/scale/position of the last
-   * thing placed, so laying a row of path tiles is tap-drag-tap rather than
-   * re-picking the asset from the strip every single time.
-   */
   function beginPlacement(assetId, { transform = null } = {}) {
     const asset = catalog[assetId];
     if (!asset) throw new Error(`Unknown buildable asset: ${assetId}`);
@@ -344,8 +373,6 @@ export function createBuilderController({
       pushBuilderHistory(state, { type: "add", item: { ...normalized } });
     }
     if (saveLayout) save({ immediate: true });
-    // Context is the UI's business: adding an item no longer forces you out of
-    // place mode, so the caller can keep placing.
     return normalized;
   }
 
@@ -445,10 +472,6 @@ export function createBuilderController({
     return removed;
   }
 
-  /**
-   * History was being recorded from day one but never read, so "ลบ" was
-   * permanent. Returns what changed so the view can add/remove the model.
-   */
   function undo() {
     const action = popBuilderHistory(state);
     if (!action) return null;
@@ -492,9 +515,6 @@ export function createBuilderController({
     const usable = [];
     const unknownAssetIds = new Set();
 
-    // An asset id that no longer exists in the catalog used to stay in the
-    // layout forever: invisible, unselectable, unremovable, and re-saved every
-    // time. Drop it from the live list and report it instead.
     for (const entry of raw) {
       const normalized = normalizeItem(entry);
       if (normalized) usable.push(normalized);
@@ -519,7 +539,6 @@ export function createBuilderController({
     return items;
   }
 
-  /** Throws away the local layout and rebuilds from the given map objects. */
   function resetTo(objects = []) {
     inactiveItemIds.clear();
     items.splice(0, items.length);
@@ -559,7 +578,6 @@ export function createBuilderController({
     updateSelected,
     duplicateSelected,
     deleteSelected,
-    /** What the last load() had to throw away, or null. */
     get loadReport() {
       return loadReport;
     },
