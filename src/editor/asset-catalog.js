@@ -7,18 +7,15 @@ export const BUILD_CATEGORIES = Object.freeze({
 });
 
 /**
- * Three radii, because they answer three different questions. The old single
- * `placementRadius` tried to answer all three and ended up wrong for each:
- * a house got a 5.3 m no-build bubble around a 3.9 m building, so a path
- * could never reach its door.
+ * Three radii answer three different questions:
+ * footprintRadius keeps an object on the island and spaces duplicates,
+ * blockRadius prevents solid buildables overlapping each other, and
+ * walkRadius is what the player collides with.
  *
- *   footprintRadius — how much ground the base really covers. Used to keep an
- *                     object on the island and to space out duplicates.
- *                     Measured from the GLB's lowest 15% of geometry.
- *   blockRadius     — refuses to overlap another blocking object. Only
- *                     buildings block; nature and decor may overlap freely,
- *                     which is how decorating actually works.
- *   walkRadius      — solid to the player in play mode. 0 = walk through.
+ * Terrain rules are opt-in. `maxGroundSlope` is the largest rise/run sampled
+ * under the base; assets without it (trees, grass, barrels) remain free to sit
+ * on natural slopes. Buildings opt in because a centre-point Y snap alone can
+ * otherwise leave corners floating or buried after sculpting.
  */
 function defineAsset({
   id,
@@ -36,6 +33,8 @@ function defineAsset({
   sizeAxis = "height",
   sizeInPlayers = 1,
   terrainSnap = true,
+  maxGroundSlope = null,
+  groundProbeRadius = null,
 }) {
   const resolvedMinScale = minScale ?? defaultScale * 0.4;
   const resolvedMaxScale = maxScale ?? defaultScale * 2.5;
@@ -58,6 +57,8 @@ function defineAsset({
     sizeAxis,
     sizeInPlayers,
     terrainSnap,
+    maxGroundSlope,
+    groundProbeRadius,
   });
 }
 
@@ -68,7 +69,6 @@ export const BUILDABLE_ASSETS = Object.freeze({
     category: BUILD_CATEGORIES.NATURE,
     icon: "🌳",
     file: "tree.glb",
-    // Canopy is 5.6 m wide but the trunk is what you bump into.
     footprintRadius: 2.25,
     walkRadius: 0.55,
     defaultScale: 1.7,
@@ -117,6 +117,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     walkRadius: 2.1,
     defaultScale: 1.2,
     sizeInPlayers: 2.3,
+    maxGroundSlope: 0.16,
+    groundProbeRadius: 2.0,
   }),
   house2: defineAsset({
     id: "house2",
@@ -129,6 +131,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     walkRadius: 1.8,
     defaultScale: 1.2,
     sizeInPlayers: 2.3,
+    maxGroundSlope: 0.16,
+    groundProbeRadius: 1.7,
   }),
   path_tile: defineAsset({
     id: "path_tile",

@@ -26,15 +26,23 @@ export function createInput() {
     stick.style.transform = `translate(${dx}px, ${dy}px)`;
   }
 
-  function end(event) {
-    if (event.pointerId !== pointer) return;
+  function reset() {
     pointer = null;
     joystick.x = 0;
     joystick.y = 0;
     stick.style.transform = "translate(0, 0)";
   }
 
+  function end(event) {
+    if (event.pointerId !== pointer) return;
+    reset();
+  }
+
   joy.addEventListener("pointerdown", (event) => {
+    // The first finger owns the joystick until it ends. A second finger is
+    // commonly used for camera gestures and must never steal movement input.
+    if (pointer !== null) return;
+    if (event.pointerType === "touch" && event.isPrimary === false) return;
     pointer = event.pointerId;
     joy.setPointerCapture(pointer);
     move(event);
@@ -44,6 +52,7 @@ export function createInput() {
   });
   joy.addEventListener("pointerup", end);
   joy.addEventListener("pointercancel", end);
+  addEventListener("blur", reset);
 
   return {
     get() {

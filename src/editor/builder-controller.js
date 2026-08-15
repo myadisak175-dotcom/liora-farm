@@ -19,6 +19,8 @@ export function createBuilderController({
   // Fixed world features nothing may be built on — the vegetable plot, for a
   // start. Without this a house could be dropped straight on top of the farm.
   reservedAreas = [],
+  // Numeric terrain sampler only; keeps this controller independent of Three.js.
+  getGroundHeight = null,
   edgePadding = 0.25,
   collisionGap = 0.08,
   gridSize = 0.5,
@@ -130,15 +132,60 @@ export function createBuilderController({
   }
 
   /**
-   * Two copies of the same model sitting on the exact same spot is never
+   * Buildings opt into a slope limit in the catalog. Sample the centre plus a
+   * ring beneath the base; nature/decor with `maxGroundSlope: null` deliberately
+   * skip this rule so the world can still be decorated on natural hillsides.
+   */
+  function groundConflict(assetId, x, z, scale) {
+    const asset = catalog[assetId];
+    if (asset?.maxGroundSlope == null || typeof getGroundHeight !== "function") {
+      return null;
+    }
+
+    const maxSlope = Number(asset.maxGroundSlope);
+    if (!Number.isFinite(maxSlope) || maxSlope < 0) return null;
+
+    const authoredProbe = Number(
+      asset.groundProbeRadius ?? asset.footprintRadius ?? 0
+    );
+    const radius = Math.max(0, authoredProbe * scaleRatio(asset, scale));
+    if (radius <= 0.05) return null;
+
+    const center = Number(getGroundHeight(x, z));
+    if (!Number.isFinite(center)) return { slope: Infinity, maxSlope };
+
+    const diagonal = radius * Math.SQRT1_2;
+    const offsets = [
+      [radius, 0],
+      [-radius, 0],
+      [0, radius],
+      [0, -radius],
+      [diagonal, diagonal],
+      [-diagonal, diagonal],
+      [diagonal, -diagonal],
+      [-diagonal, -diagonal],
+    ];
+
+    let worstSlope = 0;
+    for (const [ox, oz] of offsets) {
+      const ground = Number(getGroundHeight(x + ox, z + oz));
+      if (!Number.isFinite(ground)) return { slope: Infinity, maxSlope };
+      worstSlope = Math.max(worstSlope, Math.abs(ground - center) / radius);
+    }
+
+    return worstSlope > maxSlope ? { slope: worstSlope, maxSlope } : null;
+  }
+
+  /**
+   * Two copies of the same model sitting on nearly the same spot is never
    * intentional — for a flat thing like a path tile it also z-fights. They may
-   * still overlap generously, just not stack.
+   * still overlap generously, just not occupy almost the same footprint.
    */
   function stackConflict(assetId, x, z, scale, ignoreId) {
     const asset = catalog[assetId];
     const minDistance = Math.max(
       0.2,
-      radiusOf(asset, scale, "footprintRadius") * 0.5
+      radiusOf(asset, scale, "footprintRadius") * 0.9
     );
     for (const other of items) {
       if (
@@ -198,6 +245,16 @@ export function createBuilderController({
       return { ok: false, code: "reserved", label: reserved.other.label };
     }
 
+    const ground = groundConflict(assetId, x, z, scale);
+    if (ground) {
+      return {
+        ok: false,
+        code: "slope",
+        slope: ground.slope,
+        maxSlope: ground.maxSlope,
+      };
+    }
+
     // Buildings first: "ทับอาคารหลังอื่น" is more useful than "ซ้อนชิ้นเดิม"
     // when the thing in the way is a building that genuinely blocks.
     const conflict = blockingConflict(assetId, x, z, scale, ignoreId);
@@ -220,9 +277,10 @@ export function createBuilderController({
 
   /**
    * Dragging used to stop dead the moment a position failed validation, which
-   * felt like the object had snagged on nothing. Now the requested position is
-   * pushed out of whatever it overlaps and clamped to the island, so the
-   * object keeps following the finger and slides along the obstacle instead.
+   * felt like the object had snagged on nothing. The requested position is
+   * pushed out of overlaps and clamped on every pass, so an obstacle beside the
+   * island rim cannot push the object out and then have the final clamp shove it
+   * straight back into the obstacle.
    */
   function resolvePlacement(assetId, transform, ignoreId = null) {
     const asset = catalog[assetId];
@@ -235,8 +293,13 @@ export function createBuilderController({
 
     const footprint = radiusOf(asset, scale, "footprintRadius");
     const limit = Math.max(0, edgeLimit() - footprint);
+    const clampToEdge = () => {
+      x = Math.min(limit, Math.max(-limit, x));
+      z = Math.min(limit, Math.max(-limit, z));
+    };
+    clampToEdge();
 
-    for (let pass = 0; pass < 6; pass += 1) {
+    for (let pass = 0; pass < 8; pass += 1) {
       const conflict =
         blockingConflict(assetId, x, z, scale, ignoreId) ??
         reservedConflict(assetId, x, z, scale) ??
@@ -252,15 +315,12 @@ export function createBuilderController({
         length = 1;
       }
       // Push a hair past the limit. Landing exactly on it means the distance
-      // can round back under when validatePlacement recomputes it, and a move
-      // gets refused immediately after being resolved.
+      // can round back under when validatePlacement recomputes it.
       const clearance = minDistance + 1e-3;
       x = other.x + (dx / length) * clearance;
       z = other.z + (dz / length) * clearance;
+      clampToEdge();
     }
-
-    x = Math.min(limit, Math.max(-limit, x));
-    z = Math.min(limit, Math.max(-limit, z));
 
     const resolved = { ...transform, x, z, scale };
     return validatePlacement(assetId, resolved, ignoreId).ok ? resolved : null;

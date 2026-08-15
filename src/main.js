@@ -21,7 +21,12 @@ import { createBuilderView } from "./editor/builder-view.js";
 import { createBuilderUI } from "./editor/builder-ui.js";
 import { createSculptControls } from "./editor/sculpt-controls.js";
 
-window.__lioraBooted = true;
+window.__lioraBooted = false;
+window.__lioraBootState = "starting";
+window.__lioraBootError = null;
+function setBootState(state) { window.__lioraBootState = state; }
+function setBootError(error) { window.__lioraBootError = String(error?.message ?? error ?? "unknown error"); }
+
 const status = document.querySelector("#status");
 const pouchEl = document.querySelector("#pouch");
 const pouchCount = document.querySelector("#pouch-count");
@@ -37,6 +42,7 @@ function toast(text) {
   toastTimer = setTimeout(() => toastEl.classList.remove("on"), 1400);
 }
 
+setBootState("renderer");
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(CONFIG.sky.horizonColor);
 scene.fog = new THREE.Fog(CONFIG.sky.horizonColor, CONFIG.fog.near, CONFIG.fog.far);
@@ -47,13 +53,9 @@ renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 
 const textureLoader = new THREE.TextureLoader();
-const RESERVED_AREAS = [{
-  x: CONFIG.farmPlot.position.x,
-  z: CONFIG.farmPlot.position.z,
-  radius: CONFIG.farmPlot.reservedRadius,
-  label: "แปลงผัก",
-}];
+const RESERVED_AREAS = [{ x: CONFIG.farmPlot.position.x, z: CONFIG.farmPlot.position.z, radius: CONFIG.farmPlot.reservedRadius, label: "แปลงผัก" }];
 
+setBootState("world");
 let world = null;
 try {
   world = await createHomeIsland({
@@ -63,16 +65,16 @@ try {
     onCropsChange: () => refreshFarmHud(),
   });
 } catch (error) {
+  setBootError(error);
   console.error(error); setStatus("โหลดพื้นไม่สำเร็จ — เช็คไฟล์ใน assets/textures/"); throw error;
 }
 window.__liora = {
-  get paint() { return world.paint; },
-  get layers() { return world.layers; },
-  get height() { return world.height; },
-  get terrainField() { return world.terrainField; },
+  get paint() { return world.paint; }, get layers() { return world.layers; },
+  get height() { return world.height; }, get terrainField() { return world.terrainField; },
   get missingTextures() { return world.missingTextures; },
 };
 
+setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
 const sky = createSky(CONFIG.sky); scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
@@ -92,6 +94,7 @@ let colliders = [];
 const builder = createBuilderController({
   state: builderState, catalog: BUILDABLE_ASSETS, layoutStore,
   worldHalfSize: CONFIG.worldLimit, reservedAreas: RESERVED_AREAS,
+  getGroundHeight: world.getGroundHeight,
   gridSize: CONFIG.builder.gridSize, saveDebounceMs: CONFIG.builder.saveDebounceMs,
   onContextChange: () => builderUI?.render(),
   onSelectionChange: (item) => builderUI?.setSelection(item),
@@ -113,14 +116,16 @@ createSculptControls({
 });
 const movement = createMovementSystem(camera, CONFIG, world.getGroundHeight, () => colliders);
 
+setBootState("player");
 let player = null;
 try {
   player = await createPlayer({
     url: ASSETS.player, height: CONFIG.playerHeight, groundOffset: CONFIG.playerGroundOffset,
     renderOrder: CONFIG.depth.playerOrder, animations: ANIMATIONS,
   });
-  scene.add(player.root); setStatus("พร้อมเล่น", { autoHide: true }); pouchEl.hidden = false;
+  scene.add(player.root); pouchEl.hidden = false;
 } catch (error) {
+  setBootError(error);
   console.error(error); setStatus("โหลดตัวละครไม่สำเร็จ — เช็ค assets/models/player/");
 }
 
@@ -158,7 +163,7 @@ async function loadLayout() {
       if (map.groundPaint) world.paint.importData(map.groundPaint);
       if (map.terrainHeight) {
         if (!world.height.importData(map.terrainHeight)) console.warn("Default map terrain height could not be loaded");
-      } else if (!world.height.isFlat()) world.height.clear();
+      }
     } catch (error) { console.warn("Default map could not be loaded", error); }
   } else builder.load();
   await spawnAll();
@@ -169,22 +174,12 @@ async function loadLayout() {
     toast("แผนที่เดิมคนละเวอร์ชัน สำรองไว้แล้ว");
   }
 }
-/**
- * "รีเซ็ตแผนที่" restores placed objects only. Painted and sculpted ground
- * belong to the player's island and survive this action. Flattening terrain
- * remains an explicit sculpt command.
- *
- * This rule is intentionally independent of the contents of home-island.json:
- * even if a future default map ships groundPaint/terrainHeight, reset must not
- * silently overwrite the user's surface work.
- */
+
 async function resetLayout() {
   try {
     const map = await fetchDefaultMap();
-    builderView.clear();
-    builder.resetTo(Array.isArray(map.objects) ? map.objects : []);
-    await spawnAll();
-    syncBuilderToTerrain();
+    builderView.clear(); builder.resetTo(Array.isArray(map.objects) ? map.objects : []);
+    await spawnAll(); syncBuilderToTerrain();
     toast("โหลดสิ่งของเริ่มต้นแล้ว — พื้นที่ระบายและปั้นไว้ยังอยู่");
   } catch (error) { console.warn("Default map could not be loaded", error); toast("โหลดแผนที่เริ่มต้นไม่สำเร็จ"); }
 }
@@ -196,13 +191,8 @@ function exportMap(items) {
     groundPaint: world.paint.exportData(), terrainHeight: world.height.exportData(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "home-island.json";
-  document.body.append(link);
-  link.click();
-  link.remove();
+  const url = URL.createObjectURL(blob); const link = document.createElement("a");
+  link.href = url; link.download = "home-island.json"; document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
@@ -217,15 +207,9 @@ function setMode(next) {
   for (const button of modeButtons) button.classList.toggle("active", button.dataset.mode === next);
 }
 for (const button of modeButtons) button.onclick = () => setMode(button.dataset.mode);
-function flushPersistentState() {
-  builder.flushSave();
-  world.height.flushSave();
-  world.paint.flushSave();
-}
+function flushPersistentState() { builder.flushSave(); world.height.flushSave(); world.paint.flushSave(); }
 addEventListener("pagehide", flushPersistentState);
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") flushPersistentState();
-});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushPersistentState(); });
 
 const farmButton = document.querySelector('[data-action="farm"]');
 let farmTarget = null;
@@ -288,4 +272,10 @@ function animate() {
   cameraController.update(cameraTarget, delta); sky.update(camera); renderer.render(scene, camera);
 }
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-setMode("play"); refreshFarmHud(); animate(); await loadLayout();
+
+setMode("play"); refreshFarmHud(); setBootState("layout"); setStatus("กำลังโหลดแผนที่…");
+await loadLayout();
+setBootState(player ? "ready" : "ready-degraded"); window.__lioraBooted = true;
+if (player) setStatus("พร้อมเล่น", { autoHide: true });
+else setStatus("โหลดตัวละครไม่สำเร็จ — โหมดสร้างยังใช้ได้");
+animate();

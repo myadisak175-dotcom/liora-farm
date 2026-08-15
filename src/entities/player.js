@@ -52,6 +52,8 @@ export async function createPlayer({
 
   let current = null;
   let special = false;
+  let specialRun = 0;
+  let specialTimer = null;
 
   function fadeTo(name, duration = 0.18, loop = true, timeScale = 1) {
     const next = actions[name];
@@ -70,20 +72,43 @@ export async function createPlayer({
     current = next;
   }
 
+  /**
+   * One-shot actions must never be able to strand the player in `special`.
+   * Three normally emits `finished`, but a malformed/replaced clip or an
+   * interrupted mixer can miss that event. A clip-duration watchdog provides
+   * a second exit path and the run token prevents an older callback from
+   * ending a newer action.
+   */
   function playSpecial(name, onDone) {
-    if (special || !actions[name]) return false;
+    const action = actions[name];
+    if (special || !action) return false;
+
     special = true;
+    const run = ++specialRun;
     fadeTo(name, 0.15, false, 1);
 
-    const finished = (event) => {
-      if (event.action !== actions[name]) return;
+    let settled = false;
+    const finish = () => {
+      if (settled || run !== specialRun) return;
+      settled = true;
       mixer.removeEventListener("finished", finished);
+      if (specialTimer) {
+        clearTimeout(specialTimer);
+        specialTimer = null;
+      }
       special = false;
       fadeTo(animations.idle, 0.18, true, 1);
       onDone?.();
     };
 
+    const finished = (event) => {
+      if (event.action !== action) return;
+      finish();
+    };
+
     mixer.addEventListener("finished", finished);
+    const duration = Math.max(0.1, Number(action.getClip()?.duration) || 0.1);
+    specialTimer = setTimeout(finish, (duration + 0.6) * 1000);
     return true;
   }
 
