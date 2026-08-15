@@ -319,15 +319,30 @@ export function createGroundPaint({
     }
   }
 
+  function writeSave() {
+    try {
+      localStorage.setItem(config.storageKey, JSON.stringify(exportData()));
+      return true;
+    } catch (error) {
+      console.warn("Ground paint could not be saved", error);
+      return false;
+    }
+  }
+
   function scheduleSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(config.storageKey, JSON.stringify(exportData()));
-      } catch (error) {
-        console.warn("Ground paint could not be saved", error);
-      }
+      saveTimer = null;
+      writeSave();
     }, 250);
+  }
+
+  function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    return writeSave();
   }
 
   function normalizeStroke(stroke) {
@@ -562,6 +577,7 @@ export function createGroundPaint({
     beginStroke,
     strokeTo,
     endStroke,
+    flushSave,
     setAutoSurfaceEnabled(enabled) {
       autoSurfaceEnabled = Boolean(enabled);
       autoSurfaceUniform.value = autoSurfaceEnabled ? 1 : 0;
