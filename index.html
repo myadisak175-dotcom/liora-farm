@@ -8,16 +8,7 @@
 <link rel="stylesheet" href="./styles/main.css?v=hud3">
 <link rel="stylesheet" href="./styles/terrain-controls.css?v=hud3">
 <script>
-/*
- * Three.js resolution, local copy first.
- *
- * The import map used to point straight at a CDN with no alternative, so a
- * slow train, a captive portal or a blocked jsdelivr meant the whole game was
- * just the text "โหลดไม่สำเร็จ". Now: if vendor/three/three.module.js has been
- * dropped into the repo, use it; otherwise fall back to the CDN. The import
- * map has to exist before any module script runs, so both it and the entry
- * script are injected from here.
- */
+/* Prefer a vendored Three.js copy when present; otherwise use the pinned CDN. */
 (async () => {
   const LOCAL = "./vendor/three/";
   const CDN = "https://cdn.jsdelivr.net/npm/three@0.180.0/";
@@ -39,7 +30,7 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=hud3";
+  entry.src = "./src/main.js?v=foundation2";
   document.head.append(entry);
 })();
 </script>
@@ -80,8 +71,6 @@
     <div id="paint-size" class="sizerow"></div>
     <div id="sculpt-strip" class="toolrow"></div>
     <div id="sculpt-size" class="sizerow"></div>
-    <!-- "เพิ่มเติม" drawer: presets and the fine-tuning sliders. Hidden by
-         default so the sculpt tab stays four rows tall on a small phone. -->
     <div id="sculpt-extra">
       <div id="sculpt-presets" class="strip"></div>
       <div id="sculpt-extra-size" class="sizerow stack"></div>
@@ -92,12 +81,26 @@
 </section>
 <div id="toast" aria-live="polite"></div>
 <script>
+function showBootProblem(text, detail = "") {
+  if (window.__lioraBooted) return;
+  const status = document.querySelector("#status");
+  if (!status) return;
+  status.textContent = text;
+  status.title = detail;
+  status.classList.add("error");
+}
+window.addEventListener("error", (event) => {
+  showBootProblem("โหลดเกมไม่สำเร็จ — ลองรีโหลดหน้า", String(event.error?.message ?? event.message ?? ""));
+});
+window.addEventListener("unhandledrejection", (event) => {
+  showBootProblem("โหลดเกมไม่สำเร็จ — ลองรีโหลดหน้า", String(event.reason?.message ?? event.reason ?? ""));
+});
 window.addEventListener("load", () => {
   setTimeout(() => {
     if (window.__lioraBooted) return;
-    const status = document.querySelector("#status");
-    status.textContent = "โหลดไม่สำเร็จ — เช็คเน็ตแล้วรีโหลดหน้า";
-    status.classList.add("error");
+    const stage = window.__lioraBootState ?? "starting";
+    const detail = window.__lioraBootError ?? "";
+    showBootProblem(`โหลดนานผิดปกติ (${stage}) — ลองรีโหลดหน้า`, String(detail));
   }, 12000);
 });
 </script>
