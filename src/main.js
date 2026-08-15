@@ -277,4 +277,5 @@ setMode("play"); refreshFarmHud(); setBootState("layout"); setStatus("กำล�
 await loadLayout();
 setBootState(player ? "ready" : "ready-degraded"); window.__lioraBooted = true;
 if (player) setStatus("พร้อมเล่น", { autoHide: true });
+else setStatus("โหลดตัวละครไม่สำเร็จ — โหมดสร้างยังใช้ได้");
 animate();
