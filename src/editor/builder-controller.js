@@ -34,6 +34,7 @@ export function createBuilderController({
   if (!layoutStore) throw new Error("Builder layout store is required");
 
   const items = [];
+  const inactiveItemIds = new Set();
   let saveTimer = null;
   let savePending = false;
   let loadReport = null;
@@ -140,7 +141,11 @@ export function createBuilderController({
       radiusOf(asset, scale, "footprintRadius") * 0.5
     );
     for (const other of items) {
-      if (other.id === ignoreId || other.assetId !== assetId) continue;
+      if (
+        other.id === ignoreId ||
+        inactiveItemIds.has(other.id) ||
+        other.assetId !== assetId
+      ) continue;
       if (Math.hypot(x - other.x, z - other.z) < minDistance) {
         return { other, minDistance };
       }
@@ -154,7 +159,7 @@ export function createBuilderController({
     if (radius <= 0) return null; // decor and nature never fight for space
 
     for (const other of items) {
-      if (other.id === ignoreId) continue;
+      if (other.id === ignoreId || inactiveItemIds.has(other.id)) continue;
       const otherAsset = catalog[other.assetId];
       if (!otherAsset) continue;
       const otherRadius = radiusOf(otherAsset, other.scale, "blockRadius");
@@ -261,12 +266,25 @@ export function createBuilderController({
     return validatePlacement(assetId, resolved, ignoreId).ok ? resolved : null;
   }
 
+  /**
+   * Models that failed to spawn remain in the saved layout so a temporary load
+   * error never destroys the user's map. Mark them inactive instead: they do
+   * not block placement or player movement until a later load succeeds.
+   */
+  function setInactiveItems(ids = []) {
+    inactiveItemIds.clear();
+    for (const id of ids) {
+      if (items.some((item) => item.id === id)) inactiveItemIds.add(id);
+    }
+    return inactiveItemIds.size;
+  }
+
   /** Circles the player cannot walk through, in world units. */
   function getColliders({ excludeIds = null } = {}) {
     const excluded = excludeIds instanceof Set ? excludeIds : new Set(excludeIds ?? []);
     const colliders = [];
     for (const item of items) {
-      if (excluded.has(item.id)) continue;
+      if (inactiveItemIds.has(item.id) || excluded.has(item.id)) continue;
       const asset = catalog[item.assetId];
       if (!asset) continue;
       const radius = radiusOf(asset, item.scale, "walkRadius");
@@ -320,6 +338,7 @@ export function createBuilderController({
       return null;
     }
 
+    inactiveItemIds.delete(normalized.id);
     items.push(normalized);
     if (recordHistory) {
       pushBuilderHistory(state, { type: "add", item: { ...normalized } });
@@ -417,6 +436,7 @@ export function createBuilderController({
     const index = items.findIndex((entry) => entry.id === state.selectedObjectId);
     if (index < 0) return null;
     const [removed] = items.splice(index, 1);
+    inactiveItemIds.delete(removed.id);
     pushBuilderHistory(state, { type: "delete", item: { ...removed } });
     enterIdleContext(state);
     onSelectionChange(null);
@@ -437,6 +457,7 @@ export function createBuilderController({
       const index = items.findIndex((entry) => entry.id === action.item.id);
       if (index < 0) return null;
       items.splice(index, 1);
+      inactiveItemIds.delete(action.item.id);
       enterIdleContext(state);
       onSelectionChange(null);
       save({ immediate: true });
@@ -445,6 +466,7 @@ export function createBuilderController({
     }
 
     if (action.type === "delete") {
+      inactiveItemIds.delete(action.item.id);
       items.push({ ...action.item });
       enterIdleContext(state);
       onSelectionChange(null);
@@ -486,6 +508,7 @@ export function createBuilderController({
       storeIssue: layoutStore.lastIssue ?? null,
     };
 
+    inactiveItemIds.clear();
     items.splice(0, items.length, ...usable);
     state.history.length = 0;
     enterIdleContext(state);
@@ -498,6 +521,7 @@ export function createBuilderController({
 
   /** Throws away the local layout and rebuilds from the given map objects. */
   function resetTo(objects = []) {
+    inactiveItemIds.clear();
     items.splice(0, items.length);
     for (const object of objects) {
       const normalized = normalizeItem(object);
@@ -525,6 +549,7 @@ export function createBuilderController({
     snapTransform,
     validatePlacement,
     resolvePlacement,
+    setInactiveItems,
     getColliders,
     beginPlacement,
     cancelPlacement,
