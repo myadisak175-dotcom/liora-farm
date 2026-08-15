@@ -1,7 +1,16 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>terrain height tests</title></head>
+<head><meta charset="utf-8"><title>terrain height tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
 <body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
 <script type="module">
 import { createTerrainHeight, SCULPT_TOOLS } from "../../src/systems/terrain-height.js";
 import { CONFIG } from "../../src/config.js";
