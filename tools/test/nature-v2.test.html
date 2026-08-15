@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>World V2 nature tests</title></head>
+<head>
+<meta charset="utf-8">
+<title>World V2 nature tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
 <body><pre id="out"></pre>
 <script type="module">
 import { getBuildableAsset, getBuildableAssets } from "../../src/editor/asset-catalog.js";
@@ -19,6 +25,7 @@ async function test(name, fn) {
 function assert(value, message) { if (!value) throw new Error(message); }
 
 const v2 = getBuildableAssets().filter((asset) => asset.worldV2);
+
 await test("catalog exposes all 55 World V2 objects", () => {
   assert(v2.length === 55, `expected 55, got ${v2.length}`);
   assert(new Set(v2.map((asset) => asset.id)).size === 55, "duplicate v2 ids");
@@ -29,6 +36,19 @@ await test("World V2 catalog points at 12 shared GLBs", () => {
   assert(paths.size === 12, `expected 12 source files, got ${paths.size}`);
   assert(v2.every((asset) => asset.nodeName), "missing nodeName");
   assert(v2.every((asset) => asset.modelPath.includes("/world-v2/nature/")), "wrong model root");
+});
+
+await test("all 12 GLB files exist and have a valid glTF binary header", async () => {
+  const paths = [...new Set(v2.map((asset) => asset.modelPath))];
+  for (const relative of paths) {
+    const url = new URL(`/${relative.replace(/^\.\//, "")}`, location.origin);
+    const response = await fetch(url);
+    assert(response.ok, `${relative} returned ${response.status}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assert(bytes.length >= 12, `${relative} is too small to be a GLB`);
+    assert(bytes[0] === 0x67 && bytes[1] === 0x6c && bytes[2] === 0x54 && bytes[3] === 0x46,
+      `${relative} is missing the glTF header`);
+  }
 });
 
 await test("loader fetches one shared GLB for sibling variants", async () => {
