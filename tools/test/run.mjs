@@ -30,6 +30,7 @@ const CHROME =
 
 const PAGES = [
   { file: "tools/test/builder-controller.test.html", viewports: [[900, 800]] },
+  { file: "tools/test/nature-v2.test.html", viewports: [[900, 800]] },
   { file: "tools/test/ground-layers.test.html", viewports: [[900, 800]] },
   { file: "tools/test/ground-shader.test.html", viewports: [[900, 800]] },
   { file: "tools/test/terrain-height.test.html", viewports: [[900, 800]] },
