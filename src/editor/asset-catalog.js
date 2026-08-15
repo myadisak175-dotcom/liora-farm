@@ -8,6 +8,24 @@ export const BUILD_CATEGORIES = Object.freeze({
 });
 
 /**
+ * Builder palette policy.
+ *
+ * Nature V2 is now the production/primary nature set. Legacy nature assets stay
+ * registered so old saves and maps can still resolve their stable asset IDs,
+ * but they are intentionally hidden from the placement palette.
+ *
+ * Buildings and decor remain visible until their own replacement sets exist.
+ */
+export const PRIMARY_ASSET_POLICY = Object.freeze({
+  natureSet: "world-v2",
+  stableIdPrefix: "v2-",
+  legacyNatureMode: "fallback-only",
+  requireNamedNode: true,
+  requireSourceMetrics: true,
+  requireTerrainSnap: true,
+});
+
+/**
  * Three radii answer three different questions:
  * footprintRadius keeps an object on the island and spaces duplicates,
  * blockRadius prevents solid buildables overlapping each other, and
@@ -169,15 +187,46 @@ export const BUILDABLE_ASSETS = Object.freeze({
     sizeInPlayers: 0.75,
   }),
 
-  // World V2 lives beside the legacy set during migration. The IDs are
-  // prefixed with v2- so existing saved maps remain valid and reversible.
+  // World V2 is the primary Nature set. Legacy nature IDs above remain in the
+  // registry only for backwards-compatible load/save behavior.
   ...NATURE_V2_ASSETS,
 });
+
+export function isPrimaryBuilderAsset(asset) {
+  if (!asset) return false;
+
+  // Until buildings/decor receive V2 replacements, keep their existing assets
+  // in the palette. This policy only retires the legacy Nature buttons.
+  if (asset.category !== BUILD_CATEGORIES.NATURE) return true;
+
+  if (asset.worldV2 !== true) return false;
+  if (!asset.id?.startsWith(PRIMARY_ASSET_POLICY.stableIdPrefix)) return false;
+  if (PRIMARY_ASSET_POLICY.requireNamedNode && !asset.nodeName) return false;
+  if (
+    PRIMARY_ASSET_POLICY.requireSourceMetrics &&
+    !(Number.isFinite(asset.sourceHeight) && asset.sourceHeight > 0 &&
+      Number.isFinite(asset.sourceWidth) && asset.sourceWidth > 0 &&
+      Number.isFinite(asset.tris) && asset.tris > 0)
+  ) {
+    return false;
+  }
+  if (PRIMARY_ASSET_POLICY.requireTerrainSnap && asset.terrainSnap !== true) return false;
+
+  return true;
+}
 
 export function getBuildableAsset(id) {
   return BUILDABLE_ASSETS[id] ?? null;
 }
 
+// Builder palette: production assets only. Existing UI already reads this API,
+// so legacy Nature disappears without special-case UI code.
 export function getBuildableAssets() {
+  return Object.values(BUILDABLE_ASSETS).filter(isPrimaryBuilderAsset);
+}
+
+// Migration/debugging only: includes fallback assets so old saves remain
+// inspectable and testable while the V2 rollout is reversible.
+export function getAllBuildableAssets() {
   return Object.values(BUILDABLE_ASSETS);
 }
