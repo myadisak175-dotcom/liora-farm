@@ -9,7 +9,14 @@
 </head>
 <body><pre id="out"></pre>
 <script type="module">
-import { getBuildableAsset, getBuildableAssets } from "../../src/editor/asset-catalog.js";
+import {
+  BUILD_CATEGORIES,
+  PRIMARY_ASSET_POLICY,
+  getBuildableAsset,
+  getBuildableAssets,
+  getAllBuildableAssets,
+  isPrimaryBuilderAsset,
+} from "../../src/editor/asset-catalog.js";
 import { createBuilderAssetLoader } from "../../src/editor/asset-loader.js";
 
 const results = [];
@@ -24,11 +31,53 @@ async function test(name, fn) {
 }
 function assert(value, message) { if (!value) throw new Error(message); }
 
-const v2 = getBuildableAssets().filter((asset) => asset.worldV2);
+const palette = getBuildableAssets();
+const allAssets = getAllBuildableAssets();
+const v2 = palette.filter((asset) => asset.worldV2);
+const paletteNature = palette.filter((asset) => asset.category === BUILD_CATEGORIES.NATURE);
+const legacyNatureIds = ["tree", "pine", "palm", "grass"];
 
 await test("catalog exposes all 55 World V2 objects", () => {
   assert(v2.length === 55, `expected 55, got ${v2.length}`);
   assert(new Set(v2.map((asset) => asset.id)).size === 55, "duplicate v2 ids");
+});
+
+await test("World V2 is the only Nature set shown in the Builder palette", () => {
+  assert(paletteNature.length === 55, `expected 55 primary nature assets, got ${paletteNature.length}`);
+  assert(paletteNature.every((asset) => asset.worldV2 === true), "legacy Nature leaked into palette");
+  for (const id of legacyNatureIds) {
+    assert(!palette.some((asset) => asset.id === id), `${id} should be hidden from Builder palette`);
+  }
+});
+
+await test("legacy Nature stays registered as fallback for old saves", () => {
+  for (const id of legacyNatureIds) {
+    const asset = getBuildableAsset(id);
+    assert(asset?.modelPath?.includes("/builder/"), `${id} fallback missing`);
+    assert(allAssets.some((entry) => entry.id === id), `${id} missing from full registry`);
+  }
+  assert(allAssets.length - palette.length === legacyNatureIds.length,
+    `expected exactly ${legacyNatureIds.length} fallback-only assets`);
+});
+
+await test("buildings and decor remain visible until they have replacement sets", () => {
+  for (const id of ["house", "house2", "path_tile", "crate", "wine_barrel"]) {
+    assert(palette.some((asset) => asset.id === id), `${id} unexpectedly hidden`);
+  }
+});
+
+await test("every primary V2 Nature asset satisfies the production policy", () => {
+  assert(PRIMARY_ASSET_POLICY.natureSet === "world-v2", "wrong primary Nature set");
+  assert(PRIMARY_ASSET_POLICY.legacyNatureMode === "fallback-only", "legacy mode changed");
+  for (const asset of paletteNature) {
+    assert(isPrimaryBuilderAsset(asset), `${asset.id} rejected by primary policy`);
+    assert(asset.id.startsWith(PRIMARY_ASSET_POLICY.stableIdPrefix), `${asset.id} has unstable prefix`);
+    assert(Boolean(asset.nodeName), `${asset.id} missing nodeName`);
+    assert(Number.isFinite(asset.sourceHeight) && asset.sourceHeight > 0, `${asset.id} missing sourceHeight`);
+    assert(Number.isFinite(asset.sourceWidth) && asset.sourceWidth > 0, `${asset.id} missing sourceWidth`);
+    assert(Number.isFinite(asset.tris) && asset.tris > 0, `${asset.id} missing tris`);
+    assert(asset.terrainSnap === true, `${asset.id} must terrain-snap`);
+  }
 });
 
 await test("World V2 catalog points at 12 shared GLBs", () => {
@@ -81,7 +130,7 @@ await test("loader fetches one shared GLB for sibling variants", async () => {
   assert(loader.has("v2-birchtree-1"), "shared source not cached");
 });
 
-await test("legacy catalog remains available during migration", () => {
+await test("legacy catalog remains loadable during migration", () => {
   assert(getBuildableAsset("tree")?.modelPath?.includes("/builder/"), "legacy tree missing");
   assert(getBuildableAsset("house")?.modelPath?.includes("/builder/"), "legacy house missing");
 });
