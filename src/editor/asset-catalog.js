@@ -1,4 +1,5 @@
 import { ASSETS } from "../config.js";
+import { NATURE_V2_ASSETS } from "./nature-catalog-v2.js";
 
 export const BUILD_CATEGORIES = Object.freeze({
   NATURE: "nature",
@@ -167,6 +168,10 @@ export const BUILDABLE_ASSETS = Object.freeze({
     defaultScale: 1,
     sizeInPlayers: 0.75,
   }),
+
+  // World V2 lives beside the legacy set during migration. The IDs are
+  // prefixed with v2- so existing saved maps remain valid and reversible.
+  ...NATURE_V2_ASSETS,
 });
 
 export function getBuildableAsset(id) {
