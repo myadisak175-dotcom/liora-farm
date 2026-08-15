@@ -130,10 +130,22 @@ async function fetchDefaultMap() {
   return response.json();
 }
 async function spawnAll() {
-  const results = await Promise.allSettled(builder.items.map((item) => builderView.spawn(item)));
-  const failed = results.filter((result) => result.status === "rejected").length;
-  if (failed) console.warn(`${failed} builder objects failed to load`);
-  colliders = builder.getColliders(); builderUI.render();
+  const items = [...builder.items];
+  const results = await Promise.allSettled(items.map((item) => builderView.spawn(item)));
+  const failedIds = [];
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index];
+    if (result.status !== "rejected") continue;
+    failedIds.push(items[index].id);
+    console.error(`Builder object failed to load: ${items[index].assetId}`, result.reason);
+  }
+  builder.setInactiveItems(failedIds);
+  colliders = builder.getColliders();
+  if (failedIds.length) {
+    toast(`โหลดโมเดลไม่สำเร็จ ${failedIds.length} ชิ้น — ปิดการชนชั่วคราว`);
+    builderUI.warn(`มีโมเดล ${failedIds.length} ชิ้นโหลดไม่สำเร็จ จึงไม่ขวางการเดินหรือวางของ`);
+  }
+  builderUI.render();
 }
 async function loadLayout() {
   if (!layoutStore.hasSavedLayout()) {
@@ -184,7 +196,14 @@ function exportMap(items) {
     groundPaint: world.paint.exportData(), terrainHeight: world.height.exportData(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "home-island.json"; link.click(); URL.revokeObjectURL(link.href);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "home-island.json";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 let mode = null;
@@ -198,7 +217,15 @@ function setMode(next) {
   for (const button of modeButtons) button.classList.toggle("active", button.dataset.mode === next);
 }
 for (const button of modeButtons) button.onclick = () => setMode(button.dataset.mode);
-addEventListener("pagehide", () => { builder.flushSave(); world.height.flushSave(); });
+function flushPersistentState() {
+  builder.flushSave();
+  world.height.flushSave();
+  world.paint.flushSave();
+}
+addEventListener("pagehide", flushPersistentState);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPersistentState();
+});
 
 const farmButton = document.querySelector('[data-action="farm"]');
 let farmTarget = null;
