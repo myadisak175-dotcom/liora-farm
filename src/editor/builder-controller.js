@@ -262,9 +262,11 @@ export function createBuilderController({
   }
 
   /** Circles the player cannot walk through, in world units. */
-  function getColliders() {
+  function getColliders({ excludeIds = null } = {}) {
+    const excluded = excludeIds instanceof Set ? excludeIds : new Set(excludeIds ?? []);
     const colliders = [];
     for (const item of items) {
+      if (excluded.has(item.id)) continue;
       const asset = catalog[item.assetId];
       if (!asset) continue;
       const radius = radiusOf(asset, item.scale, "walkRadius");
