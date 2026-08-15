@@ -24,6 +24,7 @@ export function createBuilderView({
 
   let ghost = null;
   let ghostAsset = null;
+  let ghostRevision = 0;
   let highlighted = null;
 
   function disposeMaterial(material) {
@@ -54,18 +55,10 @@ export function createBuilderView({
     const sourceSize = measureSourceSize(model, asset);
     if (!Number.isFinite(sourceSize) || sourceSize <= 0.0001) return 1;
 
-    // 100% means the authored game-world size relative to Liora's height,
-    // independent of whatever unit/scale the source GLB happened to use.
     const targetSize = playerHeight * asset.sizeInPlayers;
     return targetSize / (sourceSize * asset.defaultScale);
   }
 
-  /**
-   * Sitting an object on the ground used to cost two full Box3.setFromObject
-   * traversals per pointermove. The base offset is a property of the model, so
-   * it is measured once at spawn and reused — rotation is around Y, which
-   * cannot change the lowest point.
-   */
   function cacheBaseOffset(holder, model) {
     holder.position.set(0, 0, 0);
     holder.scale.setScalar(1);
@@ -179,13 +172,16 @@ export function createBuilderView({
   }
 
   /**
-   * The ghost used to always appear at world origin, so tapping an asset while
-   * standing anywhere else looked like nothing happened. It now appears
-   * wherever the camera is looking.
+   * Ghost loads are asynchronous. The revision is owned here, where the ghost
+   * variable is actually mutated, so an older slow request can never replace a
+   * newer preview or resurrect a ghost after build mode was closed.
    */
   async function showGhost(asset, start = {}) {
-    clearGhost();
+    const request = ++ghostRevision;
+    clearGhost({ invalidatePending: false });
     const model = await loader.load(asset.id);
+    if (request !== ghostRevision) return null;
+
     const rotation = Number.isFinite(start.rotation) ? start.rotation : 0;
     const scale = THREE.MathUtils.clamp(
       Number.isFinite(start.scale) ? start.scale : asset.defaultScale,
@@ -193,19 +189,27 @@ export function createBuilderView({
       asset.maxScale
     );
 
-    ghost = new THREE.Group();
-    ghost.add(model);
-    ghost.userData.rotation = rotation;
-    ghost.userData.scale = scale;
-    ghost.userData.scaleNormalization = getScaleNormalization(model, asset);
+    const nextGhost = new THREE.Group();
+    nextGhost.add(model);
+    nextGhost.userData.rotation = rotation;
+    nextGhost.userData.scale = scale;
+    nextGhost.userData.scaleNormalization = getScaleNormalization(model, asset);
+    setGhostAppearance(nextGhost);
+    scene.add(nextGhost);
+    cacheBaseOffset(nextGhost, model);
+    nextGhost.rotation.y = rotation;
+    const totalScale = scale * nextGhost.userData.scaleNormalization;
+    nextGhost.scale.setScalar(totalScale);
+    snapToGround(nextGhost, start.x ?? 0, start.z ?? 0, totalScale);
+
+    if (request !== ghostRevision) {
+      disposeClonedMaterials(nextGhost);
+      scene.remove(nextGhost);
+      return null;
+    }
+
+    ghost = nextGhost;
     ghostAsset = asset;
-    setGhostAppearance(ghost);
-    scene.add(ghost);
-    cacheBaseOffset(ghost, model);
-    ghost.rotation.y = rotation;
-    const totalScale = scale * ghost.userData.scaleNormalization;
-    ghost.scale.setScalar(totalScale);
-    snapToGround(ghost, start.x ?? 0, start.z ?? 0, totalScale);
     return ghost;
   }
 
@@ -246,8 +250,12 @@ export function createBuilderView({
     };
   }
 
-  function clearGhost() {
-    if (!ghost) return;
+  function clearGhost({ invalidatePending = true } = {}) {
+    if (invalidatePending) ghostRevision += 1;
+    if (!ghost) {
+      ghostAsset = null;
+      return;
+    }
     disposeClonedMaterials(ghost);
     scene.remove(ghost);
     ghost = null;
