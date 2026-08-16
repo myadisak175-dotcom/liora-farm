@@ -1,43 +1,44 @@
 const PROFILES = Object.freeze({
   tree: Object.freeze({
     // base / mid / tip map to trunk / branches / leaves for a mixed tree mesh.
-    base: 0.06,
-    mid: 0.28,
-    tip: 0.62,
-    flutter: 0.16,
-    amplitude: 0.055,
-    frequency: 0.72,
-    spatial: 1,
+    // Tuned for a readable cozy breeze at the game's isometric phone scale.
+    base: 0.07,
+    mid: 0.34,
+    tip: 0.76,
+    flutter: 0.22,
+    amplitude: 0.14,
+    frequency: 0.82,
+    spatial: 1.05,
     rootLock: 0.18,
   }),
   bush: Object.freeze({
-    base: 0.12,
-    mid: 0.42,
-    tip: 0.6,
-    flutter: 0.16,
-    amplitude: 0.12,
-    frequency: 0.95,
-    spatial: 1.15,
+    base: 0.14,
+    mid: 0.5,
+    tip: 0.72,
+    flutter: 0.22,
+    amplitude: 0.22,
+    frequency: 1.05,
+    spatial: 1.2,
     rootLock: 0.2,
   }),
   grass: Object.freeze({
-    base: 0.04,
-    mid: 0.65,
-    tip: 0.95,
-    flutter: 0.22,
-    amplitude: 0.25,
-    frequency: 1.22,
-    spatial: 1.35,
+    base: 0.05,
+    mid: 0.74,
+    tip: 1.0,
+    flutter: 0.3,
+    amplitude: 0.42,
+    frequency: 1.35,
+    spatial: 1.45,
     rootLock: 0.22,
   }),
   flower: Object.freeze({
-    base: 0.05,
-    mid: 0.48,
-    tip: 0.68,
-    flutter: 0.12,
-    amplitude: 0.16,
-    frequency: 0.9,
-    spatial: 1.2,
+    base: 0.06,
+    mid: 0.56,
+    tip: 0.78,
+    flutter: 0.18,
+    amplitude: 0.28,
+    frequency: 1.02,
+    spatial: 1.28,
     rootLock: 0.2,
   }),
 });
@@ -96,9 +97,9 @@ export function getPartWeights(profileName, part = "mixed", { isTouch = false } 
     }
   }
 
-  // Touch devices keep the large readable sway but reduce tiny high-frequency
-  // flutter, which is the first detail to disappear on a phone display.
-  if (isTouch) flutter *= 0.65;
+  // Keep the large sway identical on touch devices. Only trim a small amount
+  // of high-frequency flutter so the breeze still reads clearly on a phone.
+  if (isTouch) flutter *= 0.85;
 
   return {
     base,
