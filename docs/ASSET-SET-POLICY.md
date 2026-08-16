@@ -2,20 +2,22 @@
 
 ## Current primary set
 
-Nature uses **World V2** as the production Builder palette.
+Nature uses **World V2** as the production tree/rock/plant set.
 
 - Source folder: `assets/models/world-v2/nature/`
 - Runtime IDs: `v2-*`
 - Catalog: `src/editor/nature-catalog-v2.js`
 - Status: **primary**
 
-The old Nature models in `assets/models/builder/` are now **fallback-only**. They stay registered so existing maps and local saves that still reference `tree`, `pine`, `palm`, or `grass` continue to load, but they must not appear in the Builder placement palette.
+The old `tree`, `pine`, and `palm` models in `assets/models/builder/` are now **fallback-only**. They stay registered so existing maps and local saves can still resolve those stable IDs, but they are not offered for new placement.
+
+The old `grass` asset is an intentional exception: it remains visible in the Builder because it is still useful as a small plant/crop-like prop and may be reused by future farming content.
 
 Buildings and decor remain on their current assets until replacement sets are prepared and promoted separately.
 
 ## Promotion gate for a primary Nature asset
 
-A Nature asset is eligible for the primary Builder palette only when all of these are true:
+A World V2 Nature asset is eligible for the production Builder palette only when all of these are true:
 
 1. It belongs to the World V2 set and has a stable `v2-` asset ID.
 2. Its GLB exists under `assets/models/world-v2/nature/` and has a valid binary glTF header.
@@ -26,7 +28,13 @@ A Nature asset is eligible for the primary Builder palette only when all of thes
 7. It has been visually checked in Builder for correct orientation, ground contact, scale, textures, foliage transparency, and shadows.
 8. It fits the mobile budget of the set. Dense repeated trees should move to `InstancedMesh` instead of unlimited individual clones.
 
+Explicitly reusable legacy props such as `grass` may also remain in the palette without pretending to be World V2. The policy distinguishes those from retired legacy trees through `REUSABLE_LEGACY_NATURE_IDS` and `RETIRED_LEGACY_NATURE_IDS`.
+
 These rules are encoded by `PRIMARY_ASSET_POLICY` / `isPrimaryBuilderAsset()` and covered by `tools/test/nature-v2.test.html`.
+
+## Default/reset map rule
+
+`maps/home-island.json` is also the source used by the Builder Reset action. It must not reference retired legacy Nature IDs. Existing user saves may still contain those IDs for compatibility, but a reset/new default layout should use World V2 replacements instead.
 
 ## Retirement rule
 
