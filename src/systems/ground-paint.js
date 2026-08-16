@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { CHANNELS_PER_PAGE } from "./ground-layers.js";
+import { createLocalStore } from "./local-store.js";
 
 const CHANNEL_INK = ["255,0,0", "0,255,0", "0,0,255"];
 const WEIGHT_EPSILON = 0.0025;
@@ -31,6 +32,7 @@ export function createGroundPaint({
   const stamps = [];
   const groups = [];
   const pages = new Map();
+  const store = createLocalStore({ key: config.storageKey, version: 1 });
   let saveTimer = null;
   let openGroup = null;
   let boundMaterial = null;
@@ -320,13 +322,7 @@ export function createGroundPaint({
   }
 
   function writeSave() {
-    try {
-      localStorage.setItem(config.storageKey, JSON.stringify(exportData()));
-      return true;
-    } catch (error) {
-      console.warn("Ground paint could not be saved", error);
-      return false;
-    }
+    return store.save(exportData());
   }
 
   function scheduleSave() {
@@ -399,13 +395,15 @@ export function createGroundPaint({
     return true;
   }
 
+  /**
+   * A payload we cannot use is kept as a backup, never dropped: the very next
+   * brush stroke would otherwise autosave over it and take every painted
+   * surface on the island with it.
+   */
   function load() {
-    try {
-      const raw = localStorage.getItem(config.storageKey);
-      if (raw) importData(JSON.parse(raw), { save: false });
-    } catch (error) {
-      console.warn("Ground paint could not be loaded", error);
-    }
+    const payload = store.load();
+    if (!payload) return;
+    if (!importData(payload, { save: false })) store.rejectLoaded("malformed");
   }
 
   ensurePage(0);
@@ -652,6 +650,12 @@ export function createGroundPaint({
       for (const page of pages.values()) page.texture.dispose();
       pages.clear();
       manualTexture.dispose();
+    },
+    get storeIssue() {
+      return store.lastIssue;
+    },
+    get backupKey() {
+      return store.backupKey;
     },
   };
 }

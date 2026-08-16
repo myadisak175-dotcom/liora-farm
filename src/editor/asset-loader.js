@@ -43,9 +43,12 @@ export function createBuilderAssetLoader({ gltfLoader } = {}) {
     }
 
     const clone = source.clone(true);
+    // Casting is a per-asset decision (see CONFIG.shadows.minCasterHeight).
+    // Receiving is not: ground cover still has to darken under a tree.
+    const castShadow = asset.castShadow !== false;
     clone.traverse((node) => {
       if (!node.isMesh) return;
-      node.castShadow = true;
+      node.castShadow = castShadow;
       node.receiveShadow = true;
     });
     return clone;

@@ -1,3 +1,5 @@
+import { createLocalStore } from "../systems/local-store.js";
+
 const DEFAULT_STORAGE_KEY = "liora-home-island-layout";
 const CURRENT_SCHEMA_VERSION = 1;
 
@@ -23,8 +25,10 @@ function normalizeItem(item) {
 }
 
 export function createLayoutStore({ storageKey = DEFAULT_STORAGE_KEY } = {}) {
-  const backupKey = `${storageKey}.backup`;
-  let lastIssue = null;
+  // The backup-instead-of-lose policy this file used to own now lives in
+  // local-store.js, so ground paint, terrain and the farm get it too. The
+  // saved schema and the `lastIssue` kinds are unchanged.
+  const store = createLocalStore({ key: storageKey, version: CURRENT_SCHEMA_VERSION });
 
   function save(items) {
     const payload = {
@@ -32,73 +36,29 @@ export function createLayoutStore({ storageKey = DEFAULT_STORAGE_KEY } = {}) {
       savedAt: Date.now(),
       items: items.map(normalizeItem).filter(Boolean),
     };
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(payload));
-    } catch (error) {
-      lastIssue = { kind: "save-failed", error: String(error) };
-      console.warn("Builder layout could not be saved", error);
-    }
+    store.save(payload);
     return payload;
   }
 
-  function hasSavedLayout() {
-    return localStorage.getItem(storageKey) !== null;
-  }
-
-  /**
-   * A payload from a different schema version used to be dropped on the floor
-   * and then overwritten by the next autosave — an entire island's worth of
-   * work gone with no warning. Keep a copy and say so.
-   */
-  function backup(raw, reason) {
-    try {
-      localStorage.setItem(backupKey, raw);
-      lastIssue = { kind: reason, backupKey };
-      console.warn(`Builder layout kept at "${backupKey}" (${reason})`);
-    } catch (error) {
-      lastIssue = { kind: reason, backupKey: null };
-      console.warn("Builder layout backup failed", error);
-    }
-  }
-
   function load() {
-    lastIssue = null;
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return [];
-
-    let payload = null;
-    try {
-      payload = JSON.parse(raw);
-    } catch (error) {
-      backup(raw, "unreadable");
-      console.warn("Builder layout could not be parsed", error);
-      return [];
-    }
-
-    if (payload?.version !== CURRENT_SCHEMA_VERSION) {
-      backup(raw, "version-mismatch");
-      return [];
-    }
+    const payload = store.load();
+    if (!payload) return [];
     if (!Array.isArray(payload.items)) {
-      backup(raw, "malformed");
+      store.rejectLoaded("malformed");
       return [];
     }
     return payload.items.map(normalizeItem).filter(Boolean);
   }
 
-  function clear() {
-    localStorage.removeItem(storageKey);
-  }
-
   return {
     save,
     load,
-    clear,
-    hasSavedLayout,
-    storageKey,
-    backupKey,
+    clear: () => store.clear(),
+    hasSavedLayout: () => store.has(),
+    storageKey: store.key,
+    backupKey: store.backupKey,
     get lastIssue() {
-      return lastIssue;
+      return store.lastIssue;
     },
   };
 }

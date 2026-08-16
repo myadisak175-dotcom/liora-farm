@@ -1,3 +1,5 @@
+import { createLocalStore } from "./local-store.js";
+
 /**
  * Editable island height field. The Float32Array is the single source of truth
  * for rendering, collision, water depth and procedural surface rules.
@@ -16,6 +18,7 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
   const half = worldSize / 2;
   const cells = Math.round(worldSize / spacing) + 1;
   const heights = new Float32Array(cells * cells);
+  const store = createLocalStore({ key: config.storageKey, version: 1 });
   const undoStack = [];
   let openStroke = null;
   let dirty = true;
@@ -524,23 +527,18 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
   function persist() {
     clearTimeout(saveTimer);
     saveTimer = null;
-    try {
-      localStorage.setItem(config.storageKey, JSON.stringify(exportData()));
-      return true;
-    } catch (error) {
-      console.warn("Terrain height could not be saved", error);
-      return false;
-    }
+    return store.save(exportData());
   }
   function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(persist, 300); }
   function flushSave() { return saveTimer === null ? true : persist(); }
+  /**
+   * An unusable payload is kept as a backup, never dropped: the next brush
+   * stroke autosaves, and a whole sculpted island would be gone with it.
+   */
   function load() {
-    try {
-      const raw = localStorage.getItem(config.storageKey);
-      if (raw) importData(JSON.parse(raw), { save: false });
-    } catch (error) {
-      console.warn("Terrain height could not be loaded", error);
-    }
+    const payload = store.load();
+    if (!payload) return;
+    if (!importData(payload, { save: false })) store.rejectLoaded("malformed");
   }
 
   function ensureVertexMap(geometry) {
@@ -609,6 +607,8 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
     isFlat, exportData, importData, flushSave,
     get isDirty() { return dirty || finalizePending; },
     get undoDepth() { return undoStack.length; },
+    get storeIssue() { return store.lastIssue; },
+    get backupKey() { return store.backupKey; },
     dispose() { clearTimeout(saveTimer); },
   };
 }

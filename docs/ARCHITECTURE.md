@@ -106,13 +106,56 @@ Four files, strictly separated:
 Saved layouts contain data only: `id`, `assetId`, `x`, `z`, `rotation`, `scale`.
 Never a mesh, never a material.
 
+## Cost per placed object
+
+Two rules keep a decorated island from falling off a phone. Both are per
+*asset*, never per placed copy — that distinction is the whole point.
+
+**One material per asset, not per object.** Wind uniforms (height frame, bend
+axis, profile weights) describe an asset, so every copy of a pine tree can and
+must share one material instance. Three.js only skips a full uniform upload
+while consecutive draws share a material, so cloning per object cost a full
+upload per object per frame and bought nothing. `wind-system.js` caches by
+asset id; those materials outlive the objects using them and are therefore
+never flagged `disposeWithBuilderView` — deleting one tree must not blank every
+other tree of the same kind.
+
+**Only what reads casts a shadow.** `CONFIG.shadows.minCasterHeight` (0.9 m).
+The sun's shadow camera already covers just 24 x 24 m around the player, but
+everything inside that box is drawn again into the depth pass, and ground cover
+is exactly what gets placed in the hundreds. Grass, flowers and low bushes set
+`castShadow: false` in the catalog; `asset-loader.js` reads it. Receiving is
+never disabled — ground cover still has to darken under a tree.
+
+Measure before changing either: `?perf=1` turns on the frame readout
+(`ui/perf-hud.js`) and it stays on across reloads until `?perf=0`. It shows
+average FPS, the **worst frame** in the sample window, draw calls, triangles and
+program/geometry/texture counts. Worst-frame is the number that matters: a
+60 fps average with one 90 ms frame per second reads as a stutter and an average
+alone hides it completely.
+
 ## Persistence
 
 - Layout → `localStorage` (`liora.island-layout.v1`), seeded from
   `maps/home-island.json` on first run.
 - Ground paint → `localStorage` (`liora.ground-paint.v1`).
+- Sculpted terrain → `localStorage` (`liora.terrain-height.v1`).
+- Farm → `localStorage` (`liora.farm.v1`).
 - **บันทึกแผนที่** downloads `home-island.json` so a layout can be committed
   to the repo as the new default.
+
+All four go through `systems/local-store.js`, which owns one rule: **a payload
+we cannot read is copied to `<key>.backup`, never dropped.** Only the layout
+store used to do this — a save from another schema version was discarded and
+the next autosave then overwrote it, taking an island with it. Paint, terrain
+and the farm had the identical hole, because the lesson lived inside one file
+instead of in a shared policy. `main.js` reports any rescued store on boot;
+saying nothing is how the loss went unnoticed the first time.
+
+`local-store.js` owns bytes, not meaning: it checks `version` and nothing else.
+A caller that parses a correctly versioned payload and then finds the body
+unusable calls `rejectLoaded()` to get the same protection. Save schemas are
+byte-for-byte unchanged.
 
 ## Self test
 

@@ -1,4 +1,4 @@
-import { ASSETS } from "../config.js";
+import { ASSETS, CONFIG } from "../config.js";
 import { NATURE_V2_ASSETS } from "./nature-catalog-v2.js";
 
 export const BUILD_CATEGORIES = Object.freeze({
@@ -58,10 +58,17 @@ function defineAsset({
   terrainSnap = true,
   maxGroundSlope = null,
   groundProbeRadius = null,
+  castShadow = null,
 }) {
   const resolvedMinScale = minScale ?? defaultScale * 0.4;
   const resolvedMaxScale = maxScale ?? defaultScale * 2.5;
   const resolvedScaleStep = scaleStep ?? defaultScale * 0.05;
+  // A footprint-sized asset is flat by definition (a path tile) and has no
+  // silhouette worth a shadow. Everything else is judged on real world height.
+  const resolvedCastShadow =
+    castShadow ??
+    (sizeAxis === "height" &&
+      CONFIG.playerHeight * sizeInPlayers >= CONFIG.shadows.minCasterHeight);
 
   return Object.freeze({
     id,
@@ -82,6 +89,7 @@ function defineAsset({
     terrainSnap,
     maxGroundSlope,
     groundProbeRadius,
+    castShadow: resolvedCastShadow,
   });
 }
 

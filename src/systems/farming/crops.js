@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createLocalStore } from "../local-store.js";
 
 export const CROP_STATES = Object.freeze({
   EMPTY: "empty",
@@ -48,6 +49,7 @@ export function createCrops({ plot, config, onChange = () => {} }) {
 
   const leafGeometry = new THREE.ConeGeometry(0.12, 0.3, 6);
   const rootGeometry = new THREE.SphereGeometry(0.13, 10, 8);
+  const store = createLocalStore({ key: config.storageKey, version: 1 });
 
   let pouch = 0;
 
@@ -131,32 +133,26 @@ export function createCrops({ plot, config, onChange = () => {} }) {
   }
 
   function save() {
-    try {
-      localStorage.setItem(config.storageKey, JSON.stringify(serialize()));
-    } catch (error) {
-      console.warn("Farm state could not be saved", error);
-    }
+    store.save(serialize());
   }
 
   function load() {
-    try {
-      const raw = localStorage.getItem(config.storageKey);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      if (data?.version !== 1) return;
-      pouch = Number.isFinite(data.pouch) ? data.pouch : 0;
-      for (const entry of data.cells ?? []) {
-        const cell = cells[entry.i];
-        if (!cell) continue;
-        if (!Object.values(CROP_STATES).includes(entry.s)) continue;
-        cell.state = entry.s;
-        cell.plantedAt = Number(entry.t) || 0;
-        applyView(cell);
-      }
-      refreshRipeness();
-    } catch (error) {
-      console.warn("Farm state could not be loaded", error);
+    const data = store.load();
+    if (!data) return;
+    if (!Array.isArray(data.cells)) {
+      store.rejectLoaded("malformed");
+      return;
     }
+    pouch = Number.isFinite(data.pouch) ? data.pouch : 0;
+    for (const entry of data.cells) {
+      const cell = cells[entry.i];
+      if (!cell) continue;
+      if (!Object.values(CROP_STATES).includes(entry.s)) continue;
+      cell.state = entry.s;
+      cell.plantedAt = Number(entry.t) || 0;
+      applyView(cell);
+    }
+    refreshRipeness();
   }
 
   /** Nearest cell within arm's reach, or null. */
@@ -217,6 +213,12 @@ export function createCrops({ plot, config, onChange = () => {} }) {
     harvest,
     get pouch() {
       return pouch;
+    },
+    get storeIssue() {
+      return store.lastIssue;
+    },
+    get backupKey() {
+      return store.backupKey;
     },
     update(delta) {
       // Growth is wall-clock based, so it only needs a look a few times a
