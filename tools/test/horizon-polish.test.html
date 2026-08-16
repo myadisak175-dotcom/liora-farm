@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>horizon polish tests</title>
+<script type="importmap">{"imports":{"three":"./horizon-three-stub.js"}}</script>
+</head>
+<body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import { createOuterWorldGround } from "../../src/systems/outer-world-ground.js";
+import { CONFIG, BUILD } from "../../src/config.js";
+
+const results=[];
+const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
+
+ok("build marker identifies the horizon polish deploy",BUILD==="horizon-4",String(BUILD));
+ok("far texture fade begins outside the 80 m playable terrain",
+  CONFIG.outerWorld.textureFadeStart>=CONFIG.terrain.size
+  &&CONFIG.outerWorld.textureFadeEnd>CONFIG.outerWorld.textureFadeStart,
+  `start=${CONFIG.outerWorld.textureFadeStart} end=${CONFIG.outerWorld.textureFadeEnd}`);
+ok("Variant B floating islands remain enabled",
+  CONFIG.distantRange.floatingIslands.enabled===true
+  &&CONFIG.distantRange.floatingIslands.items.length===3);
+
+const zoneSource=await fetch("../../src/zones/home-island.js").then((r)=>r.text());
+ok("outer visual ground receives renderer anisotropy",
+  /function tile\([^)]*anisotropy/.test(zoneSource)
+  &&/texture\.anisotropy\s*=\s*anisotropy/.test(zoneSource)
+  &&/baseMap\s*=\s*tile\([\s\S]{0,160}?anisotropy\s*\)/.test(zoneSource));
+
+const ground=createOuterWorldGround({
+  config:CONFIG.outerWorld,
+  texture:{name:"stub-grass"},
+  textureWorldSize:CONFIG.terrain.size,
+});
+ok("far-ground polish stays one mesh and one material",
+  ground.stats.meshes===1&&ground.group.children.length===1);
+
+const shader={
+  uniforms:{},
+  vertexShader:"#include <common>\n#include <begin_vertex>",
+  fragmentShader:"#include <common>\n#include <map_fragment>",
+};
+ground.mesh.material.onBeforeCompile(shader);
+ok("fade shader tracks outer-world radius",
+  shader.vertexShader.includes("vOuterWorldRadius")
+  &&shader.fragmentShader.includes("outerWorldTextureFade"));
+ok("fade shader uses configured 80–150 m range",
+  shader.uniforms.uOuterTextureFadeStart.value===CONFIG.outerWorld.textureFadeStart
+  &&shader.uniforms.uOuterTextureFadeEnd.value===CONFIG.outerWorld.textureFadeEnd);
+ok("fade does not add collision or gameplay geometry",
+  ground.mesh.castShadow===false&&ground.mesh.receiveShadow===false
+  &&CONFIG.worldLimit===38&&CONFIG.terrain.size===80);
+
+ground.dispose();
+window.__results=results;window.__done=true;
+document.querySelector("#out").textContent=JSON.stringify(results,null,1);
+</script></body></html>
