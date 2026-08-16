@@ -16,14 +16,9 @@
   ul{padding:0;margin:0}
   #frame{border:0;width:375px;height:667px;background:#8fd3f0;display:block;margin:10px 0;border-radius:8px}
 </style>
-<script type="importmap">
-{"imports":{"three":"./three-stub.js"}}
-</script>
+<script type="importmap">{"imports":{"three":"./three-stub.js"}}</script>
 </head>
 <body data-mode="build">
-
-<!-- Same markup as index.html. Kept in sync by hand; the first assertion below
-     fails loudly if index.html grows an element this copy is missing. -->
 <nav id="mode-bar">
   <button type="button" data-mode="play">เล่น</button>
   <button type="button" data-mode="build" class="active">สร้าง</button>
@@ -37,6 +32,7 @@
     <button type="button" id="tab-place" class="active">วางของ</button>
     <button type="button" id="tab-paint">ระบายพื้น</button>
     <button type="button" id="tab-sculpt">ปั้นพื้น</button>
+    <button type="button" id="tab-horizon">ขอบฟ้า</button>
     <button type="button" id="build-more" class="chip" hidden>⚙︎</button>
     <button type="button" id="build-collapse" class="chip">⌄</button>
   </div>
@@ -52,156 +48,120 @@
       <div id="sculpt-presets" class="strip"></div>
       <div id="sculpt-extra-size" class="sizerow stack"></div>
     </div>
+    <div id="horizon-strip"></div>
     <div id="build-tools" class="strip tools"></div>
   </div>
   <div id="build-actions" class="actions"></div>
 </section>
-
 <div id="report"><h1>ตรวจงบพื้นที่ HUD โหมดสร้าง</h1><p id="summary">กำลังตรวจ…</p><ul id="out"></ul></div>
 
 <script type="module">
 import { createBuilderUI } from "../../src/editor/builder-ui.js";
 import { createSculptControls } from "../../src/editor/sculpt-controls.js";
+import { createHorizonControls } from "../../src/editor/horizon-controls.js";
+import { HORIZON_STORAGE_KEY } from "../../src/systems/horizon-settings.js";
 import { createBuilderState, BUILDER_CONTEXTS } from "../../src/editor/builder-state.js";
 import { CONFIG } from "../../src/config.js";
 import { createTerrainHeight } from "../../src/systems/terrain-height.js";
 import { createGroundLayers } from "../../src/systems/ground-layers.js";
 
-const out = document.querySelector("#out");
-const summary = document.querySelector("#summary");
-let pass = 0, fail = 0;
-const results = [];
-function check(name, ok, detail = "") {
-  const li = document.createElement("li");
-  li.className = ok ? "ok" : "bad";
-  li.textContent = `${ok ? "✓" : "✗"} ${name}${detail ? ` — ${detail}` : ""}`;
-  out.append(li);
-  results.push({ name, pass: Boolean(ok), detail });
-  ok ? pass++ : fail++;
-  return ok;
+const out=document.querySelector("#out");
+const summary=document.querySelector("#summary");
+let pass=0,fail=0;const results=[];
+function check(name,yes,detail=""){
+  const li=document.createElement("li");li.className=yes?"ok":"bad";
+  li.textContent=`${yes?"✓":"✗"} ${name}${detail?` — ${detail}`:""}`;out.append(li);
+  results.push({name,pass:Boolean(yes),detail});yes?pass++:fail++;return yes;
 }
 
-// ---- minimal doubles for everything builder-ui talks to --------------------
-const layers = createGroundLayers(CONFIG.groundPaint.layers, {
-  maxLayers: CONFIG.groundPaint.maxLayers,
-});
-const height = createTerrainHeight({
-  config: { ...CONFIG.sculpt, storageKey: "test.height" },
-  worldSize: CONFIG.terrain.size,
-  spacing: CONFIG.terrain.spacing,
-  reservedAreas: [],
-});
-const paint = {
-  layers,
-  strokeCount: 0,
-  autoSurfaceEnabled: true,
-  beginStroke() {}, strokeTo() { return 1; }, endStroke() {}, undo() { return true; },
-  clear() {}, setAutoSurfaceEnabled(v) { this.autoSurfaceEnabled = v; },
-};
-const state = createBuilderState({ historyLimit: 10 });
-const controller = {
-  items: [],
-  context: BUILDER_CONTEXTS.IDLE,
-  canUndo: false,
-  snapTransform: (t) => t,
-  validatePlacement: () => ({ ok: true }),
-  resolvePlacement: (id, t) => t,
-  beginPlacement() {}, cancelPlacement() {}, clearSelection() {}, flushSave() {},
-  selectItem: () => null, updateSelected: () => null,
-  duplicateSelected: () => null, deleteSelected: () => null, undo: () => null,
-  addItem: () => null,
-};
-const view = {
-  getGhostTransform: () => null, showGhost: async () => {}, clearGhost() {},
-  moveGhost() {}, setGhostScale() {}, nudgeGhost() {}, highlight() {},
-  spawn: async () => {}, update() {}, remove() {}, pick: () => null,
-};
-const camera = { position: { x: 8, y: 10, z: 10 }, stubDirection: null };
-const cameraController = { getFocus: () => ({ x: 0, z: 0 }), pan() {}, setOrbitEnabled() {} };
-const surface = document.createElement("canvas");
-document.body.prepend(surface);
+const layers=createGroundLayers(CONFIG.groundPaint.layers,{maxLayers:CONFIG.groundPaint.maxLayers});
+const height=createTerrainHeight({config:{...CONFIG.sculpt,storageKey:"test.height"},worldSize:CONFIG.terrain.size,spacing:CONFIG.terrain.spacing,reservedAreas:[]});
+const paint={layers,strokeCount:0,autoSurfaceEnabled:true,beginStroke(){},strokeTo(){return 1;},endStroke(){},undo(){return true;},clear(){},setAutoSurfaceEnabled(v){this.autoSurfaceEnabled=v;}};
+createBuilderState({historyLimit:10});
+const controller={items:[],context:BUILDER_CONTEXTS.IDLE,canUndo:false,snapTransform:(t)=>t,validatePlacement:()=>({ok:true}),resolvePlacement:(id,t)=>t,beginPlacement(){},cancelPlacement(){},clearSelection(){},flushSave(){},selectItem:()=>null,updateSelected:()=>null,duplicateSelected:()=>null,deleteSelected:()=>null,undo:()=>null,addItem:()=>null};
+const view={getGhostTransform:()=>null,showGhost:async()=>{},clearGhost(){},moveGhost(){},setGhostScale(){},nudgeGhost(){},highlight(){},spawn:async()=>{},update(){},remove(){},pick:()=>null};
+const camera={position:{x:8,y:10,z:10},stubDirection:null};
+const cameraController={getFocus:()=>({x:0,z:0}),pan(){},setOrbitEnabled(){},setMinPitch(){}};
+const surface=document.createElement("canvas");document.body.prepend(surface);
 
-const ui = createBuilderUI({
-  controller, view, paint,
-  paintConfig: CONFIG.groundPaint,
-  height, sculptConfig: CONFIG.sculpt,
-  brushCursor: { show() {}, hide() {}, resize() {} },
-  reservedAreas: [], builderConfig: CONFIG.builder,
-  camera, cameraController, surface,
-  onExport() {}, onResetLayout: async () => {}, onTerrainChange() {},
-});
-createSculptControls({
-  height, paint, sculptConfig: CONFIG.sculpt,
-  onTerrainChange() {}, onRender: () => ui.render(),
+const ui=createBuilderUI({controller,view,paint,paintConfig:CONFIG.groundPaint,height,sculptConfig:CONFIG.sculpt,brushCursor:{show(){},hide(){},resize(){}},reservedAreas:[],builderConfig:CONFIG.builder,camera,cameraController,surface,onExport(){},onResetLayout:async()=>{},onTerrainChange(){}});
+createSculptControls({height,paint,sculptConfig:CONFIG.sculpt,onTerrainChange(){},onRender:()=>ui.render()});
+try{localStorage.removeItem(HORIZON_STORAGE_KEY);}catch{}
+let rebuiltGround=0;
+const horizonScene={fog:{near:CONFIG.fog.near,far:CONFIG.fog.far}};
+createHorizonControls({
+  config:CONFIG,scene:horizonScene,
+  sky:{rebuildDistantRange(){}},world:{rebuildHorizon(){rebuiltGround+=1;}},
+  cameraController,container:document.querySelector("#horizon-strip"),surface,onToast(){}
 });
 ui.show(true);
 
-// ---- markup parity with index.html ----------------------------------------
-const liveIds = ["build-panel", ...[...document.querySelectorAll("#build-panel [id]")].map((e) => e.id)].sort();
-const realHtml = await (await fetch("../../index.html")).text();
-const realIds = [...realHtml.matchAll(/id="([a-z-]+)"/g)]
-  .map((m) => m[1])
-  .filter((id) => liveIds.includes(id) || /^(build|tab|asset|paint|sculpt)-/.test(id))
-  .sort();
-const missing = realIds.filter((id) => !liveIds.includes(id));
-check("โครง DOM ตรงกับ index.html", missing.length === 0, missing.join(", ") || "ครบ");
+const liveIds=["build-panel",...[...document.querySelectorAll("#build-panel [id]")].map((e)=>e.id)].sort();
+const realHtml=await(await fetch("../../index.html")).text();
+const realIds=[...realHtml.matchAll(/id="([a-z-]+)"/g)].map((m)=>m[1]).filter((id)=>liveIds.includes(id)||/^(build|tab|asset|paint|sculpt)-/.test(id)).sort();
+const missing=realIds.filter((id)=>!liveIds.includes(id));
+check("โครง DOM ตรงกับ index.html",missing.length===0,missing.join(", ")||"ครบ");
 
-// ---- the height budget, at iPhone SE size ---------------------------------
-const panel = document.querySelector("#build-panel");
-const VH = 667;
-const share = () => panel.getBoundingClientRect().height / VH;
-const pct = () => `${Math.round(share() * 100)}% ของ 667px`;
-
+const panel=document.querySelector("#build-panel"),VH=667;
+const share=()=>panel.getBoundingClientRect().height/VH;
+const pct=()=>`${Math.round(share()*100)}% ของ 667px`;
 document.querySelector("#report").classList.add("hide");
-await new Promise((r) => requestAnimationFrame(r));
+await new Promise((r)=>requestAnimationFrame(r));
 
-document.querySelector("#tab-place").click();
-check("แท็บวางของ ≤ 40%", share() <= 0.4, pct());
-document.querySelector("#tab-paint").click();
-check("แท็บระบายพื้น ≤ 40%", share() <= 0.4, pct());
-document.querySelector("#tab-sculpt").click();
-check("แท็บปั้นพื้น ≤ 40%", share() <= 0.4, pct());
-document.querySelector("#build-more").click();
-check("เปิดเพิ่มเติมแล้วยัง ≤ 55%", share() <= 0.55, pct());
-document.querySelector("#build-more").click();
+document.querySelector("#tab-place").click();check("แท็บวางของ ≤ 40%",share()<=0.4,pct());
+document.querySelector("#tab-paint").click();check("แท็บระบายพื้น ≤ 40%",share()<=0.4,pct());
+document.querySelector("#tab-sculpt").click();check("แท็บปั้นพื้น ≤ 40%",share()<=0.4,pct());
+document.querySelector("#build-more").click();check("เปิดเพิ่มเติมแล้วยัง ≤ 55%",share()<=0.55,pct());document.querySelector("#build-more").click();
 
 document.querySelector("#build-collapse").click();
-check("ย่อแล้ว ≤ 15%", share() <= 0.15, pct());
-check("ย่อแล้วแท็บยังเห็น", document.querySelector("#tab-sculpt").getBoundingClientRect().height > 0);
-check("ย่อแล้วซ่อนแถวปุ่มหลัก",
-  getComputedStyle(document.querySelector("#build-actions")).display === "none");
-document.querySelector("#build-collapse").click();
-check("กางกลับได้", share() > 0.15 && share() <= 0.4, pct());
+check("ย่อแล้ว ≤ 15%",share()<=0.15,pct());
+check("ย่อแล้วแท็บยังเห็น",document.querySelector("#tab-sculpt").getBoundingClientRect().height>0);
+check("ย่อแล้วซ่อนแถวปุ่มหลัก",getComputedStyle(document.querySelector("#build-actions")).display==="none");
+document.querySelector("#build-collapse").click();check("กางกลับได้",share()>0.15&&share()<=0.4,pct());
 
-// ---- structure: presets must not be in the tool row -----------------------
-check("แถวเครื่องมือปั้นมี 4 ปุ่มพอดี",
-  document.querySelectorAll("#sculpt-strip button").length === 4,
-  `${document.querySelectorAll("#sculpt-strip button").length} ปุ่ม`);
-check("พรีเซ็ตอยู่ในลิ้นชักเพิ่มเติม",
-  document.querySelectorAll("#sculpt-presets button").length >= 3);
-check("ลิ้นชักปิดอยู่โดยปริยาย",
-  getComputedStyle(document.querySelector("#sculpt-extra")).display === "none");
+check("แถวเครื่องมือปั้นมี 4 ปุ่มพอดี",document.querySelectorAll("#sculpt-strip button").length===4,`${document.querySelectorAll("#sculpt-strip button").length} ปุ่ม`);
+check("พรีเซ็ตอยู่ในลิ้นชักเพิ่มเติม",document.querySelectorAll("#sculpt-presets button").length>=3);
+check("ลิ้นชักปิดอยู่โดยปริยาย",getComputedStyle(document.querySelector("#sculpt-extra")).display==="none");
+const small=[...document.querySelectorAll("#build-panel button")].filter((b)=>b.offsetParent!==null&&b.getBoundingClientRect().height<40);
+check("ปุ่มทุกอันสูง ≥ 40px",small.length===0,small.map((b)=>b.textContent.trim()||b.id).join(", "));
 
-// ---- touch targets ---------------------------------------------------------
-const small = [...document.querySelectorAll("#build-panel button")]
-  .filter((b) => b.offsetParent !== null && b.getBoundingClientRect().height < 40);
-check("ปุ่มทุกอันสูง ≥ 40px", small.length === 0,
-  small.map((b) => b.textContent.trim() || b.id).join(", "));
-
-// ---- preset drives the real brush-size slider ------------------------------
 document.querySelector("#build-more").click();
-const radiusInput = document.querySelector('#sculpt-size input[type="range"]');
-const before = radiusInput.value;
+const radiusInput=document.querySelector('#sculpt-size input[type="range"]');const before=radiusInput.value;
 document.querySelector('[data-sculpt-preset="mountain"]').click();
-check("พรีเซ็ตภูเขาปรับหัวแปรงจริง", radiusInput.value !== before,
-  `${before} → ${radiusInput.value}`);
-check("พรีเซ็ตภูเขาเลือกเครื่องมือ ยก",
-  document.querySelector('[data-sculpt-tool="raise"]').classList.contains("active"));
+check("พรีเซ็ตภูเขาปรับหัวแปรงจริง",radiusInput.value!==before,`${before} → ${radiusInput.value}`);
+check("พรีเซ็ตภูเขาเลือกเครื่องมือ ยก",document.querySelector('[data-sculpt-tool="raise"]').classList.contains("active"));
+
+document.querySelector("#tab-horizon").click();
+check("แท็บขอบฟ้า ≤ 40%",share()<=0.4,pct());
+document.querySelector("#build-more").click();
+check("แท็บขอบฟ้า เปิดเพิ่มเติมแล้วยัง ≤ 55%",share()<=0.55,pct());
+check("เปิดเพิ่มเติมแล้วปลดล็อกค่าที่เหลือ",[...document.querySelectorAll('#horizon-strip input[type="range"]')].filter((s)=>s.offsetParent!==null).length===13);
+document.querySelector("#build-more").click();
+check("แท็บขอบฟ้าเลื่อนดูได้ ไม่ดันแผงให้สูงขึ้น",getComputedStyle(document.querySelector("#build-body")).overflowY==="auto");
+
+const horizonButtons=[...document.querySelectorAll("#horizon-strip button, #build-actions button")].filter((b)=>b.offsetParent!==null);
+const smallHorizon=horizonButtons.filter((b)=>b.getBoundingClientRect().height<32);
+check("ปุ่มในแท็บขอบฟ้าแตะติดทุกอัน",horizonButtons.length>0&&smallHorizon.length===0,`${horizonButtons.length} ปุ่ม, เล็กเกิน ${smallHorizon.length}`);
+const sliders=document.querySelectorAll('#horizon-strip input[type="range"]');
+check("มีสไลเดอร์ครบทุกค่า",sliders.length===13,`${sliders.length} ตัว`);
+const visibleCompact=[...sliders].filter((s)=>s.offsetParent!==null).length;
+check("แผงย่อโชว์เฉพาะค่าหลัก 4 ตัว",visibleCompact===4,`${visibleCompact} ตัว`);
+check("ค่าเริ่มต้นผ่านกฎทุกข้อ",document.querySelectorAll("#horizon-strip .horizon-rule.fail").length===0);
+check("สไลเดอร์ยังมีที่ให้ใช้จริง",document.querySelector(".horizon-dials").getBoundingClientRect().height>=64,`${Math.round(document.querySelector(".horizon-dials").getBoundingClientRect().height)}px`);
+const horizonActions=[...document.querySelectorAll("#build-actions button")];
+check("แถวคัดลอก/รีเซ็ตอยู่ในแถวปุ่มหลัก ไม่หลุดขอบจอ",horizonActions.length===2&&horizonActions.every((b)=>b.getBoundingClientRect().right<=375),`${horizonActions.length} ปุ่ม`);
+
+rebuiltGround=0;
+const fogFar=[...sliders].find((s)=>s.getAttribute("aria-label")==="หมอกทึบเต็มที่");
+fogFar.value=fogFar.max;fogFar.dispatchEvent(new Event("input"));
+await new Promise((r)=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+check("ลากสไลเดอร์หมอกแล้วฉากเปลี่ยนจริง",horizonScene.fog.far===Number(fogFar.value),`${horizonScene.fog.far} vs ${fogFar.value}`);
+check("สไลเดอร์หมอกไม่สั่งสร้างเรขาคณิตใหม่",rebuiltGround===0,`rebuild ${rebuiltGround} ครั้ง`);
+check("กฎขึ้นเตือนทันทีเมื่อค่าพัง",document.querySelectorAll("#horizon-strip .horizon-rule.fail").length>0);
 
 document.querySelector("#report").classList.remove("hide");
-summary.textContent = `ผ่าน ${pass} / ${pass + fail}${fail ? " — มีจุดต้องตรวจ" : " — ผ่านหมด"}`;
-window.__results = results;
-window.__done = true;
+summary.textContent=`ผ่าน ${pass} / ${pass+fail}${fail?" — มีจุดต้องตรวจ":" — ผ่านหมด"}`;
+window.__results=results;window.__done=true;
 </script>
 </body>
 </html>
