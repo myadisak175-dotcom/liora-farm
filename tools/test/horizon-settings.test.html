@@ -103,7 +103,9 @@ ok("snippet numbers are finite",!/NaN|Infinity|undefined/.test(snippet));
 const allOff=resolveHorizon({...defaults,mountainsEnabled:false,peaksEnabled:false,hazeEnabled:false},CONFIG);
 ok("switching layers off disables resolved config",
   allOff.mountainBackdrop.enabled===false&&allOff.distantRange.enabled===false&&allOff.distantRange.haze.enabled===false);
-ok("Variant B islands stay enabled by default",resolveHorizon(defaults,CONFIG).distantRange.floatingIslands.enabled===true);
+ok("GLB backdrop replaces procedural islands by default",
+  resolveHorizon(defaults,CONFIG).distantRange.floatingIslands.enabled===false
+  &&CONFIG.distantRange.floatingIslandBackdrop?.enabled===true);
 ok("every toggle is covered by resolver",HORIZON_TOGGLES.every((t)=>t.key in defaults));
 
 window.__results=results;window.__done=true;

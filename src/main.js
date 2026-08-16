@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CONFIG, QUALITY, ASSETS, ANIMATIONS, BUILD } from "./config.js";
+import { CONFIG, QUALITY, ASSETS, ANIMATIONS, BUILD } from "./config.js?v=floating-island-b-lite";
 import { createPlayer } from "./entities/player.js";
 import { createHomeIsland } from "./zones/home-island.js";
 import { createInput } from "./systems/input.js";
@@ -30,6 +30,7 @@ import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
+import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js?v=floating-island-b-lite";
 
 window.__lioraBuild = BUILD;
 window.__lioraBooted = false;
@@ -139,6 +140,20 @@ const dayNight = createDayNight({
   onLabelChange: (label) => { clockButton.textContent = label; },
 });
 clockButton.onclick = () => dayNight.nextPreset();
+
+let floatingIslandBackdrop = null;
+try {
+  floatingIslandBackdrop = await createFloatingIslandBackdrop({
+    url: ASSETS.floatingIslandHero,
+    config: CONFIG.distantRange?.floatingIslandBackdrop,
+    anisotropy: Math.min(2, renderer.capabilities.getMaxAnisotropy()),
+  });
+  scene.add(floatingIslandBackdrop.group);
+} catch (error) {
+  // The GLB is deliberately optional so code can deploy before the binary asset.
+  console.warn("Floating island backdrop unavailable", error);
+}
+
 const input = createInput();
 const cameraController = createCameraController(camera, CONFIG.camera, renderer.domElement);
 const runFx = createRunFx(scene, CONFIG.runFx);
@@ -391,6 +406,7 @@ function animate() {
   // on, so they follow the same target the sun does.
   objectShadows.setFollowPoint(cameraTarget.x, cameraTarget.z);
   objectShadows.refresh();
+  floatingIslandBackdrop?.update(delta);
   sky.update(camera);
   renderer.render(scene, camera);
   perfHud.update(delta);
