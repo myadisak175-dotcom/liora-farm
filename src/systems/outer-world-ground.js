@@ -38,20 +38,20 @@ function broadNoise(angle, t, seed) {
   return angular + radial;
 }
 
-export function buildOuterWorldGeometry(config = {}, textureWorldSize = 56) {
-  const innerRadius = Math.max(1, Number(config.innerRadius) || 25.5);
-  const outerRadius = Math.max(innerRadius + 1, Number(config.outerRadius) || 47);
-  const innerY = Number.isFinite(config.innerY) ? config.innerY : 4.72;
-  const outerY = Number.isFinite(config.outerY) ? config.outerY : 2.4;
+export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
+  const innerRadius = Math.max(1, Number(config.innerRadius) || 38.5);
+  const outerRadius = Math.max(innerRadius + 1, Number(config.outerRadius) || 82);
+  const innerY = Number.isFinite(config.innerY) ? config.innerY : -0.08;
+  const outerY = Number.isFinite(config.outerY) ? config.outerY : 0.6;
   const heightVariation = Math.max(0, Number(config.heightVariation) || 0);
-  const segments = clamp(Math.round(Number(config.segments) || 72), 24, 160);
-  const rings = clamp(Math.round(Number(config.rings) || 9), 2, 32);
+  const segments = clamp(Math.round(Number(config.segments) || 80), 24, 160);
+  const rings = clamp(Math.round(Number(config.rings) || 10), 2, 32);
   const seed = Number(config.noiseSeed) || 0;
-  const uvWorld = Math.max(1, Number(textureWorldSize) || 56);
+  const uvWorld = Math.max(1, Number(textureWorldSize) || 80);
 
   const nearColor = colorChannels(config.colorNear ?? 0xffffff);
   const midColor = colorChannels(config.colorMid ?? 0xe5edcc);
-  const farColor = colorChannels(config.colorFar ?? 0xc1ccb0);
+  const farColor = colorChannels(config.colorFar ?? 0xc7d2b8);
 
   const positions = [];
   const colors = [];
@@ -103,15 +103,15 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 56) {
 }
 
 /**
- * Cheap visual-only land outside Home Island's playable terrain.
+ * Cheap visual-only land outside Home Farm's playable terrain.
  *
- * The ring overlaps the generated gameplay ridge from underneath, then extends
- * into rolling distant ground before the mountain backdrop. It is never used
- * for collision, ground sampling, Builder placement, sculpting, farming or
- * persistence; its only job is to stop the camera from seeing a hard island
- * edge immediately behind the playable world.
+ * The ring overlaps the outer edge of the real terrain from underneath, then
+ * extends into broad rolling distant ground. It is never used for collision,
+ * ground sampling, Builder placement, sculpting, farming or persistence; its
+ * only job is to make the visible world feel much larger than the gameplay
+ * grid and keep the camera from finding a hard island edge.
  */
-export function createOuterWorldGround({ config = {}, texture = null, textureWorldSize = 56 } = {}) {
+export function createOuterWorldGround({ config = {}, texture = null, textureWorldSize = 80 } = {}) {
   const group = new THREE.Group();
   group.name = "OuterWorldGround";
 

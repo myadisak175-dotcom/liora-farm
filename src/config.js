@@ -11,7 +11,7 @@ export const QUALITY = Object.freeze({
 });
 
 export const CONFIG = Object.freeze({
-  worldLimit: 26.5,
+  worldLimit: 38,
   playerHeight: 1.7,
   playerGroundOffset: -0.02,
   playerRadius: 0.34,
@@ -21,13 +21,13 @@ export const CONFIG = Object.freeze({
   maxWalkSlope: 0.75,
   animationSpeed: { idle: 1, walk: 0.9, run: 1 },
   camera: {
-    fov: 38, near: 0.1, far: 100,
+    fov: 38, near: 0.1, far: 150,
     baseOffset: new THREE.Vector3(8, 10, 10),
     minZoom: 0.65, maxZoom: 1.55, zoomStep: 0.12,
     orbitSensitivity: 0.006, pitchSensitivity: 0.0045,
     minPitch: THREE.MathUtils.degToRad(28), maxPitch: THREE.MathUtils.degToRad(55),
     followDeadZone: 0.55, followSharpness: 3.2, positionSharpness: 5.5,
-    panLimit: 28, twoFingerRotateSensitivity: 0.005,
+    panLimit: 40, twoFingerRotateSensitivity: 0.005,
   },
   depth: { playerOrder: 10 },
   // `minCasterHeight`: the sun's shadow camera already covers only 24 x 24 m
@@ -42,8 +42,8 @@ export const CONFIG = Object.freeze({
     footWidth: 0.18, footDepth: 0.12, footY: 0.026, footOpacity: 0.34,
     footNightOpacity: 0.4, footSide: 0.115, footForward: 0.035, renderOrder: 5,
   },
-  island: { size: 56, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
-  terrain: { size: 56, spacing: 0.5, renderOrder: 0 },
+  island: { size: 80, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
+  terrain: { size: 80, spacing: 0.5, renderOrder: 0 },
   water: {
     level: -0.6,
     color: 0x55b7df,
@@ -55,7 +55,7 @@ export const CONFIG = Object.freeze({
     shorelineStrength: 0.48,
     depthColorStart: 0.18,
     depthColorEnd: 1.3,
-    texture: "clear_water.webp", textureRepeat: 8, textureStrength: 0.42,
+    texture: "clear_water.webp", textureRepeat: 11.43, textureStrength: 0.42,
     textureSpeedX: 0.008, textureSpeedY: -0.006,
     opacity: 0.64, roughness: 0.28, metalness: 0.03, emissive: 0x123e55, emissiveIntensity: 0.1,
     shoreFade: 0.28, foamDepth: 0.12, waveHeight: 0.055, waveScale: 0.68, waveSpeed: 0.7,
@@ -76,111 +76,77 @@ export const CONFIG = Object.freeze({
     sandLayerId: 1, rockLayerId: 2, enabledByDefault: true,
   },
   /**
-   * Home Island's visible world boundary. The playable area ends in a noisy
-   * terrain ridge instead of a straight edge or an invisible wall. Movement
-   * still keeps `worldLimit` as a safety backstop behind the ridge.
-   *
-   * The ridge is a procedural floor layered over editable terrain: sculpting
-   * can raise land above it but cannot expose ground below it. Generated ridge
-   * height is never written into terrain saves, so these values can be re-tuned
-   * later without old saves pinning a previous ridge height.
+   * Home Farm now uses an open 80 m terrain instead of a 360-degree generated
+   * ridge. `worldLimit` remains a safety backstop 2 m inside the terrain edge;
+   * selective forests, rocks, water and other natural boundaries can be added
+   * later without enclosing the whole map in one mountain ring.
    */
   worldBoundary: {
-    enabled: true,
-    type: "ridge",
-    // Must finish before terrain.size / 2. 19.5 + 1.75 + 4.75 = 26 m < 28 m.
-    radius: 19.5,
-    feather: 4.75,
-    height: 4.8,
-    noiseAmplitude: 1.75,
-    noiseScale: 0.055,
-    noiseSeed: 91,
+    enabled: false,
+    type: "none",
   },
   /**
-   * Visual-only land that starts underneath the outer ridge and carries the
-   * eye into the mountain backdrop. Gameplay terrain remains 56 m wide; this
-   * mesh is not walkable, sculptable, paintable, buildable or persisted.
+   * Visual-only land that overlaps the edge of the 80 m gameplay terrain and
+   * carries the eye far into the horizon. This does not expand collision,
+   * sculpting, painting, Builder placement, farming or save data.
    */
   outerWorld: {
     enabled: true,
-    innerRadius: 25.5,
-    outerRadius: 47,
+    innerRadius: 38.5,
+    outerRadius: 82,
     innerYOffset: -0.08,
-    outerY: 2.4,
-    heightVariation: 1.7,
-    segments: 72,
-    rings: 9,
+    outerY: 0.6,
+    heightVariation: 2.2,
+    segments: 80,
+    rings: 10,
     noiseSeed: 37,
     colorNear: 0xffffff,
     colorMid: 0xe5edcc,
-    colorFar: 0xc1ccb0,
+    colorFar: 0xc7d2b8,
     renderOrder: -8,
   },
   /**
-   * Visual horizon closure behind the physical ridge. Mountain chunks are
-   * merged into exactly two meshes (near + far), never collide, never save,
-   * and never enter the shadow pass. `height` on each chunk is its world-space
-   * peak Y; the base is intentionally buried below the island so sky cannot
-   * leak underneath when the camera orbits.
+   * Sparse scenic mountains only. The close 360-degree mountain ring is gone:
+   * there is no near layer, and the remaining far chunks sit beyond the visual
+   * ground with wide open gaps between them so Home Farm reads as an open world
+   * rather than a valley enclosed on every side.
    */
   mountainBackdrop: {
     enabled: true,
     castShadow: false,
     receiveShadow: false,
     near: {
-      innerRadius: 45,
-      outerRadius: 52,
-      baseY: -6,
-      peakMin: 7.5,
-      peakMax: 12,
-      shoulderRatio: 0.62,
-      depthJitter: 2.2,
-      colorLow: 0x70884f,
-      colorMid: 0x72805a,
-      colorPeak: 0x7a8170,
-      chunks: [
-        { angle: 0, radius: 47, span: 31, height: 9.2 },
-        { angle: 23, radius: 48, span: 30, height: 11.4 },
-        { angle: 47, radius: 46.5, span: 32, height: 8.6 },
-        { angle: 70, radius: 48.5, span: 31, height: 10.1 },
-        { angle: 94, radius: 47, span: 33, height: 11.8 },
-        { angle: 118, radius: 49, span: 30, height: 8.4 },
-        { angle: 141, radius: 46.5, span: 32, height: 10.7 },
-        { angle: 165, radius: 48, span: 31, height: 9.1 },
-        { angle: 188, radius: 47, span: 33, height: 11.2 },
-        { angle: 211, radius: 49, span: 30, height: 8.7 },
-        { angle: 234, radius: 46.5, span: 32, height: 10.3 },
-        { angle: 258, radius: 48, span: 31, height: 9.5 },
-        { angle: 281, radius: 47, span: 33, height: 11.6 },
-        { angle: 305, radius: 49, span: 30, height: 8.8 },
-        { angle: 329, radius: 46.5, span: 32, height: 10.5 },
-        { angle: 347, radius: 48, span: 30, height: 9.3 },
-      ],
+      innerRadius: 86,
+      outerRadius: 94,
+      baseY: -5,
+      peakMin: 6.5,
+      peakMax: 9,
+      shoulderRatio: 0.64,
+      depthJitter: 2,
+      colorLow: 0x7b8b67,
+      colorMid: 0x849176,
+      colorPeak: 0x8e9789,
+      chunks: [],
     },
     far: {
-      innerRadius: 56,
-      outerRadius: 66,
-      baseY: -8,
-      peakMin: 11,
-      peakMax: 17,
+      innerRadius: 92,
+      outerRadius: 114,
+      baseY: -7,
+      peakMin: 9.5,
+      peakMax: 14,
       shoulderRatio: 0.68,
       depthJitter: 3,
-      colorLow: 0x708493,
-      colorMid: 0x7d8f9b,
-      colorPeak: 0x93a1a7,
+      colorLow: 0x81929c,
+      colorMid: 0x8e9da5,
+      colorPeak: 0xa4afb4,
       chunks: [
-        { angle: 12, radius: 60, span: 40, height: 14 },
-        { angle: 43, radius: 59, span: 38, height: 16.5 },
-        { angle: 74, radius: 61, span: 41, height: 12.8 },
-        { angle: 105, radius: 58, span: 39, height: 15.2 },
-        { angle: 136, radius: 61, span: 41, height: 13.4 },
-        { angle: 167, radius: 59, span: 39, height: 16 },
-        { angle: 198, radius: 60, span: 40, height: 12.6 },
-        { angle: 229, radius: 58, span: 39, height: 15.6 },
-        { angle: 260, radius: 61, span: 41, height: 13 },
-        { angle: 291, radius: 59, span: 39, height: 16.8 },
-        { angle: 322, radius: 60, span: 40, height: 13.7 },
-        { angle: 351, radius: 58, span: 39, height: 15 },
+        { angle: 18, radius: 98, span: 24, height: 12 },
+        { angle: 54, radius: 103, span: 22, height: 13.6 },
+        { angle: 96, radius: 96, span: 20, height: 11.2 },
+        { angle: 214, radius: 101, span: 24, height: 12.7 },
+        { angle: 258, radius: 108, span: 22, height: 14 },
+        { angle: 308, radius: 99, span: 21, height: 11.7 },
+        { angle: 346, radius: 104, span: 23, height: 13.1 },
       ],
     },
   },
@@ -208,7 +174,7 @@ export const CONFIG = Object.freeze({
       { id: 6, key: "meadow_grass", label: "หญ้าทุ่ง", icon: "☘️", texture: "meadow_grass.webp", feather: "long" },
       { id: 7, key: "cobblestone_path", label: "ทางเดินหิน", icon: "🪨", texture: "cobblestone_path.webp", feather: "medium" },
     ],
-    tileSize: 512, resolution: 1024, textureRepeat: 10.67,
+    tileSize: 512, resolution: 1024, textureRepeat: 15.24,
     minRadius: 0.5, maxRadius: 4.5, defaultRadius: 1.6, strength: 1,
     storageKey: "liora.ground-paint.v1", snapshotInterval: 40,
   },
@@ -229,9 +195,9 @@ export const CONFIG = Object.freeze({
     gridSize: 0.5, snapDefault: false, historyLimit: 50,
   },
   sky: {
-    radius: 85, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
-    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 10, cloudRingRadius: 38,
-    cloudHeight: 9, starCount: 220, starSize: 0.32, starOpacity: 0.9,
+    radius: 135, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
+    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 10, cloudRingRadius: 52,
+    cloudHeight: 11, starCount: 220, starSize: 0.32, starOpacity: 0.9,
   },
   dayNight: { startHour: 8, realSecondsPerDay: 1440 },
   runFx: {
@@ -254,7 +220,7 @@ export const CONFIG = Object.freeze({
     // 0 = authored colour. 0.28 ~= 28% less green saturation + a subtle warm bias.
     naturePalette: { enabled: true, strength: 0.28 },
   },
-  fog: { near: 46, far: 96 },
+  fog: { near: 68, far: 138 },
 });
 
 const MODEL_DIR = "./assets/models/builder";
