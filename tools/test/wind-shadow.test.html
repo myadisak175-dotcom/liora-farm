@@ -91,6 +91,16 @@ const TREE_ASSET = {
   modelPath: "./assets/models/world-v2/nature/trees.glb",
 };
 
+function compileDepth(mesh) {
+  const shader = {
+    uniforms: {},
+    vertexShader: "#include <common>\nvoid main(){\n#include <begin_vertex>\n}",
+    fragmentShader: "void main(){}",
+  };
+  mesh.customDepthMaterial.onBeforeCompile(shader, {});
+  return shader;
+}
+
 await test("a shadow caster receives wind on its depth material", () => {
   const mesh = treeMesh();
   const authoredMap = mesh.material.map;
@@ -102,15 +112,49 @@ await test("a shadow caster receives wind on its depth material", () => {
   assert(depth.map === authoredMap, "alpha atlas was not carried into the depth pass");
   assert(depth.alphaTest === 0.45, `alpha cutoff changed: ${depth.alphaTest}`);
 
-  const shader = {
-    uniforms: {},
-    vertexShader: "#include <common>\nvoid main(){\n#include <begin_vertex>\n}",
-    fragmentShader: "void main(){}",
-  };
-  depth.onBeforeCompile(shader, {});
+  const shader = compileDepth(mesh);
   assert(shader.vertexShader.includes("lioraWindAmount"), "depth vertex shader has no wind displacement");
   assert(shader.uniforms.lioraWindTime === wind.uniforms.time, "shadow and colour pass do not share wind time");
   assert(shader.uniforms.lioraWindDirection === wind.uniforms.direction, "shadow and colour pass do not share wind direction");
+  assert(shader.uniforms.lioraWindSpeed === wind.uniforms.speed, "shadow and colour pass do not share wind speed");
+  assert(shader.uniforms.lioraWindGustSpeed === wind.uniforms.gustSpeed, "shadow and colour pass do not share gust speed");
+});
+
+await test("default motion is slightly slower but remains one shared clock", () => {
+  const wind = createWindSystem({
+    config: {
+      direction: { x: 1, z: 0 },
+      speed: 0.75,
+      gust: { speed: 0.18 },
+    },
+  });
+  assert(Math.abs(wind.uniforms.speed.value - 0.675) < 1e-9, `wind speed was not softened: ${wind.uniforms.speed.value}`);
+  assert(Math.abs(wind.uniforms.gustSpeed.value - 0.162) < 1e-9, `gust speed was not softened: ${wind.uniforms.gustSpeed.value}`);
+
+  wind.update(0.5);
+  assert(Math.abs(wind.uniforms.time.value - 0.5) < 1e-9, "wind clock changed semantics while tuning speed");
+});
+
+await test("shadow displacement is calmer without creating a second wind phase", () => {
+  const mesh = treeMesh();
+  const wind = createWindSystem({
+    config: {
+      direction: { x: 1, z: 0 },
+      strength: 0.55,
+      motion: { shadowStrength: 0.84 },
+    },
+  });
+  wind.attach(model(mesh), TREE_ASSET);
+  const shader = compileDepth(mesh);
+
+  assert(shader.uniforms.lioraWindTime === wind.uniforms.time, "shadow gained a second clock");
+  assert(shader.uniforms.lioraWindDirection === wind.uniforms.direction, "shadow gained a second direction");
+  assert(shader.uniforms.lioraWindSpeed === wind.uniforms.speed, "shadow gained a separate speed phase");
+  assert(shader.uniforms.lioraWindGustStrength === wind.uniforms.gustStrength, "shadow gained a separate gust envelope");
+  assert(
+    Math.abs(shader.uniforms.lioraWindStrength.value - 0.462) < 1e-9,
+    `shadow strength should be 84% of 0.55, got ${shader.uniforms.lioraWindStrength.value}`
+  );
 });
 
 await test("copies of one asset share one animated depth material", () => {
