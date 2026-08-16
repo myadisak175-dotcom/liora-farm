@@ -12,6 +12,7 @@ export function createBuilderView({
   getGroundHeight,
   config,
   playerHeight = 1.7,
+  prepareModel = null,
 }) {
   const group = new THREE.Group();
   group.name = "BuilderObjects";
@@ -134,6 +135,7 @@ export function createBuilderView({
     if (objects.has(item.id)) return objects.get(item.id);
     const asset = getBuildableAsset(item.assetId);
     const model = await loader.load(item.assetId);
+    prepareModel?.(model, asset, { preview: false });
     const holder = new THREE.Group();
     holder.name = `builder:${item.assetId}`;
     holder.userData.itemId = item.id;
@@ -195,6 +197,9 @@ export function createBuilderView({
     nextGhost.userData.scale = scale;
     nextGhost.userData.scaleNormalization = getScaleNormalization(model, asset);
     setGhostAppearance(nextGhost);
+    // Preview materials are already private translucent clones, so visual
+    // decorators can patch them in-place without leaking into cached GLBs.
+    prepareModel?.(nextGhost, asset, { preview: true });
     scene.add(nextGhost);
     cacheBaseOffset(nextGhost, model);
     nextGhost.rotation.y = rotation;
