@@ -11,6 +11,10 @@ import {
 
 const GROUP_OF = new Map(HORIZON_DIALS.map((dial) => [dial.key, dial.group]));
 const REBUILD_FOR = {
+  // Exposure is a one-line renderer change; the seam dials rebuild the outer
+  // ground mesh, same as the other "พื้น" dials do.
+  "ภาพรวม": "render",
+  "รอยต่อ": "ground",
   "กล้อง": "camera",
   "หมอก": "fog",
   "พื้น": "ground",
@@ -40,6 +44,8 @@ export function createHorizonControls({
   scene,
   sky,
   world,
+  renderer = null,
+  lighting = null,
   cameraController,
   container,
   surface,
@@ -73,6 +79,11 @@ export function createHorizonControls({
 
   function apply(targets) {
     const resolved = resolveHorizon(settings, config);
+    if (!targets || targets.has("render")) {
+      if (renderer) renderer.toneMappingExposure = resolved.exposure;
+      lighting?.setBalance?.(resolved.lighting);
+      world?.cloudShadows?.setStrength?.(resolved.cloudShadowStrength);
+    }
     if (!targets || targets.has("camera")) cameraController.setMinPitch(resolved.cameraMinPitch);
     if (!targets || targets.has("fog")) {
       if (scene.fog) {

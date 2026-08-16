@@ -1,18 +1,25 @@
 import * as THREE from "three";
+import { createQuality } from "./systems/quality.js";
 
-const IS_TOUCH =
-  typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+/**
+ * Live quality tier. Was a frozen `isTouch` boolean, which gave a flagship
+ * phone and a budget phone identical settings; it is now a preset the player
+ * can override, and the getters keep the old field names working.
+ */
+export const QUALITY = createQuality();
 
-export const QUALITY = Object.freeze({
-  isTouch: IS_TOUCH,
-  maxPixelRatio: IS_TOUCH ? 1.5 : 2,
-  antialias: !IS_TOUCH,
-  shadowMapSize: IS_TOUCH ? 1024 : 2048,
-});
-
-export const BUILD = "horizon-4";
+export const BUILD = "depth-2-detail";
 
 export const CONFIG = Object.freeze({
+  /**
+   * Tone mapping is what stops sunlit ground clipping to flat white.
+   * Without it a 2.5 sun + 2.2 hemi rig writes >1.0 into an 8-bit buffer,
+   * every bright surface lands on the same white, and the farm and the outer
+   * world lose the shading that would otherwise tie them together.
+   * "neutral" (Khronos PBR Neutral) rolls off highlights while keeping the
+   * stylised saturation that ACES would wash out.
+   */
+  render: { toneMapping: "neutral", exposure: 1.12 },
   worldLimit: 38,
   playerHeight: 1.7,
   playerGroundOffset: -0.02,
@@ -32,14 +39,31 @@ export const CONFIG = Object.freeze({
     panLimit: 40, twoFingerRotateSensitivity: 0.005,
   },
   depth: { playerOrder: 10 },
-  shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2, minCasterHeight: 0.9 },
+  shadows: { mapSize: QUALITY.shadowMapSize, bounds: QUALITY.preset.shadowBounds, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2, minCasterHeight: 0.9 },
+  /**
+   * Direct-versus-ambient balance, on top of the per-hour palette in
+   * day-night.js. 1.0 means "use the authored ratio"; these exist so the
+   * amount of shape in the scene is a dial rather than an edit.
+   */
+  lighting: { sunScale: 1, hemiScale: 1 },
+  /**
+   * Blob shadows for builder objects that sit outside the real shadow map.
+   * See object-shadows.js for why this is one instanced mesh and not a second
+   * shadow cascade.
+   */
+  objectShadows: { enabled: true, opacity: 0.34, radiusScale: 1.15, maxRadius: 6, lift: 0.02, capacityStep: 64, renderOrder: 3 },
   contactShadow: {
     width: 0.72, depth: 0.4, y: 0.022, opacity: 0.31, nightOpacity: 0.38,
     footWidth: 0.18, footDepth: 0.12, footY: 0.026, footOpacity: 0.34,
     footNightOpacity: 0.4, footSide: 0.115, footForward: 0.035, renderOrder: 5,
   },
   island: { size: 80, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
-  terrain: { size: 80, spacing: 0.5, renderOrder: 0 },
+  terrain: {
+    size: 80, spacing: 0.5, renderOrder: 0,
+    // One generic micro-normal tile, not one normal texture per paint layer.
+    // The quality preset can remove the sampler entirely on low-end devices.
+    detailNormal: { enabled: true, size: 128, repeat: 42, strength: 0.24, heightScale: 3.2, seed: 29 },
+  },
   water: {
     level: -0.6,
     color: 0x55b7df,
@@ -83,14 +107,41 @@ export const CONFIG = Object.freeze({
     rings: 18,
     noiseSeed: 37,
     colorNear: 0xffffff,
-    colorMid: 0xdfe8c6,
-    colorFar: 0xb4c6c0,
+    // Was 0xdfe8c6 / 0xb4c6c0 — a yellow-beige that read as a different
+    // biome the moment it met the green farm. These sit much closer to the
+    // grass hue; distance colour is now the job of skyBlend below.
+    colorMid: 0xdfe6cd,
+    colorFar: 0xc6d3c8,
+    // How far past the farm edge the outer world stays visually identical to
+    // the gameplay terrain. 24 m was barely one camera-width at this zoom, so
+    // the change of tint still landed inside the frame.
+    edgeBlendWidth: 40,
+    // Multiplier over the anti-banding caps in outer-world-ground.js. >1 keeps
+    // the grass tile alive further out instead of dropping to flat vertex
+    // colour just past the seam.
+    textureFadeReach: 1.45,
     textureFadeStart: 80,
     textureFadeEnd: 150,
+    /**
+     * Aerial perspective for the ground only.
+     *
+     * Scene fog cannot do this job here: the horizon rules deliberately keep
+     * fog.near beyond the farm so the playable area stays crisp. This blends
+     * the DISTANT ground toward the live sky-horizon colour instead, so the
+     * far field dissolves into the sky at every hour of the day — including
+     * sunset and night, where a hardcoded beige used to glow wrongly.
+     */
+    skyBlendStrength: 0.72,
+    skyBlendStart: 120,
+    skyBlendEnd: 460,
     renderOrder: -8,
   },
   mountainBackdrop: {
     enabled: true,
+    // How far each ridge band is tinted toward the live sky colour. Bands at
+    // different depths get different amounts, which is what separates them
+    // into distances instead of one flat cutout.
+    hazeStrength: 0.45,
     castShadow: false,
     receiveShadow: false,
     near: {
@@ -176,6 +227,11 @@ export const CONFIG = Object.freeze({
     noiseScale: 0.22, noiseOctaves: 4, noiseAmplitude: 0.72, noiseSeed: 17,
     erosionIterations: 8, erosionTalus: 0.28, erosionRate: 0.24,
     undoLimit: 40, storageKey: "liora.terrain-height.v1",
+    // Baked ambient occlusion, computed from this height field while sculpting
+    // and stored in the terrain's vertex colour. aoContrast is the slope at
+    // which a dip counts as fully enclosed — lower means the shading reacts to
+    // gentler ground.
+    aoStrength: 0.55, aoContrast: 0.42,
   },
   brushCursor: {
     segments: 48, color: 0xffffff, blockedColor: 0xff8a72, waterColor: 0x66d9ff,
@@ -229,6 +285,23 @@ export const CONFIG = Object.freeze({
     waterOpacity: 0.68, waterSize: 0.23, waterLife: 0.3, waterHeight: 0.035,
     waterHeightJitter: 0.035, waterBackwardDrift: 0.2, waterSideDrift: 0.5,
     waterRiseSpeed: 0.55, waterRiseJitter: 0.25, renderOrder: 6,
+  },
+  /**
+   * Drifting cloud shadows. The cheapest way to tell the eye how large the
+   * field is: one sun over open ground lights everything evenly, which reads
+   * as flat no matter how good the terrain is. Drifts with CONFIG.wind so the
+   * sky and the trees agree about which way the weather is going.
+   */
+  cloudShadows: {
+    enabled: true,
+    strength: 0.3,
+    scale: 190,
+    detailScale: 74,
+    speed: 0.0075,
+    coverage: 0.52,
+    softness: 0.36,
+    tileSize: 128,
+    seed: 11,
   },
   wind: {
     enabled: true,

@@ -6,11 +6,11 @@
  * fog, camera pitch. That is the right shape for authoring it once and the
  * wrong shape for adjusting it on a phone.
  *
- * This module collapses it to fifteen dials. Distance and height come out as
- * multipliers over the authored values, so dragging "ภูเขาชั้นกลาง ไกลขึ้น"
- * moves the whole band while preserving the variation that stops it reading as
- * a fence. Nothing here touches THREE or the DOM — it is pure data in, pure
- * data out, which is why the rules can be tested directly.
+ * This module collapses it to a short list of dials. Distance and height come
+ * out as multipliers over the authored values, so dragging "ภูเขาชั้นกลาง
+ * ไกลขึ้น" moves the whole band while preserving the variation that stops it
+ * reading as a fence. Nothing here touches THREE or the DOM — it is pure data
+ * in, pure data out, which is why the rules can be tested directly.
  */
 
 const DEG = 180 / Math.PI;
@@ -24,15 +24,28 @@ export const HORIZON_STORAGE_KEY = "liora.horizon.v1";
  * cannot break the scene. `check()` below is the second, for the combinations
  * that are individually fine but wrong together.
  *
- * `primary` marks the four dials that answer the original complaint — can I
- * see the sky, is the map edge visible, is the farm hazy. Those show in the
+ * `primary` marks the handful that answer the complaints people actually
+ * arrive with — the picture is flat, the farm looks pasted onto a different
+ * world, I cannot see the sky, the map edge is visible. Those show in the
  * compact panel; the rest live behind the "เพิ่มเติม" drawer, following the
- * same rule the sculpt tab does.
+ * same rule the sculpt tab does. The count is capped in the HUD test, because
+ * a compact panel with ten sliders in it is not a compact panel.
  */
 export const HORIZON_DIALS = [
+  // Blend dials. These answer "why does the farm look pasted onto a different
+  // world" rather than "where are the mountains", so they lead the panel.
+  { key: "exposure", label: "ความสว่างภาพรวม", min: 0.6, max: 1.8, step: 0.02, unit: "×", group: "ภาพรวม", primary: true },
+  // Direct-vs-ambient is the dial that decides whether anything in the scene
+  // has a shape. Lower ambient = deeper form, at the cost of darker shadows.
+  { key: "sunScale", label: "แสงตรง (ให้เงาลึก)", min: 0.4, max: 1.8, step: 0.02, unit: "×", group: "ภาพรวม", primary: true },
+  { key: "hemiScale", label: "แสงรอบทิศ (ยิ่งมากยิ่งแบน)", min: 0.2, max: 2, step: 0.02, unit: "×", group: "ภาพรวม" },
+  { key: "cloudShadowStrength", label: "ความเข้มเงาเมฆ", min: 0, max: 0.7, step: 0.02, unit: "", group: "ภาพรวม" },
+  { key: "groundSkyBlend", label: "พื้นไกลกลืนกับฟ้า", min: 0, max: 1, step: 0.02, unit: "", group: "รอยต่อ", primary: true },
+  { key: "groundEdgeBlend", label: "ความกว้างรอยกลืนขอบไร่", min: 8, max: 120, step: 2, unit: " ม.", group: "รอยต่อ" },
+  { key: "groundTextureReach", label: "ลายหญ้าไปไกลแค่ไหน", min: 0.4, max: 3, step: 0.05, unit: "×", group: "รอยต่อ" },
   { key: "cameraMinPitchDeg", label: "มุมก้มกล้องต่ำสุด", min: 6, max: 40, step: 1, unit: "°", group: "กล้อง", primary: true },
   { key: "fogNear", label: "หมอกเริ่ม", min: 40, max: 240, step: 2, unit: " ม.", group: "หมอก", primary: true },
-  { key: "fogFar", label: "หมอกทึบเต็มที่", min: 120, max: 700, step: 5, unit: " ม.", group: "หมอก", primary: true },
+  { key: "fogFar", label: "หมอกทึบเต็มที่", min: 120, max: 700, step: 5, unit: " ม.", group: "หมอก" },
   { key: "groundRadius", label: "ขนาดพื้นที่มองเห็น", min: 120, max: 900, step: 10, unit: " ม.", group: "พื้น", primary: true },
   { key: "groundY", label: "ความสูงพื้นปลายขอบ", min: -6, max: 20, step: 0.5, unit: " ม.", group: "พื้น" },
   { key: "groundVariation", label: "ความขรุขระของพื้นไกล", min: 0, max: 12, step: 0.2, unit: " ม.", group: "พื้น" },
@@ -57,6 +70,13 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 /** Reads the current authored config back out as dial positions. */
 export function horizonDefaults(config) {
   return {
+    exposure: config.render?.exposure ?? 1,
+    sunScale: config.lighting?.sunScale ?? 1,
+    hemiScale: config.lighting?.hemiScale ?? 1,
+    cloudShadowStrength: config.cloudShadows?.strength ?? 0,
+    groundSkyBlend: config.outerWorld.skyBlendStrength ?? 0.72,
+    groundEdgeBlend: config.outerWorld.edgeBlendWidth ?? 40,
+    groundTextureReach: config.outerWorld.textureFadeReach ?? 1,
     cameraMinPitchDeg: Math.round(config.camera.minPitch * DEG),
     fogNear: config.fog.near,
     fogFar: config.fog.far,
@@ -132,6 +152,16 @@ export function resolveHorizon(settings, config) {
     outerRadius: dials.groundRadius,
     outerY: dials.groundY,
     heightVariation: dials.groundVariation,
+    edgeBlendWidth: dials.groundEdgeBlend,
+    textureFadeReach: dials.groundTextureReach,
+    skyBlendStrength: dials.groundSkyBlend,
+    // Anchored to the dials rather than to fixed metres, so shrinking the
+    // visible world does not leave the sky blend finishing past its own edge.
+    skyBlendStart: config.outerWorld.innerRadius + dials.groundEdgeBlend * 2,
+    skyBlendEnd: Math.max(
+      config.outerWorld.innerRadius + dials.groundEdgeBlend * 2 + 40,
+      dials.groundRadius * 0.78
+    ),
   };
 
   const mountainBackdrop = {
@@ -168,6 +198,9 @@ export function resolveHorizon(settings, config) {
   return {
     dials,
     ground,
+    exposure: dials.exposure,
+    lighting: { sunScale: dials.sunScale, hemiScale: dials.hemiScale },
+    cloudShadowStrength: dials.cloudShadowStrength,
     fog: { near: dials.fogNear, far: Math.max(dials.fogNear + 10, dials.fogFar) },
     cameraMinPitch: dials.cameraMinPitchDeg / DEG,
     outerWorld,
@@ -237,6 +270,19 @@ export function checkHorizonRules(resolved, config) {
       fix: "ลดความขรุขระพื้น หรือเพิ่มความสูงภูเขา",
     },
     {
+      id: "seam",
+      label: "ขอบไร่กลืนกับพื้นนอก ไม่เป็นเส้น",
+      pass:
+        resolved.outerWorld.edgeBlendWidth >= 24
+        && resolved.outerWorld.skyBlendStart > reach + 24
+        && resolved.outerWorld.skyBlendEnd < resolved.outerWorld.outerRadius,
+      detail:
+        `กลืนขอบ ${Math.round(resolved.outerWorld.edgeBlendWidth)} ม. · `
+        + `เริ่มกลืนฟ้าที่ ${Math.round(resolved.outerWorld.skyBlendStart)} ม. · `
+        + `เดินได้ถึง ${reach} ม.`,
+      fix: "เพิ่มความกว้างรอยกลืน หรือขยายพื้นที่มองเห็น",
+    },
+    {
       id: "visible",
       label: "ภูเขายังมองเห็นผ่านหมอก",
       pass: faded.length === 0,
@@ -260,6 +306,9 @@ export function horizonSnippet(resolved) {
     `\n      ],`;
 
   return `// ---- ค่าจากแผงขอบฟ้า — วางทับใน src/config.js ----
+render: { toneMapping: "neutral", exposure: ${n(resolved.exposure, 2)} },
+lighting: { sunScale: ${n(resolved.lighting.sunScale, 2)}, hemiScale: ${n(resolved.lighting.hemiScale, 2)} },
+cloudShadows.strength: ${n(resolved.cloudShadowStrength, 2)},
 camera.minPitch: THREE.MathUtils.degToRad(${resolved.dials.cameraMinPitchDeg}),
 fog: { near: ${n(resolved.fog.near, 0)}, far: ${n(resolved.fog.far, 0)} },
 
@@ -267,6 +316,11 @@ outerWorld:
     outerRadius: ${n(resolved.outerWorld.outerRadius, 0)},
     outerY: ${n(resolved.outerWorld.outerY, 1)},
     heightVariation: ${n(resolved.outerWorld.heightVariation, 1)},
+    edgeBlendWidth: ${n(resolved.outerWorld.edgeBlendWidth, 0)},
+    textureFadeReach: ${n(resolved.outerWorld.textureFadeReach, 2)},
+    skyBlendStrength: ${n(resolved.outerWorld.skyBlendStrength, 2)},
+    skyBlendStart: ${n(resolved.outerWorld.skyBlendStart, 0)},
+    skyBlendEnd: ${n(resolved.outerWorld.skyBlendEnd, 0)},
 
 mountainBackdrop.enabled: ${resolved.mountainBackdrop.enabled},
 mountainBackdrop.near:

@@ -20,21 +20,30 @@ const PRESET_HOURS = [6.5, 12, 18.25, 22];
  * never matched the rest of the UI and stayed on screen in build mode. The
  * label now goes out through onLabelChange and the HUD owns the markup.
  */
-export function createDayNight({ scene, sky, lighting, config, onLabelChange = () => {} }) {
+export function createDayNight({ scene, sky, lighting, world = null, config, onLabelChange = () => {} }) {
   let hour = config.startHour;
   let paused = false;
   let presetIndex = 0;
   let lastLabel = "";
 
+  /**
+   * Sun-to-hemisphere ratio, per hour.
+   *
+   * These used to sit near 1:1 (2.5 sun against 2.2 hemi), which is why the
+   * island read as flat no matter how the colours were tuned — omnidirectional
+   * light of that strength lights the shadow side of a form almost as brightly
+   * as the lit side. The palette now runs closer to 1:2.5, and lighting.js
+   * exposes sunScale/hemiScale on top so the ratio is tunable from the panel.
+   */
   function paletteForTime(h) {
     let zenith = 0x68bdf0;
     let horizon = 0xdff4ff;
     let lower = 0xb9dff2;
     let sunColor = 0xffedc4;
-    let sunIntensity = 2.5;
+    let sunIntensity = 2.9;
     let hemiSky = 0xfff5dd;
     let hemiGround = 0x496448;
-    let hemiIntensity = 2.2;
+    let hemiIntensity = 1.15;
     let fogColor = 0xdff4ff;
     let stars = 0;
 
@@ -44,10 +53,10 @@ export function createDayNight({ scene, sky, lighting, config, onLabelChange = (
       horizon = lerpColor(0xf29b78, 0xdff4ff, t);
       lower = lerpColor(0x5a6b91, 0xb9dff2, t);
       sunColor = lerpColor(0xffb066, 0xffedc4, t);
-      sunIntensity = THREE.MathUtils.lerp(0.35, 2.5, t);
+      sunIntensity = THREE.MathUtils.lerp(0.3, 2.9, t);
       hemiSky = lerpColor(0x6f84b5, 0xfff5dd, t);
       hemiGround = lerpColor(0x24364b, 0x496448, t);
-      hemiIntensity = THREE.MathUtils.lerp(0.8, 2.2, t);
+      hemiIntensity = THREE.MathUtils.lerp(0.5, 1.15, t);
       fogColor = horizon;
       stars = 1 - t;
       return { zenith, horizon, lower, sunColor, sunIntensity, hemiSky, hemiGround, hemiIntensity, fogColor, stars };
@@ -61,10 +70,10 @@ export function createDayNight({ scene, sky, lighting, config, onLabelChange = (
         : lerpColor(0xf18f68, 0x6a5578, (t - 0.55) / 0.45);
       lower = lerpColor(0xb9dff2, 0x394866, t);
       sunColor = lerpColor(0xffedc4, 0xff955f, t);
-      sunIntensity = THREE.MathUtils.lerp(2.5, 0.25, t);
+      sunIntensity = THREE.MathUtils.lerp(2.9, 0.22, t);
       hemiSky = lerpColor(0xfff5dd, 0x7182ad, t);
       hemiGround = lerpColor(0x496448, 0x243348, t);
-      hemiIntensity = THREE.MathUtils.lerp(2.2, 0.75, t);
+      hemiIntensity = THREE.MathUtils.lerp(1.15, 0.45, t);
       fogColor = horizon;
       stars = THREE.MathUtils.smoothstep(t, 0.65, 1);
       return { zenith, horizon, lower, sunColor, sunIntensity, hemiSky, hemiGround, hemiIntensity, fogColor, stars };
@@ -76,10 +85,10 @@ export function createDayNight({ scene, sky, lighting, config, onLabelChange = (
         horizon: new THREE.Color(0x26385f),
         lower: new THREE.Color(0x101d35),
         sunColor: new THREE.Color(0xaac8ff),
-        sunIntensity: 0.12,
+        sunIntensity: 0.16,
         hemiSky: new THREE.Color(0x4c66a1),
         hemiGround: new THREE.Color(0x162033),
-        hemiIntensity: 0.62,
+        hemiIntensity: 0.4,
         fogColor: new THREE.Color(0x26385f),
         stars: 1,
       };
@@ -115,6 +124,10 @@ export function createDayNight({ scene, sky, lighting, config, onLabelChange = (
 
     scene.background.copy(p.horizon);
     if (scene.fog) scene.fog.color.copy(p.fogColor);
+    // The far ground fades into the same colour the sky is showing right now.
+    // Without this the outer world stays a fixed daytime beige and glows
+    // against a purple sunset or a navy night sky.
+    world?.setAtmosphere?.(p.horizon);
 
     const hh = Math.floor(hour) % 24;
     const mm = Math.floor((hour - Math.floor(hour)) * 60);
