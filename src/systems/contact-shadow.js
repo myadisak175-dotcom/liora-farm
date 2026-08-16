@@ -39,6 +39,13 @@ function makeShadowMesh(texture, width, depth, opacity, y, renderOrder) {
   return mesh;
 }
 
+function waterVisibility(depth, interaction = {}) {
+  const start = Number(interaction.shadowFadeStart ?? 0.04);
+  const end = Math.max(start + 0.01, Number(interaction.shadowFadeEnd ?? 0.28));
+  const t = THREE.MathUtils.clamp((Math.max(0, depth) - start) / (end - start), 0, 1);
+  return 1 - t;
+}
+
 export function createContactShadow(scene, config) {
   const texture = createShadowTexture();
 
@@ -72,12 +79,16 @@ export function createContactShadow(scene, config) {
   scene.add(body, leftFoot, rightFoot);
 
   return {
-    update(position, rotationY = 0, hour = 12) {
+    update(position, rotationY = 0, hour = 12, waterState = {}) {
       const night = hour >= 19 || hour < 6;
       const groundY = position.y;
+      const waterFade = waterVisibility(
+        Number(waterState.depth) || 0,
+        waterState.interaction
+      );
 
       body.position.set(position.x, groundY + config.y, position.z);
-      body.material.opacity = night ? config.nightOpacity : config.opacity;
+      body.material.opacity = (night ? config.nightOpacity : config.opacity) * waterFade;
 
       const forwardX = Math.sin(rotationY);
       const forwardZ = Math.cos(rotationY);
@@ -99,8 +110,8 @@ export function createContactShadow(scene, config) {
       const footOpacity = night
         ? config.footNightOpacity
         : config.footOpacity;
-      leftFoot.material.opacity = footOpacity;
-      rightFoot.material.opacity = footOpacity;
+      leftFoot.material.opacity = footOpacity * waterFade;
+      rightFoot.material.opacity = footOpacity * waterFade;
     },
     body,
     leftFoot,
