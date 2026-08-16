@@ -280,7 +280,7 @@ export function createBuilderView({
       return;
     }
     disposeClonedMaterials(ghost);
-    scene.remove(nextGhost);
+    scene.remove(ghost);
     ghost = null;
     ghostAsset = null;
   }
