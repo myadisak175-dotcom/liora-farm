@@ -45,6 +45,7 @@ const PROFILES = Object.freeze({
 const TRUNK = /(trunk|bark|wood|stem)/i;
 const BRANCH = /(branch|twig)/i;
 const LEAF = /(leaf|leaves|foliage|needle|frond)/i;
+const TREE_FILE = /(birch-trees|dead-trees-[12]|maple-trees|palm-trees|pine-trees|trees)\.glb$/i;
 
 export function getWindProfile(name) {
   return PROFILES[name] ?? null;
@@ -89,8 +90,8 @@ export function getPartWeights(profileName, part = "mixed", { isTouch = false } 
     }
   }
 
-  // Touch devices keep the large readable sway but spend less vertex work on
-  // tiny high-frequency motion, which is the first detail to disappear on a phone.
+  // Touch devices keep the large readable sway but reduce tiny high-frequency
+  // flutter, which is the first detail to disappear on a phone display.
   if (isTouch) flutter *= 0.65;
 
   return {
@@ -105,12 +106,19 @@ export function getPartWeights(profileName, part = "mixed", { isTouch = false } 
   };
 }
 
-export function inferNatureWindProfile({ file, kind } = {}) {
-  if (kind === "rock") return null;
-  if (kind === "tree") return "tree";
+/**
+ * V1 does not change the persisted asset schema. Wind type is inferred from
+ * the World V2 source file, so old saves remain byte-for-byte compatible.
+ */
+export function inferAssetWindProfile(asset) {
+  if (!asset?.worldV2 || !asset.modelPath) return null;
+  const file = asset.modelPath.split("/").at(-1) ?? "";
+  if (file === "rocks.glb") return null;
+  if (TREE_FILE.test(file)) return "tree";
   if (file === "grass.glb") return "grass";
   if (file === "flowers.glb") return "flower";
-  return kind === "plant" ? "bush" : null;
+  if (file === "bushes.glb" || file === "flower-bushes.glb") return "bush";
+  return null;
 }
 
 export const WIND_PROFILE_NAMES = Object.freeze(Object.keys(PROFILES));
