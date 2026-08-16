@@ -40,8 +40,17 @@ export async function createHomeIsland({
     && config.worldBoundary?.type === "ridge";
   const boundaryTopY = ridgeEnabled ? Number(config.worldBoundary?.height || 0) : 0;
 
-  const island = createFloatingIsland({ ...config.island, topY: boundaryTopY });
-  group.add(island);
+  // The old floating-island skirt only makes sense when the map is meant to
+  // read as an island/cliff. Home Farm now has a visual world extension beyond
+  // its playable square, so keeping the vertical skirt creates a dark hard line
+  // at x/z = ±terrainHalf when the camera reaches the outer farm. Leave the
+  // reusable island system intact for other maps, but do not add it here while
+  // Home Farm is in open-world visual mode.
+  const openWorldVisual = !ridgeEnabled && config.outerWorld?.enabled !== false;
+  if (!openWorldVisual) {
+    const island = createFloatingIsland({ ...config.island, topY: boundaryTopY });
+    group.add(island);
+  }
 
   const layers = createGroundLayers(
     config.groundPaint.layers.map((layer) => ({

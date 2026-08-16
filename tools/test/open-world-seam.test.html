@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>open world seam tests</title>
+<script type="importmap">
+{"imports":{"three":"./mountain-three-stub.js"}}
+</script>
+</head>
+<body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import { buildOuterWorldGeometry } from "../../src/systems/outer-world-ground.js";
+import { CONFIG } from "../../src/config.js";
+
+const results=[];
+const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
+const near=(a,b,eps=1e-3)=>Math.abs(a-b)<=eps;
+
+const geometry=buildOuterWorldGeometry(
+  { ...CONFIG.outerWorld, innerY: CONFIG.outerWorld.innerYOffset },
+  CONFIG.terrain.size
+);
+const position=geometry.getAttribute("position");
+const p=position.array;
+const segments=CONFIG.outerWorld.segments;
+const row=segments+1;
+const innerHalf=CONFIG.outerWorld.innerRadius;
+const xyz=(i)=>[p[i*3],p[i*3+1],p[i*3+2]];
+
+let worstSquareError=0;
+let maxInnerRadius=0;
+let minInnerRadius=Infinity;
+for(let i=0;i<row;i+=1){
+  const [x,y,z]=xyz(i);
+  const square=Math.max(Math.abs(x),Math.abs(z));
+  worstSquareError=Math.max(worstSquareError,Math.abs(square-innerHalf));
+  const radius=Math.hypot(x,z);
+  minInnerRadius=Math.min(minInnerRadius,radius);
+  maxInnerRadius=Math.max(maxInnerRadius,radius);
+  if(!near(y,CONFIG.outerWorld.innerYOffset,1e-5)) worstSquareError=Infinity;
+}
+
+ok("inner seam follows the square terrain edge",
+  worstSquareError < 0.02,
+  `worst=${worstSquareError} expectedHalf=${innerHalf}`);
+ok("square seam reaches corners instead of cutting them with a circle",
+  maxInnerRadius > innerHalf * 1.39 && minInnerRadius <= innerHalf + 0.02,
+  `minRadius=${minInnerRadius} maxRadius=${maxInnerRadius}`);
+
+const [firstX,firstY,firstZ]=xyz(0);
+const [closeX,closeY,closeZ]=xyz(segments);
+ok("inner seam closes without a crack",
+  near(firstX,closeX,1e-4)&&near(firstY,closeY,1e-5)&&near(firstZ,closeZ,1e-4),
+  `first=${firstX},${firstY},${firstZ} close=${closeX},${closeY},${closeZ}`);
+
+const outerStart=CONFIG.outerWorld.rings*row;
+let worstOuterRadiusError=0;
+for(let i=outerStart;i<outerStart+row;i+=1){
+  const [x,,z]=xyz(i);
+  const radius=Math.hypot(x,z);
+  worstOuterRadiusError=Math.max(worstOuterRadiusError,Math.abs(radius-CONFIG.outerWorld.outerRadius));
+}
+ok("outer horizon remains circular at configured radius",
+  worstOuterRadiusError < 0.02,
+  `worst=${worstOuterRadiusError}`);
+ok("open world extension keeps its geometry budget",
+  geometry.index.count/3===CONFIG.outerWorld.segments*CONFIG.outerWorld.rings*2
+    && geometry.index.count/3<=1800,
+  `triangles=${geometry.index.count/3}`);
+
+geometry.dispose();
+window.__results=results;
+window.__done=true;
+document.querySelector("#out").textContent=JSON.stringify(results,null,1);
+</script></body></html>
