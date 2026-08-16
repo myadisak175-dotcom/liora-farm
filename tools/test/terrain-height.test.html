@@ -14,6 +14,7 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 <script type="module">
 import { createTerrainHeight, SCULPT_TOOLS } from "../../src/systems/terrain-height.js";
 import { createRidgeProfile, createWorldBoundary } from "../../src/systems/world-boundary.js";
+import { createOuterWorldGround } from "../../src/systems/outer-world-ground.js";
 import { createMountainBackdrop } from "../../src/systems/mountain-backdrop.js";
 import { CONFIG } from "../../src/config.js";
 const results = [];
@@ -114,6 +115,45 @@ const retuned = createWorldBoundary({
 ok("generated ridge can be retuned lower after save/load",
   near(retuned.height.sample(0, 27.5), 2.8, 0.06),
   `edge=${retuned.height.sample(0, 27.5)}`);
+
+// Outer World Ground V1 extends the *visible* land without changing the
+// gameplay height field. It should stay one small textured mesh that starts
+// underneath the ridge and reaches far beyond the 56 m playable square.
+const outerInnerY = CONFIG.worldBoundary.height + CONFIG.outerWorld.innerYOffset;
+const outerWorld = createOuterWorldGround({
+  config: { ...CONFIG.outerWorld, innerY: outerInnerY },
+  textureWorldSize: CONFIG.terrain.size,
+});
+ok("outer world is exactly one visual mesh",
+  outerWorld.stats.meshes === 1 && outerWorld.group.children.length === 1,
+  JSON.stringify(outerWorld.stats));
+ok("outer world stays out of the shadow pass",
+  outerWorld.mesh.castShadow === false && outerWorld.mesh.receiveShadow === false);
+ok("outer world extends well beyond the playable terrain",
+  CONFIG.outerWorld.outerRadius >= CONFIG.terrain.size / 2 + 15,
+  `outer=${CONFIG.outerWorld.outerRadius} playableHalf=${CONFIG.terrain.size / 2}`);
+ok("outer world keeps a small geometry budget",
+  outerWorld.stats.triangles === CONFIG.outerWorld.segments * CONFIG.outerWorld.rings * 2 && outerWorld.stats.triangles <= 1600,
+  `triangles=${outerWorld.stats.triangles}`);
+const outerPosition = outerWorld.mesh.geometry.getAttribute("position");
+const outerColor = outerWorld.mesh.geometry.getAttribute("color");
+const outerUv = outerWorld.mesh.geometry.getAttribute("uv");
+ok("outer world position/color/uv counts stay aligned",
+  outerPosition.count === outerColor.count && outerPosition.count === outerUv.count);
+ok("outer world seam begins just under the gameplay ridge",
+  near(outerPosition.array[1], outerInnerY, 1e-5),
+  `firstY=${outerPosition.array[1]} expected=${outerInnerY}`);
+const last = outerPosition.array.length - 3;
+const lastRadius = Math.hypot(outerPosition.array[last], outerPosition.array[last + 2]);
+ok("outer world outer ring reaches configured radius and height",
+  near(lastRadius, CONFIG.outerWorld.outerRadius, 0.01) && near(outerPosition.array[last + 1], CONFIG.outerWorld.outerY, 0.01),
+  `radius=${lastRadius} y=${outerPosition.array[last + 1]}`);
+outerWorld.dispose();
+ok("outer world disposes geometry and material",
+  outerWorld.mesh.geometry.disposed && outerWorld.mesh.material.disposed);
+const disabledOuter = createOuterWorldGround({ config: { enabled: false } });
+ok("outer world can be disabled without gameplay side effects",
+  disabledOuter.group.children.length === 0 && disabledOuter.stats.meshes === 0);
 
 // Mountain Backdrop V1 is visual-only and deliberately much cheaper than a
 // second terrain world. It should stay exactly two merged meshes regardless of

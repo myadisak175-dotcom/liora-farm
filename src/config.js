@@ -97,6 +97,26 @@ export const CONFIG = Object.freeze({
     noiseSeed: 91,
   },
   /**
+   * Visual-only land that starts underneath the outer ridge and carries the
+   * eye into the mountain backdrop. Gameplay terrain remains 56 m wide; this
+   * mesh is not walkable, sculptable, paintable, buildable or persisted.
+   */
+  outerWorld: {
+    enabled: true,
+    innerRadius: 25.5,
+    outerRadius: 47,
+    innerYOffset: -0.08,
+    outerY: 2.4,
+    heightVariation: 1.7,
+    segments: 72,
+    rings: 9,
+    noiseSeed: 37,
+    colorNear: 0xffffff,
+    colorMid: 0xe5edcc,
+    colorFar: 0xc1ccb0,
+    renderOrder: -8,
+  },
+  /**
    * Visual horizon closure behind the physical ridge. Mountain chunks are
    * merged into exactly two meshes (near + far), never collide, never save,
    * and never enter the shadow pass. `height` on each chunk is its world-space
