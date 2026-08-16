@@ -1,10 +1,16 @@
+const MAP_SCHEMA_VERSION = 2;
+
 export function createLayoutRuntime({
   builder,
   builderView,
   layoutStore,
   world,
   defaultMapUrl,
+  mapId = "home-island",
+  mapName = "",
   getUI = () => null,
+  getHorizon = () => null,
+  onHorizon = () => {},
   onToast = () => {},
   onCollidersChange = () => {},
   onTerrainSync = () => {},
@@ -64,6 +70,11 @@ export function createLayoutRuntime({
       builder.load();
     }
 
+    // The horizon travels with the map even when the objects came from the
+    // player's own save: the sky is a property of the world, not of what they
+    // have built in it, so a returning player still gets this map's sky.
+    await applyAuthoredHorizon();
+
     await spawnAll();
     const report = builder.loadReport;
     if (report?.dropped) {
@@ -72,6 +83,20 @@ export function createLayoutRuntime({
     if (report?.storeIssue?.kind === "version-mismatch") {
       getUI()?.warn(`แผนที่เดิมคนละเวอร์ชัน — สำรองไว้ที่ ${layoutStore.backupKey}`);
       onToast("แผนที่เดิมคนละเวอร์ชัน สำรองไว้แล้ว");
+    }
+  }
+
+  /**
+   * Reads just the horizon block out of the map file. Deliberately a separate
+   * fetch path from `load`, because the objects may come from localStorage
+   * while the horizon still has to come from the file.
+   */
+  async function applyAuthoredHorizon() {
+    try {
+      const map = await fetchDefaultMap();
+      onHorizon(map?.horizon ?? null);
+    } catch {
+      onHorizon(null);
     }
   }
 
@@ -91,9 +116,14 @@ export function createLayoutRuntime({
 
   function exportMap(items) {
     const payload = {
-      version: 1,
-      mapId: "home-island",
+      version: MAP_SCHEMA_VERSION,
+      mapId,
+      name: mapName || mapId,
       savedAt: new Date().toISOString(),
+      // A world is one file: sky, ground shape, ground surface and objects.
+      // Splitting the horizon out into config.js is what made a second map
+      // impossible to author without editing source.
+      horizon: getHorizon() ?? {},
       objects: items.map(({ id, assetId, x, z, rotation, scale }) => ({
         id,
         assetId,
@@ -110,7 +140,7 @@ export function createLayoutRuntime({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "home-island.json";
+    link.download = `${mapId}.json`;
     document.body.append(link);
     link.click();
     link.remove();
@@ -122,5 +152,6 @@ export function createLayoutRuntime({
     reset,
     exportMap,
     spawnAll,
+    applyAuthoredHorizon,
   };
 }

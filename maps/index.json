@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "default": "home-island",
+  "maps": [
+    {
+      "id": "home-island",
+      "name": "เกาะบ้าน",
+      "file": "./maps/home-island.json"
+    },
+    {
+      "id": "blank-valley",
+      "name": "หุบเขาว่าง",
+      "file": "./maps/blank-valley.json"
+    },
+    {
+      "id": "blank-coast",
+      "name": "ชายทะเลว่าง",
+      "file": "./maps/blank-coast.json"
+    }
+  ]
+}
