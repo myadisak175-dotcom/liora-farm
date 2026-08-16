@@ -1,3 +1,5 @@
+import { createPlayerWaterInteraction } from "./player-water.js";
+
 export function createPlayerRuntime({
   player,
   movement,
@@ -6,10 +8,19 @@ export function createPlayerRuntime({
   config,
   runFx,
   contactShadow,
-  waterInteraction,
+  waterInteraction = null,
   dayNight,
   lighting,
 }) {
+  // The player is already parented to the world scene before this runtime is
+  // created. Keeping the visual water helper here avoids adding more bootstrap
+  // ownership to main.js while still making it easy to inject a test double.
+  const playerWater = waterInteraction ?? createPlayerWaterInteraction({
+    scene: player?.root?.parent ?? null,
+    player,
+    config: config.water,
+  });
+
   function playSpecial(animationName, onDone) {
     if (!player) return false;
     return player.playSpecial(animationName, onDone);
@@ -43,7 +54,7 @@ export function createPlayerRuntime({
       depth: state.waterDepth,
       level: config.water.level,
     });
-    waterInteraction?.update({
+    playerWater.update({
       position: player.root.position,
       moving: state.moving,
       depth: state.waterDepth,
@@ -71,6 +82,9 @@ export function createPlayerRuntime({
   return {
     update,
     playSpecial,
+    get water() {
+      return playerWater;
+    },
     get position() {
       return player?.root?.position ?? null;
     },
