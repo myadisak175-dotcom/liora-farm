@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-2-detail";
+export const BUILD = "worlds-2-floating-island-b-lite";
 
 export const CONFIG = Object.freeze({
   /**
@@ -40,17 +40,7 @@ export const CONFIG = Object.freeze({
   },
   depth: { playerOrder: 10 },
   shadows: { mapSize: QUALITY.shadowMapSize, bounds: QUALITY.preset.shadowBounds, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2, minCasterHeight: 0.9 },
-  /**
-   * Direct-versus-ambient balance, on top of the per-hour palette in
-   * day-night.js. 1.0 means "use the authored ratio"; these exist so the
-   * amount of shape in the scene is a dial rather than an edit.
-   */
   lighting: { sunScale: 1, hemiScale: 1 },
-  /**
-   * Blob shadows for builder objects that sit outside the real shadow map.
-   * See object-shadows.js for why this is one instanced mesh and not a second
-   * shadow cascade.
-   */
   objectShadows: { enabled: true, opacity: 0.34, radiusScale: 1.15, maxRadius: 6, lift: 0.02, capacityStep: 64, renderOrder: 3 },
   contactShadow: {
     width: 0.72, depth: 0.4, y: 0.022, opacity: 0.31, nightOpacity: 0.38,
@@ -60,8 +50,6 @@ export const CONFIG = Object.freeze({
   island: { size: 80, cliffDepth: 5.5, bottomInset: 5.5, bottomThickness: 1.8, cliffColor: 0x6f5a47, bottomColor: 0x4f4338, skyColor: 0x9bd8f5 },
   terrain: {
     size: 80, spacing: 0.5, renderOrder: 0,
-    // One generic micro-normal tile, not one normal texture per paint layer.
-    // The quality preset can remove the sampler entirely on low-end devices.
     detailNormal: { enabled: true, size: 128, repeat: 42, strength: 0.24, heightScale: 3.2, seed: 29 },
   },
   water: {
@@ -107,30 +95,12 @@ export const CONFIG = Object.freeze({
     rings: 18,
     noiseSeed: 37,
     colorNear: 0xffffff,
-    // Was 0xdfe8c6 / 0xb4c6c0 — a yellow-beige that read as a different
-    // biome the moment it met the green farm. These sit much closer to the
-    // grass hue; distance colour is now the job of skyBlend below.
     colorMid: 0xdfe6cd,
     colorFar: 0xc6d3c8,
-    // How far past the farm edge the outer world stays visually identical to
-    // the gameplay terrain. 24 m was barely one camera-width at this zoom, so
-    // the change of tint still landed inside the frame.
     edgeBlendWidth: 40,
-    // Multiplier over the anti-banding caps in outer-world-ground.js. >1 keeps
-    // the grass tile alive further out instead of dropping to flat vertex
-    // colour just past the seam.
     textureFadeReach: 1.45,
     textureFadeStart: 80,
     textureFadeEnd: 150,
-    /**
-     * Aerial perspective for the ground only.
-     *
-     * Scene fog cannot do this job here: the horizon rules deliberately keep
-     * fog.near beyond the farm so the playable area stays crisp. This blends
-     * the DISTANT ground toward the live sky-horizon colour instead, so the
-     * far field dissolves into the sky at every hour of the day — including
-     * sunset and night, where a hardcoded beige used to glow wrongly.
-     */
     skyBlendStrength: 0.72,
     skyBlendStart: 120,
     skyBlendEnd: 460,
@@ -138,9 +108,6 @@ export const CONFIG = Object.freeze({
   },
   mountainBackdrop: {
     enabled: true,
-    // How far each ridge band is tinted toward the live sky colour. Bands at
-    // different depths get different amounts, which is what separates them
-    // into distances instead of one flat cutout.
     hazeStrength: 0.45,
     castShadow: false,
     receiveShadow: false,
@@ -210,13 +177,30 @@ export const CONFIG = Object.freeze({
       color: 0xeaf6ff, opacity: 0.26, seed: 4242, driftSpeed: 0.0016,
     },
     floatingIslands: {
-      enabled: true,
+      enabled: false,
       bobAmplitude: 1.1,
       bobSpeed: 0.45,
       items: [
         { angle: 0.72, radius: 288, y: 58, scale: 9.5, phase: 0.2 },
         { angle: 2.82, radius: 326, y: 78, scale: 7.2, phase: 2.0 },
         { angle: 4.72, radius: 302, y: 48, scale: 8.4, phase: 4.1 },
+      ],
+    },
+    floatingIslandBackdrop: {
+      enabled: true,
+      items: [
+        { role: "hero", angle: 3.95, radius: 250, y: 72, scale: 14, rotationY: -0.75,
+          bobAmplitude: 0.75, bobSpeed: 0.22, swayAmplitude: 0.022, swaySpeed: 0.11,
+          yawAmplitude: 0.05, yawSpeed: 0.07, phase: 0.0 },
+        { role: "support", angle: 3.38, radius: 304, y: 86, scale: 6.8, rotationY: 0.55,
+          bobAmplitude: 0.55, bobSpeed: 0.18, swayAmplitude: 0.018, swaySpeed: 0.09,
+          yawAmplitude: 0.04, yawSpeed: 0.05, phase: 1.7 },
+        { role: "support", angle: 4.42, radius: 322, y: 64, scale: 5.9, rotationY: -1.15,
+          bobAmplitude: 0.48, bobSpeed: 0.2, swayAmplitude: 0.016, swaySpeed: 0.1,
+          yawAmplitude: 0.035, yawSpeed: 0.06, phase: 3.2 },
+        { role: "support", angle: 2.88, radius: 282, y: 58, scale: 4.9, rotationY: 1.1,
+          bobAmplitude: 0.42, bobSpeed: 0.17, swayAmplitude: 0.014, swaySpeed: 0.08,
+          yawAmplitude: 0.03, yawSpeed: 0.05, phase: 4.6 },
       ],
     },
   },
@@ -227,10 +211,6 @@ export const CONFIG = Object.freeze({
     noiseScale: 0.22, noiseOctaves: 4, noiseAmplitude: 0.72, noiseSeed: 17,
     erosionIterations: 8, erosionTalus: 0.28, erosionRate: 0.24,
     undoLimit: 40, storageKey: "liora.terrain-height.v1",
-    // Baked ambient occlusion, computed from this height field while sculpting
-    // and stored in the terrain's vertex colour. aoContrast is the slope at
-    // which a dip counts as fully enclosed — lower means the shading reacts to
-    // gentler ground.
     aoStrength: 0.55, aoContrast: 0.42,
   },
   brushCursor: {
@@ -266,8 +246,6 @@ export const CONFIG = Object.freeze({
   },
   builder: {
     storageKey: "liora.island-layout.v1", defaultMap: "./maps/home-island.json",
-    // The registry the map picker reads. A map's own file is named by the
-    // registry entry, not by this constant, so adding a world is a JSON edit.
     mapIndex: "./maps/index.json",
     ghostOpacity: 0.55, selectionColor: 0x7ce0ff, saveDebounceMs: 250,
     gridSize: 0.5, snapDefault: false, historyLimit: 50,
@@ -289,12 +267,6 @@ export const CONFIG = Object.freeze({
     waterHeightJitter: 0.035, waterBackwardDrift: 0.2, waterSideDrift: 0.5,
     waterRiseSpeed: 0.55, waterRiseJitter: 0.25, renderOrder: 6,
   },
-  /**
-   * Drifting cloud shadows. The cheapest way to tell the eye how large the
-   * field is: one sun over open ground lights everything evenly, which reads
-   * as flat no matter how good the terrain is. Drifts with CONFIG.wind so the
-   * sky and the trees agree about which way the weather is going.
-   */
   cloudShadows: {
     enabled: true,
     strength: 0.3,
@@ -323,6 +295,7 @@ export const ASSETS = Object.freeze({
   textureDir: TEXTURE_DIR,
   player: "./assets/models/player/liora_all_animations_web.glb",
   modelDir: MODEL_DIR,
+  floatingIslandHero: "./assets/models/background/floating_island_hero.glb?v=floating-island-b-lite",
 });
 export const ANIMATIONS = Object.freeze({
   idle: "Idle_9", walk: "Walking", run: "Running", pickUp: "Male_Bend_Over_Pick_Up",
