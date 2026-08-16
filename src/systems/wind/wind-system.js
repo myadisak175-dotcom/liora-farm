@@ -13,6 +13,39 @@ function clamp01(value) {
   return Math.min(1, Math.max(0, Number(value) || 0));
 }
 
+// Nature V2 is intentionally matte/cozy rather than glossy PBR foliage. These
+// are floors/ceilings, not replacements: already-matte authored materials keep
+// their original values, while unexpectedly shiny materials are softened.
+const NATURE_SURFACE = Object.freeze({
+  roughnessMin: 0.82,
+  metalnessMax: 0.03,
+  envMapIntensityMax: 0.35,
+});
+
+function softenNatureSurface(material) {
+  if (!material) return material;
+
+  if (Number.isFinite(material.roughness)) {
+    material.roughness = Math.max(material.roughness, NATURE_SURFACE.roughnessMin);
+  }
+  if (Number.isFinite(material.metalness)) {
+    material.metalness = Math.min(material.metalness, NATURE_SURFACE.metalnessMax);
+  }
+  if (Number.isFinite(material.envMapIntensity)) {
+    material.envMapIntensity = Math.min(
+      material.envMapIntensity,
+      NATURE_SURFACE.envMapIntensityMax
+    );
+  }
+
+  material.userData = {
+    ...material.userData,
+    lioraNatureSurface: true,
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
 /**
  * Ambient shader wind. This system owns only shared shader uniforms and visual
  * material preparation. It never mutates Object3D transforms, builder items,
@@ -22,6 +55,10 @@ function clamp01(value) {
  * not allocate another material per plant or add another draw call. Wind can be
  * disabled while the palette stays active: in that case wind strength is zero
  * and only the fragment colour grade remains.
+ *
+ * The Nature V2 surface pass also runs on that same shared material. It only
+ * softens PBR response (roughness/metalness/environment intensity), so house,
+ * terrain, water and gameplay lighting remain unchanged.
  */
 export function createWindSystem({ config = {}, quality = {} } = {}) {
   const enabled = config.enabled !== false;
@@ -102,6 +139,8 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
             bounds,
           }) ?? material;
 
+          softenNatureSurface(patched);
+
           if (key !== null && patched.userData?.lioraWind) sharedMaterials.set(key, patched);
           return patched;
         });
@@ -114,8 +153,8 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
           attachedMeshes += 1;
         }
       } catch (error) {
-        // Wind and palette grading are decorative. A shader/material problem
-        // must never stop a Builder object from loading or becoming collidable.
+        // Wind, palette grading and surface tuning are decorative. A material
+        // problem must never stop a Builder object loading or becoming collidable.
         failedMeshes += 1;
         console.warn(`Visual material effects skipped mesh "${node.name || "unnamed"}"`, error);
       }
