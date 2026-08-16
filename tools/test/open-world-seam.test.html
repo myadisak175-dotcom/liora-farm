@@ -24,17 +24,17 @@ const geometry=buildOuterWorldGeometry(
   CONFIG.terrain.size
 );
 const position=geometry.getAttribute("position");
+const p=position.array;
 const segments=CONFIG.outerWorld.segments;
 const row=segments+1;
 const innerHalf=CONFIG.outerWorld.innerRadius;
+const xyz=(i)=>[p[i*3],p[i*3+1],p[i*3+2]];
 
 let worstSquareError=0;
 let maxInnerRadius=0;
 let minInnerRadius=Infinity;
 for(let i=0;i<row;i+=1){
-  const x=position.getX(i);
-  const y=position.getY(i);
-  const z=position.getZ(i);
+  const [x,y,z]=xyz(i);
   const square=Math.max(Math.abs(x),Math.abs(z));
   worstSquareError=Math.max(worstSquareError,Math.abs(square-innerHalf));
   const radius=Math.hypot(x,z);
@@ -50,8 +50,8 @@ ok("square seam reaches corners instead of cutting them with a circle",
   maxInnerRadius > innerHalf * 1.39 && minInnerRadius <= innerHalf + 0.02,
   `minRadius=${minInnerRadius} maxRadius=${maxInnerRadius}`);
 
-const firstX=position.getX(0), firstY=position.getY(0), firstZ=position.getZ(0);
-const closeX=position.getX(segments), closeY=position.getY(segments), closeZ=position.getZ(segments);
+const [firstX,firstY,firstZ]=xyz(0);
+const [closeX,closeY,closeZ]=xyz(segments);
 ok("inner seam closes without a crack",
   near(firstX,closeX,1e-4)&&near(firstY,closeY,1e-5)&&near(firstZ,closeZ,1e-4),
   `first=${firstX},${firstY},${firstZ} close=${closeX},${closeY},${closeZ}`);
@@ -59,7 +59,8 @@ ok("inner seam closes without a crack",
 const outerStart=CONFIG.outerWorld.rings*row;
 let worstOuterRadiusError=0;
 for(let i=outerStart;i<outerStart+row;i+=1){
-  const radius=Math.hypot(position.getX(i),position.getZ(i));
+  const [x,,z]=xyz(i);
+  const radius=Math.hypot(x,z);
   worstOuterRadiusError=Math.max(worstOuterRadiusError,Math.abs(radius-CONFIG.outerWorld.outerRadius));
 }
 ok("outer horizon remains circular at configured radius",
