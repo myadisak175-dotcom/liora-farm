@@ -21,21 +21,15 @@ export const CONFIG = Object.freeze({
   maxWalkSlope: 0.75,
   animationSpeed: { idle: 1, walk: 0.9, run: 1 },
   camera: {
-    fov: 38, near: 0.1, far: 150,
+    fov: 38, near: 0.35, far: 780,
     baseOffset: new THREE.Vector3(8, 10, 10),
     minZoom: 0.65, maxZoom: 1.55, zoomStep: 0.12,
     orbitSensitivity: 0.006, pitchSensitivity: 0.0045,
-    minPitch: THREE.MathUtils.degToRad(28), maxPitch: THREE.MathUtils.degToRad(55),
+    minPitch: THREE.MathUtils.degToRad(14), maxPitch: THREE.MathUtils.degToRad(55),
     followDeadZone: 0.55, followSharpness: 3.2, positionSharpness: 5.5,
     panLimit: 40, twoFingerRotateSensitivity: 0.005,
   },
   depth: { playerOrder: 10 },
-  // `minCasterHeight`: the sun's shadow camera already covers only 24 x 24 m
-  // around the player, but everything inside that box is drawn a second time
-  // into the depth pass. Under a top-down camera a 0.4 m grass clump casts a
-  // shadow a few texels wide that nobody can see, and ground cover is exactly
-  // what gets placed in the hundreds — so anything shorter than this casts
-  // nothing. Solid props (crates, barrels) stay above the line on purpose.
   shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2, minCasterHeight: 0.9 },
   contactShadow: {
     width: 0.72, depth: 0.4, y: 0.022, opacity: 0.31, nightOpacity: 0.38,
@@ -75,78 +69,80 @@ export const CONFIG = Object.freeze({
     maxDepth: 3.5, rockSlope: 0.6, rockFeather: 0.12, sandFeather: 0.18,
     sandLayerId: 1, rockLayerId: 2, enabledByDefault: true,
   },
-  /**
-   * Home Farm now uses an open 80 m terrain instead of a 360-degree generated
-   * ridge. `worldLimit` remains a safety backstop 2 m inside the terrain edge;
-   * selective forests, rocks, water and other natural boundaries can be added
-   * later without enclosing the whole map in one mountain ring.
-   */
   worldBoundary: {
     enabled: false,
     type: "none",
   },
   /**
-   * Visual-only land that overlaps the edge of the 80 m gameplay terrain and
-   * carries the eye far into the horizon. This does not expand collision,
-   * sculpting, painting, Builder placement, farming or save data.
+   * Open Horizon V1: visual-only land extends far beyond gameplay. The inner
+   * square seam remains tucked under the real 80 m terrain, while the outer rim
+   * sits beyond full fog so the player never sees a hard end-of-world line.
    */
   outerWorld: {
     enabled: true,
     innerRadius: 38.5,
-    outerRadius: 82,
+    outerRadius: 600,
     innerYOffset: -0.08,
-    outerY: 0.6,
-    heightVariation: 2.2,
-    segments: 80,
-    rings: 10,
+    outerY: 6,
+    heightVariation: 3.2,
+    segments: 112,
+    rings: 18,
     noiseSeed: 37,
     colorNear: 0xffffff,
-    colorMid: 0xe5edcc,
-    colorFar: 0xc7d2b8,
+    colorMid: 0xdfe8c6,
+    colorFar: 0xb4c6c0,
     renderOrder: -8,
   },
   /**
-   * Sparse scenic mountains only. The close 360-degree mountain ring is gone:
-   * there is no near layer, and the remaining far chunks sit beyond the visual
-   * ground with wide open gaps between them so Home Farm reads as an open world
-   * rather than a valley enclosed on every side.
+   * Two visual-only mountain bands with wide gaps. They are deliberately far
+   * outside the 38 m gameplay limit and stay out of collision and shadow passes.
    */
   mountainBackdrop: {
     enabled: true,
     castShadow: false,
     receiveShadow: false,
     near: {
-      innerRadius: 86,
-      outerRadius: 94,
-      baseY: -5,
-      peakMin: 6.5,
-      peakMax: 9,
-      shoulderRatio: 0.64,
-      depthJitter: 2,
-      colorLow: 0x7b8b67,
-      colorMid: 0x849176,
-      colorPeak: 0x8e9789,
-      chunks: [],
+      innerRadius: 166,
+      outerRadius: 196,
+      baseY: -16,
+      shoulderRatio: 0.6,
+      depthJitter: 5,
+      crestSegments: 9,
+      crestRoughness: 0.3,
+      colorLow: 0x6d8360,
+      colorMid: 0x7d8f72,
+      colorPeak: 0x93a08d,
+      chunks: [
+        { angle: 12, radius: 172, span: 26, height: 15 },
+        { angle: 48, radius: 191, span: 22, height: 13.5 },
+        { angle: 88, radius: 168, span: 24, height: 16 },
+        { angle: 141, radius: 187, span: 21, height: 14 },
+        { angle: 196, radius: 170, span: 26, height: 16.5 },
+        { angle: 237, radius: 194, span: 22, height: 14.5 },
+        { angle: 281, radius: 167, span: 23, height: 15.5 },
+        { angle: 328, radius: 184, span: 22, height: 13.5 },
+      ],
     },
     far: {
-      innerRadius: 92,
-      outerRadius: 114,
-      baseY: -7,
-      peakMin: 9.5,
-      peakMax: 14,
-      shoulderRatio: 0.68,
-      depthJitter: 3,
-      colorLow: 0x81929c,
-      colorMid: 0x8e9da5,
-      colorPeak: 0xa4afb4,
+      innerRadius: 252,
+      outerRadius: 298,
+      baseY: -22,
+      shoulderRatio: 0.66,
+      depthJitter: 9,
+      crestSegments: 11,
+      crestRoughness: 0.34,
+      colorLow: 0x7e8f9e,
+      colorMid: 0x8d9dab,
+      colorPeak: 0xa8b3bd,
       chunks: [
-        { angle: 18, radius: 98, span: 24, height: 12 },
-        { angle: 54, radius: 103, span: 22, height: 13.6 },
-        { angle: 96, radius: 96, span: 20, height: 11.2 },
-        { angle: 214, radius: 101, span: 24, height: 12.7 },
-        { angle: 258, radius: 108, span: 22, height: 14 },
-        { angle: 308, radius: 99, span: 21, height: 11.7 },
-        { angle: 346, radius: 104, span: 23, height: 13.1 },
+        { angle: 26, radius: 268, span: 30, height: 21 },
+        { angle: 70, radius: 291, span: 26, height: 18.5 },
+        { angle: 112, radius: 256, span: 28, height: 22 },
+        { angle: 158, radius: 284, span: 24, height: 19.5 },
+        { angle: 205, radius: 261, span: 30, height: 21.5 },
+        { angle: 249, radius: 295, span: 26, height: 20 },
+        { angle: 296, radius: 254, span: 27, height: 23 },
+        { angle: 344, radius: 287, span: 25, height: 19 },
       ],
     },
   },
@@ -195,9 +191,10 @@ export const CONFIG = Object.freeze({
     gridSize: 0.5, snapDefault: false, historyLimit: 50,
   },
   sky: {
-    radius: 135, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
-    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 10, cloudRingRadius: 52,
-    cloudHeight: 11, starCount: 220, starSize: 0.32, starOpacity: 0.9,
+    radius: 700, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
+    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 18, cloudRingRadius: 300,
+    cloudHeight: 132, cloudSpread: 52, cloudScale: 12,
+    starCount: 220, starSize: 0.95, starOpacity: 0.9,
   },
   dayNight: { startHour: 8, realSecondsPerDay: 1440 },
   runFx: {
@@ -216,11 +213,9 @@ export const CONFIG = Object.freeze({
     strength: 0.55,
     speed: 0.75,
     gust: { strength: 0.3, speed: 0.18, scale: 0.07 },
-    // One visual tuning knob for the green parts of wind-enabled Nature assets.
-    // 0 = authored colour. 0.28 ~= 28% less green saturation + a subtle warm bias.
     naturePalette: { enabled: true, strength: 0.28 },
   },
-  fog: { near: 68, far: 138 },
+  fog: { near: 88, far: 460 },
 });
 
 const MODEL_DIR = "./assets/models/builder";
