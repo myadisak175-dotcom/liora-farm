@@ -126,7 +126,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
           const cached = key === null ? null : sharedMaterials.get(key);
           if (cached) return cached;
 
-          const patched = applyWindToMaterial({
+          const decorated = applyWindToMaterial({
             material,
             geometry: node.geometry,
             mesh: node,
@@ -137,8 +137,12 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
             shared: key !== null,
             up,
             bounds,
-          }) ?? material;
+          });
 
+          // A geometry with unusable bounds can skip the shader decorator. The
+          // matte surface treatment should still work, but never by mutating the
+          // GLB cache's source material for a placed object.
+          const patched = decorated ?? (preview ? material : material.clone());
           softenNatureSurface(patched);
 
           if (key !== null && patched.userData?.lioraWind) sharedMaterials.set(key, patched);
