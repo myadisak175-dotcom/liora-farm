@@ -79,7 +79,13 @@ const lighting = setupLighting(scene, renderer, CONFIG.shadows);
 const sky = createSky(CONFIG.sky, CONFIG.distantRange);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
-const dayNight = createDayNight({ scene, sky, lighting, config: CONFIG.dayNight, onLabelChange: (label) => { clockButton.textContent = label; } });
+const dayNight = createDayNight({
+  scene,
+  sky,
+  lighting,
+  config: CONFIG.dayNight,
+  onLabelChange: (label) => { clockButton.textContent = label; },
+});
 clockButton.onclick = () => dayNight.nextPreset();
 const input = createInput();
 const cameraController = createCameraController(camera, CONFIG.camera, renderer.domElement);
@@ -125,7 +131,9 @@ const builder = createBuilderController({
   onLayoutChange: () => { colliders = builder.getColliders(); },
   onItemsRestored: () => { colliders = builder.getColliders(); },
 });
-const syncBuilderToTerrain = () => { for (const item of builder.items) builderView.update(item); };
+const syncBuilderToTerrain = () => {
+  for (const item of builder.items) builderView.update(item);
+};
 const layoutRuntime = createLayoutRuntime({
   builder,
   builderView,
@@ -153,7 +161,6 @@ builderUI = createBuilderUI({
   onExport: layoutRuntime.exportMap,
   onResetLayout: layoutRuntime.reset,
   onTerrainChange: syncBuilderToTerrain,
-  getHorizonActions: () => horizonPanel?.actions ?? [],
 });
 horizonPanel = createHorizonControls({
   config: CONFIG,
@@ -162,8 +169,8 @@ horizonPanel = createHorizonControls({
   world,
   cameraController,
   container: document.querySelector("#horizon-strip"),
+  surface: renderer.domElement,
   onToast: toast,
-  onActionsChange: () => builderUI?.render(),
 });
 createSculptControls({
   height: world.height,
@@ -192,10 +199,31 @@ try {
   setStatus("โหลดตัวละครไม่สำเร็จ — เช็ค assets/models/player/");
 }
 
-const playerRuntime = createPlayerRuntime({ player, movement, input, animations: ANIMATIONS, config: CONFIG, runFx, contactShadow, dayNight, lighting });
+const playerRuntime = createPlayerRuntime({
+  player,
+  movement,
+  input,
+  animations: ANIMATIONS,
+  config: CONFIG,
+  runFx,
+  contactShadow,
+  dayNight,
+  lighting,
+});
 const farmButton = document.querySelector('[data-action="farm"]');
-farmUI = createFarmUI({ crops: world.crops, playerRuntime, button: farmButton, pouchCount, animations: ANIMATIONS, onToast: toast });
-bindPlayerActionButtons({ buttons: document.querySelectorAll("[data-action]"), animations: ANIMATIONS, playSpecial: playerRuntime.playSpecial });
+farmUI = createFarmUI({
+  crops: world.crops,
+  playerRuntime,
+  button: farmButton,
+  pouchCount,
+  animations: ANIMATIONS,
+  onToast: toast,
+});
+bindPlayerActionButtons({
+  buttons: document.querySelectorAll("[data-action]"),
+  animations: ANIMATIONS,
+  playSpecial: playerRuntime.playSpecial,
+});
 
 let mode = null;
 const modeButtons = document.querySelectorAll("#mode-bar [data-mode]");
@@ -209,7 +237,9 @@ function setMode(next) {
   cameraController.setOrbitEnabled(!buildMode);
   if (!buildMode) cameraController.clearPan();
   builderUI.show(buildMode);
-  for (const button of modeButtons) button.classList.toggle("active", button.dataset.mode === next);
+  for (const button of modeButtons) {
+    button.classList.toggle("active", button.dataset.mode === next);
+  }
 }
 for (const button of modeButtons) button.onclick = () => setMode(button.dataset.mode);
 
@@ -219,7 +249,9 @@ function flushPersistentState() {
   world.paint.flushSave();
 }
 addEventListener("pagehide", flushPersistentState);
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushPersistentState(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPersistentState();
+});
 
 function reportRescuedSaves() {
   const rescued = [
@@ -233,7 +265,13 @@ function reportRescuedSaves() {
   builderUI?.warn(`อ่านข้อมูลเดิมไม่ได้: ${names} — สำรองไว้ ยังไม่ได้ลบทิ้ง`);
 }
 
-const perfHud = createPerfHud({ renderer, enabled: isPerfHudEnabled(), getObjectCount: () => builder.items.length, build: BUILD });
+const perfHud = createPerfHud({
+  renderer,
+  enabled: isPerfHudEnabled(),
+  getObjectCount: () => builder.items.length,
+  build: BUILD,
+});
+
 const clock = new THREE.Clock();
 const cameraTarget = new THREE.Vector3(0, 0.7, 5);
 function animate() {
