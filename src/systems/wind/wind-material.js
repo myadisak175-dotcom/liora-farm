@@ -128,7 +128,14 @@ export function applyWindToMaterial({
     patchShader(shader, uniforms, { ...bounds, ...weights });
   };
   target.customProgramCacheKey = () => `${previousCacheKey?.() ?? ""}|liora-wind-v1`;
-  target.userData = { ...target.userData, lioraWind: true, lioraWindProfile: profileName, lioraWindPart: part };
+  target.userData = {
+    ...target.userData,
+    lioraWind: true,
+    lioraWindProfile: profileName,
+    lioraWindPart: part,
+    preserveShaderHooksOnClone: true,
+    disposeWithBuilderView: clone || Boolean(target.userData?.disposeWithBuilderView),
+  };
   target.needsUpdate = true;
   return target;
 }
