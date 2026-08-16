@@ -13,6 +13,17 @@ function clamp01(value) {
   return Math.min(1, Math.max(0, Number(value) || 0));
 }
 
+// The shadow pass should read as the same breeze, not as a second animation.
+// Keep one clock/direction/gust source, slow that source very slightly for both
+// colour and depth, then attenuate only the depth displacement. This makes the
+// projected canopy calmer without adding another oscillator, material pass or
+// shadow caster. Config can override the defaults later without changing code.
+const NATURAL_MOTION_DEFAULTS = Object.freeze({
+  speedScale: 0.9,
+  gustSpeedScale: 0.9,
+  shadowStrength: 0.84,
+});
+
 // Nature V2 is intentionally matte/cozy rather than glossy PBR foliage. These
 // are floors/ceilings, not replacements: already-matte authored materials keep
 // their original values, while unexpectedly shiny materials are softened.
@@ -49,7 +60,7 @@ function softenNatureSurface(material) {
 /**
  * Builds a depth-only material that keeps the authored alpha cutout. The same
  * wind decorator is then applied to its vertex shader, so the directional
- * shadow pass sees the exact displaced silhouette the colour pass sees.
+ * shadow pass follows the displaced foliage silhouette.
  */
 function createDepthSource(material) {
   if (!material || Array.isArray(material)) return null;
@@ -86,21 +97,39 @@ function createDepthSource(material) {
 export function createWindSystem({ config = {}, quality = {} } = {}) {
   const enabled = config.enabled !== false;
   const gust = config.gust ?? {};
+  const motion = config.motion ?? {};
   const paletteConfig = config.naturePalette ?? {};
   const paletteStrength = paletteConfig.enabled === false
     ? 0
     : clamp01(paletteConfig.strength ?? 0);
   const visualEnabled = enabled || paletteStrength > 0;
 
+  const speedScale = Math.max(0, Number(motion.speedScale ?? NATURAL_MOTION_DEFAULTS.speedScale) || 0);
+  const gustSpeedScale = Math.max(
+    0,
+    Number(motion.gustSpeedScale ?? NATURAL_MOTION_DEFAULTS.gustSpeedScale) || 0
+  );
+  const shadowStrength = clamp01(
+    motion.shadowStrength ?? NATURAL_MOTION_DEFAULTS.shadowStrength
+  );
+
   const uniforms = {
     time: { value: 0 },
     direction: { value: normalizedDirection(config.direction) },
     strength: { value: enabled ? Number(config.strength ?? 0.55) : 0 },
-    speed: { value: Number(config.speed ?? 0.75) },
+    speed: { value: Number(config.speed ?? 0.75) * speedScale },
     gustStrength: { value: Number(gust.strength ?? 0.3) },
-    gustSpeed: { value: Number(gust.speed ?? 0.18) },
+    gustSpeed: { value: Number(gust.speed ?? 0.18) * gustSpeedScale },
     gustScale: { value: Number(gust.scale ?? 0.07) },
     paletteStrength: { value: paletteStrength },
+  };
+
+  // A depth material already had one lioraWindStrength uniform. Pointing that
+  // existing slot at a shared attenuated value changes no uniform count and no
+  // render-pass count; it only makes the projected motion less exaggerated.
+  const shadowUniforms = {
+    ...uniforms,
+    strength: { value: uniforms.strength.value * shadowStrength },
   };
 
   let attachedMeshes = 0;
@@ -148,7 +177,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
       geometry: node.geometry,
       mesh: node,
       profileName,
-      uniforms,
+      uniforms: shadowUniforms,
       quality,
       clone: false,
       shared: key !== null,
