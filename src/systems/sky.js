@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { createFantasyHorizon } from "./background/fantasy-horizon.js";
-import { DISTANT_RANGE_CONFIG } from "./background/distant-range-config.js";
 
 /**
  * The cloud layer used to be one THREE.Mesh per puff — roughly 85 separate
@@ -37,6 +36,10 @@ function buildCloudLayer(config) {
     opacity: config.cloudOpacity,
     depthWrite: false,
     depthTest: true,
+    // Clouds sit far above the horizon band, so fog would only wash them out
+    // at exactly the distance that makes them worth having. They are tinted
+    // by the day/night palette instead, which keeps them warm at sunset and
+    // blue at night without ever dissolving.
     fog: false,
   });
 
@@ -84,7 +87,7 @@ function buildCloudLayer(config) {
   return { mesh, geometry, material };
 }
 
-export function createSky(config, distantRangeConfig = DISTANT_RANGE_CONFIG) {
+export function createSky(config, distantRangeConfig = {}) {
   const group = new THREE.Group();
   group.name = "SkySystem";
 
@@ -132,6 +135,7 @@ export function createSky(config, distantRangeConfig = DISTANT_RANGE_CONFIG) {
   dome.renderOrder = -1000;
   group.add(dome);
 
+  // Lightweight star field. Visibility is faded by the day/night system.
   const starCount = config.starCount ?? 220;
   const starPositions = new Float32Array(starCount * 3);
   for (let i = 0; i < starCount; i += 1) {
@@ -161,6 +165,8 @@ export function createSky(config, distantRangeConfig = DISTANT_RANGE_CONFIG) {
   const clouds = buildCloudLayer(config);
   group.add(clouds.mesh);
 
+  // Distant peaks, horizon haze and the optional fantasy islands. World-space
+  // scenery only — it never affects sculpting, collision, saving or the builder.
   const fantasyHorizon = createFantasyHorizon(distantRangeConfig);
   group.add(fantasyHorizon.group);
 
