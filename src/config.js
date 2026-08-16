@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 const IS_TOUCH =
-  typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  typeof matchMedia === "function" && matchMedia("pointer: coarse)").matches;
 
 export const QUALITY = Object.freeze({
   isTouch: IS_TOUCH,
@@ -95,6 +95,26 @@ export const CONFIG = Object.freeze({
     noiseAmplitude: 1.75,
     noiseScale: 0.055,
     noiseSeed: 91,
+  },
+  /**
+   * Visual-only land that starts underneath the outer ridge and carries the
+   * eye into the mountain backdrop. Gameplay terrain remains 56 m wide; this
+   * mesh is not walkable, sculptable, paintable, buildable or persisted.
+   */
+  outerWorld: {
+    enabled: true,
+    innerRadius: 25.5,
+    outerRadius: 47,
+    innerYOffset: -0.08,
+    outerY: 2.4,
+    heightVariation: 1.7,
+    segments: 72,
+    rings: 9,
+    noiseSeed: 37,
+    colorNear: 0xffffff,
+    colorMid: 0xe5edcc,
+    colorFar: 0xc1ccb0,
+    renderOrder: -8,
   },
   /**
    * Visual horizon closure behind the physical ridge. Mountain chunks are
