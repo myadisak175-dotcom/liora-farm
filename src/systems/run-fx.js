@@ -90,15 +90,24 @@ export function createRunFx(scene, config) {
   return {
     update(position, moveDirection, running, delta, waterState = {}) {
       const depth = waterState.depth ?? 0;
-      const moving = Boolean(waterState.moving);
       const inWater = depth > (config.waterMinDepth ?? 0.06);
-      const shouldSpawn = inWater ? moving : running;
-      const interval = inWater ? (config.waterSpawnInterval ?? 0.075) : config.spawnInterval;
+      const shouldSpawn = !inWater && running;
 
-      if (shouldSpawn && moveDirection.lengthSq() > 0.0001) {
+      // Water already has its own ripple/waterline feedback. Reusing the dry
+      // run particle here made wading read like dust or spray following the
+      // player, so entering water clears any lingering run particles and
+      // suppresses this system until the player is back on dry ground.
+      if (inWater) {
+        spawnTimer = 0;
+        for (const particle of particles) {
+          if (!particle.sprite.visible) continue;
+          particle.sprite.visible = false;
+          particle.sprite.material.opacity = 0;
+        }
+      } else if (shouldSpawn && moveDirection.lengthSq() > 0.0001) {
         spawnTimer -= delta;
         if (spawnTimer <= 0) {
-          spawnTimer = interval * (0.82 + Math.random() * 0.36);
+          spawnTimer = config.spawnInterval * (0.82 + Math.random() * 0.36);
           spawn(position, moveDirection, {
             depth,
             level: waterState.level ?? position.y,

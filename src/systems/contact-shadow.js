@@ -40,8 +40,11 @@ function makeShadowMesh(texture, width, depth, opacity, y, renderOrder) {
 }
 
 function waterVisibility(depth, interaction = {}) {
-  const start = Number(interaction.shadowFadeStart ?? 0.04);
-  const end = Math.max(start + 0.01, Number(interaction.shadowFadeEnd ?? 0.28));
+  // Keep a tiny shoreline fade so the shadow does not pop, but once the water
+  // is deep enough to read as wading there should be no fake ground shadow
+  // visible through the surface.
+  const start = Number(interaction.shadowFadeStart ?? 0.015);
+  const end = Math.max(start + 0.01, Number(interaction.shadowFadeEnd ?? 0.06));
   const t = THREE.MathUtils.clamp((Math.max(0, depth) - start) / (end - start), 0, 1);
   return 1 - t;
 }
@@ -86,6 +89,11 @@ export function createContactShadow(scene, config) {
         Number(waterState.depth) || 0,
         waterState.interaction
       );
+      const visible = waterFade > 0.01;
+
+      body.visible = visible;
+      leftFoot.visible = visible;
+      rightFoot.visible = visible;
 
       body.position.set(position.x, groundY + config.y, position.z);
       body.material.opacity = (night ? config.nightOpacity : config.opacity) * waterFade;
