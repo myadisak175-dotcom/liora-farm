@@ -20,6 +20,23 @@ export const CONFIG = Object.freeze({
   runThreshold: 0.78,
   maxWalkSlope: 0.75,
   animationSpeed: { idle: 1, walk: 0.9, run: 1 },
+  /**
+   * `minPitch` is the knob that decides whether this game has a horizon at all.
+   *
+   * At the old 28° the camera looked *down* at 28° with a 19° half-FOV, so the
+   * top edge of the screen sat 9° BELOW horizontal: no matter how good the
+   * distant scenery was, the player could never see the skyline or the sky.
+   * 14° puts the top edge 5° above horizontal, so tilting all the way down
+   * reveals the horizon. `baseOffset` is untouched, so the default camera the
+   * game boots with (38°) is exactly the same as before — the wide view is
+   * opt-in, reached by dragging.
+   *
+   * `near` went UP (0.1 -> 0.35) at the same time `far` went up. Depth
+   * precision is dominated by the near plane, not the far one, so 0.35/780
+   * resolves finer than the old 0.1/150 did: the ground/water/furrow stack is
+   * LESS likely to z-fight now, not more. Nothing gets within 0.35 m of the
+   * camera — the closest it can orbit is ~10.6 m from the player.
+   */
   camera: {
     fov: 38, near: 0.35, far: 780,
     baseOffset: new THREE.Vector3(8, 10, 10),
@@ -30,6 +47,12 @@ export const CONFIG = Object.freeze({
     panLimit: 40, twoFingerRotateSensitivity: 0.005,
   },
   depth: { playerOrder: 10 },
+  // `minCasterHeight`: the sun's shadow camera already covers only 24 x 24 m
+  // around the player, but everything inside that box is drawn a second time
+  // into the depth pass. Under a top-down camera a 0.4 m grass clump casts a
+  // shadow a few texels wide that nobody can see, and ground cover is exactly
+  // what gets placed in the hundreds — so anything shorter than this casts
+  // nothing. Solid props (crates, barrels) stay above the line on purpose.
   shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2, minCasterHeight: 0.9 },
   contactShadow: {
     width: 0.72, depth: 0.4, y: 0.022, opacity: 0.31, nightOpacity: 0.38,
@@ -69,14 +92,43 @@ export const CONFIG = Object.freeze({
     maxDepth: 3.5, rockSlope: 0.6, rockFeather: 0.12, sandFeather: 0.18,
     sandLayerId: 1, rockLayerId: 2, enabledByDefault: true,
   },
+  /**
+   * Home Farm now uses an open 80 m terrain instead of a 360-degree generated
+   * ridge. `worldLimit` remains a safety backstop 2 m inside the terrain edge;
+   * selective forests, rocks, water and other natural boundaries can be added
+   * later without enclosing the whole map in one mountain ring.
+   */
   worldBoundary: {
     enabled: false,
     type: "none",
   },
   /**
-   * Open Horizon V1: visual-only land extends far beyond gameplay. The inner
-   * square seam remains tucked under the real 80 m terrain, while the outer rim
-   * sits beyond full fog so the player never sees a hard end-of-world line.
+   * ---------------------------------------------------------------------
+   * HORIZON — how the world edge is hidden
+   * ---------------------------------------------------------------------
+   * Four rules keep this seamless. Break one and the edge of the world
+   * becomes visible again; `tools/test/horizon-layers.test.html` asserts all
+   * four so a future tweak cannot quietly undo it.
+   *
+   *   1. fog.far  <  outerWorld.outerRadius - worldLimit
+   *      The far rim of the visual ground is always past the point where fog
+   *      has gone 100% opaque, from anywhere the player can stand. That is
+   *      what deletes the hard "end of the map" line.
+   *   2. fog.near stays beyond the playable terrain. Standing in one corner,
+   *      the opposite corner is ~110 m away: at the old near=68 that corner
+   *      was 60% washed out. At 88 it is under 10%, so this change made the
+   *      farm CLEARER, not hazier.
+   *   3. fog colour == sky horizon colour. day-night.js already copies
+   *      `horizon` into `fog.color` every frame, so fogged ground and the sky
+   *      dome meet at the same value and the join disappears.
+   *   4. every scenery layer is rooted BELOW the lowest point the undulating
+   *      visual ground can reach, and its summit clears the highest, so a
+   *      ridge always emerges from the land instead of floating over it or
+   *      sinking into it.
+   *
+   * None of this touches collision, sculpting, painting, Builder placement,
+   * farming or save data. `worldLimit` (38 m) is still the only thing that
+   * decides where the player may walk.
    */
   outerWorld: {
     enabled: true,
@@ -93,10 +145,6 @@ export const CONFIG = Object.freeze({
     colorFar: 0xb4c6c0,
     renderOrder: -8,
   },
-  /**
-   * Two visual-only mountain bands with wide gaps. They are deliberately far
-   * outside the 38 m gameplay limit and stay out of collision and shadow passes.
-   */
   mountainBackdrop: {
     enabled: true,
     castShadow: false,
@@ -143,6 +191,41 @@ export const CONFIG = Object.freeze({
         { angle: 249, radius: 295, span: 26, height: 20 },
         { angle: 296, radius: 254, span: 27, height: 23 },
         { angle: 344, radius: 287, span: 25, height: 19 },
+      ],
+    },
+  },
+  /**
+   * Full ZIP distant range. The supplied ZIP had floating islands available
+   * but disabled; the user selected variant B, so they are enabled here.
+   */
+  distantRange: {
+    enabled: true,
+    peaks: [
+      {
+        count: 11, radiusMin: 330, radiusMax: 385, baseY: -24,
+        heightMin: 47, heightMax: 57, widthMin: 68, widthMax: 112,
+        color: 0x93a3bd, seed: 17,
+      },
+      {
+        count: 13, radiusMin: 400, radiusMax: 462, baseY: -28,
+        heightMin: 59, heightMax: 71, widthMin: 84, widthMax: 138,
+        color: 0xa6b4ca, seed: 91,
+      },
+    ],
+    haze: {
+      enabled: true, count: 52, radiusMin: 190, radiusMax: 400,
+      yMin: 1.5, yMax: 13, widthMin: 44, widthMax: 96,
+      depthMin: 30, depthMax: 66, heightMin: 2, heightMax: 5,
+      color: 0xeaf6ff, opacity: 0.26, seed: 4242, driftSpeed: 0.0016,
+    },
+    floatingIslands: {
+      enabled: true,
+      bobAmplitude: 1.1,
+      bobSpeed: 0.45,
+      items: [
+        { angle: 0.72, radius: 288, y: 58, scale: 9.5, phase: 0.2 },
+        { angle: 2.82, radius: 326, y: 78, scale: 7.2, phase: 2.0 },
+        { angle: 4.72, radius: 302, y: 48, scale: 8.4, phase: 4.1 },
       ],
     },
   },
