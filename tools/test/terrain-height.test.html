@@ -27,6 +27,14 @@ const make = (reservedAreas = []) => createTerrainHeight({
   reservedAreas,
 });
 
+ok("Home Farm uses an open 80 m gameplay terrain",
+  CONFIG.terrain.size === 80
+    && CONFIG.island.size === 80
+    && CONFIG.worldLimit === 38
+    && CONFIG.worldBoundary.enabled === false
+    && CONFIG.worldBoundary.type === "none",
+  `terrain=${CONFIG.terrain.size} island=${CONFIG.island.size} limit=${CONFIG.worldLimit}`);
+
 const flat = make();
 let hit = flat.raycast({ x: 2, y: 10, z: -3 }, { x: 0, y: -1, z: 0 });
 ok("vertical ray hits flat terrain", hit && near(hit.x, 2) && near(hit.y, 0) && near(hit.z, -3), JSON.stringify(hit));
@@ -57,69 +65,112 @@ ok("tick is true when terrain actually changes", raised.tick(0.2) === true);
 ok("changed stroke closes normally", raised.endStroke() === true && raised.undoDepth === 1,
   `undoDepth=${raised.undoDepth}`);
 
-// Home Island Ridge V1 is deliberately separate from the editable height save.
-// The facade is what gameplay/editor picking sees; the original Float32Array is
-// still what persistence owns.
-const profile = createRidgeProfile(CONFIG.worldBoundary);
-ok("world boundary leaves the farm centre untouched", near(profile.floor(0, 0), 0));
-ok("world boundary reaches full height before the outer rim",
-  near(profile.floor(0, CONFIG.terrain.size / 2), CONFIG.worldBoundary.height, 0.02),
+// Expanding Home Farm from 56 m to 80 m must preserve old sculpt data in world
+// coordinates instead of stretching it across the larger map. New land outside
+// the old 56 m domain should inherit the old flat edge and therefore start flat.
+const legacy = createTerrainHeight({
+  config: { ...CONFIG.sculpt, storageKey: `test.height.legacy.${Math.random()}` },
+  worldSize: 56,
+  spacing: CONFIG.terrain.spacing,
+});
+legacy.beginStroke({ tool: SCULPT_TOOLS.RAISE, radius: 2, strength: 1.2, x: 10, z: 8 });
+legacy.tick(0.8);
+legacy.endStroke();
+const legacyHeight = legacy.sample(10, 8);
+const expanded = make();
+const migrated = expanded.importData(legacy.exportData(), { save: false });
+ok("80 m terrain migrates a 56 m sculpt save in world coordinates",
+  migrated && near(expanded.sample(10, 8), legacyHeight, 0.03),
+  `old=${legacyHeight} new=${expanded.sample(10, 8)}`);
+ok("newly added outer gameplay land starts flat after migration",
+  Math.abs(expanded.sample(37, 0)) < 0.02,
+  `height=${expanded.sample(37, 0)}`);
+
+// Home Farm no longer enables a 360-degree ridge by default. The boundary
+// subsystem is still kept and tested with an explicit fixture so future maps or
+// selective natural boundaries can reuse it without regressing the algorithm.
+const openBoundaryBase = make();
+const openBoundary = createWorldBoundary({
+  config: CONFIG.worldBoundary,
+  baseHeight: openBoundaryBase,
+  worldSize: CONFIG.terrain.size,
+  spacing: CONFIG.terrain.spacing,
+});
+ok("disabled Home Farm boundary leaves editable terrain authoritative",
+  openBoundary.profile.enabled === false
+    && openBoundary.height === openBoundaryBase
+    && openBoundary.heightView === openBoundaryBase
+    && openBoundary.createMesh() === null);
+
+const ridgeConfig = {
+  enabled: true,
+  type: "ridge",
+  radius: 30.5,
+  feather: 4.75,
+  height: 4.8,
+  noiseAmplitude: 1.75,
+  noiseScale: 0.055,
+  noiseSeed: 91,
+};
+const profile = createRidgeProfile(ridgeConfig);
+ok("ridge fixture leaves its centre untouched", near(profile.floor(0, 0), 0));
+ok("ridge fixture reaches full height before an 80 m outer rim",
+  near(profile.floor(0, CONFIG.terrain.size / 2), ridgeConfig.height, 0.02),
   `edge=${profile.floor(0, CONFIG.terrain.size / 2)}`);
 
 const boundaryBase = make();
 const boundary = createWorldBoundary({
-  config: CONFIG.worldBoundary,
+  config: ridgeConfig,
   baseHeight: boundaryBase,
   worldSize: CONFIG.terrain.size,
   spacing: CONFIG.terrain.spacing,
 });
-ok("generated boundary is neutral to the editable terrain save", boundaryBase.isFlat() && boundary.height.isFlat());
-ok("composite height view contains the ridge", boundary.heightView.heights.some((value) => value > 4));
+ok("generated ridge remains neutral to the editable terrain save", boundaryBase.isFlat() && boundary.height.isFlat());
+ok("composite ridge height view contains generated height", boundary.heightView.heights.some((value) => value > 4));
 
-hit = boundary.height.raycast({ x: 26, y: 10, z: 0 }, { x: 0, y: -1, z: 0 });
-ok("editor raycast sees the generated ridge instead of ground underneath",
+hit = boundary.height.raycast({ x: 38.5, y: 10, z: 0 }, { x: 0, y: -1, z: 0 });
+ok("editor raycast still sees an enabled generated ridge",
   hit && hit.y > 4, JSON.stringify(hit));
 
-const beforeDig = boundary.height.sample(22, 0);
-boundary.height.beginStroke({ tool: SCULPT_TOOLS.LOWER, radius: 2.2, strength: 1.2, x: 22, z: 0 });
+const beforeDig = boundary.height.sample(34, 0);
+boundary.height.beginStroke({ tool: SCULPT_TOOLS.LOWER, radius: 2.2, strength: 1.2, x: 34, z: 0 });
 boundary.height.tick(1.5);
 boundary.height.endStroke();
-ok("sculpting cannot dig through the world boundary",
-  boundary.height.sample(22, 0) + 1e-3 >= profile.floor(22, 0),
-  `before=${beforeDig} after=${boundary.height.sample(22, 0)} floor=${profile.floor(22, 0)}`);
+ok("sculpting cannot dig through an enabled world boundary",
+  boundary.height.sample(34, 0) + 1e-3 >= profile.floor(34, 0),
+  `before=${beforeDig} after=${boundary.height.sample(34, 0)} floor=${profile.floor(34, 0)}`);
 
 let weakest = Infinity;
 for (let a = 0; a < 32; a += 1) {
   const angle = a / 32 * Math.PI * 2;
   let steepest = 0;
-  for (let d = CONFIG.worldBoundary.radius - CONFIG.worldBoundary.noiseAmplitude; d < 26.2; d += 0.25) {
+  for (let d = ridgeConfig.radius - ridgeConfig.noiseAmplitude; d < 38.5; d += 0.25) {
     steepest = Math.max(steepest, boundary.height.slopeAt(Math.cos(angle) * d, Math.sin(angle) * d));
   }
   weakest = Math.min(weakest, steepest);
 }
-ok("ridge exceeds maxWalkSlope in every sampled direction", weakest > CONFIG.maxWalkSlope,
+ok("ridge fixture exceeds maxWalkSlope in every sampled direction", weakest > CONFIG.maxWalkSlope,
   `weakest=${weakest.toFixed(2)} max=${CONFIG.maxWalkSlope}`);
 
-// Save the *editable* height only, then regenerate a lower ridge. If generated
-// geometry were baked into the payload this would stay pinned at the old 4.8 m.
+// Save the *editable* height only, then regenerate a lower ridge. Generated
+// geometry must remain re-tunable rather than becoming baked into persistence.
 const payload = boundary.height.exportData();
 const restoredBase = make();
 restoredBase.importData(payload, { save: false });
-const lowerConfig = { ...CONFIG.worldBoundary, height: 2.8 };
+const lowerConfig = { ...ridgeConfig, height: 2.8 };
 const retuned = createWorldBoundary({
   config: lowerConfig,
   baseHeight: restoredBase,
   worldSize: CONFIG.terrain.size,
   spacing: CONFIG.terrain.spacing,
 });
-ok("generated ridge can be retuned lower after save/load",
-  near(retuned.height.sample(0, 27.5), 2.8, 0.06),
-  `edge=${retuned.height.sample(0, 27.5)}`);
+ok("generated ridge can still be retuned lower after save/load",
+  near(retuned.height.sample(0, 39.5), 2.8, 0.06),
+  `edge=${retuned.height.sample(0, 39.5)}`);
 
-// Outer World Ground V1 extends the *visible* land without changing the
-// gameplay height field. It should stay one small textured mesh that starts
-// underneath the ridge and reaches far beyond the 56 m playable square.
-const outerInnerY = CONFIG.worldBoundary.height + CONFIG.outerWorld.innerYOffset;
+// Outer World Ground carries the eye far past the real 80 m terrain. It starts
+// just below the open terrain edge, not on top of a generated ridge.
+const outerInnerY = CONFIG.outerWorld.innerYOffset;
 const outerWorld = createOuterWorldGround({
   config: { ...CONFIG.outerWorld, innerY: outerInnerY },
   textureWorldSize: CONFIG.terrain.size,
@@ -129,18 +180,18 @@ ok("outer world is exactly one visual mesh",
   JSON.stringify(outerWorld.stats));
 ok("outer world stays out of the shadow pass",
   outerWorld.mesh.castShadow === false && outerWorld.mesh.receiveShadow === false);
-ok("outer world extends well beyond the playable terrain",
-  CONFIG.outerWorld.outerRadius >= CONFIG.terrain.size / 2 + 15,
+ok("outer world reaches far beyond the 80 m gameplay terrain",
+  CONFIG.outerWorld.outerRadius >= CONFIG.terrain.size / 2 + 35,
   `outer=${CONFIG.outerWorld.outerRadius} playableHalf=${CONFIG.terrain.size / 2}`);
 ok("outer world keeps a small geometry budget",
-  outerWorld.stats.triangles === CONFIG.outerWorld.segments * CONFIG.outerWorld.rings * 2 && outerWorld.stats.triangles <= 1600,
+  outerWorld.stats.triangles === CONFIG.outerWorld.segments * CONFIG.outerWorld.rings * 2 && outerWorld.stats.triangles <= 1800,
   `triangles=${outerWorld.stats.triangles}`);
 const outerPosition = outerWorld.mesh.geometry.getAttribute("position");
 const outerColor = outerWorld.mesh.geometry.getAttribute("color");
 const outerUv = outerWorld.mesh.geometry.getAttribute("uv");
 ok("outer world position/color/uv counts stay aligned",
   outerPosition.count === outerColor.count && outerPosition.count === outerUv.count);
-ok("outer world seam begins just under the gameplay ridge",
+ok("outer world seam begins just under the open gameplay terrain",
   near(outerPosition.array[1], outerInnerY, 1e-5),
   `firstY=${outerPosition.array[1]} expected=${outerInnerY}`);
 const last = outerPosition.array.length - 3;
@@ -155,21 +206,22 @@ const disabledOuter = createOuterWorldGround({ config: { enabled: false } });
 ok("outer world can be disabled without gameplay side effects",
   disabledOuter.group.children.length === 0 && disabledOuter.stats.meshes === 0);
 
-// Mountain Backdrop V1 is visual-only and deliberately much cheaper than a
-// second terrain world. It should stay exactly two merged meshes regardless of
-// how many mountain chunks the config contains.
+// The old close 360-degree mountain ring is intentionally gone. Only one sparse
+// far scenic mesh remains, with wide open angular gaps between mountain chunks.
 const backdrop = createMountainBackdrop(CONFIG.mountainBackdrop);
-ok("mountain backdrop merges into exactly two meshes",
-  backdrop.stats.meshes === 2 && backdrop.group.children.length === 2,
+ok("open Home Farm has only one distant mountain mesh",
+  backdrop.stats.meshes === 1 && backdrop.group.children.length === 1,
   JSON.stringify(backdrop.stats));
-ok("mountain backdrop stays out of the shadow pass",
+ok("near mountain ring is disabled by an empty chunk list",
+  CONFIG.mountainBackdrop.near.chunks.length === 0);
+ok("distant mountains stay out of the shadow pass",
   backdrop.meshes.every((mesh) => mesh.castShadow === false && mesh.receiveShadow === false));
-ok("mountain backdrop keeps position and vertex-color counts aligned",
+ok("distant mountains keep position and vertex-color counts aligned",
   backdrop.meshes.every((mesh) =>
     mesh.geometry.getAttribute("position").count === mesh.geometry.getAttribute("color").count
   ));
-ok("mountain backdrop remains a tiny geometry budget",
-  backdrop.stats.triangles > 0 && backdrop.stats.triangles <= 400,
+ok("sparse mountain backdrop remains a tiny geometry budget",
+  backdrop.stats.triangles > 0 && backdrop.stats.triangles <= 120,
   `triangles=${backdrop.stats.triangles}`);
 const farPositions = backdrop.meshes[0].geometry.getAttribute("position").array;
 let minFarY = Infinity;
@@ -178,8 +230,8 @@ for (let i = 1; i < farPositions.length; i += 3) {
   minFarY = Math.min(minFarY, farPositions[i]);
   maxFarY = Math.max(maxFarY, farPositions[i]);
 }
-ok("far mountains bury their base and rise above the ridge",
-  minFarY <= CONFIG.mountainBackdrop.far.baseY && maxFarY >= 16.7,
+ok("far scenic mountains bury their base and remain low on the horizon",
+  minFarY <= CONFIG.mountainBackdrop.far.baseY && maxFarY >= 13.9,
   `minY=${minFarY} maxY=${maxFarY}`);
 backdrop.dispose();
 ok("mountain backdrop disposes geometry and materials",
@@ -188,8 +240,11 @@ const disabledBackdrop = createMountainBackdrop({ enabled: false });
 ok("mountain backdrop can be disabled without gameplay side effects",
   disabledBackdrop.group.children.length === 0 && disabledBackdrop.stats.meshes === 0);
 
+openBoundary.dispose();
 boundary.dispose();
 retuned.dispose();
+legacy.dispose();
+expanded.dispose();
 window.__results = results;
 window.__done = true;
 document.querySelector("#out").textContent = JSON.stringify(results, null, 1);
