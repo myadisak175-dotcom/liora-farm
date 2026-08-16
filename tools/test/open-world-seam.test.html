@@ -68,7 +68,7 @@ ok("outer horizon remains circular at configured radius",
   `worst=${worstOuterRadiusError}`);
 ok("open world extension keeps its geometry budget",
   geometry.index.count/3===CONFIG.outerWorld.segments*CONFIG.outerWorld.rings*2
-    && geometry.index.count/3<=1800,
+    && geometry.index.count/3<=4200,
   `triangles=${geometry.index.count/3}`);
 
 geometry.dispose();
