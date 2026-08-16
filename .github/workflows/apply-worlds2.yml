@@ -1,0 +1,37 @@
+name: Apply Worlds 2 Detail
+on:
+  push:
+    branches: [agent/worlds-2-detail-page]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[worlds2-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Reconstruct and verify package
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .deploy/worlds2.b64 > /tmp/worlds2.tar.gz
+          echo '9a3c94b7db984a83fb8361722a2423cec24f6c037ebc9b64e516bf1121124322  /tmp/worlds2.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/worlds2.tar.gz -C .
+          grep -F 'export const BUILD = "worlds-2-detail";' src/config.js
+          grep -F 'createMapScope' src/main.js
+          grep -F 'createGroundDetailNormal' src/systems/terrain.js
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find src tools/test -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+      - name: Commit validated runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .deploy .github/workflows/apply-worlds2.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'Deploy worlds-2-detail [worlds2-applied]'
+          git push origin HEAD:agent/worlds-2-detail-page
