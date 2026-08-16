@@ -15,6 +15,17 @@ function colorChannels(hex) {
   ];
 }
 
+function mixColor(a, b, t) {
+  const k = clamp(t, 0, 1);
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+
+function crestNoise(seed, i) {
+  const a = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+  const b = Math.sin(seed * 39.3468 + i * 11.135) * 24634.6345;
+  return (a - Math.floor(a)) * 0.65 + (b - Math.floor(b)) * 0.35 - 0.5;
+}
+
 function pushVertex(positions, colors, x, y, z, color) {
   positions.push(x, y, z);
   colors.push(color[0], color[1], color[2]);
@@ -26,28 +37,30 @@ function buildLayerGeometry(layer = {}) {
   const positions = [];
   const colors = [];
   const indices = [];
-  const baseY = Number.isFinite(layer.baseY) ? layer.baseY : -5;
-  const shoulderRatio = clamp(Number(layer.shoulderRatio) || 0.64, 0.2, 0.9);
-  const defaultRadius = (Number(layer.innerRadius) + Number(layer.outerRadius)) / 2 || 48;
-  const depth = Math.max(2, Math.abs(Number(layer.outerRadius) - Number(layer.innerRadius)) || 7);
+
+  const baseY = Number.isFinite(layer.baseY) ? layer.baseY : -14;
+  const shoulderRatio = clamp(Number(layer.shoulderRatio) || 0.62, 0.2, 0.9);
+  const defaultRadius = (Number(layer.innerRadius) + Number(layer.outerRadius)) / 2 || 120;
+  const depth = Math.max(6, Math.abs(Number(layer.outerRadius) - Number(layer.innerRadius)) || 16);
   const depthJitter = Math.max(0, Number(layer.depthJitter) || 0);
-  const low = colorChannels(layer.colorLow ?? 0x70884f);
-  const mid = colorChannels(layer.colorMid ?? 0x72805a);
-  const peak = colorChannels(layer.colorPeak ?? 0x7a8170);
+  const crestSegments = clamp(Math.round(Number(layer.crestSegments) || 9), 3, 24);
+  const crestRoughness = clamp(Number(layer.crestRoughness) ?? 0.3, 0, 0.9);
+
+  const low = colorChannels(layer.colorLow ?? 0x6d8360);
+  const mid = colorChannels(layer.colorMid ?? 0x7d8f72);
+  const peak = colorChannels(layer.colorPeak ?? 0x93a08d);
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
     const chunk = chunks[chunkIndex];
     const angle = (Number(chunk.angle) || 0) * DEG;
     const radius = Number(chunk.radius) || defaultRadius;
-    const span = clamp(Number(chunk.span) || 32, 8, 80) * DEG;
+    const span = clamp(Number(chunk.span) || 30, 8, 80) * DEG;
     const peakY = Number.isFinite(chunk.height)
       ? chunk.height
-      : (Number(layer.peakMin) + Number(layer.peakMax)) / 2 || 10;
+      : (Number(layer.peakMin) + Number(layer.peakMax)) / 2 || 18;
     const rise = Math.max(0.1, peakY - baseY);
-    const shoulderY = baseY + rise * shoulderRatio;
     const halfWidth = Math.max(3, radius * Math.sin(span / 2));
-    const seed = Math.sin((chunkIndex + 1) * 91.173 + angle * 7.1);
-    const peakOffset = seed * depthJitter;
+    const seed = chunkIndex + 1 + Math.abs(Number(layer.baseY) || 0) * 0.017;
 
     const radialX = Math.sin(angle);
     const radialZ = Math.cos(angle);
@@ -60,39 +73,48 @@ function buildLayerGeometry(layer = {}) {
       z: radialZ * (radius + radialOffset) + tangentZ * (halfWidth * side),
     });
 
-    // A chunk is a faceted mountain wedge viewed from inside the world ring.
-    // Its base extends well below the island so no strip of sky can leak under
-    // the silhouette when the camera pitches or orbits.
-    const frontLeft = point(-1, -depth * 0.42, baseY);
-    const frontRight = point(1, -depth * 0.42, baseY);
-    const leftShoulder = point(-0.43, -depth * 0.08, shoulderY);
-    const rightShoulder = point(0.43, -depth * 0.08, shoulderY * 0.97 + baseY * 0.03);
-    const summit = point(seed * 0.08, peakOffset, peakY);
-    const backLeft = point(-1, depth * 0.58, baseY);
-    const backRight = point(1, depth * 0.58, baseY);
+    const frontRow = [];
+    const crestRow = [];
+    const backRow = [];
 
-    const fl = pushVertex(positions, colors, frontLeft.x, frontLeft.y, frontLeft.z, low);
-    const ls = pushVertex(positions, colors, leftShoulder.x, leftShoulder.y, leftShoulder.z, mid);
-    const pk = pushVertex(positions, colors, summit.x, summit.y, summit.z, peak);
-    const rs = pushVertex(positions, colors, rightShoulder.x, rightShoulder.y, rightShoulder.z, mid);
-    const fr = pushVertex(positions, colors, frontRight.x, frontRight.y, frontRight.z, low);
-    const bl = pushVertex(positions, colors, backLeft.x, backLeft.y, backLeft.z, low);
-    const br = pushVertex(positions, colors, backRight.x, backRight.y, backRight.z, low);
+    for (let i = 0; i <= crestSegments; i += 1) {
+      const u = i / crestSegments;
+      const side = u * 2 - 1;
+      const bell = Math.pow(Math.cos(side * Math.PI * 0.5), 0.85);
+      const wobble = 1 + crestNoise(seed, i) * crestRoughness;
+      const shoulder = shoulderRatio + (1 - shoulderRatio) * bell;
+      const crestY = baseY + rise * bell * shoulder * Math.max(0.05, wobble);
+      const crestOffset = crestNoise(seed * 1.7, i + 5) * depthJitter;
+      const heightMix = clamp((crestY - baseY) / rise, 0, 1);
 
-    // Front silhouette, rear facets and end caps. DoubleSide is used on the
-    // material because the player camera is inside the ring and can orbit 360°.
-    indices.push(
-      fl, ls, pk,
-      fl, pk, fr,
-      fr, pk, rs,
-      fl, bl, ls,
-      bl, pk, ls,
-      bl, br, pk,
-      br, rs, pk,
-      br, fr, rs,
-      fl, fr, br,
-      fl, br, bl
-    );
+      frontRow.push(point(side, -depth * 0.45, baseY));
+      crestRow.push({ point: point(side, crestOffset, crestY), heightMix });
+      backRow.push(point(side, depth * 0.55, baseY));
+    }
+
+    const frontIndex = [];
+    const crestIndex = [];
+    const backIndex = [];
+    for (let i = 0; i <= crestSegments; i += 1) {
+      const f = frontRow[i];
+      const c = crestRow[i];
+      const b = backRow[i];
+      const crestColor = c.heightMix < 0.55
+        ? mixColor(low, mid, c.heightMix / 0.55)
+        : mixColor(mid, peak, (c.heightMix - 0.55) / 0.45);
+      frontIndex.push(pushVertex(positions, colors, f.x, f.y, f.z, low));
+      crestIndex.push(pushVertex(positions, colors, c.point.x, c.point.y, c.point.z, crestColor));
+      backIndex.push(pushVertex(positions, colors, b.x, b.y, b.z, low));
+    }
+
+    for (let i = 0; i < crestSegments; i += 1) {
+      indices.push(
+        frontIndex[i], crestIndex[i], frontIndex[i + 1],
+        frontIndex[i + 1], crestIndex[i], crestIndex[i + 1],
+        crestIndex[i], backIndex[i], crestIndex[i + 1],
+        crestIndex[i + 1], backIndex[i], backIndex[i + 1]
+      );
+    }
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -123,14 +145,6 @@ function createLayer(layer, name, renderOrder) {
   return { mesh, geometry, material };
 }
 
-/**
- * Visual-only 360° mountain ring behind Home Island.
- *
- * The physical ridge remains responsible for gameplay blocking. These two
- * merged meshes exist only to close the horizon: one warmer near ring and one
- * cooler/taller far ring. They never participate in collision, terrain saves,
- * water depth, farming or Builder placement.
- */
 export function createMountainBackdrop(config = {}) {
   const group = new THREE.Group();
   group.name = "MountainBackdrop";

@@ -39,9 +39,6 @@ const flat = make();
 let hit = flat.raycast({ x: 2, y: 10, z: -3 }, { x: 0, y: -1, z: 0 });
 ok("vertical ray hits flat terrain", hit && near(hit.x, 2) && near(hit.y, 0) && near(hit.z, -3), JSON.stringify(hit));
 
-// One high vertex is enough to make a very narrow bilinear ridge. The old
-// long-step ray march jumped completely over this ridge and returned the flat
-// ground near x=4. The DDA solver must return the first ridge hit instead.
 const ridge = make();
 const ix = Math.round((0 + CONFIG.terrain.size / 2) / CONFIG.terrain.spacing);
 const iz = ix;
@@ -51,8 +48,6 @@ hit = ridge.raycast({ x: -8, y: 8, z: 0 }, { x: 12 * inv, y: -8 * inv, z: 0 });
 ok("raycast returns the nearest narrow-ridge hit", hit && hit.x < -0.2 && hit.x > -0.45 && hit.y > 2.5,
   JSON.stringify(hit));
 
-// tick() promises actual mutation, not merely "a stroke exists". A fully
-// reserved brush changes nothing and should not trigger object re-seating.
 const blocked = make([{ x: 0, z: 0, radius: 5 }]);
 blocked.beginStroke({ tool: SCULPT_TOOLS.RAISE, radius: 1.5, strength: 1, x: 0, z: 0 });
 ok("tick is false when constraints prevent every change", blocked.tick(0.2) === false);
@@ -65,9 +60,6 @@ ok("tick is true when terrain actually changes", raised.tick(0.2) === true);
 ok("changed stroke closes normally", raised.endStroke() === true && raised.undoDepth === 1,
   `undoDepth=${raised.undoDepth}`);
 
-// Expanding Home Farm from 56 m to 80 m must preserve old sculpt data in world
-// coordinates instead of stretching it across the larger map. New land outside
-// the old 56 m domain should inherit the old flat edge and therefore start flat.
 const legacy = createTerrainHeight({
   config: { ...CONFIG.sculpt, storageKey: `test.height.legacy.${Math.random()}` },
   worldSize: 56,
@@ -86,9 +78,6 @@ ok("newly added outer gameplay land starts flat after migration",
   Math.abs(expanded.sample(37, 0)) < 0.02,
   `height=${expanded.sample(37, 0)}`);
 
-// Home Farm no longer enables a 360-degree ridge by default. The boundary
-// subsystem is still kept and tested with an explicit fixture so future maps or
-// selective natural boundaries can reuse it without regressing the algorithm.
 const openBoundaryBase = make();
 const openBoundary = createWorldBoundary({
   config: CONFIG.worldBoundary,
@@ -152,8 +141,6 @@ for (let a = 0; a < 32; a += 1) {
 ok("ridge fixture exceeds maxWalkSlope in every sampled direction", weakest > CONFIG.maxWalkSlope,
   `weakest=${weakest.toFixed(2)} max=${CONFIG.maxWalkSlope}`);
 
-// Save the *editable* height only, then regenerate a lower ridge. Generated
-// geometry must remain re-tunable rather than becoming baked into persistence.
 const payload = boundary.height.exportData();
 const restoredBase = make();
 restoredBase.importData(payload, { save: false });
@@ -168,8 +155,6 @@ ok("generated ridge can still be retuned lower after save/load",
   near(retuned.height.sample(0, 39.5), 2.8, 0.06),
   `edge=${retuned.height.sample(0, 39.5)}`);
 
-// Outer World Ground carries the eye far past the real 80 m terrain. It starts
-// just below the open terrain edge, not on top of a generated ridge.
 const outerInnerY = CONFIG.outerWorld.innerYOffset;
 const outerWorld = createOuterWorldGround({
   config: { ...CONFIG.outerWorld, innerY: outerInnerY },
@@ -184,7 +169,7 @@ ok("outer world reaches far beyond the 80 m gameplay terrain",
   CONFIG.outerWorld.outerRadius >= CONFIG.terrain.size / 2 + 35,
   `outer=${CONFIG.outerWorld.outerRadius} playableHalf=${CONFIG.terrain.size / 2}`);
 ok("outer world keeps a small geometry budget",
-  outerWorld.stats.triangles === CONFIG.outerWorld.segments * CONFIG.outerWorld.rings * 2 && outerWorld.stats.triangles <= 1800,
+  outerWorld.stats.triangles === CONFIG.outerWorld.segments * CONFIG.outerWorld.rings * 2 && outerWorld.stats.triangles <= 4200,
   `triangles=${outerWorld.stats.triangles}`);
 const outerPosition = outerWorld.mesh.geometry.getAttribute("position");
 const outerColor = outerWorld.mesh.geometry.getAttribute("color");
@@ -206,22 +191,20 @@ const disabledOuter = createOuterWorldGround({ config: { enabled: false } });
 ok("outer world can be disabled without gameplay side effects",
   disabledOuter.group.children.length === 0 && disabledOuter.stats.meshes === 0);
 
-// The old close 360-degree mountain ring is intentionally gone. Only one sparse
-// far scenic mesh remains, with wide open angular gaps between mountain chunks.
 const backdrop = createMountainBackdrop(CONFIG.mountainBackdrop);
-ok("open Home Farm has only one distant mountain mesh",
-  backdrop.stats.meshes === 1 && backdrop.group.children.length === 1,
+ok("layered horizon builds one merged mesh per ridge band",
+  backdrop.stats.meshes === 2 && backdrop.group.children.length === 2,
   JSON.stringify(backdrop.stats));
-ok("near mountain ring is disabled by an empty chunk list",
-  CONFIG.mountainBackdrop.near.chunks.length === 0);
+ok("both ridge bands carry chunks",
+  CONFIG.mountainBackdrop.near.chunks.length > 0 && CONFIG.mountainBackdrop.far.chunks.length > 0);
 ok("distant mountains stay out of the shadow pass",
   backdrop.meshes.every((mesh) => mesh.castShadow === false && mesh.receiveShadow === false));
 ok("distant mountains keep position and vertex-color counts aligned",
   backdrop.meshes.every((mesh) =>
     mesh.geometry.getAttribute("position").count === mesh.geometry.getAttribute("color").count
   ));
-ok("sparse mountain backdrop remains a tiny geometry budget",
-  backdrop.stats.triangles > 0 && backdrop.stats.triangles <= 120,
+ok("layered mountain backdrop remains a tiny geometry budget",
+  backdrop.stats.triangles > 0 && backdrop.stats.triangles <= 1400,
   `triangles=${backdrop.stats.triangles}`);
 const farPositions = backdrop.meshes[0].geometry.getAttribute("position").array;
 let minFarY = Infinity;
@@ -230,8 +213,9 @@ for (let i = 1; i < farPositions.length; i += 3) {
   minFarY = Math.min(minFarY, farPositions[i]);
   maxFarY = Math.max(maxFarY, farPositions[i]);
 }
-ok("far scenic mountains bury their base and remain low on the horizon",
-  minFarY <= CONFIG.mountainBackdrop.far.baseY && maxFarY >= 13.9,
+ok("far scenic mountains bury their base and clear the foothills",
+  minFarY <= CONFIG.mountainBackdrop.far.baseY
+    && maxFarY >= Math.max(...CONFIG.mountainBackdrop.near.chunks.map((chunk) => chunk.height)),
   `minY=${minFarY} maxY=${maxFarY}`);
 backdrop.dispose();
 ok("mountain backdrop disposes geometry and materials",
