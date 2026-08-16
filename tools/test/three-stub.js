@@ -10,6 +10,7 @@ export const ClampToEdgeWrapping = 1001;
 export const RepeatWrapping = 1000;
 export const RGBAFormat = 1023;
 export const UnsignedByteType = 1009;
+export const RGBADepthPacking = 3201;
 
 export const MathUtils = {
   clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
@@ -142,6 +143,34 @@ export class Quaternion {
 }
 
 /**
+ * Minimal material used by wind-shadow tests. Its shader hooks match the
+ * surface-material contract the wind decorator expects.
+ */
+export class MeshDepthMaterial {
+  constructor(options = {}) {
+    Object.assign(this, options);
+    this.userData = {};
+    this.needsUpdate = false;
+    this.name = "";
+    this.isMeshDepthMaterial = true;
+    this.onBeforeCompile = () => {};
+    this.customProgramCacheKey = () => "depth";
+  }
+  clone() {
+    const next = new MeshDepthMaterial({
+      depthPacking: this.depthPacking,
+      map: this.map,
+      alphaMap: this.alphaMap,
+      alphaTest: this.alphaTest,
+      side: this.side,
+    });
+    next.name = this.name;
+    next.userData = { ...this.userData };
+    return next;
+  }
+}
+
+/**
  * The transform bookkeeping instanced-pool.js relies on, without re-deriving
  * Three.js matrix maths in a test double. `compose` records what it was given
  * and `multiplyMatrices` keeps the left operand's payload, which is exactly the
@@ -210,6 +239,7 @@ export class InstancedMesh {
     this.userData = {};
     this.castShadow = false;
     this.receiveShadow = false;
+    this.customDepthMaterial = null;
     this.frustumCulled = true;
     this.disposed = false;
     this.boundingSphereRevision = 0;

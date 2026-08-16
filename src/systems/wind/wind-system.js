@@ -47,6 +47,25 @@ function softenNatureSurface(material) {
 }
 
 /**
+ * Builds a depth-only material that keeps the authored alpha cutout. The same
+ * wind decorator is then applied to its vertex shader, so the directional
+ * shadow pass sees the exact displaced silhouette the colour pass sees.
+ */
+function createDepthSource(material) {
+  if (!material || Array.isArray(material)) return null;
+  const depth = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    map: material.map ?? null,
+    alphaMap: material.alphaMap ?? null,
+    alphaTest: Number.isFinite(material.alphaTest) ? material.alphaTest : 0,
+    side: material.shadowSide ?? material.side,
+  });
+  depth.name = material.name ?? "";
+  depth.userData = { ...depth.userData, lioraWindDepth: true };
+  return depth;
+}
+
+/**
  * Ambient shader wind. This system owns only shared shader uniforms and visual
  * material preparation. It never mutates Object3D transforms, builder items,
  * collision radii, persistence, farming state or movement state.
@@ -59,6 +78,10 @@ function softenNatureSurface(material) {
  * The Nature V2 surface pass also runs on that same shared material. It only
  * softens PBR response (roughness/metalness/environment intensity), so house,
  * terrain, water and gameplay lighting remain unchanged.
+ *
+ * Shadow animation is also visual-only: only meshes that already cast a shadow
+ * receive a custom depth material. Grass/flowers below the existing caster
+ * height remain non-casters, so this does not expand the shadow workload.
  */
 export function createWindSystem({ config = {}, quality = {} } = {}) {
   const enabled = config.enabled !== false;
@@ -81,6 +104,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
   };
 
   let attachedMeshes = 0;
+  let animatedShadowMeshes = 0;
   let failedMeshes = 0;
 
   /**
@@ -96,6 +120,49 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
    * other tree of the same kind.
    */
   const sharedMaterials = new Map();
+  const sharedDepthMaterials = new Map();
+
+  function attachShadowDepth({
+    node,
+    sourceMaterial,
+    assetKey,
+    meshIndex,
+    profileName,
+    up,
+    bounds,
+  }) {
+    if (!enabled || node.castShadow === false || Array.isArray(sourceMaterial)) return false;
+
+    const key = assetKey === null ? null : `${assetKey}|${meshIndex}|depth`;
+    const cached = key === null ? null : sharedDepthMaterials.get(key);
+    if (cached) {
+      node.customDepthMaterial = cached;
+      animatedShadowMeshes += 1;
+      return true;
+    }
+
+    const source = createDepthSource(sourceMaterial);
+    if (!source) return false;
+    const depth = applyWindToMaterial({
+      material: source,
+      geometry: node.geometry,
+      mesh: node,
+      profileName,
+      uniforms,
+      quality,
+      clone: false,
+      shared: key !== null,
+      up,
+      bounds,
+    });
+    if (!depth?.userData?.lioraWind) return false;
+
+    depth.userData = { ...depth.userData, lioraWindDepth: true };
+    node.customDepthMaterial = depth;
+    if (key !== null) sharedDepthMaterials.set(key, depth);
+    animatedShadowMeshes += 1;
+    return true;
+  }
 
   function attach(model, asset, { preview = false } = {}) {
     const profileName = asset?.windProfile ?? inferAssetWindProfile(asset);
@@ -109,7 +176,8 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
     const { up, bounds } = createModelWindFrame(model);
 
     // Ghost previews are private translucent clones that die with the preview,
-    // so they are patched in place and never enter the shared cache.
+    // so they are patched in place and never enter the shared cache. Builder
+    // also disables their shadow casting before this hook runs.
     const assetKey = preview ? null : asset?.id ?? null;
     let meshIndex = -1;
 
@@ -118,7 +186,8 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
       if (!node?.isMesh || !node.material || !node.geometry) return;
       meshIndex += 1;
       try {
-        const source = Array.isArray(node.material) ? node.material : [node.material];
+        const originalWasArray = Array.isArray(node.material);
+        const source = originalWasArray ? node.material : [node.material];
         const next = source.map((material, slot) => {
           // `clone(true)` keeps child order, so the traversal index identifies
           // the same mesh across every copy of an asset.
@@ -148,7 +217,24 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
           if (key !== null && patched.userData?.lioraWind) sharedMaterials.set(key, patched);
           return patched;
         });
-        node.material = Array.isArray(node.material) ? next : next[0];
+        node.material = originalWasArray ? next : next[0];
+
+        // Shadow depth must be derived from the authored material, not the
+        // selected/graded clone, so alpha cutout and side rules stay identical.
+        // Multi-material meshes deliberately keep Three.js's default static
+        // depth path rather than guessing one alpha map for several groups.
+        if (!preview && !originalWasArray) {
+          attachShadowDepth({
+            node,
+            sourceMaterial: source[0],
+            assetKey,
+            meshIndex,
+            profileName,
+            up,
+            bounds,
+          });
+        }
+
         if (assetKey === null && !preview && next.some((material, index) => material !== source[index])) {
           node.userData.materialIsClone = true;
         }
@@ -157,8 +243,9 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
           attachedMeshes += 1;
         }
       } catch (error) {
-        // Wind, palette grading and surface tuning are decorative. A material
-        // problem must never stop a Builder object loading or becoming collidable.
+        // Wind, palette grading, surface tuning and animated shadow depth are
+        // decorative. A material problem must never stop a Builder object
+        // loading or becoming collidable.
         failedMeshes += 1;
         console.warn(`Visual material effects skipped mesh "${node.name || "unnamed"}"`, error);
       }
@@ -182,7 +269,13 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
       return uniforms.paletteStrength.value;
     },
     get stats() {
-      return { attachedMeshes, failedMeshes, sharedMaterials: sharedMaterials.size };
+      return {
+        attachedMeshes,
+        animatedShadowMeshes,
+        failedMeshes,
+        sharedMaterials: sharedMaterials.size,
+        sharedDepthMaterials: sharedDepthMaterials.size,
+      };
     },
     get uniforms() {
       return uniforms;
