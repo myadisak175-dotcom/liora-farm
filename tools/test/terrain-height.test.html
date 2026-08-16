@@ -2,7 +2,7 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>terrain height tests</title>
 <script type="importmap">
-{"imports":{"three":"./three-stub.js"}}
+{"imports":{"three":"./mountain-three-stub.js"}}
 </script>
 </head>
 <body><pre id="out">running…</pre>
@@ -14,6 +14,7 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 <script type="module">
 import { createTerrainHeight, SCULPT_TOOLS } from "../../src/systems/terrain-height.js";
 import { createRidgeProfile, createWorldBoundary } from "../../src/systems/world-boundary.js";
+import { createMountainBackdrop } from "../../src/systems/mountain-backdrop.js";
 import { CONFIG } from "../../src/config.js";
 const results = [];
 const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
@@ -113,6 +114,39 @@ const retuned = createWorldBoundary({
 ok("generated ridge can be retuned lower after save/load",
   near(retuned.height.sample(0, 27.5), 2.8, 0.06),
   `edge=${retuned.height.sample(0, 27.5)}`);
+
+// Mountain Backdrop V1 is visual-only and deliberately much cheaper than a
+// second terrain world. It should stay exactly two merged meshes regardless of
+// how many mountain chunks the config contains.
+const backdrop = createMountainBackdrop(CONFIG.mountainBackdrop);
+ok("mountain backdrop merges into exactly two meshes",
+  backdrop.stats.meshes === 2 && backdrop.group.children.length === 2,
+  JSON.stringify(backdrop.stats));
+ok("mountain backdrop stays out of the shadow pass",
+  backdrop.meshes.every((mesh) => mesh.castShadow === false && mesh.receiveShadow === false));
+ok("mountain backdrop keeps position and vertex-color counts aligned",
+  backdrop.meshes.every((mesh) =>
+    mesh.geometry.getAttribute("position").count === mesh.geometry.getAttribute("color").count
+  ));
+ok("mountain backdrop remains a tiny geometry budget",
+  backdrop.stats.triangles > 0 && backdrop.stats.triangles <= 400,
+  `triangles=${backdrop.stats.triangles}`);
+const farPositions = backdrop.meshes[0].geometry.getAttribute("position").array;
+let minFarY = Infinity;
+let maxFarY = -Infinity;
+for (let i = 1; i < farPositions.length; i += 3) {
+  minFarY = Math.min(minFarY, farPositions[i]);
+  maxFarY = Math.max(maxFarY, farPositions[i]);
+}
+ok("far mountains bury their base and rise above the ridge",
+  minFarY <= CONFIG.mountainBackdrop.far.baseY && maxFarY >= 16.7,
+  `minY=${minFarY} maxY=${maxFarY}`);
+backdrop.dispose();
+ok("mountain backdrop disposes geometry and materials",
+  backdrop.meshes.every((mesh) => mesh.geometry.disposed && mesh.material.disposed));
+const disabledBackdrop = createMountainBackdrop({ enabled: false });
+ok("mountain backdrop can be disabled without gameplay side effects",
+  disabledBackdrop.group.children.length === 0 && disabledBackdrop.stats.meshes === 0);
 
 boundary.dispose();
 retuned.dispose();
