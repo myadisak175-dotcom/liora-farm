@@ -24,6 +24,21 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
   const shallowColor = new THREE.Color(config.shallowColor ?? 0x8ee4ef);
   const deepColor = new THREE.Color(config.deepColor ?? 0x287aa8);
   const foamColor = new THREE.Color(config.foamColor ?? 0xf4ffff);
+  // Keep the shoreline warmer and less saturated than the open water. The
+  // defaults are intentionally subtle so existing authored water colour still
+  // leads; projects can override these later without touching the shader.
+  const shorelineColor = new THREE.Color(config.shorelineColor ?? 0xbde8d4);
+  const shorelineDepth = Math.max(0.03, config.shorelineDepth ?? 0.24);
+  const shorelineStrength = THREE.MathUtils.clamp(
+    config.shorelineStrength ?? 0.42,
+    0,
+    1
+  );
+  const depthColorStart = Math.max(0, config.depthColorStart ?? 0.08);
+  const depthColorEnd = Math.max(
+    depthColorStart + 0.05,
+    config.depthColorEnd ?? Math.min(1.25, terrainField.maxDepth)
+  );
   const textureRepeat = Math.max(0.25, config.textureRepeat ?? 4);
   const textureStrength = THREE.MathUtils.clamp(config.textureStrength ?? 0.35, 0, 1);
   const textureSpeed = new THREE.Vector2(
@@ -45,6 +60,11 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
     shader.uniforms.uShallowColor = { value: shallowColor };
     shader.uniforms.uDeepColor = { value: deepColor };
     shader.uniforms.uFoamColor = { value: foamColor };
+    shader.uniforms.uShorelineColor = { value: shorelineColor };
+    shader.uniforms.uShorelineDepth = { value: shorelineDepth };
+    shader.uniforms.uShorelineStrength = { value: shorelineStrength };
+    shader.uniforms.uDepthColorStart = { value: depthColorStart };
+    shader.uniforms.uDepthColorEnd = { value: depthColorEnd };
 
     let textureUniforms = "";
     let textureBlend = "";
@@ -95,6 +115,7 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
       "#include <common>",
       `#include <common>
        uniform float uWaterTime;
+       uniform float uWaterSpeed;
        uniform float uWaveSpeed;
        uniform float uShimmerStrength;
        uniform sampler2D uTerrainField;
@@ -104,6 +125,11 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
        uniform vec3 uShallowColor;
        uniform vec3 uDeepColor;
        uniform vec3 uFoamColor;
+       uniform vec3 uShorelineColor;
+       uniform float uShorelineDepth;
+       uniform float uShorelineStrength;
+       uniform float uDepthColorStart;
+       uniform float uDepthColorEnd;
        varying vec2 vWaterCoord;
        varying vec2 vWaterUv;${textureUniforms}`
     );
@@ -112,8 +138,15 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
       `#include <color_fragment>
        float depth = texture2D(uTerrainField, vWaterUv).r * uTerrainMaxDepth;
        float wet = smoothstep(0.0, uShoreFade, depth);
-       float deepMix = smoothstep(0.10, min(1.7, uTerrainMaxDepth), depth);
+       float deepMix = smoothstep(uDepthColorStart, uDepthColorEnd, depth);
        diffuseColor.rgb = mix(uShallowColor, uDeepColor, deepMix);
+
+       float shoreline = 1.0 - smoothstep(0.015, uShorelineDepth, depth);
+       diffuseColor.rgb = mix(
+         diffuseColor.rgb,
+         uShorelineColor,
+         shoreline * uShorelineStrength * wet
+       );
        diffuseColor.a *= wet;
        ${textureBlend}
 
@@ -127,12 +160,12 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
        float foamWet = smoothstep(0.018, 0.05, depth);
        float foamNoise = 0.70 + 0.30 * sin(vWaterCoord.x * 2.8 + vWaterCoord.y * 2.1 + shimmerT * 1.25);
        float foam = foamNear * foamWet * foamNoise;
-       diffuseColor.rgb = mix(diffuseColor.rgb, uFoamColor, clamp(foam, 0.0, 0.9));`
+       diffuseColor.rgb = mix(diffuseColor.rgb, uFoamColor, clamp(foam, 0.0, 0.82));`
     );
     shaderRef = shader;
   };
   material.customProgramCacheKey = () =>
-    `liora-depth-water-v3-${texture ? "textured" : "plain"}`;
+    `liora-depth-water-v4-${texture ? "textured" : "plain"}`;
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "HomeIslandWater";
