@@ -110,6 +110,14 @@ export function createSky(config, distantRangeConfig = {}) {
           color = mix(horizonColor, lowerColor, t);
         }
         gl_FragColor = vec4(color, 1.0);
+        // Not decoration. A hand-written ShaderMaterial gets none of three's
+        // output pipeline for free: without these the dome wrote raw linear
+        // values straight to the canvas and skipped tone mapping entirely, so
+        // the sky was the one large surface in frame graded differently from
+        // everything beneath it — and no amount of tuning the ground colours
+        // could make the two meet at the horizon.
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }
     `,
   });

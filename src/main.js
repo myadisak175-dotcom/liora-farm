@@ -11,6 +11,7 @@ import { createSky } from "./systems/sky.js";
 import { createDayNight } from "./systems/day-night.js";
 import { createRunFx } from "./systems/run-fx.js";
 import { createContactShadow } from "./systems/contact-shadow.js";
+import { createObjectShadows } from "./systems/object-shadows.js";
 import { createPlayerRuntime } from "./systems/player-runtime.js";
 import { createWindSystem } from "./systems/wind/wind-system.js";
 import { BUILDABLE_ASSETS } from "./editor/asset-catalog.js";
@@ -50,6 +51,26 @@ const camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, innerWidth / inner
 const renderer = new THREE.WebGLRenderer({ antialias: QUALITY.antialias });
 renderer.setPixelRatio(Math.min(devicePixelRatio, QUALITY.maxPixelRatio));
 renderer.setSize(innerWidth, innerHeight);
+
+/**
+ * Everything above 1.0 used to clip to the same white. Sunlit grass, the
+ * beach, the far field and the sky all landed on that white, which is why the
+ * outer world read as a separate flat sheet instead of the same land seen
+ * further away. Tone mapping gives those values somewhere to go.
+ */
+const TONE_MAPPINGS = {
+  none: THREE.NoToneMapping,
+  linear: THREE.LinearToneMapping,
+  reinhard: THREE.ReinhardToneMapping,
+  cineon: THREE.CineonToneMapping,
+  aces: THREE.ACESFilmicToneMapping,
+  // Khronos PBR Neutral: rolls highlights off without the desaturation ACES
+  // puts on a stylised palette. Falls back where the three build predates it.
+  neutral: THREE.NeutralToneMapping ?? THREE.ACESFilmicToneMapping,
+};
+renderer.toneMapping = TONE_MAPPINGS[CONFIG.render?.toneMapping ?? "neutral"] ?? TONE_MAPPINGS.neutral;
+renderer.toneMappingExposure = Number(CONFIG.render?.exposure) || 1;
+
 document.body.prepend(renderer.domElement);
 
 const textureLoader = new THREE.TextureLoader();
@@ -75,7 +96,7 @@ try {
 }
 
 setBootState("systems");
-const lighting = setupLighting(scene, renderer, CONFIG.shadows);
+const lighting = setupLighting(scene, renderer, CONFIG.shadows, CONFIG.lighting);
 const sky = createSky(CONFIG.sky, CONFIG.distantRange);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
@@ -83,6 +104,7 @@ const dayNight = createDayNight({
   scene,
   sky,
   lighting,
+  world,
   config: CONFIG.dayNight,
   onLabelChange: (label) => { clockButton.textContent = label; },
 });
@@ -105,6 +127,12 @@ window.__liora = {
 const builderLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
 const layoutStore = createLayoutStore({ storageKey: CONFIG.builder.storageKey });
 const builderState = createBuilderState({ historyLimit: CONFIG.builder.historyLimit });
+const objectShadows = createObjectShadows({
+  scene,
+  config: { ...CONFIG.objectShadows, enabled: CONFIG.objectShadows.enabled && QUALITY.preset.blobShadows },
+  shadowBounds: CONFIG.shadows.bounds,
+  getGroundHeight: world.getGroundHeight,
+});
 const builderView = createBuilderView({
   scene,
   loader: builderLoader,
@@ -112,6 +140,7 @@ const builderView = createBuilderView({
   config: CONFIG.builder,
   playerHeight: CONFIG.playerHeight,
   prepareModel: (model, asset, context) => wind.attach(model, asset, context),
+  objectShadows,
 });
 let builderUI = null;
 let horizonPanel = null;
@@ -133,6 +162,9 @@ const builder = createBuilderController({
 });
 const syncBuilderToTerrain = () => {
   for (const item of builder.items) builderView.update(item);
+  // Sculpting moved the ground out from under every blob, not just the ones
+  // whose item changed.
+  objectShadows.invalidate();
 };
 const layoutRuntime = createLayoutRuntime({
   builder,
@@ -167,6 +199,8 @@ horizonPanel = createHorizonControls({
   scene,
   sky,
   world,
+  renderer,
+  lighting,
   cameraController,
   container: document.querySelector("#horizon-strip"),
   surface: renderer.domElement,
@@ -269,7 +303,40 @@ const perfHud = createPerfHud({
   renderer,
   enabled: isPerfHudEnabled(),
   getObjectCount: () => builder.items.length,
+  quality: QUALITY,
   build: BUILD,
+});
+
+/**
+ * Everything a quality tier can change without rebuilding the WebGL context.
+ *
+ * `antialias` is deliberately absent: it is fixed when the context is created,
+ * so switching tiers mid-session cannot turn MSAA on or off. The HUD reports
+ * the tier that is actually live rather than pretending otherwise.
+ */
+function applyQuality(preset) {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, preset.maxPixelRatio));
+  renderer.setSize(innerWidth, innerHeight);
+
+  if (lighting.sun.shadow.mapSize.width !== preset.shadowMapSize) {
+    lighting.sun.shadow.mapSize.set(preset.shadowMapSize, preset.shadowMapSize);
+    // The allocated depth texture is the old size; dropping it makes three
+    // rebuild at the new one on the next frame.
+    lighting.sun.shadow.map?.dispose();
+    lighting.sun.shadow.map = null;
+  }
+  lighting.setShadowBounds(preset.shadowBounds);
+
+  world.cloudShadows.setStrength(preset.cloudShadows ? CONFIG.cloudShadows.strength : 0);
+  world.setQuality?.(preset);
+  objectShadows.setShadowBounds(preset.shadowBounds);
+  objectShadows.setOpacity(preset.blobShadows ? CONFIG.objectShadows.opacity : 0);
+}
+applyQuality(QUALITY.preset);
+QUALITY.onChange((preset) => {
+  applyQuality(preset);
+  horizonPanel?.apply?.();
+  toast(`คุณภาพ: ${preset.label} — ${preset.hint}`);
 });
 
 const clock = new THREE.Clock();
@@ -279,11 +346,15 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.04);
   dayNight.update(delta);
   wind.update(delta);
-  world.refresh();
+  world.refresh(delta);
   playerRuntime.update(delta, { active: mode === "play", cameraTarget });
   world.crops.update(delta);
   farmUI.update(delta, { active: mode === "play" });
   cameraController.update(cameraTarget, delta);
+  // The blobs hand over to the real shadow map around the point it is centred
+  // on, so they follow the same target the sun does.
+  objectShadows.setFollowPoint(cameraTarget.x, cameraTarget.z);
+  objectShadows.refresh();
   sky.update(camera);
   renderer.render(scene, camera);
   perfHud.update(delta);

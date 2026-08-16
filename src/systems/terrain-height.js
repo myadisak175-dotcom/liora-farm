@@ -38,6 +38,44 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
   const worldZ = (iz) => iz * spacing - half;
   const at = (ix, iz) => heights[clamp(iz, 0, cells - 1) * cells + clamp(ix, 0, cells - 1)];
 
+  /**
+   * Baked ambient occlusion, straight off the height field.
+   *
+   * Without it the ground is pure albedo: the splat shader has no idea which
+   * parts of the terrain sit in a bowl and which stand on a ridge, so a
+   * sculpted valley reads as a painted shape rather than a dip in the land.
+   * A directional light alone cannot supply that — it darkens slopes facing
+   * away from the sun, not enclosed places.
+   *
+   * The measure is openness: compare a vertex against the mean of its
+   * neighbours at two radii. Neighbours above it mean sky is blocked. Two
+   * radii because one gives either creases or broad valleys, never both.
+   *
+   * This runs on the CPU inside the existing dirty-rectangle pass while the
+   * player sculpts, and writes into a vertex colour the shader multiplies for
+   * free. Runtime cost is zero — no extra pass, no extra texture fetch.
+   */
+  const AO_RADII = [2, 6];
+  const aoStrength = clamp(Number(config.aoStrength ?? 0.55), 0, 1);
+  const aoContrast = Math.max(0.05, Number(config.aoContrast ?? 0.42));
+
+  function openness(ix, iz) {
+    if (aoStrength <= 0) return 1;
+    const h = at(ix, iz);
+    let occlusion = 0;
+    for (const r of AO_RADII) {
+      const mean = (
+        at(ix + r, iz) + at(ix - r, iz) + at(ix, iz + r) + at(ix, iz - r)
+        + at(ix + r, iz + r) + at(ix - r, iz - r)
+        + at(ix + r, iz - r) + at(ix - r, iz + r)
+      ) / 8;
+      // Normalised by the horizontal span so a gentle 6 m dish and a tight
+      // 2 m crease are measured on the same scale.
+      occlusion += clamp((mean - h) / (r * spacing * aoContrast), 0, 1);
+    }
+    return 1 - (occlusion / AO_RADII.length) * aoStrength;
+  }
+
   function markDirty(ix0 = 0, iz0 = 0, ix1 = cells - 1, iz1 = cells - 1) {
     if (!dirty) {
       dirtyMinIx = ix0;
@@ -566,6 +604,7 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
     ensureVertexMap(geometry);
     const position = geometry.getAttribute("position");
     const normal = geometry.getAttribute("normal");
+    const ao = geometry.getAttribute("color");
     if (dirty) {
       const minIx = clamp(dirtyMinIx, 0, cells - 1), maxIx = clamp(dirtyMaxIx, 0, cells - 1);
       const minIz = clamp(dirtyMinIz, 0, cells - 1), maxIz = clamp(dirtyMaxIz, 0, cells - 1);
@@ -585,6 +624,24 @@ export function createTerrainHeight({ config, worldSize, spacing, reservedAreas 
       }
       position.needsUpdate = true;
       normal.needsUpdate = true;
+
+      if (ao) {
+        // Occlusion reads further than a normal does, so its dirty rectangle
+        // has to grow by the widest sample radius or the edit leaves a square
+        // seam in the shading exactly where the brush stopped.
+        const reach = AO_RADII[AO_RADII.length - 1];
+        const aminX = Math.max(0, minIx - reach), amaxX = Math.min(cells - 1, maxIx + reach);
+        const aminZ = Math.max(0, minIz - reach), amaxZ = Math.min(cells - 1, maxIz + reach);
+        for (let iz = aminZ; iz <= amaxZ; iz += 1) {
+          for (let ix = aminX; ix <= amaxX; ix += 1) {
+            const v = vertexMap[iz * cells + ix];
+            if (v < 0) continue;
+            const shade = openness(ix, iz);
+            ao.setXYZ(v, shade, shade, shade);
+          }
+        }
+        ao.needsUpdate = true;
+      }
       dirty = false;
     }
     if (finalizePending) {

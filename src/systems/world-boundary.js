@@ -335,6 +335,13 @@ export function createWorldBoundary({ config = {}, baseHeight, worldSize, spacin
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
     geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    // The ridge shares the terrain material, which now declares vertexColors
+    // for baked AO. A shared material with a missing attribute renders black,
+    // so the ridge carries a neutral one rather than opting out of the shader.
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(
+      new Float32Array(positions.length).fill(1),
+      3
+    ));
     geometry.setIndex(indices);
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();

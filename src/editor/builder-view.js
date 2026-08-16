@@ -14,6 +14,7 @@ export function createBuilderView({
   config,
   playerHeight = 1.7,
   prepareModel = null,
+  objectShadows = null,
 }) {
   const group = new THREE.Group();
   group.name = "BuilderObjects";
@@ -29,6 +30,9 @@ export function createBuilderView({
   // why that split is not just laziness.
   const pools = createInstancedPools({ scene });
   const poolMetrics = new Map(); // assetId -> { scaleNormalization, baseOffset }
+  // Ground footprint at scale 1, measured once per asset. Feeds the far-field
+  // blob shadows so a tree past the real shadow map still sits on the ground.
+  const footprints = new Map(); // assetId -> radius
   const selectionTint = new THREE.Color(config.selectionColor);
 
   let ghost = null;
@@ -163,6 +167,27 @@ export function createBuilderView({
    * object sits on the terrain instead of through it. Same number
    * `cacheBaseOffset` caches per holder, measured once per pooled asset.
    */
+  function measureFootprint(model, assetId) {
+    if (footprints.has(assetId)) return footprints.get(assetId);
+    model.updateMatrixWorld(true);
+    box.setFromObject(model, true);
+    box.getSize(size);
+    const radius = Math.max(0.05, Math.max(size.x, size.z) * 0.5);
+    footprints.set(assetId, radius);
+    return radius;
+  }
+
+  function syncShadow(item, normalization) {
+    if (!objectShadows?.enabled) return;
+    const radius = footprints.get(item.assetId);
+    if (!radius) return;
+    objectShadows.set(item.id, {
+      x: item.x,
+      z: item.z,
+      radius: radius * item.scale * normalization,
+    });
+  }
+
   function measureBaseOffset(model) {
     model.updateMatrixWorld(true);
     box.setFromObject(model, true);
@@ -175,11 +200,13 @@ export function createBuilderView({
     holder.name = `builder:${item.assetId}`;
     holder.userData.itemId = item.id;
     holder.userData.scaleNormalization = getScaleNormalization(model, asset);
+    measureFootprint(model, item.assetId);
     holder.add(model);
     group.add(holder);
     cacheBaseOffset(holder, model);
     applyTransform(holder, item);
     objects.set(item.id, holder);
+    syncShadow(item, holder.userData.scaleNormalization);
     return holder;
   }
 
@@ -196,10 +223,12 @@ export function createBuilderView({
         scaleNormalization: getScaleNormalization(model, asset),
         baseOffset: measureBaseOffset(model),
       };
+      measureFootprint(model, item.assetId);
       if (!pools.ensure(asset.id, model, metrics)) return attachObject(item, asset, model);
       poolMetrics.set(asset.id, metrics);
     }
     pools.add(item, getGroundHeight(item.x, item.z));
+    syncShadow(item, poolMetrics.get(asset.id)?.scaleNormalization ?? 1);
     return null;
   }
 
@@ -215,13 +244,20 @@ export function createBuilderView({
   }
 
   function update(item) {
-    if (pools.update(item, getGroundHeight(item.x, item.z))) return;
+    if (pools.update(item, getGroundHeight(item.x, item.z))) {
+      syncShadow(item, poolMetrics.get(item.assetId)?.scaleNormalization ?? 1);
+      return;
+    }
     const object = objects.get(item.id);
-    if (object) applyTransform(object, item);
+    if (object) {
+      applyTransform(object, item);
+      syncShadow(item, object.userData.scaleNormalization ?? 1);
+    }
   }
 
   function remove(id) {
     if (highlighted?.userData.itemId === id || highlightedInstance === id) highlight(null);
+    objectShadows?.remove?.(id);
     if (pools.remove(id)) return;
     const object = objects.get(id);
     if (!object) return;
@@ -232,6 +268,7 @@ export function createBuilderView({
 
   function clear() {
     highlight(null);
+    objectShadows?.clear?.();
     pools.clear();
     for (const id of [...objects.keys()]) remove(id);
   }

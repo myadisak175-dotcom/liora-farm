@@ -77,10 +77,12 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   const rings = clamp(Math.round(Number(config.rings) || 10), 2, 32);
   const seed = Number(config.noiseSeed) || 0;
 
-  // Keep the first ~24 m beyond the farm edge visually continuous. The old
+  // Keep the first stretch beyond the farm edge visually continuous. The old
   // implementation started noise/tint immediately at the seam, which made the
   // playable square readable even though the geometry overlapped correctly.
-  const edgeBlendWidth = Math.max(1, Number(config.edgeBlendWidth) || 24);
+  // 24 m turned out to be under one camera-width at default zoom, so the tint
+  // change still landed on screen next to the untinted farm.
+  const edgeBlendWidth = Math.max(1, Number(config.edgeBlendWidth) || 40);
   const macroStrength = clamp(Number(config.macroVariationStrength) || 0.16, 0, 0.5);
   const macroScale = Math.max(0.001, Number(config.macroVariationScale) || 0.018);
 
@@ -173,31 +175,52 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
  * than a mathematically perfect ring. All trig runs in the vertex shader on a
  * ~2k-vertex mesh, not per pixel.
  */
-function applyTextureDistanceFade(material, config = {}, textureWorldSize = 80) {
-  if (!material?.map) return;
-
+function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
   const worldSize = Math.max(1, Number(textureWorldSize) || 80);
+
+  // `textureFadeReach` scales the anti-banding caps. The caps exist so a 5 m
+  // grass tile is never asked to describe 600 m of horizon, but at 1.0 they
+  // also killed the texture only ~22 m past the seam, which is precisely
+  // where the eye is looking for continuity.
+  const reach = clamp(Number(config.textureFadeReach) || 1, 0.4, 3);
   const requestedStart = Math.max(0, Number(config.textureFadeStart) || 80);
   const requestedEnd = Math.max(requestedStart + 1, Number(config.textureFadeEnd) || 150);
-  const antiBandStartCap = worldSize * 0.75;
-  const antiBandEndCap = worldSize * 1.6;
-  const start = Math.min(requestedStart, antiBandStartCap);
-  const end = Math.max(start + 1, Math.min(requestedEnd, antiBandEndCap));
+  const start = Math.min(requestedStart, worldSize * 0.75 * reach);
+  const end = Math.max(start + 1, Math.min(requestedEnd, worldSize * 1.6 * reach));
   const jitter = Math.max(0, Number(config.textureFadeJitter) || 10);
 
+  // Ground-only aerial perspective. Scene fog cannot cover this because the
+  // horizon rules keep fog.near past the farm on purpose; this fades the far
+  // ground into whatever colour the sky currently is instead.
+  const innerRadius = Math.max(1, Number(config.innerRadius) || worldSize / 2);
+  const outerRadius = Math.max(innerRadius + 1, Number(config.outerRadius) || 600);
+  const skyStrength = clamp(Number(config.skyBlendStrength ?? 0.72), 0, 1);
+  const skyStart = Number.isFinite(config.skyBlendStart)
+    ? config.skyBlendStart
+    : innerRadius + (Number(config.edgeBlendWidth) || 40) * 2;
+  const skyEnd = Math.max(skyStart + 1, Number.isFinite(config.skyBlendEnd)
+    ? config.skyBlendEnd
+    : outerRadius * 0.78);
+
+  const skyColor = new THREE.Color(config.skyBlendColor ?? 0xdff4ff);
+
   material.userData = material.userData || {};
-  material.userData.textureFade = {
-    requestedStart,
-    requestedEnd,
-    start,
-    end,
-    jitter,
-  };
+  material.userData.textureFade = { requestedStart, requestedEnd, start, end, jitter, reach };
+  material.userData.skyBlend = { start: skyStart, end: skyEnd, strength: skyStrength };
+
+  const hasMap = Boolean(material.map);
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uOuterTextureFadeStart = { value: start };
     shader.uniforms.uOuterTextureFadeEnd = { value: end };
     shader.uniforms.uOuterTextureFadeJitter = { value: jitter };
+    shader.uniforms.uOuterSkyColor = { value: skyColor };
+    shader.uniforms.uOuterSkyBlendStart = { value: skyStart };
+    shader.uniforms.uOuterSkyBlendEnd = { value: skyEnd };
+    shader.uniforms.uOuterSkyBlendStrength = { value: skyStrength };
+    // Keep a handle so day/night can retint without recompiling.
+    material.userData.uniforms = shader.uniforms;
+
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -213,12 +236,24 @@ function applyTextureDistanceFade(material, config = {}, textureWorldSize = 80) 
           "vOuterFadeJitter = ( outerJitterA * 0.65 + outerJitterB * 0.35 ) * uOuterTextureFadeJitter;",
         ].join("\n")
       );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <common>",
+      [
         "#include <common>",
-        "#include <common>\nvarying float vOuterWorldRadius;\nvarying float vOuterFadeJitter;\nuniform float uOuterTextureFadeStart;\nuniform float uOuterTextureFadeEnd;"
-      )
-      .replace(
+        "varying float vOuterWorldRadius;",
+        "varying float vOuterFadeJitter;",
+        "uniform float uOuterTextureFadeStart;",
+        "uniform float uOuterTextureFadeEnd;",
+        "uniform vec3 uOuterSkyColor;",
+        "uniform float uOuterSkyBlendStart;",
+        "uniform float uOuterSkyBlendEnd;",
+        "uniform float uOuterSkyBlendStrength;",
+      ].join("\n")
+    );
+
+    if (hasMap) {
+      shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         [
           "vec3 outerWorldBaseDiffuse = diffuseColor.rgb;",
@@ -231,8 +266,33 @@ function applyTextureDistanceFade(material, config = {}, textureWorldSize = 80) 
           "diffuseColor.rgb = mix( diffuseColor.rgb, outerWorldBaseDiffuse, outerWorldTextureFade );",
         ].join("\n")
       );
+    }
+
+    // Done in linear working space, before tone mapping, so the blend behaves
+    // like real atmosphere rather than a decal painted on the final image.
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      [
+        "float outerSkyBlend = smoothstep(",
+        "  uOuterSkyBlendStart + vOuterFadeJitter,",
+        "  uOuterSkyBlendEnd + vOuterFadeJitter,",
+        "  vOuterWorldRadius",
+        ") * uOuterSkyBlendStrength;",
+        "outgoingLight = mix( outgoingLight, uOuterSkyColor, outerSkyBlend );",
+        "#include <opaque_fragment>",
+      ].join("\n")
+    );
   };
-  material.customProgramCacheKey = () => `outer-world-antiband:${start}:${end}:${jitter}`;
+
+  material.customProgramCacheKey = () =>
+    `outer-world-blend:${hasMap}:${start}:${end}:${jitter}:${skyStart}:${skyEnd}:${skyStrength}`;
+
+  return {
+    /** Called every frame by day/night so the horizon colour always agrees. */
+    setSkyColor(color) {
+      skyColor.copy(color);
+    },
+  };
 }
 
 export function createOuterWorldGround({ config = {}, texture = null, textureWorldSize = 80 } = {}) {
@@ -240,17 +300,28 @@ export function createOuterWorldGround({ config = {}, texture = null, textureWor
   group.name = "OuterWorldGround";
 
   if (config.enabled === false) {
-    return { group, mesh: null, stats: { meshes: 0, triangles: 0 }, dispose() {} };
+    return {
+      group,
+      mesh: null,
+      stats: { meshes: 0, triangles: 0 },
+      setAtmosphere() {},
+      dispose() {},
+    };
   }
 
   const geometry = buildOuterWorldGeometry(config, textureWorldSize);
-  const material = new THREE.MeshLambertMaterial({
+  // Was MeshLambertMaterial while the gameplay terrain is MeshStandardMaterial.
+  // Two different BRDFs under the same lights means the two surfaces can never
+  // agree in brightness at the seam, no matter how the colours are tuned.
+  const material = new THREE.MeshStandardMaterial({
     map: texture,
     vertexColors: true,
+    roughness: 1,
+    metalness: 0,
     fog: true,
   });
   material.name = "OuterWorldGroundMaterial";
-  applyTextureDistanceFade(material, config, textureWorldSize);
+  const shading = applyDistanceShading(material, config, textureWorldSize);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "OuterWorldGroundMesh";
@@ -262,7 +333,11 @@ export function createOuterWorldGround({ config = {}, texture = null, textureWor
   return {
     group,
     mesh,
+    material,
     stats: { meshes: 1, triangles: (geometry.index?.count ?? 0) / 3 },
+    setAtmosphere(horizonColor) {
+      if (horizonColor) shading.setSkyColor(horizonColor);
+    },
     dispose() {
       geometry.dispose();
       material.dispose();

@@ -1,13 +1,29 @@
 import * as THREE from "three";
 
-export function setupLighting(scene, renderer, shadowConfig) {
+export function setupLighting(scene, renderer, shadowConfig, balanceConfig = {}) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  const hemi = new THREE.HemisphereLight(0xfff5dd, 0x496448, 2.2);
+  /**
+   * Ambient-versus-directional is the whole ballgame for shape.
+   *
+   * A HemisphereLight is light arriving from every direction at once, so it
+   * lights the side of a form facing away from the sun nearly as brightly as
+   * the side facing it. At the old 2.2 against a 2.5 sun that is close to
+   * one-to-one: a sphere renders as a flat disc, a sculpted hill as a painted
+   * blob, and every tree as a sticker. The per-hour palette in day-night.js
+   * now authors a ~1:2.5 ratio instead, and these scales keep it tunable from
+   * the panel without editing that palette.
+   */
+  let sunScale = Number.isFinite(balanceConfig.sunScale) ? balanceConfig.sunScale : 1;
+  let hemiScale = Number.isFinite(balanceConfig.hemiScale) ? balanceConfig.hemiScale : 1;
+  let baseSun = 2.9;
+  let baseHemi = 1.15;
+
+  const hemi = new THREE.HemisphereLight(0xfff5dd, 0x496448, baseHemi * hemiScale);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xffedc4, 2.5);
+  const sun = new THREE.DirectionalLight(0xffedc4, baseSun * sunScale);
   sun.castShadow = true;
 
   const sunOffset = new THREE.Vector3(-7, 12, 7);
@@ -54,14 +70,38 @@ export function setupLighting(scene, renderer, shadowConfig) {
     },
     setAtmosphere({ sunColor, sunIntensity, hemiSky, hemiGround, hemiIntensity, sunDirection }) {
       if (sunColor) sun.color.copy(sunColor);
-      if (Number.isFinite(sunIntensity)) sun.intensity = sunIntensity;
+      if (Number.isFinite(sunIntensity)) baseSun = sunIntensity;
       if (hemiSky) hemi.color.copy(hemiSky);
       if (hemiGround) hemi.groundColor.copy(hemiGround);
-      if (Number.isFinite(hemiIntensity)) hemi.intensity = hemiIntensity;
+      if (Number.isFinite(hemiIntensity)) baseHemi = hemiIntensity;
+      sun.intensity = baseSun * sunScale;
+      hemi.intensity = baseHemi * hemiScale;
       if (sunDirection) {
         const length = 15;
         sunOffset.copy(sunDirection).multiplyScalar(length);
       }
+    },
+    /**
+     * Panel-side override. Applied on top of whatever hour it currently is,
+     * so dragging it at sunset does not snap the scene back to noon values.
+     */
+    setBalance({ sunScale: nextSun, hemiScale: nextHemi } = {}) {
+      if (Number.isFinite(nextSun)) sunScale = nextSun;
+      if (Number.isFinite(nextHemi)) hemiScale = nextHemi;
+      sun.intensity = baseSun * sunScale;
+      hemi.intensity = baseHemi * hemiScale;
+    },
+    getBalance() {
+      return { sunScale, hemiScale, sunIntensity: sun.intensity, hemiIntensity: hemi.intensity };
+    },
+    /** Shadow coverage in metres, tied to the quality preset. */
+    setShadowBounds(bounds) {
+      const size = Math.max(4, Number(bounds) || shadowConfig.bounds);
+      sun.shadow.camera.left = -size;
+      sun.shadow.camera.right = size;
+      sun.shadow.camera.top = size;
+      sun.shadow.camera.bottom = -size;
+      sun.shadow.camera.updateProjectionMatrix();
     },
   };
 }

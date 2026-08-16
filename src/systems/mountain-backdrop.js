@@ -127,7 +127,7 @@ function buildLayerGeometry(layer = {}) {
   return geometry;
 }
 
-function createLayer(layer, name, renderOrder) {
+function createLayer(layer, name, renderOrder, depth) {
   const geometry = buildLayerGeometry(layer);
   const material = new THREE.MeshLambertMaterial({
     vertexColors: true,
@@ -136,6 +136,12 @@ function createLayer(layer, name, renderOrder) {
     side: THREE.DoubleSide,
   });
   material.name = `${name}Material`;
+  // `depth` is how far into the haze this band sits, 0 near .. 1 far. Scene
+  // fog already pulls these toward the fog colour, but fog is one flat colour
+  // per frame while a real range separates because each band sits further
+  // into the air. Tinting the material toward the live sky colour by depth is
+  // what makes two ridges read as two distances rather than one cutout.
+  material.userData.hazeDepth = depth;
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = name;
@@ -158,12 +164,13 @@ export function createMountainBackdrop(config = {}) {
     };
   }
 
+  const hazeStrength = THREE.MathUtils.clamp(Number(config.hazeStrength ?? 0.45), 0, 1);
   const layers = [];
   if (config.far?.chunks?.length) {
-    layers.push(createLayer(config.far, "FarMountainBackdrop", -21));
+    layers.push(createLayer(config.far, "FarMountainBackdrop", -21, 1));
   }
   if (config.near?.chunks?.length) {
-    layers.push(createLayer(config.near, "NearMountainBackdrop", -20));
+    layers.push(createLayer(config.near, "NearMountainBackdrop", -20, 0.55));
   }
 
   for (const layer of layers) group.add(layer.mesh);
@@ -177,6 +184,29 @@ export function createMountainBackdrop(config = {}) {
     group,
     meshes: layers.map((layer) => layer.mesh),
     stats: { meshes: layers.length, triangles },
+    /**
+     * Called every frame by the day/night cycle with the sky's current horizon
+     * colour, so the ranges shift with the hour instead of staying stuck on a
+     * daytime grey-green while the sky goes orange behind them.
+     */
+    setAtmosphere(horizonColor) {
+      if (!horizonColor || hazeStrength <= 0) return;
+      for (const layer of layers) {
+        const haze = hazeStrength * layer.material.userData.hazeDepth;
+        // Not a lerp of material.color: the ridge colours live in the vertex
+        // attribute, and material.color multiplies them, so lerping it toward
+        // a dark night sky would just crush the mountains to black. Fading the
+        // albedo down while adding the sky back as emissive reproduces
+        // mix(rock, sky, haze) — light lost to distance, replaced by light
+        // scattered in the air between here and there.
+        layer.material.color.setRGB(1 - haze, 1 - haze, 1 - haze);
+        layer.material.emissive.setRGB(
+          horizonColor.r * haze,
+          horizonColor.g * haze,
+          horizonColor.b * haze
+        );
+      }
+    },
     dispose() {
       for (const layer of layers) {
         layer.geometry.dispose();

@@ -7,6 +7,7 @@ import { createOuterWorldGround } from "../systems/outer-world-ground.js";
 import { createMountainBackdrop } from "../systems/mountain-backdrop.js";
 import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
+import { createCloudShadows } from "../systems/cloud-shadows.js";
 import { createGroundLayers } from "../systems/ground-layers.js";
 import { createGroundTextureArray } from "../systems/ground-texture-array.js";
 import { createBrushCursor } from "../systems/brush-cursor.js";
@@ -103,7 +104,7 @@ export async function createHomeIsland({
     config: { ...config.terrainField, waterLevel: config.water.level },
   });
 
-  const terrain = createTerrain({ texture: baseMap, config: config.terrain, height: baseHeight });
+  const terrain = createTerrain({ texture: baseMap, config: config.terrain, height: baseHeight, anisotropy });
 
   const paint = createGroundPaint({
     config: config.groundPaint,
@@ -124,8 +125,18 @@ export async function createHomeIsland({
     textureWorldSize: config.terrain.size,
   });
 
+  // Applied after paint.applyTo above: both hook onBeforeCompile, and the
+  // cloud layer composes onto whatever it finds rather than replacing it.
+  const cloudShadows = createCloudShadows(config.cloudShadows, config.wind);
+  cloudShadows.applyTo(terrain.material);
+
   let outerWorld = buildOuterWorld(config.outerWorld);
+  cloudShadows.applyTo(outerWorld.material);
   group.add(outerWorld.group);
+
+  // Remembered so rebuilding from the horizon panel does not snap the far
+  // ground back to its authored daytime tint in the middle of a sunset.
+  let lastHorizonColor = null;
 
   const water = createAnimatedWater({
     size: config.terrain.size,
@@ -166,17 +177,30 @@ export async function createHomeIsland({
     worldBoundary,
     get outerWorld() { return outerWorld; },
     get mountainBackdrop() { return mountainBackdrop; },
+    /**
+     * The sky's current horizon colour, pushed into the far ground so the two
+     * always dissolve into each other. Called by the day/night cycle.
+     */
+    setAtmosphere(horizonColor) {
+      if (!horizonColor) return;
+      lastHorizonColor = horizonColor;
+      outerWorld.setAtmosphere?.(horizonColor);
+      mountainBackdrop.setAtmosphere?.(horizonColor);
+    },
     rebuildHorizon({ outerWorld: outerConfig, mountainBackdrop: backdropConfig } = {}) {
       if (outerConfig) {
         group.remove(outerWorld.group);
         outerWorld.dispose();
         outerWorld = buildOuterWorld(outerConfig);
+        cloudShadows.applyTo(outerWorld.material);
+        if (lastHorizonColor) outerWorld.setAtmosphere?.(lastHorizonColor);
         group.add(outerWorld.group);
       }
       if (backdropConfig) {
         group.remove(mountainBackdrop.group);
         mountainBackdrop.dispose();
         mountainBackdrop = createMountainBackdrop(backdropConfig);
+        if (lastHorizonColor) mountainBackdrop.setAtmosphere?.(lastHorizonColor);
         group.add(mountainBackdrop.group);
       }
     },
@@ -186,7 +210,12 @@ export async function createHomeIsland({
     farmPlot,
     crops,
     getGroundHeight: (x, z) => height.sample(x, z),
-    refresh() {
+    cloudShadows,
+    setQuality(preset = {}) {
+      terrain.setDetailNormalEnabled(preset.detailNormals !== false);
+    },
+    refresh(delta = 0) {
+      cloudShadows.update(delta);
       water.update();
       const changed = terrain.refresh();
       if (changed) {
@@ -197,6 +226,7 @@ export async function createHomeIsland({
       return changed;
     },
     dispose() {
+      cloudShadows.dispose();
       brushCursor.dispose();
       crops.dispose();
       farmPlot.dispose();
