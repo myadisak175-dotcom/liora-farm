@@ -12,6 +12,8 @@
 import {
   BUILD_CATEGORIES,
   PRIMARY_ASSET_POLICY,
+  RETIRED_LEGACY_NATURE_IDS,
+  REUSABLE_LEGACY_NATURE_IDS,
   getBuildableAsset,
   getBuildableAssets,
   getAllBuildableAssets,
@@ -35,29 +37,44 @@ const palette = getBuildableAssets();
 const allAssets = getAllBuildableAssets();
 const v2 = palette.filter((asset) => asset.worldV2);
 const paletteNature = palette.filter((asset) => asset.category === BUILD_CATEGORIES.NATURE);
-const legacyNatureIds = ["tree", "pine", "palm", "grass"];
 
 await test("catalog exposes all 55 World V2 objects", () => {
   assert(v2.length === 55, `expected 55, got ${v2.length}`);
   assert(new Set(v2.map((asset) => asset.id)).size === 55, "duplicate v2 ids");
 });
 
-await test("World V2 is the only Nature set shown in the Builder palette", () => {
-  assert(paletteNature.length === 55, `expected 55 primary nature assets, got ${paletteNature.length}`);
-  assert(paletteNature.every((asset) => asset.worldV2 === true), "legacy Nature leaked into palette");
-  for (const id of legacyNatureIds) {
-    assert(!palette.some((asset) => asset.id === id), `${id} should be hidden from Builder palette`);
+await test("Builder Nature shows V2 plus reusable legacy grass", () => {
+  assert(paletteNature.length === 56, `expected 56 visible nature assets, got ${paletteNature.length}`);
+  assert(palette.some((asset) => asset.id === "grass"), "legacy grass should remain placeable");
+  assert(isPrimaryBuilderAsset(getBuildableAsset("grass")), "legacy grass should pass palette policy");
+  for (const id of RETIRED_LEGACY_NATURE_IDS) {
+    assert(!palette.some((asset) => asset.id === id), `${id} should stay hidden from Builder palette`);
   }
 });
 
-await test("legacy Nature stays registered as fallback for old saves", () => {
-  for (const id of legacyNatureIds) {
+await test("retired legacy trees stay registered for old saves", () => {
+  for (const id of RETIRED_LEGACY_NATURE_IDS) {
     const asset = getBuildableAsset(id);
     assert(asset?.modelPath?.includes("/builder/"), `${id} fallback missing`);
     assert(allAssets.some((entry) => entry.id === id), `${id} missing from full registry`);
   }
-  assert(allAssets.length - palette.length === legacyNatureIds.length,
-    `expected exactly ${legacyNatureIds.length} fallback-only assets`);
+  assert(REUSABLE_LEGACY_NATURE_IDS.length === 1 && REUSABLE_LEGACY_NATURE_IDS[0] === "grass",
+    "expected grass to be the only reusable legacy Nature asset");
+  assert(allAssets.length - palette.length === RETIRED_LEGACY_NATURE_IDS.length,
+    `expected exactly ${RETIRED_LEGACY_NATURE_IDS.length} fallback-only assets`);
+});
+
+await test("default/reset map contains no retired legacy trees", async () => {
+  const response = await fetch(new URL("/maps/home-island.json", location.origin));
+  assert(response.ok, `default map returned ${response.status}`);
+  const map = await response.json();
+  assert(Array.isArray(map.objects), "default map objects missing");
+  for (const item of map.objects) {
+    assert(!RETIRED_LEGACY_NATURE_IDS.includes(item.assetId),
+      `reset map still references retired ${item.assetId}`);
+  }
+  assert(map.objects.some((item) => String(item.assetId).startsWith("v2-")),
+    "reset map should use World V2 Nature assets");
 });
 
 await test("buildings and decor remain visible until they have replacement sets", () => {
@@ -68,8 +85,8 @@ await test("buildings and decor remain visible until they have replacement sets"
 
 await test("every primary V2 Nature asset satisfies the production policy", () => {
   assert(PRIMARY_ASSET_POLICY.natureSet === "world-v2", "wrong primary Nature set");
-  assert(PRIMARY_ASSET_POLICY.legacyNatureMode === "fallback-only", "legacy mode changed");
-  for (const asset of paletteNature) {
+  assert(PRIMARY_ASSET_POLICY.legacyNatureMode === "trees-fallback-only", "legacy mode changed");
+  for (const asset of v2) {
     assert(isPrimaryBuilderAsset(asset), `${asset.id} rejected by primary policy`);
     assert(asset.id.startsWith(PRIMARY_ASSET_POLICY.stableIdPrefix), `${asset.id} has unstable prefix`);
     assert(Boolean(asset.nodeName), `${asset.id} missing nodeName`);
@@ -132,6 +149,7 @@ await test("loader fetches one shared GLB for sibling variants", async () => {
 
 await test("legacy catalog remains loadable during migration", () => {
   assert(getBuildableAsset("tree")?.modelPath?.includes("/builder/"), "legacy tree missing");
+  assert(getBuildableAsset("grass")?.modelPath?.includes("/builder/"), "legacy grass missing");
   assert(getBuildableAsset("house")?.modelPath?.includes("/builder/"), "legacy house missing");
 });
 
