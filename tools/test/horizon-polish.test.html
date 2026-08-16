@@ -17,7 +17,7 @@ const results=[];
 const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
 
 ok("build marker identifies the horizon polish deploy",BUILD==="horizon-4",String(BUILD));
-ok("far texture fade begins outside the 80 m playable terrain",
+ok("authored far texture fade remains outside the playable terrain",
   CONFIG.outerWorld.textureFadeStart>=CONFIG.terrain.size
   &&CONFIG.outerWorld.textureFadeEnd>CONFIG.outerWorld.textureFadeStart,
   `start=${CONFIG.outerWorld.textureFadeStart} end=${CONFIG.outerWorld.textureFadeEnd}`);
@@ -38,6 +38,13 @@ const ground=createOuterWorldGround({
 });
 ok("far-ground polish stays one mesh and one material",
   ground.stats.meshes===1&&ground.group.children.length===1);
+ok("world edge has a protected blend band",
+  ground.mesh.geometry.userData.edgeBlendWidth>=20,
+  String(ground.mesh.geometry.userData.edgeBlendWidth));
+ok("macro colour variation is enabled but kept subtle",
+  ground.mesh.geometry.userData.macroVariationStrength>0
+  &&ground.mesh.geometry.userData.macroVariationStrength<=0.2,
+  String(ground.mesh.geometry.userData.macroVariationStrength));
 
 const shader={
   uniforms:{},
@@ -45,13 +52,23 @@ const shader={
   fragmentShader:"#include <common>\n#include <map_fragment>",
 };
 ground.mesh.material.onBeforeCompile(shader);
-ok("fade shader tracks outer-world radius",
+ok("fade shader tracks radius and organic fade jitter",
   shader.vertexShader.includes("vOuterWorldRadius")
+  &&shader.vertexShader.includes("vOuterFadeJitter")
   &&shader.fragmentShader.includes("outerWorldTextureFade"));
-ok("fade shader uses configured 80–150 m range",
-  shader.uniforms.uOuterTextureFadeStart.value===CONFIG.outerWorld.textureFadeStart
-  &&shader.uniforms.uOuterTextureFadeEnd.value===CONFIG.outerWorld.textureFadeEnd);
-ok("fade does not add collision or gameplay geometry",
+ok("anti-banding fade starts shortly outside the 80 m terrain",
+  shader.uniforms.uOuterTextureFadeStart.value===CONFIG.terrain.size*0.75
+  &&shader.uniforms.uOuterTextureFadeEnd.value===CONFIG.terrain.size*1.6,
+  `effective=${shader.uniforms.uOuterTextureFadeStart.value}-${shader.uniforms.uOuterTextureFadeEnd.value}`);
+ok("authored fade is preserved as metadata while safety caps are effective",
+  ground.mesh.material.userData.textureFade.requestedStart===CONFIG.outerWorld.textureFadeStart
+  &&ground.mesh.material.userData.textureFade.requestedEnd===CONFIG.outerWorld.textureFadeEnd
+  &&ground.mesh.material.userData.textureFade.start<ground.mesh.material.userData.textureFade.requestedStart);
+ok("fade jitter runs in the vertex path rather than per-fragment trig",
+  shader.uniforms.uOuterTextureFadeJitter.value>0
+  &&shader.vertexShader.includes("outerJitterA")
+  &&!shader.fragmentShader.includes("sin("));
+ok("edge/anti-banding polish does not add collision or gameplay geometry",
   ground.mesh.castShadow===false&&ground.mesh.receiveShadow===false
   &&CONFIG.worldLimit===38&&CONFIG.terrain.size===80);
 
