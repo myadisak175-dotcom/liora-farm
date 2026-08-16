@@ -10,6 +10,7 @@ const DEFAULTS = Object.freeze({
   waterlineWidth: 0.085,
   tintStrength: 0.24,
   tintColor: 0x8bdfe6,
+  castShadowDisableDepth: 0.06,
   ripplePool: 8,
   rippleInterval: 0.26,
   idleRippleInterval: 1.15,
@@ -38,6 +39,10 @@ function mergedConfig(config = {}) {
       1
     ),
     tintColor: fx.tintColor ?? DEFAULTS.tintColor,
+    castShadowDisableDepth: positive(
+      fx.castShadowDisableDepth,
+      DEFAULTS.castShadowDisableDepth
+    ),
     ripplePool: Math.max(2, Math.round(positive(fx.ripplePool, DEFAULTS.ripplePool))),
     rippleInterval: Math.max(0.08, positive(fx.rippleInterval, DEFAULTS.rippleInterval)),
     idleRippleInterval: Math.max(
@@ -182,7 +187,7 @@ function createNoopInteraction() {
     update() {},
     dispose() {},
     get stats() {
-      return { patchedMaterials: 0, activeRipples: 0 };
+      return { patchedMaterials: 0, activeRipples: 0, shadowCasters: 0, shadowSuppressed: false };
     },
   };
 }
@@ -202,8 +207,10 @@ export function createPlayerWaterInteraction({ scene, player, config = {} } = {}
   };
 
   const patched = new Set();
+  const shadowStates = new Map();
   player.model.traverse((node) => {
     if (!node?.isMesh || !node.material) return;
+    shadowStates.set(node, Boolean(node.castShadow));
     const materials = Array.isArray(node.material) ? node.material : [node.material];
     for (const material of materials) {
       if (!material || patched.has(material)) continue;
@@ -215,6 +222,15 @@ export function createPlayerWaterInteraction({ scene, player, config = {} } = {}
       }
     }
   });
+
+  let shadowSuppressed = false;
+  function setShadowSuppressed(suppressed) {
+    if (suppressed === shadowSuppressed) return;
+    shadowSuppressed = suppressed;
+    for (const [node, authoredCastShadow] of shadowStates) {
+      node.castShadow = suppressed ? false : authoredCastShadow;
+    }
+  }
 
   const rippleTexture = createRippleTexture();
   const rippleGeometry = new THREE.PlaneGeometry(1, 1);
@@ -285,6 +301,8 @@ export function createPlayerWaterInteraction({ scene, player, config = {} } = {}
     update({ position, moving = false, depth = 0, delta = 0 } = {}) {
       uniforms.depth.value = Math.max(0, Number(depth) || 0);
       const inWater = uniforms.depth.value > tuned.minDepth;
+      const suppressShadow = uniforms.depth.value > tuned.castShadowDisableDepth;
+      setShadowSuppressed(suppressShadow);
       const step = Number.isFinite(delta) ? Math.max(0, delta) : 0;
 
       if (position && inWater) {
@@ -306,6 +324,7 @@ export function createPlayerWaterInteraction({ scene, player, config = {} } = {}
       updateRippleMeshes(step);
     },
     dispose() {
+      setShadowSuppressed(false);
       for (const ripple of ripples) {
         scene.remove(ripple.mesh);
         ripple.mesh.material.dispose();
@@ -317,6 +336,8 @@ export function createPlayerWaterInteraction({ scene, player, config = {} } = {}
       return {
         patchedMaterials: patched.size,
         activeRipples: ripples.filter((ripple) => ripple.mesh.visible).length,
+        shadowCasters: [...shadowStates.values()].filter(Boolean).length,
+        shadowSuppressed,
       };
     },
     get uniforms() {
