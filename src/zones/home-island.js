@@ -3,6 +3,7 @@ import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
 import { createWorldBoundary } from "../systems/world-boundary.js";
+import { createMountainBackdrop } from "../systems/mountain-backdrop.js";
 import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
 import { createGroundLayers } from "../systems/ground-layers.js";
@@ -30,6 +31,9 @@ export async function createHomeIsland({
 }) {
   const group = new THREE.Group();
   group.name = "HomeIslandZone";
+
+  const mountainBackdrop = createMountainBackdrop(config.mountainBackdrop);
+  group.add(mountainBackdrop.group);
 
   const island = createFloatingIsland({ ...config.island, topY: (config.worldBoundary?.enabled !== false && config.worldBoundary?.type === "ridge") ? config.worldBoundary.height : 0 });
   group.add(island);
@@ -143,6 +147,7 @@ export async function createHomeIsland({
     height,
     terrainField,
     worldBoundary,
+    mountainBackdrop,
     water,
     paint,
     brushCursor,
@@ -166,6 +171,7 @@ export async function createHomeIsland({
       paint.dispose();
       height.dispose();
       worldBoundary.dispose();
+      mountainBackdrop.dispose();
       terrain.dispose();
       water.dispose();
       terrainField.dispose();
