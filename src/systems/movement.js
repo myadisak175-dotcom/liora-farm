@@ -32,9 +32,22 @@ export function createMovementSystem(
     root.rotation.y += difference * Math.min(1, 10 * delta);
   }
 
+  /**
+   * Invisible gameplay boundary: the outer world is scenery, not walkable
+   * space. worldLimit is currently 38 on an 80 m terrain, so the player stops
+   * about two metres before the visual edge without any visible wall or gap.
+   */
   function clampToWorld(root) {
-    root.position.x = THREE.MathUtils.clamp(root.position.x, -config.worldLimit, config.worldLimit);
-    root.position.z = THREE.MathUtils.clamp(root.position.z, -config.worldLimit, config.worldLimit);
+    const terrainHalf = Number(config.terrain?.size) / 2;
+    const authoredLimit = Number(config.worldLimit);
+    const safeTerrainLimit = Number.isFinite(terrainHalf)
+      ? Math.max(0.5, terrainHalf - Math.max(0.5, Number(config.playerRadius) || 0.3))
+      : Infinity;
+    const limit = Number.isFinite(authoredLimit)
+      ? Math.min(Math.max(0.5, authoredLimit), safeTerrainLimit)
+      : safeTerrainLimit;
+    root.position.x = THREE.MathUtils.clamp(root.position.x, -limit, limit);
+    root.position.z = THREE.MathUtils.clamp(root.position.z, -limit, limit);
   }
 
   function resolveCollisions(root) {
@@ -111,7 +124,6 @@ export function createMovementSystem(
 
     const stuck = groundSlope(fromX, fromZ) > config.maxWalkSlope;
     if (stuck) {
-      // Escaping a steep patch: accept anything that does not climb.
       if (getGroundHeight(x, z) <= getGroundHeight(fromX, fromZ)) return;
       if (getGroundHeight(x, fromZ) <= getGroundHeight(fromX, fromZ)) {
         root.position.z = fromZ;
@@ -121,7 +133,6 @@ export function createMovementSystem(
         root.position.x = fromX;
         return;
       }
-      // Nowhere lower nearby (a pit). Let her move anyway rather than freeze.
       return;
     }
 
@@ -156,8 +167,14 @@ export function createMovementSystem(
       const currentDepth = waterDepthAt(player.root.position.x, player.root.position.z);
       if (player.isSpecial() || input.m <= 0.05) {
         moveDirection.set(0, 0, 0);
+        clampToWorld(player.root);
         snapToTerrain(player.root);
-        return { moving: false, running: false, direction: moveDirection, waterDepth: currentDepth };
+        return {
+          moving: false,
+          running: false,
+          direction: moveDirection,
+          waterDepth: waterDepthAt(player.root.position.x, player.root.position.z),
+        };
       }
 
       const runDepthLimit = config.water?.player?.runDepth ?? 0.16;
@@ -173,6 +190,7 @@ export function createMovementSystem(
       resolveCollisions(player.root);
       clampToWorld(player.root);
       resolveWalkability(player.root, fromX, fromZ);
+      clampToWorld(player.root);
       snapToTerrain(player.root);
 
       return {
