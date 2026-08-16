@@ -60,7 +60,7 @@ export const CONFIG = Object.freeze({
     opacity: 0.64, roughness: 0.28, metalness: 0.03, emissive: 0x123e55, emissiveIntensity: 0.12,
     shoreFade: 0.28, foamDepth: 0.12, waveHeight: 0.055, waveScale: 0.58, waveSpeed: 0.7,
     shimmerStrength: 0.13, renderOrder: 1,
-    player: { slowStart: 0.08, runDepth: 0.16, maxWadeDepth: 0.9, minSpeedMultiplier: 0.45 },
+    player: { slowStart: 0.08, runDepth: 0.16, maxWadeDepth: 0.38, minSpeedMultiplier: 0.45 },
     interaction: {
       minDepth: 0.07,
       clipInset: 0.055,
@@ -95,7 +95,7 @@ export const CONFIG = Object.freeze({
       { id: 2, key: "rock", label: "หิน", icon: "🪨", texture: "rock.webp", feather: "short" },
       { id: 4, key: "cracked_dirt", label: "ดินแตกระแหง", icon: "🏜️", texture: "cracked_dirt.webp", feather: "medium" },
       { id: 5, key: "flower_grass", label: "หญ้าดอกไม้", icon: "🌼", texture: "flower_grass.webp", feather: "long" },
-      { id: 6, key: "meadow_grass", label: "หญ้าทุ่ง", icon: "☘️", texture: "meadow_grass.webp", feather: "long" },
+      { id: 6, key: "meadow_grass", label: "☘️", texture: "meadow_grass.webp", feather: "long" },
       { id: 7, key: "cobblestone_path", label: "ทางเดินหิน", icon: "🪨", texture: "cobblestone_path.webp", feather: "medium" },
     ],
     tileSize: 512, resolution: 1024, textureRepeat: 10.67,
