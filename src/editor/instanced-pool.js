@@ -50,6 +50,10 @@ export function createInstancedPools({ scene }) {
       parts.push({
         geometry: node.geometry,
         material: node.material,
+        // Animated shadow depth is prepared before pooling. Carry the same
+        // shared material onto the InstancedMesh so the shadow pass bends each
+        // instance with the same world-position phase as the colour pass.
+        customDepthMaterial: node.customDepthMaterial ?? null,
         // The model is unparented here, so its world matrix is the mesh's
         // offset inside the asset — exactly what each instance has to bake in.
         local: node.matrixWorld.clone(),
@@ -65,6 +69,7 @@ export function createInstancedPools({ scene }) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.castShadow = part.castShadow;
     mesh.receiveShadow = part.receiveShadow;
+    if (part.customDepthMaterial) mesh.customDepthMaterial = part.customDepthMaterial;
     mesh.count = 0;
     // An InstancedMesh's own bounding sphere covers every instance, so Three.js
     // would otherwise cull the whole pool by the geometry's sphere at the
