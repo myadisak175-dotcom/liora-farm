@@ -116,14 +116,23 @@ export async function createHomeIsland({
   });
   paint.applyTo(terrain.material);
 
-  const buildOuterWorld = (outerConfig) => createOuterWorldGround({
-    config: {
-      ...outerConfig,
-      innerY: boundaryTopY + Number(outerConfig?.innerYOffset || 0),
-    },
-    texture: baseMap,
-    textureWorldSize: config.terrain.size,
-  });
+  // Keep the rendered world visually continuous while gameplay still ends
+  // inside the terrain. A tiny overlap/depth bias prevents a precision crack
+  // without reading as the raised square slab seen with the old 1.5 m / 8 cm seam.
+  const buildOuterWorld = (outerConfig) => {
+    const terrainHalf = Math.max(1, Number(config.terrain.size) / 2);
+    const seamOverlap = 0.35;
+    const seamDrop = 0.015;
+    return createOuterWorldGround({
+      config: {
+        ...outerConfig,
+        innerRadius: Math.max(1, terrainHalf - seamOverlap),
+        innerY: boundaryTopY - seamDrop,
+      },
+      texture: baseMap,
+      textureWorldSize: config.terrain.size,
+    });
+  };
 
   // Applied after paint.applyTo above: both hook onBeforeCompile, and the
   // cloud layer composes onto whatever it finds rather than replacing it.
