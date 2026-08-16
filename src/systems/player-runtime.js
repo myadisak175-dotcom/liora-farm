@@ -6,6 +6,7 @@ export function createPlayerRuntime({
   config,
   runFx,
   contactShadow,
+  waterInteraction,
   dayNight,
   lighting,
 }) {
@@ -42,7 +43,21 @@ export function createPlayerRuntime({
       depth: state.waterDepth,
       level: config.water.level,
     });
-    contactShadow.update(player.root.position, player.root.rotation.y, dayNight.getHour());
+    waterInteraction?.update({
+      position: player.root.position,
+      moving: state.moving,
+      depth: state.waterDepth,
+      delta,
+    });
+    contactShadow.update(
+      player.root.position,
+      player.root.rotation.y,
+      dayNight.getHour(),
+      {
+        depth: state.waterDepth,
+        interaction: config.water?.interaction,
+      }
+    );
     if (cameraTarget) {
       cameraTarget.set(
         player.root.position.x,
