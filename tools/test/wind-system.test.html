@@ -10,7 +10,12 @@
 <body><pre id="out"></pre>
 <script type="module">
 import { NATURE_V2_ASSETS } from "../../src/editor/nature-catalog-v2.js";
-import { applyWindToMaterial } from "../../src/systems/wind/wind-material.js";
+import {
+  applyWindToMaterial,
+  boundsAlongAxis,
+  createModelWindFrame,
+  localUpAxis,
+} from "../../src/systems/wind/wind-material.js";
 import { createWindSystem } from "../../src/systems/wind/wind-system.js";
 import {
   classifyTreePart,
@@ -53,6 +58,76 @@ function material(name = "") {
     },
   };
 }
+
+/**
+ * Every World V2 nature node carries a -90deg X rotation, so the GLB geometry
+ * is Z-up: object-space +Z is the direction that points at world up, and
+ * `position.y` is depth. These fixtures reproduce a real birch tree node.
+ */
+const Z_UP_MATRIX = { elements: [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1] };
+function boxGeometry(min, max) {
+  return {
+    boundingBox: null,
+    computeBoundingBox() { this.boundingBox = { min, max }; },
+  };
+}
+const BARK_GEOMETRY = () => boxGeometry({ x: -0.0145, y: -0.0085, z: -0.0001 }, { x: 0.0141, y: 0.0053, z: 0.0555 });
+const LEAF_GEOMETRY = () => boxGeometry({ x: -0.0166, y: -0.0134, z: 0.0223 }, { x: 0.0177, y: 0.0093, z: 0.0575 });
+
+await test("bend axis follows world up, not object-space Y", () => {
+  assert(localUpAxis({ matrixWorld: Z_UP_MATRIX }).z === 1, "Z-up node should report +Z as its up axis");
+  assert(localUpAxis(null).y === 1, "objects without a matrix fall back to Y up");
+
+  const along = boundsAlongAxis(BARK_GEOMETRY(), { x: 0, y: 0, z: 1 });
+  assert(Math.abs(along.height - 0.0556) < 1e-4, `expected the 0.0556 trunk height, got ${along.height}`);
+  const wrongAxis = boundsAlongAxis(BARK_GEOMETRY(), { x: 0, y: 1, z: 0 });
+  assert(wrongAxis.height < along.height / 3, "object-space Y is depth and must not be mistaken for height");
+});
+
+await test("trunk and leaf meshes share one base-to-tip height frame", () => {
+  const model = {
+    traverse(fn) {
+      fn({ isMesh: true, geometry: BARK_GEOMETRY(), matrixWorld: Z_UP_MATRIX });
+      fn({ isMesh: true, geometry: LEAF_GEOMETRY(), matrixWorld: Z_UP_MATRIX });
+    },
+  };
+  const frame = createModelWindFrame(model);
+  assert(frame.up.z === 1, "model frame lost the Z-up axis");
+  assert(Math.abs(frame.bounds.minH - -0.0001) < 1e-6, "frame should start at the lowest mesh");
+  assert(Math.abs(frame.bounds.minH + frame.bounds.height - 0.0575) < 1e-6, "frame should end at the highest mesh");
+});
+
+await test("Z-up nature meshes get a real height gradient and a horizontal bend", () => {
+  const wind = createWindSystem({ config: { direction: { x: 1, z: 0 }, strength: 0.55 } });
+  const bark = {
+    isMesh: true, name: "BirchTree_3", matrixWorld: Z_UP_MATRIX,
+    geometry: BARK_GEOMETRY(), material: material("BirchTree_Bark"), userData: {},
+  };
+  const leaves = {
+    isMesh: true, name: "BirchTree_3_1", matrixWorld: Z_UP_MATRIX,
+    geometry: LEAF_GEOMETRY(), material: material("BirchTree_Leaves"), userData: {},
+  };
+  assert(
+    wind.attach({ traverse(fn) { fn(bark); fn(leaves); }, updateMatrixWorld() {} }, {
+      worldV2: true,
+      modelPath: "./assets/models/world-v2/nature/birch-trees.glb",
+    }),
+    "birch tree did not attach"
+  );
+  assert(leaves.material.userData.lioraWindPart === "leaf", "leaf material was not classified");
+  assert(bark.material.userData.lioraWindPart === "trunk", "bark material was not classified");
+
+  const shader = { uniforms: {}, vertexShader: "#include <common>\nvoid main(){\n#include <begin_vertex>\n}" };
+  leaves.material.onBeforeCompile(shader, {});
+  const up = shader.uniforms.lioraWindUp.value;
+  assert(up[0] === 0 && up[1] === 0 && up[2] === 1, `wind up axis should be +Z, got ${[...up]}`);
+
+  const height = 1 / shader.uniforms.lioraWindInvHeight.value;
+  assert(Math.abs(height - 0.0576) < 1e-3, `height should span the whole tree, got ${height}`);
+  assert(shader.vertexShader.includes("dot(position, lioraWindUp)"), "height must be measured along the up axis");
+  assert(!shader.vertexShader.includes("position.y - lioraWindMinY"), "the Y-up assumption is back");
+  assert(shader.vertexShader.includes("cross(lioraWindUp, lioraWindLocalDir)"), "flutter must be perpendicular to the bend");
+});
 
 await test("all non-rock World V2 nature assets receive a wind profile", () => {
   const assets = Object.values(NATURE_V2_ASSETS);
@@ -132,6 +207,70 @@ await test("wind system changes only materials and shared time, never object tra
   const t0 = wind.uniforms.time.value;
   wind.update(0.25);
   assert(wind.uniforms.time.value === t0 + 0.25, "wind time did not advance");
+});
+
+await test("every copy of an asset shares one wind material", () => {
+  const wind = createWindSystem({ config: { direction: { x: 1, z: 0 } } });
+  const asset = {
+    id: "v2-birchtree-1",
+    worldV2: true,
+    modelPath: "./assets/models/world-v2/nature/birch-trees.glb",
+  };
+  function spawn() {
+    const mesh = {
+      isMesh: true, name: "BirchTree_1", matrixWorld: Z_UP_MATRIX,
+      geometry: BARK_GEOMETRY(), material: material("BirchTree_Bark"), userData: {},
+    };
+    wind.attach({ traverse(fn) { fn(mesh); }, updateMatrixWorld() {} }, asset);
+    return mesh;
+  }
+
+  const first = spawn();
+  const second = spawn();
+  const third = spawn();
+  assert(first.material === second.material, "each placed copy cloned its own material");
+  assert(second.material === third.material, "material sharing is not stable across spawns");
+  assert(wind.stats.sharedMaterials === 1, `expected 1 shared material, got ${wind.stats.sharedMaterials}`);
+
+  // Builder disposes materials it believes are private. Deleting one tree must
+  // not blank every other tree of the same kind.
+  assert(!second.userData.materialIsClone, "a shared material was flagged as a private clone");
+  assert(
+    second.material.userData.disposeWithBuilderView === false,
+    "a shared material must not be disposed with one object"
+  );
+
+  // A different asset must not be handed the first asset's material.
+  const other = {
+    id: "v2-birchtree-2",
+    worldV2: true,
+    modelPath: "./assets/models/world-v2/nature/birch-trees.glb",
+  };
+  const otherMesh = {
+    isMesh: true, name: "BirchTree_2", matrixWorld: Z_UP_MATRIX,
+    geometry: BARK_GEOMETRY(), material: material("BirchTree_Bark"), userData: {},
+  };
+  wind.attach({ traverse(fn) { fn(otherMesh); }, updateMatrixWorld() {} }, other);
+  assert(otherMesh.material !== first.material, "two assets collided on one cache key");
+  assert(wind.stats.sharedMaterials === 2, "second asset did not get its own material");
+});
+
+await test("ghost previews stay private and never enter the shared cache", () => {
+  const wind = createWindSystem({ config: { direction: { x: 1, z: 0 } } });
+  const asset = {
+    id: "v2-birchtree-1",
+    worldV2: true,
+    modelPath: "./assets/models/world-v2/nature/birch-trees.glb",
+  };
+  const ghostMaterial = material("BirchTree_Bark");
+  const ghost = {
+    isMesh: true, name: "BirchTree_1", matrixWorld: Z_UP_MATRIX,
+    geometry: BARK_GEOMETRY(), material: ghostMaterial, userData: {},
+  };
+  wind.attach({ traverse(fn) { fn(ghost); }, updateMatrixWorld() {} }, asset, { preview: true });
+
+  assert(ghost.material === ghostMaterial, "preview material should be patched in place");
+  assert(wind.stats.sharedMaterials === 0, "a preview leaked into the shared cache");
 });
 
 await test("rocks and legacy assets are ignored", () => {

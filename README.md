@@ -20,6 +20,17 @@ Then open `http://localhost:8000` on the phone. A server is required — ES modu
 - **สร้าง → ปั้นพื้น** — raise, lower, smooth and flatten terrain. Terrain follows real mesh vertices, saves locally and exports with the map.
 - **บันทึกแผนที่** — exports objects, ground paint and sculpted terrain in `home-island.json`.
 
+## Frame cost readout
+
+```text
+http://localhost:8000/?perf=1
+```
+
+Shows average FPS, the worst frame in the last quarter second, draw calls,
+triangles and program/geometry/texture counts. It sticks across reloads (a
+phone has no dev tools worth using) — `?perf=0` turns it off again. Worst-frame
+is the number to watch: an average hides a once-a-second stutter completely.
+
 ## Smoke test
 
 Open:

@@ -25,6 +25,7 @@ import { createSculptControls } from "./editor/sculpt-controls.js";
 import { createNotifications } from "./ui/notifications.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
+import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 
 window.__lioraBooted = false;
 window.__lioraBootState = "starting";
@@ -239,6 +240,31 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushPersistentState();
 });
 
+/**
+ * A store that could not read its own save has kept a copy rather than let the
+ * next autosave overwrite it (see systems/local-store.js). Saying nothing is
+ * how an island's worth of painting or sculpting disappears without anyone
+ * noticing. The layout store reports itself through layout-runtime.
+ */
+function reportRescuedSaves() {
+  const rescued = [
+    ["การระบายพื้น", world.paint],
+    ["การปั้นพื้น", world.height],
+    ["แปลงผัก", world.crops],
+  ].filter(([, owner]) => owner.storeIssue && owner.storeIssue.kind !== "save-failed");
+
+  if (!rescued.length) return;
+  const names = rescued.map(([label]) => label).join(", ");
+  toast("ข้อมูลเดิมบางส่วนอ่านไม่ได้ — สำรองไว้ให้แล้ว");
+  builderUI?.warn(`อ่านข้อมูลเดิมไม่ได้: ${names} — สำรองไว้ ยังไม่ได้ลบทิ้ง`);
+}
+
+const perfHud = createPerfHud({
+  renderer,
+  enabled: isPerfHudEnabled(),
+  getObjectCount: () => builder.items.length,
+});
+
 const clock = new THREE.Clock();
 const cameraTarget = new THREE.Vector3(0, 0.7, 5);
 function animate() {
@@ -253,6 +279,8 @@ function animate() {
   cameraController.update(cameraTarget, delta);
   sky.update(camera);
   renderer.render(scene, camera);
+  // After render: Three.js resets its per-frame counters inside render().
+  perfHud.update(delta);
 }
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -265,6 +293,7 @@ farmUI.refresh();
 setBootState("layout");
 setStatus("กำลังโหลดแผนที่…");
 await layoutRuntime.load();
+reportRescuedSaves();
 setBootState(player ? "ready" : "ready-degraded");
 window.__lioraBooted = true;
 if (player) setStatus("พร้อมเล่น", { autoHide: true });

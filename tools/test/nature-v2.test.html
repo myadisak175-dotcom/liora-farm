@@ -147,6 +147,55 @@ await test("loader fetches one shared GLB for sibling variants", async () => {
   assert(loader.has("v2-birchtree-1"), "shared source not cached");
 });
 
+await test("only assets tall enough to read cast a shadow", () => {
+  const grass = getBuildableAsset("v2-grass-large-extruded");
+  const flower = getBuildableAsset("v2-flower-1");
+  const bush = getBuildableAsset("v2-bush");
+  const birch = getBuildableAsset("v2-birchtree-1");
+  const rock = allAssets.find((asset) => asset.modelPath?.endsWith("/rocks.glb"));
+
+  assert(grass.castShadow === false, "ground cover should not reach the depth pass");
+  assert(flower.castShadow === false, "flowers should not reach the depth pass");
+  assert(bush.castShadow === false, "a 0.69 m bush is below the readable shadow height");
+  assert(birch.castShadow === true, "trees must still cast");
+  assert(rock.castShadow === true, "rocks are solid enough to cast");
+
+  // The legacy catalog derives the same rule through a different code path.
+  assert(getBuildableAsset("house").castShadow === true, "buildings must cast");
+  assert(getBuildableAsset("grass").castShadow === false, "legacy grass clump should not cast");
+  assert(getBuildableAsset("path_tile").castShadow === false, "a flat tile has no silhouette");
+  assert(getBuildableAsset("wine_barrel").castShadow === true, "solid props should still cast");
+
+  const casters = allAssets.filter((asset) => asset.castShadow).length;
+  assert(casters < allAssets.length, "the shadow rule is not filtering anything");
+});
+
+await test("loader honours the per-asset shadow rule", async () => {
+  function meshNode(name) {
+    return {
+      name,
+      clone() {
+        const mesh = { isMesh: true, castShadow: true, receiveShadow: false };
+        return { name, mesh, traverse(fn) { fn(mesh); } };
+      },
+    };
+  }
+  const nodes = new Map([
+    ["Grass_Large_Extruded", meshNode("Grass_Large_Extruded")],
+    ["BirchTree_1", meshNode("BirchTree_1")],
+  ]);
+  const scene = { getObjectByName: (name) => nodes.get(name) ?? null, clone() { return this; } };
+  const loader = createBuilderAssetLoader({
+    gltfLoader: { load: (path, resolve) => queueMicrotask(() => resolve({ scene })) },
+  });
+
+  const grass = await loader.load("v2-grass-large-extruded");
+  const tree = await loader.load("v2-birchtree-1");
+  assert(grass.mesh.castShadow === false, "grass was still flagged as a shadow caster");
+  assert(tree.mesh.castShadow === true, "tree lost its shadow");
+  assert(grass.mesh.receiveShadow === true, "ground cover must still darken under a tree");
+});
+
 await test("legacy catalog remains loadable during migration", () => {
   assert(getBuildableAsset("tree")?.modelPath?.includes("/builder/"), "legacy tree missing");
   assert(getBuildableAsset("grass")?.modelPath?.includes("/builder/"), "legacy grass missing");

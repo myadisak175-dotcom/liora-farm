@@ -30,7 +30,13 @@ export const CONFIG = Object.freeze({
     panLimit: 28, twoFingerRotateSensitivity: 0.005,
   },
   depth: { playerOrder: 10 },
-  shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2 },
+  // `minCasterHeight`: the sun's shadow camera already covers only 24 x 24 m
+  // around the player, but everything inside that box is drawn a second time
+  // into the depth pass. Under a top-down camera a 0.4 m grass clump casts a
+  // shadow a few texels wide that nobody can see, and ground cover is exactly
+  // what gets placed in the hundreds — so anything shorter than this casts
+  // nothing. Solid props (crates, barrels) stay above the line on purpose.
+  shadows: { mapSize: QUALITY.shadowMapSize, bounds: 12, near: 0.5, far: 40, bias: -0.00015, normalBias: 0.035, radius: 2, minCasterHeight: 0.9 },
   contactShadow: {
     width: 0.72, depth: 0.4, y: 0.022, opacity: 0.31, nightOpacity: 0.38,
     footWidth: 0.18, footDepth: 0.12, footY: 0.026, footOpacity: 0.34,

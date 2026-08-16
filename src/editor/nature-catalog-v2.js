@@ -1,4 +1,6 @@
 // Generated from assets/models/world-v2/nature/nature-manifest.json.
+import { CONFIG } from "../config.js";
+
 export const NATURE_V2_CATEGORY = "nature";
 const ROOT = "./assets/models/world-v2/nature";
 
@@ -7,10 +9,13 @@ function item({ id, label, icon, file, nodeName, height, width, tris, kind }) {
   const isRock = kind === "rock";
   const footprintRadius = +(Math.max(0.12, width * (isTree ? 0.45 : isRock ? 0.48 : 0.42))).toFixed(3);
   const walkRadius = isTree ? 0.48 : isRock ? +(Math.max(0.22, width * 0.38)).toFixed(3) : 0;
+  // Authored height is the real world height here, so the shadow rule reads
+  // straight off it. See CONFIG.shadows.minCasterHeight.
+  const castShadow = height >= CONFIG.shadows.minCasterHeight;
   return Object.freeze({ id, label, icon, category: NATURE_V2_CATEGORY, modelPath: `${ROOT}/${file}`, nodeName,
     footprintRadius, blockRadius: 0, walkRadius, defaultScale: 1, minScale: 0.6, maxScale: 1.8, scaleStep: 0.05,
     sizeAxis: "height", sizeInPlayers: +(height / 1.7).toFixed(4), terrainSnap: true, maxGroundSlope: null, groundProbeRadius: null,
-    sourceHeight: height, sourceWidth: width, tris, worldV2: true });
+    sourceHeight: height, sourceWidth: width, tris, castShadow, worldV2: true });
 }
 
 export const NATURE_V2_ASSETS = Object.freeze({
