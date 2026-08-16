@@ -35,7 +35,7 @@ export function createGroundPaint({
   const store = createLocalStore({ key: config.storageKey, version: 1 });
   let saveTimer = null;
   let openGroup = null;
-  let boundMaterial = null;
+  const boundMaterials = new Set();
   let pageRevision = 0;
   let autoSurfaceEnabled = Boolean(autoSurfaceConfig?.enabledByDefault ?? true);
   const autoSurfaceUniform = { value: autoSurfaceEnabled ? 1 : 0 };
@@ -136,7 +136,7 @@ export function createGroundPaint({
     const page = createPage(index);
     pages.set(index, page);
     pageRevision += 1;
-    if (boundMaterial) boundMaterial.needsUpdate = true;
+    for (const material of boundMaterials) material.needsUpdate = true;
     return page;
   }
 
@@ -413,7 +413,7 @@ export function createGroundPaint({
   const rockLayer = layers.get(autoSurfaceConfig?.rockLayerId ?? -1);
   const hasProceduralSurface = Boolean(terrainField && sandLayer && rockLayer);
 
-  function buildFragmentChunk() {
+  function buildFragmentChunk({ distanceGate = false } = {}) {
     const used = activePages();
     const lines = [
       "vec2 splatUv = vMapUv / uRepeat;",
@@ -469,16 +469,44 @@ export function createGroundPaint({
       "surface /= max(total, 0.001);",
       "diffuseColor *= vec4(surface, 1.0);"
     );
+
+    // The outer ground already fades texture to vertex colour by distance.
+    // Do not pay the splat/array texture cost for pixels whose fade is fully
+    // complete; before that point the existing outer fade blends this exact
+    // painted surface back toward the cheap far-ground colour.
+    if (distanceGate) {
+      return [
+        "if ( vOuterWorldRadius < uOuterTextureFadeEnd + vOuterFadeJitter ) {",
+        ...lines.map((line) => `  ${line}`),
+        "}",
+      ].join("\n");
+    }
     return lines.join("\n");
   }
 
-  function applyTo(material) {
-    boundMaterial = material;
-    material.onBeforeCompile = (shader) => {
+  /**
+   * Compose paint onto a material instead of replacing its shader hook. The
+   * outer ground already owns distance/sky shading and cloud shadows compose
+   * after this, so all three effects must survive on one MeshStandardMaterial.
+   */
+  function applyTo(material, { distanceGate = false } = {}) {
+    if (!material || boundMaterials.has(material)) return material;
+
+    const previousCompile = material.onBeforeCompile;
+    const previousKey = material.customProgramCacheKey;
+    const variant = distanceGate ? "outer-gated" : "full";
+
+    material.onBeforeCompile = (shader, renderer) => {
+      previousCompile?.call(material, shader, renderer);
       if (!shader.fragmentShader.includes("#include <map_fragment>")) {
         console.error("Ground paint: shader anchor <map_fragment> not found");
         return;
       }
+
+      const gateAvailable = distanceGate
+        && shader.fragmentShader.includes("vOuterWorldRadius")
+        && shader.fragmentShader.includes("uOuterTextureFadeEnd")
+        && shader.fragmentShader.includes("vOuterFadeJitter");
       const used = activePages();
       shader.uniforms.uLayers = { value: layerArray };
       shader.uniforms.uRepeat = { value: config.textureRepeat };
@@ -502,11 +530,19 @@ export function createGroundPaint({
 
       shader.fragmentShader = shader.fragmentShader
         .replace("#include <common>", `#include <common>\n${declarations}`)
-        .replace("#include <map_fragment>", `\n${buildFragmentChunk()}\n`);
+        .replace("#include <map_fragment>", `\n${buildFragmentChunk({ distanceGate: gateAvailable })}\n`);
     };
-    material.customProgramCacheKey = () =>
-      `liora-ground-splat-v10:${layers.all.length}:${activePages().map((page) => page.index).join("-")}:${pageRevision}:${hasProceduralSurface ? 1 : 0}`;
+    material.customProgramCacheKey = () => {
+      const base = previousKey ? previousKey.call(material) : (material.type || "material");
+      return `${base}|liora-ground-splat-v11:${variant}:${layers.all.length}:${activePages().map((page) => page.index).join("-")}:${pageRevision}:${hasProceduralSurface ? 1 : 0}`;
+    };
+    boundMaterials.add(material);
     material.needsUpdate = true;
+    return material;
+  }
+
+  function releaseMaterial(material) {
+    boundMaterials.delete(material);
   }
 
   function addStamp(x, z, layerId, radius, strength) {
@@ -570,6 +606,7 @@ export function createGroundPaint({
   return {
     layers,
     applyTo,
+    releaseMaterial,
     exportData,
     importData,
     beginStroke,
@@ -649,6 +686,7 @@ export function createGroundPaint({
       clearTimeout(saveTimer);
       for (const page of pages.values()) page.texture.dispose();
       pages.clear();
+      boundMaterials.clear();
       manualTexture.dispose();
     },
     get storeIssue() {
