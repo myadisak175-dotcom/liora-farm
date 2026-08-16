@@ -9,25 +9,7 @@ import {
   horizonSnippet,
 } from "../systems/horizon-settings.js";
 
-/**
- * The horizon tuning tab in build mode.
- *
- * Two things make this more than a box of sliders:
- *
- *   1. It rebuilds SELECTIVELY. Fog and camera pitch are uniform changes that
- *      apply instantly; the ground, ridges and peaks each cost a geometry
- *      rebuild, so a slider only rebuilds the layer it belongs to, once per
- *      frame. Dragging "หมอกเริ่ม" allocates nothing at all.
- *   2. It reports the four horizon rules live, by name. A hard line at the edge
- *      of the map and a washed-out farm are both "it looks wrong" until
- *      something tells you which rule you just broke and which dial fixes it.
- *
- * Nothing here can affect gameplay: no dial is read by collision, ground
- * sampling, sculpting, painting, Builder placement, farming or saves.
- */
-
 const GROUP_OF = new Map(HORIZON_DIALS.map((dial) => [dial.key, dial.group]));
-
 const REBUILD_FOR = {
   "กล้อง": "camera",
   "หมอก": "fog",
@@ -44,19 +26,13 @@ const TOGGLE_REBUILD = {
 };
 
 function readStored() {
-  try {
-    return JSON.parse(localStorage.getItem(HORIZON_STORAGE_KEY) ?? "null");
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(HORIZON_STORAGE_KEY) ?? "null"); }
+  catch { return null; }
 }
 
 function writeStored(settings) {
-  try {
-    localStorage.setItem(HORIZON_STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    /* private mode — tuning lasts for this session only */
-  }
+  try { localStorage.setItem(HORIZON_STORAGE_KEY, JSON.stringify(settings)); }
+  catch { /* session-only tuning in private mode */ }
 }
 
 export function createHorizonControls({
@@ -66,13 +42,27 @@ export function createHorizonControls({
   world,
   cameraController,
   container,
+  surface,
   onToast = () => {},
-  onActionsChange = () => {},
 }) {
   if (!container) return { apply() {}, render() {}, settings: null, actions: [] };
 
+  const root = document.querySelector("#build-panel");
+  const actions = document.querySelector("#build-actions");
+  const hint = document.querySelector("#build-hint");
+  const moreButton = document.querySelector("#build-more");
+  const collapseButton = document.querySelector("#build-collapse");
+  const tabHorizon = document.querySelector("#tab-horizon");
+  const normalTabs = ["#tab-place", "#tab-paint", "#tab-sculpt"]
+    .map((selector) => document.querySelector(selector))
+    .filter(Boolean);
+
   let settings = sanitizeHorizon(readStored(), config);
   let frame = 0;
+  let horizonActive = false;
+  let panPointer = null;
+  let panX = 0;
+  let panY = 0;
   const dirty = new Set();
 
   const rulesBox = document.createElement("div");
@@ -83,10 +73,7 @@ export function createHorizonControls({
 
   function apply(targets) {
     const resolved = resolveHorizon(settings, config);
-
-    if (!targets || targets.has("camera")) {
-      cameraController.setMinPitch(resolved.cameraMinPitch);
-    }
+    if (!targets || targets.has("camera")) cameraController.setMinPitch(resolved.cameraMinPitch);
     if (!targets || targets.has("fog")) {
       if (scene.fog) {
         scene.fog.near = resolved.fog.near;
@@ -99,9 +86,7 @@ export function createHorizonControls({
         mountainBackdrop: !targets || targets.has("ridges") ? resolved.mountainBackdrop : null,
       });
     }
-    if (!targets || targets.has("range")) {
-      sky.rebuildDistantRange(resolved.distantRange);
-    }
+    if (!targets || targets.has("range")) sky.rebuildDistantRange(resolved.distantRange);
     return resolved;
   }
 
@@ -139,17 +124,18 @@ export function createHorizonControls({
   }
 
   function renderRules() {
-    const resolved = resolveHorizon(settings, config);
-    const rules = checkHorizonRules(resolved, config);
+    const rules = checkHorizonRules(resolveHorizon(settings, config), config);
     const failed = rules.filter((rule) => !rule.pass);
-
     rulesBox.classList.toggle("has-failure", failed.length > 0);
     rulesBox.replaceChildren(
       ...(failed.length === 0
         ? [ruleRow({ pass: true, label: `ผ่านกฎขอบฟ้าครบ ${rules.length} ข้อ` })]
-        : failed.map((rule) =>
-            ruleRow({ pass: false, label: rule.label, fix: rule.fix, detail: rule.detail })
-          ))
+        : failed.map((rule) => ruleRow({
+            pass: false,
+            label: rule.label,
+            fix: rule.fix,
+            detail: rule.detail,
+          })))
     );
   }
 
@@ -169,7 +155,9 @@ export function createHorizonControls({
     const readout = document.createElement("span");
     readout.className = "value";
     const show = (v) => {
-      readout.textContent = dial.unit === "×" ? `${v.toFixed(2)}×` : `${Math.round(v * 10) / 10}${dial.unit}`;
+      readout.textContent = dial.unit === "×"
+        ? `${v.toFixed(2)}×`
+        : `${Math.round(v * 10) / 10}${dial.unit}`;
     };
     show(settings[dial.key]);
     input.oninput = () => {
@@ -196,10 +184,37 @@ export function createHorizonControls({
     return button;
   }
 
+  function putHorizonChromeBack() {
+    if (!horizonActive || !root) return;
+    root.dataset.tab = "horizon";
+    root.dataset.context = "horizon";
+    tabHorizon?.classList.add("active");
+    for (const tab of normalTabs) tab.classList.remove("active");
+    if (hint) hint.textContent = "ลากฉากเพื่อเลื่อนกล้อง • ปรับขอบฟ้าได้ทันทีบนมือถือ";
+    if (actions) actions.replaceChildren(...actionButtons);
+    if (moreButton) {
+      moreButton.hidden = root.classList.contains("collapsed");
+      moreButton.setAttribute("aria-expanded", String(root.classList.contains("more")));
+    }
+  }
+
+  function enterHorizon(event) {
+    event?.preventDefault();
+    horizonActive = true;
+    root?.classList.remove("collapsed", "more");
+    putHorizonChromeBack();
+    renderRules();
+  }
+
+  function leaveHorizon() {
+    horizonActive = false;
+    panPointer = null;
+  }
+
   function build() {
     const groups = [];
     for (const dial of HORIZON_DIALS) {
-      let group = groups.find((g) => g.name === dial.group);
+      let group = groups.find((entry) => entry.name === dial.group);
       if (!group) groups.push((group = { name: dial.group, dials: [] }));
       group.dials.push(dial);
     }
@@ -241,14 +256,76 @@ export function createHorizonControls({
       build();
       apply();
       renderRules();
+      putHorizonChromeBack();
       onToast("คืนค่าขอบฟ้าเป็นค่าในไฟล์แล้ว");
     };
 
     actionButtons = [copy, reset];
     container.replaceChildren(rulesBox, dialsBox);
     renderRules();
-    onActionsChange();
+    putHorizonChromeBack();
   }
+
+  tabHorizon?.addEventListener("click", enterHorizon, true);
+  for (const tab of normalTabs) tab.addEventListener("click", leaveHorizon, true);
+  document.querySelectorAll("#mode-bar [data-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.mode !== "build") leaveHorizon();
+    }, true);
+  });
+
+  moreButton?.addEventListener("click", (event) => {
+    if (!horizonActive) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    root.classList.toggle("more");
+    moreButton.classList.toggle("active", root.classList.contains("more"));
+    moreButton.setAttribute("aria-expanded", String(root.classList.contains("more")));
+  }, true);
+
+  collapseButton?.addEventListener("click", (event) => {
+    if (!horizonActive) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    root.classList.toggle("collapsed");
+    if (root.classList.contains("collapsed")) root.classList.remove("more");
+    collapseButton.textContent = root.classList.contains("collapsed") ? "⌃" : "⌄";
+    collapseButton.setAttribute("aria-expanded", String(!root.classList.contains("collapsed")));
+    putHorizonChromeBack();
+  }, true);
+
+  const capturePointer = (event) => horizonActive
+    && document.body.dataset.mode === "build"
+    && event.pointerType !== "touch" || false;
+
+  surface?.addEventListener("pointerdown", (event) => {
+    if (!horizonActive || document.body.dataset.mode !== "build") return;
+    if (event.pointerType === "touch" && event.isPrimary === false) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    panPointer = event.pointerId;
+    panX = event.clientX;
+    panY = event.clientY;
+    surface.setPointerCapture?.(panPointer);
+  }, true);
+
+  surface?.addEventListener("pointermove", (event) => {
+    if (!horizonActive || event.pointerId !== panPointer) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    cameraController.pan(event.clientX - panX, event.clientY - panY);
+    panX = event.clientX;
+    panY = event.clientY;
+  }, true);
+
+  const endPan = (event) => {
+    if (!horizonActive || event.pointerId !== panPointer) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    panPointer = null;
+  };
+  surface?.addEventListener("pointerup", endPan, true);
+  surface?.addEventListener("pointercancel", endPan, true);
 
   build();
   apply();
