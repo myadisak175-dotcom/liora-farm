@@ -36,7 +36,11 @@ export async function createHomeIsland({
   const mountainBackdrop = createMountainBackdrop(config.mountainBackdrop);
   group.add(mountainBackdrop.group);
 
-  const island = createFloatingIsland({ ...config.island, topY: (config.worldBoundary?.enabled !== false && config.worldBoundary?.type === "ridge") ? config.worldBoundary.height : 0 });
+  const ridgeEnabled = config.worldBoundary?.enabled !== false
+    && config.worldBoundary?.type === "ridge";
+  const boundaryTopY = ridgeEnabled ? Number(config.worldBoundary?.height || 0) : 0;
+
+  const island = createFloatingIsland({ ...config.island, topY: boundaryTopY });
   group.add(island);
 
   const layers = createGroundLayers(
@@ -114,7 +118,7 @@ export async function createHomeIsland({
   const outerWorld = createOuterWorldGround({
     config: {
       ...config.outerWorld,
-      innerY: Number(config.worldBoundary?.height || 0) + Number(config.outerWorld?.innerYOffset || 0),
+      innerY: boundaryTopY + Number(config.outerWorld?.innerYOffset || 0),
     },
     texture: baseMap,
     textureWorldSize: config.terrain.size,
