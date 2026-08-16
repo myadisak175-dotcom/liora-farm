@@ -67,8 +67,31 @@ export const HORIZON_TOGGLES = [
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-/** Reads the current authored config back out as dial positions. */
-export function horizonDefaults(config) {
+/**
+ * The dial positions a fresh world starts from.
+ *
+ * `authored` is the horizon block saved inside a map file. It matters because
+ * "ค่าตั้งต้น" has to mean *this map's* sky, not the one that happens to be in
+ * config.js — otherwise resetting a desert map drops you back onto the home
+ * island's palette, and a second map can never have its own horizon at all.
+ * config.js remains the base layer, so a map only has to state what it changes.
+ */
+export function horizonDefaults(config, authored = null) {
+  const base = configDefaults(config);
+  if (!authored || typeof authored !== "object") return base;
+
+  const next = { ...base };
+  for (const dial of HORIZON_DIALS) {
+    const value = Number(authored[dial.key]);
+    if (Number.isFinite(value)) next[dial.key] = clamp(value, dial.min, dial.max);
+  }
+  for (const toggle of HORIZON_TOGGLES) {
+    if (typeof authored[toggle.key] === "boolean") next[toggle.key] = authored[toggle.key];
+  }
+  return next;
+}
+
+function configDefaults(config) {
   return {
     exposure: config.render?.exposure ?? 1,
     sunScale: config.lighting?.sunScale ?? 1,
@@ -98,8 +121,8 @@ export function horizonDefaults(config) {
 }
 
 /** Drops unknown keys and clamps every dial into its slider range. */
-export function sanitizeHorizon(settings, config) {
-  const base = horizonDefaults(config);
+export function sanitizeHorizon(settings, config, authored = null) {
+  const base = horizonDefaults(config, authored);
   const next = { ...base };
   if (!settings || typeof settings !== "object") return next;
 
@@ -143,8 +166,8 @@ function scaleBand(band, distanceScale, heightScale, groundFloor) {
 }
 
 /** Turns dial positions into the concrete config objects the systems consume. */
-export function resolveHorizon(settings, config) {
-  const dials = sanitizeHorizon(settings, config);
+export function resolveHorizon(settings, config, authored = null) {
+  const dials = sanitizeHorizon(settings, config, authored);
   const ground = groundExtent(dials, config);
 
   const outerWorld = {
@@ -290,6 +313,28 @@ export function checkHorizonRules(resolved, config) {
       fix: "ดึงภูเขาเข้ามาใกล้",
     },
   ];
+}
+
+/**
+ * The horizon block that goes inside a map file.
+ *
+ * Only dials that actually differ from config.js are written. A map that says
+ * nothing about fog inherits whatever the game's baseline fog becomes later,
+ * which is the behaviour you want when a shared default is tuned after ten
+ * maps already exist — otherwise every map freezes a copy of today's numbers
+ * and none of them ever benefit from a fix.
+ */
+export function horizonForMap(settings, config) {
+  const dials = sanitizeHorizon(settings, config);
+  const base = horizonDefaults(config);
+  const out = {};
+  for (const dial of HORIZON_DIALS) {
+    if (Math.abs(dials[dial.key] - base[dial.key]) > 1e-9) out[dial.key] = dials[dial.key];
+  }
+  for (const toggle of HORIZON_TOGGLES) {
+    if (dials[toggle.key] !== base[toggle.key]) out[toggle.key] = dials[toggle.key];
+  }
+  return out;
 }
 
 /** config.js-shaped text, ready to paste over the authored values. */
