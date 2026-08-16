@@ -38,12 +38,28 @@ function broadNoise(angle, t, seed) {
   return angular + radial;
 }
 
+function macroNoise(x, z, scale, seed) {
+  const phase = seed * 0.071;
+  const a = Math.sin(x * scale + phase) * 0.52;
+  const b = Math.sin(z * scale * 0.83 - phase * 1.7) * 0.31;
+  const c = Math.sin((x + z) * scale * 0.47 + phase * 0.6) * 0.17;
+  return clamp(a + b + c, -1, 1);
+}
+
 function squareRadiusAtAngle(halfSize, angle) {
   const sx = Math.abs(Math.sin(angle));
   const cz = Math.abs(Math.cos(angle));
   return halfSize / Math.max(1e-6, sx, cz);
 }
 
+/**
+ * Visual-only terrain outside the 80 m gameplay square.
+ *
+ * The first metres are deliberately boring: same texture, same tint and almost
+ * the same height as the gameplay edge. Only after `edgeBlendWidth` do hills,
+ * far tint and macro colour variation take over. This prevents the square farm
+ * from reading as one material pasted on top of a different "outside world".
+ */
 export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   const uvWorld = Math.max(1, Number(textureWorldSize) || 80);
   const terrainHalf = uvWorld / 2;
@@ -61,9 +77,18 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   const rings = clamp(Math.round(Number(config.rings) || 10), 2, 32);
   const seed = Number(config.noiseSeed) || 0;
 
+  // Keep the first ~24 m beyond the farm edge visually continuous. The old
+  // implementation started noise/tint immediately at the seam, which made the
+  // playable square readable even though the geometry overlapped correctly.
+  const edgeBlendWidth = Math.max(1, Number(config.edgeBlendWidth) || 24);
+  const macroStrength = clamp(Number(config.macroVariationStrength) || 0.16, 0, 0.5);
+  const macroScale = Math.max(0.001, Number(config.macroVariationScale) || 0.018);
+
   const nearColor = colorChannels(config.colorNear ?? 0xffffff);
   const midColor = colorChannels(config.colorMid ?? 0xe5edcc);
   const farColor = colorChannels(config.colorFar ?? 0xc7d2b8);
+  const macroWarm = colorChannels(config.macroWarmColor ?? 0xe5dfb2);
+  const macroCool = colorChannels(config.macroCoolColor ?? 0xb4cbb5);
 
   const positions = [];
   const colors = [];
@@ -73,9 +98,9 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   for (let ring = 0; ring <= rings; ring += 1) {
     const t = ring / rings;
     const eased = smoothstep01(t);
-    const baseY = innerY + (outerY - innerY) * eased;
-    const envelope = Math.pow(Math.sin(Math.PI * t), 0.8);
-    const tint = t < 0.56
+    const authoredBaseY = innerY + (outerY - innerY) * eased;
+    const authoredEnvelope = Math.pow(Math.sin(Math.PI * t), 0.8);
+    const authoredTint = t < 0.56
       ? mixColor(nearColor, midColor, t / 0.56)
       : mixColor(midColor, farColor, (t - 0.56) / 0.44);
 
@@ -83,9 +108,26 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
       const angle = segment / segments * TAU;
       const seamRadius = squareRadiusAtAngle(innerHalfSize, angle);
       const radius = seamRadius + (outerRadius - seamRadius) * eased;
+      const distanceFromSeam = Math.max(0, radius - seamRadius);
+      const edgeBlend = smoothstep01(distanceFromSeam / edgeBlendWidth);
       const x = Math.sin(angle) * radius;
       const z = Math.cos(angle) * radius;
+
+      // Do not let the decorative world peel away vertically right after the
+      // real terrain ends. Height/noise grows in only after the blend band.
+      const baseY = innerY + (authoredBaseY - innerY) * edgeBlend;
+      const envelope = authoredEnvelope * edgeBlend;
       const y = baseY + broadNoise(angle, t, seed) * heightVariation * envelope;
+
+      // Macro colour is broad, non-directional and vertex-based (effectively
+      // free compared with sampling another texture). It breaks up large green
+      // sheets after the fine grass texture has faded without making new bands.
+      let tint = mixColor(nearColor, authoredTint, edgeBlend);
+      const macro = macroNoise(x, z, macroScale, seed);
+      const macroTarget = macro >= 0 ? macroWarm : macroCool;
+      const macroAmount = Math.abs(macro) * macroStrength * edgeBlend;
+      tint = mixColor(tint, macroTarget, macroAmount);
+
       positions.push(x, y, z);
       colors.push(tint[0], tint[1], tint[2]);
       uvs.push(x / uvWorld + 0.5, -z / uvWorld + 0.5);
@@ -111,38 +153,86 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   geometry.computeBoundingBox();
+  geometry.userData = {
+    ...(geometry.userData || {}),
+    edgeBlendWidth,
+    macroVariationStrength: macroStrength,
+    macroVariationScale: macroScale,
+  };
   return geometry;
 }
 
-function applyTextureDistanceFade(material, config = {}) {
+/**
+ * Fade high-frequency grass before grazing-angle mip levels turn it into long
+ * horizontal streaks. The authored config is treated as an upper bound: on an
+ * 80 m gameplay terrain we start no later than 60 m and finish no later than
+ * 128 m. This keeps the real farm fully detailed but stops the same 5 m grass
+ * tile being asked to describe hundreds of metres of horizon.
+ *
+ * A tiny per-vertex distance jitter makes the fade boundary organic rather
+ * than a mathematically perfect ring. All trig runs in the vertex shader on a
+ * ~2k-vertex mesh, not per pixel.
+ */
+function applyTextureDistanceFade(material, config = {}, textureWorldSize = 80) {
   if (!material?.map) return;
-  const start = Math.max(0, Number(config.textureFadeStart) || 80);
-  const end = Math.max(start + 1, Number(config.textureFadeEnd) || 150);
+
+  const worldSize = Math.max(1, Number(textureWorldSize) || 80);
+  const requestedStart = Math.max(0, Number(config.textureFadeStart) || 80);
+  const requestedEnd = Math.max(requestedStart + 1, Number(config.textureFadeEnd) || 150);
+  const antiBandStartCap = worldSize * 0.75;
+  const antiBandEndCap = worldSize * 1.6;
+  const start = Math.min(requestedStart, antiBandStartCap);
+  const end = Math.max(start + 1, Math.min(requestedEnd, antiBandEndCap));
+  const jitter = Math.max(0, Number(config.textureFadeJitter) || 10);
+
   material.userData = material.userData || {};
-  material.userData.textureFade = { start, end };
+  material.userData.textureFade = {
+    requestedStart,
+    requestedEnd,
+    start,
+    end,
+    jitter,
+  };
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uOuterTextureFadeStart = { value: start };
     shader.uniforms.uOuterTextureFadeEnd = { value: end };
+    shader.uniforms.uOuterTextureFadeJitter = { value: jitter };
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying float vOuterWorldRadius;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvOuterWorldRadius = length( transformed.xz );");
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying float vOuterWorldRadius;\nvarying float vOuterFadeJitter;\nuniform float uOuterTextureFadeJitter;"
+      )
+      .replace(
+        "#include <begin_vertex>",
+        [
+          "#include <begin_vertex>",
+          "vOuterWorldRadius = length( transformed.xz );",
+          "float outerJitterA = sin( transformed.x * 0.047 + transformed.z * 0.019 );",
+          "float outerJitterB = sin( transformed.z * 0.041 - transformed.x * 0.013 );",
+          "vOuterFadeJitter = ( outerJitterA * 0.65 + outerJitterB * 0.35 ) * uOuterTextureFadeJitter;",
+        ].join("\n")
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nvarying float vOuterWorldRadius;\nuniform float uOuterTextureFadeStart;\nuniform float uOuterTextureFadeEnd;"
+        "#include <common>\nvarying float vOuterWorldRadius;\nvarying float vOuterFadeJitter;\nuniform float uOuterTextureFadeStart;\nuniform float uOuterTextureFadeEnd;"
       )
       .replace(
         "#include <map_fragment>",
         [
           "vec3 outerWorldBaseDiffuse = diffuseColor.rgb;",
           "#include <map_fragment>",
-          "float outerWorldTextureFade = smoothstep( uOuterTextureFadeStart, uOuterTextureFadeEnd, vOuterWorldRadius );",
+          "float outerWorldTextureFade = smoothstep(",
+          "  uOuterTextureFadeStart + vOuterFadeJitter,",
+          "  uOuterTextureFadeEnd + vOuterFadeJitter,",
+          "  vOuterWorldRadius",
+          ");",
           "diffuseColor.rgb = mix( diffuseColor.rgb, outerWorldBaseDiffuse, outerWorldTextureFade );",
         ].join("\n")
       );
   };
-  material.customProgramCacheKey = () => `outer-world-texture-fade:${start}:${end}`;
+  material.customProgramCacheKey = () => `outer-world-antiband:${start}:${end}:${jitter}`;
 }
 
 export function createOuterWorldGround({ config = {}, texture = null, textureWorldSize = 80 } = {}) {
@@ -160,7 +250,7 @@ export function createOuterWorldGround({ config = {}, texture = null, textureWor
     fog: true,
   });
   material.name = "OuterWorldGroundMaterial";
-  applyTextureDistanceFade(material, config);
+  applyTextureDistanceFade(material, config, textureWorldSize);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "OuterWorldGroundMesh";
