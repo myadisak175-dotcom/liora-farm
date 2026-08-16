@@ -22,12 +22,12 @@
     three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
     "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
     "./src/systems/background/floating-island-backdrop.js?v=floating-island-b-lite": "./src/systems/background/floating-island-backdrop.js?v=floating-island-async1",
-    "./src/config.js?v=floating-island-b-lite": "./src/config-floating-island-tuned.js?v=floating-island-tune1",
+    "./src/config.js?v=floating-island-b-lite": "./src/config-floating-island-tuned.js?v=floating-island-tune2",
   }});
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=floating-island-tune1";
+  entry.src = "./src/main.js?v=floating-island-tune2";
   document.head.append(entry);
 })();
 </script>
