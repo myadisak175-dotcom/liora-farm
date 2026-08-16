@@ -9,14 +9,29 @@ function normalizedDirection(direction = {}) {
   return new THREE.Vector2(x / length, y / length);
 }
 
+function clamp01(value) {
+  return Math.min(1, Math.max(0, Number(value) || 0));
+}
+
 /**
  * Ambient shader wind. This system owns only shared shader uniforms and visual
  * material preparation. It never mutates Object3D transforms, builder items,
  * collision radii, persistence, farming state or movement state.
+ *
+ * Nature palette grading rides the same already-shared material hook so it does
+ * not allocate another material per plant or add another draw call. Wind can be
+ * disabled while the palette stays active: in that case wind strength is zero
+ * and only the fragment colour grade remains.
  */
 export function createWindSystem({ config = {}, quality = {} } = {}) {
   const enabled = config.enabled !== false;
   const gust = config.gust ?? {};
+  const paletteConfig = config.naturePalette ?? {};
+  const paletteStrength = paletteConfig.enabled === false
+    ? 0
+    : clamp01(paletteConfig.strength ?? 0);
+  const visualEnabled = enabled || paletteStrength > 0;
+
   const uniforms = {
     time: { value: 0 },
     direction: { value: normalizedDirection(config.direction) },
@@ -25,6 +40,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
     gustStrength: { value: Number(gust.strength ?? 0.3) },
     gustSpeed: { value: Number(gust.speed ?? 0.18) },
     gustScale: { value: Number(gust.scale ?? 0.07) },
+    paletteStrength: { value: paletteStrength },
   };
 
   let attachedMeshes = 0;
@@ -46,7 +62,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
 
   function attach(model, asset, { preview = false } = {}) {
     const profileName = asset?.windProfile ?? inferAssetWindProfile(asset);
-    if (!enabled || !profileName || !model?.traverse) return false;
+    if (!visualEnabled || !profileName || !model?.traverse) return false;
 
     // The bend axis is read from each mesh's world matrix, so it has to be up
     // to date. Builder hands the model over before parenting it, which is what
@@ -98,10 +114,10 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
           attachedMeshes += 1;
         }
       } catch (error) {
-        // Wind is decorative. A shader/material problem must never stop a
-        // Builder object from loading or becoming collidable.
+        // Wind and palette grading are decorative. A shader/material problem
+        // must never stop a Builder object from loading or becoming collidable.
         failedMeshes += 1;
-        console.warn(`Wind skipped mesh "${node.name || "unnamed"}"`, error);
+        console.warn(`Visual material effects skipped mesh "${node.name || "unnamed"}"`, error);
       }
     });
     return attached;
@@ -118,6 +134,9 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
     update,
     get enabled() {
       return enabled;
+    },
+    get paletteStrength() {
+      return uniforms.paletteStrength.value;
     },
     get stats() {
       return { attachedMeshes, failedMeshes, sharedMaterials: sharedMaterials.size };

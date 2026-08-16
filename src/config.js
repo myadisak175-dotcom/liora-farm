@@ -123,6 +123,9 @@ export const CONFIG = Object.freeze({
     strength: 0.55,
     speed: 0.75,
     gust: { strength: 0.3, speed: 0.18, scale: 0.07 },
+    // One visual tuning knob for the green parts of wind-enabled Nature assets.
+    // 0 = authored colour. 0.28 ~= 28% less green saturation + a subtle warm bias.
+    naturePalette: { enabled: true, strength: 0.28 },
   },
   fog: { near: 46, far: 96 },
 });

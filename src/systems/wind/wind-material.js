@@ -2,6 +2,7 @@ import { classifyTreePart, getPartWeights } from "./wind-profiles.js";
 
 const COMMON = "#include <common>";
 const BEGIN_VERTEX = "#include <begin_vertex>";
+const COLOR_FRAGMENT = "#include <color_fragment>";
 const WORLD_UP = Object.freeze({ x: 0, y: 1, z: 0 });
 const MIN_HEIGHT = 0.0001;
 
@@ -21,6 +22,36 @@ uniform float lioraWindAmplitude;
 uniform float lioraWindFrequency;
 uniform float lioraWindSpatial;
 uniform float lioraWindRootLock;
+`;
+
+const PALETTE_DECLARATIONS = `
+uniform float lioraNaturePaletteStrength;
+`;
+
+/**
+ * One master knob grades only pixels that are actually green. This matters for
+ * atlased nature materials where bark, leaves and flowers can share a texture:
+ * material-level HSL would mute the pink petals and brown trunks as collateral.
+ *
+ * At strength 0.28 a strongly-green pixel loses about 28% saturation and gets
+ * a very small warm bias (slightly more red, slightly less blue). Brown bark,
+ * grey rocks and pink/purple flowers receive little or no grade because their
+ * green mask approaches zero.
+ */
+const PALETTE_FRAGMENT = `
+float lioraPaletteMaxC = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
+float lioraPaletteMinC = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
+float lioraPaletteChroma = lioraPaletteMaxC - lioraPaletteMinC;
+float lioraPaletteGreen =
+  smoothstep(-0.12, 0.08, diffuseColor.g - diffuseColor.r) *
+  smoothstep(-0.02, 0.12, diffuseColor.g - diffuseColor.b) *
+  smoothstep(0.035, 0.16, lioraPaletteChroma);
+float lioraPaletteAmount = clamp(lioraNaturePaletteStrength * lioraPaletteGreen, 0.0, 1.0);
+float lioraPaletteLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lioraPaletteLuma), lioraPaletteAmount);
+diffuseColor.r *= 1.0 + lioraPaletteAmount * 0.10;
+diffuseColor.b *= 1.0 - lioraPaletteAmount * 0.08;
+diffuseColor.rgb = clamp(diffuseColor.rgb, 0.0, 1.0);
 `;
 
 // `lioraWindUp` is the object-space direction that points at world up. It is
@@ -184,11 +215,25 @@ function patchShader(shader, uniforms, local, up) {
 
   shader.vertexShader = shader.vertexShader.replace(COMMON, `${COMMON}\n${WIND_DECLARATIONS}`);
   shader.vertexShader = shader.vertexShader.replace(BEGIN_VERTEX, `${BEGIN_VERTEX}\n${WIND_VERTEX}`);
+
+  const paletteStrength = Number(uniforms.paletteStrength?.value) || 0;
+  if (paletteStrength > 0 && shader.fragmentShader?.includes(COLOR_FRAGMENT)) {
+    shader.uniforms.lioraNaturePaletteStrength = uniforms.paletteStrength;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      COMMON,
+      `${COMMON}\n${PALETTE_DECLARATIONS}`
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      COLOR_FRAGMENT,
+      `${COLOR_FRAGMENT}\n${PALETTE_FRAGMENT}`
+    );
+  }
 }
 
 /**
- * Adds visual-only vertex displacement to one material. Geometry, Object3D
- * transforms and collision metadata remain untouched.
+ * Adds visual-only vertex displacement and optional green-only colour grading
+ * to one material. Geometry, Object3D transforms and collision metadata remain
+ * untouched.
  */
 export function applyWindToMaterial({
   material,
@@ -218,13 +263,14 @@ export function applyWindToMaterial({
     previousCompile?.(shader, renderer);
     patchShader(shader, uniforms, { ...span, ...weights }, axis);
   };
-  target.customProgramCacheKey = () => `${previousCacheKey?.() ?? ""}|liora-wind-v2`;
+  target.customProgramCacheKey = () => `${previousCacheKey?.() ?? ""}|liora-wind-v2|liora-nature-palette-v1`;
   target.userData = {
     ...target.userData,
     lioraWind: true,
     lioraWindProfile: profileName,
     lioraWindPart: part,
     lioraWindShared: shared,
+    lioraNaturePalette: (Number(uniforms.paletteStrength?.value) || 0) > 0,
     preserveShaderHooksOnClone: true,
     // A shared material is reused by every copy of the asset and must survive
     // any one of them being deleted.
