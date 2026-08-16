@@ -97,6 +97,9 @@ Four files, strictly separated:
 - `asset-loader.js` — lazy GLB load + cache.
 - `builder-state.js` / `builder-controller.js` — the rules. No DOM, no Three.js.
 - `builder-view.js` — the Three.js side: spawn, ghost preview, selection tint.
+- `instanced-pool.js` — GPU instance buffers for ground cover. Owns no rules
+  and no persistence; `builder-view` routes plants to it and everything else to
+  the ordinary Object3D path.
 - `builder-ui.js` — the only file that touches builder DOM and touch events.
   It also owns the HUD height budget: the collapse chevron, the "เพิ่มเติม"
   drawer and the rule that the action row never scrolls.
@@ -127,7 +130,34 @@ is exactly what gets placed in the hundreds. Grass, flowers and low bushes set
 `castShadow: false` in the catalog; `asset-loader.js` reads it. Receiving is
 never disabled — ground cover still has to darken under a tree.
 
-Measure before changing either: `?perf=1` turns on the frame readout
+**Plants batch, everything else does not.** `asset.instanced` is true for World
+V2 `kind: "plant"` — grass, flowers, bushes — which are scattered by the
+hundred and are 620 tris at worst. Those become one `InstancedMesh` per mesh
+per type; a hundred grass clumps cost one draw call.
+
+This is a real trade, not a free win: an `InstancedMesh` is culled as a whole,
+so every instance is submitted even when most are off screen. For a 58-tri
+clump that beats a hundred culled draw calls; for a 7,000-tri tree it would
+not, and trees are placed in tens. Trees, rocks and buildings therefore stay on
+the Object3D path, where per-object culling and selection are simpler and worth
+more. That split is the whole design — do not "simplify" it by instancing
+everything.
+
+Consequences worth knowing before touching `instanced-pool.js`:
+
+- Removal is a **swap with the last instance**, so the index map has to be
+  rewritten for the plant that moved. That is where this kind of pool rots.
+- Selection tints a **per-instance colour**, not the material: the material is
+  shared with every other copy of that plant on the island.
+- Bounds recomputation is **coalesced into a microtask**. Sculpting re-snaps
+  every placed object every frame, so recomputing inside each `update()` would
+  cost O(instances²) per frame. `pickTargets()` forces the pending pass first,
+  because raycasting uses those bounds as its broad phase.
+- The wind shader reads `modelMatrix * instanceMatrix` under `USE_INSTANCING`.
+  Without it every clump shares one world position, so a whole meadow sways in
+  perfect lockstep.
+
+Measure before changing any of this: `?perf=1` turns on the frame readout
 (`ui/perf-hud.js`) and it stays on across reloads until `?perf=0`. It shows
 average FPS, the **worst frame** in the sample window, draw calls, triangles and
 program/geometry/texture counts. Worst-frame is the number that matters: a

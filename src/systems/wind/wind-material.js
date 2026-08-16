@@ -28,6 +28,16 @@ uniform float lioraWindRootLock;
 // the bushes carry arbitrary tilts), so height, bend axis and flutter axis all
 // have to be built from that vector instead of from `position.y`.
 const WIND_VERTEX = `
+// Pooled plants are drawn as instances, so the object's real world placement
+// lives in instanceMatrix, not modelMatrix. Reading modelMatrix alone would
+// give every clump on the island the same world position — and therefore the
+// same phase — so a whole meadow would sway in perfect lockstep.
+#ifdef USE_INSTANCING
+  mat4 lioraWindModel = modelMatrix * instanceMatrix;
+#else
+  mat4 lioraWindModel = modelMatrix;
+#endif
+
 float lioraWindH = clamp((dot(position, lioraWindUp) - lioraWindMinH) * lioraWindInvHeight, 0.0, 1.0);
 float lioraWindRoot = smoothstep(0.0, max(0.001, lioraWindRootLock), lioraWindH);
 float lioraWindBase = lioraWindH * lioraWindProfile.x;
@@ -35,7 +45,7 @@ float lioraWindMid = smoothstep(0.18, 0.72, lioraWindH) * lioraWindProfile.y;
 float lioraWindTip = smoothstep(0.48, 0.98, lioraWindH) * lioraWindProfile.z;
 float lioraWindBend = lioraWindRoot * clamp(lioraWindBase + lioraWindMid + lioraWindTip, 0.0, 1.25);
 
-vec2 lioraWindWorldXZ = (modelMatrix * vec4(position, 1.0)).xz;
+vec2 lioraWindWorldXZ = (lioraWindModel * vec4(position, 1.0)).xz;
 float lioraWindPhase =
   lioraWindTime * lioraWindSpeed * lioraWindFrequency +
   dot(lioraWindWorldXZ, vec2(0.173, 0.219)) * lioraWindSpatial;
@@ -48,9 +58,9 @@ float lioraWindGust = 1.0 + lioraWindGustStrength *
 
 vec3 lioraWindWorldDir = normalize(vec3(lioraWindDirection.x, 0.0, lioraWindDirection.y));
 vec3 lioraWindLocalDir = vec3(
-  dot(lioraWindWorldDir, normalize(modelMatrix[0].xyz)),
-  dot(lioraWindWorldDir, normalize(modelMatrix[1].xyz)),
-  dot(lioraWindWorldDir, normalize(modelMatrix[2].xyz))
+  dot(lioraWindWorldDir, normalize(lioraWindModel[0].xyz)),
+  dot(lioraWindWorldDir, normalize(lioraWindModel[1].xyz)),
+  dot(lioraWindWorldDir, normalize(lioraWindModel[2].xyz))
 );
 lioraWindLocalDir -= lioraWindUp * dot(lioraWindLocalDir, lioraWindUp);
 float lioraWindDirLength = length(lioraWindLocalDir);

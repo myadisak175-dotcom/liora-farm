@@ -12,10 +12,16 @@ function item({ id, label, icon, file, nodeName, height, width, tris, kind }) {
   // Authored height is the real world height here, so the shadow rule reads
   // straight off it. See CONFIG.shadows.minCasterHeight.
   const castShadow = height >= CONFIG.shadows.minCasterHeight;
+  // Plants are scattered by the hundred and are 620 tris at worst, so they are
+  // worth batching into one draw call per type. Trees and rocks are placed in
+  // tens and are far heavier, so they keep per-object culling instead. This is
+  // deliberately a separate judgement from the shadow rule above, not the same
+  // number twice — see editor/instanced-pool.js.
+  const instanced = kind === "plant";
   return Object.freeze({ id, label, icon, category: NATURE_V2_CATEGORY, modelPath: `${ROOT}/${file}`, nodeName,
     footprintRadius, blockRadius: 0, walkRadius, defaultScale: 1, minScale: 0.6, maxScale: 1.8, scaleStep: 0.05,
     sizeAxis: "height", sizeInPlayers: +(height / 1.7).toFixed(4), terrainSnap: true, maxGroundSlope: null, groundProbeRadius: null,
-    sourceHeight: height, sourceWidth: width, tris, castShadow, worldV2: true });
+    sourceHeight: height, sourceWidth: width, tris, castShadow, instanced, worldV2: true });
 }
 
 export const NATURE_V2_ASSETS = Object.freeze({
