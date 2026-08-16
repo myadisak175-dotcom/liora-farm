@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 const IS_TOUCH =
-  typeof matchMedia === "function" && matchMedia("pointer: coarse)").matches;
+  typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
 export const QUALITY = Object.freeze({
   isTouch: IS_TOUCH,
