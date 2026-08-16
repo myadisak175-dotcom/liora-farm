@@ -3,6 +3,7 @@ import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
 import { createWorldBoundary } from "../systems/world-boundary.js";
+import { createOuterWorldGround } from "../systems/outer-world-ground.js";
 import { createMountainBackdrop } from "../systems/mountain-backdrop.js";
 import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
@@ -110,6 +111,16 @@ export async function createHomeIsland({
   });
   paint.applyTo(terrain.material);
 
+  const outerWorld = createOuterWorldGround({
+    config: {
+      ...config.outerWorld,
+      innerY: Number(config.worldBoundary?.height || 0) + Number(config.outerWorld?.innerYOffset || 0),
+    },
+    texture: baseMap,
+    textureWorldSize: config.terrain.size,
+  });
+  group.add(outerWorld.group);
+
   const water = createAnimatedWater({
     size: config.terrain.size,
     config: config.water,
@@ -147,6 +158,7 @@ export async function createHomeIsland({
     height,
     terrainField,
     worldBoundary,
+    outerWorld,
     mountainBackdrop,
     water,
     paint,
@@ -171,6 +183,7 @@ export async function createHomeIsland({
       paint.dispose();
       height.dispose();
       worldBoundary.dispose();
+      outerWorld.dispose();
       mountainBackdrop.dispose();
       terrain.dispose();
       water.dispose();
