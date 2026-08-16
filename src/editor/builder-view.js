@@ -34,6 +34,26 @@ export function createBuilderView({
     }
   }
 
+  function materialNeedsDispose(material) {
+    return (Array.isArray(material) ? material : [material]).some(
+      (entry) => Boolean(entry?.userData?.disposeWithBuilderView)
+    );
+  }
+
+  /**
+   * Three.js material clones intentionally do not promise to copy arbitrary
+   * shader callbacks. Visual decorators can opt into preserving those hooks
+   * without Builder knowing which effect installed them.
+   */
+  function cloneVisualMaterial(material) {
+    const clone = material.clone();
+    if (material?.userData?.preserveShaderHooksOnClone) {
+      clone.onBeforeCompile = material.onBeforeCompile;
+      clone.customProgramCacheKey = material.customProgramCacheKey;
+    }
+    return clone;
+  }
+
   /** Cloned materials are per-instance, so they have to be handed back. */
   function disposeClonedMaterials(object) {
     object.traverse((node) => {
@@ -91,7 +111,7 @@ export function createBuilderView({
       node.receiveShadow = false;
       const materials = Array.isArray(node.material) ? node.material : [node.material];
       const clones = materials.map((material) => {
-        const clone = material.clone();
+        const clone = cloneVisualMaterial(material);
         clone.transparent = true;
         clone.opacity = config.ghostOpacity;
         clone.depthWrite = false;
@@ -110,7 +130,7 @@ export function createBuilderView({
         const source = originalMaterials.get(node);
         const materials = Array.isArray(source) ? source : [source];
         const tinted = materials.map((material) => {
-          const clone = material.clone();
+          const clone = cloneVisualMaterial(material);
           if (clone.emissive) {
             clone.emissive = new THREE.Color(config.selectionColor);
             clone.emissiveIntensity = 0.45;
@@ -123,11 +143,9 @@ export function createBuilderView({
       }
       const source = originalMaterials.get(node);
       if (!source) return;
-      if (node.userData.materialIsClone) {
-        disposeMaterial(node.material);
-        node.userData.materialIsClone = false;
-      }
+      if (node.userData.materialIsClone) disposeMaterial(node.material);
       node.material = source;
+      node.userData.materialIsClone = materialNeedsDispose(source);
     });
   }
 
@@ -262,7 +280,7 @@ export function createBuilderView({
       return;
     }
     disposeClonedMaterials(ghost);
-    scene.remove(ghost);
+    scene.remove(nextGhost);
     ghost = null;
     ghostAsset = null;
   }
