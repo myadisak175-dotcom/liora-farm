@@ -23,7 +23,6 @@ export function createCameraController(camera, config, surface) {
   const desiredFollow = new THREE.Vector3();
   const deltaToTarget = new THREE.Vector3();
   const lookTarget = new THREE.Vector3();
-  // Build mode moves the view without moving Liora.
   const panOffset = new THREE.Vector3();
   let followReady = false;
 
@@ -52,10 +51,6 @@ export function createCameraController(camera, config, surface) {
     );
   }
 
-  /**
-   * Screen pixels -> ground units at the current zoom, so a drag keeps the
-   * same patch of ground under the finger regardless of how far out you are.
-   */
   function worldPerPixel() {
     const viewHeight = Math.max(1, innerHeight);
     const fovRadians = THREE.MathUtils.degToRad(config.fov);
@@ -68,7 +63,6 @@ export function createCameraController(camera, config, surface) {
     const forwardZ = -Math.cos(yaw);
     const rightX = Math.cos(yaw);
     const rightZ = -Math.sin(yaw);
-    // A shallow camera covers more ground per vertical pixel.
     const verticalUnit = unit / Math.max(0.35, Math.sin(pitch));
 
     panOffset.x -= dx * unit * rightX + dy * verticalUnit * forwardX;
@@ -83,7 +77,6 @@ export function createCameraController(camera, config, surface) {
     panOffset.set(0, 0, 0);
   }
 
-  /** Where the camera is currently looking, on the ground plane. */
   function getFocus() {
     return {
       x: followTarget.x + panOffset.x,
@@ -104,11 +97,7 @@ export function createCameraController(camera, config, surface) {
 
     if (distance > config.followDeadZone) {
       desiredFollow.copy(target);
-      desiredFollow.addScaledVector(
-        deltaToTarget,
-        -config.followDeadZone / distance
-      );
-
+      desiredFollow.addScaledVector(deltaToTarget, -config.followDeadZone / distance);
       const followAlpha = 1 - Math.exp(-config.followSharpness * delta);
       followTarget.lerp(desiredFollow, followAlpha);
     }
@@ -131,12 +120,10 @@ export function createCameraController(camera, config, surface) {
 
   surface.addEventListener("pointermove", (event) => {
     if (event.pointerId !== orbitPointer || pinchStart) return;
-
     const dx = event.clientX - lastX;
     const dy = event.clientY - lastY;
     lastX = event.clientX;
     lastY = event.clientY;
-
     yaw -= dx * config.orbitSensitivity;
     pitch = THREE.MathUtils.clamp(
       pitch + dy * config.pitchSensitivity,
@@ -172,8 +159,6 @@ export function createCameraController(camera, config, surface) {
     orbitPointer = null;
   }, { passive: false });
 
-  // Two fingers: spread to zoom, swivel to rotate. This is the only way to
-  // turn the camera in build mode, where one finger belongs to the builder.
   surface.addEventListener("touchmove", (event) => {
     if (event.touches.length !== 2 || !pinchStart) return;
     event.preventDefault();
@@ -203,7 +188,12 @@ export function createCameraController(camera, config, surface) {
     pan,
     clearPan,
     getFocus,
-    // Build mode takes over one-finger drags; two fingers stay with the camera.
+    setMinPitch(value) {
+      const next = Number(value);
+      if (!Number.isFinite(next)) return;
+      config = { ...config, minPitch: next };
+      pitch = THREE.MathUtils.clamp(pitch, config.minPitch, config.maxPitch);
+    },
     setOrbitEnabled(value) {
       orbitEnabled = Boolean(value);
       if (!orbitEnabled) orbitPointer = null;

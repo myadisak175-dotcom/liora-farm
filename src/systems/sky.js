@@ -1,20 +1,9 @@
 import * as THREE from "three";
 import { createFantasyHorizon } from "./background/fantasy-horizon.js";
 
-/**
- * The cloud layer used to be one THREE.Mesh per puff — roughly 85 separate
- * objects, so 85 draw calls every frame for decoration. They share a geometry
- * and a material, which is exactly the case InstancedMesh exists for: same
- * clouds, one draw call.
- */
 function buildCloudLayer(config) {
   const ringDefinitions = [
-    {
-      count: config.cloudCount,
-      radius: config.cloudRingRadius,
-      height: config.cloudHeight,
-      phase: 0,
-    },
+    { count: config.cloudCount, radius: config.cloudRingRadius, height: config.cloudHeight, phase: 0 },
     {
       count: Math.max(6, Math.round(config.cloudCount * 0.7)),
       radius: config.cloudRingRadius + (config.cloudSpread ?? 10),
@@ -36,10 +25,6 @@ function buildCloudLayer(config) {
     opacity: config.cloudOpacity,
     depthWrite: false,
     depthTest: true,
-    // Clouds sit far above the horizon band, so fog would only wash them out
-    // at exactly the distance that makes them worth having. They are tinted
-    // by the day/night palette instead, which keeps them warm at sunset and
-    // blue at night without ever dissolving.
     fog: false,
   });
 
@@ -64,8 +49,8 @@ function buildCloudLayer(config) {
       const centreX = Math.cos(angle) * radius;
       const centreY = ring.height - (i % 2) * 1.1 * scale;
       const centreZ = Math.sin(angle) * radius;
-
       const puffCount = puffCountFor(i);
+
       for (let p = 0; p < puffCount; p += 1) {
         position.set(
           centreX + (p - puffCount / 2) * 1.4 * scale,
@@ -114,7 +99,6 @@ export function createSky(config, distantRangeConfig = {}) {
       uniform vec3 horizonColor;
       uniform vec3 lowerColor;
       varying vec3 vSkyDirection;
-
       void main() {
         float y = clamp(vSkyDirection.y, -1.0, 1.0);
         vec3 color;
@@ -135,7 +119,6 @@ export function createSky(config, distantRangeConfig = {}) {
   dome.renderOrder = -1000;
   group.add(dome);
 
-  // Lightweight star field. Visibility is faded by the day/night system.
   const starCount = config.starCount ?? 220;
   const starPositions = new Float32Array(starCount * 3);
   for (let i = 0; i < starCount; i += 1) {
@@ -165,12 +148,12 @@ export function createSky(config, distantRangeConfig = {}) {
   const clouds = buildCloudLayer(config);
   group.add(clouds.mesh);
 
-  // Distant peaks, horizon haze and the optional fantasy islands. World-space
-  // scenery only — it never affects sculpting, collision, saving or the builder.
-  const fantasyHorizon = createFantasyHorizon(distantRangeConfig);
+  let fantasyHorizon = createFantasyHorizon(distantRangeConfig);
   group.add(fantasyHorizon.group);
 
   const baseCloud = new THREE.Color(config.cloudColor);
+  let lastHorizon = null;
+  let lastLower = null;
 
   return {
     group,
@@ -184,7 +167,16 @@ export function createSky(config, distantRangeConfig = {}) {
       skyMaterial.uniforms.horizonColor.value.copy(horizon);
       skyMaterial.uniforms.lowerColor.value.copy(lower);
       clouds.material.color.copy(baseCloud).lerp(horizon, 0.45);
+      lastHorizon = horizon;
+      lastLower = lower;
       fantasyHorizon.setAtmosphere(horizon, lower);
+    },
+    rebuildDistantRange(nextConfig) {
+      group.remove(fantasyHorizon.group);
+      fantasyHorizon.dispose();
+      fantasyHorizon = createFantasyHorizon(nextConfig);
+      group.add(fantasyHorizon.group);
+      if (lastHorizon && lastLower) fantasyHorizon.setAtmosphere(lastHorizon, lastLower);
     },
     setStars(amount) {
       starMaterial.opacity = THREE.MathUtils.clamp(amount, 0, 1) * (config.starOpacity ?? 0.9);

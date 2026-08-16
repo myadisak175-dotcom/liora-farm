@@ -14,10 +14,11 @@ import { createAnimatedWater } from "../systems/water.js";
 import { createFarmPlot } from "../systems/farming/plot.js";
 import { createCrops } from "../systems/farming/crops.js";
 
-function tile(texture, repeat) {
+function tile(texture, repeat, anisotropy = 1) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(repeat, repeat);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = anisotropy;
   return texture;
 }
 
@@ -33,19 +34,13 @@ export async function createHomeIsland({
   const group = new THREE.Group();
   group.name = "HomeIslandZone";
 
-  const mountainBackdrop = createMountainBackdrop(config.mountainBackdrop);
+  let mountainBackdrop = createMountainBackdrop(config.mountainBackdrop);
   group.add(mountainBackdrop.group);
 
   const ridgeEnabled = config.worldBoundary?.enabled !== false
     && config.worldBoundary?.type === "ridge";
   const boundaryTopY = ridgeEnabled ? Number(config.worldBoundary?.height || 0) : 0;
 
-  // The old floating-island skirt only makes sense when the map is meant to
-  // read as an island/cliff. Home Farm now has a visual world extension beyond
-  // its playable square, so keeping the vertical skirt creates a dark hard line
-  // at x/z = ±terrainHalf when the camera reaches the outer farm. Leave the
-  // reusable island system intact for other maps, but do not add it here while
-  // Home Farm is in open-world visual mode.
   const openWorldVisual = !ridgeEnabled && config.outerWorld?.enabled !== false;
   if (!openWorldVisual) {
     const island = createFloatingIsland({ ...config.island, topY: boundaryTopY });
@@ -70,16 +65,15 @@ export async function createHomeIsland({
 
   const baseMap = tile(
     new THREE.Texture(groundTextures.images.get(layers.base.key)),
-    repeat
+    repeat,
+    anisotropy
   );
   baseMap.needsUpdate = true;
 
   let waterTexture = null;
   if (config.water.texture) {
     try {
-      waterTexture = await textureLoader.loadAsync(
-        `${assets.textureDir}/${config.water.texture}`
-      );
+      waterTexture = await textureLoader.loadAsync(`${assets.textureDir}/${config.water.texture}`);
       waterTexture.wrapS = waterTexture.wrapT = THREE.RepeatWrapping;
       waterTexture.colorSpace = THREE.SRGBColorSpace;
       waterTexture.anisotropy = anisotropy;
@@ -106,10 +100,7 @@ export async function createHomeIsland({
   const terrainField = createTerrainField({
     height: worldBoundary.heightView,
     worldSize: config.terrain.size,
-    config: {
-      ...config.terrainField,
-      waterLevel: config.water.level,
-    },
+    config: { ...config.terrainField, waterLevel: config.water.level },
   });
 
   const terrain = createTerrain({ texture: baseMap, config: config.terrain, height: baseHeight });
@@ -124,14 +115,16 @@ export async function createHomeIsland({
   });
   paint.applyTo(terrain.material);
 
-  const outerWorld = createOuterWorldGround({
+  const buildOuterWorld = (outerConfig) => createOuterWorldGround({
     config: {
-      ...config.outerWorld,
-      innerY: boundaryTopY + Number(config.outerWorld?.innerYOffset || 0),
+      ...outerConfig,
+      innerY: boundaryTopY + Number(outerConfig?.innerYOffset || 0),
     },
     texture: baseMap,
     textureWorldSize: config.terrain.size,
   });
+
+  let outerWorld = buildOuterWorld(config.outerWorld);
   group.add(outerWorld.group);
 
   const water = createAnimatedWater({
@@ -171,8 +164,22 @@ export async function createHomeIsland({
     height,
     terrainField,
     worldBoundary,
-    outerWorld,
-    mountainBackdrop,
+    get outerWorld() { return outerWorld; },
+    get mountainBackdrop() { return mountainBackdrop; },
+    rebuildHorizon({ outerWorld: outerConfig, mountainBackdrop: backdropConfig } = {}) {
+      if (outerConfig) {
+        group.remove(outerWorld.group);
+        outerWorld.dispose();
+        outerWorld = buildOuterWorld(outerConfig);
+        group.add(outerWorld.group);
+      }
+      if (backdropConfig) {
+        group.remove(mountainBackdrop.group);
+        mountainBackdrop.dispose();
+        mountainBackdrop = createMountainBackdrop(backdropConfig);
+        group.add(mountainBackdrop.group);
+      }
+    },
     water,
     paint,
     brushCursor,

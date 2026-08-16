@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CONFIG, QUALITY, ASSETS, ANIMATIONS } from "./config.js";
+import { CONFIG, QUALITY, ASSETS, ANIMATIONS, BUILD } from "./config.js";
 import { createPlayer } from "./entities/player.js";
 import { createHomeIsland } from "./zones/home-island.js";
 import { createInput } from "./systems/input.js";
@@ -22,11 +22,13 @@ import { createLayoutRuntime } from "./editor/layout-runtime.js";
 import { createBuilderView } from "./editor/builder-view.js";
 import { createBuilderUI } from "./editor/builder-ui.js";
 import { createSculptControls } from "./editor/sculpt-controls.js";
+import { createHorizonControls } from "./editor/horizon-controls.js";
 import { createNotifications } from "./ui/notifications.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 
+window.__lioraBuild = BUILD;
 window.__lioraBooted = false;
 window.__lioraBootState = "starting";
 window.__lioraBootError = null;
@@ -112,6 +114,7 @@ const builderView = createBuilderView({
   prepareModel: (model, asset, context) => wind.attach(model, asset, context),
 });
 let builderUI = null;
+let horizonPanel = null;
 let colliders = [];
 const builder = createBuilderController({
   state: builderState,
@@ -158,6 +161,16 @@ builderUI = createBuilderUI({
   onExport: layoutRuntime.exportMap,
   onResetLayout: layoutRuntime.reset,
   onTerrainChange: syncBuilderToTerrain,
+});
+horizonPanel = createHorizonControls({
+  config: CONFIG,
+  scene,
+  sky,
+  world,
+  cameraController,
+  container: document.querySelector("#horizon-strip"),
+  surface: renderer.domElement,
+  onToast: toast,
 });
 createSculptControls({
   height: world.height,
@@ -246,7 +259,6 @@ function reportRescuedSaves() {
     ["การปั้นพื้น", world.height],
     ["แปลงผัก", world.crops],
   ].filter(([, owner]) => owner.storeIssue && owner.storeIssue.kind !== "save-failed");
-
   if (!rescued.length) return;
   const names = rescued.map(([label]) => label).join(", ");
   toast("ข้อมูลเดิมบางส่วนอ่านไม่ได้ — สำรองไว้ให้แล้ว");
@@ -257,6 +269,7 @@ const perfHud = createPerfHud({
   renderer,
   enabled: isPerfHudEnabled(),
   getObjectCount: () => builder.items.length,
+  build: BUILD,
 });
 
 const clock = new THREE.Clock();
