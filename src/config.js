@@ -75,6 +75,27 @@ export const CONFIG = Object.freeze({
     maxDepth: 3.5, rockSlope: 0.6, rockFeather: 0.12, sandFeather: 0.18,
     sandLayerId: 1, rockLayerId: 2, enabledByDefault: true,
   },
+  /**
+   * Home Island's visible world boundary. The playable area ends in a noisy
+   * terrain ridge instead of a straight edge or an invisible wall. Movement
+   * still keeps `worldLimit` as a safety backstop behind the ridge.
+   *
+   * The ridge is a procedural floor layered over editable terrain: sculpting
+   * can raise land above it but cannot expose ground below it. Generated ridge
+   * height is never written into terrain saves, so these values can be re-tuned
+   * later without old saves pinning a previous ridge height.
+   */
+  worldBoundary: {
+    enabled: true,
+    type: "ridge",
+    // Must finish before terrain.size / 2. 19.5 + 1.75 + 4.75 = 26 m < 28 m.
+    radius: 19.5,
+    feather: 4.75,
+    height: 4.8,
+    noiseAmplitude: 1.75,
+    noiseScale: 0.055,
+    noiseSeed: 91,
+  },
   sculpt: {
     minRadius: 1, maxRadius: 6, defaultRadius: 3, strength: 0.9, waterLevel: -0.6,
     smoothRate: 3.2, flattenRate: 2.6, minHeight: -3, maxHeight: 7,
