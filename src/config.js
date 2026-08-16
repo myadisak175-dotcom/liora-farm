@@ -111,6 +111,13 @@ export const CONFIG = Object.freeze({
     waterHeightJitter: 0.035, waterBackwardDrift: 0.2, waterSideDrift: 0.5,
     waterRiseSpeed: 0.55, waterRiseJitter: 0.25, renderOrder: 6,
   },
+  wind: {
+    enabled: true,
+    direction: { x: 0.8, z: 0.35 },
+    strength: 0.55,
+    speed: 0.75,
+    gust: { strength: 0.3, speed: 0.18, scale: 0.07 },
+  },
   fog: { near: 46, far: 96 },
 });
 
