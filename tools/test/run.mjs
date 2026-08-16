@@ -43,6 +43,8 @@ const PAGES = [
   { file: "tools/test/terrain-height.test.html", viewports: [[900, 800]] },
   { file: "tools/test/open-world-seam.test.html", viewports: [[900, 800]] },
   { file: "tools/test/horizon-layers.test.html", viewports: [[900, 800]] },
+  { file: "tools/test/horizon-settings.test.html", viewports: [[900, 800]] },
+  { file: "tools/test/horizon-polish.test.html", viewports: [[900, 800]] },
   { file: "tools/test/builder-hud.test.html", viewports: [[375, 667]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
 ];
