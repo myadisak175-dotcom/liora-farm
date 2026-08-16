@@ -33,7 +33,12 @@ function compile(gl, type, source) {
   return shader;
 }
 
-await test("wind vertex displacement compiles as WebGL1 GLSL", () => {
+/**
+ * Both variants have to compile. Pooled plants are drawn as instances, so the
+ * `USE_INSTANCING` branch reaches the driver only on that path — a syntax error
+ * there would show up as invisible grass on a real device and nowhere else.
+ */
+function compileWind({ instancing }) {
   const canvas = document.createElement("canvas");
   const gl = canvas.getContext("webgl");
   assert(gl, "WebGL context unavailable");
@@ -63,8 +68,10 @@ await test("wind vertex displacement compiles as WebGL1 GLSL", () => {
     uniforms: {},
     vertexShader: `
 precision highp float;
+${instancing ? "#define USE_INSTANCING" : ""}
 uniform mat4 modelMatrix;
 attribute vec3 position;
+${instancing ? "attribute mat4 instanceMatrix;" : ""}
 #include <common>
 void main() {
   vec3 transformed = position;
@@ -89,6 +96,20 @@ void main() {
   gl.attachShader(program, fs);
   gl.linkProgram(program);
   assert(gl.getProgramParameter(program, gl.LINK_STATUS), gl.getProgramInfoLog(program) || "program link failed");
+  return shader.vertexShader;
+}
+
+await test("wind vertex displacement compiles as WebGL1 GLSL", () => {
+  const source = compileWind({ instancing: false });
+  assert(source.includes("mat4 lioraWindModel = modelMatrix;"), "non-instanced path lost its model matrix");
+});
+
+await test("the instanced variant compiles and reads instanceMatrix", () => {
+  const source = compileWind({ instancing: true });
+  assert(
+    source.includes("mat4 lioraWindModel = modelMatrix * instanceMatrix;"),
+    "pooled plants would all share one world position, and sway in lockstep"
+  );
 });
 
 window.__results = results;

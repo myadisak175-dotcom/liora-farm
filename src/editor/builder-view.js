@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { getBuildableAsset } from "./asset-catalog.js";
+import { createInstancedPools } from "./instanced-pool.js";
 
 /**
  * Owns the Three.js side of the builder: spawning placed objects, the
@@ -23,10 +24,18 @@ export function createBuilderView({
   const box = new THREE.Box3();
   const size = new THREE.Vector3();
 
+  // Ground cover renders as one draw call per plant type instead of one per
+  // plant. Everything else keeps the Object3D path — see instanced-pool.js for
+  // why that split is not just laziness.
+  const pools = createInstancedPools({ scene });
+  const poolMetrics = new Map(); // assetId -> { scaleNormalization, baseOffset }
+  const selectionTint = new THREE.Color(config.selectionColor);
+
   let ghost = null;
   let ghostAsset = null;
   let ghostRevision = 0;
   let highlighted = null;
+  let highlightedInstance = null;
 
   function disposeMaterial(material) {
     for (const entry of Array.isArray(material) ? material : [material]) {
@@ -149,11 +158,19 @@ export function createBuilderView({
     });
   }
 
-  async function spawn(item) {
+  /**
+   * The model's own bounding box floor, which `snapToGround` subtracts so an
+   * object sits on the terrain instead of through it. Same number
+   * `cacheBaseOffset` caches per holder, measured once per pooled asset.
+   */
+  function measureBaseOffset(model) {
+    model.updateMatrixWorld(true);
+    box.setFromObject(model, true);
+    return Number.isFinite(box.min.y) ? box.min.y : 0;
+  }
+
+  function attachObject(item, asset, model) {
     if (objects.has(item.id)) return objects.get(item.id);
-    const asset = getBuildableAsset(item.assetId);
-    const model = await loader.load(item.assetId);
-    prepareModel?.(model, asset, { preview: false });
     const holder = new THREE.Group();
     holder.name = `builder:${item.assetId}`;
     holder.userData.itemId = item.id;
@@ -166,15 +183,48 @@ export function createBuilderView({
     return holder;
   }
 
+  /**
+   * Pooled assets pay the model measuring cost once, not once per placed copy.
+   * An asset the pool refuses (a multi-material mesh) silently falls back to
+   * the ordinary path rather than failing to appear.
+   */
+  async function spawnInstanced(item, asset) {
+    if (!pools.has(asset.id)) {
+      const model = await loader.load(item.assetId);
+      prepareModel?.(model, asset, { preview: false });
+      const metrics = {
+        scaleNormalization: getScaleNormalization(model, asset),
+        baseOffset: measureBaseOffset(model),
+      };
+      if (!pools.ensure(asset.id, model, metrics)) return attachObject(item, asset, model);
+      poolMetrics.set(asset.id, metrics);
+    }
+    pools.add(item, getGroundHeight(item.x, item.z));
+    return null;
+  }
+
+  async function spawn(item) {
+    const asset = getBuildableAsset(item.assetId);
+    if (asset?.instanced) {
+      return pools.holds(item.id) ? null : spawnInstanced(item, asset);
+    }
+    if (objects.has(item.id)) return objects.get(item.id);
+    const model = await loader.load(item.assetId);
+    prepareModel?.(model, asset, { preview: false });
+    return attachObject(item, asset, model);
+  }
+
   function update(item) {
+    if (pools.update(item, getGroundHeight(item.x, item.z))) return;
     const object = objects.get(item.id);
     if (object) applyTransform(object, item);
   }
 
   function remove(id) {
+    if (highlighted?.userData.itemId === id || highlightedInstance === id) highlight(null);
+    if (pools.remove(id)) return;
     const object = objects.get(id);
     if (!object) return;
-    if (highlighted === object) highlight(null);
     disposeClonedMaterials(object);
     group.remove(object);
     objects.delete(id);
@@ -182,13 +232,29 @@ export function createBuilderView({
 
   function clear() {
     highlight(null);
+    pools.clear();
     for (const id of [...objects.keys()]) remove(id);
   }
 
+  /**
+   * One selected item at a time, on either path. An Object3D gets the emissive
+   * material clone; a pooled plant gets a per-instance colour, because its
+   * material is shared with every other copy on the island.
+   */
   function highlight(id) {
     if (highlighted) tint(highlighted, false);
-    highlighted = id ? objects.get(id) ?? null : null;
-    if (highlighted) tint(highlighted, true);
+    if (highlightedInstance) pools.tint(highlightedInstance, null);
+    highlighted = null;
+    highlightedInstance = null;
+    if (!id) return;
+
+    const object = objects.get(id);
+    if (object) {
+      highlighted = object;
+      tint(object, true);
+      return;
+    }
+    if (pools.tint(id, selectionTint)) highlightedInstance = id;
   }
 
   /**
@@ -285,9 +351,16 @@ export function createBuilderView({
     ghostAsset = null;
   }
 
+  /**
+   * Both paths are tested in one call so the result is ordered by real depth:
+   * raycasting pools separately would let a distant tree win over the grass
+   * clump actually under the finger.
+   */
   function pick(raycaster) {
-    const hits = raycaster.intersectObjects([...objects.values()], true);
+    const hits = raycaster.intersectObjects([...objects.values(), ...pools.pickTargets()], true);
     for (const hit of hits) {
+      const instanced = pools.resolve(hit);
+      if (instanced) return instanced;
       let node = hit.object;
       while (node && !node.userData.itemId) node = node.parent;
       if (node?.userData.itemId) return node.userData.itemId;

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Instanced pool tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
+<body><pre id="out"></pre>
+<script type="module">
+import { Color } from "./three-stub.js";
+import { createInstancedPools } from "../../src/editor/instanced-pool.js";
+
+const results = [];
+const out = document.querySelector("#out");
+async function test(name, fn) {
+  try { await fn(); results.push({ name, pass: true, detail: "" }); }
+  catch (error) { results.push({ name, pass: false, detail: String(error?.message ?? error) }); }
+}
+function assert(value, message) { if (!value) throw new Error(message); }
+
+function scene() {
+  return { children: [], add(c) { this.children.push(c); }, remove(c) { this.children.splice(this.children.indexOf(c), 1); } };
+}
+
+/** A two-mesh plant, like a bush with separate leaf and flower meshes. */
+function model({ meshes = 2 } = {}) {
+  const nodes = [];
+  for (let i = 0; i < meshes; i += 1) {
+    nodes.push({
+      isMesh: true,
+      name: `part_${i}`,
+      geometry: { id: `geo_${i}` },
+      material: { id: `mat_${i}` },
+      castShadow: false,
+      receiveShadow: true,
+      matrixWorld: { elements: [], clone() { return this; } },
+    });
+  }
+  return { updateMatrixWorld() {}, traverse(fn) { for (const node of nodes) fn(node); } };
+}
+
+const METRICS = { scaleNormalization: 2, baseOffset: -0.5 };
+function item(id, x, z, { rotation = 0, scale = 1 } = {}) {
+  return { id, assetId: "v2-bush", x, z, rotation, scale };
+}
+function build() {
+  const pools = createInstancedPools({ scene: scene() });
+  assert(pools.ensure("v2-bush", model(), METRICS), "pool refused a plain two-mesh plant");
+  return pools;
+}
+
+await test("an asset becomes one draw call per mesh, not per plant", () => {
+  const pools = build();
+  for (let i = 0; i < 40; i += 1) pools.add(item(`bush-${i}`, i, 0), 0);
+
+  const stats = pools.stats;
+  assert(stats.instances === 40, `expected 40 instances, got ${stats.instances}`);
+  assert(stats.pools === 1, "one asset should be one pool");
+  assert(stats.drawCalls === 2, `40 plants should cost 2 draw calls, got ${stats.drawCalls}`);
+});
+
+await test("capacity grows without losing placed plants", () => {
+  const pools = build();
+  // Initial capacity is 32, so this forces a rebuild of the instance buffers.
+  for (let i = 0; i < 70; i += 1) pools.add(item(`bush-${i}`, i, i * 2), 0);
+  assert(pools.stats.instances === 70, "instances were lost while growing");
+
+  // Every plant must still resolve to itself after the buffers were replaced.
+  const meshes = pools.pickTargets();
+  assert(meshes.length === 2, "growth changed the mesh count");
+  for (let i = 0; i < 70; i += 1) {
+    const id = pools.resolve({ object: meshes[0], instanceId: i });
+    assert(id === `bush-${i}`, `slot ${i} resolves to ${id}`);
+    assert(meshes[0].matrices[i]?.x === i, `slot ${i} lost its transform`);
+    assert(meshes[1].matrices[i]?.x === i, `second mesh lost slot ${i}`);
+  }
+});
+
+await test("a plant's transform lands in its own slot on every mesh", () => {
+  const pools = build();
+  pools.add(item("a", 1, 2, { rotation: 0.5, scale: 3 }), 10);
+  pools.add(item("b", -4, 7), 0);
+
+  const [first, second] = pools.pickTargets();
+  // y = groundY - baseOffset * (scale * normalization) = 10 - (-0.5 * 6)
+  assert(first.matrices[0].x === 1 && first.matrices[0].z === 2, "position not written");
+  assert(first.matrices[0].y === 13, `ground snap wrong: ${first.matrices[0].y}`);
+  assert(first.matrices[0].scale === 6, "scale normalization not applied");
+  assert(first.matrices[0].rotation === 0.5, "rotation not applied");
+  assert(second.matrices[0].x === 1, "second mesh of the same plant disagrees");
+
+  pools.update(item("a", 9, 9, { scale: 1 }), 0);
+  assert(first.matrices[0].x === 9, "update did not move the instance");
+  assert(first.matrices[1].x === -4, "update touched the wrong slot");
+});
+
+/**
+ * Removal is a swap with the last instance, which is where an index map goes
+ * stale: the moved plant must still answer to its own id, and the freed slot
+ * must not still be drawn.
+ */
+await test("removing a plant keeps every other plant addressable", () => {
+  const pools = build();
+  pools.add(item("a", 1, 1), 0);
+  pools.add(item("b", 2, 2), 0);
+  pools.add(item("c", 3, 3), 0);
+  const [mesh] = pools.pickTargets();
+
+  pools.remove("a");
+  assert(pools.stats.instances === 2, "count did not shrink");
+  assert(pools.holds("a") === false, "removed plant is still owned");
+  assert(pools.holds("c") === true, "the moved plant lost its ownership");
+
+  // "c" was last, so it now occupies slot 0 and must resolve there.
+  assert(pools.resolve({ object: mesh, instanceId: 0 }) === "c", "swap-remove lost the moved plant");
+  assert(mesh.matrices[0].x === 3, "the moved plant kept the removed plant's transform");
+  assert(mesh.count === 2, "the freed slot is still being drawn");
+
+  // And it must still be movable through its own id afterwards.
+  pools.update(item("c", 8, 8), 0);
+  assert(mesh.matrices[0].x === 8, "the moved plant no longer answers to its id");
+  assert(mesh.matrices[1].x === 2, "updating the moved plant disturbed its neighbour");
+
+  pools.remove("b");
+  pools.remove("c");
+  assert(pools.stats.instances === 0, "pool did not empty");
+  assert(pools.stats.drawCalls === 0, "an empty pool is still costing a draw call");
+});
+
+await test("selection tints one plant, not the whole species", () => {
+  const pools = build();
+  pools.add(item("a", 1, 1), 0);
+  pools.add(item("b", 2, 2), 0);
+  const [mesh] = pools.pickTargets();
+  const selected = new Color(0.5, 0.25, 1);
+
+  pools.tint("a", selected);
+  const first = mesh.getColorAt(0, new Color());
+  const second = mesh.getColorAt(1, new Color());
+  assert(first.equals(selected), "selected plant was not tinted");
+  assert(second.equals(new Color(1, 1, 1)), "the tint leaked onto every copy");
+
+  pools.tint("a", null);
+  assert(mesh.getColorAt(0, new Color()).equals(new Color(1, 1, 1)), "tint was not cleared");
+});
+
+await test("a tinted plant keeps its tint when another is removed", () => {
+  const pools = build();
+  pools.add(item("a", 1, 1), 0);
+  pools.add(item("b", 2, 2), 0);
+  const [mesh] = pools.pickTargets();
+  const selected = new Color(0.5, 0.25, 1);
+
+  pools.tint("b", selected);
+  pools.remove("a");
+  assert(mesh.getColorAt(0, new Color()).equals(selected), "the moved plant lost its selection tint");
+});
+
+await test("clear empties the pools but keeps them ready to reuse", () => {
+  const pools = build();
+  pools.add(item("a", 1, 1), 0);
+  pools.add(item("b", 2, 2), 0);
+  pools.clear();
+
+  assert(pools.stats.instances === 0, "clear left instances behind");
+  assert(pools.has("v2-bush") === true, "clear threw away the built pool");
+  assert(pools.holds("a") === false, "clear left ownership behind");
+  assert(pools.add(item("a", 5, 5), 0), "pool could not be reused after clear");
+  assert(pools.stats.instances === 1, "reuse after clear did not take");
+});
+
+await test("a multi-material mesh is refused rather than half-supported", () => {
+  const pools = createInstancedPools({ scene: scene() });
+  const multi = {
+    updateMatrixWorld() {},
+    traverse(fn) {
+      fn({
+        isMesh: true,
+        geometry: { id: "geo" },
+        material: [{ id: "a" }, { id: "b" }],
+        matrixWorld: { elements: [], clone() { return this; } },
+      });
+    },
+  };
+  assert(pools.ensure("weird", multi, METRICS) === false, "a material array should be refused");
+  assert(pools.has("weird") === false, "a refused asset must not leave a pool behind");
+});
+
+await test("pool bounds are refreshed after an edit so culling stays honest", async () => {
+  const pools = build();
+  pools.add(item("a", 1, 1), 0);
+  const [mesh] = pools.pickTargets();
+
+  const before = mesh.boundingSphereRevision;
+  pools.add(item("b", 2, 2), 0);
+  await Promise.resolve();
+  assert(mesh.boundingSphereRevision > before, "adding a plant left the pool bounds stale");
+
+  const afterAdd = mesh.boundingSphereRevision;
+  pools.update(item("a", 30, 30), 0);
+  await Promise.resolve();
+  assert(mesh.boundingSphereRevision > afterAdd, "moving a plant left the pool bounds stale");
+
+  // A tap must never race the bounds pass: raycasting uses them as broad phase.
+  pools.update(item("a", 40, 40), 0);
+  const beforePick = mesh.boundingSphereRevision;
+  pools.pickTargets();
+  assert(mesh.boundingSphereRevision > beforePick, "picking used stale pool bounds");
+});
+
+/**
+ * Sculpting re-snaps every placed object to the new terrain on every frame of
+ * a brush stroke. If each of those updates recomputed the pool bounds, the
+ * cost would be O(instances squared) per frame.
+ */
+await test("a whole terrain re-sync costs one bounds pass, not one per plant", async () => {
+  const pools = build();
+  for (let i = 0; i < 60; i += 1) pools.add(item(`bush-${i}`, i, 0), 0);
+  const meshes = pools.pickTargets();
+  const before = meshes[0].boundingSphereRevision;
+
+  // One frame of a sculpt stroke: every plant re-snapped, synchronously.
+  for (let i = 0; i < 60; i += 1) pools.update(item(`bush-${i}`, i, 0), 1.5);
+  await Promise.resolve();
+
+  const passes = meshes[0].boundingSphereRevision - before;
+  assert(passes === 1, `60 re-snapped plants triggered ${passes} bounds passes`);
+  // y = groundY - baseOffset * (scale * normalization) = 1.5 - (-0.5 * 2)
+  assert(meshes[0].matrices[7].y === 2.5, `the re-snap itself did not land: ${meshes[0].matrices[7].y}`);
+});
+
+window.__results = results;
+window.__done = true;
+out.textContent = results.map((r) => `${r.pass ? "PASS" : "FAIL"} ${r.name}${r.detail ? ` | ${r.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>
