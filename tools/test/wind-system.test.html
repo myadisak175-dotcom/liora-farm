@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wind system tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
+<body><pre id="out"></pre>
+<script type="module">
+import { NATURE_V2_ASSETS } from "../../src/editor/nature-catalog-v2.js";
+import { applyWindToMaterial } from "../../src/systems/wind/wind-material.js";
+import { createWindSystem } from "../../src/systems/wind/wind-system.js";
+import {
+  classifyTreePart,
+  getPartWeights,
+  inferAssetWindProfile,
+} from "../../src/systems/wind/wind-profiles.js";
+
+const results = [];
+const out = document.querySelector("#out");
+async function test(name, fn) {
+  try {
+    await fn();
+    results.push({ name, pass: true, detail: "" });
+  } catch (error) {
+    results.push({ name, pass: false, detail: String(error?.message ?? error) });
+  }
+}
+function assert(value, message) { if (!value) throw new Error(message); }
+
+function geometry(minY = 0, maxY = 2) {
+  return {
+    boundingBox: null,
+    computeBoundingBox() {
+      this.boundingBox = { min: { y: minY }, max: { y: maxY } };
+    },
+  };
+}
+
+function material(name = "") {
+  return {
+    name,
+    userData: {},
+    needsUpdate: false,
+    onBeforeCompile() {},
+    customProgramCacheKey() { return "base"; },
+    clone() {
+      const next = material(this.name);
+      next.userData = { ...this.userData };
+      return next;
+    },
+  };
+}
+
+await test("all non-rock World V2 nature assets receive a wind profile", () => {
+  const assets = Object.values(NATURE_V2_ASSETS);
+  assert(assets.length === 55, `expected 55 assets, got ${assets.length}`);
+  const rocks = assets.filter((asset) => asset.modelPath.endsWith("/rocks.glb"));
+  const moving = assets.filter((asset) => inferAssetWindProfile(asset));
+  assert(rocks.length === 5, `expected 5 rocks, got ${rocks.length}`);
+  assert(moving.length === 50, `expected 50 moving assets, got ${moving.length}`);
+  assert(rocks.every((asset) => inferAssetWindProfile(asset) === null), "rocks must stay static");
+});
+
+await test("tree force separates trunk, branch and leaf response", () => {
+  assert(classifyTreePart({ name: "Oak_Trunk" }, { name: "Bark" }) === "trunk", "trunk classifier failed");
+  assert(classifyTreePart({ name: "Branch_02" }, { name: "Wood" }) === "trunk", "bark/wood should keep a woody mesh conservative");
+  assert(classifyTreePart({ name: "Canopy" }, { name: "Leaves" }) === "leaf", "leaf classifier failed");
+  const trunk = getPartWeights("tree", "trunk");
+  const branch = getPartWeights("tree", "branch");
+  const leaf = getPartWeights("tree", "leaf");
+  assert(trunk.tip === 0 && trunk.flutter === 0, "trunk should not flutter");
+  assert(branch.mid > trunk.mid, "branches should sway more than trunk");
+  assert(leaf.tip > branch.tip && leaf.flutter > branch.flutter, "leaves should respond most");
+});
+
+await test("touch quality preserves sway but reduces leaf flutter", () => {
+  const desktop = getPartWeights("tree", "leaf", { isTouch: false });
+  const touch = getPartWeights("tree", "leaf", { isTouch: true });
+  assert(touch.tip === desktop.tip, "large sway changed on touch");
+  assert(touch.flutter < desktop.flutter, "touch flutter was not reduced");
+});
+
+await test("wind material patches vertex shader without changing source material", () => {
+  const source = material("Leaves");
+  const uniforms = createWindSystem({ config: { direction: { x: 1, z: 0 } } }).uniforms;
+  const patched = applyWindToMaterial({
+    material: source,
+    geometry: geometry(),
+    mesh: { name: "Leaves" },
+    profileName: "tree",
+    uniforms,
+    quality: { isTouch: false },
+    clone: true,
+  });
+  assert(patched && patched !== source, "normal placed objects need a private material clone");
+  assert(!source.userData.lioraWind, "cached source material was mutated");
+  assert(patched.userData.lioraWindPart === "leaf", "leaf role was not recorded");
+  assert(patched.userData.preserveShaderHooksOnClone, "Builder clone preservation flag missing");
+
+  const shader = {
+    uniforms: {},
+    vertexShader: "#include <common>\nvoid main(){\n#include <begin_vertex>\n}",
+  };
+  patched.onBeforeCompile(shader, {});
+  assert(shader.vertexShader.includes("lioraWindAmount"), "vertex displacement was not injected");
+  assert(shader.uniforms.lioraWindTime === uniforms.time, "wind time is not shared");
+  assert(shader.uniforms.lioraWindProfile.value[3] > 0, "leaf flutter uniform missing");
+});
+
+await test("wind system changes only materials and shared time, never object transforms", () => {
+  const sourceMaterial = material("Leaves");
+  const mesh = {
+    isMesh: true,
+    name: "Leaves",
+    geometry: geometry(0, 4),
+    material: sourceMaterial,
+    userData: {},
+    position: { x: 7, y: 2, z: -3 },
+  };
+  const model = { traverse(fn) { fn(mesh); } };
+  const wind = createWindSystem({
+    config: { direction: { x: 0.8, z: 0.35 }, strength: 0.55 },
+    quality: { isTouch: false },
+  });
+  const before = JSON.stringify(mesh.position);
+  assert(wind.attach(model, { worldV2: true, modelPath: "./assets/models/world-v2/nature/trees.glb" }), "tree did not attach");
+  assert(mesh.material !== sourceMaterial, "wind material was not isolated");
+  assert(JSON.stringify(mesh.position) === before, "wind changed Object3D transform");
+  const t0 = wind.uniforms.time.value;
+  wind.update(0.25);
+  assert(wind.uniforms.time.value === t0 + 0.25, "wind time did not advance");
+});
+
+await test("rocks and legacy assets are ignored", () => {
+  const mesh = { isMesh: true, geometry: geometry(), material: material("Rock"), userData: {} };
+  const model = { traverse(fn) { fn(mesh); } };
+  const wind = createWindSystem();
+  assert(!wind.attach(model, { worldV2: true, modelPath: "./assets/models/world-v2/nature/rocks.glb" }), "rock received wind");
+  assert(!wind.attach(model, { worldV2: false, modelPath: "./assets/models/builder/tree.glb" }), "legacy asset received V2 wind");
+});
+
+await test("wind failure is fail-soft and does not escape into Builder", () => {
+  const badMaterial = material("Leaves");
+  badMaterial.clone = () => { throw new Error("synthetic material failure"); };
+  const mesh = { isMesh: true, name: "Leaves", geometry: geometry(), material: badMaterial, userData: {} };
+  const wind = createWindSystem();
+  const attached = wind.attach(
+    { traverse(fn) { fn(mesh); } },
+    { worldV2: true, modelPath: "./assets/models/world-v2/nature/trees.glb" }
+  );
+  assert(attached === false, "failed material should simply skip wind");
+  assert(wind.stats.failedMeshes === 1, "failure was not recorded");
+  assert(mesh.material === badMaterial, "failed wind changed the original material");
+});
+
+await test("runtime keeps wind visual-only", async () => {
+  const [main, controller, movement, layoutStore] = await Promise.all([
+    fetch("../../src/main.js").then((r) => r.text()),
+    fetch("../../src/editor/builder-controller.js").then((r) => r.text()),
+    fetch("../../src/systems/movement.js").then((r) => r.text()),
+    fetch("../../src/editor/layout-store.js").then((r) => r.text()),
+  ]);
+  assert(main.includes("createWindSystem") && main.includes("wind.update(delta)"), "wind is not wired by the composition root");
+  assert(main.includes("prepareModel: (model, asset, context) => wind.attach"), "Builder view is not the visual attachment point");
+  assert(!controller.includes("wind"), "Builder rules should not know about wind");
+  assert(!movement.includes("wind"), "movement should not know about wind");
+  assert(!layoutStore.includes("wind"), "save schema should not know about wind");
+});
+
+window.__results = results;
+window.__done = true;
+out.textContent = results.map((r) => `${r.pass ? "PASS" : "FAIL"} ${r.name}${r.detail ? ` | ${r.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>
