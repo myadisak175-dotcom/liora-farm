@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>horizon settings tests</title>
+<script type="importmap">{"imports":{"three":"./horizon-three-stub.js"}}</script>
+</head>
+<body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import {
+  HORIZON_DIALS,HORIZON_TOGGLES,horizonDefaults,sanitizeHorizon,resolveHorizon,
+  checkHorizonRules,horizonSnippet,groundExtent,
+} from "../../src/systems/horizon-settings.js";
+import { CONFIG } from "../../src/config.js";
+
+const results=[];
+const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
+const ruleById=(rules,id)=>rules.find((r)=>r.id===id);
+const check=(settings)=>checkHorizonRules(resolveHorizon(settings,CONFIG),CONFIG);
+
+const defaults=horizonDefaults(CONFIG);
+ok("defaults read back the authored config",
+  defaults.fogNear===CONFIG.fog.near&&defaults.fogFar===CONFIG.fog.far
+  &&defaults.groundRadius===CONFIG.outerWorld.outerRadius&&defaults.groundY===CONFIG.outerWorld.outerY,
+  JSON.stringify(defaults));
+ok("distance and height dials start neutral",
+  [defaults.foothillDistance,defaults.foothillHeight,defaults.rangeDistance,
+   defaults.rangeHeight,defaults.peakDistance,defaults.peakHeight].every((v)=>v===1));
+
+const shipped=check(defaults);
+ok("the shipping horizon passes every rule",shipped.every((r)=>r.pass),
+  JSON.stringify(shipped.filter((r)=>!r.pass).map((r)=>r.label)));
+
+let unreachable=[];
+for(const dial of HORIZON_DIALS){
+  if(!(dial.min<dial.max)) unreachable.push(`${dial.key} range`);
+  const start=defaults[dial.key];
+  if(start<dial.min-1e-9||start>dial.max+1e-9) unreachable.push(`${dial.key} default ${start} outside ${dial.min}..${dial.max}`);
+}
+ok("every dial default sits inside its slider range",unreachable.length===0,unreachable.join("; "));
+
+let broken=[];
+for(const dial of HORIZON_DIALS){
+  for(const value of [dial.min,dial.max]){
+    const resolved=resolveHorizon({...defaults,[dial.key]:value},CONFIG);
+    const numbers=[resolved.fog.near,resolved.fog.far,resolved.cameraMinPitch,
+      resolved.outerWorld.outerRadius,resolved.outerWorld.outerY,resolved.outerWorld.heightVariation,
+      ...resolved.mountainBackdrop.near.chunks.map((c)=>c.radius),
+      ...resolved.mountainBackdrop.near.chunks.map((c)=>c.height),
+      ...resolved.mountainBackdrop.far.chunks.map((c)=>c.radius),
+      ...resolved.distantRange.peaks.flatMap((r)=>[r.radiusMin,r.radiusMax,r.heightMin,r.heightMax,r.baseY]),
+      resolved.distantRange.haze.opacity];
+    if(!numbers.every((n)=>Number.isFinite(n))) broken.push(`${dial.key}=${value}`);
+    if(resolved.fog.far<=resolved.fog.near) broken.push(`${dial.key}=${value} fog inverted`);
+    if(resolved.outerWorld.outerRadius<=0) broken.push(`${dial.key}=${value} radius<=0`);
+  }
+}
+ok("no slider extreme produces broken geometry input",broken.length===0,broken.join("; "));
+
+const rough={...defaults,groundVariation:12};
+const roughResolved=resolveHorizon(rough,CONFIG);
+const roughGround=groundExtent(rough,CONFIG);
+ok("rough ground pushes scenery bases down to stay buried",
+  roughResolved.mountainBackdrop.near.baseY<roughGround.min
+  &&roughResolved.mountainBackdrop.far.baseY<roughGround.min
+  &&roughResolved.distantRange.peaks.every((r)=>r.baseY<roughGround.min));
+
+ok("shrinking world past fog wall reports hard-edge rule",ruleById(check({...defaults,groundRadius:150}),"rim").pass===false);
+ok("fog inside farm reports washed-out-farm rule",ruleById(check({...defaults,fogNear:40}),"farm").pass===false);
+ok("top-down-only camera reports no-sky rule",ruleById(check({...defaults,cameraMinPitchDeg:40}),"view").pass===false);
+ok("rough ground swallowing foothills reports rooting rule",ruleById(check({...defaults,groundVariation:12,foothillHeight:0.3}),"rooted").pass===false);
+ok("mountains pushed past fog wall report invisible-scenery rule",ruleById(check({...defaults,foothillDistance:2,rangeDistance:2}),"visible").pass===false);
+
+const failing=check({...defaults,groundRadius:150,fogNear:40,cameraMinPitchDeg:40});
+ok("every failing rule carries a fix and measurement",
+  failing.filter((r)=>!r.pass).every((r)=>r.fix?.length>0&&r.detail?.length>0));
+
+ok("garbage stored settings fall back to authored config",
+  JSON.stringify(sanitizeHorizon(null,CONFIG))===JSON.stringify(defaults)
+  &&JSON.stringify(sanitizeHorizon("nope",CONFIG))===JSON.stringify(defaults)
+  &&JSON.stringify(sanitizeHorizon({fogNear:"abc"},CONFIG))===JSON.stringify(defaults));
+ok("out-of-range stored settings are clamped",
+  sanitizeHorizon({groundRadius:99999,cameraMinPitchDeg:-90},CONFIG).groundRadius===900
+  &&sanitizeHorizon({groundRadius:99999,cameraMinPitchDeg:-90},CONFIG).cameraMinPitchDeg===6);
+ok("unknown save keys are dropped",
+  sanitizeHorizon({legacyKnob:5,fogNear:120},CONFIG).legacyKnob===undefined
+  &&sanitizeHorizon({legacyKnob:5,fogNear:120},CONFIG).fogNear===120);
+ok("toggles round-trip only as booleans",
+  sanitizeHorizon({hazeEnabled:"yes"},CONFIG).hazeEnabled===defaults.hazeEnabled
+  &&sanitizeHorizon({hazeEnabled:false},CONFIG).hazeEnabled===false);
+
+const snippet=horizonSnippet(resolveHorizon(defaults,CONFIG));
+ok("snippet names every authored block",
+  ["camera.minPitch","fog:","outerRadius","heightVariation","mountainBackdrop.near",
+   "mountainBackdrop.far","distantRange.peaks","floatingIslands.enabled"].every((k)=>snippet.includes(k)));
+ok("snippet carries every ridge chunk",
+  (snippet.match(/\{ angle:/g)??[]).length===CONFIG.mountainBackdrop.near.chunks.length+CONFIG.mountainBackdrop.far.chunks.length);
+ok("snippet numbers are finite",!/NaN|Infinity|undefined/.test(snippet));
+
+const allOff=resolveHorizon({...defaults,mountainsEnabled:false,peaksEnabled:false,hazeEnabled:false},CONFIG);
+ok("switching layers off disables resolved config",
+  allOff.mountainBackdrop.enabled===false&&allOff.distantRange.enabled===false&&allOff.distantRange.haze.enabled===false);
+ok("Variant B islands stay enabled by default",resolveHorizon(defaults,CONFIG).distantRange.floatingIslands.enabled===true);
+ok("every toggle is covered by resolver",HORIZON_TOGGLES.every((t)=>t.key in defaults));
+
+window.__results=results;window.__done=true;
+document.querySelector("#out").textContent=JSON.stringify(results,null,1);
+</script></body></html>
