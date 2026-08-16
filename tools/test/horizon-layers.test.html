@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>open horizon v1 tests</title>
+<script type="importmap">
+{"imports":{"three":"./horizon-three-stub.js"}}
+</script>
+</head>
+<body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import { buildOuterWorldGeometry } from "../../src/systems/outer-world-ground.js";
+import { createMountainBackdrop } from "../../src/systems/mountain-backdrop.js";
+import { createSky } from "../../src/systems/sky.js";
+import { CONFIG } from "../../src/config.js";
+
+const results=[];
+const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
+const HALF=CONFIG.terrain.size/2;
+const REACH=CONFIG.worldLimit;
+const DEG=180/Math.PI;
+const fogAt=(distance)=>Math.max(0,Math.min(1,(distance-CONFIG.fog.near)/(CONFIG.fog.far-CONFIG.fog.near)));
+
+const nearestRim=CONFIG.outerWorld.outerRadius-REACH;
+ok("world rim is fully fogged before it can be seen",CONFIG.fog.far<nearestRim,`fog.far=${CONFIG.fog.far} nearestRim=${nearestRim}`);
+ok("camera frustum contains visual ground and sky",CONFIG.camera.far>CONFIG.outerWorld.outerRadius+REACH&&CONFIG.sky.radius<CONFIG.camera.far,`far=${CONFIG.camera.far} rim=${CONFIG.outerWorld.outerRadius} sky=${CONFIG.sky.radius}`);
+const farmDiagonal=Math.hypot(REACH+HALF,REACH+HALF);
+ok("playable farm stays mostly clear of fog",fogAt(farmDiagonal)<0.2,`diagonal=${farmDiagonal.toFixed(1)} fog=${fogAt(farmDiagonal).toFixed(3)}`);
+ok("fog begins beyond the playable terrain",CONFIG.fog.near>HALF*Math.SQRT2,`near=${CONFIG.fog.near}`);
+const topEdgeDeg=CONFIG.camera.minPitch*DEG-CONFIG.camera.fov/2;
+ok("minimum pitch can reveal sky above the horizon",topEdgeDeg<0,`topEdge=${topEdgeDeg.toFixed(1)}deg`);
+ok("far-plane expansion keeps a safer near plane",CONFIG.camera.near>=0.3,`near=${CONFIG.camera.near} far=${CONFIG.camera.far}`);
+
+const outer=buildOuterWorldGeometry({...CONFIG.outerWorld,innerY:CONFIG.outerWorld.innerYOffset},CONFIG.terrain.size);
+const pos=outer.getAttribute("position").array;
+let minY=Infinity,maxY=-Infinity;
+for(let i=1;i<pos.length;i+=3){minY=Math.min(minY,pos[i]);maxY=Math.max(maxY,pos[i]);}
+ok("visual ground uses broad horizon undulation",maxY-minY>4,`min=${minY.toFixed(2)} max=${maxY.toFixed(2)}`);
+ok("outer ground remains a tiny geometry budget",outer.index.count/3<=4200,`triangles=${outer.index.count/3}`);
+
+const backdrop=createMountainBackdrop(CONFIG.mountainBackdrop);
+ok("Open Horizon V1 uses two distant ridge meshes",backdrop.stats.meshes===2&&backdrop.group.children.length===2,JSON.stringify(backdrop.stats));
+ok("both ridge bands start far outside gameplay",CONFIG.mountainBackdrop.near.innerRadius>REACH+100&&CONFIG.mountainBackdrop.far.innerRadius>CONFIG.mountainBackdrop.near.outerRadius+40);
+ok("mountain bases are buried under the visual ground",CONFIG.mountainBackdrop.near.baseY<minY&&CONFIG.mountainBackdrop.far.baseY<minY,`groundMin=${minY.toFixed(2)}`);
+ok("foothill summits clear the visual ground",Math.min(...CONFIG.mountainBackdrop.near.chunks.map(c=>c.height))>maxY+4,`groundMax=${maxY.toFixed(2)}`);
+ok("foothills stay readable through fog",fogAt(CONFIG.mountainBackdrop.near.outerRadius+REACH)<0.75);
+ok("main range remains visible but more atmospheric",fogAt(CONFIG.mountainBackdrop.far.outerRadius+REACH)<0.95);
+ok("mountains stay out of shadow pass",backdrop.meshes.every(m=>m.castShadow===false&&m.receiveShadow===false));
+ok("mountain geometry remains cheap",backdrop.stats.triangles<=800,`triangles=${backdrop.stats.triangles}`);
+
+const sky=createSky(CONFIG.sky);
+const clouds=sky.group.children.find(child=>child.name==="SkyClouds");
+ok("clouds are one instanced draw-call layer",Boolean(clouds)&&clouds.count>60,`instances=${clouds?.count}`);
+ok("clouds sit behind the mountain composition",CONFIG.sky.cloudRingRadius>CONFIG.mountainBackdrop.far.outerRadius&&CONFIG.sky.cloudHeight>Math.max(...CONFIG.mountainBackdrop.far.chunks.map(c=>c.height)));
+
+ok("gameplay bounds are unchanged",CONFIG.worldLimit===38&&CONFIG.terrain.size===80&&CONFIG.terrain.spacing===0.5);
+ok("movement water and sculpt limits are unchanged",CONFIG.walkSpeed===2.4&&CONFIG.runSpeed===5.2&&CONFIG.maxWalkSlope===0.75&&CONFIG.water.level===-0.6&&CONFIG.sculpt.edgeMargin===4);
+ok("save keys are unchanged",CONFIG.builder.storageKey==="liora.island-layout.v1"&&CONFIG.sculpt.storageKey==="liora.terrain-height.v1"&&CONFIG.groundPaint.storageKey==="liora.ground-paint.v1"&&CONFIG.farming.storageKey==="liora.farm.v1");
+ok("PR31 square seam overlap remains unchanged",CONFIG.outerWorld.innerRadius===38.5&&CONFIG.outerWorld.innerYOffset===-0.08);
+
+outer.dispose();backdrop.dispose();sky.dispose();
+window.__results=results;window.__done=true;
+document.querySelector("#out").textContent=JSON.stringify(results,null,1);
+</script></body></html>
