@@ -115,7 +115,6 @@ export function createAnimatedWater({ size, config, terrainField, texture = null
       "#include <common>",
       `#include <common>
        uniform float uWaterTime;
-       uniform float uWaterSpeed;
        uniform float uWaveSpeed;
        uniform float uShimmerStrength;
        uniform sampler2D uTerrainField;
