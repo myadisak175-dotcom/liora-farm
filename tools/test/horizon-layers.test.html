@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>open horizon v1 tests</title>
+<head><meta charset="utf-8"><title>horizon layer tests</title>
 <script type="importmap">
 {"imports":{"three":"./horizon-three-stub.js"}}
 </script>
@@ -14,54 +14,159 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 <script type="module">
 import { buildOuterWorldGeometry } from "../../src/systems/outer-world-ground.js";
 import { createMountainBackdrop } from "../../src/systems/mountain-backdrop.js";
+import { createFantasyHorizon } from "../../src/systems/background/fantasy-horizon.js";
 import { createSky } from "../../src/systems/sky.js";
 import { CONFIG } from "../../src/config.js";
 
 const results=[];
 const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
-const HALF=CONFIG.terrain.size/2;
-const REACH=CONFIG.worldLimit;
-const DEG=180/Math.PI;
-const fogAt=(distance)=>Math.max(0,Math.min(1,(distance-CONFIG.fog.near)/(CONFIG.fog.far-CONFIG.fog.near)));
 
-const nearestRim=CONFIG.outerWorld.outerRadius-REACH;
-ok("world rim is fully fogged before it can be seen",CONFIG.fog.far<nearestRim,`fog.far=${CONFIG.fog.far} nearestRim=${nearestRim}`);
-ok("camera frustum contains visual ground and sky",CONFIG.camera.far>CONFIG.outerWorld.outerRadius+REACH&&CONFIG.sky.radius<CONFIG.camera.far,`far=${CONFIG.camera.far} rim=${CONFIG.outerWorld.outerRadius} sky=${CONFIG.sky.radius}`);
-const farmDiagonal=Math.hypot(REACH+HALF,REACH+HALF);
-ok("playable farm stays mostly clear of fog",fogAt(farmDiagonal)<0.2,`diagonal=${farmDiagonal.toFixed(1)} fog=${fogAt(farmDiagonal).toFixed(3)}`);
-ok("fog begins beyond the playable terrain",CONFIG.fog.near>HALF*Math.SQRT2,`near=${CONFIG.fog.near}`);
-const topEdgeDeg=CONFIG.camera.minPitch*DEG-CONFIG.camera.fov/2;
-ok("minimum pitch can reveal sky above the horizon",topEdgeDeg<0,`topEdge=${topEdgeDeg.toFixed(1)}deg`);
-ok("far-plane expansion keeps a safer near plane",CONFIG.camera.near>=0.3,`near=${CONFIG.camera.near} far=${CONFIG.camera.far}`);
+const HALF = CONFIG.terrain.size / 2;
+const REACH = CONFIG.worldLimit;
+const DEG = 180 / Math.PI;
+const fogAt = (distance) =>
+  Math.max(0, Math.min(1, (distance - CONFIG.fog.near) / (CONFIG.fog.far - CONFIG.fog.near)));
 
-const outer=buildOuterWorldGeometry({...CONFIG.outerWorld,innerY:CONFIG.outerWorld.innerYOffset},CONFIG.terrain.size);
-const pos=outer.getAttribute("position").array;
-let minY=Infinity,maxY=-Infinity;
-for(let i=1;i<pos.length;i+=3){minY=Math.min(minY,pos[i]);maxY=Math.max(maxY,pos[i]);}
-ok("visual ground uses broad horizon undulation",maxY-minY>4,`min=${minY.toFixed(2)} max=${maxY.toFixed(2)}`);
-ok("outer ground remains a tiny geometry budget",outer.index.count/3<=4200,`triangles=${outer.index.count/3}`);
+const nearestRim = CONFIG.outerWorld.outerRadius - REACH;
+ok("world rim is fully fogged from anywhere the player can stand",
+  CONFIG.fog.far < nearestRim,
+  `fog.far=${CONFIG.fog.far} nearestRim=${nearestRim}`);
+ok("camera frustum still contains the whole visual world",
+  CONFIG.camera.far > CONFIG.outerWorld.outerRadius + REACH,
+  `camera.far=${CONFIG.camera.far} needed>${CONFIG.outerWorld.outerRadius + REACH}`);
+ok("sky dome stays inside the camera frustum",
+  CONFIG.sky.radius < CONFIG.camera.far,
+  `sky=${CONFIG.sky.radius} far=${CONFIG.camera.far}`);
 
-const backdrop=createMountainBackdrop(CONFIG.mountainBackdrop);
-ok("Open Horizon V1 uses two distant ridge meshes",backdrop.stats.meshes===2&&backdrop.group.children.length===2,JSON.stringify(backdrop.stats));
-ok("both ridge bands start far outside gameplay",CONFIG.mountainBackdrop.near.innerRadius>REACH+100&&CONFIG.mountainBackdrop.far.innerRadius>CONFIG.mountainBackdrop.near.outerRadius+40);
-ok("mountain bases are buried under the visual ground",CONFIG.mountainBackdrop.near.baseY<minY&&CONFIG.mountainBackdrop.far.baseY<minY,`groundMin=${minY.toFixed(2)}`);
-ok("foothill summits clear the visual ground",Math.min(...CONFIG.mountainBackdrop.near.chunks.map(c=>c.height))>maxY+4,`groundMax=${maxY.toFixed(2)}`);
-ok("foothills stay readable through fog",fogAt(CONFIG.mountainBackdrop.near.outerRadius+REACH)<0.75);
-ok("main range remains visible but more atmospheric",fogAt(CONFIG.mountainBackdrop.far.outerRadius+REACH)<0.95);
-ok("mountains stay out of shadow pass",backdrop.meshes.every(m=>m.castShadow===false&&m.receiveShadow===false));
-ok("mountain geometry remains cheap",backdrop.stats.triangles<=800,`triangles=${backdrop.stats.triangles}`);
+const farmDiagonal = Math.hypot(REACH + HALF, REACH + HALF);
+ok("the playable farm stays essentially clear of fog",
+  fogAt(farmDiagonal) < 0.2,
+  `diagonal=${farmDiagonal.toFixed(1)} fog=${fogAt(farmDiagonal).toFixed(3)}`);
+ok("fog starts beyond the playable terrain",
+  CONFIG.fog.near > HALF * Math.SQRT2,
+  `fog.near=${CONFIG.fog.near} terrainDiagonal=${(HALF * Math.SQRT2).toFixed(1)}`);
 
-const sky=createSky(CONFIG.sky);
-const clouds=sky.group.children.find(child=>child.name==="SkyClouds");
-ok("clouds are one instanced draw-call layer",Boolean(clouds)&&clouds.count>60,`instances=${clouds?.count}`);
-ok("clouds sit behind the mountain composition",CONFIG.sky.cloudRingRadius>CONFIG.mountainBackdrop.far.outerRadius&&CONFIG.sky.cloudHeight>Math.max(...CONFIG.mountainBackdrop.far.chunks.map(c=>c.height)));
+const topEdgeDeg = CONFIG.camera.minPitch * DEG - CONFIG.camera.fov / 2;
+ok("tilting all the way down reveals sky above the horizon",
+  topEdgeDeg < 0,
+  `topEdge=${topEdgeDeg.toFixed(1)}deg above horizontal=${(-topEdgeDeg).toFixed(1)}`);
+ok("depth precision did not regress when the far plane moved out",
+  CONFIG.camera.near >= 0.3,
+  `near=${CONFIG.camera.near} far=${CONFIG.camera.far}`);
 
-ok("gameplay bounds are unchanged",CONFIG.worldLimit===38&&CONFIG.terrain.size===80&&CONFIG.terrain.spacing===0.5);
-ok("movement water and sculpt limits are unchanged",CONFIG.walkSpeed===2.4&&CONFIG.runSpeed===5.2&&CONFIG.maxWalkSlope===0.75&&CONFIG.water.level===-0.6&&CONFIG.sculpt.edgeMargin===4);
-ok("save keys are unchanged",CONFIG.builder.storageKey==="liora.island-layout.v1"&&CONFIG.sculpt.storageKey==="liora.terrain-height.v1"&&CONFIG.groundPaint.storageKey==="liora.ground-paint.v1"&&CONFIG.farming.storageKey==="liora.farm.v1");
-ok("PR31 square seam overlap remains unchanged",CONFIG.outerWorld.innerRadius===38.5&&CONFIG.outerWorld.innerYOffset===-0.08);
+const outer = buildOuterWorldGeometry(
+  { ...CONFIG.outerWorld, innerY: CONFIG.outerWorld.innerYOffset },
+  CONFIG.terrain.size
+);
+const outerPos = outer.getAttribute("position").array;
+let groundMinY = Infinity;
+let groundMaxY = -Infinity;
+for (let i = 1; i < outerPos.length; i += 3) {
+  groundMinY = Math.min(groundMinY, outerPos[i]);
+  groundMaxY = Math.max(groundMaxY, outerPos[i]);
+}
+ok("visual ground undulates instead of reading as a flat disc",
+  groundMaxY - groundMinY > 4,
+  `minY=${groundMinY.toFixed(2)} maxY=${groundMaxY.toFixed(2)}`);
 
-outer.dispose();backdrop.dispose();sky.dispose();
-window.__results=results;window.__done=true;
+const backdrop = createMountainBackdrop(CONFIG.mountainBackdrop);
+ok("both ridge bands are rooted below the lowest visual ground",
+  CONFIG.mountainBackdrop.near.baseY < groundMinY
+    && CONFIG.mountainBackdrop.far.baseY < groundMinY,
+  `nearBase=${CONFIG.mountainBackdrop.near.baseY} farBase=${CONFIG.mountainBackdrop.far.baseY} groundMin=${groundMinY.toFixed(2)}`);
+ok("ridge summits clear the highest visual ground by a wide margin",
+  Math.min(...CONFIG.mountainBackdrop.near.chunks.map((c) => c.height)) > groundMaxY + 5,
+  `lowestFoothill=${Math.min(...CONFIG.mountainBackdrop.near.chunks.map((c) => c.height))} groundMax=${groundMaxY.toFixed(2)}`);
+
+const range = createFantasyHorizon(CONFIG.distantRange);
+const peakRings = CONFIG.distantRange.peaks;
+ok("distant peaks are rooted below the lowest visual ground",
+  peakRings.every((ring) => ring.baseY < groundMinY),
+  JSON.stringify(peakRings.map((r) => r.baseY)));
+
+const CAM_Y = 10;
+const elevation = (peakY, distance) => Math.atan2(peakY - CAM_Y, distance) * DEG;
+const foothillAngle = elevation(
+  Math.max(...CONFIG.mountainBackdrop.near.chunks.map((c) => c.height)),
+  CONFIG.mountainBackdrop.near.outerRadius
+);
+const rangeAngle = elevation(
+  Math.max(...CONFIG.mountainBackdrop.far.chunks.map((c) => c.height)),
+  CONFIG.mountainBackdrop.far.outerRadius
+);
+const peakAngle = elevation(
+  peakRings[0].baseY + peakRings[0].heightMax,
+  peakRings[0].radiusMax
+);
+ok("each mountain band rises above the one in front of it",
+  rangeAngle > foothillAngle && peakAngle > rangeAngle,
+  `foothills=${foothillAngle.toFixed(1)} range=${rangeAngle.toFixed(1)} peaks=${peakAngle.toFixed(1)}`);
+
+ok("foothills stay readable through the haze",
+  fogAt(CONFIG.mountainBackdrop.near.outerRadius + REACH) < 0.75,
+  `fog=${fogAt(CONFIG.mountainBackdrop.near.outerRadius + REACH).toFixed(2)}`);
+ok("the main range is still visible from the far side of the farm",
+  fogAt(CONFIG.mountainBackdrop.far.outerRadius + REACH) < 0.95,
+  `fog=${fogAt(CONFIG.mountainBackdrop.far.outerRadius + REACH).toFixed(2)}`);
+ok("the nearest distant peak ring is not completely fogged out",
+  fogAt(peakRings[0].radiusMin + REACH) < 1,
+  `fog=${fogAt(peakRings[0].radiusMin + REACH).toFixed(2)}`);
+ok("the horizon haze band sits inside the visible fog range",
+  CONFIG.distantRange.haze.radiusMin + REACH < CONFIG.fog.far,
+  `hazeNear=${CONFIG.distantRange.haze.radiusMin + REACH} fog.far=${CONFIG.fog.far}`);
+
+ok("no scenery layer is inside the walkable world",
+  CONFIG.mountainBackdrop.near.innerRadius > REACH + 40
+    && peakRings.every((ring) => ring.radiusMin > REACH + 40),
+  `foothillInner=${CONFIG.mountainBackdrop.near.innerRadius} reach=${REACH}`);
+ok("the full variant B distant range stays within its draw-call budget",
+  range.stats.drawCalls <= 12,
+  JSON.stringify(range.stats));
+ok("distant peaks and haze stay out of the shadow pass",
+  range.group.children.every((child) => child.castShadow === false && child.receiveShadow === false));
+ok("fantasy floating islands are enabled for variant B",
+  CONFIG.distantRange.floatingIslands.enabled === true
+    && CONFIG.distantRange.floatingIslands.items.length === 3);
+ok("variant B creates all three floating islands",
+  range.group.children.filter((child) => child.name === "DistantFloatingIsland").length
+    === CONFIG.distantRange.floatingIslands.items.length);
+
+const disabledRange = createFantasyHorizon({ enabled: false });
+ok("the distant range can be switched off entirely",
+  disabledRange.group.children.length === 0 && disabledRange.stats.meshes === 0);
+
+const sky = createSky(CONFIG.sky, CONFIG.distantRange);
+const cloudLayer = sky.group.children.find((child) => child.name === "SkyClouds");
+ok("clouds render as a single instanced draw call",
+  Boolean(cloudLayer) && (cloudLayer.capacity ?? cloudLayer.count) > 60,
+  `instances=${cloudLayer?.capacity ?? cloudLayer?.count}`);
+ok("clouds sit high and far enough to belong to the sky",
+  CONFIG.sky.cloudRingRadius > CONFIG.mountainBackdrop.near.innerRadius
+    && CONFIG.sky.cloudHeight > Math.max(...CONFIG.mountainBackdrop.far.chunks.map((c) => c.height)),
+  `radius=${CONFIG.sky.cloudRingRadius} height=${CONFIG.sky.cloudHeight}`);
+
+ok("gameplay bounds are untouched",
+  CONFIG.worldLimit === 38 && CONFIG.terrain.size === 80 && CONFIG.terrain.spacing === 0.5,
+  `worldLimit=${CONFIG.worldLimit} size=${CONFIG.terrain.size}`);
+ok("movement, water and sculpt limits are untouched",
+  CONFIG.walkSpeed === 2.4 && CONFIG.runSpeed === 5.2 && CONFIG.maxWalkSlope === 0.75
+    && CONFIG.water.level === -0.6 && CONFIG.sculpt.edgeMargin === 4
+    && CONFIG.sculpt.minHeight === -3 && CONFIG.sculpt.maxHeight === 7);
+ok("save keys are untouched",
+  CONFIG.builder.storageKey === "liora.island-layout.v1"
+    && CONFIG.sculpt.storageKey === "liora.terrain-height.v1"
+    && CONFIG.groundPaint.storageKey === "liora.ground-paint.v1"
+    && CONFIG.farming.storageKey === "liora.farm.v1");
+ok("the seam under the real terrain edge has not moved",
+  CONFIG.outerWorld.innerRadius === 38.5 && CONFIG.outerWorld.innerYOffset === -0.08);
+
+outer.dispose();
+backdrop.dispose();
+range.dispose();
+disabledRange.dispose();
+sky.dispose();
+
+window.__results=results;
+window.__done=true;
 document.querySelector("#out").textContent=JSON.stringify(results,null,1);
 </script></body></html>

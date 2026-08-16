@@ -74,7 +74,7 @@ try {
 
 setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
-const sky = createSky(CONFIG.sky);
+const sky = createSky(CONFIG.sky, CONFIG.distantRange);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
 const dayNight = createDayNight({
@@ -240,12 +240,6 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushPersistentState();
 });
 
-/**
- * A store that could not read its own save has kept a copy rather than let the
- * next autosave overwrite it (see systems/local-store.js). Saying nothing is
- * how an island's worth of painting or sculpting disappears without anyone
- * noticing. The layout store reports itself through layout-runtime.
- */
 function reportRescuedSaves() {
   const rescued = [
     ["การระบายพื้น", world.paint],
@@ -279,7 +273,6 @@ function animate() {
   cameraController.update(cameraTarget, delta);
   sky.update(camera);
   renderer.render(scene, camera);
-  // After render: Three.js resets its per-frame counters inside render().
   perfHud.update(delta);
 }
 addEventListener("resize", () => {
