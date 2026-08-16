@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { applyWindToMaterial } from "./wind-material.js";
+import { inferAssetWindProfile } from "./wind-profiles.js";
 
 function normalizedDirection(direction = {}) {
   const x = Number(direction.x) || 0;
@@ -30,7 +31,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
   let failedMeshes = 0;
 
   function attach(model, asset, { preview = false } = {}) {
-    const profileName = asset?.worldV2 ? asset.windProfile : null;
+    const profileName = asset?.windProfile ?? inferAssetWindProfile(asset);
     if (!enabled || !profileName || !model?.traverse) return false;
 
     let attached = false;
@@ -58,6 +59,8 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
           attachedMeshes += 1;
         }
       } catch (error) {
+        // Wind is decorative. A shader/material problem must never stop a
+        // Builder object from loading or becoming collidable.
         failedMeshes += 1;
         console.warn(`Wind skipped mesh "${node.name || "unnamed"}"`, error);
       }
