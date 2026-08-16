@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
+import { createWorldBoundary } from "../systems/world-boundary.js";
 import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
 import { createGroundLayers } from "../systems/ground-layers.js";
@@ -30,7 +31,7 @@ export async function createHomeIsland({
   const group = new THREE.Group();
   group.name = "HomeIslandZone";
 
-  const island = createFloatingIsland(config.island);
+  const island = createFloatingIsland({ ...config.island, topY: (config.worldBoundary?.enabled !== false && config.worldBoundary?.type === "ridge") ? config.worldBoundary.height : 0 });
   group.add(island);
 
   const layers = createGroundLayers(
@@ -69,15 +70,23 @@ export async function createHomeIsland({
     }
   }
 
-  const height = createTerrainHeight({
+  const baseHeight = createTerrainHeight({
     config: config.sculpt,
     worldSize: config.terrain.size,
     spacing: config.terrain.spacing,
     reservedAreas,
   });
+  const worldBoundary = createWorldBoundary({
+    config: config.worldBoundary,
+    baseHeight,
+    worldSize: config.terrain.size,
+    spacing: config.terrain.spacing,
+    renderOrder: config.terrain.renderOrder,
+  });
+  const height = worldBoundary.height;
 
   const terrainField = createTerrainField({
-    height,
+    height: worldBoundary.heightView,
     worldSize: config.terrain.size,
     config: {
       ...config.terrainField,
@@ -85,7 +94,7 @@ export async function createHomeIsland({
     },
   });
 
-  const terrain = createTerrain({ texture: baseMap, config: config.terrain, height });
+  const terrain = createTerrain({ texture: baseMap, config: config.terrain, height: baseHeight });
 
   const paint = createGroundPaint({
     config: config.groundPaint,
@@ -106,6 +115,8 @@ export async function createHomeIsland({
 
   group.add(water.mesh);
   group.add(terrain.mesh);
+  const boundaryMesh = worldBoundary.createMesh(terrain.material);
+  if (boundaryMesh) group.add(boundaryMesh);
 
   const farmPlot = createFarmPlot(config.farmPlot);
   group.add(farmPlot.group);
@@ -131,6 +142,7 @@ export async function createHomeIsland({
     missingTextures: groundTextures.missing,
     height,
     terrainField,
+    worldBoundary,
     water,
     paint,
     brushCursor,
@@ -141,6 +153,7 @@ export async function createHomeIsland({
       water.update();
       const changed = terrain.refresh();
       if (changed) {
+        worldBoundary.refresh();
         terrainField.refresh();
         brushCursor.refresh();
       }
@@ -152,6 +165,7 @@ export async function createHomeIsland({
       farmPlot.dispose();
       paint.dispose();
       height.dispose();
+      worldBoundary.dispose();
       terrain.dispose();
       water.dispose();
       terrainField.dispose();

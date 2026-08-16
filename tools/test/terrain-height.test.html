@@ -13,6 +13,7 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 </script>
 <script type="module">
 import { createTerrainHeight, SCULPT_TOOLS } from "../../src/systems/terrain-height.js";
+import { createRidgeProfile, createWorldBoundary } from "../../src/systems/world-boundary.js";
 import { CONFIG } from "../../src/config.js";
 const results = [];
 const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
@@ -54,6 +55,67 @@ ok("tick is true when terrain actually changes", raised.tick(0.2) === true);
 ok("changed stroke closes normally", raised.endStroke() === true && raised.undoDepth === 1,
   `undoDepth=${raised.undoDepth}`);
 
+// Home Island Ridge V1 is deliberately separate from the editable height save.
+// The facade is what gameplay/editor picking sees; the original Float32Array is
+// still what persistence owns.
+const profile = createRidgeProfile(CONFIG.worldBoundary);
+ok("world boundary leaves the farm centre untouched", near(profile.floor(0, 0), 0));
+ok("world boundary reaches full height before the outer rim",
+  near(profile.floor(0, CONFIG.terrain.size / 2), CONFIG.worldBoundary.height, 0.02),
+  `edge=${profile.floor(0, CONFIG.terrain.size / 2)}`);
+
+const boundaryBase = make();
+const boundary = createWorldBoundary({
+  config: CONFIG.worldBoundary,
+  baseHeight: boundaryBase,
+  worldSize: CONFIG.terrain.size,
+  spacing: CONFIG.terrain.spacing,
+});
+ok("generated boundary is neutral to the editable terrain save", boundaryBase.isFlat() && boundary.height.isFlat());
+ok("composite height view contains the ridge", boundary.heightView.heights.some((value) => value > 4));
+
+hit = boundary.height.raycast({ x: 26, y: 10, z: 0 }, { x: 0, y: -1, z: 0 });
+ok("editor raycast sees the generated ridge instead of ground underneath",
+  hit && hit.y > 4, JSON.stringify(hit));
+
+const beforeDig = boundary.height.sample(22, 0);
+boundary.height.beginStroke({ tool: SCULPT_TOOLS.LOWER, radius: 2.2, strength: 1.2, x: 22, z: 0 });
+boundary.height.tick(1.5);
+boundary.height.endStroke();
+ok("sculpting cannot dig through the world boundary",
+  boundary.height.sample(22, 0) + 1e-3 >= profile.floor(22, 0),
+  `before=${beforeDig} after=${boundary.height.sample(22, 0)} floor=${profile.floor(22, 0)}`);
+
+let weakest = Infinity;
+for (let a = 0; a < 32; a += 1) {
+  const angle = a / 32 * Math.PI * 2;
+  let steepest = 0;
+  for (let d = CONFIG.worldBoundary.radius - CONFIG.worldBoundary.noiseAmplitude; d < 26.2; d += 0.25) {
+    steepest = Math.max(steepest, boundary.height.slopeAt(Math.cos(angle) * d, Math.sin(angle) * d));
+  }
+  weakest = Math.min(weakest, steepest);
+}
+ok("ridge exceeds maxWalkSlope in every sampled direction", weakest > CONFIG.maxWalkSlope,
+  `weakest=${weakest.toFixed(2)} max=${CONFIG.maxWalkSlope}`);
+
+// Save the *editable* height only, then regenerate a lower ridge. If generated
+// geometry were baked into the payload this would stay pinned at the old 4.8 m.
+const payload = boundary.height.exportData();
+const restoredBase = make();
+restoredBase.importData(payload, { save: false });
+const lowerConfig = { ...CONFIG.worldBoundary, height: 2.8 };
+const retuned = createWorldBoundary({
+  config: lowerConfig,
+  baseHeight: restoredBase,
+  worldSize: CONFIG.terrain.size,
+  spacing: CONFIG.terrain.spacing,
+});
+ok("generated ridge can be retuned lower after save/load",
+  near(retuned.height.sample(0, 27.5), 2.8, 0.06),
+  `edge=${retuned.height.sample(0, 27.5)}`);
+
+boundary.dispose();
+retuned.dispose();
 window.__results = results;
 window.__done = true;
 document.querySelector("#out").textContent = JSON.stringify(results, null, 1);

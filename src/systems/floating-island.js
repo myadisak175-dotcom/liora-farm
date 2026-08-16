@@ -5,7 +5,11 @@ export function createFloatingIsland(config) {
   group.name = "floating-island";
 
   const half = config.size / 2;
-  const topY = 0;
+  // The skirt's top edge must meet the terrain's outer edge or a gap opens up
+  // between them. The world-boundary ridge holds the whole rim at exactly
+  // the configured ridge height; `edgeFactor` drives the player's brush to zero
+  // there, so the outer band cannot be sculpted above it and the seal holds.
+  const topY = config.topY ?? 0;
   const bottomY = -config.cliffDepth;
   const inset = config.bottomInset;
 
