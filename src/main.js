@@ -12,6 +12,7 @@ import { createDayNight } from "./systems/day-night.js";
 import { createRunFx } from "./systems/run-fx.js";
 import { createContactShadow } from "./systems/contact-shadow.js";
 import { createPlayerRuntime } from "./systems/player-runtime.js";
+import { createWindSystem } from "./systems/wind/wind-system.js";
 import { BUILDABLE_ASSETS } from "./editor/asset-catalog.js";
 import { createBuilderAssetLoader } from "./editor/asset-loader.js";
 import { createBuilderState } from "./editor/builder-state.js";
@@ -69,13 +70,6 @@ try {
   setStatus("โหลดพื้นไม่สำเร็จ — เช็คไฟล์ใน assets/textures/");
   throw error;
 }
-window.__liora = {
-  get paint() { return world.paint; },
-  get layers() { return world.layers; },
-  get height() { return world.height; },
-  get terrainField() { return world.terrainField; },
-  get missingTextures() { return world.missingTextures; },
-};
 
 setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows);
@@ -94,6 +88,16 @@ const input = createInput();
 const cameraController = createCameraController(camera, CONFIG.camera, renderer.domElement);
 const runFx = createRunFx(scene, CONFIG.runFx);
 const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
+const wind = createWindSystem({ config: CONFIG.wind ?? {}, quality: QUALITY });
+
+window.__liora = {
+  get paint() { return world.paint; },
+  get layers() { return world.layers; },
+  get height() { return world.height; },
+  get terrainField() { return world.terrainField; },
+  get missingTextures() { return world.missingTextures; },
+  get wind() { return wind; },
+};
 
 const builderLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
 const layoutStore = createLayoutStore({ storageKey: CONFIG.builder.storageKey });
@@ -104,6 +108,7 @@ const builderView = createBuilderView({
   getGroundHeight: world.getGroundHeight,
   config: CONFIG.builder,
   playerHeight: CONFIG.playerHeight,
+  prepareModel: (model, asset, context) => wind.attach(model, asset, context),
 });
 let builderUI = null;
 let colliders = [];
@@ -240,6 +245,7 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.04);
   dayNight.update(delta);
+  wind.update(delta);
   world.refresh();
   playerRuntime.update(delta, { active: mode === "play", cameraTarget });
   world.crops.update(delta);
