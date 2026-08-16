@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "depth-2-detail";
+export const BUILD = "worlds-2-detail";
 
 export const CONFIG = Object.freeze({
   /**
@@ -266,6 +266,9 @@ export const CONFIG = Object.freeze({
   },
   builder: {
     storageKey: "liora.island-layout.v1", defaultMap: "./maps/home-island.json",
+    // The registry the map picker reads. A map's own file is named by the
+    // registry entry, not by this constant, so adding a world is a JSON edit.
+    mapIndex: "./maps/index.json",
     ghostOpacity: 0.55, selectionColor: 0x7ce0ff, saveDebounceMs: 250,
     gridSize: 0.5, snapDefault: false, historyLimit: 50,
   },

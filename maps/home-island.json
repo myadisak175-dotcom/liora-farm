@@ -1,7 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "mapId": "home-island",
+  "name": "เกาะบ้าน",
   "savedAt": "2026-08-16T06:33:00.000Z",
+  "horizon": {},
   "objects": [
     {
       "id": "2700cc4a-d8a1-4a58-84c8-80f4439766cb",

@@ -7,7 +7,9 @@ import {
   resolveHorizon,
   checkHorizonRules,
   horizonSnippet,
+  horizonForMap,
 } from "../systems/horizon-settings.js";
+import { WORLD_PRESETS, applyWorldPreset } from "../systems/world-presets.js";
 
 const GROUP_OF = new Map(HORIZON_DIALS.map((dial) => [dial.key, dial.group]));
 const REBUILD_FOR = {
@@ -29,13 +31,13 @@ const TOGGLE_REBUILD = {
   islandsEnabled: "range",
 };
 
-function readStored() {
-  try { return JSON.parse(localStorage.getItem(HORIZON_STORAGE_KEY) ?? "null"); }
+function readStored(key) {
+  try { return JSON.parse(localStorage.getItem(key) ?? "null"); }
   catch { return null; }
 }
 
-function writeStored(settings) {
-  try { localStorage.setItem(HORIZON_STORAGE_KEY, JSON.stringify(settings)); }
+function writeStored(key, settings) {
+  try { localStorage.setItem(key, JSON.stringify(settings)); }
   catch { /* session-only tuning in private mode */ }
 }
 
@@ -49,9 +51,16 @@ export function createHorizonControls({
   cameraController,
   container,
   surface,
+  storageKey = HORIZON_STORAGE_KEY,
+  mapScope = null,
   onToast = () => {},
 }) {
-  if (!container) return { apply() {}, render() {}, settings: null, actions: [] };
+  if (!container) {
+    return {
+      apply() {}, render() {}, settings: null, actions: [],
+      setAuthored() {}, toMap: () => ({}),
+    };
+  }
 
   const root = document.querySelector("#build-panel");
   const actions = document.querySelector("#build-actions");
@@ -63,7 +72,14 @@ export function createHorizonControls({
     .map((selector) => document.querySelector(selector))
     .filter(Boolean);
 
-  let settings = sanitizeHorizon(readStored(), config);
+  // The horizon the current map file authored. Filled in by the layout runtime
+  // once the map has loaded, which is after this panel is built.
+  let authored = null;
+  const stored = readStored(storageKey);
+  // A player who has never touched the panel for this map must follow the map,
+  // not a snapshot of it taken at boot.
+  let untouched = !stored;
+  let settings = sanitizeHorizon(stored, config, authored);
   let frame = 0;
   let horizonActive = false;
   let panPointer = null;
@@ -78,7 +94,7 @@ export function createHorizonControls({
   let actionButtons = [];
 
   function apply(targets) {
-    const resolved = resolveHorizon(settings, config);
+    const resolved = resolveHorizon(settings, config, authored);
     if (!targets || targets.has("render")) {
       if (renderer) renderer.toneMappingExposure = resolved.exposure;
       lighting?.setBalance?.(resolved.lighting);
@@ -109,7 +125,8 @@ export function createHorizonControls({
       const targets = new Set(dirty);
       dirty.clear();
       apply(targets);
-      writeStored(settings);
+      untouched = false;
+      writeStored(storageKey, settings);
       renderRules();
     });
   }
@@ -135,7 +152,7 @@ export function createHorizonControls({
   }
 
   function renderRules() {
-    const rules = checkHorizonRules(resolveHorizon(settings, config), config);
+    const rules = checkHorizonRules(resolveHorizon(settings, config, authored), config);
     const failed = rules.filter((rule) => !rule.pass);
     rulesBox.classList.toggle("has-failure", failed.length > 0);
     rulesBox.replaceChildren(
@@ -222,6 +239,64 @@ export function createHorizonControls({
     panPointer = null;
   }
 
+  /**
+   * Presets are a starting point, not a reset: they set the dials that define
+   * a landscape's character and leave the rest of the map's own values alone.
+   */
+  function presetRow() {
+    const row = document.createElement("div");
+    row.className = "horizon-toggles";
+    row.dataset.role = "world-presets";
+    for (const preset of WORLD_PRESETS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.worldPreset = preset.id;
+      button.textContent = preset.label;
+      button.title = preset.hint;
+      button.onclick = () => {
+        settings = sanitizeHorizon(
+          applyWorldPreset(preset.id, settings),
+          config,
+          authored
+        );
+        untouched = false;
+        writeStored(storageKey, settings);
+        build();
+        apply();
+        putHorizonChromeBack();
+        onToast(`ตั้งเป็น "${preset.label}" แล้ว — ปรับต่อได้เลย`);
+      };
+      row.append(button);
+    }
+    return row;
+  }
+
+  /**
+   * Switching worlds reloads the page rather than rebuilding the scene in
+   * place. Terrain, paint, crops, colliders and the builder all hold direct
+   * references to the live zone, so a teardown path would be a large amount of
+   * fragile code to save a page load that costs under a second here.
+   */
+  function mapRow() {
+    if (!mapScope || mapScope.maps.length < 2) return null;
+    const row = document.createElement("div");
+    row.className = "horizon-toggles";
+    row.dataset.role = "map-picker";
+    for (const entry of mapScope.maps) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.mapId = entry.id;
+      button.textContent = entry.name;
+      button.classList.toggle("active", entry.id === mapScope.id);
+      button.onclick = () => {
+        if (entry.id === mapScope.id) return;
+        location.href = mapScope.urlFor(entry.id);
+      };
+      row.append(button);
+    }
+    return row;
+  }
+
   function build() {
     const groups = [];
     for (const dial of HORIZON_DIALS) {
@@ -234,7 +309,16 @@ export function createHorizonControls({
     toggleRow.className = "horizon-toggles";
     toggleRow.append(...HORIZON_TOGGLES.map(toggleButton));
 
+    const mapPicker = mapRow();
+    const presetHeading = document.createElement("h4");
+    presetHeading.textContent = "แบบภูมิทัศน์";
+    const mapHeading = document.createElement("h4");
+    mapHeading.textContent = "โลก";
+
     dialsBox.replaceChildren(
+      ...(mapPicker ? [mapHeading, mapPicker] : []),
+      presetHeading,
+      presetRow(),
       toggleRow,
       ...groups.flatMap((group) => {
         const heading = document.createElement("h4");
@@ -249,10 +333,10 @@ export function createHorizonControls({
     copy.className = "primary";
     copy.textContent = "📋 คัดลอกค่า";
     copy.onclick = async () => {
-      const text = horizonSnippet(resolveHorizon(settings, config));
+      const text = horizonSnippet(resolveHorizon(settings, config, authored));
       try {
         await navigator.clipboard.writeText(text);
-        onToast("คัดลอกค่าขอบฟ้าแล้ว — วางทับใน src/config.js");
+        onToast("คัดลอกค่าขอบฟ้าแล้ว");
       } catch {
         window.prompt("คัดลอกข้อความนี้ไปวางใน src/config.js", text);
       }
@@ -262,13 +346,20 @@ export function createHorizonControls({
     reset.type = "button";
     reset.textContent = "↺ ค่าตั้งต้น";
     reset.onclick = () => {
-      settings = horizonDefaults(config);
-      writeStored(settings);
+      settings = horizonDefaults(config, authored);
+      untouched = true;
+      // Reset means "follow this map file again", not "freeze today's map
+      // defaults into localStorage". Removing the override lets future edits to
+      // maps/<id>.json reach players who chose to return to authored defaults.
+      try { localStorage.removeItem(storageKey); }
+      catch { /* private mode: keep the in-memory authored defaults */ }
       build();
       apply();
       renderRules();
       putHorizonChromeBack();
-      onToast("คืนค่าขอบฟ้าเป็นค่าในไฟล์แล้ว");
+      onToast(authored
+        ? "คืนค่าขอบฟ้าเป็นค่าของแผนที่นี้แล้ว"
+        : "คืนค่าขอบฟ้าเป็นค่าในไฟล์แล้ว");
     };
 
     actionButtons = [copy, reset];
@@ -344,6 +435,26 @@ export function createHorizonControls({
   return {
     get settings() { return settings; },
     get actions() { return actionButtons; },
+    /**
+     * Hands the panel the horizon block from the loaded map. Only rebases the
+     * live dials when the player has not tuned this map themselves — their own
+     * edits outrank the file, exactly as their sculpting does.
+     */
+    setAuthored(next) {
+      authored = next && typeof next === "object" ? next : null;
+      if (!untouched) {
+        renderRules();
+        return false;
+      }
+      settings = horizonDefaults(config, authored);
+      build();
+      apply();
+      return true;
+    },
+    /** The horizon block to write into a map file. */
+    toMap() {
+      return horizonForMap(settings, config);
+    },
     apply,
     render: renderRules,
     dispose() {

@@ -24,10 +24,12 @@ import { createBuilderView } from "./editor/builder-view.js";
 import { createBuilderUI } from "./editor/builder-ui.js";
 import { createSculptControls } from "./editor/sculpt-controls.js";
 import { createHorizonControls } from "./editor/horizon-controls.js";
+import { HORIZON_STORAGE_KEY } from "./systems/horizon-settings.js";
 import { createNotifications } from "./ui/notifications.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
+import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
 
 window.__lioraBuild = BUILD;
 window.__lioraBooted = false;
@@ -76,13 +78,41 @@ document.body.prepend(renderer.domElement);
 const textureLoader = new THREE.TextureLoader();
 const RESERVED_AREAS = [{ x: CONFIG.farmPlot.position.x, z: CONFIG.farmPlot.position.z, radius: CONFIG.farmPlot.reservedRadius, label: "แปลงผัก" }];
 
+setBootState("map");
+/**
+ * Which world this tab is showing, resolved before anything that saves.
+ *
+ * Every store below takes its key through `mapScope.key()`. The default map
+ * keeps its historical unscoped keys so nobody's existing island moves; see
+ * map-scope.js for why that constraint is not negotiable.
+ */
+let mapRegistry = [];
+try {
+  const response = await fetch(CONFIG.builder.mapIndex, { cache: "no-store" });
+  if (response.ok) {
+    const index = await response.json();
+    if (Array.isArray(index?.maps)) mapRegistry = index.maps;
+  }
+} catch (error) {
+  console.warn("Map registry could not be loaded — falling back to the default map", error);
+}
+const mapScope = createMapScope({ entries: mapRegistry, defaultId: DEFAULT_MAP_ID });
+window.__lioraMap = mapScope.id;
+const MAP_CONFIG = {
+  ...CONFIG,
+  sculpt: { ...CONFIG.sculpt, storageKey: mapScope.key(CONFIG.sculpt.storageKey) },
+  groundPaint: { ...CONFIG.groundPaint, storageKey: mapScope.key(CONFIG.groundPaint.storageKey) },
+  farming: { ...CONFIG.farming, storageKey: mapScope.key(CONFIG.farming.storageKey) },
+  builder: { ...CONFIG.builder, storageKey: mapScope.key(CONFIG.builder.storageKey) },
+};
+
 setBootState("world");
 let world = null;
 try {
   world = await createHomeIsland({
     scene,
     textureLoader,
-    config: CONFIG,
+    config: MAP_CONFIG,
     assets: ASSETS,
     anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
     reservedAreas: RESERVED_AREAS,
@@ -125,7 +155,7 @@ window.__liora = {
 };
 
 const builderLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
-const layoutStore = createLayoutStore({ storageKey: CONFIG.builder.storageKey });
+const layoutStore = createLayoutStore({ storageKey: MAP_CONFIG.builder.storageKey });
 const builderState = createBuilderState({ historyLimit: CONFIG.builder.historyLimit });
 const objectShadows = createObjectShadows({
   scene,
@@ -171,8 +201,12 @@ const layoutRuntime = createLayoutRuntime({
   builderView,
   layoutStore,
   world,
-  defaultMapUrl: CONFIG.builder.defaultMap,
+  defaultMapUrl: mapScope.entry.file,
+  mapId: mapScope.id,
+  mapName: mapScope.entry.name,
   getUI: () => builderUI,
+  getHorizon: () => horizonPanel?.toMap?.(),
+  onHorizon: (authored) => horizonPanel?.setAuthored?.(authored),
   onToast: toast,
   onCollidersChange: (next) => { colliders = next; },
   onTerrainSync: syncBuilderToTerrain,
@@ -181,9 +215,9 @@ builderUI = createBuilderUI({
   controller: builder,
   view: builderView,
   paint: world.paint,
-  paintConfig: CONFIG.groundPaint,
+  paintConfig: MAP_CONFIG.groundPaint,
   height: world.height,
-  sculptConfig: CONFIG.sculpt,
+  sculptConfig: MAP_CONFIG.sculpt,
   brushCursor: world.brushCursor,
   reservedAreas: RESERVED_AREAS,
   builderConfig: CONFIG.builder,
@@ -204,12 +238,14 @@ horizonPanel = createHorizonControls({
   cameraController,
   container: document.querySelector("#horizon-strip"),
   surface: renderer.domElement,
+  storageKey: mapScope.key(HORIZON_STORAGE_KEY),
+  mapScope,
   onToast: toast,
 });
 createSculptControls({
   height: world.height,
   paint: world.paint,
-  sculptConfig: CONFIG.sculpt,
+  sculptConfig: MAP_CONFIG.sculpt,
   onTerrainChange: syncBuilderToTerrain,
   onRender: () => builderUI.render(),
 });
@@ -373,6 +409,11 @@ await layoutRuntime.load();
 reportRescuedSaves();
 setBootState(player ? "ready" : "ready-degraded");
 window.__lioraBooted = true;
-if (player) setStatus("พร้อมเล่น", { autoHide: true });
+// Which world you are in has to be visible somewhere, or a second map is a
+// silent state you can only detect by recognising the scenery.
+if (!mapScope.isDefault) document.title = `${mapScope.entry.name} — Liora's Farm`;
+if (player) {
+  setStatus(mapScope.isDefault ? "พร้อมเล่น" : `พร้อมเล่น • ${mapScope.entry.name}`, { autoHide: true });
+}
 else setStatus("โหลดตัวละครไม่สำเร็จ — โหมดสร้างยังใช้ได้");
 animate();
