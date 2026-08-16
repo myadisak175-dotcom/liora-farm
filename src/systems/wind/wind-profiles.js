@@ -52,14 +52,20 @@ export function getWindProfile(name) {
 }
 
 /**
- * Material and mesh names are only hints. Unknown tree meshes intentionally
- * stay `mixed` so the shader can separate trunk/branch/leaf force by height.
+ * Mesh names are more specific than a shared material name (for example a
+ * Branch mesh may still use a generic Wood material), so explicit mesh roles
+ * win before material-name hints. Unknown meshes intentionally stay `mixed`
+ * and use the shader's height layering.
  */
 export function classifyTreePart(mesh, material) {
-  const text = `${mesh?.name ?? ""} ${material?.name ?? ""}`;
-  if (TRUNK.test(text)) return "trunk";
-  if (BRANCH.test(text)) return "branch";
-  if (LEAF.test(text)) return "leaf";
+  const meshName = mesh?.name ?? "";
+  const materialName = material?.name ?? "";
+  if (LEAF.test(meshName)) return "leaf";
+  if (BRANCH.test(meshName)) return "branch";
+  if (TRUNK.test(meshName)) return "trunk";
+  if (LEAF.test(materialName)) return "leaf";
+  if (BRANCH.test(materialName)) return "branch";
+  if (TRUNK.test(materialName)) return "trunk";
   return "mixed";
 }
 
