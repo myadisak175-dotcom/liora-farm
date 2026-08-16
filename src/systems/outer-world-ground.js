@@ -38,16 +38,34 @@ function broadNoise(angle, t, seed) {
   return angular + radial;
 }
 
+function squareRadiusAtAngle(halfSize, angle) {
+  const sx = Math.abs(Math.sin(angle));
+  const cz = Math.abs(Math.cos(angle));
+  return halfSize / Math.max(1e-6, sx, cz);
+}
+
 export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
-  const innerRadius = Math.max(1, Number(config.innerRadius) || 38.5);
-  const outerRadius = Math.max(innerRadius + 1, Number(config.outerRadius) || 82);
+  const uvWorld = Math.max(1, Number(textureWorldSize) || 80);
+  const terrainHalf = uvWorld / 2;
+
+  // `innerRadius` used to mean a circular ring radius. Home Farm is square,
+  // so that circle cut deeply through the playable terrain near the corners.
+  // Keep the config name for compatibility, but interpret it as the half-size
+  // of the square seam. With 38.5 on an 80 m terrain the visual mesh overlaps
+  // the real terrain by only 1.5 m on every side, including the corners.
+  const innerHalfSize = clamp(
+    Number(config.innerRadius) || terrainHalf - 1.5,
+    1,
+    Math.max(1, terrainHalf)
+  );
+  const maxInnerRadius = innerHalfSize * Math.SQRT2;
+  const outerRadius = Math.max(maxInnerRadius + 1, Number(config.outerRadius) || 82);
   const innerY = Number.isFinite(config.innerY) ? config.innerY : -0.08;
   const outerY = Number.isFinite(config.outerY) ? config.outerY : 0.6;
   const heightVariation = Math.max(0, Number(config.heightVariation) || 0);
   const segments = clamp(Math.round(Number(config.segments) || 80), 24, 160);
   const rings = clamp(Math.round(Number(config.rings) || 10), 2, 32);
   const seed = Number(config.noiseSeed) || 0;
-  const uvWorld = Math.max(1, Number(textureWorldSize) || 80);
 
   const nearColor = colorChannels(config.colorNear ?? 0xffffff);
   const midColor = colorChannels(config.colorMid ?? 0xe5edcc);
@@ -61,7 +79,6 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   for (let ring = 0; ring <= rings; ring += 1) {
     const t = ring / rings;
     const eased = smoothstep01(t);
-    const radius = innerRadius + (outerRadius - innerRadius) * t;
     const baseY = innerY + (outerY - innerY) * eased;
     const envelope = Math.pow(Math.sin(Math.PI * t), 0.8);
     const tint = t < 0.56
@@ -70,6 +87,8 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
 
     for (let segment = 0; segment <= segments; segment += 1) {
       const angle = segment / segments * TAU;
+      const seamRadius = squareRadiusAtAngle(innerHalfSize, angle);
+      const radius = seamRadius + (outerRadius - seamRadius) * eased;
       const x = Math.sin(angle) * radius;
       const z = Math.cos(angle) * radius;
       const y = baseY + broadNoise(angle, t, seed) * heightVariation * envelope;
@@ -105,11 +124,11 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
 /**
  * Cheap visual-only land outside Home Farm's playable terrain.
  *
- * The ring overlaps the outer edge of the real terrain from underneath, then
- * extends into broad rolling distant ground. It is never used for collision,
- * ground sampling, Builder placement, sculpting, farming or persistence; its
- * only job is to make the visible world feel much larger than the gameplay
- * grid and keep the camera from finding a hard island edge.
+ * The inner seam follows the real square terrain edge, then smoothly rounds out
+ * into a broad circular horizon. It is never used for collision, ground
+ * sampling, Builder placement, sculpting, farming or persistence; its only job
+ * is to make the visible world feel much larger than the gameplay grid without
+ * letting a circular visual mesh cut through the playable square.
  */
 export function createOuterWorldGround({ config = {}, texture = null, textureWorldSize = 80 } = {}) {
   const group = new THREE.Group();
