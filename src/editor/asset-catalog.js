@@ -7,19 +7,23 @@ export const BUILD_CATEGORIES = Object.freeze({
   DECOR: "decor",
 });
 
+export const RETIRED_LEGACY_NATURE_IDS = Object.freeze(["tree", "pine", "palm"]);
+export const REUSABLE_LEGACY_NATURE_IDS = Object.freeze(["grass"]);
+
 /**
  * Builder palette policy.
  *
- * Nature V2 is now the production/primary nature set. Legacy nature assets stay
- * registered so old saves and maps can still resolve their stable asset IDs,
- * but they are intentionally hidden from the placement palette.
+ * Nature V2 is the production tree/rock/plant set. The legacy grass clump stays
+ * placeable because it is still useful as a plant/crop-like prop, while the old
+ * tree, pine and palm models stay registered only for backwards-compatible
+ * loading of existing maps and saves.
  *
  * Buildings and decor remain visible until their own replacement sets exist.
  */
 export const PRIMARY_ASSET_POLICY = Object.freeze({
   natureSet: "world-v2",
   stableIdPrefix: "v2-",
-  legacyNatureMode: "fallback-only",
+  legacyNatureMode: "trees-fallback-only",
   requireNamedNode: true,
   requireSourceMetrics: true,
   requireTerrainSnap: true,
@@ -187,8 +191,8 @@ export const BUILDABLE_ASSETS = Object.freeze({
     sizeInPlayers: 0.75,
   }),
 
-  // World V2 is the primary Nature set. Legacy nature IDs above remain in the
-  // registry only for backwards-compatible load/save behavior.
+  // World V2 is the primary Nature set. Retired legacy tree IDs above remain
+  // registered only for backwards-compatible load/save behavior.
   ...NATURE_V2_ASSETS,
 });
 
@@ -196,8 +200,9 @@ export function isPrimaryBuilderAsset(asset) {
   if (!asset) return false;
 
   // Until buildings/decor receive V2 replacements, keep their existing assets
-  // in the palette. This policy only retires the legacy Nature buttons.
+  // in the palette. The legacy grass also remains useful as a plant-like prop.
   if (asset.category !== BUILD_CATEGORIES.NATURE) return true;
+  if (REUSABLE_LEGACY_NATURE_IDS.includes(asset.id)) return true;
 
   if (asset.worldV2 !== true) return false;
   if (!asset.id?.startsWith(PRIMARY_ASSET_POLICY.stableIdPrefix)) return false;
@@ -219,13 +224,12 @@ export function getBuildableAsset(id) {
   return BUILDABLE_ASSETS[id] ?? null;
 }
 
-// Builder palette: production assets only. Existing UI already reads this API,
-// so legacy Nature disappears without special-case UI code.
+// Builder palette: V2 Nature plus explicitly reusable legacy assets.
 export function getBuildableAssets() {
   return Object.values(BUILDABLE_ASSETS).filter(isPrimaryBuilderAsset);
 }
 
-// Migration/debugging only: includes fallback assets so old saves remain
+// Migration/debugging only: includes retired fallback assets so old saves remain
 // inspectable and testable while the V2 rollout is reversible.
 export function getAllBuildableAssets() {
   return Object.values(BUILDABLE_ASSETS);
