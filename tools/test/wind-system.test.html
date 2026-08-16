@@ -66,7 +66,7 @@ await test("all non-rock World V2 nature assets receive a wind profile", () => {
 
 await test("tree force separates trunk, branch and leaf response", () => {
   assert(classifyTreePart({ name: "Oak_Trunk" }, { name: "Bark" }) === "trunk", "trunk classifier failed");
-  assert(classifyTreePart({ name: "Branch_02" }, { name: "Wood" }) === "trunk", "bark/wood should keep a woody mesh conservative");
+  assert(classifyTreePart({ name: "Branch_02" }, { name: "Wood" }) === "branch", "explicit branch mesh should beat generic wood material");
   assert(classifyTreePart({ name: "Canopy" }, { name: "Leaves" }) === "leaf", "leaf classifier failed");
   const trunk = getPartWeights("tree", "trunk");
   const branch = getPartWeights("tree", "branch");
