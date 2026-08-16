@@ -131,7 +131,13 @@ export async function createHomeIsland({
   cloudShadows.applyTo(terrain.material);
 
   let outerWorld = buildOuterWorld(config.outerWorld);
-  cloudShadows.applyTo(outerWorld.material);
+  if (outerWorld.material) {
+    // Distance shading is installed by createOuterWorldGround first; paint
+    // composes onto that hook, then clouds compose last. This preserves the
+    // existing far fade while extending the island's edge paint via clamp.
+    paint.applyTo(outerWorld.material, { distanceGate: true });
+    cloudShadows.applyTo(outerWorld.material);
+  }
   group.add(outerWorld.group);
 
   // Remembered so rebuilding from the horizon panel does not snap the far
@@ -190,9 +196,15 @@ export async function createHomeIsland({
     rebuildHorizon({ outerWorld: outerConfig, mountainBackdrop: backdropConfig } = {}) {
       if (outerConfig) {
         group.remove(outerWorld.group);
+        paint.releaseMaterial(outerWorld.material);
         outerWorld.dispose();
         outerWorld = buildOuterWorld(outerConfig);
-        cloudShadows.applyTo(outerWorld.material);
+        if (outerWorld.material) {
+          // Horizon rebuilds replace the material, so the paint binding must
+          // be restored before cloud shadows are composed onto the new hook.
+          paint.applyTo(outerWorld.material, { distanceGate: true });
+          cloudShadows.applyTo(outerWorld.material);
+        }
         if (lastHorizonColor) outerWorld.setAtmosphere?.(lastHorizonColor);
         group.add(outerWorld.group);
       }
