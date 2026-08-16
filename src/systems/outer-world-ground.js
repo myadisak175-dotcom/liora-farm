@@ -47,12 +47,6 @@ function squareRadiusAtAngle(halfSize, angle) {
 export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   const uvWorld = Math.max(1, Number(textureWorldSize) || 80);
   const terrainHalf = uvWorld / 2;
-
-  // `innerRadius` used to mean a circular ring radius. Home Farm is square,
-  // so that circle cut deeply through the playable terrain near the corners.
-  // Keep the config name for compatibility, but interpret it as the half-size
-  // of the square seam. With 38.5 on an 80 m terrain the visual mesh overlaps
-  // the real terrain by only 1.5 m on every side, including the corners.
   const innerHalfSize = clamp(
     Number(config.innerRadius) || terrainHalf - 1.5,
     1,
@@ -92,7 +86,6 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
       const x = Math.sin(angle) * radius;
       const z = Math.cos(angle) * radius;
       const y = baseY + broadNoise(angle, t, seed) * heightVariation * envelope;
-
       positions.push(x, y, z);
       colors.push(tint[0], tint[1], tint[2]);
       uvs.push(x / uvWorld + 0.5, -z / uvWorld + 0.5);
@@ -121,26 +114,43 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
   return geometry;
 }
 
-/**
- * Cheap visual-only land outside Home Farm's playable terrain.
- *
- * The inner seam follows the real square terrain edge, then smoothly rounds out
- * into a broad circular horizon. It is never used for collision, ground
- * sampling, Builder placement, sculpting, farming or persistence; its only job
- * is to make the visible world feel much larger than the gameplay grid without
- * letting a circular visual mesh cut through the playable square.
- */
+function applyTextureDistanceFade(material, config = {}) {
+  if (!material?.map) return;
+  const start = Math.max(0, Number(config.textureFadeStart) || 80);
+  const end = Math.max(start + 1, Number(config.textureFadeEnd) || 150);
+  material.userData = material.userData || {};
+  material.userData.textureFade = { start, end };
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uOuterTextureFadeStart = { value: start };
+    shader.uniforms.uOuterTextureFadeEnd = { value: end };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying float vOuterWorldRadius;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvOuterWorldRadius = length( transformed.xz );");
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying float vOuterWorldRadius;\nuniform float uOuterTextureFadeStart;\nuniform float uOuterTextureFadeEnd;"
+      )
+      .replace(
+        "#include <map_fragment>",
+        [
+          "vec3 outerWorldBaseDiffuse = diffuseColor.rgb;",
+          "#include <map_fragment>",
+          "float outerWorldTextureFade = smoothstep( uOuterTextureFadeStart, uOuterTextureFadeEnd, vOuterWorldRadius );",
+          "diffuseColor.rgb = mix( diffuseColor.rgb, outerWorldBaseDiffuse, outerWorldTextureFade );",
+        ].join("\n")
+      );
+  };
+  material.customProgramCacheKey = () => `outer-world-texture-fade:${start}:${end}`;
+}
+
 export function createOuterWorldGround({ config = {}, texture = null, textureWorldSize = 80 } = {}) {
   const group = new THREE.Group();
   group.name = "OuterWorldGround";
 
   if (config.enabled === false) {
-    return {
-      group,
-      mesh: null,
-      stats: { meshes: 0, triangles: 0 },
-      dispose() {},
-    };
+    return { group, mesh: null, stats: { meshes: 0, triangles: 0 }, dispose() {} };
   }
 
   const geometry = buildOuterWorldGeometry(config, textureWorldSize);
@@ -150,6 +160,7 @@ export function createOuterWorldGround({ config = {}, texture = null, textureWor
     fog: true,
   });
   material.name = "OuterWorldGroundMaterial";
+  applyTextureDistanceFade(material, config);
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "OuterWorldGroundMesh";
@@ -161,10 +172,7 @@ export function createOuterWorldGround({ config = {}, texture = null, textureWor
   return {
     group,
     mesh,
-    stats: {
-      meshes: 1,
-      triangles: (geometry.index?.count ?? 0) / 3,
-    },
+    stats: { meshes: 1, triangles: (geometry.index?.count ?? 0) / 3 },
     dispose() {
       geometry.dispose();
       material.dispose();
