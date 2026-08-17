@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Liora Audio Test</title>
+<style>
+body{margin:0;padding:24px;background:#102a33;color:#f6fbfa;font:16px/1.45 system-ui,sans-serif}main{max-width:680px;margin:auto}h1{font-size:24px}.card{padding:14px 16px;margin:12px 0;border:1px solid #ffffff35;border-radius:16px;background:#ffffff0e}.name{font-weight:700;margin-bottom:8px}.status{font-size:13px;opacity:.8;margin-top:6px}audio{width:100%}a{color:#a7e7df}</style>
+</head>
+<body><main>
+<h1>🎧 Liora Audio Foundation v1</h1>
+<p>กด Play ทีละเสียงเพื่อเช็กไฟล์บน GitHub Pages โดยตรง ถ้าไฟล์ใดเสีย หน้านี้จะแสดง “โหลดไม่ได้”</p>
+<div id="list"></div>
+<p><a href="./?map=world-blockout-v1">← กลับเกม</a></p>
+<script>
+const tracks=[
+  ["เดินบนหญ้า","assets/audio/footstep_grass_walk.mp3"],
+  ["วิ่งบนหญ้า","assets/audio/footstep_grass_run.mp3"],
+  ["เดินบนใบไม้/ป่า","assets/audio/footstep_forest_leaves.mp3"],
+  ["กลางคืน — จิ้งหรีด","assets/audio/ambience_night_crickets.mp3"],
+  ["ป่า — ลม/จิ้งหรีด/นกกาเหว่า","assets/audio/ambience_forest.mp3"],
+  ["เช้า — เสียงนก","assets/audio/ambience_morning_birds.mp3"],
+];
+const list=document.querySelector('#list');
+for(const [name,src] of tracks){
+  const card=document.createElement('div');card.className='card';
+  const title=document.createElement('div');title.className='name';title.textContent=name;
+  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=src;
+  const status=document.createElement('div');status.className='status';status.textContent='กำลังตรวจไฟล์…';
+  audio.addEventListener('loadedmetadata',()=>status.textContent=`พร้อม • ${Number(audio.duration||0).toFixed(1)} วินาที`);
+  audio.addEventListener('error',()=>{status.textContent='❌ โหลดไม่ได้';status.style.color='#ffb4aa';});
+  card.append(title,audio,status);list.append(card);
+}
+</script>
+</main></body></html>
