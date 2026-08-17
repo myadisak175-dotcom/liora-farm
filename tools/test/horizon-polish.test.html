@@ -10,7 +10,7 @@ addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
 addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
 </script>
 <script type="module">
-import { createOuterWorldGround } from "../../src/systems/outer-world-ground.js";
+import { createOuterWorldGround, buildOuterWorldGeometry, createOuterWorldHeightSampler } from "../../src/systems/outer-world-ground.js";
 import { CONFIG, BUILD } from "../../src/config.js";
 
 const results=[];
@@ -86,6 +86,24 @@ ok("fade jitter runs in the vertex path rather than per-fragment trig",
   shader.uniforms.uOuterTextureFadeJitter.value>0
   &&shader.vertexShader.includes("outerJitterA")
   &&!shader.fragmentShader.includes("sin("));
+/**
+ * The tree line stands on this mesh, and the mesh is generated rather than
+ * authored — so the only honest way to place scenery on it is to run the same
+ * formula backwards. If the sampler and the vertices ever disagree, trees
+ * float in one build and sink into the ground in the next.
+ */
+const sampler=createOuterWorldHeightSampler(CONFIG.outerWorld,CONFIG.terrain.size);
+const vertices=buildOuterWorldGeometry(CONFIG.outerWorld,CONFIG.terrain.size).attributes.position.array;
+let worstDrift=0,sampled=0;
+for(let i=0;i<vertices.length;i+=3){
+  const x=vertices[i],y=vertices[i+1],z=vertices[i+2];
+  const radius=Math.hypot(x,z);
+  if(radius<45||radius>140) continue;   // the band the tree line uses
+  worstDrift=Math.max(worstDrift,Math.abs(sampler(x,z)-y)); sampled+=1;
+}
+ok("ground height sampler agrees with the mesh it stands on",
+  sampled>200&&worstDrift<0.02,`${sampled} vertices, worst drift ${worstDrift.toFixed(4)} m`);
+
 ok("edge/anti-banding polish does not add collision or gameplay geometry",
   ground.mesh.castShadow===false&&ground.mesh.receiveShadow===false
   &&CONFIG.worldLimit===38&&CONFIG.terrain.size===80);
