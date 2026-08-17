@@ -33,6 +33,9 @@ import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
 import { createSystemRegistry } from "./systems/registry.js";
 import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
+import { createTreeLine } from "./systems/background/tree-line.js";
+import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
+import { NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
 window.__lioraBuild = BUILD;
 window.__lioraBooted = false;
@@ -166,6 +169,33 @@ const runFx = createRunFx(scene, CONFIG.runFx);
 const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
 const wind = createWindSystem({ config: CONFIG.wind ?? {}, quality: QUALITY });
 
+/**
+ * Middle-ground trees, between the farm edge and the first mountain band.
+ *
+ * Built here, after `wind`, because the wind system is what patches the shared
+ * materials — and after the world, because the trees have to sit on the
+ * generated outer ground, whose surface is a formula rather than an authored
+ * mesh (see `createOuterWorldHeightSampler`).
+ *
+ * Like the islands it loads async and is allowed to fail. An empty middle
+ * ground is a worse-looking game, not a broken one.
+ */
+let outerGroundHeightAt = createOuterWorldHeightSampler(CONFIG.outerWorld, CONFIG.terrain.size);
+let treeLine = null;
+try {
+  treeLine = await createTreeLine({
+    config: CONFIG.treeLine,
+    assets: NATURE_V2_ASSETS,
+    heightAt: (x, z) => outerGroundHeightAt(x, z),
+    anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
+    onModel: (model, asset) => wind.attach(model, asset),
+  });
+  scene.add(treeLine.group);
+} catch (error) {
+  console.warn("Tree line unavailable", error);
+}
+
+
 window.__liora = {
   get paint() { return world.paint; },
   get layers() { return world.layers; },
@@ -173,6 +203,7 @@ window.__liora = {
   get terrainField() { return world.terrainField; },
   get missingTextures() { return world.missingTextures; },
   get wind() { return wind; },
+  get treeLine() { return treeLine?.stats ?? null; },
   get systems() { return systems.names; },
   /**
    * Tear the whole game down. Nothing calls this yet — it exists so that
@@ -268,6 +299,8 @@ horizonPanel = createHorizonControls({
   lighting,
   cameraController,
   floatingIslandBackdrop,
+  treeLine,
+  makeGroundSampler: (outerWorld) => createOuterWorldHeightSampler(outerWorld, CONFIG.terrain.size),
   container: document.querySelector("#horizon-strip"),
   surface: renderer.domElement,
   storageKey: mapScope.key(HORIZON_STORAGE_KEY),
@@ -462,6 +495,7 @@ systems.add("objectShadows", {
   dispose: () => objectShadows.dispose?.(),
 });
 systems.add("floatingIslands", floatingIslandBackdrop);
+systems.add("treeLine", treeLine);
 systems.add("sky", { update: () => sky.update(camera), dispose: () => sky.dispose?.() });
 systems.add("input", { dispose: () => input.dispose?.() });
 systems.add("builder", { dispose: () => builder.dispose?.() });

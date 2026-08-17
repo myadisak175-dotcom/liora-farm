@@ -60,6 +60,17 @@ vendor/three/addons/loaders/GLTFLoader.js
 
 Nothing else changes — the import map is built at boot from whichever is there.
 
+## Middle-ground trees
+
+`src/systems/background/tree-line.js` scatters a seeded ring of trees between
+the farm edge and the first mountain band, which was 128 m of empty ground.
+Add a kind of tree with one line in `CONFIG.treeLine.items` — a catalog id from
+`editor/nature-catalog-v2.js` and a weight. `count` is a total across the whole
+ring; only ~5% is on screen, so per-frame cost is roughly `count * 0.05 * tris`.
+
+See `docs/MIDDLE-GROUND.md` before changing the sector count — the chunking is
+what makes frustum culling work at all.
+
 ## Module rules
 
 No build step means no bundler, so two mistakes fail silently in the browser

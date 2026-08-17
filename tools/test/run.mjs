@@ -36,6 +36,7 @@ const PAGES = [
   { file: "tools/test/wind-shadow.test.html", viewports: [[900, 800]] },
   { file: "tools/test/player-water-shader.test.html", viewports: [[900, 800]] },
   { file: "tools/test/instanced-pool.test.html", viewports: [[900, 800]] },
+  { file: "tools/test/tree-line.test.html", viewports: [[900, 800]] },
   { file: "tools/test/local-store.test.html", viewports: [[900, 800]] },
   { file: "tools/test/runtime-modules.test.html", viewports: [[900, 800]] },
   { file: "tools/test/ground-layers.test.html", viewports: [[900, 800]] },

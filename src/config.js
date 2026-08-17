@@ -120,6 +120,48 @@ export const CONFIG = Object.freeze({
     skyBlendEnd: 460,
     renderOrder: -8,
   },
+  /**
+   * Scattered trees between the farm edge and the first mountain band.
+   *
+   * Everything else in the world sat past 166 m, which left 128 m of flat
+   * ground in the band that fills the most screen. `count` is the dial that
+   * matters — it is a total across the whole ring, and only about 5% of the
+   * ring is in frustum on a portrait phone, so the visible triangle cost is
+   * roughly `count * 0.05 * (average tris of the picks below)`.
+   *
+   * 420 pines/dead trees averaging ~2.3k triangles works out near 48k visible
+   * triangles. Raise it and watch worst-frame in `?perf=1`, not average FPS.
+   *
+   * Items are catalog ids from editor/nature-catalog-v2.js, so adding a kind
+   * of tree here is one line and no code. Anything under `minHeight` is
+   * refused: a 0.69 m bush is ~8 px tall at 60 m and cannot be seen.
+   */
+  treeLine: {
+    enabled: true,
+    innerRadius: 52,
+    outerRadius: 96,
+    count: 420,
+    sectors: 16,
+    clumps: 11,
+    clumpSpread: 0.30,
+    scaleJitter: 0.26,
+    minHeight: 1.5,
+    sink: 0.15,
+    seed: 20260817,
+    items: [
+      // Pines lead: the cheapest real trees in the set at ~2.1k each, and a
+      // conifer silhouette reads at distance better than a round canopy.
+      { id: "v2-pinetree-2", weight: 3 },
+      { id: "v2-pinetree-1", weight: 3 },
+      { id: "v2-pinetree-4", weight: 2 },
+      { id: "v2-pinetree-5", weight: 2 },
+      { id: "v2-pinetree-3", weight: 1 },
+      // A few broadleaf and bare trees so the band is not one repeated shape.
+      { id: "v2-birchtree-4", weight: 1 },
+      { id: "v2-deadtree-5", weight: 1 },
+      { id: "v2-rock-4", weight: 1 },
+    ],
+  },
   mountainBackdrop: {
     enabled: true,
     hazeStrength: 0.45,
