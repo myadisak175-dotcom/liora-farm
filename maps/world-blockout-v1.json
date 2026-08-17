@@ -1,0 +1,300 @@
+{
+  "version": 2,
+  "mapId": "world-blockout-v1",
+  "name": "Liora World Blockout v1",
+  "savedAt": "2026-08-17T14:22:00.000Z",
+  "note": "Blockout only. Test the full loop before replacing placeholders with final Town/Forest art. home-island remains untouched.",
+  "horizon": {},
+  "objects": [
+    {
+      "id": "14fae693-b145-4b0f-a786-c3510ccf6b01",
+      "assetId": "house",
+      "x": -8,
+      "z": 8.2,
+      "rotation": -3.6,
+      "scale": 1.36
+    },
+    {
+      "id": "ad3fbcd7-86c3-48fd-8cf6-9694ed14b44a",
+      "assetId": "v2-normaltree-1",
+      "x": 0.2,
+      "z": 7.2,
+      "rotation": 0.2,
+      "scale": 1.35
+    },
+    {
+      "id": "66376674-6c48-4216-9844-fe1e6b0ec839",
+      "assetId": "house2",
+      "x": 13.8,
+      "z": 10.8,
+      "rotation": -2.7,
+      "scale": 1.15
+    },
+    {
+      "id": "9ab1e64f-c36c-413b-b739-0705711c7ec6",
+      "assetId": "house",
+      "x": 14.8,
+      "z": 5.2,
+      "rotation": -1.7,
+      "scale": 1.15
+    },
+    {
+      "id": "7e90f4f3-a5dd-4b16-a645-b646de69b7df",
+      "assetId": "house2",
+      "x": 8.7,
+      "z": 11.8,
+      "rotation": 2.7,
+      "scale": 1.08
+    },
+    {
+      "id": "cbcd65ad-f8b7-45cd-ab46-086b76fa50f8",
+      "assetId": "v2-pinetree-1",
+      "x": 6.4,
+      "z": 8.7,
+      "rotation": 0,
+      "scale": 0.92
+    },
+    {
+      "id": "dbbc89f0-4216-4b15-b1e7-98342143bad9",
+      "assetId": "v2-pinetree-2",
+      "x": 6,
+      "z": 5,
+      "rotation": 0,
+      "scale": 0.92
+    },
+    {
+      "id": "036c58fb-b90d-4737-b96a-6f9bc0f44d96",
+      "assetId": "path_tile",
+      "x": 4.9,
+      "z": -3,
+      "rotation": 0,
+      "scale": 1
+    },
+    {
+      "id": "e3ee5615-25ad-4870-a865-d01f7759ec21",
+      "assetId": "path_tile",
+      "x": 6,
+      "z": -3,
+      "rotation": 0,
+      "scale": 1
+    },
+    {
+      "id": "77726549-a69b-4b97-b158-b232fc11811b",
+      "assetId": "path_tile",
+      "x": 7.1,
+      "z": -3,
+      "rotation": 0,
+      "scale": 1
+    },
+    {
+      "id": "b6c9df40-435f-4c18-bfb3-44fc65e4de40",
+      "assetId": "v2-normaltree-2",
+      "x": 7.4,
+      "z": -10.6,
+      "rotation": -0.5,
+      "scale": 1
+    },
+    {
+      "id": "62ca1559-8ae1-4832-871a-9e7b0cdab14a",
+      "assetId": "v2-pinetree-3",
+      "x": -7,
+      "z": -9.4,
+      "rotation": 0.1,
+      "scale": 1.15
+    },
+    {
+      "id": "719dd48d-3ce1-4c3d-b46f-fe6c67de09b1",
+      "assetId": "v2-pinetree-4",
+      "x": -7,
+      "z": -14.6,
+      "rotation": -0.1,
+      "scale": 1.15
+    },
+    {
+      "id": "69649f3a-a859-4bf7-9cc9-6db7e3ad9fc0",
+      "assetId": "v2-normaltree-3",
+      "x": -14.2,
+      "z": -13.4,
+      "rotation": 0.4,
+      "scale": 1.4
+    },
+    {
+      "id": "f052d9bc-e319-470b-95d0-85688788c07c",
+      "assetId": "v2-normaltree-4",
+      "x": 2.4,
+      "z": 24.7,
+      "rotation": -0.2,
+      "scale": 1.35
+    }
+  ],
+  "blockout": {
+    "terrain": {
+      "baseHeight": 0,
+      "edgeFade": {
+        "start": 34,
+        "end": 40
+      },
+      "hills": [
+        {
+          "x": 0,
+          "z": 23,
+          "radius": 12,
+          "innerRadius": 3,
+          "height": 2.35
+        }
+      ],
+      "lakes": [
+        {
+          "x": 12,
+          "z": -12,
+          "radius": 10,
+          "innerRadius": 5.5,
+          "depth": -1.45
+        }
+      ],
+      "rivers": [
+        {
+          "points": [[7, 1], [6, -3], [8, -7], [10, -10], [12, -12]],
+          "width": 1.15,
+          "feather": 3,
+          "depth": -0.95
+        }
+      ],
+      "bridges": [
+        {
+          "x": 6,
+          "z": -3,
+          "halfWidth": 1.7,
+          "halfDepth": 1.35,
+          "feather": 0.7,
+          "height": 0.02
+        }
+      ],
+      "flats": [
+        { "x": -5.2, "z": -2.8, "radius": 3.2, "innerRadius": 2.4, "height": 0 },
+        { "x": -8, "z": 8.2, "radius": 3.2, "innerRadius": 2.5, "height": 0 },
+        { "x": 0, "z": 4, "radius": 4.2, "innerRadius": 3.2, "height": 0 },
+        { "x": 11, "z": 8, "radius": 5.5, "innerRadius": 4.4, "height": 0 },
+        { "x": 0, "z": 23, "radius": 3.2, "innerRadius": 2.4, "height": 1.9 }
+      ]
+    },
+    "paint": {
+      "autoSurface": true,
+      "layerIds": {
+        "dirt": 0,
+        "sand": 1,
+        "meadow": 6,
+        "cobble": 7
+      },
+      "areas": [
+        { "x": 0, "z": 4, "radius": 4.2, "layer": "cobble", "strength": 1 },
+        { "x": 11, "z": 8, "radius": 4.4, "layer": "cobble", "strength": 1 },
+        { "x": -5, "z": -3, "radius": 3.2, "layer": "dirt", "strength": 1 },
+        { "x": 0, "z": 23, "radius": 3.2, "layer": "cobble", "strength": 1 },
+        { "x": -12, "z": -12, "radius": 4.5, "layer": "meadow", "strength": 0.85 },
+        { "x": -15, "z": -9, "radius": 4.5, "layer": "meadow", "strength": 0.85 },
+        { "x": -10, "z": -16, "radius": 4.5, "layer": "meadow", "strength": 0.85 },
+        { "x": -16, "z": -15, "radius": 4.5, "layer": "meadow", "strength": 0.85 },
+        { "x": -8, "z": -10, "radius": 4.5, "layer": "meadow", "strength": 0.85 },
+        { "x": -14, "z": -5, "radius": 4.5, "layer": "meadow", "strength": 0.85 }
+      ],
+      "routes": [
+        {
+          "name": "Home to Farm",
+          "points": [[-8, 8], [-6, 3], [-5, -3]],
+          "radius": 1.55,
+          "layer": "dirt",
+          "step": 1.1
+        },
+        {
+          "name": "Farm to Hub",
+          "points": [[-5, -3], [-2, 1], [0, 4]],
+          "radius": 1.85,
+          "layer": "cobble",
+          "step": 1.25
+        },
+        {
+          "name": "Hub to Town",
+          "points": [[0, 4], [5.5, 6.6], [11, 8]],
+          "radius": 1.9,
+          "layer": "cobble",
+          "step": 1.25
+        },
+        {
+          "name": "Town to Bridge",
+          "points": [[11, 8], [8, 3], [7, 1], [6, -3]],
+          "radius": 1.8,
+          "layer": "cobble",
+          "step": 1.15
+        },
+        {
+          "name": "Bridge to Lake",
+          "points": [[6, -3], [8, -7], [10, -10], [12, -12]],
+          "radius": 1.5,
+          "layer": "dirt",
+          "step": 1.05
+        },
+        {
+          "name": "Lake to Forest",
+          "points": [[12, -12], [5, -14], [0, -14], [-7, -12], [-12, -12]],
+          "radius": 1.45,
+          "layer": "dirt",
+          "step": 1.1
+        },
+        {
+          "name": "Forest to Farm",
+          "points": [[-12, -12], [-13, -5], [-9, -3], [-5, -3]],
+          "radius": 1.45,
+          "layer": "dirt",
+          "step": 1.1
+        },
+        {
+          "name": "Hub to Special Point",
+          "points": [[0, 4], [0, 12], [-0.8, 18], [0, 23]],
+          "radius": 1.5,
+          "layer": "dirt",
+          "step": 1.15
+        },
+        {
+          "name": "Home shortcut",
+          "points": [[-8, 8], [-4, 10.5], [0, 12]],
+          "radius": 0.95,
+          "layer": "dirt",
+          "step": 0.8
+        },
+        {
+          "name": "Lake to Farm shortcut",
+          "points": [[12, -12], [5, -9], [0, -6], [-5, -3]],
+          "radius": 0.9,
+          "layer": "dirt",
+          "step": 0.75
+        },
+        {
+          "name": "Forest to Hill shortcut",
+          "points": [[-12, -12], [-16, -4], [-14, 7], [-8, 15], [-0.8, 18]],
+          "radius": 0.85,
+          "layer": "dirt",
+          "step": 0.75
+        },
+        {
+          "name": "Bridge marker",
+          "points": [[4.8, -3], [7.2, -3]],
+          "radius": 1.25,
+          "layer": "cobble",
+          "step": 0.6
+        }
+      ],
+      "rings": [
+        {
+          "x": 12,
+          "z": -12,
+          "radius": 8.2,
+          "count": 12,
+          "stampRadius": 2.2,
+          "layer": "sand",
+          "strength": 0.65
+        }
+      ]
+    }
+  }
+}
