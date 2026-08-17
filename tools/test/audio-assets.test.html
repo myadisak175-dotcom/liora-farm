@@ -66,7 +66,9 @@ await test("the runtime never references the corrupt legacy leaf file", async ()
   assert(!filesBlock.includes("footstep_forest_leaves.mp3"), "corrupt leaf MP3 is still referenced");
   assert(filesBlock.includes("footstep_grass_soft.mp3"), "clean walking fallback is missing");
   assert(source.includes("unlockFromFirstGesture"), "normal first game touch no longer unlocks audio");
-  assert(source.includes("createMediaElementSource"), "long tracks are no longer streamed");
+  assert(source.includes('document.createElement("audio")'), "long tracks are no longer streamed natively");
+  assert(!source.includes("createMediaElementSource"), "Android media is still routed through Web Audio");
+  assert(source.includes("track.audio.volume"), "native stream crossfade is missing");
   for (const file of streamFiles) assert(source.includes(file), `${file} is not wired into the runtime`);
 });
 
@@ -74,8 +76,8 @@ await test("slow walking stays quieter while dawn and daytime stay bird-only", a
   const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
   assert(source.includes("walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.30 }"), "slow walk gain changed");
   assert(source.includes("if (hour < 5.2) return clamp01(1 - (hour - 4.8) / 0.4);"), "crickets overlap the bird layer at dawn");
-  assert(source.includes("setStreamTarget(streams?.birds, STREAM_MIX.birds * bird)"), "daytime bird stream is missing");
-  assert(source.includes("setStreamTarget(streams?.night, STREAM_MIX.night * cricket)"), "night forest stream is missing");
+  assert(source.includes("setStreamTarget(streams?.birds, STREAM_MIX.birds * bird, dt)"), "daytime bird stream is missing");
+  assert(source.includes("setStreamTarget(streams?.night, STREAM_MIX.night * cricket, dt)"), "night forest stream is missing");
   assert(source.includes("normalizeFootstep"), "quiet footstep files are no longer normalized");
 });
 
@@ -84,6 +86,7 @@ await test("one missing long track cannot silence footsteps or the other streams
   assert(source.includes("result[name] = null"), "stream creation is not isolated per file");
   assert(source.includes("Promise.allSettled"), "footstep fallbacks no longer settle independently");
   assert(source.includes("last-resort fallback"), "procedural ambience fallback is missing");
+  assert(source.includes("แตะปุ่มเสียงอีกครั้ง"), "blocked mobile playback no longer prompts a retry");
 });
 
 window.__results = results;

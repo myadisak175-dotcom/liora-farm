@@ -28,10 +28,10 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio v12: stream supplied music and time-of-day ambience on mobile.
+  // Audio v13: use native mobile output for long music and ambience tracks.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio12";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio13";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {

@@ -15,8 +15,8 @@ const STREAM_FILES = Object.freeze({
   birds: "ambience_morning_birdsong.mp3",
   night: "ambience_forest_night.mp3",
 });
-const STREAM_MIX = Object.freeze({ music: 0.18, birds: 0.55, night: 0.55 });
-const AUDIO_REVISION = "audio12";
+const STREAM_MIX = Object.freeze({ music: 0.24, birds: 0.80, night: 0.80 });
+const AUDIO_REVISION = "audio13";
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
 // offsets pointed beyond the usable audio and caused audio initialization to
@@ -101,7 +101,7 @@ const debug = new URLSearchParams(location.search).get("audiodebug") === "1"
     })()
   : null;
 
-let context = null, master = null, musicBus = null, ambienceBus = null, footstepBus = null;
+let context = null, master = null, ambienceBus = null, footstepBus = null;
 let buffers = null, streams = null;
 let unlocked = false, muted = false, loading = false, disposed = false;
 let loadError = "";
@@ -126,33 +126,36 @@ function clearRuntimeError(name) {
   syncLoadError();
 }
 
-function createStream(name, file, bus) {
-  const audio = new Audio(`${AUDIO_BASE}${file}?v=${AUDIO_REVISION}`);
+function createStream(name, file) {
+  const audio = document.createElement("audio");
+  audio.src = `${AUDIO_BASE}${file}?v=${AUDIO_REVISION}`;
   audio.loop = true;
   audio.preload = "auto";
   audio.playsInline = true;
-  const source = context.createMediaElementSource(audio);
-  const gain = context.createGain();
-  gain.gain.value = 0;
-  source.connect(gain).connect(bus);
-  const track = { name, file, audio, source, gain, state: "idle", target: 0, disposed: false };
+  audio.setAttribute("playsinline", "");
+  audio.setAttribute("webkit-playsinline", "");
+  audio.volume = 0;
+  audio.hidden = true;
+  document.body.append(audio);
+  const track = { name, file, audio, state: "idle", target: 0, disposed: false };
   audio.addEventListener("error", () => {
     if (disposed || track.disposed) return;
     track.state = "failed";
     setRuntimeError(name, `media error ${audio.error?.code ?? "unknown"}`);
+    updateAudioButton();
   });
   return track;
 }
 
 function createStreams() {
-  if (typeof Audio !== "function") {
+  if (!document?.createElement) {
     for (const name of Object.keys(STREAM_FILES)) setRuntimeError(name, "HTML Audio is unavailable");
     return {};
   }
   const result = {};
   for (const [name, file] of Object.entries(STREAM_FILES)) {
     try {
-      result[name] = createStream(name, file, name === "music" ? musicBus : ambienceBus);
+      result[name] = createStream(name, file);
     } catch (error) {
       result[name] = null;
       setRuntimeError(name, error);
@@ -161,34 +164,78 @@ function createStreams() {
   return result;
 }
 
+function streamsNeedRetry() {
+  return Object.values(streams ?? {}).some((track) => !track || ["starting", "blocked", "failed"].includes(track.state));
+}
+
+function primeStreamVolumes(hour) {
+  const h = Number.isFinite(hour) ? hour : 12;
+  const levels = {
+    music: STREAM_MIX.music,
+    birds: STREAM_MIX.birds * birdWeight(h),
+    night: STREAM_MIX.night * nightWeight(h),
+  };
+  for (const [name, level] of Object.entries(levels)) {
+    const track = streams?.[name];
+    if (!track) continue;
+    track.target = clamp01(level);
+    track.audio.volume = track.target;
+  }
+}
+
+function updateAudioButton() {
+  if (loading) {
+    button.textContent = "… เสียง";
+    return;
+  }
+  if (muted) {
+    button.textContent = "🔇 เสียง";
+    return;
+  }
+  const tracks = Object.values(streams ?? {}).filter(Boolean);
+  const playing = tracks.filter((track) => track.state === "playing").length;
+  if (!unlocked) button.textContent = "🔊 เปิดเสียง";
+  else if (tracks.length > 0 && playing === tracks.length) button.textContent = "🔊 เสียง";
+  else if (playing > 0 || buffers) button.textContent = "⚠️ เสียงบางส่วน";
+  else button.textContent = "⚠️ เปิดเสียง";
+}
+
 function startStream(track) {
-  if (!track || track.disposed || disposed || (!track.audio.paused && track.state === "playing")) return;
+  if (!track || track.disposed || disposed) return Promise.resolve(false);
+  if (!track.audio.paused && ["starting", "playing"].includes(track.state)) return Promise.resolve(true);
   track.state = "starting";
   try {
-    Promise.resolve(track.audio.play()).then(() => {
+    return Promise.resolve(track.audio.play()).then(() => {
       if (track.disposed || disposed) return;
       track.state = "playing";
       clearRuntimeError(track.name);
+      updateAudioButton();
+      return true;
     }).catch((error) => {
       if (track.disposed || disposed) return;
       track.state = "blocked";
       setRuntimeError(track.name, error);
+      updateAudioButton();
+      return false;
     });
   } catch (error) {
     track.state = "blocked";
     setRuntimeError(track.name, error);
+    updateAudioButton();
+    return Promise.resolve(false);
   }
 }
 
 function startAllStreams() {
-  for (const track of Object.values(streams ?? {})) startStream(track);
+  return Promise.all(Object.values(streams ?? {}).map((track) => startStream(track)));
 }
 
-function setStreamTarget(track, target, timeConstant = 0.55) {
-  if (!track || !context || Math.abs(track.target - target) < 0.001) return;
-  track.target = target;
-  track.gain.gain.cancelScheduledValues(context.currentTime);
-  track.gain.gain.setTargetAtTime(target, context.currentTime, timeConstant);
+function setStreamTarget(track, target, dt) {
+  if (!track) return;
+  track.target = clamp01(target);
+  const blend = 1 - Math.exp(-Math.max(0.001, dt) / 0.42);
+  const next = track.audio.volume + (track.target - track.audio.volume) * blend;
+  track.audio.volume = Math.abs(next - track.target) < 0.001 ? track.target : clamp01(next);
 }
 
 function destroyStreams() {
@@ -196,9 +243,9 @@ function destroyStreams() {
     if (!track) continue;
     track.disposed = true;
     try { track.audio.pause(); } catch {}
-    try { track.source.disconnect(); track.gain.disconnect(); } catch {}
     track.audio.removeAttribute("src");
     try { track.audio.load(); } catch {}
+    track.audio.remove();
   }
   streams = null;
 }
@@ -241,89 +288,109 @@ async function fetchBuffer(name) {
 async function ensureAudio() {
   if (unlocked || loading || disposed) return;
   loading = true;
-  button.textContent = "… เสียง";
+  updateAudioButton();
   runtimeErrors.clear();
   syncLoadError();
+  let readyToast = "เสียงโหลดไม่สำเร็จ";
   try {
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextCtor) throw new Error("Web Audio ไม่รองรับ");
-    context = new AudioContextCtor({ latencyHint: "interactive" });
+    // Native media output is the most reliable path for long tracks on
+    // Android. Call play() before the first await so it remains inside the
+    // user's gesture; Web Audio below is reserved for short footsteps.
+    streams ??= createStreams();
+    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
+    const streamStarts = startAllStreams();
 
-    master = context.createGain();
-    musicBus = context.createGain();
-    ambienceBus = context.createGain();
-    footstepBus = context.createGain();
-    master.gain.value = 0.95;
-    musicBus.gain.value = 1;
-    ambienceBus.gain.value = 1;
-    footstepBus.gain.value = 0.88;
-    musicBus.connect(master);
-    ambienceBus.connect(master);
-    footstepBus.connect(master);
-    master.connect(context.destination);
+    try {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) throw new Error("Web Audio ไม่รองรับ");
+      context = new AudioContextCtor({ latencyHint: "interactive" });
+      master = context.createGain();
+      ambienceBus = context.createGain();
+      footstepBus = context.createGain();
+      master.gain.value = 0.95;
+      ambienceBus.gain.value = 1;
+      footstepBus.gain.value = 0.88;
+      ambienceBus.connect(master);
+      footstepBus.connect(master);
+      master.connect(context.destination);
+      await context.resume();
 
-    // Start the long streaming tracks before the first await so mobile
-    // browsers see play() inside the user's gesture. They stay at zero gain
-    // until updateAmbience applies the correct time-of-day mix.
-    streams = createStreams();
-    startAllStreams();
-    await context.resume();
+      const names = Object.keys(FILES);
+      const settled = await Promise.allSettled(names.map(async (name) => [name, await fetchBuffer(name)]));
+      const decoded = {}, errors = {};
+      settled.forEach((result, index) => {
+        const name = names[index];
+        if (result.status === "fulfilled") {
+          decoded[name] = result.value[1].buffer;
+          resolvedFiles[name] = result.value[1].file;
+        } else errors[name] = String(result.reason?.message ?? result.reason);
+      });
+      if (!decoded.walk) throw new Error(`walk: ${errors.walk || "decode failed"}`);
+      decoded.run ??= decoded.walk;
+      resolvedFiles.run ??= resolvedFiles.walk;
+      buffers = decoded;
+      for (const [name, message] of Object.entries(errors)) setRuntimeError(name, message);
+    } catch (error) {
+      console.warn("Liora footstep audio init failed", error);
+      setRuntimeError("footsteps", error);
+      try { await context?.close?.(); } catch {}
+      context = master = ambienceBus = footstepBus = null;
+      buffers = null;
+    }
 
-    const names = Object.keys(FILES);
-    const settled = await Promise.allSettled(names.map(async (name) => [name, await fetchBuffer(name)]));
-    const decoded = {}, errors = {};
-    settled.forEach((result, index) => {
-      const name = names[index];
-      if (result.status === "fulfilled") {
-        decoded[name] = result.value[1].buffer;
-        resolvedFiles[name] = result.value[1].file;
-      }
-      else errors[name] = String(result.reason?.message ?? result.reason);
-    });
-    if (!decoded.walk) throw new Error(`walk: ${errors.walk || "decode failed"}`);
-    decoded.run ??= decoded.walk;
-    resolvedFiles.run ??= resolvedFiles.walk;
-    buffers = decoded;
-    for (const [name, message] of Object.entries(errors)) setRuntimeError(name, message);
-
-    unlocked = true;
+    await Promise.race([
+      streamStarts,
+      new Promise((resolve) => setTimeout(resolve, 3500)),
+    ]);
+    const mediaReady = Object.values(streams ?? {}).some((track) => track?.state === "playing");
+    unlocked = Boolean(mediaReady || buffers);
     muted = false;
     lastPosition = null;
     distanceSinceStep = 0;
     activeProfile = "-";
-    button.textContent = "🔊 เสียง";
-    toast("🔊 เสียงพร้อมแล้ว");
+    readyToast = mediaReady ? "🔊 เสียงพร้อมแล้ว" : "แตะปุ่มเสียงอีกครั้ง";
   } catch (error) {
     console.error("Liora audio init failed", error);
     setRuntimeError("audio", error);
-    button.textContent = "⚠️ เสียง";
-    toast("เสียงโหลดไม่สำเร็จ");
-    destroyStreams();
-    try { await context?.close?.(); } catch {}
-    context = master = musicBus = ambienceBus = footstepBus = null;
-    buffers = null;
+    unlocked = false;
   } finally {
     loading = false;
+    updateAudioButton();
+    toast(readyToast);
   }
 }
 
 function setMuted(next) {
   muted = Boolean(next);
   if (!muted) {
+    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
     context?.resume?.().catch((error) => setRuntimeError("context", error));
-    startAllStreams();
+    void startAllStreams();
+  } else {
+    for (const track of Object.values(streams ?? {})) {
+      if (!track) continue;
+      track.target = 0;
+      track.audio.volume = 0;
+    }
   }
   if (master && context) {
     master.gain.cancelScheduledValues(context.currentTime);
     master.gain.setTargetAtTime(muted ? 0 : 0.95, context.currentTime, 0.03);
   }
-  button.textContent = muted ? "🔇 เสียง" : "🔊 เสียง";
+  updateAudioButton();
 }
 
 button.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   event.stopPropagation();
   if (!unlocked) ensureAudio();
+  else if (streamsNeedRetry()) {
+    muted = false;
+    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
+    context?.resume?.().catch((error) => setRuntimeError("context", error));
+    void startAllStreams().then(() => updateAudioButton());
+    updateAudioButton();
+  }
   else setMuted(!muted);
 });
 
@@ -338,7 +405,7 @@ document.addEventListener("pointerdown", unlockFromFirstGesture, { capture: true
 const resumeAfterVisibility = () => {
   if (document.hidden || !unlocked || muted || disposed) return;
   context?.resume?.().catch((error) => setRuntimeError("context", error));
-  startAllStreams();
+  void startAllStreams();
 };
 document.addEventListener("visibilitychange", resumeAfterVisibility);
 
@@ -392,6 +459,7 @@ function playAmbientTone({ startAt, fromHz, toHz, duration, gain, type = "sine" 
 }
 
 function playBirdCall(weight) {
+  if (!context || !ambienceBus) return;
   const now = context.currentTime + 0.015;
   const base = 1_850 + Math.random() * 650;
   const gain = 0.075 + weight * 0.055;
@@ -400,6 +468,7 @@ function playBirdCall(weight) {
 }
 
 function playCricketCall(weight) {
+  if (!context || !ambienceBus) return;
   const now = context.currentTime + 0.01;
   const gain = 0.012 + weight * 0.020;
   const base = 3_650 + Math.random() * 550;
@@ -415,14 +484,15 @@ function playCricketCall(weight) {
   }
 }
 
-function updateAmbience(hour) {
-  // Long music and ambience tracks stream through media elements instead of
-  // being decoded into RAM. Only the short footsteps use AudioBuffers.
+function updateAmbience(hour, dt) {
+  // Long tracks play through native media output and crossfade with element
+  // volume. This avoids the silent MediaElementSource path seen on some
+  // Android devices while still keeping decoded audio out of RAM.
   const bird = muted ? 0 : birdWeight(hour);
   const cricket = muted ? 0 : nightWeight(hour);
-  setStreamTarget(streams?.music, muted ? 0 : STREAM_MIX.music);
-  setStreamTarget(streams?.birds, STREAM_MIX.birds * bird);
-  setStreamTarget(streams?.night, STREAM_MIX.night * cricket);
+  setStreamTarget(streams?.music, muted ? 0 : STREAM_MIX.music, dt);
+  setStreamTarget(streams?.birds, STREAM_MIX.birds * bird, dt);
+  setStreamTarget(streams?.night, STREAM_MIX.night * cricket, dt);
 
   // A failed or autoplay-blocked ambience file must not take the whole sound
   // system down. Keep the compact synthesized calls as a last-resort fallback.
@@ -492,17 +562,18 @@ function update(now) {
     activeProfile = "-";
   }
 
-  if (unlocked) updateAmbience(Number.isFinite(hour) ? hour : 12);
+  if (unlocked) updateAmbience(Number.isFinite(hour) ? hour : 12, dt);
 
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V12 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V13 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,
       `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"}`,
-      `music=${streams?.music?.state ?? "-"} birds=${streams?.birds?.state ?? "-"} night=${streams?.night?.state ?? "-"}`,
+      `music=${streams?.music?.state ?? "-"}@${(streams?.music?.audio.volume ?? 0).toFixed(2)}`,
+      `birds=${streams?.birds?.state ?? "-"}@${(streams?.birds?.audio.volume ?? 0).toFixed(2)} night=${streams?.night?.state ?? "-"}@${(streams?.night?.audio.volume ?? 0).toFixed(2)}`,
       loadError ? `err=${loadError}` : "err=-",
     ].join("\n");
   }
@@ -517,7 +588,11 @@ window.__lioraAudio = {
   get status() {
     return {
       unlocked, muted, loading, footstep: currentFoot, steps: stepCount, error: loadError,
-      streams: Object.fromEntries(Object.entries(streams ?? {}).map(([name, track]) => [name, track?.state ?? "failed"])),
+      streams: Object.fromEntries(Object.entries(streams ?? {}).map(([name, track]) => [name, {
+        state: track?.state ?? "failed",
+        volume: track?.audio.volume ?? 0,
+        paused: track?.audio.paused ?? true,
+      }])),
     };
   },
   dispose() {

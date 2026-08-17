@@ -1,6 +1,6 @@
 # Liora Farm — Audio Foundation v4
 
-Short footsteps are decoded into Web Audio buffers. The longer music and ambience files stream through media elements, which avoids keeping several minutes of decoded audio in mobile RAM. Morning/day birds and evening/night forest ambience crossfade from the in-game clock; synthesized calls remain only as a fallback if an ambience stream cannot start.
+Short footsteps are decoded into Web Audio buffers. The longer music and ambience files stream through native media-element output, which avoids both keeping several minutes of decoded audio in mobile RAM and the silent `MediaElementSource` path seen on some Android devices. Morning/day birds and evening/night forest ambience crossfade from the in-game clock; synthesized calls remain only as a fallback if an ambience stream cannot start.
 
 | Runtime file | Supplied source filename | Use |
 |---|---|---|
