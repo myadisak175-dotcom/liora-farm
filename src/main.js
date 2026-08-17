@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CONFIG, QUALITY, ASSETS, ANIMATIONS, BUILD } from "./config.js?v=floating-island-b-lite";
+import { CONFIG, QUALITY, ASSETS, ANIMATIONS, BUILD } from "./config.js";
 import { createPlayer } from "./entities/player.js";
 import { createHomeIsland } from "./zones/home-island.js";
 import { createInput } from "./systems/input.js";
@@ -26,11 +26,13 @@ import { createSculptControls } from "./editor/sculpt-controls.js";
 import { createHorizonControls } from "./editor/horizon-controls.js";
 import { HORIZON_STORAGE_KEY } from "./systems/horizon-settings.js";
 import { createNotifications } from "./ui/notifications.js";
+import { setStoreReporter, storageFootprint } from "./systems/local-store.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
-import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js?v=floating-island-b-lite";
+import { createSystemRegistry } from "./systems/registry.js";
+import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
 
 window.__lioraBuild = BUILD;
 window.__lioraBooted = false;
@@ -44,6 +46,10 @@ const pouchEl = document.querySelector("#pouch");
 const pouchCount = document.querySelector("#pouch-count");
 const toastEl = document.querySelector("#toast");
 const { setStatus, toast } = createNotifications({ statusElement: status, toastElement: toastEl });
+// Every localStorage failure now reaches the player. A full quota used to be a
+// console.warn nobody on a phone would ever see, while terrain sculpting
+// quietly stopped being saved.
+setStoreReporter(toast);
 let farmUI = null;
 
 setBootState("renderer");
@@ -167,6 +173,16 @@ window.__liora = {
   get terrainField() { return world.terrainField; },
   get missingTextures() { return world.missingTextures; },
   get wind() { return wind; },
+  get systems() { return systems.names; },
+  /**
+   * Tear the whole game down. Nothing calls this yet — it exists so that
+   * loading a second map without a page reload is a change to main.js rather
+   * than a hunt through 34 listeners.
+   */
+  dispose() {
+    systems.dispose();
+    renderer.dispose();
+  },
 };
 
 const builderLoader = createBuilderAssetLoader({ gltfLoader: new GLTFLoader() });
@@ -251,6 +267,7 @@ horizonPanel = createHorizonControls({
   renderer,
   lighting,
   cameraController,
+  floatingIslandBackdrop,
   container: document.querySelector("#horizon-strip"),
   surface: renderer.domElement,
   storageKey: mapScope.key(HORIZON_STORAGE_KEY),
@@ -344,10 +361,23 @@ function reportRescuedSaves() {
     ["การปั้นพื้น", world.height],
     ["แปลงผัก", world.crops],
   ].filter(([, owner]) => owner.storeIssue && owner.storeIssue.kind !== "save-failed");
-  if (!rescued.length) return;
-  const names = rescued.map(([label]) => label).join(", ");
-  toast("ข้อมูลเดิมบางส่วนอ่านไม่ได้ — สำรองไว้ให้แล้ว");
-  builderUI?.warn(`อ่านข้อมูลเดิมไม่ได้: ${names} — สำรองไว้ ยังไม่ได้ลบทิ้ง`);
+  if (rescued.length) {
+    const names = rescued.map(([label]) => label).join(", ");
+    toast("ข้อมูลเดิมบางส่วนอ่านไม่ได้ — สำรองไว้ให้แล้ว");
+    builderUI?.warn(`อ่านข้อมูลเดิมไม่ได้: ${names} — สำรองไว้ ยังไม่ได้ลบทิ้ง`);
+    return;
+  }
+
+  // Backups from *earlier* sessions never expire, by design — an autosave
+  // eating one is the bug local-store.js exists to prevent. So the only thing
+  // between them and a full ~5 MB phone quota is telling the player they are
+  // there. Silence is what turns this into "saving just stopped working".
+  const { bytes, backups } = storageFootprint();
+  if (backups && bytes > 3_000_000) {
+    builderUI?.warn(
+      `ข้อมูลที่เก็บไว้ ${(bytes / 1e6).toFixed(1)} MB · มีไฟล์สำรองค้าง ${backups} ชุด — ใกล้เต็มโควตาเบราว์เซอร์`
+    );
+  }
 }
 
 const perfHud = createPerfHud({
@@ -392,30 +422,64 @@ QUALITY.onChange((preset) => {
 
 const clock = new THREE.Clock();
 const cameraTarget = new THREE.Vector3(0, 0.7, 5);
-function animate() {
-  requestAnimationFrame(animate);
-  const delta = Math.min(clock.getDelta(), 0.04);
-  dayNight.update(delta);
-  wind.update(delta);
-  world.refresh(delta);
-  playerRuntime.update(delta, { active: mode === "play", cameraTarget });
-  world.crops.update(delta);
-  farmUI.update(delta, { active: mode === "play" });
-  cameraController.update(cameraTarget, delta);
+
+/**
+ * The frame order, as data.
+ *
+ * It used to be a sequence of statements inside `animate()`, which is fine to
+ * read and impossible to take apart: nothing could stop the loop, and nothing
+ * knew which systems existed, so a second map could only ever be a page
+ * reload. The order below is the order that was there — it is load-bearing
+ * (movement before camera, camera before shadows, everything before render) —
+ * but it is now a list the registry walks and can also tear down.
+ *
+ * Systems that own listeners or GPU resources also expose `dispose()`, which
+ * runs in reverse registration order.
+ */
+const systems = createSystemRegistry({
+  onError: ({ name, phase }) => console.error(`"${name}" failed during ${phase}`),
+});
+
+systems.add("dayNight", dayNight);
+systems.add("wind", wind);
+systems.add("world", { update: (delta) => world.refresh(delta), dispose: () => world.dispose?.() });
+systems.add("player", {
+  update: (delta) => playerRuntime.update(delta, { active: mode === "play", cameraTarget }),
+});
+systems.add("crops", { update: (delta) => world.crops.update(delta) });
+systems.add("farmUI", { update: (delta) => farmUI.update(delta, { active: mode === "play" }) });
+systems.add("camera", {
+  update: (delta) => cameraController.update(cameraTarget, delta),
+  dispose: () => cameraController.dispose?.(),
+});
+systems.add("objectShadows", {
   // The blobs hand over to the real shadow map around the point it is centred
   // on, so they follow the same target the sun does.
-  objectShadows.setFollowPoint(cameraTarget.x, cameraTarget.z);
-  objectShadows.refresh();
-  floatingIslandBackdrop?.update(delta);
-  sky.update(camera);
-  renderer.render(scene, camera);
-  perfHud.update(delta);
-}
-addEventListener("resize", () => {
+  update: () => {
+    objectShadows.setFollowPoint(cameraTarget.x, cameraTarget.z);
+    objectShadows.refresh();
+  },
+  dispose: () => objectShadows.dispose?.(),
+});
+systems.add("floatingIslands", floatingIslandBackdrop);
+systems.add("sky", { update: () => sky.update(camera), dispose: () => sky.dispose?.() });
+systems.add("input", { dispose: () => input.dispose?.() });
+systems.add("builder", { dispose: () => builder.dispose?.() });
+systems.add("builderUI", { dispose: () => builderUI?.dispose?.() });
+systems.add("horizonPanel", { dispose: () => horizonPanel?.dispose?.() });
+
+systems.listen(window, "resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+
+function animate() {
+  const delta = Math.min(clock.getDelta(), 0.04);
+  systems.update(delta);
+  renderer.render(scene, camera);
+  perfHud.update(delta);
+}
 
 setMode("play");
 farmUI.refresh();
@@ -432,4 +496,5 @@ if (player) {
   setStatus(mapScope.isDefault ? "พร้อมเล่น" : `พร้อมเล่น • ${mapScope.entry.name}`, { autoHide: true });
 }
 else setStatus("โหลดตัวละครไม่สำเร็จ — โหมดสร้างยังใช้ได้");
-animate();
+// The registry owns the frame now, so the loop can actually be stopped.
+systems.start(animate);

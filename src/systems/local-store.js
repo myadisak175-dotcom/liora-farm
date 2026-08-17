@@ -14,7 +14,45 @@
  * This owns bytes, not meaning: it never inspects a payload beyond `version`.
  * A store whose body is the wrong shape calls `rejectLoaded()` to get the same
  * protection.
+ *
+ * Backups are never cleaned up automatically, and that is deliberate — an
+ * autosave eating the backup is the exact bug this file exists to prevent, and
+ * `local-store.test.html` pins it. The cost is that they accumulate against a
+ * ~5 MB phone quota with nothing watching, so instead of deleting them:
+ *
+ *   - `report()` sends every failure to the UI, not just `console.warn`. A
+ *     quota-full autosave used to be completely silent while the player kept
+ *     sculpting terrain that was no longer being saved.
+ *   - `discardBackup()` lets a caller drop one *after* the player has been
+ *     told it exists and chosen to let it go.
  */
+
+/**
+ * Where store failures go. Defaults to the console; `main.js` points it at the
+ * toast once the UI exists, so no store needs to know about the UI.
+ */
+let report = (message) => console.warn(message);
+
+/** Called once at boot with something that can show a message to the player. */
+export function setStoreReporter(reporter) {
+  report = typeof reporter === "function" ? reporter : (message) => console.warn(message);
+}
+
+/** Roughly how much of the origin's localStorage this game is holding. */
+export function storageFootprint() {
+  let bytes = 0;
+  let backups = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith("liora")) continue;
+      bytes += key.length + (localStorage.getItem(key)?.length ?? 0);
+      if (key.endsWith(".backup")) backups += 1;
+    }
+  } catch { /* private mode */ }
+  return { bytes, backups };
+}
+
 export function createLocalStore({ key, version }) {
   if (!key) throw new Error("Local store requires a storage key");
   if (!Number.isFinite(version)) throw new Error("Local store requires a schema version");
@@ -32,6 +70,7 @@ export function createLocalStore({ key, version }) {
       // Out of quota while trying to rescue data. Say so rather than pretend.
       lastIssue = { kind, backupKey: null };
       console.warn(`"${key}" backup failed (${kind})`, error);
+      report("พื้นที่เก็บข้อมูลเต็ม — สำรองข้อมูลเดิมไม่สำเร็จ");
     }
   }
 
@@ -46,8 +85,35 @@ export function createLocalStore({ key, version }) {
     } catch (error) {
       lastIssue = { kind: "save-failed", error: String(error) };
       console.warn(`"${key}" could not be saved`, error);
+      // The autosave path. Failing here silently means the player keeps
+      // building on top of work that is no longer being written down, which is
+      // the worst possible moment to only talk to the console.
+      const { backups } = storageFootprint();
+      report(backups
+        ? `บันทึกไม่สำเร็จ — พื้นที่เต็ม (มีไฟล์สำรองค้างอยู่ ${backups} ชุด)`
+        : "บันทึกไม่สำเร็จ — พื้นที่เก็บข้อมูลเต็ม");
       return false;
     }
+  }
+
+  /**
+   * Drop the rescued copy. For a caller that has told the player it exists and
+   * been told to let it go — never call this from an autosave path.
+   */
+  function discardBackup() {
+    try {
+      localStorage.removeItem(backupKey);
+      if (lastIssue?.backupKey === backupKey) lastIssue = null;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether a rescued copy is sitting there waiting to be dealt with. */
+  function hasBackup() {
+    try { return localStorage.getItem(backupKey) !== null; }
+    catch { return false; }
   }
 
   /** The stored payload, or null when there is nothing usable to load. */
@@ -95,6 +161,8 @@ export function createLocalStore({ key, version }) {
     load,
     rejectLoaded,
     clear,
+    hasBackup,
+    discardBackup,
     get lastIssue() {
       return lastIssue;
     },

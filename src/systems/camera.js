@@ -1,6 +1,16 @@
 import * as THREE from "three";
 
 export function createCameraController(camera, config, surface) {
+  // Every listener goes through `bind` so `dispose()` cannot miss one. A
+  // second boot that leaves these attached gives the player two orbit
+  // handlers on the same surface: the camera moves at double speed and
+  // nothing in the code looks wrong.
+  const bound = [];
+  const bind = (type, handler, options) => {
+    surface.addEventListener(type, handler, options);
+    bound.push(() => surface.removeEventListener(type, handler, options));
+  };
+
   const baseLength = config.baseOffset.length();
   const initialYaw = Math.atan2(config.baseOffset.x, config.baseOffset.z);
   const initialPitch = Math.asin(config.baseOffset.y / baseLength);
@@ -109,7 +119,7 @@ export function createCameraController(camera, config, surface) {
   document.querySelector("#zout").onclick = () => setZoom(zoom + config.zoomStep);
   document.querySelector("#camera-reset").onclick = reset;
 
-  surface.addEventListener("pointerdown", (event) => {
+  bind("pointerdown", (event) => {
     if (!orbitEnabled) return;
     if (event.pointerType === "touch" && event.isPrimary === false) return;
     orbitPointer = event.pointerId;
@@ -118,7 +128,7 @@ export function createCameraController(camera, config, surface) {
     surface.setPointerCapture?.(orbitPointer);
   });
 
-  surface.addEventListener("pointermove", (event) => {
+  bind("pointermove", (event) => {
     if (event.pointerId !== orbitPointer || pinchStart) return;
     const dx = event.clientX - lastX;
     const dy = event.clientY - lastY;
@@ -136,8 +146,8 @@ export function createCameraController(camera, config, surface) {
     if (event.pointerId === orbitPointer) orbitPointer = null;
   }
 
-  surface.addEventListener("pointerup", endOrbit);
-  surface.addEventListener("pointercancel", endOrbit);
+  bind("pointerup", endOrbit);
+  bind("pointercancel", endOrbit);
 
   function touchMid(event) {
     return {
@@ -146,7 +156,7 @@ export function createCameraController(camera, config, surface) {
     };
   }
 
-  surface.addEventListener("touchstart", (event) => {
+  bind("touchstart", (event) => {
     if (event.touches.length !== 2) return;
     pinchStart = Math.hypot(
       event.touches[0].clientX - event.touches[1].clientX,
@@ -159,7 +169,7 @@ export function createCameraController(camera, config, surface) {
     orbitPointer = null;
   }, { passive: false });
 
-  surface.addEventListener("touchmove", (event) => {
+  bind("touchmove", (event) => {
     if (event.touches.length !== 2 || !pinchStart) return;
     event.preventDefault();
     const distance = Math.hypot(
@@ -179,11 +189,17 @@ export function createCameraController(camera, config, surface) {
     pinchMidY = mid.y;
   }, { passive: false });
 
-  surface.addEventListener("touchend", (event) => {
+  bind("touchend", (event) => {
     if (event.touches.length < 2) pinchStart = null;
   });
 
   return {
+    /** Drop every gesture listener. Safe to call twice. */
+    dispose() {
+      for (const off of bound.splice(0)) off();
+      orbitPointer = null;
+      pinchStart = null;
+    },
     reset,
     pan,
     clearPan,

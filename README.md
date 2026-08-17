@@ -60,6 +60,32 @@ vendor/three/addons/loaders/GLTFLoader.js
 
 Nothing else changes — the import map is built at boot from whichever is there.
 
+## Module rules
+
+No build step means no bundler, so two mistakes fail silently in the browser
+and `tools/test/module-graph.mjs` fails the build on them instead:
+
+- **Never put `?v=` on a module specifier.** Cache-busting belongs on assets
+  fetched by URL. On an `import`, it forks module identity and defeats the
+  import map. A config aliased this way was tuned twice while the game kept
+  loading the untuned file, with no error in the console.
+- **Never alias a local module in the import map.** The import map resolves
+  three.js and nothing else. Tuned values go back into `src/config.js`, where
+  the tests can see them — every test imports `src/config.js` directly, so
+  anything swapped in over it is invisible to the whole suite.
+
+## Taking the game apart
+
+`src/systems/registry.js` owns the frame loop, the listeners and teardown.
+Systems register with `systems.add(name, system)`, where a system is anything
+with an optional `update(delta)` and an optional `dispose()`; the registration
+order *is* the frame order and is load-bearing.
+
+Nothing calls `window.__liora.dispose()` yet. It exists so that loading a
+second map without a page reload is a change to `main.js` rather than a hunt
+through every `addEventListener` in the repo. Attach listeners through
+`systems.listen()` or a local `bind` helper — never bare `addEventListener`.
+
 ## Notes
 
 - Binary files (`.glb`, `.webp`) must stay binary; do not paste them through text-only tooling.

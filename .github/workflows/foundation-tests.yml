@@ -29,5 +29,11 @@ jobs:
             node --check "$file"
           done < <(find src tools/test -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
 
+      - name: Module graph
+        # Catches the mistakes a build-less ES-module project has no bundler to
+        # catch: a specifier that no longer resolves, and cache-busting queries
+        # on module imports. Both fail silently in the browser.
+        run: node tools/test/module-graph.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs
