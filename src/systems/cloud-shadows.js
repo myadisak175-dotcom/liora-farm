@@ -136,7 +136,9 @@ export function createCloudShadows(config = {}, windConfig = {}) {
   const FRAGMENT = [
     "if ( uCloudShadowStrength > 0.0 ) {",
     "  vec2 cloudDrift = uCloudShadowDrift * uCloudShadowTime;",
-    "  vec2 cloudBaseUv = vCloudShadowWorld.xz * uCloudShadowScale + cloudDrift;",
+    // Subtracting lookup drift makes the texture feature itself travel in the
+    // positive wind direction, matching the visible cloud field in sky.js.
+    "  vec2 cloudBaseUv = vCloudShadowWorld.xz * uCloudShadowScale - cloudDrift;",
     // The second layer runs at a different scale AND a different speed, so the
     // two never line up again after the first frame and the tile stops reading
     // as a tile.

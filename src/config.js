@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-2-floating-island-framed";
+export const BUILD = "worlds-3-living-environment";
 
 export const CONFIG = Object.freeze({
   /**
@@ -329,7 +329,11 @@ export const CONFIG = Object.freeze({
   sky: {
     radius: 700, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
     cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 18, cloudRingRadius: 300,
-    cloudHeight: 132, cloudSpread: 52, cloudScale: 12,
+    // The portrait camera only exposes about 12 degrees above the horizon at
+    // its lowest pitch. y=62 at r=300 keeps the cloud bellies inside that band;
+    // the old y=132 put every puff more than 20 degrees above the screen.
+    cloudHeight: 62, cloudSpread: 52, cloudScale: 12, cloudDriftSpeed: 1.42,
+    cloudBob: 0.7, cloudMorph: 0.035,
     starCount: 220, starSize: 0.95, starOpacity: 0.9,
   },
   dayNight: { startHour: 8, realSecondsPerDay: 1440 },
@@ -361,6 +365,18 @@ export const CONFIG = Object.freeze({
     speed: 0.75,
     gust: { strength: 0.3, speed: 0.18, scale: 0.07 },
     naturePalette: { enabled: true, strength: 0.28 },
+    interaction: { enabled: true, radius: 1.35, strength: 0.52 },
+  },
+  environmentLife: {
+    enabled: true,
+    leaves: {
+      enabled: true, maxCount: 42, radius: 11, minHeight: 0.35, maxHeight: 3.1,
+      speed: 0.92, fallSpeed: 0.16, swirl: 0.34, size: 0.12,
+    },
+    insects: {
+      enabled: true, maxCount: 14, radius: 8.5, minHeight: 0.45, maxHeight: 1.75,
+      orbitMin: 0.22, orbitMax: 0.85, speedMin: 0.55, speedMax: 1.15, size: 0.16,
+    },
   },
   /**
    * `far` was 460, which put the hero island ~57% blended into the sky colour

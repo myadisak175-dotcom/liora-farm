@@ -98,11 +98,13 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
   const enabled = config.enabled !== false;
   const gust = config.gust ?? {};
   const motion = config.motion ?? {};
+  const interaction = config.interaction ?? {};
+  const interactionEnabled = interaction.enabled !== false;
   const paletteConfig = config.naturePalette ?? {};
   const paletteStrength = paletteConfig.enabled === false
     ? 0
     : clamp01(paletteConfig.strength ?? 0);
-  const visualEnabled = enabled || paletteStrength > 0;
+  const visualEnabled = enabled || interactionEnabled || paletteStrength > 0;
 
   const speedScale = Math.max(0, Number(motion.speedScale ?? NATURAL_MOTION_DEFAULTS.speedScale) || 0);
   const gustSpeedScale = Math.max(
@@ -122,6 +124,12 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
     gustSpeed: { value: Number(gust.speed ?? 0.18) * gustSpeedScale },
     gustScale: { value: Number(gust.scale ?? 0.07) },
     paletteStrength: { value: paletteStrength },
+    interactionPosition: { value: new THREE.Vector2(100000, 100000) },
+    interactionDirection: { value: normalizedDirection(config.direction) },
+    interactionRadius: { value: Math.max(0.1, Number(interaction.radius ?? 1.25) || 1.25) },
+    interactionStrength: { value: Math.max(0, Number(interaction.strength ?? 0.52) || 0) },
+    interactionMotion: { value: 0 },
+    interactionActive: { value: 0 },
   };
 
   // A depth material already had one lioraWindStrength uniform. Pointing that
@@ -160,7 +168,7 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
     up,
     bounds,
   }) {
-    if (!enabled || node.castShadow === false || Array.isArray(sourceMaterial)) return false;
+    if (!(enabled || interactionEnabled) || node.castShadow === false || Array.isArray(sourceMaterial)) return false;
 
     const key = assetKey === null ? null : `${assetKey}|${meshIndex}|depth`;
     const cached = key === null ? null : sharedDepthMaterials.get(key);
@@ -283,14 +291,48 @@ export function createWindSystem({ config = {}, quality = {} } = {}) {
   }
 
   function update(delta) {
-    if (!enabled) return;
+    if (!visualEnabled) return;
     const step = Number.isFinite(delta) ? Math.max(0, delta) : 0;
     uniforms.time.value = (uniforms.time.value + step) % 10000;
+  }
+
+  let qualityAllowsInteraction = quality?.preset?.foliageInteraction !== false
+    && quality?.foliageInteraction !== false;
+
+  function setInteraction(position, state = {}) {
+    if (!interactionEnabled || !qualityAllowsInteraction || !position) {
+      uniforms.interactionActive.value = 0;
+      return;
+    }
+
+    const x = Number(position.x);
+    const z = Number(position.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) {
+      uniforms.interactionActive.value = 0;
+      return;
+    }
+
+    uniforms.interactionPosition.value.set(x, z);
+    const dx = Number(state?.direction?.x) || 0;
+    const dz = Number(state?.direction?.z) || 0;
+    const length = Math.hypot(dx, dz);
+    if (length > 0.001) uniforms.interactionDirection.value.set(dx / length, dz / length);
+    uniforms.interactionMotion.value = state?.moving
+      ? (state?.running ? 1 : 0.82)
+      : 0;
+    uniforms.interactionActive.value = 1;
+  }
+
+  function setQuality(preset = {}) {
+    qualityAllowsInteraction = preset.foliageInteraction !== false;
+    if (!qualityAllowsInteraction) uniforms.interactionActive.value = 0;
   }
 
   return {
     attach,
     update,
+    setInteraction,
+    setQuality,
     get enabled() {
       return enabled;
     },

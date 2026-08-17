@@ -158,6 +158,12 @@ await test("touch quality preserves sway but reduces leaf flutter", () => {
   assert(touch.flutter < desktop.flutter, "touch flutter was not reduced");
 });
 
+await test("only soft ground cover responds to the player interaction field", () => {
+  assert(getPartWeights("tree", "leaf").interaction === 0, "tree canopies should not bend around the player");
+  assert(getPartWeights("grass").interaction === 1, "grass should receive the full interaction field");
+  assert(getPartWeights("flower").interaction > getPartWeights("bush").interaction, "flowers should yield more than bushes");
+});
+
 await test("wind material patches vertex shader without changing source material", () => {
   const source = material("Leaves");
   const uniforms = createWindSystem({ config: { direction: { x: 1, z: 0 } } }).uniforms;
@@ -183,6 +189,41 @@ await test("wind material patches vertex shader without changing source material
   assert(shader.vertexShader.includes("lioraWindAmount"), "vertex displacement was not injected");
   assert(shader.uniforms.lioraWindTime === uniforms.time, "wind time is not shared");
   assert(shader.uniforms.lioraWindProfile.value[3] > 0, "leaf flutter uniform missing");
+  assert(!shader.vertexShader.includes("lioraInteractionFalloff"), "heavy tree vertices should skip ground-cover interaction maths");
+});
+
+await test("one shared interaction position drives every pooled plant", () => {
+  const wind = createWindSystem({
+    config: {
+      direction: { x: 1, z: 0 },
+      interaction: { enabled: true, radius: 1.4, strength: 0.5 },
+    },
+  });
+  wind.setInteraction({ x: 3, z: -2 }, { moving: true, running: true, direction: { x: 0, z: 1 } });
+  assert(wind.uniforms.interactionPosition.value.x === 3, "interaction X did not follow the player");
+  assert(wind.uniforms.interactionPosition.value.y === -2, "interaction Z did not follow the player");
+  assert(wind.uniforms.interactionDirection.value.y === 1, "movement direction did not reach the shader");
+  assert(wind.uniforms.interactionMotion.value === 1, "running interaction did not receive its motion boost");
+  assert(wind.uniforms.interactionActive.value === 1, "interaction field stayed disabled");
+  wind.setInteraction(null);
+  assert(wind.uniforms.interactionActive.value === 0, "missing player did not clear the field");
+
+  const source = material("Grass");
+  const grass = applyWindToMaterial({
+    material: source,
+    geometry: geometry(0, 0.6),
+    mesh: { name: "Grass" },
+    profileName: "grass",
+    uniforms: wind.uniforms,
+    quality: { isTouch: true },
+  });
+  const shader = {
+    uniforms: {},
+    vertexShader: "#include <common>\nvoid main(){\n#include <begin_vertex>\n}",
+  };
+  grass.onBeforeCompile(shader, {});
+  assert(shader.vertexShader.includes("lioraInteractionFalloff"), "grass did not receive interaction maths");
+  assert(shader.uniforms.lioraInteractionPosition === wind.uniforms.interactionPosition, "grass cloned the player position uniform");
 });
 
 await test("wind system changes only materials and shared time, never object transforms", () => {

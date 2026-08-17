@@ -22,6 +22,13 @@ uniform float lioraWindAmplitude;
 uniform float lioraWindFrequency;
 uniform float lioraWindSpatial;
 uniform float lioraWindRootLock;
+uniform vec2 lioraInteractionPosition;
+uniform vec2 lioraInteractionDirection;
+uniform float lioraInteractionRadius;
+uniform float lioraInteractionStrength;
+uniform float lioraInteractionMotion;
+uniform float lioraInteractionActive;
+uniform float lioraInteractionWeight;
 `;
 
 const PALETTE_DECLARATIONS = `
@@ -113,6 +120,54 @@ transformed +=
   lioraWindLocalDir * lioraWindAmount +
   lioraWindSideDir * lioraWindFlutter +
   lioraWindUp * lioraWindFlutter * 0.05;
+`;
+
+const INTERACTION_VERTEX = `
+// Grass, flowers and soft bushes make room for Liora without changing their
+// Object3D transforms or collision data. The distance field is evaluated in
+// world space, which means one shared material works for every pooled plant.
+vec2 lioraInteractionDelta = lioraWindWorldXZ - lioraInteractionPosition;
+float lioraInteractionDistance = length(lioraInteractionDelta);
+float lioraInteractionFalloff = 1.0 - smoothstep(
+  lioraInteractionRadius * 0.18,
+  max(lioraInteractionRadius, 0.001),
+  lioraInteractionDistance
+);
+lioraInteractionFalloff *= lioraInteractionActive * lioraInteractionWeight;
+
+vec2 lioraInteractionPushXZ = lioraInteractionDistance > 0.015
+  ? lioraInteractionDelta / lioraInteractionDistance
+  : lioraInteractionDirection;
+float lioraInteractionPushLength = length(lioraInteractionPushXZ);
+lioraInteractionPushXZ = lioraInteractionPushLength > 0.001
+  ? lioraInteractionPushXZ / lioraInteractionPushLength
+  : lioraWindDirection;
+
+vec3 lioraInteractionWorldDir = vec3(
+  lioraInteractionPushXZ.x,
+  0.0,
+  lioraInteractionPushXZ.y
+);
+vec3 lioraInteractionLocalDir = vec3(
+  dot(lioraInteractionWorldDir, normalize(lioraWindModel[0].xyz)),
+  dot(lioraInteractionWorldDir, normalize(lioraWindModel[1].xyz)),
+  dot(lioraInteractionWorldDir, normalize(lioraWindModel[2].xyz))
+);
+lioraInteractionLocalDir -= lioraWindUp * dot(lioraInteractionLocalDir, lioraWindUp);
+float lioraInteractionLocalLength = length(lioraInteractionLocalDir);
+lioraInteractionLocalDir = lioraInteractionLocalLength > 0.001
+  ? lioraInteractionLocalDir / lioraInteractionLocalLength
+  : vec3(0.0);
+
+float lioraInteractionHeight = lioraWindRoot * smoothstep(0.08, 0.95, lioraWindH);
+float lioraInteractionMotionBoost = mix(0.72, 1.0, lioraInteractionMotion);
+float lioraInteractionAmount =
+  lioraWindLocalHeight * lioraInteractionStrength *
+  lioraInteractionFalloff * lioraInteractionHeight *
+  lioraInteractionMotionBoost;
+transformed +=
+  lioraInteractionLocalDir * lioraInteractionAmount -
+  lioraWindUp * abs(lioraInteractionAmount) * 0.08;
 `;
 
 function normalizeAxis(x, y, z) {
@@ -211,10 +266,21 @@ function patchShader(shader, uniforms, local, up) {
     lioraWindFrequency: { value: local.frequency },
     lioraWindSpatial: { value: local.spatial },
     lioraWindRootLock: { value: local.rootLock },
+    lioraInteractionPosition: uniforms.interactionPosition ?? { value: { x: 100000, y: 100000 } },
+    lioraInteractionDirection: uniforms.interactionDirection ?? { value: { x: 1, y: 0 } },
+    lioraInteractionRadius: uniforms.interactionRadius ?? { value: 0 },
+    lioraInteractionStrength: uniforms.interactionStrength ?? { value: 0 },
+    lioraInteractionMotion: uniforms.interactionMotion ?? { value: 0 },
+    lioraInteractionActive: uniforms.interactionActive ?? { value: 0 },
+    lioraInteractionWeight: { value: local.interaction ?? 0 },
   });
 
   shader.vertexShader = shader.vertexShader.replace(COMMON, `${COMMON}\n${WIND_DECLARATIONS}`);
-  shader.vertexShader = shader.vertexShader.replace(BEGIN_VERTEX, `${BEGIN_VERTEX}\n${WIND_VERTEX}`);
+  const interactionVertex = local.interaction > 0 ? INTERACTION_VERTEX : "";
+  shader.vertexShader = shader.vertexShader.replace(
+    BEGIN_VERTEX,
+    `${BEGIN_VERTEX}\n${WIND_VERTEX}${interactionVertex}`
+  );
 
   const paletteStrength = Number(uniforms.paletteStrength?.value) || 0;
   if (paletteStrength > 0 && shader.fragmentShader?.includes(COLOR_FRAGMENT)) {
@@ -263,7 +329,8 @@ export function applyWindToMaterial({
     previousCompile?.(shader, renderer);
     patchShader(shader, uniforms, { ...span, ...weights }, axis);
   };
-  target.customProgramCacheKey = () => `${previousCacheKey?.() ?? ""}|liora-wind-v2|liora-nature-palette-v1`;
+  target.customProgramCacheKey = () =>
+    `${previousCacheKey?.() ?? ""}|liora-wind-v3-interaction:${weights.interaction > 0 ? 1 : 0}|liora-nature-palette-v1`;
   target.userData = {
     ...target.userData,
     lioraWind: true,

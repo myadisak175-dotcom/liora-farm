@@ -52,7 +52,7 @@ function compileWind({ instancing }) {
       computeBoundingBox() { this.boundingBox = { min: { y: 0 }, max: { y: 4 } }; },
     },
     mesh: { name: "Leaves" },
-    profileName: "tree",
+    profileName: "grass",
     uniforms: {
       time: { value: 0 },
       direction: { value: { x: 1, y: 0 } },
@@ -115,6 +115,7 @@ void main() {
 await test("wind + nature palette compile as WebGL1 GLSL", () => {
   const shader = compileWind({ instancing: false });
   assert(shader.vertexShader.includes("mat4 lioraWindModel = modelMatrix;"), "non-instanced path lost its model matrix");
+  assert(shader.vertexShader.includes("lioraInteractionPosition"), "foliage interaction uniforms are missing");
   assert(shader.fragmentShader.includes("lioraNaturePaletteStrength"), "palette strength uniform missing");
   assert(shader.fragmentShader.includes("lioraPaletteGreen"), "green-only palette mask missing");
 });
@@ -125,6 +126,7 @@ await test("the instanced variant compiles and reads instanceMatrix", () => {
     shader.vertexShader.includes("mat4 lioraWindModel = modelMatrix * instanceMatrix;"),
     "pooled plants would all share one world position, and sway in lockstep"
   );
+  assert(shader.vertexShader.includes("lioraInteractionFalloff"), "instanced plants lost player interaction");
   assert(shader.fragmentShader.includes("lioraPaletteAmount"), "instanced plants lost the palette grade");
 });
 

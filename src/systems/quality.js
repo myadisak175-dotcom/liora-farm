@@ -34,6 +34,10 @@ export const QUALITY_PRESETS = Object.freeze({
     groundAO: true,
     detailNormals: false,
     blobShadows: true,
+    skyCloudDensity: 0.68,
+    leafCount: 16,
+    insectCount: 5,
+    foliageInteraction: true,
   }),
   medium: Object.freeze({
     id: "medium",
@@ -48,6 +52,10 @@ export const QUALITY_PRESETS = Object.freeze({
     groundAO: true,
     detailNormals: true,
     blobShadows: true,
+    skyCloudDensity: 0.84,
+    leafCount: 28,
+    insectCount: 9,
+    foliageInteraction: true,
   }),
   high: Object.freeze({
     id: "high",
@@ -62,6 +70,10 @@ export const QUALITY_PRESETS = Object.freeze({
     groundAO: true,
     detailNormals: true,
     blobShadows: true,
+    skyCloudDensity: 1,
+    leafCount: 42,
+    insectCount: 14,
+    foliageInteraction: true,
   }),
 });
 

@@ -60,6 +60,7 @@ function defineAsset({
   groundProbeRadius = null,
   castShadow = null,
   instanced = false,
+  windProfile = null,
 }) {
   const resolvedMinScale = minScale ?? defaultScale * 0.4;
   const resolvedMaxScale = maxScale ?? defaultScale * 2.5;
@@ -92,6 +93,7 @@ function defineAsset({
     groundProbeRadius,
     castShadow: resolvedCastShadow,
     instanced,
+    windProfile,
   });
 }
 
@@ -140,6 +142,7 @@ export const BUILDABLE_ASSETS = Object.freeze({
     sizeInPlayers: 0.45,
     // The legacy clump is ground cover too, so it batches like the V2 plants.
     instanced: true,
+    windProfile: "grass",
   }),
   house: defineAsset({
     id: "house",

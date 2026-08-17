@@ -14,6 +14,10 @@ import { createContactShadow } from "./systems/contact-shadow.js";
 import { createObjectShadows } from "./systems/object-shadows.js";
 import { createPlayerRuntime } from "./systems/player-runtime.js";
 import { createWindSystem } from "./systems/wind/wind-system.js";
+import {
+  createEnvironmentLife,
+  createEnvironmentLifeFallback,
+} from "./systems/environment-life.js";
 import { BUILDABLE_ASSETS } from "./editor/asset-catalog.js";
 import { createBuilderAssetLoader } from "./editor/asset-loader.js";
 import { createBuilderState } from "./editor/builder-state.js";
@@ -37,7 +41,7 @@ import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "audio15";
+const APP_REVISION = "life16";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -143,7 +147,7 @@ try {
 
 setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows, CONFIG.lighting);
-const sky = createSky(CONFIG.sky, CONFIG.distantRange);
+const sky = createSky(CONFIG.sky, CONFIG.distantRange, CONFIG.wind);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
 const dayNight = createDayNight({
@@ -174,6 +178,7 @@ const cameraController = createCameraController(camera, CONFIG.camera, renderer.
 const runFx = createRunFx(scene, CONFIG.runFx);
 const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
 const wind = createWindSystem({ config: CONFIG.wind ?? {}, quality: QUALITY });
+let environmentLife = null;
 
 /**
  * Middle-ground trees, between the farm edge and the first mountain band.
@@ -209,6 +214,7 @@ window.__liora = {
   get terrainField() { return world.terrainField; },
   get missingTextures() { return world.missingTextures; },
   get wind() { return wind; },
+  get life() { return environmentLife?.stats ?? null; },
   get treeLine() { return treeLine?.stats ?? null; },
   get systems() { return systems.names; },
   /**
@@ -352,6 +358,19 @@ const playerRuntime = createPlayerRuntime({
   lighting,
   surfaceAt: (x, z) => world.paint.surfaceAt(x, z),
 });
+try {
+  environmentLife = createEnvironmentLife({
+    scene,
+    config: CONFIG.environmentLife,
+    wind,
+    getGroundHeight: world.getGroundHeight,
+    waterLevel: CONFIG.water.level,
+    quality: QUALITY,
+  });
+} catch (error) {
+  console.warn("Environment life unavailable", error);
+  environmentLife = createEnvironmentLifeFallback(wind);
+}
 const farmButton = document.querySelector('[data-action="farm"]');
 farmUI = createFarmUI({
   crops: world.crops,
@@ -450,6 +469,9 @@ function applyQuality(preset) {
 
   world.cloudShadows.setStrength(preset.cloudShadows ? CONFIG.cloudShadows.strength : 0);
   world.setQuality?.(preset);
+  sky.setQuality?.(preset);
+  wind.setQuality?.(preset);
+  environmentLife.setQuality?.(preset);
   objectShadows.setShadowBounds(preset.shadowBounds);
   objectShadows.setOpacity(preset.blobShadows ? CONFIG.objectShadows.opacity : 0);
 }
@@ -486,6 +508,15 @@ systems.add("world", { update: (delta) => world.refresh(delta), dispose: () => w
 systems.add("player", {
   update: (delta) => playerRuntime.update(delta, { active: mode === "play", cameraTarget }),
 });
+systems.add("environmentLife", {
+  update: (delta) => environmentLife.update(delta, {
+    position: playerRuntime.position,
+    state: playerRuntime.state,
+    camera,
+    hour: dayNight.getHour(),
+  }),
+  dispose: () => environmentLife.dispose(),
+});
 systems.add("crops", { update: (delta) => world.crops.update(delta) });
 systems.add("farmUI", { update: (delta) => farmUI.update(delta, { active: mode === "play" }) });
 systems.add("camera", {
@@ -503,7 +534,7 @@ systems.add("objectShadows", {
 });
 systems.add("floatingIslands", floatingIslandBackdrop);
 systems.add("treeLine", treeLine);
-systems.add("sky", { update: () => sky.update(camera), dispose: () => sky.dispose?.() });
+systems.add("sky", { update: (delta) => sky.update(camera, delta), dispose: () => sky.dispose?.() });
 systems.add("input", { dispose: () => input.dispose?.() });
 systems.add("builder", { dispose: () => builder.dispose?.() });
 systems.add("builderUI", { dispose: () => builderUI?.dispose?.() });

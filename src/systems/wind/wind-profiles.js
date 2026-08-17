@@ -10,6 +10,7 @@ const PROFILES = Object.freeze({
     frequency: 0.82,
     spatial: 1.05,
     rootLock: 0.18,
+    interaction: 0,
   }),
   bush: Object.freeze({
     base: 0.14,
@@ -20,6 +21,7 @@ const PROFILES = Object.freeze({
     frequency: 1.05,
     spatial: 1.2,
     rootLock: 0.2,
+    interaction: 0.58,
   }),
   grass: Object.freeze({
     base: 0.05,
@@ -30,6 +32,7 @@ const PROFILES = Object.freeze({
     frequency: 1.35,
     spatial: 1.45,
     rootLock: 0.22,
+    interaction: 1,
   }),
   flower: Object.freeze({
     base: 0.06,
@@ -40,6 +43,7 @@ const PROFILES = Object.freeze({
     frequency: 1.02,
     spatial: 1.28,
     rootLock: 0.2,
+    interaction: 0.86,
   }),
 });
 
@@ -110,6 +114,7 @@ export function getPartWeights(profileName, part = "mixed", { isTouch = false } 
     frequency: profile.frequency,
     spatial: profile.spatial,
     rootLock,
+    interaction: profile.interaction,
   };
 }
 

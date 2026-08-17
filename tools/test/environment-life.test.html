@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Living environment tests</title>
+<script type="importmap">
+{"imports":{"three":"./three-stub.js"}}
+</script>
+</head>
+<body><pre id="out"></pre>
+<script type="module">
+import { CONFIG } from "../../src/config.js";
+import { BUILDABLE_ASSETS } from "../../src/editor/asset-catalog.js";
+import {
+  createEnvironmentLifeFallback,
+  resolveEnvironmentCounts,
+} from "../../src/systems/environment-life.js";
+import { QUALITY_PRESETS } from "../../src/systems/quality.js";
+
+const results = [];
+const out = document.querySelector("#out");
+async function test(name, fn) {
+  try { await fn(); results.push({ name, pass: true, detail: "" }); }
+  catch (error) { results.push({ name, pass: false, detail: String(error?.message ?? error) }); }
+}
+function assert(value, message) { if (!value) throw new Error(message); }
+
+await test("mobile tiers cap leaves and insects without disabling the living world", () => {
+  const low = resolveEnvironmentCounts(QUALITY_PRESETS.low, CONFIG.environmentLife);
+  const medium = resolveEnvironmentCounts(QUALITY_PRESETS.medium, CONFIG.environmentLife);
+  const high = resolveEnvironmentCounts(QUALITY_PRESETS.high, CONFIG.environmentLife);
+  assert(low.leaves > 0 && low.insects > 0, "low tier removed the requested life effects");
+  assert(low.leaves < medium.leaves && medium.leaves < high.leaves, "leaf budgets do not scale by tier");
+  assert(low.insects < medium.insects && medium.insects < high.insects, "insect budgets do not scale by tier");
+  assert(high.leaves <= CONFIG.environmentLife.leaves.maxCount, "high leaf count exceeds its fixed pool");
+  assert(high.insects <= CONFIG.environmentLife.insects.maxCount, "high insect count exceeds its fixed pool");
+});
+
+await test("decorative failure keeps the foliage interaction bridge alive", () => {
+  const calls = [];
+  const fallback = createEnvironmentLifeFallback({
+    setInteraction(position, state) { calls.push({ position, state }); },
+  });
+  fallback.update(0.016, { position: { x: 2, z: 3 }, state: { moving: true } });
+  assert(calls.length === 1 && calls[0].position.x === 2, "fallback dropped the player field");
+  assert(fallback.stats.degraded === true, "fallback is not visible to diagnostics");
+  fallback.dispose();
+  assert(calls.at(-1).position === null, "fallback did not clear the player field");
+});
+
+await test("visible clouds and ground shadows share one drift speed", () => {
+  const shadowWorldSpeed = CONFIG.cloudShadows.speed * CONFIG.cloudShadows.scale;
+  assert(
+    Math.abs(CONFIG.sky.cloudDriftSpeed - shadowWorldSpeed) < 0.05,
+    `cloud=${CONFIG.sky.cloudDriftSpeed}, shadow=${shadowWorldSpeed}`
+  );
+  assert(CONFIG.wind.interaction.enabled, "foliage interaction is disabled in the authored world");
+});
+
+await test("the authored cloud layer sits inside the portrait sky band", () => {
+  const approximateCameraY = CONFIG.camera.baseOffset.y;
+  const elevation = Math.atan2(
+    CONFIG.sky.cloudHeight - approximateCameraY,
+    CONFIG.sky.cloudRingRadius
+  );
+  const visibleSky = CONFIG.camera.fov * Math.PI / 360 - CONFIG.camera.minPitch;
+  assert(elevation < visibleSky, `cloud elevation ${(elevation * 180 / Math.PI).toFixed(1)}° exceeds ${(visibleSky * 180 / Math.PI).toFixed(1)}°`);
+});
+
+await test("cloud-shadow texture travels in the visible cloud direction", async () => {
+  const source = await fetch("../../src/systems/cloud-shadows.js").then((response) => response.text());
+  assert(source.includes("uCloudShadowScale - cloudDrift"), "large cloud shadow runs against the wind");
+  assert(source.includes("uCloudShadowDetailScale - cloudDrift * 1.7"), "detail shadow runs against the wind");
+});
+
+await test("legacy and V2 ground cover both receive the shared plant shader", () => {
+  assert(BUILDABLE_ASSETS.grass.windProfile === "grass", "legacy grass cannot move or part around Liora");
+  assert(BUILDABLE_ASSETS["v2-grass-small"].worldV2, "V2 grass disappeared from the catalog");
+  assert(BUILDABLE_ASSETS["v2-bush"].walkRadius === 0, "soft bushes became solid colliders");
+});
+
+await test("the composition root ticks sky, air life and foliage interaction", async () => {
+  const [main, sky, life] = await Promise.all([
+    fetch("../../src/main.js").then((response) => response.text()),
+    fetch("../../src/systems/sky.js").then((response) => response.text()),
+    fetch("../../src/systems/environment-life.js").then((response) => response.text()),
+  ]);
+  assert(main.includes("createEnvironmentLife"), "air-life system is not created");
+  assert(main.includes('systems.add("environmentLife"'), "air-life system is not in the frame registry");
+  assert(main.includes("sky.update(camera, delta)"), "visible clouds do not receive frame time");
+  assert(sky.includes("cloudDriftSpeed") && sky.includes("wrapDistance"), "visible clouds are static again");
+  assert(life.includes("wind?.setInteraction?.(player, state)"), "player position no longer reaches foliage");
+});
+
+window.__results = results;
+window.__done = true;
+out.textContent = results.map((result) => `${result.pass ? "PASS" : "FAIL"} ${result.name}${result.detail ? ` | ${result.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>
