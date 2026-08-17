@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-2-floating-island-b-lite";
+export const BUILD = "worlds-2-floating-island-framed";
 
 export const CONFIG = Object.freeze({
   /**
@@ -34,7 +34,21 @@ export const CONFIG = Object.freeze({
     baseOffset: new THREE.Vector3(8, 10, 10),
     minZoom: 0.65, maxZoom: 1.55, zoomStep: 0.12,
     orbitSensitivity: 0.006, pitchSensitivity: 0.0045,
-    minPitch: THREE.MathUtils.degToRad(14), maxPitch: THREE.MathUtils.degToRad(55),
+    /**
+     * `minPitch` is the only thing that decides whether the sky exists.
+     *
+     * The camera looks straight at the player, so the top of the screen sits at
+     * `minPitch - fov/2` degrees. At the old 14 deg that is 5 deg above the
+     * horizon: enough for a mountain ridge, not enough for anything that
+     * floats. Everything above it — haze, floating islands, the sky gradient —
+     * was being built, lit and paid for off-screen.
+     *
+     * 7 deg opens 12 deg of sky when the player drags the camera down, which
+     * is what `checkHorizonRules` now measures every backdrop against. Raising
+     * this number again silently pushes the islands back off the top edge, so
+     * change it and re-read the horizon panel.
+     */
+    minPitch: THREE.MathUtils.degToRad(7), maxPitch: THREE.MathUtils.degToRad(55),
     followDeadZone: 0.55, followSharpness: 3.2, positionSharpness: 5.5,
     panLimit: 40, twoFingerRotateSensitivity: 0.005,
   },
@@ -186,19 +200,39 @@ export const CONFIG = Object.freeze({
         { angle: 4.72, radius: 302, y: 48, scale: 8.4, phase: 4.1 },
       ],
     },
+    /**
+     * The authored 1+3 island cluster, framed for the portrait phone view.
+     *
+     * These numbers used to live in `config-floating-island-tuned.js`, swapped
+     * in over this file by an import-map alias in `index.html`. Three separate
+     * `?v=` strings had to match byte-for-byte or the browser silently loaded
+     * the untuned values, and every test imported this file directly and so
+     * never saw the ones the game ran. They are folded back in here.
+     *
+     * `y` is the constraint that matters, not `radius`. An island is only on
+     * screen while `atan2(y - cameraY, distance)` stays under
+     * `camera.minPitch - camera.fov/2`; at the previous y of 72-96 the whole
+     * cluster sat about 10 degrees above the top edge and could never be seen
+     * at any pitch or zoom. `checkHorizonRules` now fails loudly on that
+     * instead of leaving it to be found by eye.
+     *
+     * Angles keep the tuned composition: hero centred on the default camera
+     * heading, two supports ~6 degrees to either side so the cluster fits the
+     * narrow horizontal FOV, and one further back aligned with the hero.
+     */
     floatingIslandBackdrop: {
       enabled: true,
       items: [
-        { role: "hero", angle: 3.95, radius: 250, y: 72, scale: 14, rotationY: -0.75,
+        { role: "hero", angle: 3.97, radius: 280, y: 45, scale: 11.8, rotationY: -0.72,
           bobAmplitude: 0.75, bobSpeed: 0.22, swayAmplitude: 0.022, swaySpeed: 0.11,
           yawAmplitude: 0.05, yawSpeed: 0.07, phase: 0.0 },
-        { role: "support", angle: 3.38, radius: 304, y: 86, scale: 6.8, rotationY: 0.55,
+        { role: "support", angle: 3.80, radius: 236, y: 36, scale: 7.4, rotationY: 0.42,
           bobAmplitude: 0.55, bobSpeed: 0.18, swayAmplitude: 0.018, swaySpeed: 0.09,
           yawAmplitude: 0.04, yawSpeed: 0.05, phase: 1.7 },
-        { role: "support", angle: 4.42, radius: 322, y: 64, scale: 5.9, rotationY: -1.15,
+        { role: "support", angle: 4.14, radius: 244, y: 38, scale: 6.6, rotationY: -1.0,
           bobAmplitude: 0.48, bobSpeed: 0.2, swayAmplitude: 0.016, swaySpeed: 0.1,
           yawAmplitude: 0.035, yawSpeed: 0.06, phase: 3.2 },
-        { role: "support", angle: 2.88, radius: 282, y: 58, scale: 4.9, rotationY: 1.1,
+        { role: "support", angle: 3.97, radius: 320, y: 54, scale: 5.6, rotationY: 1.04,
           bobAmplitude: 0.42, bobSpeed: 0.17, swayAmplitude: 0.014, swaySpeed: 0.08,
           yawAmplitude: 0.03, yawSpeed: 0.05, phase: 4.6 },
       ],
@@ -286,7 +320,13 @@ export const CONFIG = Object.freeze({
     gust: { strength: 0.3, speed: 0.18, scale: 0.07 },
     naturePalette: { enabled: true, strength: 0.28 },
   },
-  fog: { near: 88, far: 460 },
+  /**
+   * `far` was 460, which put the hero island ~57% blended into the sky colour
+   * before it was even on screen. 520 keeps it readable and still sits under
+   * the nearest world rim (outerWorld.outerRadius - worldLimit = 562), so the
+   * "ขอบโลกถูกหมอกกลืนสนิท" rule still passes.
+   */
+  fog: { near: 88, far: 520 },
 });
 
 const MODEL_DIR = "./assets/models/builder";
@@ -295,7 +335,7 @@ export const ASSETS = Object.freeze({
   textureDir: TEXTURE_DIR,
   player: "./assets/models/player/liora_all_animations_web.glb",
   modelDir: MODEL_DIR,
-  floatingIslandHero: "./assets/models/background/floating_island_hero.glb?v=floating-island-b-lite",
+  floatingIslandHero: "./assets/models/background/floating_island_hero.glb?v=framed1",
 });
 export const ANIMATIONS = Object.freeze({
   idle: "Idle_9", walk: "Walking", run: "Running", pickUp: "Male_Bend_Over_Pick_Up",

@@ -126,6 +126,11 @@ export class MeshBasicMaterial {
     this.color = new Color(options.color ?? 0xffffff);
     this.name = "";
     this.disposed = false;
+    // mountain-backdrop.js tags bands with `userData.hazeDepth`. Without this
+    // the horizon suites died in the constructor before asserting anything.
+    this.userData = {};
+    this.defines = {};
+    this.needsUpdate = false;
   }
   dispose() {
     this.disposed = true;

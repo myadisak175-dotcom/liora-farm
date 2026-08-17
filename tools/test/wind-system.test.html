@@ -302,7 +302,13 @@ await test("runtime keeps wind visual-only", async () => {
     fetch("../../src/systems/movement.js").then((r) => r.text()),
     fetch("../../src/editor/layout-store.js").then((r) => r.text()),
   ]);
-  assert(main.includes("createWindSystem") && main.includes("wind.update(delta)"), "wind is not wired by the composition root");
+  // This greps main.js as text, so it breaks whenever the frame loop is
+  // rearranged rather than when wind actually stops updating. The intent is
+  // "the composition root builds wind and ticks it every frame" -- accept
+  // either the inline call or registration with the system registry.
+  const windTicked = main.includes("wind.update(delta)")
+    || /systems\.add\(\s*["']wind["']\s*,\s*wind\s*\)/.test(main);
+  assert(main.includes("createWindSystem") && windTicked, "wind is not wired by the composition root");
   assert(main.includes("prepareModel: (model, asset, context) => wind.attach"), "Builder view is not the visual attachment point");
   assert(!controller.includes("wind"), "Builder rules should not know about wind");
   assert(!movement.includes("wind"), "movement should not know about wind");

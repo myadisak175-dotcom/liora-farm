@@ -49,6 +49,9 @@ export function createHorizonControls({
   renderer = null,
   lighting = null,
   cameraController,
+  // Scenery hung in the sky. Optional: the GLB may still be loading, or absent
+  // entirely, and the panel must open either way.
+  floatingIslandBackdrop = null,
   container,
   surface,
   storageKey = HORIZON_STORAGE_KEY,
@@ -113,7 +116,15 @@ export function createHorizonControls({
         mountainBackdrop: !targets || targets.has("ridges") ? resolved.mountainBackdrop : null,
       });
     }
-    if (!targets || targets.has("range")) sky.rebuildDistantRange(resolved.distantRange);
+    if (!targets || targets.has("range")) {
+      sky.rebuildDistantRange(resolved.distantRange);
+      // The authored GLB cluster lives outside `sky`, so rebuilding the
+      // distant range alone left the "เกาะลอยฟ้า" toggle doing nothing to it.
+      if (floatingIslandBackdrop?.group) {
+        floatingIslandBackdrop.group.visible =
+          resolved.distantRange?.floatingIslandBackdrop?.enabled !== false;
+      }
+    }
     return resolved;
   }
 
@@ -368,15 +379,23 @@ export function createHorizonControls({
     putHorizonChromeBack();
   }
 
-  tabHorizon?.addEventListener("click", enterHorizon, true);
-  for (const tab of normalTabs) tab.addEventListener("click", leaveHorizon, true);
+  // Same rule as the builder panel: one helper, so dispose cannot miss one.
+  const bound = [];
+  const bind = (target, type, handler, options) => {
+    if (!target) return;
+    target.addEventListener(type, handler, options);
+    bound.push(() => target.removeEventListener(type, handler, options));
+  };
+
+  bind(tabHorizon, "click", enterHorizon, true);
+  for (const tab of normalTabs) bind(tab, "click", leaveHorizon, true);
   document.querySelectorAll("#mode-bar [data-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
+    bind(button, "click", () => {
       if (button.dataset.mode !== "build") leaveHorizon();
     }, true);
   });
 
-  moreButton?.addEventListener("click", (event) => {
+  bind(moreButton, "click", (event) => {
     if (!horizonActive) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -385,7 +404,7 @@ export function createHorizonControls({
     moreButton.setAttribute("aria-expanded", String(root.classList.contains("more")));
   }, true);
 
-  collapseButton?.addEventListener("click", (event) => {
+  bind(collapseButton, "click", (event) => {
     if (!horizonActive) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -400,7 +419,7 @@ export function createHorizonControls({
     && document.body.dataset.mode === "build"
     && event.pointerType !== "touch" || false;
 
-  surface?.addEventListener("pointerdown", (event) => {
+  bind(surface, "pointerdown", (event) => {
     if (!horizonActive || document.body.dataset.mode !== "build") return;
     if (event.pointerType === "touch" && event.isPrimary === false) return;
     event.preventDefault();
@@ -411,7 +430,7 @@ export function createHorizonControls({
     surface.setPointerCapture?.(panPointer);
   }, true);
 
-  surface?.addEventListener("pointermove", (event) => {
+  bind(surface, "pointermove", (event) => {
     if (!horizonActive || event.pointerId !== panPointer) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -426,8 +445,8 @@ export function createHorizonControls({
     event.stopImmediatePropagation();
     panPointer = null;
   };
-  surface?.addEventListener("pointerup", endPan, true);
-  surface?.addEventListener("pointercancel", endPan, true);
+  bind(surface, "pointerup", endPan, true);
+  bind(surface, "pointercancel", endPan, true);
 
   build();
   apply();
@@ -435,6 +454,13 @@ export function createHorizonControls({
   return {
     get settings() { return settings; },
     get actions() { return actionButtons; },
+
+    /** Drop every listener this panel owns, and cancel any pending apply. */
+    dispose() {
+      for (const off of bound.splice(0)) off();
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+    },
     /**
      * Hands the panel the horizon block from the loaded map. Only rebases the
      * live dials when the player has not tuned this map themselves — their own

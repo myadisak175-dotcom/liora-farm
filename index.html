@@ -16,18 +16,26 @@
     const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store" });
     if (probe.ok) base = LOCAL;
   } catch {}
+  // The import map resolves three.js and nothing else.
+  //
+  // It used to also alias "./src/config.js?v=..." onto a separate tuned config
+  // file. That made the values the game actually ran depend on three `?v=`
+  // strings matching byte-for-byte across three files: one typo loaded the old
+  // config with no error and no warning, and every test imported src/config.js
+  // directly and so could never catch it. Tuned values live in src/config.js.
+  //
+  // Do not add module aliases here. A build-less project has no bundler to
+  // flag a stale specifier, so an alias that stops matching fails silently.
   const map = document.createElement("script");
   map.type = "importmap";
   map.textContent = JSON.stringify({ imports: {
     three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
     "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
-    "./src/systems/background/floating-island-backdrop.js?v=floating-island-b-lite": "./src/systems/background/floating-island-backdrop.js?v=floating-island-async1",
-    "./src/config.js?v=floating-island-b-lite": "./src/config-floating-island-tuned.js?v=floating-island-tune2",
   }});
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=floating-island-tune2";
+  entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 })();
 </script>

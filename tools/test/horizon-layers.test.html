@@ -124,12 +124,17 @@ ok("the full variant B distant range stays within its draw-call budget",
   JSON.stringify(range.stats));
 ok("distant peaks and haze stay out of the shadow pass",
   range.group.children.every((child) => child.castShadow === false && child.receiveShadow === false));
-ok("fantasy floating islands are enabled for variant B",
-  CONFIG.distantRange.floatingIslands.enabled === true
-    && CONFIG.distantRange.floatingIslands.items.length === 3);
-ok("variant B creates all three floating islands",
-  range.group.children.filter((child) => child.name === "DistantFloatingIsland").length
-    === CONFIG.distantRange.floatingIslands.items.length);
+// The procedural `floatingIslands` were replaced by the authored GLB cluster
+// in `floatingIslandBackdrop`; these two assertions still described the old
+// system and had been failing since the swap. What matters now is that exactly
+// one of the two is live, so the sky never gets built twice.
+ok("procedural islands stay off now the authored cluster owns the sky",
+  CONFIG.distantRange.floatingIslands.enabled === false);
+ok("no procedural islands are built when they are disabled",
+  range.group.children.filter((child) => child.name === "DistantFloatingIsland").length === 0);
+ok("the authored floating-island cluster is the live one",
+  CONFIG.distantRange.floatingIslandBackdrop.enabled === true
+    && CONFIG.distantRange.floatingIslandBackdrop.items.length > 0);
 
 const disabledRange = createFantasyHorizon({ enabled: false });
 ok("the distant range can be switched off entirely",

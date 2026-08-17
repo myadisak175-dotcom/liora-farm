@@ -1,10 +1,23 @@
+/**
+ * `bind` is the only way listeners are attached here.
+ *
+ * Input is the system that hurts most when a second boot leaves the first
+ * one's listeners alive: two joysticks both writing movement, keys sticking
+ * down on a player object that no longer exists. Routing every listener
+ * through one helper means `dispose()` cannot miss one.
+ */
 export function createInput() {
   const keys = {};
   const joystick = { x: 0, y: 0 };
   let pointer = null;
+  const bound = [];
+  const bind = (target, type, handler, options) => {
+    target.addEventListener(type, handler, options);
+    bound.push(() => target.removeEventListener(type, handler, options));
+  };
 
-  addEventListener("keydown", (event) => { keys[event.key.toLowerCase()] = true; });
-  addEventListener("keyup", (event) => { keys[event.key.toLowerCase()] = false; });
+  bind(window, "keydown", (event) => { keys[event.key.toLowerCase()] = true; });
+  bind(window, "keyup", (event) => { keys[event.key.toLowerCase()] = false; });
 
   const joy = document.querySelector("#joy");
   const stick = document.querySelector("#stick");
@@ -38,7 +51,7 @@ export function createInput() {
     reset();
   }
 
-  joy.addEventListener("pointerdown", (event) => {
+  bind(joy, "pointerdown", (event) => {
     // The first finger owns the joystick until it ends. A second finger is
     // commonly used for camera gestures and must never steal movement input.
     if (pointer !== null) return;
@@ -47,14 +60,19 @@ export function createInput() {
     joy.setPointerCapture(pointer);
     move(event);
   });
-  joy.addEventListener("pointermove", (event) => {
+  bind(joy, "pointermove", (event) => {
     if (event.pointerId === pointer) move(event);
   });
-  joy.addEventListener("pointerup", end);
-  joy.addEventListener("pointercancel", end);
-  addEventListener("blur", reset);
+  bind(joy, "pointerup", end);
+  bind(joy, "pointercancel", end);
+  bind(window, "blur", reset);
 
   return {
+    /** Drop every listener and centre the stick. Safe to call twice. */
+    dispose() {
+      for (const off of bound.splice(0)) off();
+      reset();
+    },
     get() {
       let x = joystick.x;
       let z = joystick.y;

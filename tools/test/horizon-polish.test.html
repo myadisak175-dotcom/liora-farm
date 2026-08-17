@@ -16,14 +16,22 @@ import { CONFIG, BUILD } from "../../src/config.js";
 const results=[];
 const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
 
-ok("build marker identifies the horizon polish deploy",BUILD==="horizon-4",String(BUILD));
+// Was pinned to the literal "horizon-4". A build marker changes on every
+// deploy by definition, so that assertion failed permanently from the next
+// deploy onward and taught everyone to ignore this file. Assert it exists.
+ok("build marker is set",typeof BUILD==="string"&&BUILD.length>0,String(BUILD));
 ok("authored far texture fade remains outside the playable terrain",
   CONFIG.outerWorld.textureFadeStart>=CONFIG.terrain.size
   &&CONFIG.outerWorld.textureFadeEnd>CONFIG.outerWorld.textureFadeStart,
   `start=${CONFIG.outerWorld.textureFadeStart} end=${CONFIG.outerWorld.textureFadeEnd}`);
-ok("Variant B floating islands remain enabled",
-  CONFIG.distantRange.floatingIslands.enabled===true
-  &&CONFIG.distantRange.floatingIslands.items.length===3);
+// Same swap as horizon-layers: the authored GLB cluster replaced the
+// procedural islands. `y` is asserted because it is the field that decides
+// whether any of this is on screen at all -- see the "เกาะลอยฟ้าอยู่ในกรอบจอ"
+// rule in horizon-settings.js.
+ok("authored floating-island cluster is enabled and framed",
+  CONFIG.distantRange.floatingIslandBackdrop.enabled===true
+  &&CONFIG.distantRange.floatingIslandBackdrop.items.length>0
+  &&CONFIG.distantRange.floatingIslandBackdrop.items.every((i)=>i.y>0&&i.radius>0));
 
 const zoneSource=await fetch("../../src/zones/home-island.js").then((r)=>r.text());
 ok("outer visual ground receives renderer anisotropy",
@@ -56,14 +64,24 @@ ok("fade shader tracks radius and organic fade jitter",
   shader.vertexShader.includes("vOuterWorldRadius")
   &&shader.vertexShader.includes("vOuterFadeJitter")
   &&shader.fragmentShader.includes("outerWorldTextureFade"));
-ok("anti-banding fade starts shortly outside the 80 m terrain",
-  shader.uniforms.uOuterTextureFadeStart.value===CONFIG.terrain.size*0.75
-  &&shader.uniforms.uOuterTextureFadeEnd.value===CONFIG.terrain.size*1.6,
-  `effective=${shader.uniforms.uOuterTextureFadeStart.value}-${shader.uniforms.uOuterTextureFadeEnd.value}`);
-ok("authored fade is preserved as metadata while safety caps are effective",
+// The caps are scaled by `textureFadeReach`, which was added after this test
+// was written precisely because an unscaled cap "killed the texture only ~22 m
+// past the seam" (see outer-world-ground.js). So the cap is a ceiling, not an
+// equality: authored values below it are meant to pass straight through.
+const reach=CONFIG.outerWorld.textureFadeReach??1;
+ok("anti-banding fade is capped relative to the tile's world size",
+  shader.uniforms.uOuterTextureFadeStart.value<=CONFIG.terrain.size*0.75*reach+1e-6
+  &&shader.uniforms.uOuterTextureFadeEnd.value<=CONFIG.terrain.size*1.6*reach+1e-6
+  &&shader.uniforms.uOuterTextureFadeEnd.value>shader.uniforms.uOuterTextureFadeStart.value,
+  `effective=${shader.uniforms.uOuterTextureFadeStart.value}-${shader.uniforms.uOuterTextureFadeEnd.value} reach=${reach}`);
+ok("the fade still begins at or beyond the playable terrain edge",
+  shader.uniforms.uOuterTextureFadeStart.value>=CONFIG.terrain.size,
+  String(shader.uniforms.uOuterTextureFadeStart.value));
+ok("authored fade is preserved as metadata alongside the effective values",
   ground.mesh.material.userData.textureFade.requestedStart===CONFIG.outerWorld.textureFadeStart
   &&ground.mesh.material.userData.textureFade.requestedEnd===CONFIG.outerWorld.textureFadeEnd
-  &&ground.mesh.material.userData.textureFade.start<ground.mesh.material.userData.textureFade.requestedStart);
+  &&ground.mesh.material.userData.textureFade.start<=ground.mesh.material.userData.textureFade.requestedStart
+  &&ground.mesh.material.userData.textureFade.reach===reach);
 ok("fade jitter runs in the vertex path rather than per-fragment trig",
   shader.uniforms.uOuterTextureFadeJitter.value>0
   &&shader.vertexShader.includes("outerJitterA")

@@ -879,12 +879,20 @@ export function createBuilderUI({
     finishActiveDrag();
   }
 
-  surface.addEventListener("pointerdown", onPointerDown);
-  surface.addEventListener("pointermove", onPointerMove);
-  surface.addEventListener("pointerup", onPointerEnd);
-  surface.addEventListener("pointercancel", onPointerEnd);
-  addEventListener("pointerup", onPointerEnd);
-  addEventListener("pointercancel", onPointerEnd);
+  // Tracked so the panel can be taken down with the rest of the game. Six
+  // pointer handlers left alive by a second boot means every drag in the
+  // builder is applied twice.
+  const bound = [];
+  const bind = (target, type, handler, options) => {
+    target.addEventListener(type, handler, options);
+    bound.push(() => target.removeEventListener(type, handler, options));
+  };
+  bind(surface, "pointerdown", onPointerDown);
+  bind(surface, "pointermove", onPointerMove);
+  bind(surface, "pointerup", onPointerEnd);
+  bind(surface, "pointercancel", onPointerEnd);
+  bind(window, "pointerup", onPointerEnd);
+  bind(window, "pointercancel", onPointerEnd);
 
   function switchTab(next) {
     tab = next;
@@ -926,6 +934,11 @@ export function createBuilderUI({
 
   return {
     render,
+
+    /** Drop every pointer listener this panel owns. Safe to call twice. */
+    dispose() {
+      for (const off of bound.splice(0)) off();
+    },
 
     setPreview(preview) {
       const requestId = ++previewRequest;
