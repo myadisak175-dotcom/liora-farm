@@ -56,6 +56,11 @@ export const HORIZON_DIALS = [
   { key: "peakDistance", label: "ยอดไกล — ระยะ", min: 0.5, max: 1.8, step: 0.05, unit: "×", group: "ยอดไกล" },
   { key: "peakHeight", label: "ยอดไกล — ความสูง", min: 0.3, max: 2.5, step: 0.05, unit: "×", group: "ยอดไกล" },
   { key: "hazeOpacity", label: "ความเข้มหมอกขอบฟ้า", min: 0, max: 0.6, step: 0.02, unit: "", group: "หมอก" },
+  // The middle-ground band. `count` spans the whole ring but only ~5% of it is
+  // ever in frustum, so this dial costs about `count * 0.05 * tris` per frame.
+  { key: "treeLineCount", label: "ต้นไม้กลางทุ่ง — จำนวน", min: 0, max: 900, step: 20, unit: " ต้น", group: "กลางทุ่ง", primary: true },
+  { key: "treeLineInner", label: "กลางทุ่ง — เริ่มที่", min: 44, max: 120, step: 2, unit: " ม.", group: "กลางทุ่ง" },
+  { key: "treeLineOuter", label: "กลางทุ่ง — สิ้นสุดที่", min: 60, max: 165, step: 2, unit: " ม.", group: "กลางทุ่ง" },
 ];
 
 export const HORIZON_TOGGLES = [
@@ -63,6 +68,7 @@ export const HORIZON_TOGGLES = [
   { key: "peaksEnabled", label: "ยอดเขาไกล" },
   { key: "hazeEnabled", label: "หมอกขอบฟ้า" },
   { key: "islandsEnabled", label: "เกาะลอยฟ้า" },
+  { key: "treeLineEnabled", label: "ต้นไม้กลางทุ่ง" },
 ];
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -116,7 +122,16 @@ function configDefaults(config) {
     mountainsEnabled: config.mountainBackdrop.enabled !== false,
     peaksEnabled: config.distantRange.enabled !== false,
     hazeEnabled: config.distantRange.haze.enabled !== false,
-    islandsEnabled: config.distantRange.floatingIslands.enabled === true,
+    // The authored GLB cluster is the live system; `floatingIslands` is the
+    // procedural one and ships disabled. Reading this toggle's default from
+    // `floatingIslands` alone switched the visible islands off at boot, since
+    // the panel applies once during construction.
+    islandsEnabled: config.distantRange.floatingIslandBackdrop?.enabled === true
+      || config.distantRange.floatingIslands.enabled === true,
+    treeLineEnabled: config.treeLine?.enabled !== false,
+    treeLineCount: config.treeLine?.count ?? 0,
+    treeLineInner: config.treeLine?.innerRadius ?? 52,
+    treeLineOuter: config.treeLine?.outerRadius ?? 96,
   };
 }
 
@@ -212,9 +227,13 @@ export function resolveHorizon(settings, config, authored = null) {
       radiusMin: config.distantRange.haze.radiusMin * dials.rangeDistance,
       radiusMax: config.distantRange.haze.radiusMax * dials.peakDistance,
     },
+    // One toggle, two systems, and only one of them is live. The dial may turn
+    // a system off but never on against config: the procedural islands ship
+    // disabled, and letting the toggle enable them would quietly build a
+    // second, older set of islands beside the authored ones.
     floatingIslands: {
       ...config.distantRange.floatingIslands,
-      enabled: dials.islandsEnabled,
+      enabled: dials.islandsEnabled && config.distantRange.floatingIslands.enabled !== false,
     },
     // The "เกาะลอยฟ้า" toggle used to drive only `floatingIslands`, the
     // procedural system that ships disabled — so pressing it did nothing at
@@ -226,9 +245,21 @@ export function resolveHorizon(settings, config, authored = null) {
     },
   };
 
+  // `outer` must stay below `inner`; the sliders are independent, so a player
+  // can cross them over and the band would silently vanish.
+  const treeLineInner = dials.treeLineInner;
+  const treeLineOuter = Math.max(treeLineInner + 8, dials.treeLineOuter);
+
   return {
     dials,
     ground,
+    treeLine: {
+      ...config.treeLine,
+      enabled: dials.treeLineEnabled && config.treeLine?.enabled !== false,
+      count: Math.round(dials.treeLineCount),
+      innerRadius: treeLineInner,
+      outerRadius: treeLineOuter,
+    },
     exposure: dials.exposure,
     lighting: { sunScale: dials.sunScale, hemiScale: dials.hemiScale },
     cloudShadowStrength: dials.cloudShadowStrength,
