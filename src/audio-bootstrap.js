@@ -1,3 +1,7 @@
+if (document.readyState === "loading") {
+  await new Promise((resolve) => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+}
+
 const AUDIO_BASE = "./assets/audio/";
 
 const TRACK_DEFS = {
@@ -103,9 +107,9 @@ for (const track of allTracks) {
 }
 
 function keyboardMagnitude() {
-  const x = Number(keys.has("a") || keys.has("arrowleft")) + Number(keys.has("d") || keys.has("arrowright"));
-  const z = Number(keys.has("w") || keys.has("arrowup")) + Number(keys.has("s") || keys.has("arrowdown"));
-  return (x || z) ? 1 : 0;
+  const horizontal = Number(keys.has("a") || keys.has("arrowleft") || keys.has("d") || keys.has("arrowright"));
+  const vertical = Number(keys.has("w") || keys.has("arrowup") || keys.has("s") || keys.has("arrowdown"));
+  return (horizontal || vertical) ? 1 : 0;
 }
 
 function showUnlockMessage() {
@@ -113,12 +117,9 @@ function showUnlockMessage() {
   unlockMessageShown = true;
   const toast = document.querySelector("#toast");
   if (!toast) return;
-  const old = toast.textContent;
   toast.textContent = "🔊 เปิดเสียง Liora แล้ว";
   toast.classList.add("show");
-  setTimeout(() => {
-    if (toast.textContent === "🔊 เปิดเสียง Liora แล้ว") toast.textContent = old;
-  }, 1600);
+  setTimeout(() => toast.classList.remove("show"), 1500);
 }
 
 function unlockAudio() {
@@ -134,15 +135,15 @@ function unlockAudio() {
     track.audio.volume = 0;
     const promise = track.audio.play();
     promise?.catch((error) => {
+      track.failed = true;
       console.warn(`Audio unlock failed: ${track.name}`, error);
-      unlocked = false;
-      audioButton.textContent = "🔇";
     });
   }
   showUnlockMessage();
 }
 
 function toggleMute(event) {
+  event?.preventDefault?.();
   event?.stopPropagation?.();
   if (!unlocked) {
     unlockAudio();
@@ -153,8 +154,8 @@ function toggleMute(event) {
 }
 
 audioButton.addEventListener("pointerdown", toggleMute);
-window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true });
-window.addEventListener("keydown", unlockAudio, { capture: true, once: true });
+window.addEventListener("pointerdown", unlockAudio, { once: true });
+window.addEventListener("keydown", unlockAudio, { once: true });
 window.addEventListener("keydown", (event) => keys.add(event.key.toLowerCase()));
 window.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
 window.addEventListener("blur", () => keys.clear());
@@ -169,20 +170,21 @@ function setTargets() {
   const running = movement > 0.78;
   const moving = movement > 0.05;
 
-  // Until the player position is exposed to this sidecar, grass is the safe
-  // surface fallback. Forest sounds can still be auditioned with
-  // ?audiozone=forest without changing gameplay or map data.
+  // Grass is the safe default until the core runtime exposes the exact player
+  // surface. The forest mix can be auditioned with ?audiozone=forest now; the
+  // next audio pass can bind it to the real Forest zone without replacing any
+  // files or mixer logic.
   const forcedForest = new URLSearchParams(location.search).get("audiozone") === "forest";
   if (moving) {
-    if (forcedForest) tracks.leaves.target = tracks.leaves.gain;
-    else if (running) tracks.run.target = tracks.run.gain;
-    else tracks.walk.target = tracks.walk.gain;
+    if (forcedForest && !tracks.leaves.failed) tracks.leaves.target = tracks.leaves.gain;
+    else if (running && !tracks.run.failed) tracks.run.target = tracks.run.gain;
+    else if (!tracks.walk.failed) tracks.walk.target = tracks.walk.gain;
   }
 
   const { morning, night } = dayWeights(parseClockHour());
-  tracks.morning.target = tracks.morning.gain * morning;
-  tracks.night.target = tracks.night.gain * night * (forcedForest ? 0.45 : 1);
-  tracks.forest.target = forcedForest ? tracks.forest.gain : 0;
+  if (!tracks.morning.failed) tracks.morning.target = tracks.morning.gain * morning;
+  if (!tracks.night.failed) tracks.night.target = tracks.night.gain * night * (forcedForest ? 0.45 : 1);
+  if (forcedForest && !tracks.forest.failed) tracks.forest.target = tracks.forest.gain;
 }
 
 function update(now) {
@@ -192,7 +194,12 @@ function update(now) {
   setTargets();
 
   for (const track of allTracks) {
-    track.value = smooth(track.value, track.target, delta, track.name === "walk" || track.name === "run" || track.name === "leaves" ? 12 : 3.2);
+    track.value = smooth(
+      track.value,
+      track.target,
+      delta,
+      track.name === "walk" || track.name === "run" || track.name === "leaves" ? 12 : 3.2
+    );
     track.audio.volume = clamp01(track.value);
   }
   raf = requestAnimationFrame(update);
