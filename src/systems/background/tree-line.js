@@ -211,9 +211,13 @@ export async function createTreeLine({
         continue;
       }
       const model = source.clone(true);
-      model.position.set(0, 0, 0);
-      model.rotation.set(0, 0, 0);
-      model.scale.setScalar(1);
+      // Preserve the variant root transform from the authored GLB. The nature
+      // pack stores its real-world metre scale and Blender→Three axis fix on
+      // this node (for example PineTree_2 has scale 100 and a -90° X rotation).
+      // Resetting position/rotation/scale here shrinks those trees to ~1/100
+      // size and tips them onto the wrong axis, making the whole band appear
+      // empty even though the instances exist. `collectParts()` deliberately
+      // bakes this root transform into each part's local matrix below.
       // Wind patches the shared material, so it has to run before the parts
       // are collected. `wind-material.js` reads the phase from
       // `modelMatrix * instanceMatrix * position`, so one shared material

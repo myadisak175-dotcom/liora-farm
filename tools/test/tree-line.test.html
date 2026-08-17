@@ -58,6 +58,26 @@ await test("the ring is split into sector groups, not one mesh", async () => {
   }
 });
 
+
+await test("authored GLB root transform survives cloning", async () => {
+  const scene = stubNatureScene(["PineTree_2"], 500);
+  const authored = scene.getObjectByName("PineTree_2");
+  authored.scale.setScalar(100);
+  authored.rotation.set(-Math.PI / 2, 0, 0);
+  globalThis.__stubGltf[PINE] = scene;
+  let observed = null;
+  await createTreeLine({
+    config: { ...base, count: 1, items: [{ id: "tall", weight: 1 }] },
+    assets: ASSETS,
+    heightAt: () => 1.5,
+    onModel: (model) => { observed = { scale: model.scale.x, rotationX: model.rotation.x }; },
+  });
+  await settle(); await settle();
+  assert(observed?.scale === 100, `authored scale was reset to ${observed?.scale}`);
+  assert(Math.abs(observed.rotationX + Math.PI / 2) < 1e-9, `authored rotation was reset to ${observed?.rotationX}`);
+  globalThis.__stubGltf[PINE] = stubNatureScene(["PineTree_2", "PineTree_3", "Bush"], 500);
+});
+
 await test("every instanced mesh stays frustum-cullable", async () => {
   const line = await build();
   for (const sector of line.group.children) {
