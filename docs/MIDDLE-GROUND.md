@@ -52,7 +52,7 @@ Multiply by 0.05 to get the per-frame cost.
 
 **Sectors.** `editor/instanced-pool.js` already documents the trap: an
 InstancedMesh's bounding sphere covers every instance, so one mesh holding the
-whole ring can never leave the frustum and every tree would be submitted every frame.
+whole ring can never leave the frustum and every tree is submitted every frame.
 The ring is split into 16 wedges, each with its own meshes and its own tight
 sphere. `tree-line.test.html` pins this — it is the whole reason the system is
 shaped the way it is.
