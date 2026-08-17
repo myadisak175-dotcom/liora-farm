@@ -64,6 +64,7 @@ export function createMapScope({
   entries = [],
   requestedId = null,
   defaultId = DEFAULT_MAP_ID,
+  revision = "",
 } = {}) {
   const list = entries
     .map((entry) => ({
@@ -82,6 +83,7 @@ export function createMapScope({
   const id = list.some((entry) => entry.id === wanted) ? wanted : fallbackId;
   const entry = list.find((item) => item.id === id)
     ?? { id, name: id, file: `./maps/${id}.json`, builtIn: false };
+  const navigationRevision = String(revision ?? "").trim();
 
   return {
     id,
@@ -90,13 +92,26 @@ export function createMapScope({
     maps: list,
     isDefault: id === defaultId,
     key: (storageKey) => scopeStorageKey(storageKey, id, defaultId),
-    /** The URL that opens another map. Switching is a reload — see docs. */
+    /**
+     * The URL that opens another map. Switching is a reload — see docs.
+     *
+     * Keep a release revision on every world URL. GitHub Pages and mobile
+     * browsers can otherwise reuse an older index document when returning to
+     * the default world, even though the world just left was running newer
+     * JavaScript. That made audio releases appear to belong to one map.
+     */
     urlFor(nextId) {
       const target = normalizeMapId(nextId, defaultId);
-      if (typeof location === "undefined") return `?${MAP_QUERY_PARAM}=${target}`;
+      if (typeof location === "undefined") {
+        const query = new URLSearchParams();
+        query.set(MAP_QUERY_PARAM, target);
+        if (navigationRevision) query.set("v", navigationRevision);
+        return `?${query.toString()}`;
+      }
       const url = new URL(location.href);
       if (target === defaultId) url.searchParams.delete(MAP_QUERY_PARAM);
       else url.searchParams.set(MAP_QUERY_PARAM, target);
+      if (navigationRevision) url.searchParams.set("v", navigationRevision);
       return url.toString();
     },
   };

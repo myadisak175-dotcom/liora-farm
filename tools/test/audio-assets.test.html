@@ -65,7 +65,8 @@ await test("the runtime never references the corrupt legacy leaf file", async ()
   const filesBlock = source.match(/const FILES = Object\.freeze\(\{([\s\S]*?)\n\}\);/)?.[1] ?? "";
   assert(!filesBlock.includes("footstep_forest_leaves.mp3"), "corrupt leaf MP3 is still referenced");
   assert(filesBlock.includes("footstep_grass_soft.mp3"), "clean walking fallback is missing");
-  assert(source.includes("unlockFromFirstGesture"), "normal first game touch no longer unlocks audio");
+  assert(source.includes("unlockFromGameGesture"), "normal game touches no longer unlock or retry audio");
+  assert(source.includes('document.addEventListener("pointerdown", unlockFromGameGesture, { capture: true })'), "mobile retry listener became one-shot again");
   assert(source.includes('document.createElement("audio")'), "long tracks are no longer streamed natively");
   assert(!source.includes("createMediaElementSource"), "Android media is still routed through Web Audio");
   assert(source.includes("track.audio.volume"), "native stream crossfade is missing");

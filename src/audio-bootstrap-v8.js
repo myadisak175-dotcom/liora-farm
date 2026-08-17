@@ -16,7 +16,7 @@ const STREAM_FILES = Object.freeze({
   night: "ambience_forest_night.mp3",
 });
 const STREAM_MIX = Object.freeze({ music: 0.24, birds: 0.80, night: 0.80 });
-const AUDIO_REVISION = "audio13";
+const AUDIO_REVISION = "audio14";
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
 // offsets pointed beyond the usable audio and caused audio initialization to
@@ -394,14 +394,24 @@ button.addEventListener("pointerdown", (event) => {
   else setMuted(!muted);
 });
 
-// Mobile browsers only let Web Audio start inside a user gesture.  Unlock from
-// the first normal game touch as well as from the button, so moving the joystick
-// does not leave Liora permanently silent just because the small sound button
-// was missed.
-const unlockFromFirstGesture = () => {
-  if (!unlocked && !loading && !disposed) ensureAudio();
+// Mobile browsers only let audio start inside a user gesture. Retry from later
+// game touches too: a world switch or a busy Android media service can consume
+// the first attempt without starting the long tracks. The sound button owns
+// its own gesture so the capture handler deliberately leaves it alone.
+const unlockFromGameGesture = (event) => {
+  if (event.target === button || button.contains(event.target)) return;
+  if (loading || disposed || muted) return;
+  if (!unlocked) {
+    void ensureAudio();
+    return;
+  }
+  if (streamsNeedRetry()) {
+    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
+    context?.resume?.().catch((error) => setRuntimeError("context", error));
+    void startAllStreams().then(() => updateAudioButton());
+  }
 };
-document.addEventListener("pointerdown", unlockFromFirstGesture, { capture: true, once: true });
+document.addEventListener("pointerdown", unlockFromGameGesture, { capture: true });
 const resumeAfterVisibility = () => {
   if (document.hidden || !unlocked || muted || disposed) return;
   context?.resume?.().catch((error) => setRuntimeError("context", error));
@@ -567,7 +577,7 @@ function update(now) {
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V13 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V14 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,
@@ -602,7 +612,7 @@ window.__lioraAudio = {
     context?.close?.();
     button.remove();
     debug?.remove();
-    document.removeEventListener("pointerdown", unlockFromFirstGesture, { capture: true });
+    document.removeEventListener("pointerdown", unlockFromGameGesture, { capture: true });
     document.removeEventListener("visibilitychange", resumeAfterVisibility);
   },
 };

@@ -37,7 +37,9 @@ import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
+const APP_REVISION = "audio14";
 window.__lioraBuild = BUILD;
+window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
 window.__lioraBootState = "starting";
 window.__lioraBootError = null;
@@ -106,7 +108,11 @@ try {
 } catch (error) {
   console.warn("Map registry could not be loaded — falling back to the default map", error);
 }
-const mapScope = createMapScope({ entries: mapRegistry, defaultId: DEFAULT_MAP_ID });
+const mapScope = createMapScope({
+  entries: mapRegistry,
+  defaultId: DEFAULT_MAP_ID,
+  revision: APP_REVISION,
+});
 window.__lioraMap = mapScope.id;
 const MAP_CONFIG = {
   ...CONFIG,

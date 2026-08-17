@@ -14,6 +14,7 @@ import { createFarmUI } from "../../src/ui/farm-ui.js";
 import { bindPlayerActionButtons } from "../../src/ui/player-actions.js";
 import { createPlayerRuntime } from "../../src/systems/player-runtime.js";
 import { createLayoutRuntime } from "../../src/editor/layout-runtime.js";
+import { createMapScope } from "../../src/systems/map-scope.js";
 
 const results = [];
 const out = document.querySelector("#out");
@@ -47,6 +48,23 @@ await test("main stays a composition root instead of re-growing extracted subsys
   ]) {
     assert(source.includes(expected), `${expected} is not wired by main.js`);
   }
+});
+
+await test("world links retain the release revision and cannot fall back to stale audio", () => {
+  const scope = createMapScope({
+    entries: [
+      { id: "home-island", name: "Home" },
+      { id: "blank-valley", name: "Valley" },
+    ],
+    requestedId: "home-island",
+    revision: "audio14",
+  });
+  const home = new URL(scope.urlFor("home-island"));
+  const valley = new URL(scope.urlFor("blank-valley"));
+  assert(home.searchParams.get("v") === "audio14", "default world dropped the release revision");
+  assert(!home.searchParams.has("map"), "default world kept a redundant map id");
+  assert(valley.searchParams.get("v") === "audio14", "secondary world dropped the release revision");
+  assert(valley.searchParams.get("map") === "blank-valley", "secondary world id changed");
 });
 
 await test("notifications preserve status and toast class behavior", () => {

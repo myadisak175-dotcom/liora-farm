@@ -25,13 +25,13 @@
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=framed1";
+  entry.src = "./src/main.js?v=audio14";
   document.head.append(entry);
 
-  // Audio v13: use native mobile output for long music and ambience tracks.
+  // Audio v14: keep native mobile audio alive across every world URL.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio13";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio14";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
