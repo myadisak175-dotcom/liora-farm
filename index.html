@@ -28,11 +28,10 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio v8: keep v7 birds and running untouched; slow walk uses only four
-  // soft dry-leaf foot plants at 38% gain.
+  // Audio v9: cache-bust the repaired, fallback-safe mobile audio runtime.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio8";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio9";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {

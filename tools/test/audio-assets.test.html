@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audio asset tests</title>
+</head>
+<body><pre id="out"></pre>
+<script type="module">
+const results = [];
+const out = document.querySelector("#out");
+async function test(name, fn) {
+  try { await fn(); results.push({ name, pass: true, detail: "" }); }
+  catch (error) { results.push({ name, pass: false, detail: String(error?.message ?? error) }); }
+}
+function assert(value, message) { if (!value) throw new Error(message); }
+
+const runtimeFiles = [
+  "footstep_grass_soft.mp3",
+  "footstep_grass_run_clean.mp3",
+  "ambience_morning_birds_clean.mp3",
+  "ambience_night_crickets_clean.mp3",
+];
+
+await test("every runtime audio file fetches and decodes in Chromium", async () => {
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  assert(AudioContextCtor, "Web Audio is unavailable in the test browser");
+  const context = new AudioContextCtor();
+  try {
+    for (const file of runtimeFiles) {
+      const response = await fetch(`../../assets/audio/${file}`);
+      assert(response.ok, `${file} returned HTTP ${response.status}`);
+      const decoded = await context.decodeAudioData(await response.arrayBuffer());
+      assert(decoded.duration > 0.1, `${file} decoded as an empty clip`);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+await test("the runtime never references the corrupt legacy leaf file", async () => {
+  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
+  const filesBlock = source.match(/const FILES = Object\.freeze\(\{([\s\S]*?)\n\}\);/)?.[1] ?? "";
+  assert(!filesBlock.includes("footstep_forest_leaves.mp3"), "corrupt leaf MP3 is still referenced");
+  assert(filesBlock.includes("footstep_grass_soft.mp3"), "clean walking fallback is missing");
+  assert(source.includes("unlockFromFirstGesture"), "normal first game touch no longer unlocks audio");
+});
+
+window.__results = results;
+window.__done = true;
+out.textContent = results.map((result) => `${result.pass ? "PASS" : "FAIL"} ${result.name}${result.detail ? ` | ${result.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>

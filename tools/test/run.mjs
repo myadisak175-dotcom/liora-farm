@@ -48,12 +48,13 @@ const PAGES = [
   { file: "tools/test/horizon-polish.test.html", viewports: [[900, 800]] },
   { file: "tools/test/builder-hud.test.html", viewports: [[375, 667]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
+  { file: "tools/test/audio-assets.test.html", viewports: [[390, 664]] },
 ];
 
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
   ".css": "text/css", ".json": "application/json", ".png": "image/png",
-  ".webp": "image/webp", ".glb": "model/gltf-binary",
+  ".webp": "image/webp", ".glb": "model/gltf-binary", ".mp3": "audio/mpeg",
 };
 const server = http.createServer((request, response) => {
   const file = path.join(ROOT, decodeURIComponent(request.url.split("?")[0]));

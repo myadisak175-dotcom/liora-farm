@@ -4,20 +4,20 @@ if (document.readyState === "loading") {
 
 const AUDIO_BASE = "./assets/audio/";
 const FILES = Object.freeze({
-  walk: "footstep_forest_leaves.mp3",
-  run: "footstep_grass_run.mp3",
-  birds: "ambience_morning_birds.mp3",
-  night: "ambience_night_crickets.mp3",
+  // The first file in each list is the clean runtime encode.  The extra
+  // choices are deliberately valid fallbacks, so one broken optional asset
+  // cannot silence the whole game again.
+  walk: ["footstep_grass_soft.mp3", "footstep_grass_walk.mp3", "footstep_grass_run_clean.mp3"],
+  run: ["footstep_grass_run_clean.mp3", "footstep_grass_run.mp3", "footstep_grass_soft.mp3"],
+  birds: ["ambience_morning_birds_clean.mp3", "ambience_morning_birds.mp3"],
+  night: ["ambience_night_crickets_clean.mp3", "ambience_night_crickets.mp3"],
 });
 
-// Audio v8: use only four of the gentler foot plants from the supplied
-// sspsurvival-footsteps-on-dry-leaves-and-grass-332958.mp3 source.
-// Offsets were chosen from the softer impacts in the original 13.5 s recording.
+// The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
+// offsets pointed beyond the usable audio and caused audio initialization to
+// fail.  This compact, clean grass clip contains one soft walking impact.
 const WALK_CUES = Object.freeze([
-  { offset: 1.72, duration: 0.38 },
-  { offset: 2.55, duration: 0.38 },
-  { offset: 3.95, duration: 0.38 },
-  { offset: 6.95, duration: 0.38 },
+  { offset: 0, duration: 0.42 },
 ]);
 
 // Running is intentionally unchanged from v7.
@@ -58,7 +58,7 @@ function makeButton() {
   const button = document.createElement("button");
   button.type = "button";
   button.id = "audio-toggle";
-  button.textContent = "🔇 เสียง";
+  button.textContent = "🔊 เปิดเสียง";
   button.setAttribute("aria-label", "เปิดหรือปิดเสียง");
   Object.assign(button.style, {
     position: "fixed", right: "12px", top: "calc(env(safe-area-inset-top, 0px) + 58px)",
@@ -100,11 +100,22 @@ let loadError = "";
 let raf = 0, lastTime = performance.now(), lastPosition = null, wasMoving = false;
 let distanceSinceStep = 0, activeProfile = "-", currentFoot = "-", stepCount = 0;
 let walkCue = 0, runCue = 0;
+const resolvedFiles = {};
 
 async function fetchBuffer(name) {
-  const response = await fetch(`${AUDIO_BASE}${FILES[name]}?v=8`, { cache: "force-cache" });
-  if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
-  return context.decodeAudioData(await response.arrayBuffer());
+  const failures = [];
+  for (const file of FILES[name]) {
+    try {
+      const response = await fetch(`${AUDIO_BASE}${file}?v=9`, { cache: "force-cache" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      if (!Number.isFinite(buffer.duration) || buffer.duration <= 0.02) throw new Error("empty decode");
+      return { buffer, file };
+    } catch (error) {
+      failures.push(`${file}: ${String(error?.message ?? error)}`);
+    }
+  }
+  throw new Error(`${name}: ${failures.join(" | ")}`);
 }
 
 function makeLoop(buffer) {
@@ -144,11 +155,15 @@ async function ensureAudio() {
     const decoded = {}, errors = {};
     settled.forEach((result, index) => {
       const name = names[index];
-      if (result.status === "fulfilled") decoded[name] = result.value[1];
+      if (result.status === "fulfilled") {
+        decoded[name] = result.value[1].buffer;
+        resolvedFiles[name] = result.value[1].file;
+      }
       else errors[name] = String(result.reason?.message ?? result.reason);
     });
     if (!decoded.walk) throw new Error(`walk: ${errors.walk || "decode failed"}`);
     decoded.run ??= decoded.walk;
+    resolvedFiles.run ??= resolvedFiles.walk;
     buffers = decoded;
     loadError = Object.entries(errors).map(([name, message]) => `${name}:${message}`).join(" | ");
 
@@ -161,9 +176,9 @@ async function ensureAudio() {
     distanceSinceStep = 0;
     activeProfile = "-";
     button.textContent = "🔊 เสียง";
-    toast("🔊 Audio v8 — เดินช้าเบาลงแล้ว");
+    toast("🔊 เสียงพร้อมแล้ว");
   } catch (error) {
-    console.error("Liora audio v8 init failed", error);
+    console.error("Liora audio init failed", error);
     loadError = String(error?.message ?? error);
     button.textContent = "⚠️ เสียง";
     toast("เสียงโหลดไม่สำเร็จ");
@@ -191,12 +206,24 @@ button.addEventListener("pointerdown", (event) => {
   else setMuted(!muted);
 });
 
+// Mobile browsers only let Web Audio start inside a user gesture.  Unlock from
+// the first normal game touch as well as from the button, so moving the joystick
+// does not leave Liora permanently silent just because the small sound button
+// was missed.
+const unlockFromFirstGesture = () => {
+  if (!unlocked && !loading && !disposed) ensureAudio();
+};
+document.addEventListener("pointerdown", unlockFromFirstGesture, { capture: true, once: true });
+
 function playStep(kind) {
   if (!unlocked || muted || !context || !buffers) return;
   const isRun = kind === "run";
   const buffer = isRun ? buffers.run : buffers.walk;
   if (!buffer) return;
-  const cues = isRun ? RUN_CUES : WALK_CUES;
+  // If a run file had to fall back to the short walking clip, retain a usable
+  // cue instead of seeking into silence with the long running offsets.
+  const runUsesShortClip = isRun && resolvedFiles.run === "footstep_grass_soft.mp3";
+  const cues = isRun && !runUsesShortClip ? RUN_CUES : WALK_CUES;
   const index = isRun ? runCue++ : walkCue++;
   const cue = cues[index % cues.length];
   const profile = STEP_PROFILE[kind];
@@ -291,11 +318,11 @@ function update(now) {
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V8 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V9 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,
-      `walkGain=${STEP_PROFILE.walk.gain.toFixed(2)} cues=${WALK_CUES.length} run=UNCHANGED birds=UNCHANGED`,
+      `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"}`,
       loadError ? `err=${loadError}` : "err=-",
     ].join("\n");
   }
@@ -320,5 +347,6 @@ window.__lioraAudio = {
     context?.close?.();
     button.remove();
     debug?.remove();
+    document.removeEventListener("pointerdown", unlockFromFirstGesture, { capture: true });
   },
 };
