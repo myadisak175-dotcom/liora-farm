@@ -159,9 +159,12 @@ await test("touch quality preserves sway but reduces leaf flutter", () => {
 });
 
 await test("only soft ground cover responds to the player interaction field", () => {
+  const grass = getPartWeights("grass");
+  const flower = getPartWeights("flower");
+  const bush = getPartWeights("bush");
   assert(getPartWeights("tree", "leaf").interaction === 0, "tree canopies should not bend around the player");
-  assert(getPartWeights("grass").interaction === 1, "grass should receive the full interaction field");
-  assert(getPartWeights("flower").interaction > getPartWeights("bush").interaction, "flowers should yield more than bushes");
+  assert(grass.interaction > flower.interaction && flower.interaction > bush.interaction, "soft-cover response order changed");
+  assert(grass.interaction <= 0.75 && bush.interaction > 0, "ground-cover interaction should stay gentle but visible");
 });
 
 await test("wind material patches vertex shader without changing source material", () => {
