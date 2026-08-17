@@ -23,12 +23,14 @@ const REBUILD_FOR = {
   "เนินเขา": "ridges",
   "ภูเขากลาง": "ridges",
   "ยอดไกล": "range",
+  "กลางทุ่ง": "treeLine",
 };
 const TOGGLE_REBUILD = {
   mountainsEnabled: "ridges",
   peaksEnabled: "range",
   hazeEnabled: "range",
   islandsEnabled: "range",
+  treeLineEnabled: "treeLine",
 };
 
 function readStored(key) {
@@ -52,6 +54,12 @@ export function createHorizonControls({
   // Scenery hung in the sky. Optional: the GLB may still be loading, or absent
   // entirely, and the panel must open either way.
   floatingIslandBackdrop = null,
+  // Middle-ground trees. Optional: the GLBs load in the background and the
+  // panel has to open whether or not they have arrived.
+  treeLine = null,
+  // Rebuilds the outer-world height sampler after the ground dials move, so
+  // the trees follow the surface instead of hovering over the old one.
+  makeGroundSampler = null,
   container,
   surface,
   storageKey = HORIZON_STORAGE_KEY,
@@ -115,6 +123,12 @@ export function createHorizonControls({
         outerWorld: !targets || targets.has("ground") ? resolved.outerWorld : null,
         mountainBackdrop: !targets || targets.has("ridges") ? resolved.mountainBackdrop : null,
       });
+    }
+    if (!targets || targets.has("treeLine") || targets.has("ground")) {
+      treeLine?.rebuild?.(
+        resolved.treeLine,
+        targets && !targets.has("ground") ? null : makeGroundSampler?.(resolved.outerWorld)
+      );
     }
     if (!targets || targets.has("range")) {
       sky.rebuildDistantRange(resolved.distantRange);
