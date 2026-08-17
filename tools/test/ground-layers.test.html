@@ -140,9 +140,12 @@ function grabShader(paint) {
 
 const p1 = makePaint(shipped, "test.p1");
 eq("fresh world has 1 page", p1.pageCount, 1);
+eq("fresh world samples as grass", p1.surfaceAt(0, 0), "grass");
 p1.paintAt(0, 0, { layer: 0, radius: 3, strength: 1 });
 eq("one dab is one undo step", p1.strokeCount, 1);
 eq("dirt did not add a page", p1.pageCount, 1);
+eq("painted centre samples as dirt", p1.surfaceAt(0, 0), "dirt");
+eq("unpainted edge still samples as grass", p1.surfaceAt(18, 18), "grass");
 
 const before = grabShader(p1);
 ok("shader declares the array sampler", before.source.includes("uniform sampler2DArray uLayers;"));
@@ -203,6 +206,7 @@ const inked4 = readPixel(p5, 4, 0, 0);
 ok("page 0 has ink", inked0[C0] > 200, JSON.stringify(inked0));
 ok("page 4 has ink", inked4[C15] > 200, JSON.stringify(inked4));
 p5.paintAt(0, 0, { layer: 3, radius: 4, strength: 1 });   // base = eraser
+eq("grass eraser restores the sampled surface", p5.surfaceAt(0, 0), "grass");
 ok("eraser cleared page 0", readPixel(p5, 0, 0, 0)[C0] < 12, JSON.stringify(readPixel(p5, 0, 0, 0)));
 ok("eraser cleared page 4", readPixel(p5, 4, 0, 0)[C15] < 12, JSON.stringify(readPixel(p5, 4, 0, 0)));
 p5.undo();

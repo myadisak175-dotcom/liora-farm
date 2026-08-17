@@ -11,6 +11,7 @@ export function createPlayerRuntime({
   waterInteraction = null,
   dayNight,
   lighting,
+  surfaceAt = null,
 }) {
   // The player is already parented to the world scene before this runtime is
   // created. Keeping the visual water helper here avoids adding more bootstrap
@@ -126,6 +127,11 @@ export function createPlayerRuntime({
     },
     get hour() {
       return Number(dayNight?.getHour?.()) || 0;
+    },
+    get surface() {
+      const position = player?.root?.position;
+      if (!position || typeof surfaceAt !== "function") return "grass";
+      return String(surfaceAt(position.x, position.z) || "grass");
     },
   };
   window.__lioraAudioRuntime = audioBridge;

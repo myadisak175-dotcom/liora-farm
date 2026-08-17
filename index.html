@@ -25,13 +25,13 @@
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=audio14";
+  entry.src = "./src/main.js?v=audio15";
   document.head.append(entry);
 
-  // Audio v14: keep native mobile audio alive across every world URL.
+  // Audio v15: add wind plus terrain-aware running and water footsteps.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio14";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio15";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {

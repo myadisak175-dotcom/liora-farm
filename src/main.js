@@ -37,7 +37,7 @@ import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "audio14";
+const APP_REVISION = "audio15";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -350,6 +350,7 @@ const playerRuntime = createPlayerRuntime({
   contactShadow,
   dayNight,
   lighting,
+  surfaceAt: (x, z) => world.paint.surfaceAt(x, z),
 });
 const farmButton = document.querySelector('[data-action="farm"]');
 farmUI = createFarmUI({

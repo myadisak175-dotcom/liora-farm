@@ -8,17 +8,21 @@
 body{margin:0;padding:24px;background:#102a33;color:#f6fbfa;font:16px/1.45 system-ui,sans-serif}main{max-width:680px;margin:auto}h1{font-size:24px}.card{padding:14px 16px;margin:12px 0;border:1px solid #ffffff35;border-radius:16px;background:#ffffff0e}.name{font-weight:700;margin-bottom:8px}.status{font-size:13px;opacity:.8;margin-top:6px}audio{width:100%}a{color:#a7e7df}</style>
 </head>
 <body><main>
-<h1>🎧 Liora Audio Foundation v6</h1>
-<p>กด Play เพื่อตรวจไฟล์ที่เกมใช้จริง เวอร์ชันเกมใช้ระบบเสียงของมือถือโดยตรงสำหรับเพลงและบรรยากาศ และจะค่อย ๆ เปลี่ยนเสียงนกเป็นเสียงป่าตามเวลา</p>
+<h1>🎧 Liora Audio Foundation v7</h1>
+<p>กด Play เพื่อตรวจไฟล์ที่เกมใช้จริง เพลงและบรรยากาศใช้ระบบเสียงมือถือโดยตรง ส่วนจังหวะเท้าจะเปลี่ยนตามหญ้า ดิน พื้นแข็ง และน้ำ</p>
 <div id="list"></div>
-<p><a href="./?map=world-blockout-v1&amp;v=audio14">← กลับเกม</a></p>
+<p><a href="./?map=world-blockout-v1&amp;v=audio15">← กลับเกม</a></p>
 <script>
 const tracks=[
   ["เพลงหลัก — Lanternfields Overture","assets/audio/music_lanternfields_overture.mp3"],
   ["เช้า/กลางวัน — เสียงนก","assets/audio/ambience_morning_birdsong.mp3"],
   ["เย็น/กลางคืน — ป่า ลม และจิ้งหรีด","assets/audio/ambience_forest_night.mp3"],
+  ["บรรยากาศ — ลมพัดต้นไม้","assets/audio/ambience_tree_wind.mp3"],
   ["เดินช้าบนหญ้า","assets/audio/footstep_grass_soft.mp3"],
   ["วิ่งบนหญ้า","assets/audio/footstep_grass_run_clean.mp3"],
+  ["วิ่งบนดินและทราย","assets/audio/footstep_run_dirt.mp3"],
+  ["วิ่งบนพื้นแข็งและทางหิน","assets/audio/footstep_run_ground.mp3"],
+  ["เดินหรือวิ่งลุยน้ำ — คลังเสียงสาด 8 แบบ","assets/audio/footstep_water_wade_bank.mp3"],
 ];
 const list=document.querySelector('#list');
 for(const [name,src] of tracks){

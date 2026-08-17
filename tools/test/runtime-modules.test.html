@@ -57,13 +57,13 @@ await test("world links retain the release revision and cannot fall back to stal
       { id: "blank-valley", name: "Valley" },
     ],
     requestedId: "home-island",
-    revision: "audio14",
+    revision: "audio15",
   });
   const home = new URL(scope.urlFor("home-island"));
   const valley = new URL(scope.urlFor("blank-valley"));
-  assert(home.searchParams.get("v") === "audio14", "default world dropped the release revision");
+  assert(home.searchParams.get("v") === "audio15", "default world dropped the release revision");
   assert(!home.searchParams.has("map"), "default world kept a redundant map id");
-  assert(valley.searchParams.get("v") === "audio14", "secondary world dropped the release revision");
+  assert(valley.searchParams.get("v") === "audio15", "secondary world dropped the release revision");
   assert(valley.searchParams.get("map") === "blank-valley", "secondary world id changed");
 });
 
@@ -191,6 +191,7 @@ await test("player runtime preserves movement-animation-fx update contract", () 
     contactShadow,
     dayNight,
     lighting,
+    surfaceAt() { return "dirt"; },
   });
   runtime.update(0.016, { active: true, cameraTarget });
   assert(calls[0][0] === "movement" && calls[0][1] === 0.5, "movement input changed");
@@ -199,6 +200,7 @@ await test("player runtime preserves movement-animation-fx update contract", () 
   assert(calls.some((entry) => entry[0] === "shadow"), "contact shadow missing");
   assert(calls.some((entry) => entry[0] === "camera" && entry[2] === 3.7), "camera target changed");
   assert(calls.at(-1)[0] === "lighting", "lighting follow order changed");
+  assert(window.__lioraAudioRuntime.surface === "dirt", "painted surface is not exposed to audio");
 });
 
 await test("farm UI keeps target labels and plant action behavior", () => {

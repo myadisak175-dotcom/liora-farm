@@ -9,14 +9,18 @@ const FILES = Object.freeze({
   // the whole game again.
   walk: ["footstep_grass_soft.mp3", "footstep_grass_walk.mp3", "footstep_grass_run_clean.mp3"],
   run: ["footstep_grass_run_clean.mp3", "footstep_grass_run.mp3", "footstep_grass_soft.mp3"],
+  runDirt: ["footstep_run_dirt.mp3", "footstep_run_ground.mp3", "footstep_grass_run_clean.mp3"],
+  runGround: ["footstep_run_ground.mp3", "footstep_run_dirt.mp3", "footstep_grass_run_clean.mp3"],
+  water: ["footstep_water_wade_bank.mp3", "footstep_grass_soft.mp3"],
 });
 const STREAM_FILES = Object.freeze({
   music: "music_lanternfields_overture.mp3",
   birds: "ambience_morning_birdsong.mp3",
   night: "ambience_forest_night.mp3",
+  wind: "ambience_tree_wind.mp3",
 });
-const STREAM_MIX = Object.freeze({ music: 0.24, birds: 0.80, night: 0.80 });
-const AUDIO_REVISION = "audio14";
+const STREAM_MIX = Object.freeze({ music: 0.24, birds: 0.80, night: 0.80, wind: 0.45 });
+const AUDIO_REVISION = "audio15";
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
 // offsets pointed beyond the usable audio and caused audio initialization to
@@ -35,11 +39,33 @@ const RUN_CUES = Object.freeze([
   { offset: 1.42, duration: 0.17 },
 ]);
 
+const RUN_DIRT_CUES = Object.freeze([
+  0.08, 0.37, 0.64, 0.95, 1.21, 1.52, 1.83, 2.14,
+  2.44, 2.75, 3.05, 3.36, 3.68, 4.00, 4.31, 4.63,
+].map((offset) => ({ offset, duration: 0.22 })));
+
+const RUN_GROUND_CUES = Object.freeze([
+  0.27, 0.54, 0.83, 1.10, 1.39, 1.69, 1.96, 2.26, 2.54,
+  2.78, 3.05, 3.33, 3.54, 3.87, 4.16, 4.45, 4.71, 5.00,
+  5.29, 5.55, 5.85, 6.15, 6.45, 6.74, 7.02, 7.16,
+].map((offset) => ({ offset, duration: 0.19 })));
+
+// Eight hand-picked splashes from the supplied four-minute recording are
+// packed into one 4.5 second bank. This keeps water steps varied without
+// decoding the full source into roughly 46 MB of mobile RAM.
+const WATER_CUES = Object.freeze(
+  Array.from({ length: 8 }, (_, index) => ({ offset: index * 0.56, duration: 0.50 }))
+);
+
 const STEP_PROFILE = Object.freeze({
   // Slow walking stays audible but sits well behind the ambience on a phone.
   walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.30 },
   run: { spacing: 1.52, playbackRate: 1.00, gain: 0.38 },
+  waterWalk: { spacing: 1.34, playbackRate: 0.94, gain: 0.40 },
+  waterRun: { spacing: 1.24, playbackRate: 1.04, gain: 0.44 },
 });
+const DIRT_SURFACES = new Set(["dirt", "sand", "cracked_dirt"]);
+const HARD_SURFACES = new Set(["rock", "cobblestone_path"]);
 const FIRST_STEP_PHASE = 0.48;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
@@ -106,8 +132,9 @@ let buffers = null, streams = null;
 let unlocked = false, muted = false, loading = false, disposed = false;
 let loadError = "";
 let raf = 0, lastTime = performance.now(), lastPosition = null, wasMoving = false;
-let distanceSinceStep = 0, activeProfile = "-", currentFoot = "-", stepCount = 0;
-let walkCue = 0, runCue = 0;
+let distanceSinceStep = 0, activeProfile = "-", currentFoot = "-", currentSurface = "grass", stepCount = 0;
+let walkCue = 0, runCue = 0, runDirtCue = 0, runGroundCue = 0, waterCue = 0;
+let windPhase = 0;
 let nextBirdAt = 0, nextCricketAt = 0;
 const resolvedFiles = {};
 const runtimeErrors = new Map();
@@ -174,6 +201,7 @@ function primeStreamVolumes(hour) {
     music: STREAM_MIX.music,
     birds: STREAM_MIX.birds * birdWeight(h),
     night: STREAM_MIX.night * nightWeight(h),
+    wind: STREAM_MIX.wind,
   };
   for (const [name, level] of Object.entries(levels)) {
     const track = streams?.[name];
@@ -251,7 +279,7 @@ function destroyStreams() {
 }
 
 function normalizeFootstep(buffer, kind) {
-  const targetPeak = kind === "run" ? 0.46 : 0.52;
+  const targetPeak = kind.startsWith("run") ? 0.46 : 0.52;
   let peak = 0;
   for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
     const samples = buffer.getChannelData(channel);
@@ -328,6 +356,12 @@ async function ensureAudio() {
       if (!decoded.walk) throw new Error(`walk: ${errors.walk || "decode failed"}`);
       decoded.run ??= decoded.walk;
       resolvedFiles.run ??= resolvedFiles.walk;
+      for (const name of ["runDirt", "runGround"]) {
+        decoded[name] ??= decoded.run;
+        resolvedFiles[name] ??= resolvedFiles.run;
+      }
+      decoded.water ??= decoded.walk;
+      resolvedFiles.water ??= resolvedFiles.walk;
       buffers = decoded;
       for (const [name, message] of Object.entries(errors)) setRuntimeError(name, message);
     } catch (error) {
@@ -419,18 +453,42 @@ const resumeAfterVisibility = () => {
 };
 document.addEventListener("visibilitychange", resumeAfterVisibility);
 
-function playStep(kind) {
+function runBankForSurface(surface) {
+  if (DIRT_SURFACES.has(surface)) return "runDirt";
+  if (HARD_SURFACES.has(surface)) return "runGround";
+  return "run";
+}
+
+function cueSetForFile(file, profileKey) {
+  if (profileKey.startsWith("water") && file === "footstep_water_wade_bank.mp3") return [WATER_CUES, "water"];
+  if (file === "footstep_run_dirt.mp3") return [RUN_DIRT_CUES, "runDirt"];
+  if (file === "footstep_run_ground.mp3") return [RUN_GROUND_CUES, "runGround"];
+  if (["footstep_grass_soft.mp3", "footstep_grass_walk.mp3"].includes(file)) return [WALK_CUES, "walk"];
+  return [profileKey === "walk" ? WALK_CUES : RUN_CUES, profileKey === "walk" ? "walk" : "run"];
+}
+
+function takeCueIndex(kind) {
+  if (kind === "water") return waterCue++;
+  if (kind === "runDirt") return runDirtCue++;
+  if (kind === "runGround") return runGroundCue++;
+  if (kind === "run") return runCue++;
+  return walkCue++;
+}
+
+function playStep(profileKey, surface = "grass") {
   if (!unlocked || muted || !context || !buffers) return;
-  const isRun = kind === "run";
-  const buffer = isRun ? buffers.run : buffers.walk;
+  const inWater = profileKey.startsWith("water");
+  const bufferKey = inWater ? "water" : profileKey === "run" ? runBankForSurface(surface) : "walk";
+  const buffer = buffers[bufferKey] ?? buffers.run ?? buffers.walk;
   if (!buffer) return;
-  // If a run file had to fall back to the short walking clip, retain a usable
-  // cue instead of seeking into silence with the long running offsets.
-  const runUsesShortClip = isRun && ["footstep_grass_soft.mp3", "footstep_grass_walk.mp3"].includes(resolvedFiles.run);
-  const cues = isRun && !runUsesShortClip ? RUN_CUES : WALK_CUES;
-  const index = isRun ? runCue++ : walkCue++;
+  // Cue choice follows the file that actually decoded, not just the desired
+  // surface. A missing dirt file may resolve to ground, grass or the compact
+  // walk clip and must never seek beyond that fallback's duration.
+  const file = resolvedFiles[bufferKey] ?? resolvedFiles.run ?? resolvedFiles.walk;
+  const [cues, cueKind] = cueSetForFile(file, profileKey);
+  const index = takeCueIndex(cueKind);
   const cue = cues[index % cues.length];
-  const profile = STEP_PROFILE[kind];
+  const profile = STEP_PROFILE[profileKey];
   const offset = Math.min(cue.offset, Math.max(0, buffer.duration - 0.04));
   const duration = Math.min(cue.duration, Math.max(0.04, buffer.duration - offset));
 
@@ -439,7 +497,8 @@ function playStep(kind) {
   source.buffer = buffer;
   source.playbackRate.value = profile.playbackRate * (0.99 + Math.random() * 0.02);
   const now = context.currentTime;
-  const peak = profile.gain * (0.97 + Math.random() * 0.06);
+  const bankBalance = bufferKey === "water" ? 0.76 : ["runDirt", "runGround"].includes(bufferKey) ? 0.64 : 1;
+  const peak = profile.gain * bankBalance * (0.97 + Math.random() * 0.06);
   gain.gain.setValueAtTime(0.0001, now);
   gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), now + 0.024);
   gain.gain.setValueAtTime(Math.max(0.001, peak), now + Math.max(0.04, duration - 0.09));
@@ -448,7 +507,8 @@ function playStep(kind) {
   source.start(now, offset, duration);
   source.stop(now + duration + 0.03);
   source.onended = () => { source.disconnect(); gain.disconnect(); };
-  currentFoot = kind;
+  currentFoot = inWater ? "water" : bufferKey;
+  currentSurface = inWater ? "water" : surface;
   stepCount += 1;
 }
 
@@ -500,9 +560,12 @@ function updateAmbience(hour, dt) {
   // Android devices while still keeping decoded audio out of RAM.
   const bird = muted ? 0 : birdWeight(hour);
   const cricket = muted ? 0 : nightWeight(hour);
+  windPhase += dt;
+  const windBreath = clamp01(0.78 + Math.sin(windPhase * 0.31) * 0.13 + Math.sin(windPhase * 0.73) * 0.09);
   setStreamTarget(streams?.music, muted ? 0 : STREAM_MIX.music, dt);
   setStreamTarget(streams?.birds, STREAM_MIX.birds * bird, dt);
   setStreamTarget(streams?.night, STREAM_MIX.night * cricket, dt);
+  setStreamTarget(streams?.wind, muted ? 0 : STREAM_MIX.wind * windBreath, dt);
 
   // A failed or autoplay-blocked ambience file must not take the whole sound
   // system down. Keep the compact synthesized calls as a last-resort fallback.
@@ -534,9 +597,13 @@ function update(now) {
   let instantSpeed = 0;
 
   if (unlocked && !muted && state && position && document.body.dataset.mode === "play") {
-    const moving = Boolean(state.moving) && !state.special && (Number(state.waterDepth) || 0) < 0.07;
-    const kind = state.running ? "run" : "walk";
-    const profile = STEP_PROFILE[kind];
+    const waterDepth = Number(state.waterDepth) || 0;
+    const moving = Boolean(state.moving) && !state.special;
+    const inWater = waterDepth >= 0.055;
+    const profileKey = inWater
+      ? (state.running ? "waterRun" : "waterWalk")
+      : (state.running ? "run" : "walk");
+    const profile = STEP_PROFILE[profileKey];
     if (lastPosition) {
       const dx = position.x - lastPosition.x;
       const dz = position.z - lastPosition.z;
@@ -548,18 +615,18 @@ function update(now) {
         currentFoot = "-";
       } else {
         if (!wasMoving) distanceSinceStep = profile.spacing * FIRST_STEP_PHASE;
-        else if (activeProfile !== "-" && activeProfile !== kind) {
+        else if (activeProfile !== "-" && activeProfile !== profileKey) {
           const previous = STEP_PROFILE[activeProfile];
           const phase = previous ? clamp01(distanceSinceStep / previous.spacing) : FIRST_STEP_PHASE;
           distanceSinceStep = profile.spacing * phase;
         }
-        activeProfile = kind;
+        activeProfile = profileKey;
         if (distance < 2) distanceSinceStep += distance;
         else distanceSinceStep = profile.spacing * FIRST_STEP_PHASE;
         let safety = 0;
         while (distanceSinceStep >= profile.spacing && safety++ < 2) {
           distanceSinceStep -= profile.spacing;
-          playStep(kind);
+          playStep(profileKey, String(runtime?.surface ?? "grass"));
         }
       }
     }
@@ -577,12 +644,13 @@ function update(now) {
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V14 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V15 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
-      `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
-      `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,
-      `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"}`,
-      `music=${streams?.music?.state ?? "-"}@${(streams?.music?.audio.volume ?? 0).toFixed(2)}`,
+      `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} water=${(Number(state?.waterDepth) || 0).toFixed(2)} speed=${instantSpeed.toFixed(2)}`,
+      `foot=${currentFoot} surface=${currentSurface} profile=${activeProfile} steps=${stepCount}`,
+      `grass=${resolvedFiles.run ?? "-"} dirt=${resolvedFiles.runDirt ?? "-"}`,
+      `ground=${resolvedFiles.runGround ?? "-"} water=${resolvedFiles.water ?? "-"}`,
+      `music=${streams?.music?.state ?? "-"}@${(streams?.music?.audio.volume ?? 0).toFixed(2)} wind=${streams?.wind?.state ?? "-"}@${(streams?.wind?.audio.volume ?? 0).toFixed(2)}`,
       `birds=${streams?.birds?.state ?? "-"}@${(streams?.birds?.audio.volume ?? 0).toFixed(2)} night=${streams?.night?.state ?? "-"}@${(streams?.night?.audio.volume ?? 0).toFixed(2)}`,
       loadError ? `err=${loadError}` : "err=-",
     ].join("\n");
@@ -597,7 +665,7 @@ window.__lioraAudio = {
   get muted() { return muted; },
   get status() {
     return {
-      unlocked, muted, loading, footstep: currentFoot, steps: stepCount, error: loadError,
+      unlocked, muted, loading, footstep: currentFoot, surface: currentSurface, steps: stepCount, error: loadError,
       streams: Object.fromEntries(Object.entries(streams ?? {}).map(([name, track]) => [name, {
         state: track?.state ?? "failed",
         volume: track?.audio.volume ?? 0,

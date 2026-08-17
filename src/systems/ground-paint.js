@@ -245,6 +245,39 @@ export function createGroundPaint({
     page.texture.needsUpdate = true;
   }
 
+  /**
+   * Dominant authored surface at a world point, used by lightweight gameplay
+   * systems such as footsteps. Reading one pixel only when a foot lands is
+   * much cheaper than raycasting the shader result every frame and keeps the
+   * answer aligned with the same splat canvases the terrain renders.
+   */
+  function surfaceAt(x, z) {
+    const worldX = Number.isFinite(Number(x)) ? Number(x) : 0;
+    const worldZ = Number.isFinite(Number(z)) ? Number(z) : 0;
+    const px = Math.max(0, Math.min(size - 1, Math.round((worldX + half) * pixelsPerUnit)));
+    const py = Math.max(0, Math.min(size - 1, Math.round((worldZ + half) * pixelsPerUnit)));
+    let paintedTotal = 0;
+    let bestLayer = layers.base;
+    let bestWeight = 0;
+
+    for (const page of pages.values()) {
+      const pixel = page.ctx.getImageData(px, py, 1, 1).data;
+      for (let component = 0; component < CHANNEL_INK.length; component += 1) {
+        const layer = layers.paintable[page.index * CHANNELS_PER_PAGE + component];
+        if (!layer) continue;
+        const weight = pixel[component] / 255;
+        paintedTotal += weight;
+        if (weight > bestWeight) {
+          bestWeight = weight;
+          bestLayer = layer;
+        }
+      }
+    }
+
+    const baseWeight = Math.max(0, 1 - paintedTotal);
+    return baseWeight >= bestWeight ? layers.base.key : bestLayer.key;
+  }
+
   function rebuildPage(page) {
     fillBlack(page.ctx);
     clearSnapshot(page);
@@ -637,6 +670,7 @@ export function createGroundPaint({
     get stampCount() {
       return stamps.length;
     },
+    surfaceAt,
     paintAt(x, z, { layer, radius, strength = config.strength }) {
       beginStroke({ layer, radius, strength });
       strokeTo(x, z);
