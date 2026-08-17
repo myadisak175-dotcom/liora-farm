@@ -118,6 +118,7 @@ export async function createPlayer({
     root,
     model,
     mixer,
+    clips: gltf.animations,
     fadeTo,
     playSpecial,
     isSpecial: () => special,
