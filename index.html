@@ -16,16 +16,6 @@
     const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store" });
     if (probe.ok) base = LOCAL;
   } catch {}
-  // The import map resolves three.js and nothing else.
-  //
-  // It used to also alias "./src/config.js?v=..." onto a separate tuned config
-  // file. That made the values the game actually ran depend on three `?v=`
-  // strings matching byte-for-byte across three files: one typo loaded the old
-  // config with no error and no warning, and every test imported src/config.js
-  // directly and so could never catch it. Tuned values live in src/config.js.
-  //
-  // Do not add module aliases here. A build-less project has no bundler to
-  // flag a stale specifier, so an alias that stops matching fails silently.
   const map = document.createElement("script");
   map.type = "importmap";
   map.textContent = JSON.stringify({ imports: {
@@ -38,18 +28,13 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio is a sidecar on purpose: a failed/muted track must never block the
-  // world from booting. v5 uses resolved player movement distance so footsteps
-  // follow Liora's visible stride instead of the joystick or a free-running loop.
+  // Audio v6: resolved movement drives footsteps; the supplied bird ambience
+  // now remains present through daytime instead of disappearing after morning.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v5.js?v=audio5";
+  audio.src = "./src/audio-bootstrap-v6.js?v=audio6";
   document.head.append(audio);
 
-  // Performance experiment only. Normal game URLs do not load this module.
-  // ?npc=1 adds two autonomous NPC clones that reuse the player's model,
-  // geometry, materials and animation clips; pair it with ?perf=1 to compare
-  // real frame cost on the same phone without changing the normal boot path.
   if (new URLSearchParams(location.search).get("npc") === "1") {
     const npcTest = document.createElement("script");
     npcTest.type = "module";
