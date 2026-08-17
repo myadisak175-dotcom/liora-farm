@@ -37,6 +37,17 @@
   entry.type = "module";
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
+
+  // Performance experiment only. Normal game URLs do not load this module.
+  // ?npc=1 adds two autonomous NPC clones that reuse the player's model,
+  // geometry, materials and animation clips; pair it with ?perf=1 to compare
+  // real frame cost on the same phone without changing the normal boot path.
+  if (new URLSearchParams(location.search).get("npc") === "1") {
+    const npcTest = document.createElement("script");
+    npcTest.type = "module";
+    npcTest.src = "./src/npc-test-bootstrap.js?v=npc1";
+    document.head.append(npcTest);
+  }
 })();
 </script>
 </head>
