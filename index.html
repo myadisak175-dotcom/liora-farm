@@ -28,11 +28,11 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio v6: resolved movement drives footsteps; the supplied bird ambience
-  // now remains present through daytime instead of disappearing after morning.
+  // Audio v7: stable daytime birds, no forest cricket layer during the day,
+  // and the relaxed v6 walking cadence using the supplied dry-leaf footsteps.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v6.js?v=audio6";
+  audio.src = "./src/audio-bootstrap-v7.js?v=audio7";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
