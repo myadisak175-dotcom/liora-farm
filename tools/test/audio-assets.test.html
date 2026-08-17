@@ -45,6 +45,13 @@ await test("the runtime never references the corrupt legacy leaf file", async ()
   assert(source.includes("unlockFromFirstGesture"), "normal first game touch no longer unlocks audio");
 });
 
+await test("slow walking stays quieter while dawn and daytime stay bird-only", async () => {
+  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
+  assert(source.includes("walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.22 }"), "slow walk gain changed");
+  assert(source.includes("if (hour < 5.2) return clamp01(1 - (hour - 4.8) / 0.4);"), "crickets overlap the bird layer at dawn");
+  assert(source.includes("const bird = muted ? 0 : 0.18 * birdWeight(hour);"), "daytime bird ambience changed");
+});
+
 window.__results = results;
 window.__done = true;
 out.textContent = results.map((result) => `${result.pass ? "PASS" : "FAIL"} ${result.name}${result.detail ? ` | ${result.detail}` : ""}`).join("\n");

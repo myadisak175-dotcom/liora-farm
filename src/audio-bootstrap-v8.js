@@ -31,8 +31,8 @@ const RUN_CUES = Object.freeze([
 ]);
 
 const STEP_PROFILE = Object.freeze({
-  // Keep the v7/v6 relaxed cadence; only the slow-walk loudness and cue choice change.
-  walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.38 },
+  // Slow walking stays audible but sits well behind the ambience on a phone.
+  walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.22 },
   run: { spacing: 1.52, playbackRate: 1.00, gain: 0.64 },
 });
 const FIRST_STEP_PHASE = 0.48;
@@ -50,7 +50,9 @@ function birdWeight(hour) {
 function nightWeight(hour) {
   if (hour >= 19.0) return clamp01((hour - 19.0) / 1.0);
   if (hour < 4.8) return 1;
-  if (hour < 5.5) return clamp01(1 - (hour - 4.8) / 0.7);
+  // End crickets before the bird layer begins: morning and daytime should
+  // sound like birds, never a bird/cricket blend.
+  if (hour < 5.2) return clamp01(1 - (hour - 4.8) / 0.4);
   return 0;
 }
 
@@ -257,7 +259,7 @@ function setLoopTarget(track, target) {
 }
 
 function updateAmbience(hour) {
-  // Exactly the same bird/night levels as v7.
+  // Birds own dawn and all daytime; crickets are night-only.
   const bird = muted ? 0 : 0.18 * birdWeight(hour);
   const cricket = muted ? 0 : 0.08 * nightWeight(hour);
   setLoopTarget(birds, bird);
@@ -318,7 +320,7 @@ function update(now) {
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V9 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V10 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,

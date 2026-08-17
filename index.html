@@ -28,10 +28,10 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio v9: cache-bust the repaired, fallback-safe mobile audio runtime.
+  // Audio v10: cache-bust the quieter walk and bird-only day ambience mix.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio9";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio10";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
