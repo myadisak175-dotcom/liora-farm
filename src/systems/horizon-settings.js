@@ -216,6 +216,14 @@ export function resolveHorizon(settings, config, authored = null) {
       ...config.distantRange.floatingIslands,
       enabled: dials.islandsEnabled,
     },
+    // The "เกาะลอยฟ้า" toggle used to drive only `floatingIslands`, the
+    // procedural system that ships disabled — so pressing it did nothing at
+    // all while the authored GLB cluster it looks like it controls ignored it.
+    floatingIslandBackdrop: {
+      ...config.distantRange.floatingIslandBackdrop,
+      enabled: dials.islandsEnabled
+        && config.distantRange.floatingIslandBackdrop?.enabled !== false,
+    },
   };
 
   return {
@@ -244,6 +252,52 @@ export function checkHorizonRules(resolved, config) {
   const nearestRim = resolved.outerWorld.outerRadius - reach;
   const farmDiagonal = Math.hypot(reach + terrainHalf, reach + terrainHalf);
   const topEdgeDeg = resolved.cameraMinPitch * DEG - config.camera.fov / 2;
+
+  /**
+   * Whether anything hung in the sky is actually inside the camera's frustum.
+   *
+   * The "กล้องก้มลงแล้วเห็นท้องฟ้า" rule below only asks whether *some* sky is
+   * on screen. It passed happily at minPitch 14° — 5° of visible sky — while
+   * the whole floating-island cluster sat at 15° and could not be seen at any
+   * pitch or zoom. A rule that measures the opening but never the content is
+   * how a backdrop gets authored, tuned twice and shipped invisible.
+   *
+   * Worst case is the player standing at the near edge of the farm: that is
+   * the shortest ground distance, so the steepest angle up to the island. The
+   * camera also sits behind the player, which buys back a little of it.
+   */
+  // Read x/y/z rather than calling Vector3.length(): the HUD tests hand this
+  // function a plain `{x, y, z}` stub, and a rule that only works with a real
+  // three.js object is a rule the tests cannot check.
+  const offset = config.camera.baseOffset ?? { x: 0, y: 0, z: 0 };
+  const camOffset = Math.hypot(offset.x ?? 0, offset.y ?? 0, offset.z ?? 0) || 1;
+  const camY = Math.sin(resolved.cameraMinPitch) * camOffset;
+  const camBack = Math.cos(resolved.cameraMinPitch) * camOffset;
+  // Half the authored GLB's height, in model units, before per-item scale.
+  const ISLAND_HALF_HEIGHT = 0.66;
+
+  const skyItems = resolved.distantRange?.floatingIslandBackdrop?.enabled === false
+    ? []
+    : (resolved.distantRange?.floatingIslandBackdrop?.items ?? []);
+
+  const offscreen = skyItems
+    .map((item, index) => {
+      const radius = Number(item.radius) || 0;
+      const scale = Number(item.scale) || 1;
+      const rise = Number(item.y) || 0;
+      const bob = Number(item.bobAmplitude) || 0;
+      // Nearest the camera can ever get to it, and the highest it ever bobs.
+      const distance = Math.max(1, radius - reach + camBack);
+      const topY = rise + bob + scale * ISLAND_HALF_HEIGHT;
+      const edgeDeg = Math.atan2(topY - camY, distance) * DEG;
+      return {
+        name: item.role === "hero" ? "เกาะหลัก" : `เกาะรอง ${index}`,
+        edgeDeg,
+        // topEdgeDeg is negative above the horizon; flip it to an elevation.
+        headroomDeg: -topEdgeDeg - edgeDeg,
+      };
+    })
+    .filter((entry) => entry.headroomDeg < 0);
 
   const bands = [];
   if (resolved.mountainBackdrop.enabled) {
@@ -284,6 +338,19 @@ export function checkHorizonRules(resolved, config) {
         ? `เห็นเหนือแนวระนาบได้ ${(-topEdgeDeg).toFixed(1)}°`
         : `ขอบบนจอยังต่ำกว่าแนวระนาบ ${topEdgeDeg.toFixed(1)}°`,
       fix: "ลดมุมก้มกล้องต่ำสุด",
+    },
+    {
+      id: "islands",
+      label: "เกาะลอยฟ้าอยู่ในกรอบจอ",
+      pass: offscreen.length === 0,
+      detail: skyItems.length === 0
+        ? "ปิดเกาะลอยฟ้าอยู่"
+        : offscreen.length
+          ? `เลยขอบบนจอ: ${offscreen
+              .map((entry) => `${entry.name} ${Math.abs(entry.headroomDeg).toFixed(1)}°`)
+              .join(", ")}`
+          : `เกาะทุกชิ้นอยู่ในจอ (${skyItems.length} ชิ้น)`,
+      fix: "ลดค่า y ของเกาะ ดึงระยะออกไปไกลขึ้น หรือลดมุมก้มกล้องต่ำสุด",
     },
     {
       id: "rooted",

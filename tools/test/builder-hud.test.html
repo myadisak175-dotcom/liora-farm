@@ -59,7 +59,7 @@
 import { createBuilderUI } from "../../src/editor/builder-ui.js";
 import { createSculptControls } from "../../src/editor/sculpt-controls.js";
 import { createHorizonControls } from "../../src/editor/horizon-controls.js";
-import { HORIZON_STORAGE_KEY } from "../../src/systems/horizon-settings.js";
+import { HORIZON_STORAGE_KEY, HORIZON_DIALS } from "../../src/systems/horizon-settings.js";
 import { createBuilderState, BUILDER_CONTEXTS } from "../../src/editor/builder-state.js";
 import { CONFIG } from "../../src/config.js";
 import { createTerrainHeight } from "../../src/systems/terrain-height.js";
@@ -135,7 +135,14 @@ document.querySelector("#tab-horizon").click();
 check("แท็บขอบฟ้า ≤ 40%",share()<=0.4,pct());
 document.querySelector("#build-more").click();
 check("แท็บขอบฟ้า เปิดเพิ่มเติมแล้วยัง ≤ 55%",share()<=0.55,pct());
-check("เปิดเพิ่มเติมแล้วปลดล็อกค่าที่เหลือ",[...document.querySelectorAll('#horizon-strip input[type="range"]')].filter((s)=>s.offsetParent!==null).length===13);
+// Counted from HORIZON_DIALS, not hardcoded. These used to be the literals 13
+// and 4; seven dials were added afterwards and CI has been red ever since,
+// which is worse than useless — a suite nobody trusts is a suite nobody reads.
+// The contract worth pinning is "compact shows only the primaries" and the
+// screen-share budget above, neither of which cares about the exact count.
+const DIAL_COUNT=HORIZON_DIALS.length;
+const PRIMARY_COUNT=HORIZON_DIALS.filter((d)=>d.primary).length;
+check("เปิดเพิ่มเติมแล้วปลดล็อกค่าที่เหลือ",[...document.querySelectorAll('#horizon-strip input[type="range"]')].filter((s)=>s.offsetParent!==null).length===DIAL_COUNT,`${DIAL_COUNT} ตัว`);
 document.querySelector("#build-more").click();
 check("แท็บขอบฟ้าเลื่อนดูได้ ไม่ดันแผงให้สูงขึ้น",getComputedStyle(document.querySelector("#build-body")).overflowY==="auto");
 
@@ -143,9 +150,11 @@ const horizonButtons=[...document.querySelectorAll("#horizon-strip button, #buil
 const smallHorizon=horizonButtons.filter((b)=>b.getBoundingClientRect().height<32);
 check("ปุ่มในแท็บขอบฟ้าแตะติดทุกอัน",horizonButtons.length>0&&smallHorizon.length===0,`${horizonButtons.length} ปุ่ม, เล็กเกิน ${smallHorizon.length}`);
 const sliders=document.querySelectorAll('#horizon-strip input[type="range"]');
-check("มีสไลเดอร์ครบทุกค่า",sliders.length===13,`${sliders.length} ตัว`);
+check("มีสไลเดอร์ครบทุกค่า",sliders.length===DIAL_COUNT,`${sliders.length}/${DIAL_COUNT} ตัว`);
 const visibleCompact=[...sliders].filter((s)=>s.offsetParent!==null).length;
-check("แผงย่อโชว์เฉพาะค่าหลัก 4 ตัว",visibleCompact===4,`${visibleCompact} ตัว`);
+check("แผงย่อโชว์เฉพาะค่าหลัก",visibleCompact===PRIMARY_COUNT,`${visibleCompact}/${PRIMARY_COUNT} ตัว`);
+// The reason the count was pinned in the first place. Keep the real limit.
+check("ค่าหลักไม่เกิน 8 ตัว (แผงย่อต้องยังย่ออยู่)",PRIMARY_COUNT<=8,`${PRIMARY_COUNT} ตัว`);
 check("ค่าเริ่มต้นผ่านกฎทุกข้อ",document.querySelectorAll("#horizon-strip .horizon-rule.fail").length===0);
 check("สไลเดอร์ยังมีที่ให้ใช้จริง",document.querySelector(".horizon-dials").getBoundingClientRect().height>=64,`${Math.round(document.querySelector(".horizon-dials").getBoundingClientRect().height)}px`);
 const horizonActions=[...document.querySelectorAll("#build-actions button")];
