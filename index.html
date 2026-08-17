@@ -28,10 +28,10 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio v11: cache-bust reliable mobile footsteps and synthesized ambience.
+  // Audio v12: stream supplied music and time-of-day ambience on mobile.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio11";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio12";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {

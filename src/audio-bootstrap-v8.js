@@ -10,6 +10,13 @@ const FILES = Object.freeze({
   walk: ["footstep_grass_soft.mp3", "footstep_grass_walk.mp3", "footstep_grass_run_clean.mp3"],
   run: ["footstep_grass_run_clean.mp3", "footstep_grass_run.mp3", "footstep_grass_soft.mp3"],
 });
+const STREAM_FILES = Object.freeze({
+  music: "music_lanternfields_overture.mp3",
+  birds: "ambience_morning_birdsong.mp3",
+  night: "ambience_forest_night.mp3",
+});
+const STREAM_MIX = Object.freeze({ music: 0.18, birds: 0.55, night: 0.55 });
+const AUDIO_REVISION = "audio12";
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
 // offsets pointed beyond the usable audio and caused audio initialization to
@@ -36,7 +43,8 @@ const STEP_PROFILE = Object.freeze({
 const FIRST_STEP_PHASE = 0.48;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// Bird timing/mix is unchanged from v7.
+// Morning/day birds hand over to the forest track at dusk without bringing
+// crickets into the morning mix.
 function birdWeight(hour) {
   if (hour < 5.2 || hour >= 18.5) return 0;
   if (hour < 6.5) return clamp01((hour - 5.2) / 1.3);
@@ -46,7 +54,7 @@ function birdWeight(hour) {
 }
 
 function nightWeight(hour) {
-  if (hour >= 19.0) return clamp01((hour - 19.0) / 1.0);
+  if (hour >= 18.5) return clamp01((hour - 18.5) / 1.0);
   if (hour < 4.8) return 1;
   // End crickets before the bird layer begins: morning and daytime should
   // sound like birds, never a bird/cricket blend.
@@ -93,8 +101,8 @@ const debug = new URLSearchParams(location.search).get("audiodebug") === "1"
     })()
   : null;
 
-let context = null, master = null, ambienceBus = null, footstepBus = null;
-let buffers = null;
+let context = null, master = null, musicBus = null, ambienceBus = null, footstepBus = null;
+let buffers = null, streams = null;
 let unlocked = false, muted = false, loading = false, disposed = false;
 let loadError = "";
 let raf = 0, lastTime = performance.now(), lastPosition = null, wasMoving = false;
@@ -102,6 +110,98 @@ let distanceSinceStep = 0, activeProfile = "-", currentFoot = "-", stepCount = 0
 let walkCue = 0, runCue = 0;
 let nextBirdAt = 0, nextCricketAt = 0;
 const resolvedFiles = {};
+const runtimeErrors = new Map();
+
+function syncLoadError() {
+  loadError = [...runtimeErrors.entries()].map(([name, message]) => `${name}:${message}`).join(" | ");
+}
+
+function setRuntimeError(name, error) {
+  runtimeErrors.set(name, String(error?.message ?? error));
+  syncLoadError();
+}
+
+function clearRuntimeError(name) {
+  runtimeErrors.delete(name);
+  syncLoadError();
+}
+
+function createStream(name, file, bus) {
+  const audio = new Audio(`${AUDIO_BASE}${file}?v=${AUDIO_REVISION}`);
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.playsInline = true;
+  const source = context.createMediaElementSource(audio);
+  const gain = context.createGain();
+  gain.gain.value = 0;
+  source.connect(gain).connect(bus);
+  const track = { name, file, audio, source, gain, state: "idle", target: 0, disposed: false };
+  audio.addEventListener("error", () => {
+    if (disposed || track.disposed) return;
+    track.state = "failed";
+    setRuntimeError(name, `media error ${audio.error?.code ?? "unknown"}`);
+  });
+  return track;
+}
+
+function createStreams() {
+  if (typeof Audio !== "function") {
+    for (const name of Object.keys(STREAM_FILES)) setRuntimeError(name, "HTML Audio is unavailable");
+    return {};
+  }
+  const result = {};
+  for (const [name, file] of Object.entries(STREAM_FILES)) {
+    try {
+      result[name] = createStream(name, file, name === "music" ? musicBus : ambienceBus);
+    } catch (error) {
+      result[name] = null;
+      setRuntimeError(name, error);
+    }
+  }
+  return result;
+}
+
+function startStream(track) {
+  if (!track || track.disposed || disposed || (!track.audio.paused && track.state === "playing")) return;
+  track.state = "starting";
+  try {
+    Promise.resolve(track.audio.play()).then(() => {
+      if (track.disposed || disposed) return;
+      track.state = "playing";
+      clearRuntimeError(track.name);
+    }).catch((error) => {
+      if (track.disposed || disposed) return;
+      track.state = "blocked";
+      setRuntimeError(track.name, error);
+    });
+  } catch (error) {
+    track.state = "blocked";
+    setRuntimeError(track.name, error);
+  }
+}
+
+function startAllStreams() {
+  for (const track of Object.values(streams ?? {})) startStream(track);
+}
+
+function setStreamTarget(track, target, timeConstant = 0.55) {
+  if (!track || !context || Math.abs(track.target - target) < 0.001) return;
+  track.target = target;
+  track.gain.gain.cancelScheduledValues(context.currentTime);
+  track.gain.gain.setTargetAtTime(target, context.currentTime, timeConstant);
+}
+
+function destroyStreams() {
+  for (const track of Object.values(streams ?? {})) {
+    if (!track) continue;
+    track.disposed = true;
+    try { track.audio.pause(); } catch {}
+    try { track.source.disconnect(); track.gain.disconnect(); } catch {}
+    track.audio.removeAttribute("src");
+    try { track.audio.load(); } catch {}
+  }
+  streams = null;
+}
 
 function normalizeFootstep(buffer, kind) {
   const targetPeak = kind === "run" ? 0.46 : 0.52;
@@ -123,7 +223,7 @@ async function fetchBuffer(name) {
   const failures = [];
   for (const file of FILES[name]) {
     try {
-      const response = await fetch(`${AUDIO_BASE}${file}?v=9`, { cache: "force-cache" });
+      const response = await fetch(`${AUDIO_BASE}${file}?v=${AUDIO_REVISION}`, { cache: "force-cache" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const buffer = normalizeFootstep(
         await context.decodeAudioData(await response.arrayBuffer()),
@@ -142,22 +242,32 @@ async function ensureAudio() {
   if (unlocked || loading || disposed) return;
   loading = true;
   button.textContent = "… เสียง";
-  loadError = "";
+  runtimeErrors.clear();
+  syncLoadError();
   try {
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextCtor) throw new Error("Web Audio ไม่รองรับ");
     context = new AudioContextCtor({ latencyHint: "interactive" });
-    await context.resume();
 
     master = context.createGain();
+    musicBus = context.createGain();
     ambienceBus = context.createGain();
     footstepBus = context.createGain();
     master.gain.value = 0.95;
+    musicBus.gain.value = 1;
     ambienceBus.gain.value = 1;
     footstepBus.gain.value = 0.88;
+    musicBus.connect(master);
     ambienceBus.connect(master);
     footstepBus.connect(master);
     master.connect(context.destination);
+
+    // Start the long streaming tracks before the first await so mobile
+    // browsers see play() inside the user's gesture. They stay at zero gain
+    // until updateAmbience applies the correct time-of-day mix.
+    streams = createStreams();
+    startAllStreams();
+    await context.resume();
 
     const names = Object.keys(FILES);
     const settled = await Promise.allSettled(names.map(async (name) => [name, await fetchBuffer(name)]));
@@ -174,7 +284,7 @@ async function ensureAudio() {
     decoded.run ??= decoded.walk;
     resolvedFiles.run ??= resolvedFiles.walk;
     buffers = decoded;
-    loadError = Object.entries(errors).map(([name, message]) => `${name}:${message}`).join(" | ");
+    for (const [name, message] of Object.entries(errors)) setRuntimeError(name, message);
 
     unlocked = true;
     muted = false;
@@ -185,11 +295,12 @@ async function ensureAudio() {
     toast("🔊 เสียงพร้อมแล้ว");
   } catch (error) {
     console.error("Liora audio init failed", error);
-    loadError = String(error?.message ?? error);
+    setRuntimeError("audio", error);
     button.textContent = "⚠️ เสียง";
     toast("เสียงโหลดไม่สำเร็จ");
+    destroyStreams();
     try { await context?.close?.(); } catch {}
-    context = master = ambienceBus = footstepBus = null;
+    context = master = musicBus = ambienceBus = footstepBus = null;
     buffers = null;
   } finally {
     loading = false;
@@ -198,6 +309,10 @@ async function ensureAudio() {
 
 function setMuted(next) {
   muted = Boolean(next);
+  if (!muted) {
+    context?.resume?.().catch((error) => setRuntimeError("context", error));
+    startAllStreams();
+  }
   if (master && context) {
     master.gain.cancelScheduledValues(context.currentTime);
     master.gain.setTargetAtTime(muted ? 0 : 0.95, context.currentTime, 0.03);
@@ -220,6 +335,12 @@ const unlockFromFirstGesture = () => {
   if (!unlocked && !loading && !disposed) ensureAudio();
 };
 document.addEventListener("pointerdown", unlockFromFirstGesture, { capture: true, once: true });
+const resumeAfterVisibility = () => {
+  if (document.hidden || !unlocked || muted || disposed) return;
+  context?.resume?.().catch((error) => setRuntimeError("context", error));
+  startAllStreams();
+};
+document.addEventListener("visibilitychange", resumeAfterVisibility);
 
 function playStep(kind) {
   if (!unlocked || muted || !context || !buffers) return;
@@ -295,18 +416,26 @@ function playCricketCall(weight) {
 }
 
 function updateAmbience(hour) {
-  // Use small procedural calls rather than the supplied ambience MP3s: those
-  // files decode inconsistently and are too quiet on mobile speakers.
+  // Long music and ambience tracks stream through media elements instead of
+  // being decoded into RAM. Only the short footsteps use AudioBuffers.
   const bird = muted ? 0 : birdWeight(hour);
   const cricket = muted ? 0 : nightWeight(hour);
+  setStreamTarget(streams?.music, muted ? 0 : STREAM_MIX.music);
+  setStreamTarget(streams?.birds, STREAM_MIX.birds * bird);
+  setStreamTarget(streams?.night, STREAM_MIX.night * cricket);
+
+  // A failed or autoplay-blocked ambience file must not take the whole sound
+  // system down. Keep the compact synthesized calls as a last-resort fallback.
   const now = context?.currentTime ?? 0;
-  if (bird > 0.05) {
+  const birdFallback = !streams?.birds || ["blocked", "failed"].includes(streams.birds.state);
+  const nightFallback = !streams?.night || ["blocked", "failed"].includes(streams.night.state);
+  if (birdFallback && bird > 0.05) {
     if (now >= nextBirdAt) {
       playBirdCall(bird);
       nextBirdAt = now + 3.2 + Math.random() * 4.8;
     }
   } else nextBirdAt = 0;
-  if (cricket > 0.05) {
+  if (nightFallback && cricket > 0.05) {
     if (now >= nextCricketAt) {
       playCricketCall(cricket);
       nextCricketAt = now + 1.8 + Math.random() * 2.5;
@@ -368,11 +497,12 @@ function update(now) {
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V11 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V12 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,
-      `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"} ambience=synth`,
+      `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"}`,
+      `music=${streams?.music?.state ?? "-"} birds=${streams?.birds?.state ?? "-"} night=${streams?.night?.state ?? "-"}`,
       loadError ? `err=${loadError}` : "err=-",
     ].join("\n");
   }
@@ -384,13 +514,20 @@ window.__lioraAudio = {
   unlock: ensureAudio,
   get unlocked() { return unlocked; },
   get muted() { return muted; },
-  get status() { return { unlocked, muted, loading, footstep: currentFoot, steps: stepCount, error: loadError }; },
+  get status() {
+    return {
+      unlocked, muted, loading, footstep: currentFoot, steps: stepCount, error: loadError,
+      streams: Object.fromEntries(Object.entries(streams ?? {}).map(([name, track]) => [name, track?.state ?? "failed"])),
+    };
+  },
   dispose() {
     disposed = true;
     cancelAnimationFrame(raf);
+    destroyStreams();
     context?.close?.();
     button.remove();
     debug?.remove();
     document.removeEventListener("pointerdown", unlockFromFirstGesture, { capture: true });
+    document.removeEventListener("visibilitychange", resumeAfterVisibility);
   },
 };
