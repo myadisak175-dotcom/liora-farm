@@ -8,6 +8,11 @@
       "file": "./maps/home-island.json"
     },
     {
+      "id": "world-blockout-v1",
+      "name": "Liora World Blockout v1",
+      "file": "./maps/world-blockout-v1.json"
+    },
+    {
       "id": "blank-valley",
       "name": "หุบเขาว่าง",
       "file": "./maps/blank-valley.json"
