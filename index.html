@@ -38,6 +38,14 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
+  // Audio Foundation v1 is a sidecar on purpose: a failed/muted audio track
+  // must never block the world from booting. Mobile playback unlocks on the
+  // first user gesture and the small speaker control always shows its state.
+  const audio = document.createElement("script");
+  audio.type = "module";
+  audio.src = "./src/audio-bootstrap.js?v=audio2";
+  document.head.append(audio);
+
   // Performance experiment only. Normal game URLs do not load this module.
   // ?npc=1 adds two autonomous NPC clones that reuse the player's model,
   // geometry, materials and animation clips; pair it with ?perf=1 to compare
