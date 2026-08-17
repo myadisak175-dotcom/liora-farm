@@ -84,6 +84,13 @@ function makeHazeBand(spec = {}) {
   // mist never paints over the pond in front of the player.
   mesh.renderOrder = -5;
 
+  const driftSpeed = Math.max(0, Number(spec.driftSpeed) || 0);
+  const flowSpeed = Math.max(0.01, Number(spec.flowSpeed) || 0.28);
+  const radialDrift = Math.max(0, Number(spec.radialDrift) || 0);
+  const lift = Math.max(0, Number(spec.lift) || 0);
+  const breathe = THREE.MathUtils.clamp(Number(spec.breathe) || 0, 0, 0.16);
+  const banks = [];
+
   for (let i = 0; i < count; i += 1) {
     const angle = random() * TAU;
     const radius = THREE.MathUtils.lerp(
@@ -95,16 +102,60 @@ function makeHazeBand(spec = {}) {
     const width = THREE.MathUtils.lerp(spec.widthMin ?? 26, spec.widthMax ?? 58, random());
     const depth = THREE.MathUtils.lerp(spec.depthMin ?? 18, spec.depthMax ?? 40, random());
     const height = THREE.MathUtils.lerp(spec.heightMin ?? 1.4, spec.heightMax ?? 3.4, random());
-    setInstance(
-      mesh,
-      i,
-      new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius),
-      new THREE.Vector3(width, height, depth),
-      random() * TAU
-    );
+    banks.push({
+      angle,
+      radius,
+      y,
+      width,
+      depth,
+      height,
+      rotationY: random() * TAU,
+      phase: random() * TAU,
+      drift: THREE.MathUtils.lerp(0.68, 1.32, random()),
+      flow: THREE.MathUtils.lerp(0.72, 1.28, random()),
+    });
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  return { mesh, geometry, material };
+
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  const euler = new THREE.Euler();
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+
+  /**
+   * Move every bank at a slightly different rate. A single rotating ring made
+   * the old haze look like scenery on a turntable; independent tangential,
+   * radial and vertical motion reads as fog flowing around the distant land.
+   */
+  function update(time = 0) {
+    for (let i = 0; i < banks.length; i += 1) {
+      const bank = banks[i];
+      const flowPhase = bank.phase + time * flowSpeed * bank.flow;
+      const angle = bank.angle + time * driftSpeed * bank.drift;
+      const radius = bank.radius + Math.sin(flowPhase) * radialDrift;
+      position.set(
+        Math.cos(angle) * radius,
+        bank.y + Math.sin(flowPhase * 0.83) * lift,
+        Math.sin(angle) * radius
+      );
+      euler.x = 0;
+      euler.y = bank.rotationY + Math.sin(flowPhase * 0.41) * 0.14;
+      euler.z = 0;
+      quaternion.setFromEuler(euler);
+      const breath = Math.sin(flowPhase * 0.71) * breathe;
+      scale.set(
+        bank.width * (1 + breath),
+        bank.height * (1 + Math.cos(flowPhase * 0.89) * breathe * 0.7),
+        bank.depth * (1 - breath * 0.6)
+      );
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(i, matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  update(0);
+  return { mesh, geometry, material, update };
 }
 
 function makeFloatingIsland({ angle, radius, y, scale, phase }) {
@@ -181,8 +232,6 @@ export function createFantasyHorizon(config = {}) {
 
   const bobAmplitude = Number(islandSpec.bobAmplitude) || 0.28;
   const bobSpeed = Number(islandSpec.bobSpeed) || 0.45;
-  const hazeDrift = Number(hazeSpec.driftSpeed) || 0;
-
   const basePeaks = peaks.map((ring) => ring.material.color.clone());
   const baseHaze = haze ? haze.material.color.clone() : null;
   const baseTop = new THREE.Color(0x779b72);
@@ -213,9 +262,9 @@ export function createFantasyHorizon(config = {}) {
       meshes: peaks.length + (haze ? 1 : 0) + islands.length,
       drawCalls: peaks.length + (haze ? 1 : 0) + islands.length * 3,
     },
-    update() {
-      const time = performance.now() * 0.001;
-      if (haze && hazeDrift) haze.mesh.rotation.y = time * hazeDrift;
+    update(timeSeconds = null) {
+      const time = Number.isFinite(timeSeconds) ? timeSeconds : performance.now() * 0.001;
+      haze?.update(time);
       for (const island of islands) {
         island.group.position.y =
           island.group.userData.baseY +

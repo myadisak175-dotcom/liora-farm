@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-3-living-environment";
+export const BUILD = "worlds-3-gentle-living-environment";
 
 export const CONFIG = Object.freeze({
   /**
@@ -230,7 +230,11 @@ export const CONFIG = Object.freeze({
       enabled: true, count: 52, radiusMin: 190, radiusMax: 400,
       yMin: 1.5, yMax: 13, widthMin: 44, widthMax: 96,
       depthMin: 30, depthMax: 66, heightMin: 2, heightMax: 5,
-      color: 0xeaf6ff, opacity: 0.26, seed: 4242, driftSpeed: 0.0016,
+      color: 0xf2fbff, opacity: 0.21, seed: 4242,
+      // Each bank has a slightly different speed and gently breathes in/out,
+      // so the far mist reads as flowing air instead of one frozen white ring.
+      driftSpeed: 0.0065, flowSpeed: 0.28, radialDrift: 5.5,
+      lift: 0.65, breathe: 0.055,
     },
     floatingIslands: {
       enabled: false,
@@ -327,8 +331,8 @@ export const CONFIG = Object.freeze({
     gridSize: 0.5, snapDefault: false, historyLimit: 50,
   },
   sky: {
-    radius: 700, zenithColor: 0x68bdf0, horizonColor: 0xdff4ff, lowerColor: 0xb9dff2,
-    cloudColor: 0xffffff, cloudOpacity: 0.72, cloudCount: 18, cloudRingRadius: 300,
+    radius: 700, zenithColor: 0x78c9f4, horizonColor: 0xecfaff, lowerColor: 0xc9edf9,
+    cloudColor: 0xffffff, cloudOpacity: 0.64, cloudCount: 18, cloudRingRadius: 300,
     // The portrait camera only exposes about 12 degrees above the horizon at
     // its lowest pitch. y=62 at r=300 keeps the cloud bellies inside that band;
     // the old y=132 put every puff more than 20 degrees above the screen.
@@ -349,7 +353,7 @@ export const CONFIG = Object.freeze({
   },
   cloudShadows: {
     enabled: true,
-    strength: 0.3,
+    strength: 0.2,
     scale: 190,
     detailScale: 74,
     speed: 0.0075,
@@ -365,17 +369,19 @@ export const CONFIG = Object.freeze({
     speed: 0.75,
     gust: { strength: 0.3, speed: 0.18, scale: 0.07 },
     naturePalette: { enabled: true, strength: 0.28 },
-    interaction: { enabled: true, radius: 1.35, strength: 0.52 },
+    // A light brush around the skirt, not the old wide force field that laid
+    // whole bushes flat before Liora reached them.
+    interaction: { enabled: true, radius: 1.05, strength: 0.24 },
   },
   environmentLife: {
     enabled: true,
     leaves: {
-      enabled: true, maxCount: 42, radius: 11, minHeight: 0.35, maxHeight: 3.1,
+      enabled: false, maxCount: 42, radius: 11, minHeight: 0.35, maxHeight: 3.1,
       speed: 0.92, fallSpeed: 0.16, swirl: 0.34, size: 0.12,
     },
     insects: {
       enabled: true, maxCount: 14, radius: 8.5, minHeight: 0.45, maxHeight: 1.75,
-      orbitMin: 0.22, orbitMax: 0.85, speedMin: 0.55, speedMax: 1.15, size: 0.16,
+      orbitMin: 0.22, orbitMax: 0.85, speedMin: 0.55, speedMax: 1.15, size: 0.18,
     },
   },
   /**

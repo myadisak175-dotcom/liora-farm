@@ -2,8 +2,15 @@ import * as THREE from "three";
 
 const TAU = Math.PI * 2;
 const LEAF_COLORS = Object.freeze([0x789f43, 0x94ad4c, 0xc59b45, 0x9b7440, 0x6d8d39]);
-const DAY_INSECT_COLORS = Object.freeze([0xffd66e, 0xf7a8c6, 0xa8dff4, 0xf4f0c8]);
-const NIGHT_INSECT_COLORS = Object.freeze([0xffe87d, 0xc9ff8a, 0x91f5c6]);
+const DAY_INSECT_COLORS = Object.freeze([
+  0xff78bb, // blossom pink
+  0xa88cff, // soft violet
+  0x58d9e5, // turquoise
+  0xffc94f, // warm gold
+  0xff8b70, // coral
+  0x82dc7c, // spring green
+]);
+const NIGHT_INSECT_COLORS = Object.freeze([0xb5ddff, 0xc8adff, 0x91f5dc, 0xffdc89]);
 
 function clampCount(value, maximum) {
   const number = Number(value);
@@ -58,27 +65,48 @@ function makeInsectTexture() {
     return texture;
   }
   context.clearRect(0, 0, 64, 64);
-  context.fillStyle = "#fff";
+  context.fillStyle = "rgba(255,255,255,0.96)";
+  context.strokeStyle = "rgba(54,35,78,0.46)";
+  context.lineWidth = 2.1;
 
-  context.save();
-  context.translate(31, 31);
-  context.rotate(-0.48);
-  context.beginPath();
-  context.ellipse(-9, -4, 13, 7, 0, 0, TAU);
-  context.fill();
-  context.restore();
+  const wing = (x, y, radiusX, radiusY, rotation) => {
+    context.save();
+    context.translate(x, y);
+    context.rotate(rotation);
+    context.beginPath();
+    context.ellipse(0, 0, radiusX, radiusY, 0, 0, TAU);
+    context.fill();
+    context.stroke();
+    context.restore();
+  };
 
-  context.save();
-  context.translate(33, 31);
-  context.rotate(0.48);
-  context.beginPath();
-  context.ellipse(9, -4, 13, 7, 0, 0, TAU);
-  context.fill();
-  context.restore();
+  // Two forewings plus rounder hindwings make the billboard read as a
+  // butterfly even at phone scale. Dark markings survive the per-instance
+  // tint, so every palette colour still has a clear silhouette.
+  wing(21, 25, 13, 8, -0.48);
+  wing(43, 25, 13, 8, 0.48);
+  wing(23, 37, 9, 7, 0.34);
+  wing(41, 37, 9, 7, -0.34);
 
+  context.fillStyle = "rgba(66,39,92,0.34)";
+  for (const [x, y, radius] of [[17, 23, 2.8], [47, 23, 2.8], [22, 36, 2], [42, 36, 2]]) {
+    context.beginPath();
+    context.arc(x, y, radius, 0, TAU);
+    context.fill();
+  }
+
+  context.fillStyle = "#30213e";
   context.beginPath();
-  context.ellipse(32, 34, 3, 12, 0, 0, TAU);
+  context.ellipse(32, 34, 2.7, 12, 0, 0, TAU);
   context.fill();
+  context.strokeStyle = "rgba(48,33,62,0.88)";
+  context.lineWidth = 1.35;
+  context.beginPath();
+  context.moveTo(31, 23);
+  context.quadraticCurveTo(26, 17, 24, 16);
+  context.moveTo(33, 23);
+  context.quadraticCurveTo(38, 17, 40, 16);
+  context.stroke();
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -201,7 +229,7 @@ export function createEnvironmentLife({
       toneMapped: false,
     });
     insectMesh = new THREE.InstancedMesh(insectGeometry, insectMaterial, insectMaximum);
-    insectMesh.name = "FlyingInsects";
+    insectMesh.name = "Butterflies";
     insectMesh.count = 0;
     insectMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     insectMesh.frustumCulled = false;
@@ -242,7 +270,7 @@ export function createEnvironmentLife({
       insectMesh.setColorAt(i, new THREE.Color(palette[i % palette.length]));
     }
     if (insectMesh.instanceColor) insectMesh.instanceColor.needsUpdate = true;
-    insectMaterial.opacity = night ? 0.94 : 0.84;
+    insectMaterial.opacity = night ? 0.96 : 0.9;
     insectMaterial.blending = night ? THREE.AdditiveBlending : THREE.NormalBlending;
     insectMaterial.needsUpdate = true;
   }

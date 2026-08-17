@@ -160,14 +160,14 @@ lioraInteractionLocalDir = lioraInteractionLocalLength > 0.001
   : vec3(0.0);
 
 float lioraInteractionHeight = lioraWindRoot * smoothstep(0.08, 0.95, lioraWindH);
-float lioraInteractionMotionBoost = mix(0.72, 1.0, lioraInteractionMotion);
+float lioraInteractionMotionBoost = mix(0.62, 0.82, lioraInteractionMotion);
 float lioraInteractionAmount =
   lioraWindLocalHeight * lioraInteractionStrength *
   lioraInteractionFalloff * lioraInteractionHeight *
   lioraInteractionMotionBoost;
 transformed +=
   lioraInteractionLocalDir * lioraInteractionAmount -
-  lioraWindUp * abs(lioraInteractionAmount) * 0.08;
+  lioraWindUp * abs(lioraInteractionAmount) * 0.025;
 `;
 
 function normalizeAxis(x, y, z) {

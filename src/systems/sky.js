@@ -19,7 +19,7 @@ function wrapDistance(value, halfSpan) {
  * The old puffs were one static BasicMaterial ring. They looked like white
  * rocks suspended above the horizon and, more importantly, did not move with
  * the cloud shadows crossing the ground. This keeps the same single draw call
- * and small sphere budget, but adds a soft silhouette, a blue-grey underside
+ * and small sphere budget, but adds a soft silhouette, a pale-blue underside
  * and a wrapped drift field driven by the world's wind direction.
  */
 function buildCloudLayer(config, windConfig = {}) {
@@ -199,7 +199,7 @@ function buildCloudLayer(config, windConfig = {}) {
     uniforms.cloudBottomColor.value
       .copy(horizon)
       .lerp(lower, 0.72)
-      .multiplyScalar(0.38 + brightness * 0.44);
+      .multiplyScalar(0.32 + brightness * 0.62);
   }
 
   function setDensity(value) {

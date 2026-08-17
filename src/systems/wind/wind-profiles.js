@@ -21,7 +21,7 @@ const PROFILES = Object.freeze({
     frequency: 1.05,
     spatial: 1.2,
     rootLock: 0.2,
-    interaction: 0.58,
+    interaction: 0.38,
   }),
   grass: Object.freeze({
     base: 0.05,
@@ -32,7 +32,7 @@ const PROFILES = Object.freeze({
     frequency: 1.35,
     spatial: 1.45,
     rootLock: 0.22,
-    interaction: 1,
+    interaction: 0.72,
   }),
   flower: Object.freeze({
     base: 0.06,
@@ -43,7 +43,7 @@ const PROFILES = Object.freeze({
     frequency: 1.02,
     spatial: 1.28,
     rootLock: 0.2,
-    interaction: 0.86,
+    interaction: 0.62,
   }),
 });
 

@@ -114,6 +114,13 @@ ok("the nearest distant peak ring is not completely fogged out",
 ok("the horizon haze band sits inside the visible fog range",
   CONFIG.distantRange.haze.radiusMin + REACH < CONFIG.fog.far,
   `hazeNear=${CONFIG.distantRange.haze.radiusMin + REACH} fog.far=${CONFIG.fog.far}`);
+const hazeMesh = range.group.children.find((child) => child.name === "HorizonHaze");
+const hazeBefore = JSON.stringify(hazeMesh?.matrices?.[0] ?? null);
+range.update(24);
+const hazeAfter = JSON.stringify(hazeMesh?.matrices?.[0] ?? null);
+ok("horizon mist flows independently instead of staying frozen",
+  Boolean(hazeMesh) && hazeBefore !== hazeAfter,
+  `${hazeBefore} -> ${hazeAfter}`);
 
 ok("no scenery layer is inside the walkable world",
   CONFIG.mountainBackdrop.near.innerRadius > REACH + 40

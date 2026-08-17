@@ -15,7 +15,7 @@ Then open `http://localhost:8000` on the phone. A server is required — ES modu
 ## What works
 
 - **เล่น** — walk, run, action animations, orbit camera, day/night clock.
-- **โลกมีชีวิต** — เมฆและเงาเมฆไหลตามลม ใบไม้ปลิว แมลงบิน และหญ้า/พุ่ม/ดอกไม้แหวกรอบตัวละคร.
+- **โลกมีชีวิต** — ฟ้าสดใส เมฆและเงาเมฆไหลตามลม หมอกขอบโลกเคลื่อนเป็นชั้น ผีเสื้อหลากสีบิน และหญ้า/พุ่ม/ดอกไม้แหวกเบา ๆ รอบตัวละคร.
 - **สร้าง → วางของ** — place assets, drag to move, rotate, scale, duplicate, delete. Autosaves.
 - **สร้าง → ระบายพื้น** — free-brush multiple ground surfaces over grass, with undo.
 - **สร้าง → ปั้นพื้น** — raise, lower, smooth and flatten terrain. Terrain follows real mesh vertices, saves locally and exports with the map.

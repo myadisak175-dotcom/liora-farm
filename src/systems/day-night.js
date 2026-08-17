@@ -2,6 +2,14 @@ import * as THREE from "three";
 
 const DAY = 24;
 const TAU = Math.PI * 2;
+const DAYLIGHT = Object.freeze({
+  zenith: 0x78c9f4,
+  horizon: 0xecfaff,
+  lower: 0xc9edf9,
+  sun: 0xfff0cf,
+  hemiSky: 0xfff8e8,
+  hemiGround: 0x557455,
+});
 
 function lerpColor(a, b, t) {
   return new THREE.Color(a).lerp(new THREE.Color(b), t);
@@ -36,27 +44,27 @@ export function createDayNight({ scene, sky, lighting, world = null, config, onL
    * exposes sunScale/hemiScale on top so the ratio is tunable from the panel.
    */
   function paletteForTime(h) {
-    let zenith = 0x68bdf0;
-    let horizon = 0xdff4ff;
-    let lower = 0xb9dff2;
-    let sunColor = 0xffedc4;
-    let sunIntensity = 2.9;
-    let hemiSky = 0xfff5dd;
-    let hemiGround = 0x496448;
-    let hemiIntensity = 1.15;
-    let fogColor = 0xdff4ff;
+    let zenith = DAYLIGHT.zenith;
+    let horizon = DAYLIGHT.horizon;
+    let lower = DAYLIGHT.lower;
+    let sunColor = DAYLIGHT.sun;
+    let sunIntensity = 3.0;
+    let hemiSky = DAYLIGHT.hemiSky;
+    let hemiGround = DAYLIGHT.hemiGround;
+    let hemiIntensity = 1.18;
+    let fogColor = DAYLIGHT.horizon;
     let stars = 0;
 
     let t = segment(h, 5, 7.5);
     if (t !== null) {
-      zenith = lerpColor(0x152b5a, 0x68bdf0, t);
-      horizon = lerpColor(0xf29b78, 0xdff4ff, t);
-      lower = lerpColor(0x5a6b91, 0xb9dff2, t);
-      sunColor = lerpColor(0xffb066, 0xffedc4, t);
-      sunIntensity = THREE.MathUtils.lerp(0.3, 2.9, t);
-      hemiSky = lerpColor(0x6f84b5, 0xfff5dd, t);
-      hemiGround = lerpColor(0x24364b, 0x496448, t);
-      hemiIntensity = THREE.MathUtils.lerp(0.5, 1.15, t);
+      zenith = lerpColor(0x152b5a, DAYLIGHT.zenith, t);
+      horizon = lerpColor(0xf29b78, DAYLIGHT.horizon, t);
+      lower = lerpColor(0x5a6b91, DAYLIGHT.lower, t);
+      sunColor = lerpColor(0xffb066, DAYLIGHT.sun, t);
+      sunIntensity = THREE.MathUtils.lerp(0.3, 3.0, t);
+      hemiSky = lerpColor(0x6f84b5, DAYLIGHT.hemiSky, t);
+      hemiGround = lerpColor(0x24364b, DAYLIGHT.hemiGround, t);
+      hemiIntensity = THREE.MathUtils.lerp(0.5, 1.18, t);
       fogColor = horizon;
       stars = 1 - t;
       return { zenith, horizon, lower, sunColor, sunIntensity, hemiSky, hemiGround, hemiIntensity, fogColor, stars };
@@ -64,16 +72,16 @@ export function createDayNight({ scene, sky, lighting, world = null, config, onL
 
     t = segment(h, 16.5, 19.5);
     if (t !== null) {
-      zenith = lerpColor(0x68bdf0, 0x182b5d, t);
+      zenith = lerpColor(DAYLIGHT.zenith, 0x182b5d, t);
       horizon = t < 0.55
-        ? lerpColor(0xdff4ff, 0xf18f68, t / 0.55)
+        ? lerpColor(DAYLIGHT.horizon, 0xf18f68, t / 0.55)
         : lerpColor(0xf18f68, 0x6a5578, (t - 0.55) / 0.45);
-      lower = lerpColor(0xb9dff2, 0x394866, t);
-      sunColor = lerpColor(0xffedc4, 0xff955f, t);
-      sunIntensity = THREE.MathUtils.lerp(2.9, 0.22, t);
-      hemiSky = lerpColor(0xfff5dd, 0x7182ad, t);
-      hemiGround = lerpColor(0x496448, 0x243348, t);
-      hemiIntensity = THREE.MathUtils.lerp(1.15, 0.45, t);
+      lower = lerpColor(DAYLIGHT.lower, 0x394866, t);
+      sunColor = lerpColor(DAYLIGHT.sun, 0xff955f, t);
+      sunIntensity = THREE.MathUtils.lerp(3.0, 0.22, t);
+      hemiSky = lerpColor(DAYLIGHT.hemiSky, 0x7182ad, t);
+      hemiGround = lerpColor(DAYLIGHT.hemiGround, 0x243348, t);
+      hemiIntensity = THREE.MathUtils.lerp(1.18, 0.45, t);
       fogColor = horizon;
       stars = THREE.MathUtils.smoothstep(t, 0.65, 1);
       return { zenith, horizon, lower, sunColor, sunIntensity, hemiSky, hemiGround, hemiIntensity, fogColor, stars };
