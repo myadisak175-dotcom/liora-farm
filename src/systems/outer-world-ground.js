@@ -52,6 +52,59 @@ function squareRadiusAtAngle(halfSize, angle) {
   return halfSize / Math.max(1e-6, sx, cz);
 }
 
+/** Inverse of smoothstep01, so a world radius can be turned back into a ring t. */
+function inverseSmoothstep01(value) {
+  const y = clamp(value, 0, 1);
+  return 0.5 - Math.sin(Math.asin(1 - 2 * y) / 3);
+}
+
+/**
+ * The outer world's surface height at a world point, without a raycast.
+ *
+ * Scenery placed outside the playable square has to sit on this mesh, and it
+ * is generated, not authored — so the only honest way to place anything on it
+ * is to run the same formula the vertices came from. Sampling it any other way
+ * (a fixed y, a raycast against a mesh that may not be built yet) is how you
+ * get a tree line that floats in one build and sinks in the next.
+ *
+ * This solves the vertex loop backwards: world radius -> ring `t` -> the same
+ * base/envelope/noise terms. It agrees with the mesh exactly at vertices and
+ * interpolates between them; the mesh is flat-shaded triangles, so expect a
+ * few centimetres of disagreement mid-triangle. Sink scenery slightly rather
+ * than chasing that.
+ */
+export function createOuterWorldHeightSampler(config = {}, textureWorldSize = 80) {
+  const terrainHalf = Math.max(1, Number(textureWorldSize) || 80) / 2;
+  const innerHalfSize = clamp(
+    Number(config.innerRadius) || terrainHalf - 1.5, 1, Math.max(1, terrainHalf)
+  );
+  const outerRadius = Math.max(
+    innerHalfSize * Math.SQRT2 + 1, Number(config.outerRadius) || 82
+  );
+  const innerY = Number.isFinite(config.innerY) ? config.innerY : -0.08;
+  const outerY = Number.isFinite(config.outerY) ? config.outerY : 0.6;
+  const heightVariation = Math.max(0, Number(config.heightVariation) || 0);
+  const edgeBlendWidth = Math.max(1, Number(config.edgeBlendWidth) || 40);
+  const seed = Number(config.noiseSeed) || 0;
+
+  return function heightAt(x, z) {
+    const radius = Math.hypot(x, z);
+    const angle = Math.atan2(x, z);
+    const seamRadius = squareRadiusAtAngle(innerHalfSize, angle);
+    const span = Math.max(1e-6, outerRadius - seamRadius);
+    const eased = clamp((radius - seamRadius) / span, 0, 1);
+    const t = inverseSmoothstep01(eased);
+
+    const authoredBaseY = innerY + (outerY - innerY) * eased;
+    const authoredEnvelope = Math.pow(Math.sin(Math.PI * t), 0.8);
+    const edgeBlend = smoothstep01(Math.max(0, radius - seamRadius) / edgeBlendWidth);
+
+    const baseY = innerY + (authoredBaseY - innerY) * edgeBlend;
+    const envelope = authoredEnvelope * edgeBlend;
+    return baseY + broadNoise(angle, t, seed) * heightVariation * envelope;
+  };
+}
+
 /**
  * Visual-only terrain outside the 80 m gameplay square.
  *
