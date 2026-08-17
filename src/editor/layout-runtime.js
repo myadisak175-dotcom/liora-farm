@@ -1,3 +1,5 @@
+import { applyBlockoutPreset } from "../systems/blockout-preset.js";
+
 const MAP_SCHEMA_VERSION = 2;
 
 export function createLayoutRuntime({
@@ -57,6 +59,25 @@ export function createLayoutRuntime({
           }
           builder.save({ immediate: true });
         }
+
+        // Blockout maps keep their first-pass terrain and routes compact and
+        // readable. The seed is applied only on first load; once exported from
+        // the editor the map contains ordinary baked groundPaint/terrainHeight.
+        if (map.blockout) {
+          const seeded = applyBlockoutPreset({
+            height: world.height,
+            paint: world.paint,
+            preset: map.blockout,
+          });
+          if (map.blockout.terrain && !seeded.terrain) {
+            console.warn("Blockout terrain seed could not be applied");
+          }
+          if (map.blockout.paint && !seeded.paint) {
+            console.warn("Blockout paint seed could not be applied");
+          }
+        }
+
+        // Explicit baked data wins over a compact seed when both are present.
         if (map.groundPaint) world.paint.importData(map.groundPaint);
         if (map.terrainHeight) {
           if (!world.height.importData(map.terrainHeight)) {
