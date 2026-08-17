@@ -114,7 +114,7 @@ export async function createPlayer({
 
   fadeTo(animations.idle, 0, true, 1);
 
-  return {
+  const api = {
     root,
     model,
     mixer,
@@ -123,4 +123,13 @@ export async function createPlayer({
     playSpecial,
     isSpecial: () => special,
   };
+
+  // Test-only bridge. It exists only when the URL explicitly asks for NPCs,
+  // keeping the normal game surface unchanged while the sidecar test module
+  // reuses the player's already-loaded model and clips.
+  if (new URLSearchParams(location.search).get("npc") === "1") {
+    window.__lioraNpcSource = api;
+  }
+
+  return api;
 }
