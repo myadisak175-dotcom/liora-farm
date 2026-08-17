@@ -41,6 +41,9 @@ export class Group {
   clone() {
     const next = new Group();
     next.name = this.name;
+    next.position.set(this.position.x, this.position.y, this.position.z);
+    next.rotation.set(this.rotation.x, this.rotation.y, this.rotation.z);
+    next.scale.x = this.scale.x; next.scale.y = this.scale.y; next.scale.z = this.scale.z;
     next.children = this.children.map((child) => (child.clone ? child.clone() : child));
     return next;
   }
