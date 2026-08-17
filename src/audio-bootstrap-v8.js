@@ -4,13 +4,11 @@ if (document.readyState === "loading") {
 
 const AUDIO_BASE = "./assets/audio/";
 const FILES = Object.freeze({
-  // The first file in each list is the clean runtime encode.  The extra
-  // choices are deliberately valid fallbacks, so one broken optional asset
-  // cannot silence the whole game again.
+  // The first file in each list is the clean runtime encode. The extra
+  // choices are valid fallbacks, so one missing footstep file cannot silence
+  // the whole game again.
   walk: ["footstep_grass_soft.mp3", "footstep_grass_walk.mp3", "footstep_grass_run_clean.mp3"],
   run: ["footstep_grass_run_clean.mp3", "footstep_grass_run.mp3", "footstep_grass_soft.mp3"],
-  birds: ["ambience_morning_birds_clean.mp3", "ambience_morning_birds.mp3"],
-  night: ["ambience_night_crickets_clean.mp3", "ambience_night_crickets.mp3"],
 });
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
@@ -32,8 +30,8 @@ const RUN_CUES = Object.freeze([
 
 const STEP_PROFILE = Object.freeze({
   // Slow walking stays audible but sits well behind the ambience on a phone.
-  walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.22 },
-  run: { spacing: 1.52, playbackRate: 1.00, gain: 0.64 },
+  walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.30 },
+  run: { spacing: 1.52, playbackRate: 1.00, gain: 0.38 },
 });
 const FIRST_STEP_PHASE = 0.48;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -96,13 +94,30 @@ const debug = new URLSearchParams(location.search).get("audiodebug") === "1"
   : null;
 
 let context = null, master = null, ambienceBus = null, footstepBus = null;
-let buffers = null, birds = null, night = null;
+let buffers = null;
 let unlocked = false, muted = false, loading = false, disposed = false;
 let loadError = "";
 let raf = 0, lastTime = performance.now(), lastPosition = null, wasMoving = false;
 let distanceSinceStep = 0, activeProfile = "-", currentFoot = "-", stepCount = 0;
 let walkCue = 0, runCue = 0;
+let nextBirdAt = 0, nextCricketAt = 0;
 const resolvedFiles = {};
+
+function normalizeFootstep(buffer, kind) {
+  const targetPeak = kind === "run" ? 0.46 : 0.52;
+  let peak = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) peak = Math.max(peak, Math.abs(samples[index]));
+  }
+  if (peak < 0.001 || peak >= targetPeak) return buffer;
+  const scale = Math.min(8, targetPeak / peak);
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) samples[index] *= scale;
+  }
+  return buffer;
+}
 
 async function fetchBuffer(name) {
   const failures = [];
@@ -110,7 +125,10 @@ async function fetchBuffer(name) {
     try {
       const response = await fetch(`${AUDIO_BASE}${file}?v=9`, { cache: "force-cache" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      const buffer = normalizeFootstep(
+        await context.decodeAudioData(await response.arrayBuffer()),
+        name
+      );
       if (!Number.isFinite(buffer.duration) || buffer.duration <= 0.02) throw new Error("empty decode");
       return { buffer, file };
     } catch (error) {
@@ -118,17 +136,6 @@ async function fetchBuffer(name) {
     }
   }
   throw new Error(`${name}: ${failures.join(" | ")}`);
-}
-
-function makeLoop(buffer) {
-  const source = context.createBufferSource();
-  const gain = context.createGain();
-  source.buffer = buffer;
-  source.loop = true;
-  gain.gain.value = 0;
-  source.connect(gain).connect(ambienceBus);
-  source.start();
-  return { source, gain, target: 0 };
 }
 
 async function ensureAudio() {
@@ -168,9 +175,6 @@ async function ensureAudio() {
     resolvedFiles.run ??= resolvedFiles.walk;
     buffers = decoded;
     loadError = Object.entries(errors).map(([name, message]) => `${name}:${message}`).join(" | ");
-
-    if (buffers.birds) birds = makeLoop(buffers.birds);
-    if (buffers.night) night = makeLoop(buffers.night);
 
     unlocked = true;
     muted = false;
@@ -224,7 +228,7 @@ function playStep(kind) {
   if (!buffer) return;
   // If a run file had to fall back to the short walking clip, retain a usable
   // cue instead of seeking into silence with the long running offsets.
-  const runUsesShortClip = isRun && resolvedFiles.run === "footstep_grass_soft.mp3";
+  const runUsesShortClip = isRun && ["footstep_grass_soft.mp3", "footstep_grass_walk.mp3"].includes(resolvedFiles.run);
   const cues = isRun && !runUsesShortClip ? RUN_CUES : WALK_CUES;
   const index = isRun ? runCue++ : walkCue++;
   const cue = cues[index % cues.length];
@@ -250,20 +254,64 @@ function playStep(kind) {
   stepCount += 1;
 }
 
-function setLoopTarget(track, target) {
-  if (!track || !context) return;
-  if (Math.abs(track.target - target) < 0.001) return;
-  track.target = target;
-  track.gain.gain.cancelScheduledValues(context.currentTime);
-  track.gain.gain.setTargetAtTime(target, context.currentTime, 0.6);
+function playAmbientTone({ startAt, fromHz, toHz, duration, gain, type = "sine" }) {
+  if (!context || !ambienceBus) return;
+  const source = context.createOscillator();
+  const volume = context.createGain();
+  source.type = type;
+  source.frequency.setValueAtTime(fromHz, startAt);
+  source.frequency.exponentialRampToValueAtTime(Math.max(80, toHz), startAt + duration * 0.68);
+  volume.gain.setValueAtTime(0.0001, startAt);
+  volume.gain.exponentialRampToValueAtTime(Math.max(0.0001, gain), startAt + 0.015);
+  volume.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+  source.connect(volume).connect(ambienceBus);
+  source.start(startAt);
+  source.stop(startAt + duration + 0.03);
+  source.onended = () => { source.disconnect(); volume.disconnect(); };
+}
+
+function playBirdCall(weight) {
+  const now = context.currentTime + 0.015;
+  const base = 1_850 + Math.random() * 650;
+  const gain = 0.075 + weight * 0.055;
+  playAmbientTone({ startAt: now, fromHz: base, toHz: base * 1.28, duration: 0.11, gain });
+  playAmbientTone({ startAt: now + 0.14, fromHz: base * 1.18, toHz: base * 0.87, duration: 0.15, gain: gain * 0.84 });
+}
+
+function playCricketCall(weight) {
+  const now = context.currentTime + 0.01;
+  const gain = 0.012 + weight * 0.020;
+  const base = 3_650 + Math.random() * 550;
+  for (let count = 0; count < 3; count += 1) {
+    playAmbientTone({
+      startAt: now + count * 0.075,
+      fromHz: base,
+      toHz: base * 1.07,
+      duration: 0.052,
+      gain,
+      type: "triangle",
+    });
+  }
 }
 
 function updateAmbience(hour) {
-  // Birds own dawn and all daytime; crickets are night-only.
-  const bird = muted ? 0 : 0.18 * birdWeight(hour);
-  const cricket = muted ? 0 : 0.08 * nightWeight(hour);
-  setLoopTarget(birds, bird);
-  setLoopTarget(night, cricket);
+  // Use small procedural calls rather than the supplied ambience MP3s: those
+  // files decode inconsistently and are too quiet on mobile speakers.
+  const bird = muted ? 0 : birdWeight(hour);
+  const cricket = muted ? 0 : nightWeight(hour);
+  const now = context?.currentTime ?? 0;
+  if (bird > 0.05) {
+    if (now >= nextBirdAt) {
+      playBirdCall(bird);
+      nextBirdAt = now + 3.2 + Math.random() * 4.8;
+    }
+  } else nextBirdAt = 0;
+  if (cricket > 0.05) {
+    if (now >= nextCricketAt) {
+      playCricketCall(cricket);
+      nextCricketAt = now + 1.8 + Math.random() * 2.5;
+    }
+  } else nextCricketAt = 0;
 }
 
 function update(now) {
@@ -320,11 +368,11 @@ function update(now) {
   if (debug) {
     const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V10 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
+      `AUDIO V11 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
       `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} profile=${activeProfile} steps=${stepCount}`,
-      `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"}`,
+      `walk=${resolvedFiles.walk ?? "-"} run=${resolvedFiles.run ?? "-"} ambience=synth`,
       loadError ? `err=${loadError}` : "err=-",
     ].join("\n");
   }
@@ -340,12 +388,6 @@ window.__lioraAudio = {
   dispose() {
     disposed = true;
     cancelAnimationFrame(raf);
-    try {
-      for (const track of [birds, night]) {
-        if (!track) continue;
-        track.source.stop(); track.source.disconnect(); track.gain.disconnect();
-      }
-    } catch {}
     context?.close?.();
     button.remove();
     debug?.remove();

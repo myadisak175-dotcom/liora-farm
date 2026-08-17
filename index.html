@@ -28,10 +28,10 @@
   entry.src = "./src/main.js?v=framed1";
   document.head.append(entry);
 
-  // Audio v10: cache-bust the quieter walk and bird-only day ambience mix.
+  // Audio v11: cache-bust reliable mobile footsteps and synthesized ambience.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio10";
+  audio.src = "./src/audio-bootstrap-v8.js?v=audio11";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {

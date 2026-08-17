@@ -17,8 +17,6 @@ function assert(value, message) { if (!value) throw new Error(message); }
 const runtimeFiles = [
   "footstep_grass_soft.mp3",
   "footstep_grass_run_clean.mp3",
-  "ambience_morning_birds_clean.mp3",
-  "ambience_night_crickets_clean.mp3",
 ];
 
 await test("every runtime audio file fetches and decodes in Chromium", async () => {
@@ -47,9 +45,10 @@ await test("the runtime never references the corrupt legacy leaf file", async ()
 
 await test("slow walking stays quieter while dawn and daytime stay bird-only", async () => {
   const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  assert(source.includes("walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.22 }"), "slow walk gain changed");
+  assert(source.includes("walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.30 }"), "slow walk gain changed");
   assert(source.includes("if (hour < 5.2) return clamp01(1 - (hour - 4.8) / 0.4);"), "crickets overlap the bird layer at dawn");
-  assert(source.includes("const bird = muted ? 0 : 0.18 * birdWeight(hour);"), "daytime bird ambience changed");
+  assert(source.includes("playBirdCall(bird)"), "daytime bird call is missing");
+  assert(source.includes("normalizeFootstep"), "quiet footstep files are no longer normalized");
 });
 
 window.__results = results;
