@@ -33,10 +33,14 @@ function lerpColor(a, b, t) {
  *
  * A `ConeGeometry` in a single flat colour is a paper cut-out: straight
  * flanks, a perfectly round base, and the same grey from foot to summit. This
- * keeps the cost of a cone — a few dozen triangles, one draw call for the
- * whole ring — while giving it the three things that read as a mountain at
- * distance: flanks that steepen toward the top, ridgelines running down the
- * sides, and snow above a ragged line.
+ * gives it the three things that read as a mountain at distance: flanks that
+ * steepen toward the top, ridgelines running down the sides, and snow above a
+ * ragged line.
+ *
+ * It is not free. A 6-sided cone is about 12 triangles; this is 9 x 6 x 2 =
+ * 108, so the two rings go from roughly 290 triangles to 3,500. That is still
+ * nothing next to one tree, and the draw calls — one per ring — do not change,
+ * which is the budget the horizon tests actually guard.
  */
 function makePeakGeometry(spec = {}) {
   const radial = Math.max(5, Math.round(Number(spec.radialSegments) || 9));

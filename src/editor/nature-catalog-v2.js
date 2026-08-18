@@ -2,6 +2,24 @@
 import { CONFIG } from "../config.js";
 
 export const NATURE_V2_CATEGORY = "nature";
+
+/**
+ * Which assets are actually flowering, for anything that cares about blooms —
+ * butterflies, first.
+ *
+ * Matching the id text does not work: `v2-plant-2` is a flower bush whose id
+ * says "plant", and `v2-bush` is a plain green bush whose id says "bush". The
+ * source file and the node name are what actually distinguish them.
+ */
+const BLOOM_FILES = new Set(["flowers.glb", "flower-bushes.glb"]);
+const BLOOM_NODE = /flower|petal|blossom/i;
+export function isBloomAsset(asset) {
+  if (!asset) return false;
+  // The frozen item keeps the source file as `modelPath`, not `file`.
+  const file = String(asset.modelPath ?? "").split("/").pop();
+  return BLOOM_FILES.has(file) || BLOOM_NODE.test(String(asset.nodeName ?? ""));
+}
+
 const ROOT = "./assets/models/world-v2/nature";
 
 function item({ id, label, icon, file, nodeName, height, width, tris, kind }) {
@@ -83,3 +101,8 @@ export const NATURE_V2_ASSETS = Object.freeze({
 });
 
 export function getNatureV2Assets() { return Object.values(NATURE_V2_ASSETS); }
+
+/** Ids of every flowering asset in the set, resolved once at module load. */
+export const BLOOM_ASSET_IDS = Object.freeze(
+  new Set(Object.values(NATURE_V2_ASSETS).filter(isBloomAsset).map((asset) => asset.id))
+);

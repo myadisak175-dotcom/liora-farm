@@ -40,9 +40,9 @@ import { createSystemRegistry } from "./systems/registry.js";
 import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
 import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
-import { NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
+import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "audio16";
+const APP_REVISION = "world17";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -371,8 +371,17 @@ try {
     quality: QUALITY,
     surfaceAt: (x, z) => world.paint.surfaceAt(x, z),
     // Butterflies gather on flowers, so they need to know where the flowers
-    // are: anything the player has planted whose asset reads as a bloom.
-    flowerSpots: () => builder.items.filter((item) => /flower|petal|blossom|bush/i.test(String(item?.assetId ?? ""))),
+    // are — and how high off the ground the blooms sit, so they can land on
+    // them rather than on the grass underneath. `bloom` is a little under the
+    // authored height so a resting butterfly sits in the flower head, not
+    // hovering above its tip.
+    flowerSpots: () => builder.items
+      .filter((item) => BLOOM_ASSET_IDS.has(String(item?.assetId ?? "")))
+      .map((item) => ({
+        x: item.x,
+        z: item.z,
+        bloom: (NATURE_V2_ASSETS[item.assetId]?.sourceHeight ?? 0.5) * (Number(item.scale) || 1) * 0.72,
+      })),
   });
 } catch (error) {
   console.warn("Environment life unavailable", error);

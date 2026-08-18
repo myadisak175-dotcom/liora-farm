@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-3-gentle-living-environment";
+export const BUILD = "worlds-4-mountain-horizon";
 
 export const CONFIG = Object.freeze({
   /**
@@ -431,15 +431,13 @@ export const CONFIG = Object.freeze({
       // field.
       wanderRange: 1.5,
       patchSpread: 1.4,
+      // How long a butterfly works one patch before looking around again. Short
+      // enough that flowers planted while it is flying get found.
+      patchSeconds: 14,
       speedMin: 0.55, speedMax: 1.15, size: 0.21,
     },
   },
-  /**
-   * `far` was 460, which put the hero island ~57% blended into the sky colour
-   * before it was even on screen. 520 keeps it readable and still sits under
-   * the nearest world rim (outerWorld.outerRadius - worldLimit = 562), so the
-   * "ขอบโลกถูกหมอกกลืนสนิท" rule still passes.
-   */
+
   /**
    * Fog starts further out than it used to. At near 88 the meadow was already
    * half-bleached by 200 m, which is what put a flat cream band between the
