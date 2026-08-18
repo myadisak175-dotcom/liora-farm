@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-7-one-field";
+export const BUILD = "worlds-8-even-light";
 
 export const CONFIG = Object.freeze({
   /**
@@ -456,12 +456,14 @@ export const CONFIG = Object.freeze({
   },
   cloudShadows: {
     enabled: true,
-    strength: 0.2,
-    scale: 190,
-    detailScale: 74,
-    speed: 0.0075,
-    coverage: 0.52,
-    softness: 0.36,
+    strength: 0.13,
+    scale: 320,
+    detailScale: 127,
+    // speed * scale is the pattern's world velocity, and it has to match
+    // sky.cloudDriftSpeed or the shadows outrun the clouds casting them.
+    speed: 0.00445,
+    coverage: 0.46,
+    softness: 0.17,
     tileSize: 128,
     seed: 11,
   },

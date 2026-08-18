@@ -31,14 +31,14 @@
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world20";
+  entry.src = "./src/main.js?v=world21";
   document.head.append(entry);
 
   // Audio v16 fixes the mobile mix: levels on devices that ignore element
   // volume, silent tracks stopped, and a mute choice that survives a reload.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=world20";
+  audio.src = "./src/audio-bootstrap-v8.js?v=world21";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
