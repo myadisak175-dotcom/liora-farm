@@ -1,16 +1,19 @@
 # Liora's Farm — architecture
 
-One page, one scene, one renderer. `index.html` is the only entry point.
-There are no separate builder / test pages any more.
+One production page, one scene, one renderer. `index.html` is the only game
+entry point. Diagnostic pages such as `selftest.html`, `audio-test.html` and
+`tools/test/*.test.html` exercise that runtime but are not alternate game builds.
 
 ## Layout
 
 ```text
 index.html              single entry: canvas + play HUD + build panel
+audio-test.html         phone audio capability report + per-file playback
+selftest.html           boots the real game and checks the mobile UI contract
 styles/main.css         all UI styling
 maps/home-island.json   default island layout (data only)
 assets/textures/        ground surfaces — the list lives in config.js groundPaint.layers
-assets/models/player/   Liora (7 animations)
+assets/models/player/   liora_all_animations_web.glb (7 animations)
 assets/models/builder/  placeable GLBs — path lives in config.js ASSETS.modelDir
 src/
   config.js             every tunable number and asset path
@@ -18,8 +21,8 @@ src/
   entities/player.js    model load + animation state
   zones/home-island.js  builds the world: island + terrain + paint + farm plot
   systems/              gameplay + rendering, one concern per file
-  tools/test/           headless checks — node tools/test/run.mjs
   editor/               the build mode
+tools/test/             browser regression pages — node tools/test/run.mjs
 ```
 
 ## Modes
@@ -46,7 +49,7 @@ one-finger gesture over. There is no event-priority fight between the two.
 
 ## Ground
 
-The Home Island is **56 x 56 m**. `systems/terrain-height.js` owns a 113x113
+The Home Island terrain is **80 x 80 m**. `systems/terrain-height.js` owns a 161x161
 `Float32Array` over that island at 0.5 m spacing and one bilinear `sample()`.
 That single array is both the shape of the mesh and the answer to `getHeight()`.
 
@@ -69,9 +72,9 @@ Constraints applied on every brush stroke:
 
 Sculpting is rate-based: `beginStroke` / `moveTo` / `tick(dt)` / `endStroke`.
 Per-event brushes feel dead when the finger holds still and bite twice as hard
-on a faster phone. Undo keeps whole-grid snapshots (about 50 KB each), bounded by `sculpt.undoLimit` in
+on a faster phone. Undo keeps whole-grid snapshots (about 102 KB each), bounded by `sculpt.undoLimit` in
 `config.js` — far simpler than replaying strokes, and instant. The save is Int16 centimetres in
-base64, about 34 KB.
+base64, about 69 KB.
 
 `movement.js` refuses ground steeper than `maxWalkSlope` and tries each axis
 alone first, which reads as sliding along the contour. The rule is symmetric so

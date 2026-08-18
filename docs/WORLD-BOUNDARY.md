@@ -1,37 +1,45 @@
 # World Boundary
 
-Home Island uses a procedural terrain ridge as its visible world boundary. The player is stopped by the same `maxWalkSlope` rule used for ordinary sculpted terrain; `worldLimit` remains a hidden safety clamp behind the ridge.
+## Current production rule
 
-## Home Island Ridge V1
+Home Island currently uses an **invisible gameplay boundary**, not a visible
+procedural ridge:
 
-`CONFIG.worldBoundary` owns the tuning values:
+```js
+worldLimit: 38,
+worldBoundary: { enabled: false, type: "none" },
+```
 
-- `type: "ridge"` selects the ridge implementation.
-- `radius` is the approximate distance from world centre where the rise begins.
-- `noiseAmplitude`, `noiseScale`, and `noiseSeed` offset that start distance so the ridge does not read as a perfect ring.
-- `feather` is the horizontal rise distance.
-- `height` is the final outer-rim elevation.
+The editable terrain is 80 x 80 m, leaving a narrow margin between the 38 m
+movement limit and the terrain edge. The player is clamped inside that authored
+play area. No collider wall, visible ring or physical gap is rendered.
 
-The ridge must finish before `CONFIG.terrain.size / 2` so its outer edge can meet the floating-island skirt.
+`CONFIG.outerWorld` begins just beyond the gameplay edge and continues as
+visual scenery. It blends ground paint, colour, height variation and fog into
+the distant world, but it does not expand the walkable area.
 
-## Runtime architecture
+## Why the old ridge is not the baseline
 
-The ridge is intentionally **not** written into the editable terrain `Float32Array`.
-
-`world-boundary.js` builds a composite height view:
+`src/systems/world-boundary.js` still contains the reusable generated-boundary
+contract, but Home Island no longer enables it. Earlier Ridge V1 documentation
+described an experiment where gameplay sampled:
 
 `max(editable terrain height, generated boundary floor)`
 
-Gameplay ground sampling, slope checks, object seating, terrain-field shading, and editor ground picking see that composite view. The normal sculpt/save system continues to own only authored terrain. A lightweight ridge mesh shares the existing terrain material, so it receives the same Ground Layers/auto-surface shader without adding another texture set.
+That design remains available for a future map, but treating it as active on
+Home Island would make documentation, tuning and tests disagree with the
+runtime.
 
-This separation has three useful properties:
+## Safety rules
 
-1. The ridge cannot be dug through because gameplay/rendering never go below its generated floor.
-2. A terrain save does not bake generated ridge height, so later radius/height tuning takes effect after reload.
-3. The core terrain-height persistence and DDA implementation remain unchanged.
+- Keep `worldLimit` inside `CONFIG.terrain.size / 2`.
+- Do not make the outer world walkable merely because it is visible.
+- Do not add a visible wall to enforce the current limit.
+- If a map enables a ridge, cliff, deep-water or portal boundary later, update
+  its map/config contract and tests in the same change.
+- Terrain sculpt saves continue to own authored height only; generated scenery
+  must not silently bake itself into the terrain payload.
 
-The ridge adds one static draw call and only the triangles in the outer boundary band. No collider wall or extra render pass is created.
-
-## Future boundary types
-
-The top-level name is `worldBoundary`, not `mountainBorder`, on purpose. Other maps can later route the same world-boundary contract to deep water, cliffs, dense forest, walls, portals, or no boundary at all without changing Home Island movement rules.
+The top-level name remains `worldBoundary` so future maps can choose ridge,
+deep water, cliffs, dense forest, walls, portals or no visible boundary without
+changing the movement API.

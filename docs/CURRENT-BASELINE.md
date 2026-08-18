@@ -1,56 +1,81 @@
 # Liora Farm — Current Baseline
 
-Updated: 2026-08-17 (Thailand)
+Updated: 2026-08-18 (Thailand)
 
 ## Active runtime baseline
 
 - Branch: `main`
-- Runtime commit: `33c97bdc7909eb0e7fd1e7d04d3bb2ee659944e0`
-- Commit title: `Blend seam and harden invisible play boundary`
+- Runtime commit: `ca79580d70bad1f7d71fbbc17e42ad8472866d7a`
+- Commit title: `Merge pull request #48: mobile audio fixes, summer sky, butterflies, fullscreen`
+- Build marker: `worlds-3-gentle-living-environment`
+- App revision: `audio16`
 - GitHub Page: `https://myadisak175-dotcom.github.io/liora-farm/`
-- Build marker remains: `worlds-2-detail`
+
+The runtime commit above is the accepted code baseline. A later documentation-only
+commit does not replace it unless runtime code also changes.
 
 ## What is included
 
-- World Blend
-- Scene Depth
-- Ground Micro Detail Normal
-- World Authoring / multi-world map schema v2
-- Per-map save scoping
-- Map registry / map picker
-- Landscape presets
-- Ground paint continuation from the playable terrain onto the outer world
-- Seam refinement at the gameplay edge
-- Invisible play boundary around the authored `worldLimit = 38`
+### World and authoring
 
-## Latest edge work
+- World Blend and Scene Depth
+- ground micro-detail normal
+- multi-world map schema v2, map registry and map picker
+- per-map save scoping and landscape presets
+- ground paint continuation from playable terrain onto the outer world
+- a visually blended gameplay edge with an invisible `worldLimit = 38`
+- seeded middle-ground tree line
+- the authored 1+3 floating-island GLB backdrop
 
-The playable terrain is 80 m wide. The outer world remains visual scenery and the player is clamped inside the playable area.
+The editable terrain is 80 x 80 m. The outer world is visual scenery; the
+player remains inside the authored play area without a visible wall.
 
-Latest seam refinement:
+### Living environment
 
-- outer-world overlap reduced to about `0.35 m`
-- outer-world vertical drop reduced to about `0.015 m`
-- no visible gameplay wall or physical gap was added
-- no far-ground colour tuning was included
-- no player/object shadow tuning was included
+- saturated summer-blue sky with a narrow pale horizon band
+- a sun drawn into the sky dome without another draw call
+- wind-driven clouds, cloud shadows and layered moving outer mist
+- gentle player interaction with grass, bushes and flowers
+- colourful butterflies that wander, rest on land and avoid landing on water
+- falling leaves deliberately disabled in `CONFIG.environmentLife.leaves`
+
+### Mobile audio and display
+
+- Audio Foundation v8 with terrain-aware footsteps and day/night ambience
+- element-volume probing with a Web Audio gain fallback for iOS
+- mute choice and music position preserved across full-page world switches
+- automatic recovery for refused, paused and stalled streams
+- `audio-test.html` device report for real-phone failures
+- Fullscreen toggle using the standard API and legacy WebKit prefix
+- Add to Home Screen guidance where iPhone Safari exposes no element fullscreen API
 
 ## Validation state
 
-- JavaScript syntax checks pass.
-- Ground shader tests: `14/14`
-- Open-world seam tests: `5/5`
-- Full browser regression: `270/276`
-- The remaining 6 failures are pre-existing test scaffold/HUD expectation issues, not new runtime failures from the latest edge work.
+- Foundation tests for PR #48 completed successfully (run 146).
+- Audio mix, audio asset, environment-life and fullscreen regression pages are
+  registered in `tools/test/run.mjs`.
+- `node tools/test/run.mjs` is the current automated source of truth.
+- Hands-on testing on the target phone is still required for sound level,
+  stream recovery, touch feel, fullscreen and visual colour judgement.
 
-## Deliberately NOT included yet
+## Current boundary and scenery decisions
 
-### Floating island GLB experiment
+- `CONFIG.worldBoundary` is disabled with `type: "none"`.
+- `worldLimit = 38` is the invisible gameplay safety boundary.
+- `CONFIG.distantRange.floatingIslandBackdrop.enabled` is `true`.
+- `assets/models/background/floating_island_hero.glb` is deployed and loaded
+  asynchronously; failure remains non-blocking because it is scenery only.
+- the older procedural `floatingIslands` system remains disabled.
 
-The Meshy floating-island model was prepared separately as a background experiment, but it is **not deployed and not part of this baseline**.
+## Deliberately not production gameplay yet
 
-Do not treat `worlds-2-floating-island` as the active project baseline unless it is explicitly reviewed and merged later.
+- NPC Life remains an optional `?npc=1` test baseline, not the main game loop.
+- daily schedules, needs, relationships, quests, dialogue choices, navigation
+  and crowd simulation are future work.
+- falling-leaf particles remain off by design.
 
 ## Resume rule
 
-When continuing Liora Farm, start from `main` / runtime commit `33c97bdc7909eb0e7fd1e7d04d3bb2ee659944e0` (plus this documentation-only checkpoint commit), unless a newer accepted runtime has been deployed after this file was written.
+Start from the current `main`, then verify `BUILD` in `src/config.js` and
+`APP_REVISION` in `src/main.js` against this file. If either changes in an
+accepted runtime release, update this document in the same PR.
