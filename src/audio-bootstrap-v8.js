@@ -38,6 +38,9 @@ const MUTE_KEY = "liora.audio.muted";
 const MUSIC_POSITION_KEY = "liora.audio.musicPosition";
 const STREAM_RETRY_MS = 2500;
 const STREAM_RELOAD_LIMIT = 3;
+// A phone reporting "playing" while the media clock stands still is stalled on
+// the network, not playing. Long enough not to trip over a slow first buffer.
+const STREAM_STALL_MS = 6000;
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
 // offsets pointed beyond the usable audio and caused audio initialization to
@@ -217,7 +220,8 @@ function createStream(name, file) {
   const track = {
     name, file, audio,
     state: "idle", target: 0, level: 0,
-    wantsPlay: false, deliberatePause: false, reloads: 0,
+    wantsPlay: false, deliberatePause: false, resumedFromPause: false, reloads: 0,
+    lastMediaTime: 0, lastAdvanceAt: 0,
     node: null, gain: null, disposed: false,
   };
   audio.addEventListener("error", () => {
@@ -318,12 +322,28 @@ function applyTrackLevel(track) {
   if (elementVolumeSupported) track.audio.volume = level;
 }
 
+/**
+ * Stopping a silent track saves battery and mobile data, but it is only ever an
+ * optimization: where the level can be taken to zero, a track that would not
+ * restart is worse than one that keeps running unheard. The first failed resume
+ * turns the optimization off for the rest of the session rather than leaving a
+ * layer of the mix missing on that device.
+ */
+let pauseGatingBroken = false;
+function canSilenceWithoutPausing(track) {
+  return Boolean(track.gain) || elementVolumeSupported;
+}
+
 function syncStreamPlayback(track) {
-  const wantsPlay = !muted && !disposed && shouldStreamPlay(track.level, track.wantsPlay);
+  const audible = shouldStreamPlay(track.level, track.wantsPlay);
+  const keepAlive = pauseGatingBroken && canSilenceWithoutPausing(track);
+  const wantsPlay = !muted && !disposed && (audible || keepAlive);
   if (wantsPlay === track.wantsPlay) return;
   track.wantsPlay = wantsPlay;
-  if (wantsPlay) void startStream(track);
-  else pauseStream(track);
+  if (wantsPlay) {
+    if (track.state === "paused") track.resumedFromPause = true;
+    void startStream(track);
+  } else pauseStream(track);
 }
 
 function setStreamTarget(track, target, dt) {
@@ -379,11 +399,17 @@ function startStream(track) {
       if (track.disposed || disposed) return false;
       track.state = "playing";
       track.reloads = 0;
+      track.resumedFromPause = false;
+      track.lastMediaTime = track.audio.currentTime;
+      track.lastAdvanceAt = performance.now();
       clearRuntimeError(track.name);
       updateAudioButton();
       return true;
     }).catch((error) => {
       if (track.disposed || disposed) return false;
+      // This device will not restart a track we stopped, so stop stopping them.
+      if (track.resumedFromPause) pauseGatingBroken = true;
+      track.resumedFromPause = false;
       track.state = "blocked";
       setRuntimeError(track.name, error);
       updateAudioButton();
@@ -427,8 +453,21 @@ function retryBlockedStreams(nowMs) {
   nextStreamRetryAt = nowMs + STREAM_RETRY_MS;
   for (const track of trackList()) {
     if (!track.wantsPlay) continue;
-    if (track.state === "playing" && !track.audio.paused) continue;
     if (track.state === "starting") continue;
+    if (track.state === "playing" && !track.audio.paused) {
+      // Any movement counts, including the jump back to zero at the loop point.
+      const position = track.audio.currentTime;
+      if (Math.abs(position - track.lastMediaTime) > 0.05) {
+        track.lastMediaTime = position;
+        track.lastAdvanceAt = nowMs;
+        continue;
+      }
+      if (nowMs - track.lastAdvanceAt < STREAM_STALL_MS) continue;
+      // Playing on paper, silent in the room: reload it and start again.
+      setRuntimeError(track.name, "stalled");
+      track.state = "failed";
+      track.lastAdvanceAt = nowMs;
+    }
     if (track.state === "failed") {
       if (track.reloads >= STREAM_RELOAD_LIMIT) continue;
       track.reloads += 1;
@@ -810,7 +849,7 @@ function update(now) {
 
   if (debug) {
     debug.textContent = [
-      `AUDIO V16 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")} mix=${streamRouting}`,
+      `AUDIO V16 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")} mix=${streamRouting}${pauseGatingBroken ? " keepalive" : ""}`,
       `hour=${hour.toFixed(2)} birds=${birdWeight(hour).toFixed(2)} night=${nightWeight(hour).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} water=${(Number(state?.waterDepth) || 0).toFixed(2)} speed=${instantSpeed.toFixed(2)}`,
       `foot=${currentFoot} surface=${currentSurface} profile=${stepper.profile} steps=${stepCount}`,
@@ -834,11 +873,12 @@ window.__lioraAudio = {
   get routing() { return streamRouting; },
   get status() {
     return {
-      unlocked, muted, loading, routing: streamRouting,
+      unlocked, muted, loading, routing: streamRouting, pauseGating: !pauseGatingBroken,
       footstep: currentFoot, surface: currentSurface, steps: stepCount, error: loadError,
       streams: Object.fromEntries(Object.entries(streams ?? {}).map(([name, track]) => [name, {
         state: track?.state ?? "failed",
         level: track?.level ?? 0,
+        position: track?.audio.currentTime ?? 0,
         volume: track?.audio.volume ?? 0,
         paused: track?.audio.paused ?? true,
       }])),

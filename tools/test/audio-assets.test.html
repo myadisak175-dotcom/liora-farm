@@ -130,6 +130,20 @@ await test("one missing long track cannot silence footsteps or the other streams
   assert(source.includes("track.reloads >= STREAM_RELOAD_LIMIT"), "a permanently missing file would be retried forever");
 });
 
+await test("a phone that stalls or refuses a resume does not lose a layer of the mix", async () => {
+  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
+  // "Playing" is not the same as audible: a stalled mobile stream keeps the
+  // state and stops the clock, so the media position is what gets checked.
+  assert(source.includes("STREAM_STALL_MS"), "a stalled stream is never noticed");
+  assert(source.includes('setRuntimeError(track.name, "stalled")'), "a stalled stream is not reported or restarted");
+  assert(source.includes("Math.abs(position - track.lastMediaTime)"), "a looping track would be misread as stalled");
+  // Stopping a silent track is only ever an optimization; if this device will
+  // not start it again, the mix must keep it running unheard instead.
+  assert(source.includes("pauseGatingBroken = true"), "a refused resume no longer disables pause gating");
+  assert(source.includes("function canSilenceWithoutPausing(track)"), "silence now depends on pausing even where volume works");
+  assert(/const keepAlive = pauseGatingBroken && canSilenceWithoutPausing\(track\);/.test(source), "the keep-alive fallback is not wired into playback");
+});
+
 window.__results = results;
 window.__done = true;
 out.textContent = results.map((result) => `${result.pass ? "PASS" : "FAIL"} ${result.name}${result.detail ? ` | ${result.detail}` : ""}`).join("\n");

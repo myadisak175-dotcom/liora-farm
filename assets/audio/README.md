@@ -4,7 +4,11 @@ Short footsteps are decoded into Web Audio buffers. The longer music and ambienc
 
 **Levels.** iOS ignores writes to `HTMLMediaElement.volume`, so on an iPhone every long track used to play at full level at once and mute left them audible. The runtime probes once whether a volume write sticks: if it does the crossfade stays on element volume (Android, desktop), and if it does not the elements are routed through Web Audio gain nodes instead. A track the mix has faded out is also stopped outright rather than left running at zero, which is the only way to silence one where volume is read-only — and it stops a silent night track from streaming all day on someone's data.
 
-**Recovery.** If Android blocks the first media start, later game touches retry the long tracks. A track the browser refused, or that a phone call or another app paused, is picked up by a retry pass a few seconds later without waiting for the player to find the sound button; a file that is genuinely missing is retried a few times and then left alone.
+**Recovery.** If Android blocks the first media start, later game touches retry the long tracks. A track the browser refused, or that a phone call or another app paused, is picked up by a retry pass a few seconds later without waiting for the player to find the sound button; a file that is genuinely missing is retried a few times and then left alone. "Playing" is not taken at face value either — a phone that stalls on the network keeps the state and stops the media clock, so a track whose position has not moved for six seconds is reloaded and started again.
+
+**Stopping a silent track is only an optimization.** If this device refuses to start one again, the mix keeps it running unheard from then on instead of leaving that layer missing. Losing a sound is worse than spending the data.
+
+**When something is missing on a real phone,** open `audio-test.html` on that device and press ตรวจ: it reports whether volume writes work, whether each footstep file decodes, and how many long tracks the device will actually play at once — the three failures that each silence a different part of the game.
 
 **The player's choice sticks.** Turning sound off is remembered across a world switch — switching worlds is a full page reload, and it used to bring the music back every time. Ordinary game touches never override that choice, and the music resumes near where it left off instead of restarting the same opening bars.
 
