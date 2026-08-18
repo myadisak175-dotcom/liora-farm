@@ -13,6 +13,23 @@ import * as THREE from "three";
  * has no matching left and right edge — wrapping one directly leaves a seam
  * the eye finds immediately when the camera turns.
  */
+/**
+ * Whether the painted bands are live for this session.
+ *
+ * The authored default stays off, so nothing changes for anyone who just
+ * opens the game. `?backdrop=1` turns them on and `?backdrop=0` forces them
+ * off again, which is how the two horizons get compared on a real phone
+ * without shipping a decision first.
+ */
+export function isPaintedBackdropEnabled(search = "", config = {}) {
+  const bands = Array.isArray(config?.bands) ? config.bands.length : 0;
+  if (bands === 0) return false;
+  const flag = new URLSearchParams(String(search ?? "")).get("backdrop");
+  if (flag === "1") return true;
+  if (flag === "0") return false;
+  return config?.enabled === true;
+}
+
 export function createPaintedBackdrop(config = {}) {
   const group = new THREE.Group();
   group.name = "PaintedBackdrop";
