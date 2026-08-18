@@ -579,7 +579,8 @@ export function createEnvironmentLife({
     const radius = Math.max(2, Number(insectConfig.radius) || 8.5);
     // Butterflies are re-seeded onto a patch of flowers rather than scattered
     // evenly around the player.
-    movePatch(insect, findFlowerPatch({ player, radius, flowerSpots, surfaceAt: paintedSurfaceAt }));
+    const patch = findFlowerPatch({ player, radius, flowerSpots, surfaceAt: paintedSurfaceAt });
+    movePatch(insect, patch);
     const angle = Math.random() * TAU;
     const spread = Math.max(0.4, Number(insectConfig.patchSpread) || 1.4);
     insect.x = patch.x + Math.cos(angle) * spread * Math.sqrt(Math.random());

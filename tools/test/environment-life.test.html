@@ -15,6 +15,7 @@ import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS, isBloomAsset } from "../../src/edito
 import {
   BUTTERFLY_REST_CHANCE,
   FLOWER_SURFACES,
+  createEnvironmentLife,
   createEnvironmentLifeFallback,
   findFlowerPatch,
   pickButterflyTarget,
@@ -324,6 +325,45 @@ await test("flowers planted while a butterfly is flying get found", async () => 
   assert(source.includes("function patchLifetime()"), "there is no patch lifetime at all");
   assert(CONFIG.environmentLife.insects.patchSeconds <= 30,
     `a butterfly holds a patch for ${CONFIG.environmentLife.insects.patchSeconds}s before looking again`);
+});
+
+await test("the real butterfly system runs a frame without throwing", () => {
+  // This is the test that was missing. Everything else here exercises the pure
+  // helpers, so a ReferenceError inside respawnInsect — which runs only in the
+  // built system — shipped to players with a green suite behind it.
+  const scene = { add() {}, remove() {} };
+  const life = createEnvironmentLife({
+    scene,
+    config: {
+      enabled: true,
+      leaves: { enabled: false, maxCount: 0 },
+      insects: { ...CONFIG.environmentLife.insects, maxCount: 4 },
+    },
+    getGroundHeight: () => 0,
+    waterLevel: -1,
+    quality: { preset: { leafCount: 0, insectCount: 4 } },
+    surfaceAt: () => "flower_grass",
+    flowerSpots: () => [{ x: 3, z: 1, bloom: 0.7 }],
+  });
+
+  const player = { x: 0, y: 0, z: 0 };
+  const camera = { quaternion: { copy() { return this; }, multiply() { return this; } } };
+  for (let frame = 0; frame < 120; frame += 1) {
+    life.update(1 / 60, { position: player, state: { moving: false }, camera, hour: 12 });
+  }
+  assert(life.stats.insects === 4, `only ${life.stats.insects} butterflies were activated`);
+
+  // And the same again at night, which swaps the palette and the blending.
+  for (let frame = 0; frame < 60; frame += 1) {
+    life.update(1 / 60, { position: player, state: { moving: false }, camera, hour: 22 });
+  }
+  // Walking far enough to force a respawn is exactly where the crash lived.
+  for (let frame = 0; frame < 120; frame += 1) {
+    player.x += 0.4;
+    life.update(1 / 60, { position: player, state: { moving: true }, camera, hour: 12 });
+  }
+  assert(life.stats.insects === 4, "butterflies were lost after the player walked away");
+  life.dispose();
 });
 
 window.__results = results;
