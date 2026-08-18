@@ -34,6 +34,7 @@ import { setStoreReporter, storageFootprint } from "./systems/local-store.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
+import { createFullscreenControl } from "./ui/fullscreen.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
 import { createSystemRegistry } from "./systems/registry.js";
 import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
@@ -159,6 +160,8 @@ const dayNight = createDayNight({
   onLabelChange: (label) => { clockButton.textContent = label; },
 });
 clockButton.onclick = () => dayNight.nextPreset();
+
+createFullscreenControl({ button: document.querySelector("#fullscreen"), notify: toast });
 
 let floatingIslandBackdrop = null;
 try {

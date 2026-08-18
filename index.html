@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#173c4b">
+<!-- iPhone has no Fullscreen API. Launching from the home screen is the
+     only way to lose the browser chrome there, and these two make that
+     launch open standalone instead of in Safari. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Liora's Farm</title>
 <link rel="stylesheet" href="./styles/main.css?v=horizon4">
 <link rel="stylesheet" href="./styles/terrain-controls.css?v=horizon4">
@@ -50,6 +56,7 @@
 <nav id="mode-bar">
   <button type="button" data-mode="play" class="active">เล่น</button>
   <button type="button" data-mode="build">สร้าง</button>
+  <button type="button" id="fullscreen" class="icon" aria-label="เต็มจอ" aria-pressed="false">⛶</button>
 </nav>
 <button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button>
 <div id="joy"><div id="stick"></div></div>

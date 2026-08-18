@@ -76,6 +76,13 @@ export class Vector3 {
   setScalar(value) {
     return this.set(value, value, value);
   }
+  length() {
+    return Math.hypot(this.x, this.y, this.z);
+  }
+  normalize() {
+    const length = this.length() || 1;
+    return this.set(this.x / length, this.y / length, this.z / length);
+  }
 }
 
 export class Vector2 {

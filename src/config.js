@@ -330,17 +330,48 @@ export const CONFIG = Object.freeze({
     ghostOpacity: 0.55, selectionColor: 0x7ce0ff, saveDebounceMs: 250,
     gridSize: 0.5, snapDefault: false, historyLimit: 50,
   },
+  /**
+   * A clear summer afternoon: a saturated blue overhead that stays blue most
+   * of the way down, a narrow pale band at the horizon, and fat white cumulus.
+   *
+   * The old palette put a near-white horizon (0xecfaff) against a pale zenith
+   * (0x78c9f4) and blended between them across almost the whole dome, so the
+   * sky read as haze from every camera angle — no depth, and no summer.
+   * `zenithHold` is what keeps the blue high: the gradient reaches the horizon
+   * colour only in the last stretch above the ground.
+   */
   sky: {
-    radius: 700, zenithColor: 0x78c9f4, horizonColor: 0xecfaff, lowerColor: 0xc9edf9,
-    cloudColor: 0xffffff, cloudOpacity: 0.64, cloudCount: 18, cloudRingRadius: 300,
+    radius: 700, zenithColor: 0x3f9de3, horizonColor: 0xe4f4ff, lowerColor: 0xbfe4f6,
+    zenithHold: 0.12,
+    // The sun is drawn into the dome itself, so it costs no draw call. Size is
+    // the angular radius of the disc; the glow is what actually sells warmth.
+    sunColor: 0xfff5dc, sunSize: 0.045, sunGlow: 0.42,
+    cloudColor: 0xffffff, cloudOpacity: 0.86, cloudCount: 18, cloudRingRadius: 300,
     // The portrait camera only exposes about 12 degrees above the horizon at
     // its lowest pitch. y=62 at r=300 keeps the cloud bellies inside that band;
     // the old y=132 put every puff more than 20 degrees above the screen.
-    cloudHeight: 62, cloudSpread: 52, cloudScale: 12, cloudDriftSpeed: 1.42,
+    cloudHeight: 68, cloudSpread: 58, cloudScale: 10.5, cloudDriftSpeed: 1.42,
     cloudBob: 0.7, cloudMorph: 0.035,
     starCount: 220, starSize: 0.95, starOpacity: 0.9,
   },
-  dayNight: { startHour: 8, realSecondsPerDay: 1440 },
+  /**
+   * `daylight` is the midday palette every other hour interpolates towards.
+   * It lives here rather than inside day-night.js because the sky dome is
+   * built from `sky` above and the two have to be the same colours — when they
+   * were separate constants in separate files they drifted apart.
+   */
+  dayNight: {
+    startHour: 8,
+    realSecondsPerDay: 1440,
+    daylight: {
+      zenith: 0x3f9de3,
+      horizon: 0xe4f4ff,
+      lower: 0xbfe4f6,
+      sun: 0xfff2cf,
+      hemiSky: 0xfff8e8,
+      hemiGround: 0x557455,
+    },
+  },
   runFx: {
     maxParticles: 24, spawnInterval: 0.085, life: 0.38, color: 0xe9dfc6, opacity: 0.42,
     size: 0.32, grow: 0.85, height: 0.11, heightJitter: 0.05, backOffset: 0.28,
@@ -381,7 +412,10 @@ export const CONFIG = Object.freeze({
     },
     insects: {
       enabled: true, maxCount: 14, radius: 8.5, minHeight: 0.45, maxHeight: 1.75,
-      orbitMin: 0.22, orbitMax: 0.85, speedMin: 0.55, speedMax: 1.15, size: 0.18,
+      // How far a butterfly picks its next destination. Short hops read as
+      // flitting; long ones look like a bird crossing the field.
+      wanderRange: 2.6,
+      speedMin: 0.55, speedMax: 1.15, size: 0.21,
     },
   },
   /**

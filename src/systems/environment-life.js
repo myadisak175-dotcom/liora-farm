@@ -115,6 +115,112 @@ function makeInsectTexture() {
   return texture;
 }
 
+/**
+ * How one butterfly flies, as pure state math.
+ *
+ * The old flight was a circle: each insect orbited a fixed anchor at a fixed
+ * height forever, which reads as a moth trapped in a jar rather than something
+ * alive. A butterfly instead crosses to somewhere it wants to be, wanders off
+ * the straight line on the way, and every so often settles on the ground for a
+ * few seconds with its wings barely moving.
+ *
+ * `context.groundAt` is the walkable surface and `context.overWater` says
+ * whether that spot is water — a butterfly may fly across a pond, but it will
+ * not land on one.
+ */
+export const BUTTERFLY_REST_CHANCE = 0.34;
+
+export function pickButterflyTarget(insect, context = {}) {
+  const {
+    groundAt: sample = () => 0,
+    overWater = () => false,
+    random = Math.random,
+    minHeight = 0.45,
+    maxHeight = 1.75,
+    range = 2.6,
+  } = context;
+  const angle = random() * TAU;
+  const distance = 0.6 + random() * Math.max(0.2, range);
+  const x = insect.x + Math.cos(angle) * distance;
+  const z = insect.z + Math.sin(angle) * distance;
+  const ground = Number(sample(x, z)) || 0;
+  // Landing is a choice made when the destination is picked, so the approach
+  // can slope down into it instead of dropping out of the air on arrival.
+  const wantsRest = random() < BUTTERFLY_REST_CHANCE && !overWater(x, z);
+  insect.targetX = x;
+  insect.targetZ = z;
+  insect.targetY = wantsRest
+    ? ground + 0.06
+    : ground + minHeight + random() * Math.max(0.01, maxHeight - minHeight);
+  insect.landing = wantsRest;
+  insect.legTime = 0;
+  return insect;
+}
+
+export function stepButterfly(insect, delta, context = {}) {
+  const {
+    random = Math.random,
+    restSeconds = 1.4,
+    restVariation = 2.4,
+  } = context;
+  const dt = Math.min(0.05, Math.max(0, Number(delta) || 0));
+
+  if (insect.mode === "rest") {
+    insect.restTimer -= dt;
+    // Resting wings open and close slowly rather than stopping dead.
+    insect.flapRate += (1.7 - insect.flapRate) * Math.min(1, dt * 4);
+    insect.y += ((insect.targetY ?? insect.y) - insect.y) * Math.min(1, dt * 6);
+    if (insect.restTimer <= 0) {
+      insect.mode = "cruise";
+      pickButterflyTarget(insect, context);
+    }
+    insect.flapPhase += insect.flapRate * dt * TAU;
+    return insect;
+  }
+
+  const dx = (insect.targetX ?? insect.x) - insect.x;
+  const dy = (insect.targetY ?? insect.y) - insect.y;
+  const dz = (insect.targetZ ?? insect.z) - insect.z;
+  const flat = Math.hypot(dx, dz);
+  insect.legTime = (insect.legTime ?? 0) + dt;
+
+  if (flat < 0.12 && Math.abs(dy) < 0.12) {
+    if (insect.landing) {
+      insect.mode = "rest";
+      insect.restTimer = restSeconds + random() * restVariation;
+      insect.landing = false;
+      return insect;
+    }
+    pickButterflyTarget(insect, context);
+    return insect;
+  }
+  // A leg that is taking too long — a target behind a rise, say — is abandoned
+  // rather than chased forever.
+  if (insect.legTime > 9) {
+    pickButterflyTarget(insect, context);
+    return insect;
+  }
+
+  const speed = Math.max(0.05, insect.speed || 0.8);
+  const heading = Math.atan2(dz, dx);
+  const step = Math.min(flat, speed * dt);
+  // The wobble is the whole point: a butterfly never holds a straight line, so
+  // it slides sideways across its own heading as it goes.
+  insect.wobblePhase = (insect.wobblePhase ?? 0) + dt * (2.6 + speed);
+  const sway = Math.sin(insect.wobblePhase) * speed * dt * 0.85;
+  insect.x += Math.cos(heading) * step - Math.sin(heading) * sway;
+  insect.z += Math.sin(heading) * step + Math.cos(heading) * sway;
+
+  // Climbing costs effort and beats faster; a glide down is slower and lazier.
+  const climb = Math.sign(dy) * Math.min(Math.abs(dy), speed * dt * 0.9);
+  insect.y += climb + Math.sin(insect.wobblePhase * 1.7) * dt * 0.16;
+  const targetFlap = climb > 0 ? 11.5 : 7.5;
+  insect.flapRate += (targetFlap - insect.flapRate) * Math.min(1, dt * 3);
+  insect.flapPhase += insect.flapRate * dt * TAU;
+  insect.heading = heading;
+  return insect;
+}
+
 function windSnapshot(wind) {
   const direction = wind?.uniforms?.direction?.value;
   const x = Number(direction?.x ?? 0.8);
@@ -171,7 +277,10 @@ export function createEnvironmentLife({
     leafGeometry = makeLeafGeometry(Math.max(0.03, Number(leafConfig.size) || 0.12));
     leafMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      vertexColors: true,
+      // No vertexColors here: the per-instance tint arrives through
+      // setColorAt/instanceColor, and switching USE_COLOR on without a colour
+      // attribute on the geometry renders every instance black.
+      vertexColors: false,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.86,
@@ -219,7 +328,7 @@ export function createEnvironmentLife({
     insectMaterial = new THREE.MeshBasicMaterial({
       map: insectTexture,
       color: 0xffffff,
-      vertexColors: true,
+      vertexColors: false,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.84,
@@ -240,13 +349,16 @@ export function createEnvironmentLife({
 
     for (let i = 0; i < insectMaximum; i += 1) {
       insects.push({
-        anchor: new THREE.Vector3(),
+        x: 0, y: 0, z: 0,
+        targetX: 0, targetY: 0, targetZ: 0,
+        mode: "cruise", landing: false, restTimer: 0, legTime: 0,
         initialized: false,
         phase: Math.random() * TAU,
-        orbit: 0.4,
+        wobblePhase: Math.random() * TAU,
+        flapPhase: Math.random() * TAU,
+        flapRate: 9,
+        heading: 0,
         speed: 0.8,
-        bobSpeed: 1.5,
-        height: 1,
       });
     }
   }
@@ -366,53 +478,64 @@ export function createEnvironmentLife({
     leafMesh.instanceMatrix.needsUpdate = true;
   }
 
+  function butterflyContext() {
+    const minHeight = Math.max(0.2, Number(insectConfig.minHeight) || 0.45);
+    return {
+      groundAt: surfaceAt,
+      // Flying over the pond is fine. Landing on it is not.
+      overWater: (x, z) => groundAt(getGroundHeight, x, z) < flightFloor - 0.02,
+      minHeight,
+      maxHeight: Math.max(minHeight, Number(insectConfig.maxHeight) || 1.75),
+      range: Math.max(0.6, Number(insectConfig.wanderRange) || 2.6),
+    };
+  }
+
   function respawnInsect(insect, player) {
     const radius = Math.max(2, Number(insectConfig.radius) || 8.5);
     const angle = Math.random() * TAU;
     const distance = 1.2 + Math.sqrt(Math.random()) * (radius - 1.2);
-    insect.anchor.x = player.x + Math.cos(angle) * distance;
-    insect.anchor.z = player.z + Math.sin(angle) * distance;
-    const ground = surfaceAt(insect.anchor.x, insect.anchor.z);
-    const minHeight = Math.max(0.2, Number(insectConfig.minHeight) || 0.45);
-    const maxHeight = Math.max(minHeight, Number(insectConfig.maxHeight) || 1.75);
-    insect.height = ground + minHeight + Math.random() * (maxHeight - minHeight);
-    const orbitMin = Math.max(0.05, Number(insectConfig.orbitMin) || 0.22);
-    const orbitMax = Math.max(orbitMin, Number(insectConfig.orbitMax) || 0.85);
-    insect.orbit = orbitMin + Math.random() * (orbitMax - orbitMin);
+    insect.x = player.x + Math.cos(angle) * distance;
+    insect.z = player.z + Math.sin(angle) * distance;
+    const context = butterflyContext();
+    const ground = surfaceAt(insect.x, insect.z);
+    insect.y = ground + context.minHeight + Math.random() * (context.maxHeight - context.minHeight);
     const speedMin = Math.max(0.05, Number(insectConfig.speedMin) || 0.55);
     const speedMax = Math.max(speedMin, Number(insectConfig.speedMax) || 1.15);
     insect.speed = speedMin + Math.random() * (speedMax - speedMin);
-    insect.bobSpeed = 1.25 + Math.random() * 1.4;
+    insect.mode = "cruise";
+    insect.restTimer = 0;
+    insect.flapRate = 9;
     insect.phase = Math.random() * TAU;
     insect.initialized = true;
+    pickButterflyTarget(insect, context);
   }
 
-  function updateInsects(player, camera, hour) {
+  function updateInsects(step, player, camera, hour) {
     if (!insectMesh || activeInsects === 0) return;
     setInsectPalette(hour >= 19 || hour < 5.5);
     const radius = Math.max(2, Number(insectConfig.radius) || 8.5);
     const limitSq = (radius * 1.2) ** 2;
+    const context = butterflyContext();
 
     for (let i = 0; i < activeInsects; i += 1) {
       const insect = insects[i];
       if (!insect.initialized) respawnInsect(insect, player);
-      const anchorDx = insect.anchor.x - player.x;
-      const anchorDz = insect.anchor.z - player.z;
-      if (anchorDx * anchorDx + anchorDz * anchorDz > limitSq) respawnInsect(insect, player);
+      const dx = insect.x - player.x;
+      const dz = insect.z - player.z;
+      if (dx * dx + dz * dz > limitSq) respawnInsect(insect, player);
 
-      const phase = elapsed * insect.speed + insect.phase;
-      position.set(
-        insect.anchor.x + Math.cos(phase) * insect.orbit + Math.sin(phase * 0.43) * 0.18,
-        insect.height + Math.sin(elapsed * insect.bobSpeed + insect.phase) * 0.16,
-        insect.anchor.z + Math.sin(phase * 1.17) * insect.orbit
-      );
+      stepButterfly(insect, step, context);
+      position.set(insect.x, insect.y, insect.z);
 
       if (camera?.quaternion) quaternion.copy(camera.quaternion);
       else quaternion.setFromAxisAngle(cameraForward, 0);
-      rollQuaternion.setFromAxisAngle(cameraForward, Math.sin(phase * 0.7) * 0.28);
+      rollQuaternion.setFromAxisAngle(cameraForward, Math.sin(insect.wobblePhase * 0.7) * 0.3);
       quaternion.multiply(rollQuaternion);
-      const flap = 0.32 + Math.abs(Math.sin(elapsed * 8.5 + insect.phase)) * 0.92;
-      scale.set(flap, 0.9, 1);
+      // Folding the billboard horizontally is what reads as wingbeat. A
+      // resting butterfly holds its wings nearly shut and barely moves them.
+      const beat = Math.abs(Math.sin(insect.flapPhase));
+      const fold = insect.mode === "rest" ? 0.24 + beat * 0.3 : 0.3 + beat * 0.94;
+      scale.set(fold, 0.9, 1);
       matrix.compose(position, quaternion, scale);
       insectMesh.setMatrixAt(i, matrix);
     }
@@ -432,7 +555,7 @@ export function createEnvironmentLife({
     if (insectMesh) insectMesh.visible = activeInsects > 0;
     const weather = windSnapshot(wind);
     updateLeaves(step, player, weather);
-    updateInsects(player, camera, Number(hour) || 0);
+    updateInsects(step, player, camera, Number(hour) || 0);
   }
 
   // Publish only after every optional GPU resource has been constructed. If a

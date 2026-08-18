@@ -48,6 +48,7 @@ const PAGES = [
   { file: "tools/test/horizon-settings.test.html", viewports: [[900, 800]] },
   { file: "tools/test/horizon-polish.test.html", viewports: [[900, 800]] },
   { file: "tools/test/builder-hud.test.html", viewports: [[375, 667]] },
+  { file: "tools/test/fullscreen.test.html", viewports: [[390, 664]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
   { file: "tools/test/audio-assets.test.html", viewports: [[390, 664]] },
   { file: "tools/test/audio-mix.test.html", viewports: [[900, 800]] },
