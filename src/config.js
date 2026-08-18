@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-6-connected-horizon";
+export const BUILD = "worlds-7-one-field";
 
 export const CONFIG = Object.freeze({
   /**
@@ -120,9 +120,6 @@ export const CONFIG = Object.freeze({
     colorMid: 0x9dbb72,
     colorFar: 0x789a5f,
     edgeBlendWidth: 40,
-    textureFadeReach: 1.45,
-    textureFadeStart: 80,
-    textureFadeEnd: 150,
     skyBlendStrength: 0.5,
     skyBlendStart: 230,
     skyBlendEnd: 520,
@@ -218,9 +215,6 @@ export const CONFIG = Object.freeze({
         // Only visible at all since hillEnvelope() stopped forcing the rim
         // flat; this is the horizon's silhouette now.
         heightVariation: 4.5,
-        // Grass carries almost to the rim rather than surrendering 270 m of
-        // distance to flat vertex colour.
-        textureFadeReach: 3, textureFadeStart: 110, textureFadeEnd: 384,
         // Air, not a curtain. Scene fog is already aiming at the same pale
         // horizon colour, and the two compose.
         skyBlendStrength: 0.1, skyBlendStart: 300, skyBlendEnd: 412,

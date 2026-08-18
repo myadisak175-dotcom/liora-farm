@@ -42,7 +42,6 @@ export const HORIZON_DIALS = [
   { key: "cloudShadowStrength", label: "ความเข้มเงาเมฆ", min: 0, max: 0.7, step: 0.02, unit: "", group: "ภาพรวม" },
   { key: "groundSkyBlend", label: "พื้นไกลกลืนกับฟ้า", min: 0, max: 1, step: 0.02, unit: "", group: "รอยต่อ", primary: true },
   { key: "groundEdgeBlend", label: "ความกว้างรอยกลืนขอบไร่", min: 8, max: 120, step: 2, unit: " ม.", group: "รอยต่อ" },
-  { key: "groundTextureReach", label: "ลายหญ้าไปไกลแค่ไหน", min: 0.4, max: 3, step: 0.05, unit: "×", group: "รอยต่อ" },
   { key: "cameraMinPitchDeg", label: "มุมก้มกล้องต่ำสุด", min: 6, max: 40, step: 1, unit: "°", group: "กล้อง", primary: true },
   // Both ranges grew when the painted bands took over hiding the world's edge.
   // Fog no longer has to close over the rim, so it is free to start past the
@@ -109,7 +108,6 @@ function configDefaults(config) {
     cloudShadowStrength: config.cloudShadows?.strength ?? 0,
     groundSkyBlend: config.outerWorld.skyBlendStrength ?? 0.72,
     groundEdgeBlend: config.outerWorld.edgeBlendWidth ?? 40,
-    groundTextureReach: config.outerWorld.textureFadeReach ?? 1,
     cameraMinPitchDeg: Math.round(config.camera.minPitch * DEG),
     fogNear: config.fog.near,
     fogFar: config.fog.far,
@@ -195,7 +193,6 @@ export function resolveHorizon(settings, config, authored = null) {
     outerY: dials.groundY,
     heightVariation: dials.groundVariation,
     edgeBlendWidth: dials.groundEdgeBlend,
-    textureFadeReach: dials.groundTextureReach,
     skyBlendStrength: dials.groundSkyBlend,
     // Anchored to the dials rather than to fixed metres, so shrinking the
     // visible world does not leave the sky blend finishing past its own edge.
@@ -565,7 +562,6 @@ outerWorld:
     outerY: ${n(resolved.outerWorld.outerY, 1)},
     heightVariation: ${n(resolved.outerWorld.heightVariation, 1)},
     edgeBlendWidth: ${n(resolved.outerWorld.edgeBlendWidth, 0)},
-    textureFadeReach: ${n(resolved.outerWorld.textureFadeReach, 2)},
     skyBlendStrength: ${n(resolved.outerWorld.skyBlendStrength, 2)},
     skyBlendStart: ${n(resolved.outerWorld.skyBlendStart, 0)},
     skyBlendEnd: ${n(resolved.outerWorld.skyBlendEnd, 0)},

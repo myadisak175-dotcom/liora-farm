@@ -236,29 +236,27 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
 }
 
 /**
- * Fade high-frequency grass before grazing-angle mip levels turn it into long
- * horizontal streaks. The authored config is treated as an upper bound: on an
- * 80 m gameplay terrain we start no later than 60 m and finish no later than
- * 128 m. This keeps the real farm fully detailed but stops the same 5 m grass
- * tile being asked to describe hundreds of metres of horizon.
+ * Aerial perspective for the far ground.
  *
- * A tiny per-vertex distance jitter makes the fade boundary organic rather
- * than a mathematically perfect ring. All trig runs in the vertex shader on a
- * ~2k-vertex mesh, not per pixel.
+ * This used to do a second job as well: fade the grass texture out with
+ * distance, on the theory that a 5 m tile asked to describe hundreds of metres
+ * of horizon would turn into horizontal streaks at grazing angles. It never
+ * did — mipmaps and anisotropy resolve a sub-pixel tile to its own average,
+ * which is exactly what the fade was replacing it with. What the fade *did*
+ * produce was a flat, textureless sheet starting 110 m out, with a visible
+ * boundary where it began. The field stopped reading as one piece of land.
+ *
+ * So the grass now runs to the rim and only the haze is left here. If grazing
+ * streaks ever do appear, the fix is anisotropy on the texture, not deleting
+ * the texture.
  */
 function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
   const worldSize = Math.max(1, Number(textureWorldSize) || 80);
 
-  // `textureFadeReach` scales the anti-banding caps. The caps exist so a 5 m
-  // grass tile is never asked to describe 600 m of horizon, but at 1.0 they
-  // also killed the texture only ~22 m past the seam, which is precisely
-  // where the eye is looking for continuity.
-  const reach = clamp(Number(config.textureFadeReach) || 1, 0.4, 3);
-  const requestedStart = Math.max(0, Number(config.textureFadeStart) || 80);
-  const requestedEnd = Math.max(requestedStart + 1, Number(config.textureFadeEnd) || 150);
-  const start = Math.min(requestedStart, worldSize * 0.75 * reach);
-  const end = Math.max(start + 1, Math.min(requestedEnd, worldSize * 1.6 * reach));
-  const jitter = Math.max(0, Number(config.textureFadeJitter) || 10);
+  // A tiny per-vertex distance jitter, so the haze below arrives as an organic
+  // boundary rather than a mathematically perfect ring. The trig runs in the
+  // vertex shader on a ~2k-vertex mesh, not per pixel.
+  const jitter = Math.max(0, Number(config.edgeJitter) || 10);
 
   // Ground-only aerial perspective. Scene fog cannot cover this because the
   // horizon rules keep fog.near past the farm on purpose; this fades the far
@@ -276,15 +274,10 @@ function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
   const skyColor = new THREE.Color(config.skyBlendColor ?? 0xdff4ff);
 
   material.userData = material.userData || {};
-  material.userData.textureFade = { requestedStart, requestedEnd, start, end, jitter, reach };
-  material.userData.skyBlend = { start: skyStart, end: skyEnd, strength: skyStrength };
-
-  const hasMap = Boolean(material.map);
+  material.userData.skyBlend = { start: skyStart, end: skyEnd, strength: skyStrength, jitter };
 
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uOuterTextureFadeStart = { value: start };
-    shader.uniforms.uOuterTextureFadeEnd = { value: end };
-    shader.uniforms.uOuterTextureFadeJitter = { value: jitter };
+    shader.uniforms.uOuterEdgeJitter = { value: jitter };
     shader.uniforms.uOuterSkyColor = { value: skyColor };
     shader.uniforms.uOuterSkyBlendStart = { value: skyStart };
     shader.uniforms.uOuterSkyBlendEnd = { value: skyEnd };
@@ -295,7 +288,7 @@ function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nvarying float vOuterWorldRadius;\nvarying float vOuterFadeJitter;\nuniform float uOuterTextureFadeJitter;"
+        "#include <common>\nvarying float vOuterWorldRadius;\nvarying float vOuterEdgeJitter;\nuniform float uOuterEdgeJitter;"
       )
       .replace(
         "#include <begin_vertex>",
@@ -304,7 +297,7 @@ function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
           "vOuterWorldRadius = length( transformed.xz );",
           "float outerJitterA = sin( transformed.x * 0.047 + transformed.z * 0.019 );",
           "float outerJitterB = sin( transformed.z * 0.041 - transformed.x * 0.013 );",
-          "vOuterFadeJitter = ( outerJitterA * 0.65 + outerJitterB * 0.35 ) * uOuterTextureFadeJitter;",
+          "vOuterEdgeJitter = ( outerJitterA * 0.65 + outerJitterB * 0.35 ) * uOuterEdgeJitter;",
         ].join("\n")
       );
 
@@ -313,9 +306,7 @@ function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
       [
         "#include <common>",
         "varying float vOuterWorldRadius;",
-        "varying float vOuterFadeJitter;",
-        "uniform float uOuterTextureFadeStart;",
-        "uniform float uOuterTextureFadeEnd;",
+        "varying float vOuterEdgeJitter;",
         "uniform vec3 uOuterSkyColor;",
         "uniform float uOuterSkyBlendStart;",
         "uniform float uOuterSkyBlendEnd;",
@@ -323,30 +314,14 @@ function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
       ].join("\n")
     );
 
-    if (hasMap) {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <map_fragment>",
-        [
-          "vec3 outerWorldBaseDiffuse = diffuseColor.rgb;",
-          "#include <map_fragment>",
-          "float outerWorldTextureFade = smoothstep(",
-          "  uOuterTextureFadeStart + vOuterFadeJitter,",
-          "  uOuterTextureFadeEnd + vOuterFadeJitter,",
-          "  vOuterWorldRadius",
-          ");",
-          "diffuseColor.rgb = mix( diffuseColor.rgb, outerWorldBaseDiffuse, outerWorldTextureFade );",
-        ].join("\n")
-      );
-    }
-
     // Done in linear working space, before tone mapping, so the blend behaves
     // like real atmosphere rather than a decal painted on the final image.
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <opaque_fragment>",
       [
         "float outerSkyBlend = smoothstep(",
-        "  uOuterSkyBlendStart + vOuterFadeJitter,",
-        "  uOuterSkyBlendEnd + vOuterFadeJitter,",
+        "  uOuterSkyBlendStart + vOuterEdgeJitter,",
+        "  uOuterSkyBlendEnd + vOuterEdgeJitter,",
         "  vOuterWorldRadius",
         ") * uOuterSkyBlendStrength;",
         "outgoingLight = mix( outgoingLight, uOuterSkyColor, outerSkyBlend );",
@@ -356,7 +331,7 @@ function applyDistanceShading(material, config = {}, textureWorldSize = 80) {
   };
 
   material.customProgramCacheKey = () =>
-    `outer-world-blend:${hasMap}:${start}:${end}:${jitter}:${skyStart}:${skyEnd}:${skyStrength}`;
+    `outer-world-blend:${jitter}:${skyStart}:${skyEnd}:${skyStrength}`;
 
   return {
     /** Called every frame by day/night so the horizon colour always agrees. */

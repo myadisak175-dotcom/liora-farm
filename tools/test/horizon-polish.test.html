@@ -20,10 +20,20 @@ const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
 // deploy by definition, so that assertion failed permanently from the next
 // deploy onward and taught everyone to ignore this file. Assert it exists.
 ok("build marker is set",typeof BUILD==="string"&&BUILD.length>0,String(BUILD));
-ok("authored far texture fade remains outside the playable terrain",
-  CONFIG.outerWorld.textureFadeStart>=CONFIG.terrain.size
-  &&CONFIG.outerWorld.textureFadeEnd>CONFIG.outerWorld.textureFadeStart,
-  `start=${CONFIG.outerWorld.textureFadeStart} end=${CONFIG.outerWorld.textureFadeEnd}`);
+/**
+ * The far ground used to fade its grass texture out with distance, on the
+ * theory that a 5 m tile asked to describe hundreds of metres would streak at
+ * grazing angles. It did not — mipmaps resolve a sub-pixel tile to its own
+ * average, which is what the fade was replacing it with. What the fade did
+ * produce was a flat textureless sheet starting 110 m out, with a visible line
+ * where it began, and the field stopped reading as one piece of land.
+ */
+ok("the far ground carries no texture-fade settings any more",
+  CONFIG.outerWorld.textureFadeStart===undefined
+  &&CONFIG.outerWorld.textureFadeEnd===undefined
+  &&CONFIG.outerWorld.textureFadeReach===undefined
+  &&CONFIG.paintedBackdrop.world?.outerWorld?.textureFadeStart===undefined,
+  JSON.stringify(Object.keys(CONFIG.outerWorld).filter((k)=>k.startsWith("textureFade"))));
 // Same swap as horizon-layers: the authored GLB cluster replaced the
 // procedural islands. `y` is asserted because it is the field that decides
 // whether any of this is on screen at all -- see the "เกาะลอยฟ้าอยู่ในกรอบจอ"
@@ -39,8 +49,11 @@ ok("outer visual ground receives renderer anisotropy",
   &&/texture\.anisotropy\s*=\s*anisotropy/.test(zoneSource)
   &&/baseMap\s*=\s*tile\([\s\S]{0,160}?anisotropy\s*\)/.test(zoneSource));
 
+// The world the game actually builds: the painted horizon layers its own land
+// over the built-range baseline in CONFIG, exactly as main.js does.
+const GROUND=({...CONFIG.outerWorld,...(CONFIG.paintedBackdrop.world?.outerWorld??{})});
 const ground=createOuterWorldGround({
-  config:CONFIG.outerWorld,
+  config:GROUND,
   texture:{name:"stub-grass"},
   textureWorldSize:CONFIG.terrain.size,
 });
@@ -57,33 +70,32 @@ ok("macro colour variation is enabled but kept subtle",
 const shader={
   uniforms:{},
   vertexShader:"#include <common>\n#include <begin_vertex>",
-  fragmentShader:"#include <common>\n#include <map_fragment>",
+  // Both chunks the shading hooks into. The map chunk is here so the guard
+  // below can prove nothing is injected into it any more; the opaque chunk is
+  // where the haze lives and the stub used to omit it, which meant that half
+  // of the shader went untested for as long as it existed.
+  fragmentShader:"#include <common>\n#include <map_fragment>\n#include <opaque_fragment>",
 };
 ground.mesh.material.onBeforeCompile(shader);
-ok("fade shader tracks radius and organic fade jitter",
+ok("the distance shader tracks radius and an organic jitter",
   shader.vertexShader.includes("vOuterWorldRadius")
-  &&shader.vertexShader.includes("vOuterFadeJitter")
-  &&shader.fragmentShader.includes("outerWorldTextureFade"));
-// The caps are scaled by `textureFadeReach`, which was added after this test
-// was written precisely because an unscaled cap "killed the texture only ~22 m
-// past the seam" (see outer-world-ground.js). So the cap is a ceiling, not an
-// equality: authored values below it are meant to pass straight through.
-const reach=CONFIG.outerWorld.textureFadeReach??1;
-ok("anti-banding fade is capped relative to the tile's world size",
-  shader.uniforms.uOuterTextureFadeStart.value<=CONFIG.terrain.size*0.75*reach+1e-6
-  &&shader.uniforms.uOuterTextureFadeEnd.value<=CONFIG.terrain.size*1.6*reach+1e-6
-  &&shader.uniforms.uOuterTextureFadeEnd.value>shader.uniforms.uOuterTextureFadeStart.value,
-  `effective=${shader.uniforms.uOuterTextureFadeStart.value}-${shader.uniforms.uOuterTextureFadeEnd.value} reach=${reach}`);
-ok("the fade still begins at or beyond the playable terrain edge",
-  shader.uniforms.uOuterTextureFadeStart.value>=CONFIG.terrain.size,
-  String(shader.uniforms.uOuterTextureFadeStart.value));
-ok("authored fade is preserved as metadata alongside the effective values",
-  ground.mesh.material.userData.textureFade.requestedStart===CONFIG.outerWorld.textureFadeStart
-  &&ground.mesh.material.userData.textureFade.requestedEnd===CONFIG.outerWorld.textureFadeEnd
-  &&ground.mesh.material.userData.textureFade.start<=ground.mesh.material.userData.textureFade.requestedStart
-  &&ground.mesh.material.userData.textureFade.reach===reach);
-ok("fade jitter runs in the vertex path rather than per-fragment trig",
-  shader.uniforms.uOuterTextureFadeJitter.value>0
+  &&shader.vertexShader.includes("vOuterEdgeJitter"));
+/**
+ * The guard. The grass map must reach the rim untouched — no crossfade, no
+ * second diffuse, nothing keyed off distance in the map path at all.
+ */
+ok("the grass texture is never faded out with distance",
+  !shader.fragmentShader.includes("outerWorldTextureFade")
+  &&!shader.fragmentShader.includes("outerWorldBaseDiffuse")
+  &&shader.uniforms.uOuterTextureFadeStart===undefined
+  &&shader.uniforms.uOuterTextureFadeEnd===undefined,
+  shader.fragmentShader.includes("outerWorldTextureFade")?"fade is back":"clean");
+ok("only the haze is left, and it still reaches the rim",
+  shader.uniforms.uOuterSkyBlendEnd.value<=GROUND.outerRadius
+  &&shader.fragmentShader.includes("outerSkyBlend"),
+  `blend ends ${shader.uniforms.uOuterSkyBlendEnd.value} of ${GROUND.outerRadius}`);
+ok("the jitter runs in the vertex path rather than per-fragment trig",
+  shader.uniforms.uOuterEdgeJitter.value>0
   &&shader.vertexShader.includes("outerJitterA")
   &&!shader.fragmentShader.includes("sin("));
 /**
