@@ -127,7 +127,6 @@ export const WORLD_PRESETS = Object.freeze([
       groundVariation: 2.2,
       groundSkyBlend: 0.5,
       groundEdgeBlend: 72,
-      groundTextureReach: 2,
       foothillDistance: 1.6,
       foothillHeight: 0.7,
       rangeDistance: 1.5,
