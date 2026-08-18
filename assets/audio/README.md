@@ -23,7 +23,11 @@ The decisions behind all of this — hour weights, crossfade timing, when a trac
 | `footstep_run_dirt.mp3` | `วิ่งบนพื้นดิน.mp3` | Running bank for dirt, sand and cracked dirt |
 | `footstep_run_ground.mp3` | `วิ่งบนพื้น.mp3` | Running bank for rock and cobblestone paths |
 | `footstep_water_wade_bank.mp3` | `เดินลุยน้ำ.mp3` | Eight selected splashes packed into 4.5 seconds for depth-aware water steps |
-| `ambience_night_crickets_clean.mp3` | `freesound_community-city-night-crickets-24013.mp3` | Retained legacy source/reference |
-| `ambience_morning_birds_clean.mp3` | `creative_spark-morning-birdsong-246402.mp3` | Retained legacy encode/reference |
+| `footstep_grass_walk.mp3`, `footstep_grass_run.mp3` | earlier grass encodes | Fallbacks only: used if a clean grass file fails to decode |
 
-`footstep_forest_leaves.mp3` is retained as the original supplied file only; it is not a valid MP3 and must not be loaded by the runtime. Keep the original source filenames/creator names when reviewing attribution or licence requirements. This directory is the compressed runtime set, not the archival masters.
+Every file here is loaded by the runtime. The retained legacy encodes and the
+corrupt `footstep_forest_leaves.mp3` were deleted once nothing referenced them —
+git history still has them if a source encode is ever needed again. Keep the
+original source filenames/creator names above when reviewing attribution or
+licence requirements. This directory is the compressed runtime set, not the
+archival masters.
