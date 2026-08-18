@@ -178,6 +178,32 @@ range.dispose();
 disabledRange.dispose();
 sky.dispose();
 
+{
+  const { isPaintedBackdropEnabled } = await import("../../src/systems/background/painted-backdrop.js");
+  const { resolveHorizon, horizonDefaults } = await import("../../src/systems/horizon-settings.js");
+  const bands = CONFIG.paintedBackdrop;
+  ok("painted bands stay off unless someone asks for them",
+    isPaintedBackdropEnabled("", bands) === false && CONFIG.paintedBackdrop.enabled === false,
+    `configured=${CONFIG.paintedBackdrop.enabled}`);
+  ok("?backdrop=1 turns the painted horizon on and ?backdrop=0 forces it off",
+    isPaintedBackdropEnabled("?backdrop=1", bands) === true
+      && isPaintedBackdropEnabled("?backdrop=0", { ...bands, enabled: true }) === false
+      && isPaintedBackdropEnabled("?other=1", bands) === false,
+    "url flag does not control the horizon");
+  ok("a backdrop with no bands can never switch on",
+    isPaintedBackdropEnabled("?backdrop=1", { enabled: true, bands: [] }) === false);
+  // Both ways of reaching the far scenery have to agree, or the world builds
+  // painted bands and built ranges at the same time.
+  const painted = resolveHorizon(horizonDefaults({ ...CONFIG, paintedBackdrop: { ...bands, enabled: true } }),
+    { ...CONFIG, paintedBackdrop: { ...bands, enabled: true } });
+  ok("turning the painted horizon on retires the ridges and the peak rings",
+    painted.mountainBackdrop.enabled === false && painted.distantRange.peaks.length === 0,
+    `ridges=${painted.mountainBackdrop.enabled} peaks=${painted.distantRange.peaks.length}`);
+  const built = resolveHorizon(horizonDefaults(CONFIG), CONFIG);
+  ok("with it off the built ranges are untouched",
+    built.mountainBackdrop.enabled === true && built.distantRange.peaks.length === CONFIG.distantRange.peaks.length);
+}
+
 window.__results=results;
 window.__done=true;
 document.querySelector("#out").textContent=JSON.stringify(results,null,1);

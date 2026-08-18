@@ -143,8 +143,25 @@ export class Color {
 }
 
 export class Quaternion {
+  constructor(x = 0, y = 0, z = 0, w = 1) {
+    this.x = x; this.y = y; this.z = z; this.w = w;
+    this.angle = 0;
+  }
   setFromAxisAngle(axis, angle) {
     this.angle = angle;
+    return this;
+  }
+  setFromEuler(euler) {
+    this.angle = euler?.y ?? 0;
+    return this;
+  }
+  copy(other) {
+    this.x = other?.x ?? 0; this.y = other?.y ?? 0; this.z = other?.z ?? 0; this.w = other?.w ?? 1;
+    this.angle = other?.angle ?? 0;
+    return this;
+  }
+  multiply(other) {
+    this.angle += other?.angle ?? 0;
     return this;
   }
 }
@@ -283,4 +300,63 @@ export class InstancedMesh {
     this.disposed = true;
     return this;
   }
+}
+
+/**
+ * Enough of the geometry/material surface for environment-life to build for
+ * real in a test. It used to be impossible to construct that system here, so
+ * its wiring — respawn, matrix writes, palette switches — was never run by the
+ * suite, and a ReferenceError in respawn reached players.
+ */
+export const DoubleSide = 2;
+export const NormalBlending = 1;
+export const AdditiveBlending = 2;
+
+export class Float32BufferAttribute {
+  constructor(array, itemSize) {
+    this.array = array instanceof Float32Array ? array : new Float32Array(array);
+    this.itemSize = itemSize;
+    this.count = this.array.length / itemSize;
+    this.needsUpdate = false;
+  }
+}
+
+export class BufferAttribute extends Float32BufferAttribute {}
+
+export class BufferGeometry {
+  constructor() {
+    this.attributes = {};
+    this.index = null;
+    this.disposed = false;
+  }
+  setAttribute(name, attribute) { this.attributes[name] = attribute; return this; }
+  getAttribute(name) { return this.attributes[name]; }
+  setIndex(index) { this.index = Array.isArray(index) ? { array: index, count: index.length } : index; return this; }
+  computeVertexNormals() { return this; }
+  computeBoundingSphere() { this.boundingSphere = { radius: 1 }; return this; }
+  computeBoundingBox() { this.boundingBox = { min: new Vector3(), max: new Vector3() }; return this; }
+  translate() { return this; }
+  dispose() { this.disposed = true; }
+}
+
+export class PlaneGeometry extends BufferGeometry {
+  constructor(width = 1, height = 1) {
+    super();
+    this.parameters = { width, height };
+  }
+}
+
+export class MeshBasicMaterial {
+  constructor(parameters = {}) {
+    Object.assign(this, parameters);
+    this.color = parameters.color instanceof Color ? parameters.color : new Color(parameters.color ?? 0xffffff);
+    this.disposed = false;
+    this.needsUpdate = false;
+  }
+  dispose() { this.disposed = true; }
+}
+
+export class Euler {
+  constructor(x = 0, y = 0, z = 0) { this.set(x, y, z); }
+  set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
 }

@@ -162,6 +162,31 @@ export const CONFIG = Object.freeze({
       { id: "v2-rock-4", weight: 1 },
     ],
   },
+  /**
+   * Painted horizon bands — an alternative to the built ranges above.
+   *
+   * `repeat` is chosen so one copy of the strip keeps roughly its painted
+   * aspect ratio at that radius: a strip 3172 px wide and 333 tall wrapped
+   * once around r=800 would be 500 m tall. Four copies bring it to ~130 m,
+   * which is the 7-8 degrees the portrait camera can actually show, and it
+   * quadruples the pixels per degree at the same time.
+   */
+  paintedBackdrop: {
+    enabled: false,
+    bands: [
+      {
+        name: "PaintedPeaks",
+        texture: "./assets/textures/backdrop-peaks.webp",
+        // Inside camera.far (780), or the whole band is clipped away.
+        radius: 720, height: 102, y: 41, repeat: 4, tint: 0xe8f2f6, haze: 0.34, renderOrder: -28,
+      },
+      {
+        name: "PaintedForest",
+        texture: "./assets/textures/backdrop-forest.webp",
+        radius: 430, height: 55, y: 8, repeat: 3, tint: 0xecf4ec, haze: 0.2, renderOrder: -27,
+      },
+    ],
+  },
   mountainBackdrop: {
     enabled: true,
     hazeStrength: 0.18,

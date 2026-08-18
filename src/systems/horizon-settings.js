@@ -202,9 +202,13 @@ export function resolveHorizon(settings, config, authored = null) {
     ),
   };
 
+  const paintedHorizon = config.paintedBackdrop?.enabled === true
+    && (config.paintedBackdrop.bands?.length ?? 0) > 0;
   const mountainBackdrop = {
     ...config.mountainBackdrop,
-    enabled: dials.mountainsEnabled,
+    // Same rule as the peak rings: the painted bands are the far scenery now,
+    // and the panel must not rebuild the ridges behind them.
+    enabled: dials.mountainsEnabled && !paintedHorizon,
     near: scaleBand(config.mountainBackdrop.near, dials.foothillDistance, dials.foothillHeight, ground.min),
     far: scaleBand(config.mountainBackdrop.far, dials.rangeDistance, dials.rangeHeight, ground.min),
   };
@@ -212,7 +216,14 @@ export function resolveHorizon(settings, config, authored = null) {
   const distantRange = {
     ...config.distantRange,
     enabled: dials.peaksEnabled,
-    peaks: config.distantRange.peaks.map((ring) => ({
+    // Painted horizon bands carry their own summits. Leaving the instanced
+    // peak rings in would build a second range behind them — and the panel
+    // rebuilds this config, so the rule has to live here too, not only where
+    // the sky is first created.
+    peaks: (config.paintedBackdrop?.enabled === true && (config.paintedBackdrop.bands?.length ?? 0) > 0
+      ? []
+      : config.distantRange.peaks
+    ).map((ring) => ({
       ...ring,
       radiusMin: ring.radiusMin * dials.peakDistance,
       radiusMax: ring.radiusMax * dials.peakDistance,

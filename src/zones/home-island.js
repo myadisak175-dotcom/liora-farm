@@ -5,6 +5,7 @@ import { createTerrainHeight } from "../systems/terrain-height.js";
 import { createWorldBoundary } from "../systems/world-boundary.js";
 import { createOuterWorldGround } from "../systems/outer-world-ground.js";
 import { createMountainBackdrop } from "../systems/mountain-backdrop.js";
+import { createPaintedBackdrop } from "../systems/background/painted-backdrop.js";
 import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
 import { createCloudShadows } from "../systems/cloud-shadows.js";
@@ -35,7 +36,18 @@ export async function createHomeIsland({
   const group = new THREE.Group();
   group.name = "HomeIslandZone";
 
-  let mountainBackdrop = createMountainBackdrop(config.mountainBackdrop);
+  // Painted bands and built ranges are alternatives, not layers: with both on
+  // the world gets two sets of mountains at different distances.
+  const paintedBackdrop = createPaintedBackdrop({
+    ...config.paintedBackdrop,
+    anisotropy,
+  });
+  const paintedBands = paintedBackdrop.bands.length > 0;
+  group.add(paintedBackdrop.group);
+
+  let mountainBackdrop = createMountainBackdrop(
+    paintedBands ? { ...config.mountainBackdrop, enabled: false } : config.mountainBackdrop
+  );
   group.add(mountainBackdrop.group);
 
   const ridgeEnabled = config.worldBoundary?.enabled !== false
@@ -201,6 +213,7 @@ export async function createHomeIsland({
       lastHorizonColor = horizonColor;
       outerWorld.setAtmosphere?.(horizonColor);
       mountainBackdrop.setAtmosphere?.(horizonColor);
+      paintedBackdrop.setAtmosphere?.(horizonColor);
     },
     rebuildHorizon({ outerWorld: outerConfig, mountainBackdrop: backdropConfig } = {}) {
       if (outerConfig) {

@@ -41,6 +41,7 @@ import { createFloatingIslandBackdrop } from "./systems/background/floating-isla
 import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
+import { isPaintedBackdropEnabled } from "./systems/background/painted-backdrop.js";
 
 const APP_REVISION = "world17";
 window.__lioraBuild = BUILD;
@@ -119,8 +120,10 @@ const mapScope = createMapScope({
   revision: APP_REVISION,
 });
 window.__lioraMap = mapScope.id;
+const PAINTED_HORIZON = isPaintedBackdropEnabled(location.search, CONFIG.paintedBackdrop);
 const MAP_CONFIG = {
   ...CONFIG,
+  paintedBackdrop: { ...CONFIG.paintedBackdrop, enabled: PAINTED_HORIZON },
   sculpt: { ...CONFIG.sculpt, storageKey: mapScope.key(CONFIG.sculpt.storageKey) },
   groundPaint: { ...CONFIG.groundPaint, storageKey: mapScope.key(CONFIG.groundPaint.storageKey) },
   farming: { ...CONFIG.farming, storageKey: mapScope.key(CONFIG.farming.storageKey) },
@@ -148,7 +151,13 @@ try {
 
 setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows, CONFIG.lighting);
-const sky = createSky(CONFIG.sky, CONFIG.distantRange, CONFIG.wind);
+const sky = createSky(
+  CONFIG.sky,
+  // Painted bands carry their own summits, so the instanced peak rings stand
+  // down. The haze band stays: it is what softens the join at the horizon.
+  PAINTED_HORIZON ? { ...CONFIG.distantRange, peaks: [] } : CONFIG.distantRange,
+  CONFIG.wind
+);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
 const dayNight = createDayNight({
@@ -306,7 +315,9 @@ builderUI = createBuilderUI({
   onTerrainChange: syncBuilderToTerrain,
 });
 horizonPanel = createHorizonControls({
-  config: CONFIG,
+  // MAP_CONFIG carries the resolved painted-backdrop flag; handing the panel
+  // the raw CONFIG would let it rebuild the ridges the bands replaced.
+  config: MAP_CONFIG,
   scene,
   sky,
   world,
