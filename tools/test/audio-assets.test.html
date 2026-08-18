@@ -144,6 +144,32 @@ await test("a phone that stalls or refuses a resume does not lose a layer of the
   assert(/const keepAlive = pauseGatingBroken && canSilenceWithoutPausing\(track\);/.test(source), "the keep-alive fallback is not wired into playback");
 });
 
+await test("a footstep failure cannot take the long tracks down with it", async () => {
+  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
+  // Where element volume is read-only the streams are routed through the same
+  // context the footsteps use, and a media element cannot be handed back to
+  // native output once routed. Closing that context on a decode failure left
+  // the ambience playing in name only, with `unlocked` true so nothing retried.
+  assert(source.includes("if (!trackList().some((track) => track.node))"), "a footstep failure closes a context the long tracks are routed through");
+  const failure = source.match(/console\.warn\("Liora footstep audio init failed"[\s\S]*?\n    \}/)?.[0] ?? "";
+  assert(failure.includes("buffers = null"), "a failed footstep load no longer clears its buffers");
+  assert(/if \(!trackList\(\)[\s\S]*?context\?\.close/.test(failure), "the context is closed before checking for routed streams");
+});
+
+await test("a release cannot ship new audio behind a stale world-switch revision", async () => {
+  const page = await fetch("../../index.html").then((response) => response.text());
+  const main = await fetch("../../src/main.js").then((response) => response.text());
+  const audioRevision = page.match(/audio-bootstrap-v8\.js\?v=([\w.-]+)/)?.[1];
+  const entryRevision = page.match(/main\.js\?v=([\w.-]+)/)?.[1];
+  const appRevision = main.match(/const APP_REVISION = "([\w.-]+)"/)?.[1];
+  assert(audioRevision, "the audio bootstrap lost its cache-busting revision");
+  assert(entryRevision === audioRevision, `the entry module ships ${entryRevision} while audio ships ${audioRevision}`);
+  // Switching worlds is a reload, and the revision on that URL is what stops a
+  // phone reusing the previous release's cached index document — which would
+  // quietly load the previous audio bootstrap with it.
+  assert(appRevision === audioRevision, `world-switch URLs would still carry ${appRevision} after an ${audioRevision} release`);
+});
+
 window.__results = results;
 window.__done = true;
 out.textContent = results.map((result) => `${result.pass ? "PASS" : "FAIL"} ${result.name}${result.detail ? ` | ${result.detail}` : ""}`).join("\n");

@@ -25,10 +25,11 @@
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=life17";
+  entry.src = "./src/main.js?v=audio16";
   document.head.append(entry);
 
-  // Living-world v17 softens foliage, brightens the sky and adds flowing mist.
+  // Audio v16 fixes the mobile mix: levels on devices that ignore element
+  // volume, silent tracks stopped, and a mute choice that survives a reload.
   const audio = document.createElement("script");
   audio.type = "module";
   audio.src = "./src/audio-bootstrap-v8.js?v=audio16";

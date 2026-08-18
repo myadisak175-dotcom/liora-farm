@@ -582,9 +582,16 @@ async function ensureAudio() {
     } catch (error) {
       console.warn("Liora footstep audio init failed", error);
       setRuntimeError("footsteps", error);
-      try { await context?.close?.(); } catch {}
-      context = master = ambienceBus = footstepBus = null;
       buffers = null;
+      // Where element volume is read-only the long tracks are already routed
+      // through this context, and a media element cannot be handed back to
+      // native output once it is. Closing the context here would take the
+      // whole ambience down with the footsteps — and `unlocked` would still be
+      // true, so nothing would ever try again.
+      if (!trackList().some((track) => track.node)) {
+        try { await context?.close?.(); } catch {}
+        context = master = ambienceBus = footstepBus = null;
+      }
     }
 
     await Promise.race([
