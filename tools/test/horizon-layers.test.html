@@ -27,10 +27,39 @@ const DEG = 180 / Math.PI;
 const fogAt = (distance) =>
   Math.max(0, Math.min(1, (distance - CONFIG.fog.near) / (CONFIG.fog.far - CONFIG.fog.near)));
 
-const nearestRim = CONFIG.outerWorld.outerRadius - REACH;
-ok("world rim is fully fogged from anywhere the player can stand",
-  CONFIG.fog.far < nearestRim,
-  `fog.far=${CONFIG.fog.far} nearestRim=${nearestRim}`);
+/**
+ * The world's edge has to be hidden, but the painted bands hide it now — so
+ * the ground must stop behind the nearest one instead of being fogged out.
+ *
+ * The shipped build ran the ground 170 m past the forest band. Everything past
+ * the band was either invisible or, since the bands do not write depth, drawn
+ * over it; and the strip that stood above the band's base arrived as a bar of
+ * flat fog colour lying across the treeline.
+ */
+// Composed the way main.js composes it, so this measures the world the game
+// actually builds rather than the built-range baseline it starts from.
+const PAINTED_GROUND = { ...CONFIG.outerWorld, ...(CONFIG.paintedBackdrop.world?.outerWorld ?? {}) };
+const PAINTED_FOG = { ...CONFIG.fog, ...(CONFIG.paintedBackdrop.world?.fog ?? {}) };
+const nearestBand = Math.min(...CONFIG.paintedBackdrop.bands.map((band) => band.radius));
+ok("the far ground stops behind the nearest painted band",
+  PAINTED_GROUND.outerRadius <= nearestBand,
+  `ground=${PAINTED_GROUND.outerRadius} nearest band=${nearestBand}`);
+ok("with the bands off, fog still closes over the world's edge",
+  CONFIG.fog.far < CONFIG.outerWorld.outerRadius - REACH,
+  `fog.far=${CONFIG.fog.far} nearestRim=${CONFIG.outerWorld.outerRadius - REACH}`);
+/**
+ * ...and it must still look like a field when it gets there. Scene fog and the
+ * ground's own sky blend both aim at the sky's near-white horizon colour and
+ * compose multiplicatively, which is how two individually reasonable numbers
+ * turned the last 200 m of meadow into a cream bar.
+ */
+const rimFog = Math.max(0, Math.min(1,
+  (PAINTED_GROUND.outerRadius - PAINTED_FOG.near) / (PAINTED_FOG.far - PAINTED_FOG.near)));
+const rimWash = 1 - (1 - PAINTED_GROUND.skyBlendStrength) * (1 - rimFog);
+ok("the ground at the rim is still mostly its own colour, not haze",
+  rimWash <= 0.55,
+  `rim wash=${(rimWash * 100).toFixed(0)}% (fog ${(rimFog * 100).toFixed(0)}%`
+  + ` + blend ${(PAINTED_GROUND.skyBlendStrength * 100).toFixed(0)}%)`);
 ok("camera frustum still contains the whole visual world",
   CONFIG.camera.far > CONFIG.outerWorld.outerRadius + REACH,
   `camera.far=${CONFIG.camera.far} needed>${CONFIG.outerWorld.outerRadius + REACH}`);

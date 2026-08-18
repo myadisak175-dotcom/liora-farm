@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-5-painted-horizon";
+export const BUILD = "worlds-6-connected-horizon";
 
 export const CONFIG = Object.freeze({
   /**
@@ -98,6 +98,14 @@ export const CONFIG = Object.freeze({
     sandLayerId: 1, rockLayerId: 2, enabledByDefault: true,
   },
   worldBoundary: { enabled: false, type: "none" },
+  /**
+   * The land between the farm and the horizon, as the built ranges need it:
+   * running well past them, with fog closing over its rim.
+   *
+   * The painted horizon needs a different answer to every one of those
+   * questions — see `paintedBackdrop.world`, which main.js layers over this
+   * when the bands are live.
+   */
   outerWorld: {
     enabled: true,
     innerRadius: 38.5,
@@ -109,8 +117,8 @@ export const CONFIG = Object.freeze({
     rings: 18,
     noiseSeed: 37,
     colorNear: 0xffffff,
-    colorMid: 0xa8c47c,
-    colorFar: 0x86a86a,
+    colorMid: 0x9dbb72,
+    colorFar: 0x789a5f,
     edgeBlendWidth: 40,
     textureFadeReach: 1.45,
     textureFadeStart: 80,
@@ -178,14 +186,48 @@ export const CONFIG = Object.freeze({
         name: "PaintedPeaks",
         texture: "./assets/textures/backdrop-peaks.webp",
         // Inside camera.far (780), or the whole band is clipped away.
-        radius: 720, height: 102, y: 41, repeat: 4, tint: 0xe8f2f6, haze: 0.34, renderOrder: -28,
+        radius: 720, height: 148, y: 18, repeat: 4, tint: 0xe8f2f6, haze: 0.34, renderOrder: -28,
       },
       {
         name: "PaintedForest",
         texture: "./assets/textures/backdrop-forest.webp",
-        radius: 430, height: 55, y: 8, repeat: 3, tint: 0xecf4ec, haze: 0.2, renderOrder: -27,
+        radius: 430, height: 78, y: -3, repeat: 3, tint: 0xecf4ec, haze: 0.2, renderOrder: -27,
       },
     ],
+    /**
+     * What the world around the bands has to become, applied by main.js only
+     * when the painted horizon is live.
+     *
+     * A painted horizon does not just replace the ridges, it changes what the
+     * land in front of them is for. Built ranges need the ground to run past
+     * them and fog to close over its rim; painted bands stand behind the
+     * ground and hide the rim themselves, so the same fog turns the last
+     * stretch of meadow into a flat cream bar under the treeline. These two
+     * answers cannot share one set of numbers, and retuning the shared ones
+     * quietly broke `?backdrop=0`, so they live here instead.
+     */
+    world: {
+      outerWorld: {
+        // Inside the nearest band (430 m). Ground authored past a band is
+        // either invisible or, since the bands do not write depth, drawn over
+        // it — and either way it costs triangles nobody sees.
+        outerRadius: 418,
+        // The horizon line's height. Above the camera's eye it climbs the
+        // backdrop and swallows the treeline.
+        outerY: 1.4,
+        // Only visible at all since hillEnvelope() stopped forcing the rim
+        // flat; this is the horizon's silhouette now.
+        heightVariation: 4.5,
+        // Grass carries almost to the rim rather than surrendering 270 m of
+        // distance to flat vertex colour.
+        textureFadeReach: 3, textureFadeStart: 110, textureFadeEnd: 384,
+        // Air, not a curtain. Scene fog is already aiming at the same pale
+        // horizon colour, and the two compose.
+        skyBlendStrength: 0.1, skyBlendStart: 300, skyBlendEnd: 412,
+      },
+      // Fog no longer has to hide anything, so it starts past the whole field.
+      fog: { near: 340, far: 780 },
+    },
   },
   mountainBackdrop: {
     enabled: true,
@@ -464,11 +506,10 @@ export const CONFIG = Object.freeze({
   },
 
   /**
-   * Fog starts further out than it used to. At near 88 the meadow was already
-   * half-bleached by 200 m, which is what put a flat cream band between the
-   * grass and the foothills and made the world stop at the horizon instead of
-   * running into it. `far` still lands inside the nearest rim (562 m), so the
-   * world edge is swallowed exactly as before.
+   * Fog for the built horizon, where it is the thing that hides the world's
+   * edge: `far` lands inside the nearest rim (562 m) so the ground never ends
+   * in a visible line. The painted horizon hides the rim with the bands
+   * instead and needs fog far weaker — see `paintedBackdrop.world.fog`.
    */
   fog: { near: 150, far: 552 },
 });

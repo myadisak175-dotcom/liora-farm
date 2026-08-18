@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>cloud shadow tests</title>
+<script type="importmap">{"imports":{"three":"./horizon-three-stub.js"}}</script>
+</head>
+<body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import { createCloudShadows } from "../../src/systems/cloud-shadows.js";
+import { CONFIG } from "../../src/config.js";
+
+const results = [];
+const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
+
+/**
+ * The grid on the ground.
+ *
+ * Cloud shadows are two lookups into one baked value-noise tile. Every octave
+ * of that tile used to restart its generator from the same seed, so the coarse
+ * and fine octaves held identical numbers at the same linear index and put
+ * them on the same lattice corners; the cell counts were powers of two, so
+ * those corners coincided everywhere. The octaves reinforced instead of
+ * cancelling and the tile grew a hard axis-aligned grid — at a 190 m world
+ * scale, a 47 m checkerboard across the whole field.
+ *
+ * Nothing errored, and the tile still looked like noise if you opened it. The
+ * only way to see it was on the ground, which is why the measurement below is
+ * of the pixels rather than of the code.
+ */
+const shadows = createCloudShadows(CONFIG.cloudShadows, CONFIG.wind);
+const texture = shadows.uniforms.uCloudShadowMap.value;
+ok("a tile is baked when clouds are on", Boolean(texture?.image), String(texture?.image?.width));
+
+const size = texture.image.width;
+const context = texture.image.getContext("2d");
+const pixels = context.getImageData(0, 0, size, size).data;
+const at = (x, y) => pixels[((y % size) * size + (x % size)) * 4] / 255;
+
+/**
+ * How much stronger the tile's structure is at a given period than at its
+ * neighbours. A lattice that lines up leaves a spike here; organic noise does
+ * not. Measured on both axes, because the artefact is axis-aligned by nature.
+ */
+function periodicity(period) {
+  let same = 0;
+  let total = 0;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      same += Math.abs(at(x, y) - at(x + period, y));
+      same += Math.abs(at(x, y) - at(x, y + period));
+      total += 2;
+    }
+  }
+  // Lower difference at this offset = more self-similar at this period.
+  return 1 - same / total;
+}
+
+// The old base octave was 4 cells, so the tile repeated its own structure
+// every quarter. Compare that against a period no lattice sits on.
+const quarter = periodicity(size / 4);
+const eighth = periodicity(size / 8);
+const offbeat = periodicity(Math.round(size / 3.1));
+ok("the tile has no lattice spike at the old power-of-two cell sizes",
+  quarter < offbeat + 0.06 && eighth < offbeat + 0.06,
+  `quarter=${quarter.toFixed(3)} eighth=${eighth.toFixed(3)} offbeat=${offbeat.toFixed(3)}`);
+
+// The tile is scrolled with RepeatWrapping, so a discontinuity across the wrap
+// is a seam the eye finds the moment the clouds drift over it.
+let edgeJump = 0;
+let interiorJump = 0;
+for (let i = 0; i < size; i += 1) {
+  edgeJump += Math.abs(at(size - 1, i) - at(0, i)) + Math.abs(at(i, size - 1) - at(i, 0));
+  interiorJump += Math.abs(at(40, i) - at(41, i)) + Math.abs(at(i, 40) - at(i, 41));
+}
+ok("the tile still wraps seamlessly in both axes",
+  edgeJump <= interiorJump * 2.5 + 1e-6,
+  `edge=${edgeJump.toFixed(2)} interior=${interiorJump.toFixed(2)}`);
+
+// Two lookups into one tile only stop reading as one tile if they disagree
+// about scale, speed AND orientation. Scale and speed were already different;
+// without the rotation both grids still ran along the same axes.
+const material = { type: "MeshStandardMaterial" };
+shadows.applyTo(material);
+const shader = {
+  uniforms: {},
+  vertexShader: "#include <common>\nvoid main(){\n#include <begin_vertex>\n}",
+  fragmentShader: "#include <common>\nvoid main(){\n#include <opaque_fragment>\n}",
+};
+material.onBeforeCompile(shader, {});
+ok("the detail lookup is read through a rotation",
+  shader.fragmentShader.includes("cloudDetailRotation * vCloudShadowWorld.xz")
+  && shader.fragmentShader.includes("const mat2 cloudDetailRotation"),
+  shader.fragmentShader.slice(0, 0));
+ok("the two lookups also differ in scale and drift speed",
+  CONFIG.cloudShadows.scale !== CONFIG.cloudShadows.detailScale
+  && shader.fragmentShader.includes("cloudDrift * 1.7"),
+  `${CONFIG.cloudShadows.scale} vs ${CONFIG.cloudShadows.detailScale}`);
+
+/**
+ * Composition, not replacement. The terrain material already carries the
+ * ground-paint splat shader and the outer ground its distance shading;
+ * an onBeforeCompile that overwrote either would delete it silently.
+ */
+let previousRan = false;
+const shared = {
+  type: "MeshStandardMaterial",
+  onBeforeCompile() { previousRan = true; },
+  customProgramCacheKey() { return "ground-paint"; },
+};
+shadows.applyTo(shared);
+shared.onBeforeCompile(shader, {});
+ok("an existing onBeforeCompile survives being wrapped",
+  previousRan && shared.customProgramCacheKey().startsWith("ground-paint"),
+  shared.customProgramCacheKey());
+
+const off = createCloudShadows({ ...CONFIG.cloudShadows, enabled: false }, CONFIG.wind);
+const untouched = { type: "MeshStandardMaterial" };
+off.applyTo(untouched);
+ok("switching clouds off leaves materials alone",
+  off.uniforms.uCloudShadowStrength.value === 0 && untouched.onBeforeCompile === undefined);
+
+shadows.dispose();
+off.dispose();
+
+window.__results = results;
+window.__done = true;
+document.querySelector("#out").textContent =
+  results.map((r) => `${r.pass ? "PASS" : "FAIL"} ${r.name}${r.detail ? ` | ${r.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>

@@ -88,9 +88,17 @@ const ui=createBuilderUI({controller,view,paint,paintConfig:CONFIG.groundPaint,h
 createSculptControls({height,paint,sculptConfig:CONFIG.sculpt,onTerrainChange(){},onRender:()=>ui.render()});
 try{localStorage.removeItem(HORIZON_STORAGE_KEY);}catch{}
 let rebuiltGround=0;
-const horizonScene={fog:{near:CONFIG.fog.near,far:CONFIG.fog.far}};
+// The panel has to be handed the same world main.js builds. Raw CONFIG is the
+// built-range baseline with the painted bands switched on over it — a
+// combination the game never ships, and one the horizon rules correctly refuse.
+const HORIZON_CONFIG={
+  ...CONFIG,
+  outerWorld:{...CONFIG.outerWorld,...(CONFIG.paintedBackdrop.world?.outerWorld??{})},
+  fog:{...CONFIG.fog,...(CONFIG.paintedBackdrop.world?.fog??{})},
+};
+const horizonScene={fog:{near:HORIZON_CONFIG.fog.near,far:HORIZON_CONFIG.fog.far}};
 createHorizonControls({
-  config:CONFIG,scene:horizonScene,
+  config:HORIZON_CONFIG,scene:horizonScene,
   sky:{rebuildDistantRange(){}},world:{rebuildHorizon(){rebuiltGround+=1;}},
   cameraController,container:document.querySelector("#horizon-strip"),surface,onToast(){}
 });
@@ -161,10 +169,14 @@ const horizonActions=[...document.querySelectorAll("#build-actions button")];
 check("แถวคัดลอก/รีเซ็ตอยู่ในแถวปุ่มหลัก ไม่หลุดขอบจอ",horizonActions.length===2&&horizonActions.every((b)=>b.getBoundingClientRect().right<=375),`${horizonActions.length} ปุ่ม`);
 
 rebuiltGround=0;
-const fogFar=[...sliders].find((s)=>s.getAttribute("aria-label")==="หมอกทึบเต็มที่");
-fogFar.value=fogFar.max;fogFar.dispatchEvent(new Event("input"));
+// Dragged to its minimum, "หมอกเริ่ม" puts fog inside the farm itself — which
+// is a rule the panel must go red on while the slider is still under a thumb.
+// Its maximum used to be the breaking end; now that fog no longer has to close
+// over the world's edge, a long fog range is a perfectly good world.
+const fogNear=[...sliders].find((s)=>s.getAttribute("aria-label")==="หมอกเริ่ม");
+fogNear.value=fogNear.min;fogNear.dispatchEvent(new Event("input"));
 await new Promise((r)=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-check("ลากสไลเดอร์หมอกแล้วฉากเปลี่ยนจริง",horizonScene.fog.far===Number(fogFar.value),`${horizonScene.fog.far} vs ${fogFar.value}`);
+check("ลากสไลเดอร์หมอกแล้วฉากเปลี่ยนจริง",horizonScene.fog.near===Number(fogNear.value),`${horizonScene.fog.near} vs ${fogNear.value}`);
 check("สไลเดอร์หมอกไม่สั่งสร้างเรขาคณิตใหม่",rebuiltGround===0,`rebuild ${rebuiltGround} ครั้ง`);
 check("กฎขึ้นเตือนทันทีเมื่อค่าพัง",document.querySelectorAll("#horizon-strip .horizon-rule.fail").length>0);
 

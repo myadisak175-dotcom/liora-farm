@@ -29,9 +29,17 @@ function bakeCloudTile(size, seed) {
 
   // Value noise built from a seeded lattice, summed over octaves and wrapped
   // so the tile is seamless in both axes.
-  const lattice = (octaveSize) => {
+  //
+  // `salt` is not decoration. Every octave used to restart the generator from
+  // the same state, so grid[i] held the identical number in all of them: the
+  // coarse octave and the fine one put the same value on the same lattice
+  // corner and reinforced each other there instead of cancelling. Combined
+  // with cell counts that were powers of two — every coarse corner sitting
+  // exactly on a fine one — the tile grew a hard axis-aligned grid, which at
+  // a 190 m world scale is a 47 m checkerboard laid across the whole field.
+  const lattice = (octaveSize, salt) => {
     const grid = new Float32Array(octaveSize * octaveSize);
-    let state = (seed * 2654435761) >>> 0;
+    let state = (seed * 2654435761 + salt * 2246822519 + 374761393) >>> 0;
     for (let i = 0; i < grid.length; i += 1) {
       state = (state * 1664525 + 1013904223) >>> 0;
       grid[i] = state / 4294967296;
@@ -40,11 +48,15 @@ function bakeCloudTile(size, seed) {
   };
 
   const smooth = (t) => t * t * (3 - 2 * t);
+  // Coprime cell counts, so two octaves share a lattice corner only at the
+  // tile's own origin rather than everywhere. A fourth octave costs nothing
+  // here — this runs once, at load — and buys the shapes some edge detail.
   const octaves = [
-    { cells: 4, weight: 0.55 },
-    { cells: 8, weight: 0.28 },
-    { cells: 16, weight: 0.17 },
-  ].map((octave) => ({ ...octave, grid: lattice(octave.cells) }));
+    { cells: 3, weight: 0.5 },
+    { cells: 7, weight: 0.27 },
+    { cells: 13, weight: 0.15 },
+    { cells: 23, weight: 0.08 },
+  ].map((octave, index) => ({ ...octave, grid: lattice(octave.cells, index + 1) }));
 
   let min = Infinity;
   let max = -Infinity;
@@ -131,6 +143,10 @@ export function createCloudShadows(config = {}, windConfig = {}) {
     "uniform float uCloudShadowCoverage;",
     "uniform float uCloudShadowSoftness;",
     "varying vec3 vCloudShadowWorld;",
+    // Whatever grid value noise still carries runs along its own axes. Reading
+    // the second layer through a rotation puts its grid at 34° to the first, so
+    // the two can soften each other's lines but never stack into a rectangle.
+    "const mat2 cloudDetailRotation = mat2( 0.8290, 0.5592, -0.5592, 0.8290 );",
   ].join("\n");
 
   const FRAGMENT = [
@@ -139,10 +155,10 @@ export function createCloudShadows(config = {}, windConfig = {}) {
     // Subtracting lookup drift makes the texture feature itself travel in the
     // positive wind direction, matching the visible cloud field in sky.js.
     "  vec2 cloudBaseUv = vCloudShadowWorld.xz * uCloudShadowScale - cloudDrift;",
-    // The second layer runs at a different scale AND a different speed, so the
-    // two never line up again after the first frame and the tile stops reading
-    // as a tile.
-    "  vec2 cloudDetailUv = vCloudShadowWorld.xz * uCloudShadowDetailScale - cloudDrift * 1.7;",
+    // The second layer runs at a different scale, a different speed AND a
+    // different orientation, so the two never line up again after the first
+    // frame and the tile stops reading as a tile.
+    "  vec2 cloudDetailUv = cloudDetailRotation * vCloudShadowWorld.xz * uCloudShadowDetailScale - cloudDrift * 1.7;",
     "  float cloudMask = texture2D( uCloudShadowMap, cloudBaseUv ).r * 0.65",
     "    + texture2D( uCloudShadowMap, cloudDetailUv ).r * 0.35;",
     "  float cloudShade = smoothstep(",
