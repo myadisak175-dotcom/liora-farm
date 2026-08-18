@@ -52,10 +52,10 @@ function bakeCloudTile(size, seed) {
   // tile's own origin rather than everywhere. A fourth octave costs nothing
   // here — this runs once, at load — and buys the shapes some edge detail.
   const octaves = [
-    { cells: 3, weight: 0.5 },
-    { cells: 7, weight: 0.27 },
-    { cells: 13, weight: 0.15 },
-    { cells: 23, weight: 0.08 },
+    { cells: 3, weight: 0.36 },
+    { cells: 7, weight: 0.28 },
+    { cells: 13, weight: 0.21 },
+    { cells: 23, weight: 0.15 },
   ].map((octave, index) => ({ ...octave, grid: lattice(octave.cells, index + 1) }));
 
   let min = Infinity;

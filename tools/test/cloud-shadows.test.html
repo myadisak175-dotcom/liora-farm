@@ -68,6 +68,49 @@ ok("the tile has no lattice spike at the old power-of-two cell sizes",
   quarter < offbeat + 0.06 && eighth < offbeat + 0.06,
   `quarter=${quarter.toFixed(3)} eighth=${eighth.toFixed(3)} offbeat=${offbeat.toFixed(3)}`);
 
+/**
+ * The stripes on the field.
+ *
+ * With the grid gone the tile still read as a few enormous lobes, because the
+ * base octave carried half the weight on a 3×3 lattice. Drifting diagonally
+ * across a meadow that arrives as broad parallel light and dark bands — not as
+ * clouds. Shapes have to come from several scales at once, so measure how much
+ * of the tile's variation survives being crushed to 4×4.
+ */
+function variance(values) {
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  return values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+}
+const full = [];
+for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) full.push(at(x, y));
+const coarse = [];
+const cell = size / 4;
+for (let by = 0; by < 4; by += 1) {
+  for (let bx = 0; bx < 4; bx += 1) {
+    let sum = 0;
+    for (let y = 0; y < cell; y += 1) for (let x = 0; x < cell; x += 1) sum += at(bx * cell + x, by * cell + y);
+    coarse.push(sum / (cell * cell));
+  }
+}
+const coarseShare = variance(coarse) / variance(full);
+// Measured: 0.46 with the original power-of-two octaves, 0.40 with a base
+// octave carrying half the weight, 0.22 once the weights flatten out. The
+// bar sits between the versions that striped and the one that does not.
+ok("no single scale dominates the cloud shapes",
+  coarseShare < 0.32,
+  `coarse 4×4 holds ${(coarseShare * 100).toFixed(0)}% of the tile's variance`);
+
+/**
+ * And the threshold has to leave the mask somewhere to sit. At coverage 0.52
+ * with softness 0.36 the smoothstep spanned 0.16–0.88 of a mask that only ever
+ * reaches those extremes, so nothing was ever fully lit or fully shaded — the
+ * shader stopped producing shadows and started producing a ramp.
+ */
+const { coverage, softness } = CONFIG.cloudShadows;
+ok("the shadow threshold leaves light and shade at either end",
+  softness * 2 < 0.6,
+  `window ${(coverage - softness).toFixed(2)}–${(coverage + softness).toFixed(2)}`);
+
 // The tile is scrolled with RepeatWrapping, so a discontinuity across the wrap
 // is a seam the eye finds the moment the clouds drift over it.
 let edgeJump = 0;
