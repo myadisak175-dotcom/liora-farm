@@ -44,8 +44,12 @@ export const HORIZON_DIALS = [
   { key: "groundEdgeBlend", label: "ความกว้างรอยกลืนขอบไร่", min: 8, max: 120, step: 2, unit: " ม.", group: "รอยต่อ" },
   { key: "groundTextureReach", label: "ลายหญ้าไปไกลแค่ไหน", min: 0.4, max: 3, step: 0.05, unit: "×", group: "รอยต่อ" },
   { key: "cameraMinPitchDeg", label: "มุมก้มกล้องต่ำสุด", min: 6, max: 40, step: 1, unit: "°", group: "กล้อง", primary: true },
-  { key: "fogNear", label: "หมอกเริ่ม", min: 40, max: 240, step: 2, unit: " ม.", group: "หมอก", primary: true },
-  { key: "fogFar", label: "หมอกทึบเต็มที่", min: 120, max: 700, step: 5, unit: " ม.", group: "หมอก" },
+  // Both ranges grew when the painted bands took over hiding the world's edge.
+  // Fog no longer has to close over the rim, so it is free to start past the
+  // whole visible field — the old 240 m ceiling forced the last stretch of
+  // meadow to bleach toward the sky's near-white horizon colour.
+  { key: "fogNear", label: "หมอกเริ่ม", min: 40, max: 400, step: 2, unit: " ม.", group: "หมอก", primary: true },
+  { key: "fogFar", label: "หมอกทึบเต็มที่", min: 120, max: 780, step: 5, unit: " ม.", group: "หมอก" },
   { key: "groundRadius", label: "ขนาดพื้นที่มองเห็น", min: 120, max: 900, step: 10, unit: " ม.", group: "พื้น", primary: true },
   { key: "groundY", label: "ความสูงพื้นปลายขอบ", min: -6, max: 20, step: 0.5, unit: " ม.", group: "พื้น" },
   { key: "groundVariation", label: "ความขรุขระของพื้นไกล", min: 0, max: 12, step: 0.2, unit: " ม.", group: "พื้น" },
@@ -379,14 +383,61 @@ export function checkHorizonRules(resolved, config) {
     .filter((band) => band.radius + reach >= config.camera.far)
     .map((band) => `${band.name} ${Math.round(band.radius)} ม.`);
 
+  // Ground authored past a painted band is either invisible or, since the
+  // bands deliberately do not write depth, drawn straight over them. The first
+  // painted build ran the ground 170 m past the forest band, and the strip of
+  // it that stood above the band's base was a bar of flat fog colour lying
+  // across the treeline. Nothing errored; it simply looked wrong.
+  const nearestBand = painted.length
+    ? Math.min(...painted.map((band) => band.radius))
+    : Infinity;
+  const groundOverruns = painted.length > 0
+    && resolved.outerWorld.outerRadius > nearestBand;
+
+  /**
+   * How much of the far ground's own colour has been replaced by pale air.
+   *
+   * Scene fog and the ground's sky blend both aim at the same near-white
+   * horizon colour and compose multiplicatively, so it is easy to author each
+   * one at a reasonable-looking strength and still arrive at ground that is
+   * entirely sky. That is what happened: fog reached full opacity 180 m before
+   * the rim while the blend was already at half, and the last stretch of
+   * meadow became a flat cream bar under the painted treeline. On a near-level
+   * plane every one of those metres is squeezed into a few dozen pixels above
+   * the grass, so a gradient there does not read as distance — it reads as a
+   * wall.
+   *
+   * Only meaningful with painted bands: a built horizon *wants* its rim fogged
+   * out, which is the `rim` rule above.
+   */
+  const rimFog = fogAt(resolved.outerWorld.outerRadius);
+  const rimBlend = clamp(Number(resolved.outerWorld.skyBlendStrength) || 0, 0, 1);
+  const rimWash = 1 - (1 - rimBlend) * (1 - rimFog);
+
   return [
-    {
-      id: "rim",
-      label: "ขอบโลกถูกหมอกกลืนสนิท",
-      pass: resolved.fog.far < nearestRim,
-      detail: `หมอกทึบที่ ${Math.round(resolved.fog.far)} ม. · ขอบใกล้สุด ${Math.round(nearestRim)} ม.`,
-      fix: "ขยายพื้น หรือลดระยะหมอก",
-    },
+    // One question — is the edge of the world hidden? — with two answers,
+    // because the two horizons hide it by different means. Built ranges rely
+    // on fog closing over the rim; painted bands stand behind it instead, and
+    // demanding fog as well is what bleached the last stretch of meadow white.
+    painted.length > 0
+      ? {
+          id: "rim",
+          label: "ขอบโลกอยู่หลังแถบภาพ ไม่โผล่พ้น",
+          pass: !groundOverruns,
+          detail: groundOverruns
+            ? `พื้นไกลถึง ${Math.round(resolved.outerWorld.outerRadius)} ม. `
+              + `แต่แถบภาพใกล้สุดอยู่ที่ ${Math.round(nearestBand)} ม.`
+            : `พื้นไกลจบที่ ${Math.round(resolved.outerWorld.outerRadius)} ม. `
+              + `ก่อนแถบภาพที่ ${Math.round(nearestBand)} ม.`,
+          fix: "ลดขนาดพื้นที่มองเห็น หรือดันแถบภาพออกไปไกลขึ้น",
+        }
+      : {
+          id: "rim",
+          label: "ขอบโลกถูกหมอกกลืนสนิท",
+          pass: resolved.fog.far < nearestRim,
+          detail: `หมอกทึบที่ ${Math.round(resolved.fog.far)} ม. · ขอบใกล้สุด ${Math.round(nearestRim)} ม.`,
+          fix: "ขยายพื้น หรือลดระยะหมอก",
+        },
     {
       id: "farm",
       label: "ไร่ยังคมชัด ไม่โดนหมอก",
@@ -446,6 +497,16 @@ export function checkHorizonRules(resolved, config) {
           ? `เลยระยะกล้อง (${Math.round(config.camera.far)} ม.): ${clipped.join(", ")}`
           : `แถบภาพ ${painted.length} ชั้น อยู่ในระยะทั้งหมด`,
       fix: "ดึงแถบภาพเข้ามาใกล้ หรือเพิ่มระยะมองเห็นของกล้อง",
+    },
+    {
+      id: "airy",
+      label: "พื้นไกลยังเป็นทุ่ง ไม่กลายเป็นแถบหมอก",
+      pass: painted.length === 0 || rimWash <= 0.55,
+      detail: painted.length === 0
+        ? "ใช้ภูเขาแบบสร้างจากโค้ด — ขอบโลกต้องถูกหมอกกลืน"
+        : `พื้นตรงขอบถูกกลืนไปกับฟ้า ${Math.round(rimWash * 100)}% `
+          + `(หมอก ${Math.round(rimFog * 100)}% + กลืนฟ้า ${Math.round(rimBlend * 100)}%)`,
+      fix: "เลื่อน “หมอกเริ่ม” ออกไป หรือลด “พื้นไกลกลืนกับฟ้า”",
     },
     {
       id: "visible",

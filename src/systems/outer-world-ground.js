@@ -46,6 +46,24 @@ function macroNoise(x, z, scale, seed) {
   return clamp(a + b + c, -1, 1);
 }
 
+/**
+ * How much of the far hills' height is present at ring `t`.
+ *
+ * This used to be `sin(PI * t)`, which is zero at *both* ends — so the
+ * outermost ring, the one ring that actually draws the horizon line, was
+ * forced perfectly flat. That is why the world ended in a ruler-straight edge
+ * no matter how large `heightVariation` grew, and why the painted backdrop
+ * behind it was cut by a line rather than met by a skyline.
+ *
+ * Now the hills grow in over the first third of the ring and then hold, so the
+ * rim is a silhouette. Exported because the height sampler and the mesh must
+ * agree to the millimetre: they used to carry two copies of the same
+ * expression, which is precisely the kind of pair that drifts apart.
+ */
+export function hillEnvelope(t) {
+  return Math.pow(smoothstep01(clamp(t, 0, 1) / 0.34), 0.8);
+}
+
 function squareRadiusAtAngle(halfSize, angle) {
   const sx = Math.abs(Math.sin(angle));
   const cz = Math.abs(Math.cos(angle));
@@ -96,7 +114,7 @@ export function createOuterWorldHeightSampler(config = {}, textureWorldSize = 80
     const t = inverseSmoothstep01(eased);
 
     const authoredBaseY = innerY + (outerY - innerY) * eased;
-    const authoredEnvelope = Math.pow(Math.sin(Math.PI * t), 0.8);
+    const authoredEnvelope = hillEnvelope(t);
     const edgeBlend = smoothstep01(Math.max(0, radius - seamRadius) / edgeBlendWidth);
 
     const baseY = innerY + (authoredBaseY - innerY) * edgeBlend;
@@ -154,7 +172,7 @@ export function buildOuterWorldGeometry(config = {}, textureWorldSize = 80) {
     const t = ring / rings;
     const eased = smoothstep01(t);
     const authoredBaseY = innerY + (outerY - innerY) * eased;
-    const authoredEnvelope = Math.pow(Math.sin(Math.PI * t), 0.8);
+    const authoredEnvelope = hillEnvelope(t);
     const authoredTint = t < 0.56
       ? mixColor(nearColor, midColor, t / 0.56)
       : mixColor(midColor, farColor, (t - 0.56) / 0.44);

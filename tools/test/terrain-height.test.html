@@ -181,9 +181,30 @@ ok("outer world seam begins just under the open gameplay terrain",
   `firstY=${outerPosition.array[1]} expected=${outerInnerY}`);
 const last = outerPosition.array.length - 3;
 const lastRadius = Math.hypot(outerPosition.array[last], outerPosition.array[last + 2]);
-ok("outer world outer ring reaches configured radius and height",
-  near(lastRadius, CONFIG.outerWorld.outerRadius, 0.01) && near(outerPosition.array[last + 1], CONFIG.outerWorld.outerY, 0.01),
-  `radius=${lastRadius} y=${outerPosition.array[last + 1]}`);
+const variation = CONFIG.outerWorld.heightVariation;
+ok("outer world outer ring reaches configured radius, within its hill range",
+  near(lastRadius, CONFIG.outerWorld.outerRadius, 0.01)
+  && Math.abs(outerPosition.array[last + 1] - CONFIG.outerWorld.outerY) <= variation + 0.01,
+  `radius=${lastRadius} y=${outerPosition.array[last + 1]} ±${variation}`);
+/**
+ * The rim is the horizon line, and it has to be a skyline rather than a ruler.
+ *
+ * The hill envelope used to be sin(PI * t), which is zero at both ends — so
+ * however large `heightVariation` grew, the one ring that draws the horizon
+ * was forced perfectly flat, and the painted backdrop behind it was cut by a
+ * straight edge. Measure the rim's own spread, not the authored number.
+ */
+const rimRow = outerPosition.count - (CONFIG.outerWorld.segments + 1);
+let rimLow = Infinity;
+let rimHigh = -Infinity;
+for (let i = rimRow; i < outerPosition.count; i += 1) {
+  const y = outerPosition.array[i * 3 + 1];
+  if (y < rimLow) rimLow = y;
+  if (y > rimHigh) rimHigh = y;
+}
+ok("the outermost ring rolls rather than running flat",
+  rimHigh - rimLow > variation,
+  `rim spread=${(rimHigh - rimLow).toFixed(2)} m over ±${variation} m of hills`);
 outerWorld.dispose();
 ok("outer world disposes geometry and material",
   outerWorld.mesh.geometry.disposed && outerWorld.mesh.material.disposed);
