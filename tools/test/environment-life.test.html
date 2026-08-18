@@ -12,8 +12,11 @@
 import { CONFIG } from "../../src/config.js";
 import { BUILDABLE_ASSETS } from "../../src/editor/asset-catalog.js";
 import {
+  BUTTERFLY_REST_CHANCE,
   createEnvironmentLifeFallback,
+  pickButterflyTarget,
   resolveEnvironmentCounts,
+  stepButterfly,
 } from "../../src/systems/environment-life.js";
 import { QUALITY_PRESETS } from "../../src/systems/quality.js";
 
@@ -48,8 +51,24 @@ await test("daylight is bright and cloud shade stays soft", () => {
     return r * 0.2126 + g * 0.7152 + b * 0.0722;
   };
   assert(luminance(CONFIG.sky.horizonColor) > 0.94, "day horizon is gloomy again");
-  assert(CONFIG.sky.cloudOpacity <= 0.66, "cloud layer became too heavy");
+  assert(luminance(CONFIG.sky.cloudColor) > 0.9, "clouds turned grey");
+  assert(CONFIG.sky.cloudOpacity <= 0.9, "cloud layer became a solid slab");
   assert(CONFIG.cloudShadows.strength <= 0.22, "cloud shadows became too dark");
+});
+
+await test("the daytime sky is a summer blue, not a pale haze", () => {
+  const rgb = (hex) => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255].map((v) => v / 255);
+  const [zr, zg, zb] = rgb(CONFIG.sky.zenithColor);
+  const [hr, hg, hb] = rgb(CONFIG.sky.horizonColor);
+  // Depth overhead: the blue has to be clearly deeper than the horizon band,
+  // or the dome reads as haze from every camera angle.
+  assert(zb - zr > 0.35, "the zenith lost its blue");
+  assert(hr + hg + hb - (zr + zg + zb) > 0.6, "the horizon band no longer lifts away from the zenith");
+  assert(CONFIG.sky.zenithHold < 0.8, "the gradient blends across the whole dome again");
+  // A sun the player can actually see.
+  assert(CONFIG.sky.sunSize > 0 && CONFIG.sky.sunGlow > 0, "the sky has no sun");
+  assert(CONFIG.dayNight.daylight.zenith === CONFIG.sky.zenithColor, "the day palette and the sky dome drifted apart");
+  assert(CONFIG.dayNight.daylight.horizon === CONFIG.sky.horizonColor, "the day palette and the sky dome drifted apart");
 });
 
 await test("butterflies use a colourful silhouette and moving mist has real flow", async () => {
@@ -118,6 +137,93 @@ await test("the composition root ticks sky, air life and foliage interaction", a
   assert(main.includes("sky.update(camera, delta)"), "visible clouds do not receive frame time");
   assert(sky.includes("cloudDriftSpeed") && sky.includes("wrapDistance"), "visible clouds are static again");
   assert(life.includes("wind?.setInteraction?.(player, state)"), "player position no longer reaches foliage");
+});
+
+await test("a butterfly crosses to where it is going instead of orbiting", () => {
+  const flat = { groundAt: () => 0, overWater: () => false, random: () => 0.9, minHeight: 0.4, maxHeight: 1.6 };
+  const insect = { x: 0, y: 1, z: 0, targetX: 3, targetY: 1, targetZ: 0, mode: "cruise", speed: 1, flapRate: 9, flapPhase: 0, wobblePhase: 0 };
+  let closest = Infinity;
+  for (let frame = 0; frame < 200; frame += 1) {
+    stepButterfly(insect, 1 / 60, flat);
+    closest = Math.min(closest, Math.hypot(insect.targetX - insect.x, insect.targetZ - insect.z));
+  }
+  assert(closest < 0.2, `never arrived, closest was ${closest.toFixed(2)}`);
+  assert(insect.flapPhase > 0, "the wings never beat");
+});
+
+await test("the flight wanders instead of running down a straight line", () => {
+  const flat = { groundAt: () => 0, overWater: () => false, random: () => 0.9, minHeight: 0.4, maxHeight: 1.6 };
+  const insect = { x: 0, y: 1, z: 0, targetX: 6, targetY: 1, targetZ: 0, mode: "cruise", speed: 1, flapRate: 9, flapPhase: 0, wobblePhase: 0 };
+  let drift = 0;
+  for (let frame = 0; frame < 90; frame += 1) {
+    stepButterfly(insect, 1 / 60, flat);
+    drift = Math.max(drift, Math.abs(insect.z));
+  }
+  assert(drift > 0.01, "the path is a straight line");
+  assert(drift < 1.2, `the path wandered off course by ${drift.toFixed(2)}`);
+});
+
+await test("butterflies settle, slow their wings, and take off again", () => {
+  // random() = 0 always chooses to rest, and picks the shortest hop.
+  const settling = { groundAt: () => 0, overWater: () => false, random: () => 0, minHeight: 0.4, maxHeight: 1.6, restSeconds: 1, restVariation: 0 };
+  const insect = { x: 0, y: 1, z: 0, mode: "cruise", speed: 1.2, flapRate: 9, flapPhase: 0, wobblePhase: 0 };
+  pickButterflyTarget(insect, settling);
+  assert(insect.landing === true, "a butterfly that wants to land did not choose a landing spot");
+  assert(insect.targetY < 0.2, "the landing spot is not on the ground");
+
+  let rested = false;
+  let flapWhileResting = Infinity;
+  for (let frame = 0; frame < 600 && !rested; frame += 1) {
+    stepButterfly(insect, 1 / 60, settling);
+    if (insect.mode === "rest") rested = true;
+  }
+  assert(rested, "the butterfly never landed");
+  for (let frame = 0; frame < 30; frame += 1) {
+    stepButterfly(insect, 1 / 60, settling);
+    flapWhileResting = Math.min(flapWhileResting, insect.flapRate);
+  }
+  assert(flapWhileResting < 6, `resting wings still beat at ${flapWhileResting.toFixed(1)}`);
+  assert(Math.abs(insect.y) < 0.25, "a resting butterfly is hovering, not settled");
+  // Now with a butterfly that does not want to land again the moment it lifts
+  // off: it has to leave the ground and stay up.
+  const flying = { ...settling, random: () => 0.9 };
+  for (let frame = 0; frame < 240; frame += 1) stepButterfly(insect, 1 / 60, flying);
+  assert(insect.mode === "cruise", "the butterfly never took off again");
+  assert(insect.y > 0.25, `it took off but stayed at ${insect.y.toFixed(2)}`);
+});
+
+await test("a butterfly will cross water but never land on it", () => {
+  const pond = { groundAt: () => 0, overWater: () => true, random: () => 0, minHeight: 0.4, maxHeight: 1.6 };
+  const insect = { x: 0, y: 1, z: 0, mode: "cruise", speed: 1, flapRate: 9, flapPhase: 0, wobblePhase: 0 };
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    pickButterflyTarget(insect, pond);
+    assert(insect.landing === false, "a butterfly tried to land on water");
+    assert(insect.targetY >= 0.4, "a butterfly dropped to the water surface");
+  }
+  assert(BUTTERFLY_REST_CHANCE > 0 && BUTTERFLY_REST_CHANCE < 1, "resting is all-or-nothing");
+});
+
+await test("a stalled leg is abandoned and broken timing cannot break the flight", () => {
+  const flat = { groundAt: () => 0, overWater: () => false, random: () => 0.5, minHeight: 0.4, maxHeight: 1.6 };
+  const insect = { x: 0, y: 1, z: 0, targetX: 500, targetY: 1, targetZ: 0, mode: "cruise", speed: 0.6, flapRate: 9, flapPhase: 0, wobblePhase: 0, legTime: 0 };
+  for (let frame = 0; frame < 900; frame += 1) stepButterfly(insect, 1 / 60, flat);
+  assert(insect.targetX < 500, "an unreachable target is chased forever");
+  const before = { x: insect.x, z: insect.z };
+  stepButterfly(insect, Number.NaN, flat);
+  stepButterfly(insect, -5, flat);
+  assert(Number.isFinite(insect.x) && Number.isFinite(insect.y), "a broken frame time produced NaN positions");
+  assert(insect.x === before.x && insect.z === before.z, "a broken frame time still moved the butterfly");
+});
+
+await test("the per-instance tint cannot render the swarm black again", async () => {
+  const life = await fetch("../../src/systems/environment-life.js").then((response) => response.text());
+  assert(life.includes("insectMesh.setColorAt"), "butterflies no longer get a per-instance colour");
+  assert(life.includes("leafMesh.setColorAt"), "leaves no longer get a per-instance colour");
+  // setColorAt feeds instanceColor. Turning vertexColors on as well switches
+  // USE_COLOR on, and neither geometry carries a colour attribute — so every
+  // instance sampled an unset attribute and rendered pure black. Every
+  // butterfly in the game was a dark blob because of this one flag.
+  assert(!/vertexColors:\s*true/.test(life), "vertexColors is on again with no colour attribute on the geometry");
 });
 
 window.__results = results;

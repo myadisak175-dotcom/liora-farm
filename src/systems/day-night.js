@@ -2,11 +2,15 @@ import * as THREE from "three";
 
 const DAY = 24;
 const TAU = Math.PI * 2;
-const DAYLIGHT = Object.freeze({
-  zenith: 0x78c9f4,
-  horizon: 0xecfaff,
-  lower: 0xc9edf9,
-  sun: 0xfff0cf,
+/**
+ * Fallback midday palette. The real one comes from `config.daylight` so the
+ * sky dome and this table cannot drift apart — they are the same sky.
+ */
+const DAYLIGHT_FALLBACK = Object.freeze({
+  zenith: 0x3f9de3,
+  horizon: 0xe4f4ff,
+  lower: 0xbfe4f6,
+  sun: 0xfff2cf,
   hemiSky: 0xfff8e8,
   hemiGround: 0x557455,
 });
@@ -29,6 +33,7 @@ const PRESET_HOURS = [6.5, 12, 18.25, 22];
  * label now goes out through onLabelChange and the HUD owns the markup.
  */
 export function createDayNight({ scene, sky, lighting, world = null, config, onLabelChange = () => {} }) {
+  const DAYLIGHT = Object.freeze({ ...DAYLIGHT_FALLBACK, ...(config.daylight ?? {}) });
   let hour = config.startHour;
   let paused = false;
   let presetIndex = 0;
@@ -117,6 +122,16 @@ export function createDayNight({ scene, sky, lighting, world = null, config, onL
 
     sky.setColors(p.zenith, p.horizon, p.lower);
     sky.setStars(p.stars);
+    // The lighting direction below is clamped so the island is never lit from
+    // underneath. The visible sun cannot use that: it has to actually rise and
+    // set, so it follows the true elevation and fades out as it touches the
+    // horizon.
+    const horizontal = Math.sqrt(Math.max(0, 1 - elevation * elevation));
+    sky.setSun?.(
+      new THREE.Vector3(Math.cos(azimuth) * horizontal, elevation, Math.sin(azimuth) * horizontal),
+      p.sunColor,
+      THREE.MathUtils.smoothstep(elevation, -0.02, 0.12)
+    );
     lighting.setAtmosphere({
       sunColor: p.sunColor,
       sunIntensity: p.sunIntensity,

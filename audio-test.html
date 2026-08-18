@@ -5,27 +5,47 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Liora Audio Test</title>
 <style>
-body{margin:0;padding:24px;background:#102a33;color:#f6fbfa;font:16px/1.45 system-ui,sans-serif}main{max-width:680px;margin:auto}h1{font-size:24px}.card{padding:14px 16px;margin:12px 0;border:1px solid #ffffff35;border-radius:16px;background:#ffffff0e}.name{font-weight:700;margin-bottom:8px}.status{font-size:13px;opacity:.8;margin-top:6px}audio{width:100%}a{color:#a7e7df}</style>
+body{margin:0;padding:24px;background:#102a33;color:#f6fbfa;font:16px/1.45 system-ui,sans-serif}main{max-width:680px;margin:auto}h1{font-size:24px}h2{font-size:19px;margin-top:28px}.card{padding:14px 16px;margin:12px 0;border:1px solid #ffffff35;border-radius:16px;background:#ffffff0e}.name{font-weight:700;margin-bottom:8px}.status{font-size:13px;opacity:.8;margin-top:6px}audio{width:100%}a{color:#a7e7df}
+button.run{appearance:none;width:100%;padding:14px;border-radius:14px;border:1px solid #ffffff45;background:#1c5568;color:#fff;font:700 17px system-ui,sans-serif}
+button.run:disabled{opacity:.55}
+button.copy{appearance:none;margin-top:10px;padding:9px 14px;border-radius:11px;border:1px solid #ffffff3a;background:#ffffff14;color:#fff;font:600 14px system-ui,sans-serif}
+#report{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,monospace;margin:12px 0 0;padding:12px;border-radius:12px;background:#00000047;min-height:1.5em}
+.ok{color:#9ff0c8}.bad{color:#ffb4aa}.warn{color:#ffd79a}
+</style>
 </head>
 <body><main>
-<h1>🎧 Liora Audio Foundation v7</h1>
-<p>กด Play เพื่อตรวจไฟล์ที่เกมใช้จริง เพลงและบรรยากาศใช้ระบบเสียงมือถือโดยตรง ส่วนจังหวะเท้าจะเปลี่ยนตามหญ้า ดิน พื้นแข็ง และน้ำ</p>
+<h1>🎧 Liora Audio Foundation v8</h1>
+
+<h2>ตรวจระบบเสียงของเครื่องนี้</h2>
+<p>ถ้าในเกมมีเสียงบางอย่างหายไป กดปุ่มนี้บนเครื่องที่มีปัญหา แล้วส่งผลที่ได้มาให้ดู — มันจะบอกว่าไฟล์ไหนโหลดไม่ได้ ถอดรหัสไม่ผ่าน หรือเครื่องเล่นเสียงพร้อมกันหลายเสียงไม่ได้</p>
+<div class="card">
+  <button type="button" class="run" id="run">▶ เริ่มตรวจ (ใช้เวลาประมาณ 10 วินาที)</button>
+  <pre id="report">กดปุ่มด้านบนเพื่อเริ่ม</pre>
+  <button type="button" class="copy" id="copy" hidden>คัดลอกผล</button>
+</div>
+
+<h2>ฟังไฟล์ที่เกมใช้จริง</h2>
+<p>กด Play เพื่อตรวจทีละไฟล์ เพลงและบรรยากาศใช้ระบบเสียงมือถือโดยตรง ส่วนจังหวะเท้าจะเปลี่ยนตามหญ้า ดิน พื้นแข็ง และน้ำ</p>
 <div id="list"></div>
-<p><a href="./?map=world-blockout-v1&amp;v=audio15">← กลับเกม</a></p>
+<p><a href="./?v=audio16">← กลับเกม</a></p>
+
 <script>
-const tracks=[
+const STREAMS=[
   ["เพลงหลัก — Lanternfields Overture","assets/audio/music_lanternfields_overture.mp3"],
   ["เช้า/กลางวัน — เสียงนก","assets/audio/ambience_morning_birdsong.mp3"],
   ["เย็น/กลางคืน — ป่า ลม และจิ้งหรีด","assets/audio/ambience_forest_night.mp3"],
   ["บรรยากาศ — ลมพัดต้นไม้","assets/audio/ambience_tree_wind.mp3"],
+];
+const STEPS=[
   ["เดินช้าบนหญ้า","assets/audio/footstep_grass_soft.mp3"],
   ["วิ่งบนหญ้า","assets/audio/footstep_grass_run_clean.mp3"],
   ["วิ่งบนดินและทราย","assets/audio/footstep_run_dirt.mp3"],
   ["วิ่งบนพื้นแข็งและทางหิน","assets/audio/footstep_run_ground.mp3"],
   ["เดินหรือวิ่งลุยน้ำ — คลังเสียงสาด 8 แบบ","assets/audio/footstep_water_wade_bank.mp3"],
 ];
+
 const list=document.querySelector('#list');
-for(const [name,src] of tracks){
+for(const [name,src] of [...STREAMS,...STEPS]){
   const card=document.createElement('div');card.className='card';
   const title=document.createElement('div');title.className='name';title.textContent=name;
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=src;
@@ -34,5 +54,113 @@ for(const [name,src] of tracks){
   audio.addEventListener('error',()=>{status.textContent='❌ โหลดไม่ได้';status.style.color='#ffb4aa';});
   card.append(title,audio,status);list.append(card);
 }
+
+// --- device report -------------------------------------------------------
+// Everything the game's audio depends on, checked in the same order the game
+// does it, so a missing sound points at one line instead of the whole system.
+const report=document.querySelector('#report');
+const runButton=document.querySelector('#run');
+const copyButton=document.querySelector('#copy');
+const lines=[];
+function say(text,kind){
+  lines.push(text);
+  const row=document.createElement('span');
+  row.textContent=text+"\n";
+  if(kind)row.className=kind;
+  report.append(row);
+}
+const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+
+async function decodeCheck(context,src){
+  const response=await fetch(src,{cache:'no-store'});
+  if(!response.ok)throw new Error(`โหลดไม่ได้ HTTP ${response.status}`);
+  const bytes=await response.arrayBuffer();
+  // decodeAudioData detaches the buffer, so measure it first.
+  const kb=Math.round(bytes.byteLength/1024);
+  const buffer=await context.decodeAudioData(bytes);
+  return {seconds:buffer.duration,kb};
+}
+
+async function playCheck(src){
+  const audio=document.createElement('audio');
+  audio.src=src;audio.loop=true;audio.preload='auto';audio.playsInline=true;
+  audio.setAttribute('playsinline','');audio.volume=0.35;
+  audio.hidden=true;document.body.append(audio);
+  let failure='';
+  try{ await audio.play(); }catch(error){ failure=String(error?.name||error); }
+  return {audio,failure,startedAt:audio.currentTime};
+}
+
+async function runReport(){
+  runButton.disabled=true;
+  report.textContent='';
+  lines.length=0;
+  say('=== Liora audio report ===');
+  say(new Date().toISOString());
+  say(navigator.userAgent);
+
+  // 1. Can this device set a volume at all? iOS cannot, and the whole mix
+  //    depends on knowing that.
+  const probe=document.createElement('audio');
+  probe.volume=0.5;
+  const volumeWritable=Math.abs(probe.volume-0.5)<0.01;
+  say(`ตั้งระดับเสียงได้: ${volumeWritable?'ได้ (ใช้ element volume)':'ไม่ได้ (ต้องใช้ Web Audio gain — ปกติของ iPhone)'}`,volumeWritable?'ok':'warn');
+
+  // 2. Web Audio: footsteps live here, and they vanish on their own if the
+  //    context or a decode fails.
+  const Ctor=window.AudioContext||window.webkitAudioContext;
+  if(!Ctor){
+    say('Web Audio: ไม่รองรับ → เสียงฝีเท้าจะไม่ดังเลย','bad');
+  }else{
+    const context=new Ctor({latencyHint:'interactive'});
+    try{ await context.resume(); }catch(error){ say(`resume ล้มเหลว: ${error?.message??error}`,'bad'); }
+    say(`Web Audio: ${context.state} • ${context.sampleRate}Hz`,context.state==='running'?'ok':'warn');
+    for(const [name,src] of STEPS){
+      try{
+        const {seconds,kb}=await decodeCheck(context,src);
+        say(`  ✅ ${name} — ${seconds.toFixed(2)}s / ${kb}KB`,'ok');
+      }catch(error){
+        say(`  ❌ ${name} — ${error?.message??error}`,'bad');
+      }
+    }
+    try{ await context.close(); }catch{}
+  }
+
+  // 3. The four long tracks, started together the way the game starts them.
+  //    Some phones only let one media element play at a time; that shows up
+  //    here as tracks whose clock never moves.
+  say('เล่นเสียงยาวพร้อมกัน 4 แทร็ก…');
+  const started=[];
+  for(const [name,src] of STREAMS) started.push([name,await playCheck(src)]);
+  await wait(3200);
+  let playing=0;
+  for(const [name,handle] of started){
+    const moved=handle.audio.currentTime-handle.startedAt;
+    const code=handle.audio.error?.code;
+    if(handle.failure) say(`  ❌ ${name} — เริ่มไม่ได้ (${handle.failure})`,'bad');
+    else if(code) say(`  ❌ ${name} — media error ${code}`,'bad');
+    else if(handle.audio.paused) say(`  ❌ ${name} — ถูกหยุดเอง (เครื่องอาจเล่นได้ทีละเสียง)`,'bad');
+    else if(moved<0.25) say(`  ⚠️ ${name} — เล่นอยู่แต่เวลาไม่เดิน (${moved.toFixed(2)}s) เน็ตอาจช้า`,'warn');
+    else{ playing+=1; say(`  ✅ ${name} — เล่นได้ ${moved.toFixed(2)}s`,'ok'); }
+  }
+  for(const [,handle] of started){ try{handle.audio.pause();}catch{} handle.audio.remove(); }
+  say(`เล่นพร้อมกันได้จริง ${playing}/${started.length} แทร็ก`,playing===started.length?'ok':'bad');
+
+  // 4. Whatever the running game thinks, if this page was opened from it.
+  const status=window.opener?.__lioraAudio?.status;
+  if(status) say(`เกม: ${JSON.stringify(status)}`);
+
+  say('=== จบการตรวจ ===');
+  copyButton.hidden=false;
+  runButton.disabled=false;
+  runButton.textContent='▶ ตรวจอีกครั้ง';
+}
+
+runButton.addEventListener('click',()=>{ runReport().catch((error)=>say(`ตรวจไม่สำเร็จ: ${error?.message??error}`,'bad')); });
+copyButton.addEventListener('click',async()=>{
+  const text=lines.join("\n");
+  try{ await navigator.clipboard.writeText(text); copyButton.textContent='คัดลอกแล้ว ✓'; }
+  catch{ copyButton.textContent='คัดลอกไม่ได้ — กดค้างที่ข้อความเพื่อคัดลอก'; }
+});
 </script>
 </main></body></html>

@@ -1,3 +1,17 @@
+import {
+  STREAM_NAMES,
+  STEP_PROFILE,
+  approach,
+  birdWeight,
+  createStepper,
+  nightWeight,
+  normalizeHour,
+  profileKeyFor,
+  runBankForSurface,
+  shouldStreamPlay,
+  streamLevels,
+} from "./systems/audio-mix.js";
+
 if (document.readyState === "loading") {
   await new Promise((resolve) => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
 }
@@ -19,8 +33,14 @@ const STREAM_FILES = Object.freeze({
   night: "ambience_forest_night.mp3",
   wind: "ambience_tree_wind.mp3",
 });
-const STREAM_MIX = Object.freeze({ music: 0.24, birds: 0.80, night: 0.80, wind: 0.45 });
-const AUDIO_REVISION = "audio15";
+const AUDIO_REVISION = "audio16";
+const MUTE_KEY = "liora.audio.muted";
+const MUSIC_POSITION_KEY = "liora.audio.musicPosition";
+const STREAM_RETRY_MS = 2500;
+const STREAM_RELOAD_LIMIT = 3;
+// A phone reporting "playing" while the media clock stands still is stalled on
+// the network, not playing. Long enough not to trip over a slow first buffer.
+const STREAM_STALL_MS = 6000;
 
 // The original dry-leaf file committed as an MP3 is corrupt, so its v8 cue
 // offsets pointed beyond the usable audio and caused audio initialization to
@@ -57,35 +77,62 @@ const WATER_CUES = Object.freeze(
   Array.from({ length: 8 }, (_, index) => ({ offset: index * 0.56, duration: 0.50 }))
 );
 
-const STEP_PROFILE = Object.freeze({
-  // Slow walking stays audible but sits well behind the ambience on a phone.
-  walk: { spacing: 1.52, playbackRate: 0.94, gain: 0.30 },
-  run: { spacing: 1.52, playbackRate: 1.00, gain: 0.38 },
-  waterWalk: { spacing: 1.34, playbackRate: 0.94, gain: 0.40 },
-  waterRun: { spacing: 1.24, playbackRate: 1.04, gain: 0.44 },
-});
-const DIRT_SURFACES = new Set(["dirt", "sand", "cracked_dirt"]);
-const HARD_SURFACES = new Set(["rock", "cobblestone_path"]);
-const FIRST_STEP_PHASE = 0.48;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// Morning/day birds hand over to the forest track at dusk without bringing
-// crickets into the morning mix.
-function birdWeight(hour) {
-  if (hour < 5.2 || hour >= 18.5) return 0;
-  if (hour < 6.5) return clamp01((hour - 5.2) / 1.3);
-  if (hour < 10.0) return 1.0;
-  if (hour < 16.5) return 0.78;
-  return 0.78 * clamp01(1 - (hour - 16.5) / 2.0);
+/**
+ * iOS ignores writes to `HTMLMediaElement.volume`: the property silently keeps
+ * its old value. Every crossfade in this file is a volume write, so on an
+ * iPhone all four long tracks used to play at full level at once, mute left
+ * them audible, and the day/night handover never happened. Probe once, then
+ * pick how this device gets its levels:
+ *
+ *   "element" — volume writes work (Android, desktop): the simplest path, and
+ *               the one that keeps long tracks out of Web Audio, which some
+ *               Android builds render silent.
+ *   "graph"   — volume is read-only: route the elements through Web Audio gain
+ *               nodes instead. Safari has always supported that path.
+ *   "gate"    — neither works: fall back to play/pause so the mix is at least
+ *               correct about *what* is playing.
+ */
+function detectElementVolume() {
+  try {
+    const probe = document.createElement("audio");
+    probe.volume = 0.5;
+    return Math.abs(probe.volume - 0.5) < 0.01;
+  } catch {
+    return false;
+  }
+}
+const elementVolumeSupported = detectElementVolume();
+let streamRouting = elementVolumeSupported ? "element" : "gate";
+
+function readStoredMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
-function nightWeight(hour) {
-  if (hour >= 18.5) return clamp01((hour - 18.5) / 1.0);
-  if (hour < 4.8) return 1;
-  // End crickets before the bird layer begins: morning and daytime should
-  // sound like birds, never a bird/cricket blend.
-  if (hour < 5.2) return clamp01(1 - (hour - 4.8) / 0.4);
-  return 0;
+function storeMuted(value) {
+  try {
+    localStorage.setItem(MUTE_KEY, value ? "1" : "0");
+  } catch { /* private mode */ }
+}
+
+function readStoredMusicPosition() {
+  try {
+    const value = Number(sessionStorage.getItem(MUSIC_POSITION_KEY));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function storeMusicPosition(value) {
+  try {
+    sessionStorage.setItem(MUSIC_POSITION_KEY, String(Math.max(0, value)));
+  } catch { /* private mode */ }
 }
 
 function makeButton() {
@@ -129,13 +176,19 @@ const debug = new URLSearchParams(location.search).get("audiodebug") === "1"
 
 let context = null, master = null, ambienceBus = null, footstepBus = null;
 let buffers = null, streams = null;
-let unlocked = false, muted = false, loading = false, disposed = false;
+let unlocked = false, loading = false, disposed = false;
+// The player's choice survives a world switch. Switching worlds is a full page
+// reload, so without this every switch turned the music back on for someone
+// who had just turned it off.
+let muted = readStoredMuted();
 let loadError = "";
-let raf = 0, lastTime = performance.now(), lastPosition = null, wasMoving = false;
-let distanceSinceStep = 0, activeProfile = "-", currentFoot = "-", currentSurface = "grass", stepCount = 0;
+let raf = 0, lastTime = performance.now(), lastPosition = null;
+let currentFoot = "-", currentSurface = "grass", stepCount = 0;
 let walkCue = 0, runCue = 0, runDirtCue = 0, runGroundCue = 0, waterCue = 0;
 let windPhase = 0;
 let nextBirdAt = 0, nextCricketAt = 0;
+let nextStreamRetryAt = 0, nextMusicSaveAt = 0;
+const stepper = createStepper();
 const resolvedFiles = {};
 const runtimeErrors = new Map();
 
@@ -164,25 +217,58 @@ function createStream(name, file) {
   audio.volume = 0;
   audio.hidden = true;
   document.body.append(audio);
-  const track = { name, file, audio, state: "idle", target: 0, disposed: false };
+  const track = {
+    name, file, audio,
+    state: "idle", target: 0, level: 0,
+    wantsPlay: false, deliberatePause: false, resumedFromPause: false, reloads: 0,
+    lastMediaTime: 0, lastAdvanceAt: 0,
+    node: null, gain: null, disposed: false,
+  };
   audio.addEventListener("error", () => {
     if (disposed || track.disposed) return;
     track.state = "failed";
     setRuntimeError(name, `media error ${audio.error?.code ?? "unknown"}`);
     updateAudioButton();
   });
+  // A looped track that reports `ended`, or that the OS paused for a call or
+  // another app, is not healthy — mark it so the retry pass picks it up.
+  audio.addEventListener("ended", () => {
+    if (disposed || track.disposed || !track.wantsPlay) return;
+    track.state = "blocked";
+  });
+  audio.addEventListener("pause", () => {
+    if (disposed || track.disposed) return;
+    if (track.deliberatePause) {
+      track.deliberatePause = false;
+      return;
+    }
+    if (!track.wantsPlay) return;
+    track.state = "blocked";
+    updateAudioButton();
+  });
+  if (name === "music") {
+    // Keep the overture where it was across a world switch instead of
+    // restarting the same opening bars on every reload.
+    const resume = readStoredMusicPosition();
+    if (resume > 0) {
+      audio.addEventListener("loadedmetadata", () => {
+        if (!Number.isFinite(audio.duration) || resume >= audio.duration - 1) return;
+        try { audio.currentTime = resume; } catch { /* seek unsupported */ }
+      }, { once: true });
+    }
+  }
   return track;
 }
 
 function createStreams() {
   if (!document?.createElement) {
-    for (const name of Object.keys(STREAM_FILES)) setRuntimeError(name, "HTML Audio is unavailable");
+    for (const name of STREAM_NAMES) setRuntimeError(name, "HTML Audio is unavailable");
     return {};
   }
   const result = {};
-  for (const [name, file] of Object.entries(STREAM_FILES)) {
+  for (const name of STREAM_NAMES) {
     try {
-      result[name] = createStream(name, file);
+      result[name] = createStream(name, STREAM_FILES[name]);
     } catch (error) {
       result[name] = null;
       setRuntimeError(name, error);
@@ -191,23 +277,91 @@ function createStreams() {
   return result;
 }
 
+function trackList() {
+  return Object.values(streams ?? {}).filter(Boolean);
+}
+
 function streamsNeedRetry() {
-  return Object.values(streams ?? {}).some((track) => !track || ["starting", "blocked", "failed"].includes(track.state));
+  const tracks = Object.values(streams ?? {});
+  if (tracks.length === 0) return true;
+  // A track that is deliberately silent (crickets at noon) is not broken, so
+  // it must never make the sound button beg for another tap.
+  return tracks.some((track) => !track || ["starting", "blocked", "failed"].includes(track.state));
+}
+
+/**
+ * On a device where element volume is read-only, long tracks go through Web
+ * Audio gain instead. This has to happen after the context exists, and only
+ * for that device class — routing Android media through Web Audio is what made
+ * it silent in the first place.
+ */
+function attachStreamGraph() {
+  if (elementVolumeSupported || !context || !ambienceBus) return;
+  for (const track of trackList()) {
+    if (track.gain || track.disposed) continue;
+    try {
+      const node = context.createMediaElementSource(track.audio);
+      const gain = context.createGain();
+      gain.gain.value = clamp01(track.level);
+      node.connect(gain).connect(ambienceBus);
+      track.node = node;
+      track.gain = gain;
+      streamRouting = "graph";
+    } catch (error) {
+      setRuntimeError(`${track.name}-mix`, error);
+    }
+  }
+}
+
+function applyTrackLevel(track) {
+  const level = clamp01(track.level);
+  if (track.gain && context) {
+    track.gain.gain.setTargetAtTime(level, context.currentTime, 0.08);
+    return;
+  }
+  if (elementVolumeSupported) track.audio.volume = level;
+}
+
+/**
+ * Stopping a silent track saves battery and mobile data, but it is only ever an
+ * optimization: where the level can be taken to zero, a track that would not
+ * restart is worse than one that keeps running unheard. The first failed resume
+ * turns the optimization off for the rest of the session rather than leaving a
+ * layer of the mix missing on that device.
+ */
+let pauseGatingBroken = false;
+function canSilenceWithoutPausing(track) {
+  return Boolean(track.gain) || elementVolumeSupported;
+}
+
+function syncStreamPlayback(track) {
+  const audible = shouldStreamPlay(track.level, track.wantsPlay);
+  const keepAlive = pauseGatingBroken && canSilenceWithoutPausing(track);
+  const wantsPlay = !muted && !disposed && (audible || keepAlive);
+  if (wantsPlay === track.wantsPlay) return;
+  track.wantsPlay = wantsPlay;
+  if (wantsPlay) {
+    if (track.state === "paused") track.resumedFromPause = true;
+    void startStream(track);
+  } else pauseStream(track);
+}
+
+function setStreamTarget(track, target, dt) {
+  if (!track || track.disposed) return;
+  track.target = clamp01(target);
+  track.level = approach(track.level, track.target, dt);
+  applyTrackLevel(track);
+  syncStreamPlayback(track);
 }
 
 function primeStreamVolumes(hour) {
-  const h = Number.isFinite(hour) ? hour : 12;
-  const levels = {
-    music: STREAM_MIX.music,
-    birds: STREAM_MIX.birds * birdWeight(h),
-    night: STREAM_MIX.night * nightWeight(h),
-    wind: STREAM_MIX.wind,
-  };
-  for (const [name, level] of Object.entries(levels)) {
+  const levels = streamLevels({ hour, muted, windPhase });
+  for (const name of STREAM_NAMES) {
     const track = streams?.[name];
     if (!track) continue;
-    track.target = clamp01(level);
-    track.audio.volume = track.target;
+    track.target = clamp01(levels[name]);
+    track.level = track.target;
+    applyTrackLevel(track);
   }
 }
 
@@ -220,27 +374,42 @@ function updateAudioButton() {
     button.textContent = "🔇 เสียง";
     return;
   }
-  const tracks = Object.values(streams ?? {}).filter(Boolean);
-  const playing = tracks.filter((track) => track.state === "playing").length;
-  if (!unlocked) button.textContent = "🔊 เปิดเสียง";
-  else if (tracks.length > 0 && playing === tracks.length) button.textContent = "🔊 เสียง";
-  else if (playing > 0 || buffers) button.textContent = "⚠️ เสียงบางส่วน";
+  if (!unlocked) {
+    button.textContent = "🔊 เปิดเสียง";
+    return;
+  }
+  const tracks = Object.values(streams ?? {});
+  const broken = tracks.filter((track) => !track || ["blocked", "failed"].includes(track.state)).length;
+  const healthy = tracks.filter((track) => track && ["playing", "paused", "starting"].includes(track.state)).length;
+  if (broken === 0 && (healthy > 0 || buffers)) button.textContent = "🔊 เสียง";
+  else if (healthy > 0 || buffers) button.textContent = "⚠️ เสียงบางส่วน";
   else button.textContent = "⚠️ เปิดเสียง";
 }
 
 function startStream(track) {
   if (!track || track.disposed || disposed) return Promise.resolve(false);
+  track.wantsPlay = true;
+  if (track.audio.ended) {
+    try { track.audio.currentTime = 0; } catch { /* seek unsupported */ }
+  }
   if (!track.audio.paused && ["starting", "playing"].includes(track.state)) return Promise.resolve(true);
   track.state = "starting";
   try {
     return Promise.resolve(track.audio.play()).then(() => {
-      if (track.disposed || disposed) return;
+      if (track.disposed || disposed) return false;
       track.state = "playing";
+      track.reloads = 0;
+      track.resumedFromPause = false;
+      track.lastMediaTime = track.audio.currentTime;
+      track.lastAdvanceAt = performance.now();
       clearRuntimeError(track.name);
       updateAudioButton();
       return true;
     }).catch((error) => {
-      if (track.disposed || disposed) return;
+      if (track.disposed || disposed) return false;
+      // This device will not restart a track we stopped, so stop stopping them.
+      if (track.resumedFromPause) pauseGatingBroken = true;
+      track.resumedFromPause = false;
       track.state = "blocked";
       setRuntimeError(track.name, error);
       updateAudioButton();
@@ -254,22 +423,65 @@ function startStream(track) {
   }
 }
 
-function startAllStreams() {
-  return Promise.all(Object.values(streams ?? {}).map((track) => startStream(track)));
+function pauseStream(track) {
+  if (!track || track.disposed) return;
+  if (!track.audio.paused) {
+    track.deliberatePause = true;
+    try { track.audio.pause(); } catch { track.deliberatePause = false; }
+  }
+  track.state = "paused";
+  updateAudioButton();
 }
 
-function setStreamTarget(track, target, dt) {
-  if (!track) return;
-  track.target = clamp01(target);
-  const blend = 1 - Math.exp(-Math.max(0.001, dt) / 0.42);
-  const next = track.audio.volume + (track.target - track.audio.volume) * blend;
-  track.audio.volume = Math.abs(next - track.target) < 0.001 ? track.target : clamp01(next);
+function startAllStreams() {
+  // Every element is started inside the unlocking gesture, even the ones the
+  // clock wants silent: a media element that has never played inside a gesture
+  // cannot be started later without another one. The mix pauses whatever
+  // should not be heard on the very next frame.
+  return Promise.all(trackList().map((track) => startStream(track)));
+}
+
+/**
+ * Recover streams that stopped without the player touching anything: a start
+ * the browser refused, a phone call, a network hiccup. Sticky activation means
+ * `play()` is allowed again once the page has been interacted with, so this no
+ * longer has to wait for the next tap the way v8 did.
+ */
+function retryBlockedStreams(nowMs) {
+  if (!unlocked || muted || disposed || !streams) return;
+  if (nowMs < nextStreamRetryAt) return;
+  nextStreamRetryAt = nowMs + STREAM_RETRY_MS;
+  for (const track of trackList()) {
+    if (!track.wantsPlay) continue;
+    if (track.state === "starting") continue;
+    if (track.state === "playing" && !track.audio.paused) {
+      // Any movement counts, including the jump back to zero at the loop point.
+      const position = track.audio.currentTime;
+      if (Math.abs(position - track.lastMediaTime) > 0.05) {
+        track.lastMediaTime = position;
+        track.lastAdvanceAt = nowMs;
+        continue;
+      }
+      if (nowMs - track.lastAdvanceAt < STREAM_STALL_MS) continue;
+      // Playing on paper, silent in the room: reload it and start again.
+      setRuntimeError(track.name, "stalled");
+      track.state = "failed";
+      track.lastAdvanceAt = nowMs;
+    }
+    if (track.state === "failed") {
+      if (track.reloads >= STREAM_RELOAD_LIMIT) continue;
+      track.reloads += 1;
+      try { track.audio.load(); } catch { /* element already gone */ }
+    }
+    void startStream(track);
+  }
 }
 
 function destroyStreams() {
-  for (const track of Object.values(streams ?? {})) {
-    if (!track) continue;
+  for (const track of trackList()) {
     track.disposed = true;
+    try { track.gain?.disconnect(); } catch {}
+    try { track.node?.disconnect(); } catch {}
     try { track.audio.pause(); } catch {}
     track.audio.removeAttribute("src");
     try { track.audio.load(); } catch {}
@@ -316,6 +528,8 @@ async function fetchBuffer(name) {
 async function ensureAudio() {
   if (unlocked || loading || disposed) return;
   loading = true;
+  muted = false;
+  storeMuted(false);
   updateAudioButton();
   runtimeErrors.clear();
   syncLoadError();
@@ -342,6 +556,7 @@ async function ensureAudio() {
       footstepBus.connect(master);
       master.connect(context.destination);
       await context.resume();
+      attachStreamGraph();
 
       const names = Object.keys(FILES);
       const settled = await Promise.allSettled(names.map(async (name) => [name, await fetchBuffer(name)]));
@@ -367,21 +582,26 @@ async function ensureAudio() {
     } catch (error) {
       console.warn("Liora footstep audio init failed", error);
       setRuntimeError("footsteps", error);
-      try { await context?.close?.(); } catch {}
-      context = master = ambienceBus = footstepBus = null;
       buffers = null;
+      // Where element volume is read-only the long tracks are already routed
+      // through this context, and a media element cannot be handed back to
+      // native output once it is. Closing the context here would take the
+      // whole ambience down with the footsteps — and `unlocked` would still be
+      // true, so nothing would ever try again.
+      if (!trackList().some((track) => track.node)) {
+        try { await context?.close?.(); } catch {}
+        context = master = ambienceBus = footstepBus = null;
+      }
     }
 
     await Promise.race([
       streamStarts,
       new Promise((resolve) => setTimeout(resolve, 3500)),
     ]);
-    const mediaReady = Object.values(streams ?? {}).some((track) => track?.state === "playing");
+    const mediaReady = trackList().some((track) => track.state === "playing");
     unlocked = Boolean(mediaReady || buffers);
-    muted = false;
     lastPosition = null;
-    distanceSinceStep = 0;
-    activeProfile = "-";
+    stepper.reset();
     readyToast = mediaReady ? "🔊 เสียงพร้อมแล้ว" : "แตะปุ่มเสียงอีกครั้ง";
   } catch (error) {
     console.error("Liora audio init failed", error);
@@ -394,23 +614,38 @@ async function ensureAudio() {
   }
 }
 
+/**
+ * The one place mute is turned on or off. It used to be possible to clear
+ * `muted` from the retry path without ever restoring the master gain, which
+ * left every footstep silent until the next reload.
+ */
 function setMuted(next) {
   muted = Boolean(next);
-  if (!muted) {
-    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
-    context?.resume?.().catch((error) => setRuntimeError("context", error));
-    void startAllStreams();
-  } else {
-    for (const track of Object.values(streams ?? {})) {
-      if (!track) continue;
-      track.target = 0;
-      track.audio.volume = 0;
-    }
-  }
+  storeMuted(muted);
   if (master && context) {
     master.gain.cancelScheduledValues(context.currentTime);
     master.gain.setTargetAtTime(muted ? 0 : 0.95, context.currentTime, 0.03);
   }
+  if (muted) {
+    for (const track of trackList()) {
+      track.target = 0;
+      track.level = 0;
+      applyTrackLevel(track);
+      track.wantsPlay = false;
+      pauseStream(track);
+    }
+  } else {
+    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
+    context?.resume?.().catch((error) => setRuntimeError("context", error));
+    void startAllStreams().then(() => updateAudioButton());
+  }
+  updateAudioButton();
+}
+
+function resumeStreams() {
+  primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
+  context?.resume?.().catch((error) => setRuntimeError("context", error));
+  void startAllStreams().then(() => updateAudioButton());
   updateAudioButton();
 }
 
@@ -418,20 +653,15 @@ button.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   event.stopPropagation();
   if (!unlocked) ensureAudio();
-  else if (streamsNeedRetry()) {
-    muted = false;
-    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
-    context?.resume?.().catch((error) => setRuntimeError("context", error));
-    void startAllStreams().then(() => updateAudioButton());
-    updateAudioButton();
-  }
+  else if (!muted && streamsNeedRetry()) resumeStreams();
   else setMuted(!muted);
 });
 
 // Mobile browsers only let audio start inside a user gesture. Retry from later
 // game touches too: a world switch or a busy Android media service can consume
 // the first attempt without starting the long tracks. The sound button owns
-// its own gesture so the capture handler deliberately leaves it alone.
+// its own gesture so the capture handler deliberately leaves it alone, and a
+// player who chose silence is never overridden by a tap on the joystick.
 const unlockFromGameGesture = (event) => {
   if (event.target === button || button.contains(event.target)) return;
   if (loading || disposed || muted) return;
@@ -439,25 +669,21 @@ const unlockFromGameGesture = (event) => {
     void ensureAudio();
     return;
   }
-  if (streamsNeedRetry()) {
-    primeStreamVolumes(Number(window.__lioraAudioRuntime?.hour));
-    context?.resume?.().catch((error) => setRuntimeError("context", error));
-    void startAllStreams().then(() => updateAudioButton());
-  }
+  if (streamsNeedRetry()) resumeStreams();
 };
 document.addEventListener("pointerdown", unlockFromGameGesture, { capture: true });
 const resumeAfterVisibility = () => {
   if (document.hidden || !unlocked || muted || disposed) return;
+  lastTime = performance.now();
   context?.resume?.().catch((error) => setRuntimeError("context", error));
-  void startAllStreams();
+  nextStreamRetryAt = 0;
 };
 document.addEventListener("visibilitychange", resumeAfterVisibility);
-
-function runBankForSurface(surface) {
-  if (DIRT_SURFACES.has(surface)) return "runDirt";
-  if (HARD_SURFACES.has(surface)) return "runGround";
-  return "run";
-}
+const saveMusicPosition = () => {
+  const music = streams?.music;
+  if (music && Number.isFinite(music.audio.currentTime)) storeMusicPosition(music.audio.currentTime);
+};
+window.addEventListener("pagehide", saveMusicPosition);
 
 function cueSetForFile(file, profileKey) {
   if (profileKey.startsWith("water") && file === "footstep_water_wade_bank.mp3") return [WATER_CUES, "water"];
@@ -488,7 +714,7 @@ function playStep(profileKey, surface = "grass") {
   const [cues, cueKind] = cueSetForFile(file, profileKey);
   const index = takeCueIndex(cueKind);
   const cue = cues[index % cues.length];
-  const profile = STEP_PROFILE[profileKey];
+  const profile = STEP_PROFILE[profileKey] ?? STEP_PROFILE.walk;
   const offset = Math.min(cue.offset, Math.max(0, buffer.duration - 0.04));
   const duration = Math.min(cue.duration, Math.max(0.04, buffer.duration - offset));
 
@@ -497,15 +723,20 @@ function playStep(profileKey, surface = "grass") {
   source.buffer = buffer;
   source.playbackRate.value = profile.playbackRate * (0.99 + Math.random() * 0.02);
   const now = context.currentTime;
+  // The cue length is measured in the buffer, so a slowed-down step occupies
+  // more wall-clock time than that. Shape the envelope over the time the step
+  // is actually audible or the tail gets clipped into a click.
+  const span = duration / Math.max(0.1, source.playbackRate.value);
   const bankBalance = bufferKey === "water" ? 0.76 : ["runDirt", "runGround"].includes(bufferKey) ? 0.64 : 1;
-  const peak = profile.gain * bankBalance * (0.97 + Math.random() * 0.06);
+  const peak = Math.max(0.001, profile.gain * bankBalance * (0.97 + Math.random() * 0.06));
+  const attack = Math.min(0.024, span * 0.25);
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), now + 0.024);
-  gain.gain.setValueAtTime(Math.max(0.001, peak), now + Math.max(0.04, duration - 0.09));
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  gain.gain.exponentialRampToValueAtTime(peak, now + attack);
+  gain.gain.setValueAtTime(peak, now + Math.max(attack, span - 0.09));
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + span);
   source.connect(gain).connect(footstepBus);
   source.start(now, offset, duration);
-  source.stop(now + duration + 0.03);
+  source.stop(now + span + 0.03);
   source.onended = () => { source.disconnect(); gain.disconnect(); };
   currentFoot = inWater ? "water" : bufferKey;
   currentSurface = inWater ? "water" : surface;
@@ -558,17 +789,17 @@ function updateAmbience(hour, dt) {
   // Long tracks play through native media output and crossfade with element
   // volume. This avoids the silent MediaElementSource path seen on some
   // Android devices while still keeping decoded audio out of RAM.
-  const bird = muted ? 0 : birdWeight(hour);
-  const cricket = muted ? 0 : nightWeight(hour);
   windPhase += dt;
-  const windBreath = clamp01(0.78 + Math.sin(windPhase * 0.31) * 0.13 + Math.sin(windPhase * 0.73) * 0.09);
-  setStreamTarget(streams?.music, muted ? 0 : STREAM_MIX.music, dt);
-  setStreamTarget(streams?.birds, STREAM_MIX.birds * bird, dt);
-  setStreamTarget(streams?.night, STREAM_MIX.night * cricket, dt);
-  setStreamTarget(streams?.wind, muted ? 0 : STREAM_MIX.wind * windBreath, dt);
+  const levels = streamLevels({ hour, muted, windPhase });
+  setStreamTarget(streams?.music, levels.music, dt);
+  setStreamTarget(streams?.birds, levels.birds, dt);
+  setStreamTarget(streams?.night, levels.night, dt);
+  setStreamTarget(streams?.wind, levels.wind, dt);
 
   // A failed or autoplay-blocked ambience file must not take the whole sound
   // system down. Keep the compact synthesized calls as a last-resort fallback.
+  const bird = muted ? 0 : birdWeight(hour);
+  const cricket = muted ? 0 : nightWeight(hour);
   const now = context?.currentTime ?? 0;
   const birdFallback = !streams?.birds || ["blocked", "failed"].includes(streams.birds.state);
   const nightFallback = !streams?.night || ["blocked", "failed"].includes(streams.night.state);
@@ -592,82 +823,69 @@ function update(now) {
   lastTime = now;
   const runtime = window.__lioraAudioRuntime;
   const state = runtime?.state ?? null;
-  const hour = Number(runtime?.hour);
+  const hour = normalizeHour(runtime?.hour);
   const position = state?.position ?? null;
   let instantSpeed = 0;
 
   if (unlocked && !muted && state && position && document.body.dataset.mode === "play") {
-    const waterDepth = Number(state.waterDepth) || 0;
     const moving = Boolean(state.moving) && !state.special;
-    const inWater = waterDepth >= 0.055;
-    const profileKey = inWater
-      ? (state.running ? "waterRun" : "waterWalk")
-      : (state.running ? "run" : "walk");
-    const profile = STEP_PROFILE[profileKey];
+    const profileKey = profileKeyFor(state);
     if (lastPosition) {
       const dx = position.x - lastPosition.x;
       const dz = position.z - lastPosition.z;
       const distance = Math.hypot(dx, dz);
       instantSpeed = distance / dt;
-      if (!moving) {
-        distanceSinceStep = 0;
-        activeProfile = "-";
-        currentFoot = "-";
-      } else {
-        if (!wasMoving) distanceSinceStep = profile.spacing * FIRST_STEP_PHASE;
-        else if (activeProfile !== "-" && activeProfile !== profileKey) {
-          const previous = STEP_PROFILE[activeProfile];
-          const phase = previous ? clamp01(distanceSinceStep / previous.spacing) : FIRST_STEP_PHASE;
-          distanceSinceStep = profile.spacing * phase;
-        }
-        activeProfile = profileKey;
-        if (distance < 2) distanceSinceStep += distance;
-        else distanceSinceStep = profile.spacing * FIRST_STEP_PHASE;
-        let safety = 0;
-        while (distanceSinceStep >= profile.spacing && safety++ < 2) {
-          distanceSinceStep -= profile.spacing;
-          playStep(profileKey, String(runtime?.surface ?? "grass"));
-        }
-      }
+      const steps = stepper.advance({ moving, profileKey, distance });
+      if (!moving) currentFoot = "-";
+      for (let index = 0; index < steps; index += 1) playStep(profileKey, String(runtime?.surface ?? "grass"));
     }
     lastPosition = { x: position.x, z: position.z };
-    wasMoving = moving;
   } else {
     lastPosition = position ? { x: position.x, z: position.z } : null;
-    wasMoving = false;
-    distanceSinceStep = 0;
-    activeProfile = "-";
+    stepper.reset();
   }
 
-  if (unlocked) updateAmbience(Number.isFinite(hour) ? hour : 12, dt);
+  if (unlocked) {
+    updateAmbience(hour, dt);
+    retryBlockedStreams(now);
+    if (now >= nextMusicSaveAt) {
+      nextMusicSaveAt = now + 2000;
+      saveMusicPosition();
+    }
+  }
 
   if (debug) {
-    const h = Number.isFinite(hour) ? hour : 12;
     debug.textContent = [
-      `AUDIO V15 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")}`,
-      `hour=${h.toFixed(2)} birds=${birdWeight(h).toFixed(2)} night=${nightWeight(h).toFixed(2)}`,
+      `AUDIO V16 ${unlocked ? (muted ? "MUTED" : "SYNC") : (loading ? "LOADING" : "LOCKED")} mix=${streamRouting}${pauseGatingBroken ? " keepalive" : ""}`,
+      `hour=${hour.toFixed(2)} birds=${birdWeight(hour).toFixed(2)} night=${nightWeight(hour).toFixed(2)}`,
       `move=${Boolean(state?.moving)} run=${Boolean(state?.running)} water=${(Number(state?.waterDepth) || 0).toFixed(2)} speed=${instantSpeed.toFixed(2)}`,
-      `foot=${currentFoot} surface=${currentSurface} profile=${activeProfile} steps=${stepCount}`,
+      `foot=${currentFoot} surface=${currentSurface} profile=${stepper.profile} steps=${stepCount}`,
       `grass=${resolvedFiles.run ?? "-"} dirt=${resolvedFiles.runDirt ?? "-"}`,
       `ground=${resolvedFiles.runGround ?? "-"} water=${resolvedFiles.water ?? "-"}`,
-      `music=${streams?.music?.state ?? "-"}@${(streams?.music?.audio.volume ?? 0).toFixed(2)} wind=${streams?.wind?.state ?? "-"}@${(streams?.wind?.audio.volume ?? 0).toFixed(2)}`,
-      `birds=${streams?.birds?.state ?? "-"}@${(streams?.birds?.audio.volume ?? 0).toFixed(2)} night=${streams?.night?.state ?? "-"}@${(streams?.night?.audio.volume ?? 0).toFixed(2)}`,
+      `music=${streams?.music?.state ?? "-"}@${(streams?.music?.level ?? 0).toFixed(2)} wind=${streams?.wind?.state ?? "-"}@${(streams?.wind?.level ?? 0).toFixed(2)}`,
+      `birds=${streams?.birds?.state ?? "-"}@${(streams?.birds?.level ?? 0).toFixed(2)} night=${streams?.night?.state ?? "-"}@${(streams?.night?.level ?? 0).toFixed(2)}`,
       loadError ? `err=${loadError}` : "err=-",
     ].join("\n");
   }
   raf = requestAnimationFrame(update);
 }
 raf = requestAnimationFrame(update);
+updateAudioButton();
 
 window.__lioraAudio = {
   unlock: ensureAudio,
+  setMuted,
   get unlocked() { return unlocked; },
   get muted() { return muted; },
+  get routing() { return streamRouting; },
   get status() {
     return {
-      unlocked, muted, loading, footstep: currentFoot, surface: currentSurface, steps: stepCount, error: loadError,
+      unlocked, muted, loading, routing: streamRouting, pauseGating: !pauseGatingBroken,
+      footstep: currentFoot, surface: currentSurface, steps: stepCount, error: loadError,
       streams: Object.fromEntries(Object.entries(streams ?? {}).map(([name, track]) => [name, {
         state: track?.state ?? "failed",
+        level: track?.level ?? 0,
+        position: track?.audio.currentTime ?? 0,
         volume: track?.audio.volume ?? 0,
         paused: track?.audio.paused ?? true,
       }])),
@@ -676,11 +894,13 @@ window.__lioraAudio = {
   dispose() {
     disposed = true;
     cancelAnimationFrame(raf);
+    saveMusicPosition();
     destroyStreams();
     context?.close?.();
     button.remove();
     debug?.remove();
     document.removeEventListener("pointerdown", unlockFromGameGesture, { capture: true });
     document.removeEventListener("visibilitychange", resumeAfterVisibility);
+    window.removeEventListener("pagehide", saveMusicPosition);
   },
 };

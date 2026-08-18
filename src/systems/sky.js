@@ -198,8 +198,9 @@ function buildCloudLayer(config, windConfig = {}) {
       .lerp(horizon, 0.12);
     uniforms.cloudBottomColor.value
       .copy(horizon)
-      .lerp(lower, 0.72)
-      .multiplyScalar(0.32 + brightness * 0.62);
+      .lerp(lower, 0.55)
+      .lerp(baseCloud, 0.34)
+      .multiplyScalar(0.42 + brightness * 0.58);
   }
 
   function setDensity(value) {
@@ -236,6 +237,12 @@ export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
       zenithColor: { value: new THREE.Color(config.zenithColor) },
       horizonColor: { value: new THREE.Color(config.horizonColor) },
       lowerColor: { value: new THREE.Color(config.lowerColor) },
+      zenithHold: { value: Number(config.zenithHold ?? 0.62) },
+      sunDirection: { value: new THREE.Vector3(0.4, 0.8, 0.2).normalize() },
+      sunColor: { value: new THREE.Color(config.sunColor ?? 0xfff5dc) },
+      sunSize: { value: Number(config.sunSize ?? 0.028) },
+      sunGlow: { value: Number(config.sunGlow ?? 0.34) },
+      sunStrength: { value: 1 },
     },
     vertexShader: `
       varying vec3 vSkyDirection;
@@ -248,17 +255,39 @@ export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
       uniform vec3 zenithColor;
       uniform vec3 horizonColor;
       uniform vec3 lowerColor;
+      uniform float zenithHold;
+      uniform vec3 sunDirection;
+      uniform vec3 sunColor;
+      uniform float sunSize;
+      uniform float sunGlow;
+      uniform float sunStrength;
       varying vec3 vSkyDirection;
       void main() {
-        float y = clamp(vSkyDirection.y, -1.0, 1.0);
+        vec3 direction = normalize(vSkyDirection);
+        float y = clamp(direction.y, -1.0, 1.0);
         vec3 color;
         if (y >= 0.0) {
-          float t = smoothstep(0.0, 0.88, y);
-          color = mix(horizonColor, zenithColor, t);
+          // Reach full sky colour early and hold it: a summer sky is blue
+          // nearly all the way down, with the pale band kept to the last few
+          // degrees above the ground.
+          float t = smoothstep(0.0, max(0.08, zenithHold), y);
+          color = mix(horizonColor, zenithColor, t * t * (3.0 - 2.0 * t));
         } else {
           float t = smoothstep(0.0, 0.95, -y);
           color = mix(horizonColor, lowerColor, t);
         }
+
+        // The sun, drawn straight into the dome. sunSize is the angular
+        // radius of the disc in radians, so it has to be compared against an
+        // angle — a cosine threshold of the same number is twenty times wider
+        // than it looks, which turns the sun into a fog bank. The two halo
+        // terms are the tight core bloom and the warm wash around it.
+        float toSun = max(dot(direction, sunDirection), 0.0);
+        float angleToSun = acos(clamp(toSun, -1.0, 1.0));
+        float disc = 1.0 - smoothstep(sunSize * 0.72, sunSize, angleToSun);
+        float halo = pow(toSun, 900.0) * 0.55 + pow(toSun, 40.0) * 0.2;
+        color += sunColor * (halo * sunGlow + disc * 0.75) * sunStrength;
+
         gl_FragColor = vec4(color, 1.0);
         // Not decoration. A hand-written ShaderMaterial gets none of three's
         // output pipeline for free: without these the dome wrote raw linear
@@ -319,6 +348,16 @@ export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
       stars.position.copy(camera.position);
       clouds.update(delta);
       fantasyHorizon.update();
+    },
+    /**
+     * Where the sun sits and how strongly it burns through. Strength goes to
+     * zero below the horizon so the disc sets instead of sinking through the
+     * ground and glowing from underneath it.
+     */
+    setSun(direction, color, strength = 1) {
+      if (direction) skyMaterial.uniforms.sunDirection.value.copy(direction).normalize();
+      if (color) skyMaterial.uniforms.sunColor.value.copy(color);
+      skyMaterial.uniforms.sunStrength.value = THREE.MathUtils.clamp(Number(strength) || 0, 0, 1);
     },
     setColors(zenith, horizon, lower) {
       skyMaterial.uniforms.zenithColor.value.copy(zenith);

@@ -1,8 +1,20 @@
-# Liora Farm — Audio Foundation v7
+# Liora Farm — Audio Foundation v8
 
 Short footsteps are decoded into Web Audio buffers. The longer music and ambience files stream through native media-element output, which avoids both keeping several minutes of decoded audio in mobile RAM and the silent `MediaElementSource` path seen on some Android devices. Morning/day birds and evening/night forest ambience crossfade from the in-game clock; synthesized calls remain only as a fallback if an ambience stream cannot start.
 
-Every world-switch URL carries the current release revision so returning to the default world cannot revive an older cached audio bootstrap. If Android blocks the first media start, later game touches retry the long tracks until they start. The ground-paint splat map now selects grass, dirt or hard-ground running banks at each foot plant; water depth selects a compact eight-splash bank. Tree wind remains a low, slowly breathing native stream.
+**Levels.** iOS ignores writes to `HTMLMediaElement.volume`, so on an iPhone every long track used to play at full level at once and mute left them audible. The runtime probes once whether a volume write sticks: if it does the crossfade stays on element volume (Android, desktop), and if it does not the elements are routed through Web Audio gain nodes instead. A track the mix has faded out is also stopped outright rather than left running at zero, which is the only way to silence one where volume is read-only — and it stops a silent night track from streaming all day on someone's data.
+
+**Recovery.** If Android blocks the first media start, later game touches retry the long tracks. A track the browser refused, or that a phone call or another app paused, is picked up by a retry pass a few seconds later without waiting for the player to find the sound button; a file that is genuinely missing is retried a few times and then left alone. "Playing" is not taken at face value either — a phone that stalls on the network keeps the state and stops the media clock, so a track whose position has not moved for six seconds is reloaded and started again.
+
+**Stopping a silent track is only an optimization.** If this device refuses to start one again, the mix keeps it running unheard from then on instead of leaving that layer missing. Losing a sound is worse than spending the data.
+
+**When something is missing on a real phone,** open `audio-test.html` on that device and press ตรวจ: it reports whether volume writes work, whether each footstep file decodes, and how many long tracks the device will actually play at once — the three failures that each silence a different part of the game.
+
+**The player's choice sticks.** Turning sound off is remembered across a world switch — switching worlds is a full page reload, and it used to bring the music back every time. Ordinary game touches never override that choice, and the music resumes near where it left off instead of restarting the same opening bars.
+
+Every world-switch URL carries the current release revision so returning to the default world cannot revive an older cached audio bootstrap. The ground-paint splat map selects grass, dirt or hard-ground running banks at each foot plant; water depth selects a compact eight-splash bank. Tree wind remains a low, slowly breathing native stream.
+
+The decisions behind all of this — hour weights, crossfade timing, when a track is quiet enough to stop, footstep cadence — live in `src/systems/audio-mix.js` with no DOM attached, and are covered by `tools/test/audio-mix.test.html`. `src/audio-bootstrap-v8.js` owns only the wiring.
 
 | Runtime file | Supplied source filename | Use |
 |---|---|---|
@@ -15,7 +27,11 @@ Every world-switch URL carries the current release revision so returning to the 
 | `footstep_run_dirt.mp3` | `วิ่งบนพื้นดิน.mp3` | Running bank for dirt, sand and cracked dirt |
 | `footstep_run_ground.mp3` | `วิ่งบนพื้น.mp3` | Running bank for rock and cobblestone paths |
 | `footstep_water_wade_bank.mp3` | `เดินลุยน้ำ.mp3` | Eight selected splashes packed into 4.5 seconds for depth-aware water steps |
-| `ambience_night_crickets_clean.mp3` | `freesound_community-city-night-crickets-24013.mp3` | Retained legacy source/reference |
-| `ambience_morning_birds_clean.mp3` | `creative_spark-morning-birdsong-246402.mp3` | Retained legacy encode/reference |
+| `footstep_grass_walk.mp3`, `footstep_grass_run.mp3` | earlier grass encodes | Fallbacks only: used if a clean grass file fails to decode |
 
-`footstep_forest_leaves.mp3` is retained as the original supplied file only; it is not a valid MP3 and must not be loaded by the runtime. Keep the original source filenames/creator names when reviewing attribution or licence requirements. This directory is the compressed runtime set, not the archival masters.
+Every file here is loaded by the runtime. The retained legacy encodes and the
+corrupt `footstep_forest_leaves.mp3` were deleted once nothing referenced them —
+git history still has them if a source encode is ever needed again. Keep the
+original source filenames/creator names above when reviewing attribution or
+licence requirements. This directory is the compressed runtime set, not the
+archival masters.

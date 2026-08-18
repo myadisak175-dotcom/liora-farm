@@ -34,6 +34,7 @@ import { setStoreReporter, storageFootprint } from "./systems/local-store.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
+import { createFullscreenControl } from "./ui/fullscreen.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
 import { createSystemRegistry } from "./systems/registry.js";
 import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
@@ -41,7 +42,7 @@ import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "life17";
+const APP_REVISION = "audio16";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -159,6 +160,8 @@ const dayNight = createDayNight({
   onLabelChange: (label) => { clockButton.textContent = label; },
 });
 clockButton.onclick = () => dayNight.nextPreset();
+
+createFullscreenControl({ button: document.querySelector("#fullscreen"), notify: toast });
 
 let floatingIslandBackdrop = null;
 try {

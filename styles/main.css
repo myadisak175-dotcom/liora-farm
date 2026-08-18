@@ -106,6 +106,8 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
   z-index: 30;
 }
 #mode-bar button { padding: 8px 16px; font-size: 13px; }
+#mode-bar button.icon { padding: 8px 0; width: 40px; font-size: 15px; line-height: 1; }
+#mode-bar button.icon[disabled] { opacity: 0.35; }
 
 /* Second row, so it never fights the mode buttons or the status chip on a
    narrow phone. */
