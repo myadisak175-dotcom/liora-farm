@@ -148,7 +148,15 @@ try {
 
 setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows, CONFIG.lighting);
-const sky = createSky(CONFIG.sky, CONFIG.distantRange, CONFIG.wind);
+const PAINTED_HORIZON = CONFIG.paintedBackdrop?.enabled === true
+  && (CONFIG.paintedBackdrop.bands?.length ?? 0) > 0;
+const sky = createSky(
+  CONFIG.sky,
+  // Painted bands carry their own summits, so the instanced peak rings stand
+  // down. The haze band stays: it is what softens the join at the horizon.
+  PAINTED_HORIZON ? { ...CONFIG.distantRange, peaks: [] } : CONFIG.distantRange,
+  CONFIG.wind
+);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
 const dayNight = createDayNight({
