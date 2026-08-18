@@ -2,14 +2,16 @@
  * Landscape starting points.
  *
  * The horizon dials are the right tool for *adjusting* a world and the wrong
- * one for *starting* a world. Most of them are multipliers over the ridge
- * bands authored in config.js — "ภูเขากลาง — ระยะ 1.2×" is a meaningful nudge
- * when you can see what it is nudging, and meaningless as a first move on an
- * empty map. You cannot reach a desert from a temperate island by dragging
- * multipliers, because the thing being multiplied is still an island.
+ * one for *starting* one. Character comes from several of them agreeing —
+ * clear air means late fog AND weak ground haze AND faint cloud shadows — and
+ * you cannot arrive at that by dragging one slider at a time.
  *
  * A preset is therefore stated in absolute dial positions: it does not care
  * what the dials were before. Pick one, then tune from there.
+ *
+ * Every preset has to satisfy the horizon rules on its own, which is checked
+ * in the tests — a starting point that starts you in a broken world is worse
+ * than no starting point at all.
  *
  * Each preset only names the dials that define its character. Everything it
  * leaves out falls back to the map's own defaults, so a preset stays a
@@ -20,124 +22,90 @@ export const WORLD_PRESETS = Object.freeze([
   Object.freeze({
     id: "island",
     label: "เกาะกลางหมอก",
-    hint: "ค่ามาตรฐาน — ภูเขาล้อมรอบ ขอบฟ้าสว่าง",
+    hint: "ค่ามาตรฐาน — ทุ่งกว้าง แสงนุ่ม",
     dials: Object.freeze({
       exposure: 1.12,
       sunScale: 1,
       hemiScale: 1,
-      cloudShadowStrength: 0.2,
-      fogNear: 88,
-      fogFar: 460,
-      groundRadius: 600,
-      groundY: 6,
-      groundVariation: 3.2,
-      groundSkyBlend: 0.72,
-      foothillDistance: 1,
-      foothillHeight: 1,
-      rangeDistance: 1,
-      rangeHeight: 1,
-      peakDistance: 1,
-      peakHeight: 1,
-      hazeOpacity: 0.21,
-      mountainsEnabled: true,
-      peaksEnabled: true,
-      hazeEnabled: true,
+      cloudShadowStrength: 0.13,
+      fogNear: 340,
+      fogFar: 780,
+      groundRadius: 418,
+      groundY: 1.4,
+      groundVariation: 4.5,
+      groundSkyBlend: 0.1,
     }),
   }),
   Object.freeze({
     id: "coast",
     label: "ชายทะเล",
     // The sea reads as sea because nothing interrupts the horizon line and the
-    // ground never climbs. Mountains are pushed away rather than switched off,
-    // so the far side of the bay still has something in it.
-    hint: "ขอบฟ้าโล่ง พื้นแบน ภูเขาอยู่ไกลมาก",
+    // ground never climbs: a low flat rim, a wide blend band, and enough haze
+    // on the last stretch to suggest water light without bleaching it.
+    hint: "ขอบฟ้าโล่ง พื้นแบน อากาศชื้น",
     dials: Object.freeze({
       exposure: 1.2,
       sunScale: 1.05,
       hemiScale: 1.1,
-      cloudShadowStrength: 0.22,
-      fogNear: 120,
-      fogFar: 620,
-      groundRadius: 820,
+      cloudShadowStrength: 0.16,
+      fogNear: 300,
+      fogFar: 780,
+      groundRadius: 418,
       groundY: -1.5,
       groundVariation: 0.8,
-      groundSkyBlend: 0.88,
+      groundSkyBlend: 0.22,
       groundEdgeBlend: 56,
-      foothillDistance: 1.9,
-      foothillHeight: 0.45,
-      rangeDistance: 1.8,
-      rangeHeight: 0.6,
-      peakDistance: 1.7,
-      peakHeight: 0.75,
-      hazeOpacity: 0.34,
-      cameraMinPitchDeg: 10,
-      mountainsEnabled: true,
-      peaksEnabled: true,
-      hazeEnabled: true,
     }),
   }),
   Object.freeze({
     id: "valley",
     label: "หุบเขา",
-    // Enclosure is the whole feeling: ridges close and tall enough to crop the
-    // sky, fog tight so the walls read as near, and a small visible world.
-    hint: "ภูเขาชิดและสูง ฟ้าแคบ รู้สึกถูกโอบ",
+    // Enclosure is the whole feeling: a small visible world with the land
+    // climbing and breaking up around it, tight fog so the distance reads as
+    // near, and a steeper camera because there is less sky worth showing.
+    hint: "โลกแคบ พื้นสูงและขรุขระ รู้สึกถูกโอบ",
     dials: Object.freeze({
       exposure: 1.05,
       sunScale: 1.15,
       hemiScale: 0.85,
-      cloudShadowStrength: 0.38,
-      fogNear: 70,
-      fogFar: 300,
-      groundRadius: 380,
-      groundY: 9,
-      groundVariation: 5.5,
-      groundSkyBlend: 0.6,
+      cloudShadowStrength: 0.24,
+      fogNear: 240,
+      fogFar: 620,
+      groundRadius: 300,
+      groundY: 6,
+      groundVariation: 7,
+      groundSkyBlend: 0.15,
       groundEdgeBlend: 34,
-      foothillDistance: 0.62,
-      foothillHeight: 1.85,
-      rangeDistance: 0.7,
-      rangeHeight: 2,
-      peakDistance: 0.85,
-      peakHeight: 1.6,
-      hazeOpacity: 0.4,
+      // A steeper camera is the point — and at 18° the authored islands sit
+      // above the top edge, so the preset switches them off rather than
+      // paying for scenery nobody can see.
       cameraMinPitchDeg: 18,
-      mountainsEnabled: true,
-      peaksEnabled: true,
-      hazeEnabled: true,
+      islandsEnabled: false,
+      treeLineCount: 620,
+      treeLineInner: 46,
+      treeLineOuter: 110,
     }),
   }),
   Object.freeze({
     id: "desert",
-    // Deserts look enormous because the air is clear: fog starts late and never
-    // fully closes, so distance is carried by the ground fading into the sky
-    // rather than by haze. Cloud shadows go near-zero — that is what a cloudless
-    // sky means, and it is also why the light feels harsh.
+    // Deserts look enormous because the air is clear: fog starts very late and
+    // the ground keeps its own colour to the rim. Cloud shadows go near-zero —
+    // that is what a cloudless sky means, and why the light feels harsh.
     label: "ทะเลทราย",
     hint: "อากาศใส มองไกลสุด แดดแข็ง เงาคม",
     dials: Object.freeze({
       exposure: 1.24,
       sunScale: 1.3,
       hemiScale: 0.7,
-      cloudShadowStrength: 0.08,
-      fogNear: 200,
-      fogFar: 700,
-      groundRadius: 900,
-      groundY: 3,
+      cloudShadowStrength: 0.04,
+      fogNear: 380,
+      fogFar: 780,
+      groundRadius: 418,
+      groundY: 2,
       groundVariation: 2.2,
-      groundSkyBlend: 0.5,
+      groundSkyBlend: 0.05,
       groundEdgeBlend: 72,
-      foothillDistance: 1.6,
-      foothillHeight: 0.7,
-      rangeDistance: 1.5,
-      rangeHeight: 1.1,
-      peakDistance: 1.4,
-      peakHeight: 1.2,
-      hazeOpacity: 0.1,
-      cameraMinPitchDeg: 12,
-      mountainsEnabled: true,
-      peaksEnabled: true,
-      hazeEnabled: true,
+      treeLineCount: 60,
     }),
   }),
 ]);

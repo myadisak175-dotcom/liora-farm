@@ -13,8 +13,6 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 </script>
 <script type="module">
 import { buildOuterWorldGeometry } from "../../src/systems/outer-world-ground.js";
-import { createMountainBackdrop } from "../../src/systems/mountain-backdrop.js";
-import { createFantasyHorizon } from "../../src/systems/background/fantasy-horizon.js";
 import { createSky } from "../../src/systems/sky.js";
 import { CONFIG } from "../../src/config.js";
 
@@ -36,30 +34,22 @@ const fogAt = (distance) =>
  * over it; and the strip that stood above the band's base arrived as a bar of
  * flat fog colour lying across the treeline.
  */
-// Composed the way main.js composes it, so this measures the world the game
-// actually builds rather than the built-range baseline it starts from.
-const PAINTED_GROUND = { ...CONFIG.outerWorld, ...(CONFIG.paintedBackdrop.world?.outerWorld ?? {}) };
-const PAINTED_FOG = { ...CONFIG.fog, ...(CONFIG.paintedBackdrop.world?.fog ?? {}) };
 const nearestBand = Math.min(...CONFIG.paintedBackdrop.bands.map((band) => band.radius));
 ok("the far ground stops behind the nearest painted band",
-  PAINTED_GROUND.outerRadius <= nearestBand,
-  `ground=${PAINTED_GROUND.outerRadius} nearest band=${nearestBand}`);
-ok("with the bands off, fog still closes over the world's edge",
-  CONFIG.fog.far < CONFIG.outerWorld.outerRadius - REACH,
-  `fog.far=${CONFIG.fog.far} nearestRim=${CONFIG.outerWorld.outerRadius - REACH}`);
+  CONFIG.outerWorld.outerRadius <= nearestBand,
+  `ground=${CONFIG.outerWorld.outerRadius} nearest band=${nearestBand}`);
 /**
  * ...and it must still look like a field when it gets there. Scene fog and the
  * ground's own sky blend both aim at the sky's near-white horizon colour and
  * compose multiplicatively, which is how two individually reasonable numbers
  * turned the last 200 m of meadow into a cream bar.
  */
-const rimFog = Math.max(0, Math.min(1,
-  (PAINTED_GROUND.outerRadius - PAINTED_FOG.near) / (PAINTED_FOG.far - PAINTED_FOG.near)));
-const rimWash = 1 - (1 - PAINTED_GROUND.skyBlendStrength) * (1 - rimFog);
+const rimFog = fogAt(CONFIG.outerWorld.outerRadius);
+const rimWash = 1 - (1 - CONFIG.outerWorld.skyBlendStrength) * (1 - rimFog);
 ok("the ground at the rim is still mostly its own colour, not haze",
   rimWash <= 0.55,
   `rim wash=${(rimWash * 100).toFixed(0)}% (fog ${(rimFog * 100).toFixed(0)}%`
-  + ` + blend ${(PAINTED_GROUND.skyBlendStrength * 100).toFixed(0)}%)`);
+  + ` + blend ${(CONFIG.outerWorld.skyBlendStrength * 100).toFixed(0)}%)`);
 ok("camera frustum still contains the whole visual world",
   CONFIG.camera.far > CONFIG.outerWorld.outerRadius + REACH,
   `camera.far=${CONFIG.camera.far} needed>${CONFIG.outerWorld.outerRadius + REACH}`);
@@ -98,92 +88,44 @@ ok("visual ground undulates instead of reading as a flat disc",
   groundMaxY - groundMinY > 4,
   `minY=${groundMinY.toFixed(2)} maxY=${groundMaxY.toFixed(2)}`);
 
-const backdrop = createMountainBackdrop(CONFIG.mountainBackdrop);
-ok("both ridge bands are rooted below the lowest visual ground",
-  CONFIG.mountainBackdrop.near.baseY < groundMinY
-    && CONFIG.mountainBackdrop.far.baseY < groundMinY,
-  `nearBase=${CONFIG.mountainBackdrop.near.baseY} farBase=${CONFIG.mountainBackdrop.far.baseY} groundMin=${groundMinY.toFixed(2)}`);
-ok("ridge summits clear the highest visual ground by a wide margin",
-  Math.min(...CONFIG.mountainBackdrop.near.chunks.map((c) => c.height)) > groundMaxY + 5,
-  `lowestFoothill=${Math.min(...CONFIG.mountainBackdrop.near.chunks.map((c) => c.height))} groundMax=${groundMaxY.toFixed(2)}`);
-
-const range = createFantasyHorizon(CONFIG.distantRange);
-const peakRings = CONFIG.distantRange.peaks;
-ok("distant peaks are rooted below the lowest visual ground",
-  peakRings.every((ring) => ring.baseY < groundMinY),
-  JSON.stringify(peakRings.map((r) => r.baseY)));
-
+/**
+ * The depth ladder. Each painted band has to rise above the one in front of
+ * it or the far scenery collapses into one flat card, and the whole stack has
+ * to clear the land it stands behind.
+ */
 const CAM_Y = 10;
-const elevation = (peakY, distance) => Math.atan2(peakY - CAM_Y, distance) * DEG;
-const foothillAngle = elevation(
-  Math.max(...CONFIG.mountainBackdrop.near.chunks.map((c) => c.height)),
-  CONFIG.mountainBackdrop.near.outerRadius
-);
-const rangeAngle = elevation(
-  Math.max(...CONFIG.mountainBackdrop.far.chunks.map((c) => c.height)),
-  CONFIG.mountainBackdrop.far.outerRadius
-);
-const peakAngle = elevation(
-  peakRings[0].baseY + peakRings[0].heightMax,
-  peakRings[0].radiusMax
-);
-ok("each mountain band rises above the one in front of it",
-  rangeAngle > foothillAngle && peakAngle > rangeAngle,
-  `foothills=${foothillAngle.toFixed(1)} range=${rangeAngle.toFixed(1)} peaks=${peakAngle.toFixed(1)}`);
-
-ok("foothills stay readable through the haze",
-  fogAt(CONFIG.mountainBackdrop.near.outerRadius + REACH) < 0.75,
-  `fog=${fogAt(CONFIG.mountainBackdrop.near.outerRadius + REACH).toFixed(2)}`);
-ok("the main range is still visible from the far side of the farm",
-  fogAt(CONFIG.mountainBackdrop.far.outerRadius + REACH) < 0.95,
-  `fog=${fogAt(CONFIG.mountainBackdrop.far.outerRadius + REACH).toFixed(2)}`);
-ok("the nearest distant peak ring is not completely fogged out",
-  fogAt(peakRings[0].radiusMin + REACH) < 1,
-  `fog=${fogAt(peakRings[0].radiusMin + REACH).toFixed(2)}`);
-ok("the horizon haze band sits inside the visible fog range",
-  CONFIG.distantRange.haze.radiusMin + REACH < CONFIG.fog.far,
-  `hazeNear=${CONFIG.distantRange.haze.radiusMin + REACH} fog.far=${CONFIG.fog.far}`);
-const hazeMesh = range.group.children.find((child) => child.name === "HorizonHaze");
-const hazeBefore = JSON.stringify(hazeMesh?.matrices?.[0] ?? null);
-range.update(24);
-const hazeAfter = JSON.stringify(hazeMesh?.matrices?.[0] ?? null);
-ok("horizon mist flows independently instead of staying frozen",
-  Boolean(hazeMesh) && hazeBefore !== hazeAfter,
-  `${hazeBefore} -> ${hazeAfter}`);
-
+const elevation = (top, distance) => Math.atan2(top - CAM_Y, distance) * DEG;
+const ladder = [...CONFIG.paintedBackdrop.bands]
+  .sort((a, b) => a.radius - b.radius)
+  .map((band) => ({
+    name: band.name,
+    radius: band.radius,
+    topDeg: elevation(band.y + band.height / 2, band.radius),
+  }));
+ok("each painted band rises above the one in front of it",
+  ladder.every((band, i) => i === 0 || band.topDeg > ladder[i - 1].topDeg),
+  ladder.map((b) => `${b.name} ${b.topDeg.toFixed(1)}°`).join(" < "));
+ok("every band is rooted below the lowest visual ground",
+  CONFIG.paintedBackdrop.bands.every((band) => band.y - band.height / 2 < groundMinY),
+  `groundMin=${groundMinY.toFixed(2)}`);
+ok("every band clears the highest visual ground",
+  CONFIG.paintedBackdrop.bands.every((band) => band.y + band.height / 2 > groundMaxY + 2),
+  `groundMax=${groundMaxY.toFixed(2)}`);
 ok("no scenery layer is inside the walkable world",
-  CONFIG.mountainBackdrop.near.innerRadius > REACH + 40
-    && peakRings.every((ring) => ring.radiusMin > REACH + 40),
-  `foothillInner=${CONFIG.mountainBackdrop.near.innerRadius} reach=${REACH}`);
-ok("the full variant B distant range stays within its draw-call budget",
-  range.stats.drawCalls <= 12,
-  JSON.stringify(range.stats));
-ok("distant peaks and haze stay out of the shadow pass",
-  range.group.children.every((child) => child.castShadow === false && child.receiveShadow === false));
-// The procedural `floatingIslands` were replaced by the authored GLB cluster
-// in `floatingIslandBackdrop`; these two assertions still described the old
-// system and had been failing since the swap. What matters now is that exactly
-// one of the two is live, so the sky never gets built twice.
-ok("procedural islands stay off now the authored cluster owns the sky",
-  CONFIG.distantRange.floatingIslands.enabled === false);
-ok("no procedural islands are built when they are disabled",
-  range.group.children.filter((child) => child.name === "DistantFloatingIsland").length === 0);
-ok("the authored floating-island cluster is the live one",
-  CONFIG.distantRange.floatingIslandBackdrop.enabled === true
-    && CONFIG.distantRange.floatingIslandBackdrop.items.length > 0);
+  CONFIG.paintedBackdrop.bands.every((band) => band.radius > REACH + 40)
+    && CONFIG.treeLine.innerRadius > REACH,
+  `nearestBand=${Math.min(...CONFIG.paintedBackdrop.bands.map((b) => b.radius))} reach=${REACH}`);
+ok("the authored floating-island cluster is the live sky scenery",
+  CONFIG.floatingIslands.enabled === true && CONFIG.floatingIslands.items.length > 0);
 
-const disabledRange = createFantasyHorizon({ enabled: false });
-ok("the distant range can be switched off entirely",
-  disabledRange.group.children.length === 0 && disabledRange.stats.meshes === 0);
-
-const sky = createSky(CONFIG.sky, CONFIG.distantRange);
+const sky = createSky(CONFIG.sky);
 const cloudLayer = sky.group.children.find((child) => child.name === "SkyClouds");
 ok("clouds render as a single instanced draw call",
   Boolean(cloudLayer) && (cloudLayer.capacity ?? cloudLayer.count) > 60,
   `instances=${cloudLayer?.capacity ?? cloudLayer?.count}`);
 ok("clouds sit high and far enough to belong to the sky",
-  CONFIG.sky.cloudRingRadius > CONFIG.mountainBackdrop.near.innerRadius
-    && CONFIG.sky.cloudHeight > Math.max(...CONFIG.mountainBackdrop.far.chunks.map((c) => c.height)),
+  CONFIG.sky.cloudRingRadius > REACH + 40
+    && CONFIG.sky.cloudHeight > CONFIG.outerWorld.outerY + CONFIG.outerWorld.heightVariation,
   `radius=${CONFIG.sky.cloudRingRadius} height=${CONFIG.sky.cloudHeight}`);
 
 ok("gameplay bounds are untouched",
@@ -202,37 +144,7 @@ ok("the seam under the real terrain edge has not moved",
   CONFIG.outerWorld.innerRadius === 38.5 && CONFIG.outerWorld.innerYOffset === -0.08);
 
 outer.dispose();
-backdrop.dispose();
-range.dispose();
-disabledRange.dispose();
 sky.dispose();
-
-{
-  const { isPaintedBackdropEnabled } = await import("../../src/systems/background/painted-backdrop.js");
-  const { resolveHorizon, horizonDefaults } = await import("../../src/systems/horizon-settings.js");
-  const bands = CONFIG.paintedBackdrop;
-  ok("the painted horizon is what ships",
-    isPaintedBackdropEnabled("", bands) === true && CONFIG.paintedBackdrop.enabled === true,
-    `configured=${CONFIG.paintedBackdrop.enabled}`);
-  ok("?backdrop=0 gives the built ranges back and ?backdrop=1 forces the painting",
-    isPaintedBackdropEnabled("?backdrop=0", bands) === false
-      && isPaintedBackdropEnabled("?backdrop=1", { ...bands, enabled: false }) === true
-      && isPaintedBackdropEnabled("?other=1", bands) === true,
-    "url flag does not control the horizon");
-  ok("a backdrop with no bands can never switch on",
-    isPaintedBackdropEnabled("?backdrop=1", { enabled: true, bands: [] }) === false);
-  // Both ways of reaching the far scenery have to agree, or the world builds
-  // painted bands and built ranges at the same time.
-  const painted = resolveHorizon(horizonDefaults({ ...CONFIG, paintedBackdrop: { ...bands, enabled: true } }),
-    { ...CONFIG, paintedBackdrop: { ...bands, enabled: true } });
-  ok("turning the painted horizon on retires the ridges and the peak rings",
-    painted.mountainBackdrop.enabled === false && painted.distantRange.peaks.length === 0,
-    `ridges=${painted.mountainBackdrop.enabled} peaks=${painted.distantRange.peaks.length}`);
-  const offConfig = { ...CONFIG, paintedBackdrop: { ...bands, enabled: false } };
-  const built = resolveHorizon(horizonDefaults(offConfig), offConfig);
-  ok("with it off the built ranges are untouched",
-    built.mountainBackdrop.enabled === true && built.distantRange.peaks.length === CONFIG.distantRange.peaks.length);
-}
 
 window.__results=results;
 window.__done=true;

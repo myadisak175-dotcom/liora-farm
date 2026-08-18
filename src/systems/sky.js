@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { createFantasyHorizon } from "./background/fantasy-horizon.js";
 
 function normalizeWind(direction = {}) {
   const x = Number(direction.x) || 0;
@@ -223,7 +222,7 @@ function buildCloudLayer(config, windConfig = {}) {
   };
 }
 
-export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
+export function createSky(config, windConfig = {}) {
   const group = new THREE.Group();
   group.name = "SkySystem";
 
@@ -335,19 +334,12 @@ export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
   const clouds = buildCloudLayer(config, windConfig);
   group.add(clouds.mesh);
 
-  let fantasyHorizon = createFantasyHorizon(distantRangeConfig);
-  group.add(fantasyHorizon.group);
-
-  let lastHorizon = null;
-  let lastLower = null;
-
   return {
     group,
     update(camera, delta = 0) {
       dome.position.copy(camera.position);
       stars.position.copy(camera.position);
       clouds.update(delta);
-      fantasyHorizon.update();
     },
     /**
      * Where the sun sits and how strongly it burns through. Strength goes to
@@ -364,16 +356,6 @@ export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
       skyMaterial.uniforms.horizonColor.value.copy(horizon);
       skyMaterial.uniforms.lowerColor.value.copy(lower);
       clouds.setAtmosphere(horizon, lower);
-      lastHorizon = horizon;
-      lastLower = lower;
-      fantasyHorizon.setAtmosphere(horizon, lower);
-    },
-    rebuildDistantRange(nextConfig) {
-      group.remove(fantasyHorizon.group);
-      fantasyHorizon.dispose();
-      fantasyHorizon = createFantasyHorizon(nextConfig);
-      group.add(fantasyHorizon.group);
-      if (lastHorizon && lastLower) fantasyHorizon.setAtmosphere(lastHorizon, lastLower);
     },
     setStars(amount) {
       starMaterial.opacity = THREE.MathUtils.clamp(amount, 0, 1) * (config.starOpacity ?? 0.9);
@@ -389,7 +371,6 @@ export function createSky(config, distantRangeConfig = {}, windConfig = {}) {
       starMaterial.dispose();
       clouds.geometry.dispose();
       clouds.material.dispose();
-      fantasyHorizon.dispose();
     },
   };
 }

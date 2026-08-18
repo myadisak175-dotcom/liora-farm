@@ -99,20 +99,26 @@ export const CONFIG = Object.freeze({
   },
   worldBoundary: { enabled: false, type: "none" },
   /**
-   * The land between the farm and the horizon, as the built ranges need it:
-   * running well past them, with fog closing over its rim.
+   * The land between the farm and the painted horizon.
    *
-   * The painted horizon needs a different answer to every one of those
-   * questions — see `paintedBackdrop.world`, which main.js layers over this
-   * when the bands are live.
+   * These numbers used to live in `paintedBackdrop.world`, layered over a
+   * second set authored for the 3D ridges. The ridges are gone, so there is
+   * one horizon and one set of numbers for the land in front of it.
    */
   outerWorld: {
     enabled: true,
     innerRadius: 38.5,
-    outerRadius: 600,
+    // Inside the nearest painted band (430 m). Ground authored past a band is
+    // either invisible or, since the bands do not write depth, drawn over it —
+    // and either way it costs triangles nobody sees.
+    outerRadius: 418,
     innerYOffset: -0.08,
-    outerY: 6,
-    heightVariation: 3.2,
+    // Where the horizon line falls. Above the camera's eye the rim climbs the
+    // backdrop and swallows the treeline.
+    outerY: 1.4,
+    // Only visible at all since hillEnvelope() stopped forcing the rim flat;
+    // this is the horizon's silhouette now.
+    heightVariation: 4.5,
     segments: 112,
     rings: 18,
     noiseSeed: 37,
@@ -120,9 +126,12 @@ export const CONFIG = Object.freeze({
     colorMid: 0x9dbb72,
     colorFar: 0x789a5f,
     edgeBlendWidth: 40,
-    skyBlendStrength: 0.5,
-    skyBlendStart: 230,
-    skyBlendEnd: 520,
+    // Air, not a curtain. Scene fog already aims at the same pale horizon
+    // colour, and the two compose — at 0.5 with fog closing at 552 m the last
+    // stretch of meadow became a flat cream bar under the treeline.
+    skyBlendStrength: 0.1,
+    skyBlendStart: 300,
+    skyBlendEnd: 412,
     renderOrder: -8,
   },
   /**
@@ -191,170 +200,34 @@ export const CONFIG = Object.freeze({
         radius: 430, height: 78, y: -3, repeat: 3, tint: 0xecf4ec, haze: 0.2, renderOrder: -27,
       },
     ],
-    /**
-     * What the world around the bands has to become, applied by main.js only
-     * when the painted horizon is live.
-     *
-     * A painted horizon does not just replace the ridges, it changes what the
-     * land in front of them is for. Built ranges need the ground to run past
-     * them and fog to close over its rim; painted bands stand behind the
-     * ground and hide the rim themselves, so the same fog turns the last
-     * stretch of meadow into a flat cream bar under the treeline. These two
-     * answers cannot share one set of numbers, and retuning the shared ones
-     * quietly broke `?backdrop=0`, so they live here instead.
-     */
-    world: {
-      outerWorld: {
-        // Inside the nearest band (430 m). Ground authored past a band is
-        // either invisible or, since the bands do not write depth, drawn over
-        // it — and either way it costs triangles nobody sees.
-        outerRadius: 418,
-        // The horizon line's height. Above the camera's eye it climbs the
-        // backdrop and swallows the treeline.
-        outerY: 1.4,
-        // Only visible at all since hillEnvelope() stopped forcing the rim
-        // flat; this is the horizon's silhouette now.
-        heightVariation: 4.5,
-        // Air, not a curtain. Scene fog is already aiming at the same pale
-        // horizon colour, and the two compose.
-        skyBlendStrength: 0.1, skyBlendStart: 300, skyBlendEnd: 412,
-      },
-      // Fog no longer has to hide anything, so it starts past the whole field.
-      fog: { near: 340, far: 780 },
-    },
   },
-  mountainBackdrop: {
+  /**
+   * The authored GLB islands drifting over the far ridgeline.
+   *
+   * These used to live inside `distantRange` alongside the instanced peak
+   * rings and the mist band. Those are gone with the built horizon, and one
+   * key holding one thing does not need a wrapper around it.
+   *
+   * `y` is the constraint that matters, not `radius`. An island is only on
+   * screen while `atan2(y - cameraY, distance)` stays under
+   * `camera.minPitch - camera.fov/2`.
+   */
+  floatingIslands: {
     enabled: true,
-    hazeStrength: 0.18,
-    castShadow: false,
-    receiveShadow: false,
-    near: {
-      innerRadius: 166,
-      outerRadius: 196,
-      baseY: -16,
-      shoulderRatio: 0.6,
-      depthJitter: 5,
-      crestSegments: 11,
-      crestRoughness: 0.3,
-      peakSharpness: 1.15,
-      subPeaks: 2,
-      colorLow: 0x5f7a4e,
-      colorMid: 0x6f8659,
-      colorPeak: 0x8b9a79,
-      chunks: [
-        { angle: 12, radius: 172, span: 26, height: 20 },
-        { angle: 48, radius: 191, span: 22, height: 18 },
-        { angle: 88, radius: 168, span: 24, height: 21.5 },
-        { angle: 141, radius: 187, span: 21, height: 18.5 },
-        { angle: 196, radius: 170, span: 26, height: 22 },
-        { angle: 237, radius: 194, span: 22, height: 19 },
-        { angle: 281, radius: 167, span: 23, height: 20.5 },
-        { angle: 328, radius: 184, span: 22, height: 18 },
-      ],
-    },
-    far: {
-      innerRadius: 252,
-      outerRadius: 298,
-      baseY: -22,
-      shoulderRatio: 0.66,
-      depthJitter: 9,
-      crestSegments: 13,
-      crestRoughness: 0.34,
-      peakSharpness: 1.35,
-      subPeaks: 3,
-      colorLow: 0x4a6076,
-      colorMid: 0x64798f,
-      colorPeak: 0x94a6b6,
-      colorSnow: 0xffffff,
-      snowLine: 0.6,
-      snowRoughness: 0.14,
-      chunks: [
-        { angle: 26, radius: 268, span: 30, height: 32 },
-        { angle: 70, radius: 291, span: 26, height: 29 },
-        { angle: 112, radius: 256, span: 28, height: 34 },
-        { angle: 158, radius: 284, span: 24, height: 30 },
-        { angle: 205, radius: 261, span: 30, height: 33 },
-        { angle: 249, radius: 295, span: 26, height: 31 },
-        { angle: 296, radius: 254, span: 27, height: 34 },
-        { angle: 344, radius: 287, span: 25, height: 30 },
-      ],
-    },
-  },
-  distantRange: {
-    enabled: true,
-    peaks: [
-      {
-        count: 15, radiusMin: 330, radiusMax: 385, baseY: -24,
-        heightMin: 58, heightMax: 74, widthMin: 46, widthMax: 78,
-        color: 0xccd8e6, seed: 17,
-        snowLine: 0.5, snowRoughness: 0.14, ridge: 0.36,
-        radialSegments: 9, heightSegments: 6,
-      },
-      {
-        count: 17, radiusMin: 400, radiusMax: 462, baseY: -28,
-        heightMin: 78, heightMax: 96, widthMin: 58, widthMax: 96,
-        color: 0xdae3ee, seed: 91,
-        snowLine: 0.42, snowRoughness: 0.12, ridge: 0.32,
-        radialSegments: 9, heightSegments: 6,
-      },
+    items: [
+      { role: "hero", angle: 3.97, radius: 280, y: 45, scale: 11.8, rotationY: -0.72,
+        bobAmplitude: 0.75, bobSpeed: 0.22, swayAmplitude: 0.022, swaySpeed: 0.11,
+        yawAmplitude: 0.05, yawSpeed: 0.07, phase: 0.0 },
+      { role: "support", angle: 3.80, radius: 236, y: 36, scale: 7.4, rotationY: 0.42,
+        bobAmplitude: 0.55, bobSpeed: 0.18, swayAmplitude: 0.018, swaySpeed: 0.09,
+        yawAmplitude: 0.04, yawSpeed: 0.05, phase: 1.7 },
+      { role: "support", angle: 4.14, radius: 244, y: 38, scale: 6.6, rotationY: -1.0,
+        bobAmplitude: 0.48, bobSpeed: 0.2, swayAmplitude: 0.016, swaySpeed: 0.1,
+        yawAmplitude: 0.035, yawSpeed: 0.06, phase: 3.2 },
+      { role: "support", angle: 3.97, radius: 320, y: 54, scale: 5.6, rotationY: 1.04,
+        bobAmplitude: 0.42, bobSpeed: 0.17, swayAmplitude: 0.014, swaySpeed: 0.08,
+        yawAmplitude: 0.03, yawSpeed: 0.05, phase: 4.6 },
     ],
-    haze: {
-      enabled: true, count: 52, radiusMin: 190, radiusMax: 400,
-      yMin: 1.5, yMax: 13, widthMin: 44, widthMax: 96,
-      depthMin: 30, depthMax: 66, heightMin: 2, heightMax: 5,
-      color: 0xf2fbff, opacity: 0.21, seed: 4242,
-      // Each bank has a slightly different speed and gently breathes in/out,
-      // so the far mist reads as flowing air instead of one frozen white ring.
-      driftSpeed: 0.0065, flowSpeed: 0.28, radialDrift: 5.5,
-      lift: 0.65, breathe: 0.055,
-    },
-    floatingIslands: {
-      enabled: false,
-      bobAmplitude: 1.1,
-      bobSpeed: 0.45,
-      items: [
-        { angle: 0.72, radius: 288, y: 58, scale: 9.5, phase: 0.2 },
-        { angle: 2.82, radius: 326, y: 78, scale: 7.2, phase: 2.0 },
-        { angle: 4.72, radius: 302, y: 48, scale: 8.4, phase: 4.1 },
-      ],
-    },
-    /**
-     * The authored 1+3 island cluster, framed for the portrait phone view.
-     *
-     * These numbers used to live in `config-floating-island-tuned.js`, swapped
-     * in over this file by an import-map alias in `index.html`. Three separate
-     * `?v=` strings had to match byte-for-byte or the browser silently loaded
-     * the untuned values, and every test imported this file directly and so
-     * never saw the ones the game ran. They are folded back in here.
-     *
-     * `y` is the constraint that matters, not `radius`. An island is only on
-     * screen while `atan2(y - cameraY, distance)` stays under
-     * `camera.minPitch - camera.fov/2`; at the previous y of 72-96 the whole
-     * cluster sat about 10 degrees above the top edge and could never be seen
-     * at any pitch or zoom. `checkHorizonRules` now fails loudly on that
-     * instead of leaving it to be found by eye.
-     *
-     * Angles keep the tuned composition: hero centred on the default camera
-     * heading, two supports ~6 degrees to either side so the cluster fits the
-     * narrow horizontal FOV, and one further back aligned with the hero.
-     */
-    floatingIslandBackdrop: {
-      enabled: true,
-      items: [
-        { role: "hero", angle: 3.97, radius: 280, y: 45, scale: 11.8, rotationY: -0.72,
-          bobAmplitude: 0.75, bobSpeed: 0.22, swayAmplitude: 0.022, swaySpeed: 0.11,
-          yawAmplitude: 0.05, yawSpeed: 0.07, phase: 0.0 },
-        { role: "support", angle: 3.80, radius: 236, y: 36, scale: 7.4, rotationY: 0.42,
-          bobAmplitude: 0.55, bobSpeed: 0.18, swayAmplitude: 0.018, swaySpeed: 0.09,
-          yawAmplitude: 0.04, yawSpeed: 0.05, phase: 1.7 },
-        { role: "support", angle: 4.14, radius: 244, y: 38, scale: 6.6, rotationY: -1.0,
-          bobAmplitude: 0.48, bobSpeed: 0.2, swayAmplitude: 0.016, swaySpeed: 0.1,
-          yawAmplitude: 0.035, yawSpeed: 0.06, phase: 3.2 },
-        { role: "support", angle: 3.97, radius: 320, y: 54, scale: 5.6, rotationY: 1.04,
-          bobAmplitude: 0.42, bobSpeed: 0.17, swayAmplitude: 0.014, swaySpeed: 0.08,
-          yawAmplitude: 0.03, yawSpeed: 0.05, phase: 4.6 },
-      ],
-    },
   },
   sculpt: {
     minRadius: 1, maxRadius: 6, defaultRadius: 3, strength: 0.9, waterLevel: -0.6,
@@ -502,12 +375,11 @@ export const CONFIG = Object.freeze({
   },
 
   /**
-   * Fog for the built horizon, where it is the thing that hides the world's
-   * edge: `far` lands inside the nearest rim (562 m) so the ground never ends
-   * in a visible line. The painted horizon hides the rim with the bands
-   * instead and needs fog far weaker — see `paintedBackdrop.world.fog`.
+   * Fog does not have to hide the world's edge any more — the painted bands
+   * stand behind it and do that — so it starts past the whole visible field
+   * and reads as air rather than as a curtain.
    */
-  fog: { near: 150, far: 552 },
+  fog: { near: 340, far: 780 },
 });
 
 const MODEL_DIR = "./assets/models/builder";

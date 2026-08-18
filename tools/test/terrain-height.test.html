@@ -15,7 +15,6 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 import { createTerrainHeight, SCULPT_TOOLS } from "../../src/systems/terrain-height.js";
 import { createRidgeProfile, createWorldBoundary } from "../../src/systems/world-boundary.js";
 import { createOuterWorldGround } from "../../src/systems/outer-world-ground.js";
-import { createMountainBackdrop } from "../../src/systems/mountain-backdrop.js";
 import { CONFIG } from "../../src/config.js";
 const results = [];
 const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
@@ -211,39 +210,6 @@ ok("outer world disposes geometry and material",
 const disabledOuter = createOuterWorldGround({ config: { enabled: false } });
 ok("outer world can be disabled without gameplay side effects",
   disabledOuter.group.children.length === 0 && disabledOuter.stats.meshes === 0);
-
-const backdrop = createMountainBackdrop(CONFIG.mountainBackdrop);
-ok("layered horizon builds one merged mesh per ridge band",
-  backdrop.stats.meshes === 2 && backdrop.group.children.length === 2,
-  JSON.stringify(backdrop.stats));
-ok("both ridge bands carry chunks",
-  CONFIG.mountainBackdrop.near.chunks.length > 0 && CONFIG.mountainBackdrop.far.chunks.length > 0);
-ok("distant mountains stay out of the shadow pass",
-  backdrop.meshes.every((mesh) => mesh.castShadow === false && mesh.receiveShadow === false));
-ok("distant mountains keep position and vertex-color counts aligned",
-  backdrop.meshes.every((mesh) =>
-    mesh.geometry.getAttribute("position").count === mesh.geometry.getAttribute("color").count
-  ));
-ok("layered mountain backdrop remains a tiny geometry budget",
-  backdrop.stats.triangles > 0 && backdrop.stats.triangles <= 1400,
-  `triangles=${backdrop.stats.triangles}`);
-const farPositions = backdrop.meshes[0].geometry.getAttribute("position").array;
-let minFarY = Infinity;
-let maxFarY = -Infinity;
-for (let i = 1; i < farPositions.length; i += 3) {
-  minFarY = Math.min(minFarY, farPositions[i]);
-  maxFarY = Math.max(maxFarY, farPositions[i]);
-}
-ok("far scenic mountains bury their base and clear the foothills",
-  minFarY <= CONFIG.mountainBackdrop.far.baseY
-    && maxFarY >= Math.max(...CONFIG.mountainBackdrop.near.chunks.map((chunk) => chunk.height)),
-  `minY=${minFarY} maxY=${maxFarY}`);
-backdrop.dispose();
-ok("mountain backdrop disposes geometry and materials",
-  backdrop.meshes.every((mesh) => mesh.geometry.disposed && mesh.material.disposed));
-const disabledBackdrop = createMountainBackdrop({ enabled: false });
-ok("mountain backdrop can be disabled without gameplay side effects",
-  disabledBackdrop.group.children.length === 0 && disabledBackdrop.stats.meshes === 0);
 
 openBoundary.dispose();
 boundary.dispose();

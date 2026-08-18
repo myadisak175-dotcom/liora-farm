@@ -14,9 +14,11 @@ player from `baseOffset (8, 10, 10)`, so the top edge of the view sits at
 up — roughly 10° past the top edge, at every pitch and every zoom.
 
 **2. The `เกาะลอยฟ้า` toggle drove the wrong system.** It set
-`distantRange.floatingIslands.enabled`, the procedural islands that ship
+`distantRange.floatingIslands.enabled`, the procedural islands that shipped
 disabled. The authored GLB cluster it appears to control is
-`distantRange.floatingIslandBackdrop`, which it never touched.
+`distantRange.floatingIslandBackdrop`, which it never touched. Both have since
+collapsed into one top-level `floatingIslands` block — the procedural system was
+deleted with the built horizon.
 
 `y` is the number that decides whether any of this is visible. `radius` and
 `scale` only decide how big it looks once it is.

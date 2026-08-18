@@ -31,17 +31,16 @@ ok("build marker is set",typeof BUILD==="string"&&BUILD.length>0,String(BUILD));
 ok("the far ground carries no texture-fade settings any more",
   CONFIG.outerWorld.textureFadeStart===undefined
   &&CONFIG.outerWorld.textureFadeEnd===undefined
-  &&CONFIG.outerWorld.textureFadeReach===undefined
-  &&CONFIG.paintedBackdrop.world?.outerWorld?.textureFadeStart===undefined,
+  &&CONFIG.outerWorld.textureFadeReach===undefined,
   JSON.stringify(Object.keys(CONFIG.outerWorld).filter((k)=>k.startsWith("textureFade"))));
 // Same swap as horizon-layers: the authored GLB cluster replaced the
 // procedural islands. `y` is asserted because it is the field that decides
 // whether any of this is on screen at all -- see the "เกาะลอยฟ้าอยู่ในกรอบจอ"
 // rule in horizon-settings.js.
 ok("authored floating-island cluster is enabled and framed",
-  CONFIG.distantRange.floatingIslandBackdrop.enabled===true
-  &&CONFIG.distantRange.floatingIslandBackdrop.items.length>0
-  &&CONFIG.distantRange.floatingIslandBackdrop.items.every((i)=>i.y>0&&i.radius>0));
+  CONFIG.floatingIslands.enabled===true
+  &&CONFIG.floatingIslands.items.length>0
+  &&CONFIG.floatingIslands.items.every((i)=>i.y>0&&i.radius>0));
 
 const zoneSource=await fetch("../../src/zones/home-island.js").then((r)=>r.text());
 ok("outer visual ground receives renderer anisotropy",
@@ -49,9 +48,7 @@ ok("outer visual ground receives renderer anisotropy",
   &&/texture\.anisotropy\s*=\s*anisotropy/.test(zoneSource)
   &&/baseMap\s*=\s*tile\([\s\S]{0,160}?anisotropy\s*\)/.test(zoneSource));
 
-// The world the game actually builds: the painted horizon layers its own land
-// over the built-range baseline in CONFIG, exactly as main.js does.
-const GROUND=({...CONFIG.outerWorld,...(CONFIG.paintedBackdrop.world?.outerWorld??{})});
+const GROUND=CONFIG.outerWorld;
 const ground=createOuterWorldGround({
   config:GROUND,
   texture:{name:"stub-grass"},
