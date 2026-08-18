@@ -20,6 +20,11 @@ const results=[];
 const ok=(name,pass,detail="")=>results.push({name,pass:Boolean(pass),detail});
 const ruleById=(rules,id)=>rules.find((r)=>r.id===id);
 const check=(settings)=>checkHorizonRules(resolveHorizon(settings,CONFIG),CONFIG);
+// The ridge rules only have anything to measure when the built ranges are the
+// live horizon, so those checks run against a config with the painted bands
+// turned off — the state anyone reaches with ?backdrop=0.
+const BUILT_RANGES={...CONFIG,paintedBackdrop:{...CONFIG.paintedBackdrop,enabled:false}};
+const checkBuilt=(settings)=>checkHorizonRules(resolveHorizon(settings,BUILT_RANGES),BUILT_RANGES);
 
 const defaults=horizonDefaults(CONFIG);
 ok("defaults read back the authored config",
@@ -71,8 +76,23 @@ ok("rough ground pushes scenery bases down to stay buried",
 ok("shrinking world past fog wall reports hard-edge rule",ruleById(check({...defaults,groundRadius:150}),"rim").pass===false);
 ok("fog inside farm reports washed-out-farm rule",ruleById(check({...defaults,fogNear:40}),"farm").pass===false);
 ok("top-down-only camera reports no-sky rule",ruleById(check({...defaults,cameraMinPitchDeg:40}),"view").pass===false);
-ok("rough ground swallowing foothills reports rooting rule",ruleById(check({...defaults,groundVariation:12,foothillHeight:0.3}),"rooted").pass===false);
-ok("mountains pushed past fog wall report invisible-scenery rule",ruleById(check({...defaults,foothillDistance:2,rangeDistance:2}),"visible").pass===false);
+ok("rough ground swallowing foothills reports rooting rule",ruleById(checkBuilt({...defaults,groundVariation:12,foothillHeight:0.3}),"rooted").pass===false);
+ok("mountains pushed past fog wall report invisible-scenery rule",ruleById(checkBuilt({...defaults,foothillDistance:2,rangeDistance:2}),"visible").pass===false);
+
+// Painted bands answer the same questions with different geometry: buried at
+// the bottom, clear of the land at the top, and inside the camera's far plane.
+const paintedRules=checkHorizonRules(resolveHorizon(defaults,CONFIG),CONFIG);
+ok("the shipped painted horizon passes its own rules",
+  ruleById(paintedRules,"painted").pass===true&&ruleById(paintedRules,"rooted").pass===true,
+  JSON.stringify([ruleById(paintedRules,"painted").detail,ruleById(paintedRules,"rooted").detail]));
+const clippedBand={...CONFIG,paintedBackdrop:{...CONFIG.paintedBackdrop,
+  bands:CONFIG.paintedBackdrop.bands.map((band)=>({...band,radius:CONFIG.camera.far+50}))}};
+ok("a band authored past the camera's far plane is reported, not silently invisible",
+  ruleById(checkHorizonRules(resolveHorizon(defaults,clippedBand),clippedBand),"painted").pass===false);
+const floatingBand={...CONFIG,paintedBackdrop:{...CONFIG.paintedBackdrop,
+  bands:CONFIG.paintedBackdrop.bands.map((band)=>({...band,y:400}))}};
+ok("a band floating above the land reports the rooting rule",
+  ruleById(checkHorizonRules(resolveHorizon(defaults,floatingBand),floatingBand),"rooted").pass===false);
 
 const failing=check({...defaults,groundRadius:150,fogNear:40,cameraMinPitchDeg:40});
 ok("every failing rule carries a fix and measurement",
