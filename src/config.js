@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-4-mountain-horizon";
+export const BUILD = "worlds-5-painted-horizon";
 
 export const CONFIG = Object.freeze({
   /**
@@ -172,7 +172,7 @@ export const CONFIG = Object.freeze({
    * quadruples the pixels per degree at the same time.
    */
   paintedBackdrop: {
-    enabled: false,
+    enabled: true,
     bands: [
       {
         name: "PaintedPeaks",

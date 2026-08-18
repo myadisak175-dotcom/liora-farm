@@ -182,13 +182,13 @@ sky.dispose();
   const { isPaintedBackdropEnabled } = await import("../../src/systems/background/painted-backdrop.js");
   const { resolveHorizon, horizonDefaults } = await import("../../src/systems/horizon-settings.js");
   const bands = CONFIG.paintedBackdrop;
-  ok("painted bands stay off unless someone asks for them",
-    isPaintedBackdropEnabled("", bands) === false && CONFIG.paintedBackdrop.enabled === false,
+  ok("the painted horizon is what ships",
+    isPaintedBackdropEnabled("", bands) === true && CONFIG.paintedBackdrop.enabled === true,
     `configured=${CONFIG.paintedBackdrop.enabled}`);
-  ok("?backdrop=1 turns the painted horizon on and ?backdrop=0 forces it off",
-    isPaintedBackdropEnabled("?backdrop=1", bands) === true
-      && isPaintedBackdropEnabled("?backdrop=0", { ...bands, enabled: true }) === false
-      && isPaintedBackdropEnabled("?other=1", bands) === false,
+  ok("?backdrop=0 gives the built ranges back and ?backdrop=1 forces the painting",
+    isPaintedBackdropEnabled("?backdrop=0", bands) === false
+      && isPaintedBackdropEnabled("?backdrop=1", { ...bands, enabled: false }) === true
+      && isPaintedBackdropEnabled("?other=1", bands) === true,
     "url flag does not control the horizon");
   ok("a backdrop with no bands can never switch on",
     isPaintedBackdropEnabled("?backdrop=1", { enabled: true, bands: [] }) === false);
@@ -199,7 +199,8 @@ sky.dispose();
   ok("turning the painted horizon on retires the ridges and the peak rings",
     painted.mountainBackdrop.enabled === false && painted.distantRange.peaks.length === 0,
     `ridges=${painted.mountainBackdrop.enabled} peaks=${painted.distantRange.peaks.length}`);
-  const built = resolveHorizon(horizonDefaults(CONFIG), CONFIG);
+  const offConfig = { ...CONFIG, paintedBackdrop: { ...bands, enabled: false } };
+  const built = resolveHorizon(horizonDefaults(offConfig), offConfig);
   ok("with it off the built ranges are untouched",
     built.mountainBackdrop.enabled === true && built.distantRange.peaks.length === CONFIG.distantRange.peaks.length);
 }

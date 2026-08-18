@@ -43,7 +43,7 @@ import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 import { isPaintedBackdropEnabled } from "./systems/background/painted-backdrop.js";
 
-const APP_REVISION = "world17";
+const APP_REVISION = "world18";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;

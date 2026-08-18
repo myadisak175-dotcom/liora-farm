@@ -278,6 +278,7 @@ export function resolveHorizon(settings, config, authored = null) {
     cameraMinPitch: dials.cameraMinPitchDeg / DEG,
     outerWorld,
     mountainBackdrop,
+    paintedBackdrop: config.paintedBackdrop ?? { enabled: false, bands: [] },
     distantRange,
   };
 }
@@ -347,15 +348,36 @@ export function checkHorizonRules(resolved, config) {
     bands.push(["ภูเขากลาง", resolved.mountainBackdrop.far]);
   }
 
+  // Painted bands answer the same two questions as the built ranges — is it
+  // rooted in the land, and can it still be seen — but the geometry is a
+  // cylinder, so the measurements are different ones.
+  const painted = resolved.paintedBackdrop?.enabled === true
+    ? (resolved.paintedBackdrop.bands ?? []).map((band) => ({
+        name: band.name ?? "แถบภาพ",
+        radius: Number(band.radius) || 0,
+        bottom: (Number(band.y) || 0) - (Number(band.height) || 0) / 2,
+        top: (Number(band.y) || 0) + (Number(band.height) || 0) / 2,
+      }))
+    : [];
+
   const rooted = bands.every(([, b]) => b.baseY < resolved.ground.min)
     && (!resolved.distantRange.enabled
-      || resolved.distantRange.peaks.every((r) => r.baseY < resolved.ground.min));
+      || resolved.distantRange.peaks.every((r) => r.baseY < resolved.ground.min))
+    && painted.every((band) => band.bottom < resolved.ground.min);
   const clears = bands.every(([, b]) =>
-    Math.min(...b.chunks.map((c) => c.height)) > resolved.ground.max + 2);
+    Math.min(...b.chunks.map((c) => c.height)) > resolved.ground.max + 2)
+    && painted.every((band) => band.top > resolved.ground.max + 2);
 
   const faded = bands
     .filter(([, b]) => fogAt(b.outerRadius + reach) > 0.97)
     .map(([name]) => name);
+  // A painted band is drawn without scene fog, so haze can never erase it —
+  // but the camera's far plane can, silently and completely. A band authored
+  // past it renders nothing at all, which is exactly how the first attempt
+  // at 800 m disappeared.
+  const clipped = painted
+    .filter((band) => band.radius + reach >= config.camera.far)
+    .map((band) => `${band.name} ${Math.round(band.radius)} ม.`);
 
   return [
     {
@@ -413,6 +435,17 @@ export function checkHorizonRules(resolved, config) {
         + `เริ่มกลืนฟ้าที่ ${Math.round(resolved.outerWorld.skyBlendStart)} ม. · `
         + `เดินได้ถึง ${reach} ม.`,
       fix: "เพิ่มความกว้างรอยกลืน หรือขยายพื้นที่มองเห็น",
+    },
+    {
+      id: "painted",
+      label: "แถบภาพขอบฟ้าอยู่ในระยะกล้อง",
+      pass: clipped.length === 0,
+      detail: painted.length === 0
+        ? "ใช้ภูเขาแบบสร้างจากโค้ด"
+        : clipped.length
+          ? `เลยระยะกล้อง (${Math.round(config.camera.far)} ม.): ${clipped.join(", ")}`
+          : `แถบภาพ ${painted.length} ชั้น อยู่ในระยะทั้งหมด`,
+      fix: "ดึงแถบภาพเข้ามาใกล้ หรือเพิ่มระยะมองเห็นของกล้อง",
     },
     {
       id: "visible",
