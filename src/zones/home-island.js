@@ -4,7 +4,6 @@ import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
 import { createWorldBoundary } from "../systems/world-boundary.js";
 import { createOuterWorldGround } from "../systems/outer-world-ground.js";
-import { createMountainBackdrop } from "../systems/mountain-backdrop.js";
 import { createPaintedBackdrop } from "../systems/background/painted-backdrop.js";
 import { createTerrainField } from "../systems/terrain-field.js";
 import { createGroundPaint } from "../systems/ground-paint.js";
@@ -42,13 +41,7 @@ export async function createHomeIsland({
     ...config.paintedBackdrop,
     anisotropy,
   });
-  const paintedBands = paintedBackdrop.bands.length > 0;
   group.add(paintedBackdrop.group);
-
-  let mountainBackdrop = createMountainBackdrop(
-    paintedBands ? { ...config.mountainBackdrop, enabled: false } : config.mountainBackdrop
-  );
-  group.add(mountainBackdrop.group);
 
   const ridgeEnabled = config.worldBoundary?.enabled !== false
     && config.worldBoundary?.type === "ridge";
@@ -203,7 +196,6 @@ export async function createHomeIsland({
     terrainField,
     worldBoundary,
     get outerWorld() { return outerWorld; },
-    get mountainBackdrop() { return mountainBackdrop; },
     /**
      * The sky's current horizon colour, pushed into the far ground so the two
      * always dissolve into each other. Called by the day/night cycle.
@@ -212,10 +204,9 @@ export async function createHomeIsland({
       if (!horizonColor) return;
       lastHorizonColor = horizonColor;
       outerWorld.setAtmosphere?.(horizonColor);
-      mountainBackdrop.setAtmosphere?.(horizonColor);
       paintedBackdrop.setAtmosphere?.(horizonColor);
     },
-    rebuildHorizon({ outerWorld: outerConfig, mountainBackdrop: backdropConfig } = {}) {
+    rebuildHorizon({ outerWorld: outerConfig } = {}) {
       if (outerConfig) {
         group.remove(outerWorld.group);
         paint.releaseMaterial(outerWorld.material);
@@ -229,13 +220,6 @@ export async function createHomeIsland({
         }
         if (lastHorizonColor) outerWorld.setAtmosphere?.(lastHorizonColor);
         group.add(outerWorld.group);
-      }
-      if (backdropConfig) {
-        group.remove(mountainBackdrop.group);
-        mountainBackdrop.dispose();
-        mountainBackdrop = createMountainBackdrop(backdropConfig);
-        if (lastHorizonColor) mountainBackdrop.setAtmosphere?.(lastHorizonColor);
-        group.add(mountainBackdrop.group);
       }
     },
     water,
@@ -268,7 +252,7 @@ export async function createHomeIsland({
       height.dispose();
       worldBoundary.dispose();
       outerWorld.dispose();
-      mountainBackdrop.dispose();
+      paintedBackdrop.dispose();
       terrain.dispose();
       water.dispose();
       terrainField.dispose();

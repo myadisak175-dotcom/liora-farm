@@ -57,7 +57,7 @@ The ring is split into 16 wedges, each with its own meshes and its own tight
 sphere. `tree-line.test.html` pins this — it is the whole reason the system is
 shaped the way it is.
 
-**Seeded, never saved.** Generated from `seed` like `mountainBackdrop.chunks`,
+**Seeded, never saved.** Generated from `seed` like the painted backdrop bands,
 not placed through the builder. A few hundred trees in the layout store would
 bloat every autosave and let the player delete the horizon by accident.
 

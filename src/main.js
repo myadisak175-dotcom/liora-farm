@@ -41,9 +41,8 @@ import { createFloatingIslandBackdrop } from "./systems/background/floating-isla
 import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
-import { isPaintedBackdropEnabled } from "./systems/background/painted-backdrop.js";
 
-const APP_REVISION = "world21";
+const APP_REVISION = "world22";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -120,46 +119,13 @@ const mapScope = createMapScope({
   revision: APP_REVISION,
 });
 window.__lioraMap = mapScope.id;
-const PAINTED_HORIZON = isPaintedBackdropEnabled(location.search, CONFIG.paintedBackdrop);
-/**
- * What the far scenery becomes once the painted bands are carrying it.
- *
- * The instanced peak rings stand down because the paintings have their own
- * summits, and the mist band stands down because they have their own haze.
- * That mist is 52 spheres at 8×5 segments squashed to 96 m wide and 2 m tall:
- * pooled against a 3D ridge it reads as air, but drawn across a painting at
- * 190–400 m it reads as what it is — translucent slabs with straight edges
- * lying over the treeline.
- *
- * This has to live in MAP_CONFIG rather than at the createSky() call, because
- * the horizon panel re-resolves the whole distant range from this object and
- * rebuilds it. Overriding one call site left the panel free to put the ridges
- * and the mist straight back the first time anything moved a slider.
- */
-const PAINTED_DISTANT_RANGE = {
-  ...CONFIG.distantRange,
-  peaks: [],
-  haze: { ...CONFIG.distantRange.haze, enabled: false, count: 0 },
-};
-const PAINTED_WORLD = CONFIG.paintedBackdrop.world ?? {};
 const MAP_CONFIG = {
   ...CONFIG,
-  paintedBackdrop: { ...CONFIG.paintedBackdrop, enabled: PAINTED_HORIZON },
-  distantRange: PAINTED_HORIZON ? PAINTED_DISTANT_RANGE : CONFIG.distantRange,
-  // The land and the air in front of the bands, which a painted horizon needs
-  // built differently from a horizon made of ridges.
-  outerWorld: PAINTED_HORIZON
-    ? { ...CONFIG.outerWorld, ...PAINTED_WORLD.outerWorld }
-    : CONFIG.outerWorld,
-  fog: PAINTED_HORIZON ? { ...CONFIG.fog, ...PAINTED_WORLD.fog } : CONFIG.fog,
   sculpt: { ...CONFIG.sculpt, storageKey: mapScope.key(CONFIG.sculpt.storageKey) },
   groundPaint: { ...CONFIG.groundPaint, storageKey: mapScope.key(CONFIG.groundPaint.storageKey) },
   farming: { ...CONFIG.farming, storageKey: mapScope.key(CONFIG.farming.storageKey) },
   builder: { ...CONFIG.builder, storageKey: mapScope.key(CONFIG.builder.storageKey) },
 };
-// The scene's fog object is built above, before this map's horizon is known.
-scene.fog.near = MAP_CONFIG.fog.near;
-scene.fog.far = MAP_CONFIG.fog.far;
 
 setBootState("world");
 let world = null;
@@ -182,11 +148,7 @@ try {
 
 setBootState("systems");
 const lighting = setupLighting(scene, renderer, CONFIG.shadows, CONFIG.lighting);
-const sky = createSky(
-  CONFIG.sky,
-  MAP_CONFIG.distantRange,
-  CONFIG.wind
-);
+const sky = createSky(CONFIG.sky, CONFIG.wind);
 scene.add(sky.group);
 const clockButton = document.querySelector("#clock");
 const dayNight = createDayNight({
@@ -205,7 +167,7 @@ let floatingIslandBackdrop = null;
 try {
   floatingIslandBackdrop = await createFloatingIslandBackdrop({
     url: ASSETS.floatingIslandHero,
-    config: CONFIG.distantRange?.floatingIslandBackdrop,
+    config: CONFIG.floatingIslands,
     anisotropy: Math.min(2, renderer.capabilities.getMaxAnisotropy()),
   });
   scene.add(floatingIslandBackdrop.group);
@@ -344,11 +306,8 @@ builderUI = createBuilderUI({
   onTerrainChange: syncBuilderToTerrain,
 });
 horizonPanel = createHorizonControls({
-  // MAP_CONFIG carries the resolved painted-backdrop flag; handing the panel
-  // the raw CONFIG would let it rebuild the ridges the bands replaced.
   config: MAP_CONFIG,
   scene,
-  sky,
   world,
   renderer,
   lighting,

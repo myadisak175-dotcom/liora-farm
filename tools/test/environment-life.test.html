@@ -75,16 +75,10 @@ await test("the daytime sky is a summer blue, not a pale haze", () => {
   assert(CONFIG.dayNight.daylight.horizon === CONFIG.sky.horizonColor, "the day palette and the sky dome drifted apart");
 });
 
-await test("butterflies use a colourful silhouette and moving mist has real flow", async () => {
-  const [life, horizon] = await Promise.all([
-    fetch("../../src/systems/environment-life.js").then((response) => response.text()),
-    fetch("../../src/systems/background/fantasy-horizon.js").then((response) => response.text()),
-  ]);
+await test("butterflies use a colourful silhouette", async () => {
+  const life = await fetch("../../src/systems/environment-life.js").then((response) => response.text());
   assert(life.includes('insectMesh.name = "Butterflies"'), "flying life is no longer authored as butterflies");
   assert(life.includes("0xff78bb") && life.includes("0xa88cff") && life.includes("0x58d9e5"), "colourful butterfly palette is missing");
-  assert(CONFIG.distantRange.haze.driftSpeed >= 0.004, "mist drift is too slow to perceive");
-  assert(CONFIG.distantRange.haze.radialDrift > 0 && CONFIG.distantRange.haze.lift > 0, "mist can only rotate rigidly");
-  assert(horizon.includes("haze?.update(time)"), "flowing mist is not ticked by the horizon system");
 });
 
 await test("decorative failure keeps the foliage interaction bridge alive", () => {

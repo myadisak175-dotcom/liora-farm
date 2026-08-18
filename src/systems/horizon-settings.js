@@ -13,6 +13,8 @@
  * in, pure data out, which is why the rules can be tested directly.
  */
 
+import { checkLayerStack, describeLayerStack } from "./world-layers.js";
+
 const DEG = 180 / Math.PI;
 
 export const HORIZON_STORAGE_KEY = "liora.horizon.v1";
@@ -52,13 +54,6 @@ export const HORIZON_DIALS = [
   { key: "groundRadius", label: "ขนาดพื้นที่มองเห็น", min: 120, max: 900, step: 10, unit: " ม.", group: "พื้น", primary: true },
   { key: "groundY", label: "ความสูงพื้นปลายขอบ", min: -6, max: 20, step: 0.5, unit: " ม.", group: "พื้น" },
   { key: "groundVariation", label: "ความขรุขระของพื้นไกล", min: 0, max: 12, step: 0.2, unit: " ม.", group: "พื้น" },
-  { key: "foothillDistance", label: "เนินเขา — ระยะ", min: 0.5, max: 2, step: 0.05, unit: "×", group: "เนินเขา" },
-  { key: "foothillHeight", label: "เนินเขา — ความสูง", min: 0.3, max: 2.5, step: 0.05, unit: "×", group: "เนินเขา" },
-  { key: "rangeDistance", label: "ภูเขากลาง — ระยะ", min: 0.5, max: 2, step: 0.05, unit: "×", group: "ภูเขากลาง" },
-  { key: "rangeHeight", label: "ภูเขากลาง — ความสูง", min: 0.3, max: 2.5, step: 0.05, unit: "×", group: "ภูเขากลาง" },
-  { key: "peakDistance", label: "ยอดไกล — ระยะ", min: 0.5, max: 1.8, step: 0.05, unit: "×", group: "ยอดไกล" },
-  { key: "peakHeight", label: "ยอดไกล — ความสูง", min: 0.3, max: 2.5, step: 0.05, unit: "×", group: "ยอดไกล" },
-  { key: "hazeOpacity", label: "ความเข้มหมอกขอบฟ้า", min: 0, max: 0.6, step: 0.02, unit: "", group: "หมอก" },
   // The middle-ground band. `count` spans the whole ring but only ~5% of it is
   // ever in frustum, so this dial costs about `count * 0.05 * tris` per frame.
   { key: "treeLineCount", label: "ต้นไม้กลางทุ่ง — จำนวน", min: 0, max: 900, step: 20, unit: " ต้น", group: "กลางทุ่ง", primary: true },
@@ -67,9 +62,6 @@ export const HORIZON_DIALS = [
 ];
 
 export const HORIZON_TOGGLES = [
-  { key: "mountainsEnabled", label: "ภูเขา" },
-  { key: "peaksEnabled", label: "ยอดเขาไกล" },
-  { key: "hazeEnabled", label: "หมอกขอบฟ้า" },
   { key: "islandsEnabled", label: "เกาะลอยฟ้า" },
   { key: "treeLineEnabled", label: "ต้นไม้กลางทุ่ง" },
 ];
@@ -114,22 +106,7 @@ function configDefaults(config) {
     groundRadius: config.outerWorld.outerRadius,
     groundY: config.outerWorld.outerY,
     groundVariation: config.outerWorld.heightVariation,
-    foothillDistance: 1,
-    foothillHeight: 1,
-    rangeDistance: 1,
-    rangeHeight: 1,
-    peakDistance: 1,
-    peakHeight: 1,
-    hazeOpacity: config.distantRange.haze.opacity,
-    mountainsEnabled: config.mountainBackdrop.enabled !== false,
-    peaksEnabled: config.distantRange.enabled !== false,
-    hazeEnabled: config.distantRange.haze.enabled !== false,
-    // The authored GLB cluster is the live system; `floatingIslands` is the
-    // procedural one and ships disabled. Reading this toggle's default from
-    // `floatingIslands` alone switched the visible islands off at boot, since
-    // the panel applies once during construction.
-    islandsEnabled: config.distantRange.floatingIslandBackdrop?.enabled === true
-      || config.distantRange.floatingIslands.enabled === true,
+    islandsEnabled: config.floatingIslands?.enabled !== false,
     treeLineEnabled: config.treeLine?.enabled !== false,
     treeLineCount: config.treeLine?.count ?? 0,
     treeLineInner: config.treeLine?.innerRadius ?? 52,
@@ -168,20 +145,6 @@ export function groundExtent(settings, config) {
   return { min: lo, max: hi };
 }
 
-function scaleBand(band, distanceScale, heightScale, groundFloor) {
-  return {
-    ...band,
-    innerRadius: band.innerRadius * distanceScale,
-    outerRadius: band.outerRadius * distanceScale,
-    baseY: Math.min(band.baseY, groundFloor - 6),
-    chunks: band.chunks.map((chunk) => ({
-      ...chunk,
-      radius: chunk.radius * distanceScale,
-      height: chunk.height * heightScale,
-    })),
-  };
-}
-
 /** Turns dial positions into the concrete config objects the systems consume. */
 export function resolveHorizon(settings, config, authored = null) {
   const dials = sanitizeHorizon(settings, config, authored);
@@ -203,58 +166,11 @@ export function resolveHorizon(settings, config, authored = null) {
     ),
   };
 
-  const paintedHorizon = config.paintedBackdrop?.enabled === true
-    && (config.paintedBackdrop.bands?.length ?? 0) > 0;
-  const mountainBackdrop = {
-    ...config.mountainBackdrop,
-    // Same rule as the peak rings: the painted bands are the far scenery now,
-    // and the panel must not rebuild the ridges behind them.
-    enabled: dials.mountainsEnabled && !paintedHorizon,
-    near: scaleBand(config.mountainBackdrop.near, dials.foothillDistance, dials.foothillHeight, ground.min),
-    far: scaleBand(config.mountainBackdrop.far, dials.rangeDistance, dials.rangeHeight, ground.min),
-  };
-
-  const distantRange = {
-    ...config.distantRange,
-    enabled: dials.peaksEnabled,
-    // Painted horizon bands carry their own summits. Leaving the instanced
-    // peak rings in would build a second range behind them — and the panel
-    // rebuilds this config, so the rule has to live here too, not only where
-    // the sky is first created.
-    peaks: (config.paintedBackdrop?.enabled === true && (config.paintedBackdrop.bands?.length ?? 0) > 0
-      ? []
-      : config.distantRange.peaks
-    ).map((ring) => ({
-      ...ring,
-      radiusMin: ring.radiusMin * dials.peakDistance,
-      radiusMax: ring.radiusMax * dials.peakDistance,
-      heightMin: ring.heightMin * dials.peakHeight,
-      heightMax: ring.heightMax * dials.peakHeight,
-      baseY: Math.min(ring.baseY, ground.min - 6),
-    })),
-    haze: {
-      ...config.distantRange.haze,
-      enabled: dials.hazeEnabled,
-      opacity: dials.hazeOpacity,
-      radiusMin: config.distantRange.haze.radiusMin * dials.rangeDistance,
-      radiusMax: config.distantRange.haze.radiusMax * dials.peakDistance,
-    },
-    // One toggle, two systems, and only one of them is live. The dial may turn
-    // a system off but never on against config: the procedural islands ship
-    // disabled, and letting the toggle enable them would quietly build a
-    // second, older set of islands beside the authored ones.
-    floatingIslands: {
-      ...config.distantRange.floatingIslands,
-      enabled: dials.islandsEnabled && config.distantRange.floatingIslands.enabled !== false,
-    },
-    // The "เกาะลอยฟ้า" toggle used to drive only `floatingIslands`, the
-    // procedural system that ships disabled — so pressing it did nothing at
-    // all while the authored GLB cluster it looks like it controls ignored it.
-    floatingIslandBackdrop: {
-      ...config.distantRange.floatingIslandBackdrop,
-      enabled: dials.islandsEnabled
-        && config.distantRange.floatingIslandBackdrop?.enabled !== false,
-    },
+  // One toggle, one system. It may turn the islands off but never on against
+  // config, so a map that ships without them cannot grow them from the panel.
+  const floatingIslands = {
+    ...config.floatingIslands,
+    enabled: dials.islandsEnabled && config.floatingIslands?.enabled !== false,
   };
 
   // `outer` must stay below `inner`; the sliders are independent, so a player
@@ -278,9 +194,8 @@ export function resolveHorizon(settings, config, authored = null) {
     fog: { near: dials.fogNear, far: Math.max(dials.fogNear + 10, dials.fogFar) },
     cameraMinPitch: dials.cameraMinPitchDeg / DEG,
     outerWorld,
-    mountainBackdrop,
-    paintedBackdrop: config.paintedBackdrop ?? { enabled: false, bands: [] },
-    distantRange,
+    paintedBackdrop: config.paintedBackdrop ?? { bands: [] },
+    floatingIslands,
   };
 }
 
@@ -293,7 +208,6 @@ export function checkHorizonRules(resolved, config) {
   const fogSpan = Math.max(1, resolved.fog.far - resolved.fog.near);
   const fogAt = (d) => clamp((d - resolved.fog.near) / fogSpan, 0, 1);
 
-  const nearestRim = resolved.outerWorld.outerRadius - reach;
   const farmDiagonal = Math.hypot(reach + terrainHalf, reach + terrainHalf);
   const topEdgeDeg = resolved.cameraMinPitch * DEG - config.camera.fov / 2;
 
@@ -320,9 +234,9 @@ export function checkHorizonRules(resolved, config) {
   // Half the authored GLB's height, in model units, before per-item scale.
   const ISLAND_HALF_HEIGHT = 0.66;
 
-  const skyItems = resolved.distantRange?.floatingIslandBackdrop?.enabled === false
+  const skyItems = resolved.floatingIslands?.enabled === false
     ? []
-    : (resolved.distantRange?.floatingIslandBackdrop?.items ?? []);
+    : (resolved.floatingIslands?.items ?? []);
 
   const offscreen = skyItems
     .map((item, index) => {
@@ -343,53 +257,33 @@ export function checkHorizonRules(resolved, config) {
     })
     .filter((entry) => entry.headroomDeg < 0);
 
-  const bands = [];
-  if (resolved.mountainBackdrop.enabled) {
-    bands.push(["เนินเขา", resolved.mountainBackdrop.near]);
-    bands.push(["ภูเขากลาง", resolved.mountainBackdrop.far]);
-  }
+  const painted = (resolved.paintedBackdrop?.bands ?? []).map((band) => ({
+    name: band.name ?? "แถบภาพ",
+    radius: Number(band.radius) || 0,
+    bottom: (Number(band.y) || 0) - (Number(band.height) || 0) / 2,
+    top: (Number(band.y) || 0) + (Number(band.height) || 0) / 2,
+  }));
 
-  // Painted bands answer the same two questions as the built ranges — is it
-  // rooted in the land, and can it still be seen — but the geometry is a
-  // cylinder, so the measurements are different ones.
-  const painted = resolved.paintedBackdrop?.enabled === true
-    ? (resolved.paintedBackdrop.bands ?? []).map((band) => ({
-        name: band.name ?? "แถบภาพ",
-        radius: Number(band.radius) || 0,
-        bottom: (Number(band.y) || 0) - (Number(band.height) || 0) / 2,
-        top: (Number(band.y) || 0) + (Number(band.height) || 0) / 2,
-      }))
-    : [];
+  // Buried at the bottom so no sky shows under a band, clear of the land at
+  // the top so the ground never cuts its skyline off.
+  const rooted = painted.every((band) => band.bottom < resolved.ground.min);
+  const clears = painted.every((band) => band.top > resolved.ground.max + 2);
 
-  const rooted = bands.every(([, b]) => b.baseY < resolved.ground.min)
-    && (!resolved.distantRange.enabled
-      || resolved.distantRange.peaks.every((r) => r.baseY < resolved.ground.min))
-    && painted.every((band) => band.bottom < resolved.ground.min);
-  const clears = bands.every(([, b]) =>
-    Math.min(...b.chunks.map((c) => c.height)) > resolved.ground.max + 2)
-    && painted.every((band) => band.top > resolved.ground.max + 2);
-
-  const faded = bands
-    .filter(([, b]) => fogAt(b.outerRadius + reach) > 0.97)
-    .map(([name]) => name);
-  // A painted band is drawn without scene fog, so haze can never erase it —
-  // but the camera's far plane can, silently and completely. A band authored
-  // past it renders nothing at all, which is exactly how the first attempt
-  // at 800 m disappeared.
-  const clipped = painted
-    .filter((band) => band.radius + reach >= config.camera.far)
-    .map((band) => `${band.name} ${Math.round(band.radius)} ม.`);
-
-  // Ground authored past a painted band is either invisible or, since the
-  // bands deliberately do not write depth, drawn straight over them. The first
-  // painted build ran the ground 170 m past the forest band, and the strip of
-  // it that stood above the band's base was a bar of flat fog colour lying
-  // across the treeline. Nothing errored; it simply looked wrong.
-  const nearestBand = painted.length
-    ? Math.min(...painted.map((band) => band.radius))
-    : Infinity;
-  const groundOverruns = painted.length > 0
-    && resolved.outerWorld.outerRadius > nearestBand;
+  // Distance is one question, so it is asked once, over the whole stack —
+  // see systems/world-layers.js. This replaces three rules that were each
+  // written after a different layer broke a different way.
+  const stack = checkLayerStack({
+    ...config,
+    outerWorld: resolved.outerWorld,
+    treeLine: resolved.treeLine,
+    paintedBackdrop: resolved.paintedBackdrop,
+    floatingIslands: resolved.floatingIslands,
+  });
+  const stackFaults = [
+    ...stack.clipped.map((l) => `${l.label} เลยระยะกล้อง (${Math.round(l.farthest)} ม.)`),
+    ...stack.outsideSky.map((l) => `${l.label} อยู่นอกโดมฟ้า (${Math.round(l.farthest)} ม.)`),
+    ...stack.overrunning.map((l) => `${l.label} ทะลุ ${stack.nearestBackdrop?.label} (${Math.round(l.far)} ม.)`),
+  ];
 
   /**
    * How much of the far ground's own colour has been replaced by pale air.
@@ -412,29 +306,13 @@ export function checkHorizonRules(resolved, config) {
   const rimWash = 1 - (1 - rimBlend) * (1 - rimFog);
 
   return [
-    // One question — is the edge of the world hidden? — with two answers,
-    // because the two horizons hide it by different means. Built ranges rely
-    // on fog closing over the rim; painted bands stand behind it instead, and
-    // demanding fog as well is what bleached the last stretch of meadow white.
-    painted.length > 0
-      ? {
-          id: "rim",
-          label: "ขอบโลกอยู่หลังแถบภาพ ไม่โผล่พ้น",
-          pass: !groundOverruns,
-          detail: groundOverruns
-            ? `พื้นไกลถึง ${Math.round(resolved.outerWorld.outerRadius)} ม. `
-              + `แต่แถบภาพใกล้สุดอยู่ที่ ${Math.round(nearestBand)} ม.`
-            : `พื้นไกลจบที่ ${Math.round(resolved.outerWorld.outerRadius)} ม. `
-              + `ก่อนแถบภาพที่ ${Math.round(nearestBand)} ม.`,
-          fix: "ลดขนาดพื้นที่มองเห็น หรือดันแถบภาพออกไปไกลขึ้น",
-        }
-      : {
-          id: "rim",
-          label: "ขอบโลกถูกหมอกกลืนสนิท",
-          pass: resolved.fog.far < nearestRim,
-          detail: `หมอกทึบที่ ${Math.round(resolved.fog.far)} ม. · ขอบใกล้สุด ${Math.round(nearestRim)} ม.`,
-          fix: "ขยายพื้น หรือลดระยะหมอก",
-        },
+    {
+      id: "stack",
+      label: "ชั้นระยะเรียงถูก ไม่มีชั้นไหนทะลุกัน",
+      pass: stackFaults.length === 0,
+      detail: stackFaults.length ? stackFaults.join(" · ") : describeLayerStack(stack.layers),
+      fix: "ลดขนาดพื้นที่มองเห็น ดึงแถบภาพเข้ามา หรือขยายโดมฟ้าและระยะกล้อง",
+    },
     {
       id: "farm",
       label: "ไร่ยังคมชัด ไม่โดนหมอก",
@@ -485,32 +363,12 @@ export function checkHorizonRules(resolved, config) {
       fix: "เพิ่มความกว้างรอยกลืน หรือขยายพื้นที่มองเห็น",
     },
     {
-      id: "painted",
-      label: "แถบภาพขอบฟ้าอยู่ในระยะกล้อง",
-      pass: clipped.length === 0,
-      detail: painted.length === 0
-        ? "ใช้ภูเขาแบบสร้างจากโค้ด"
-        : clipped.length
-          ? `เลยระยะกล้อง (${Math.round(config.camera.far)} ม.): ${clipped.join(", ")}`
-          : `แถบภาพ ${painted.length} ชั้น อยู่ในระยะทั้งหมด`,
-      fix: "ดึงแถบภาพเข้ามาใกล้ หรือเพิ่มระยะมองเห็นของกล้อง",
-    },
-    {
       id: "airy",
       label: "พื้นไกลยังเป็นทุ่ง ไม่กลายเป็นแถบหมอก",
-      pass: painted.length === 0 || rimWash <= 0.55,
-      detail: painted.length === 0
-        ? "ใช้ภูเขาแบบสร้างจากโค้ด — ขอบโลกต้องถูกหมอกกลืน"
-        : `พื้นตรงขอบถูกกลืนไปกับฟ้า ${Math.round(rimWash * 100)}% `
-          + `(หมอก ${Math.round(rimFog * 100)}% + กลืนฟ้า ${Math.round(rimBlend * 100)}%)`,
+      pass: rimWash <= 0.55,
+      detail: `พื้นตรงขอบถูกกลืนไปกับฟ้า ${Math.round(rimWash * 100)}% `
+        + `(หมอก ${Math.round(rimFog * 100)}% + กลืนฟ้า ${Math.round(rimBlend * 100)}%)`,
       fix: "เลื่อน “หมอกเริ่ม” ออกไป หรือลด “พื้นไกลกลืนกับฟ้า”",
-    },
-    {
-      id: "visible",
-      label: "ภูเขายังมองเห็นผ่านหมอก",
-      pass: faded.length === 0,
-      detail: faded.length ? `จางหายหมด: ${faded.join(", ")}` : "ทุกชั้นยังเห็นได้",
-      fix: "ดึงภูเขาเข้ามาใกล้",
     },
   ];
 }
@@ -540,16 +398,6 @@ export function horizonForMap(settings, config) {
 /** config.js-shaped text, ready to paste over the authored values. */
 export function horizonSnippet(resolved) {
   const n = (v, d = 2) => Number(v.toFixed(d));
-  const band = (b) =>
-    `      innerRadius: ${n(b.innerRadius, 1)},\n` +
-    `      outerRadius: ${n(b.outerRadius, 1)},\n` +
-    `      baseY: ${n(b.baseY, 1)},\n` +
-    `      chunks: [\n` +
-    b.chunks
-      .map((c) => `        { angle: ${c.angle}, radius: ${n(c.radius, 1)}, span: ${c.span}, height: ${n(c.height, 1)} },`)
-      .join("\n") +
-    `\n      ],`;
-
   return `// ---- ค่าจากแผงขอบฟ้า — วางทับใน src/config.js ----
 render: { toneMapping: "neutral", exposure: ${n(resolved.exposure, 2)} },
 lighting: { sunScale: ${n(resolved.lighting.sunScale, 2)}, hemiScale: ${n(resolved.lighting.hemiScale, 2)} },
@@ -566,25 +414,12 @@ outerWorld:
     skyBlendStart: ${n(resolved.outerWorld.skyBlendStart, 0)},
     skyBlendEnd: ${n(resolved.outerWorld.skyBlendEnd, 0)},
 
-mountainBackdrop.enabled: ${resolved.mountainBackdrop.enabled},
-mountainBackdrop.near:
-${band(resolved.mountainBackdrop.near)}
-mountainBackdrop.far:
-${band(resolved.mountainBackdrop.far)}
+treeLine:
+    enabled: ${resolved.treeLine.enabled},
+    count: ${resolved.treeLine.count},
+    innerRadius: ${n(resolved.treeLine.innerRadius, 0)},
+    outerRadius: ${n(resolved.treeLine.outerRadius, 0)},
 
-distantRange.enabled: ${resolved.distantRange.enabled},
-distantRange.peaks: [
-${resolved.distantRange.peaks
-  .map(
-    (r) =>
-      `  { count: ${r.count}, radiusMin: ${n(r.radiusMin, 0)}, radiusMax: ${n(r.radiusMax, 0)}, baseY: ${n(r.baseY, 1)},\n` +
-      `    heightMin: ${n(r.heightMin, 1)}, heightMax: ${n(r.heightMax, 1)}, widthMin: ${r.widthMin}, widthMax: ${r.widthMax},\n` +
-      `    color: 0x${r.color.toString(16)}, seed: ${r.seed} },`
-  )
-  .join("\n")}
-],
-distantRange.haze.enabled: ${resolved.distantRange.haze.enabled},
-distantRange.haze.opacity: ${n(resolved.distantRange.haze.opacity, 2)},
-distantRange.floatingIslands.enabled: ${resolved.distantRange.floatingIslands.enabled},
+floatingIslands.enabled: ${resolved.floatingIslands.enabled},
 `;
 }

@@ -20,16 +20,10 @@ const REBUILD_FOR = {
   "กล้อง": "camera",
   "หมอก": "fog",
   "พื้น": "ground",
-  "เนินเขา": "ridges",
-  "ภูเขากลาง": "ridges",
-  "ยอดไกล": "range",
   "กลางทุ่ง": "treeLine",
 };
 const TOGGLE_REBUILD = {
-  mountainsEnabled: "ridges",
-  peaksEnabled: "range",
-  hazeEnabled: "range",
-  islandsEnabled: "range",
+  islandsEnabled: "islands",
   treeLineEnabled: "treeLine",
 };
 
@@ -46,7 +40,6 @@ function writeStored(key, settings) {
 export function createHorizonControls({
   config,
   scene,
-  sky,
   world,
   renderer = null,
   lighting = null,
@@ -118,11 +111,8 @@ export function createHorizonControls({
         scene.fog.far = resolved.fog.far;
       }
     }
-    if (!targets || targets.has("ground") || targets.has("ridges")) {
-      world.rebuildHorizon({
-        outerWorld: !targets || targets.has("ground") ? resolved.outerWorld : null,
-        mountainBackdrop: !targets || targets.has("ridges") ? resolved.mountainBackdrop : null,
-      });
+    if (!targets || targets.has("ground")) {
+      world.rebuildHorizon({ outerWorld: resolved.outerWorld });
     }
     if (!targets || targets.has("treeLine") || targets.has("ground")) {
       treeLine?.rebuild?.(
@@ -130,14 +120,8 @@ export function createHorizonControls({
         targets && !targets.has("ground") ? null : makeGroundSampler?.(resolved.outerWorld)
       );
     }
-    if (!targets || targets.has("range")) {
-      sky.rebuildDistantRange(resolved.distantRange);
-      // The authored GLB cluster lives outside `sky`, so rebuilding the
-      // distant range alone left the "เกาะลอยฟ้า" toggle doing nothing to it.
-      if (floatingIslandBackdrop?.group) {
-        floatingIslandBackdrop.group.visible =
-          resolved.distantRange?.floatingIslandBackdrop?.enabled !== false;
-      }
+    if ((!targets || targets.has("islands")) && floatingIslandBackdrop?.group) {
+      floatingIslandBackdrop.group.visible = resolved.floatingIslands?.enabled !== false;
     }
     return resolved;
   }

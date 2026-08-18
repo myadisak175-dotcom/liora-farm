@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>world layer stack tests</title>
+<script type="importmap">{"imports":{"three":"./horizon-three-stub.js"}}</script>
+</head>
+<body><pre id="out">running…</pre>
+<script>
+const fail=(what)=>{document.querySelector("#out").textContent="ERROR: "+what;window.__results=[{name:"bootstrap",pass:false,detail:String(what)}];window.__done=true;};
+addEventListener("error",(e)=>fail((e.error&&e.error.stack)||e.message));
+addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reason&&e.reason.stack)||e.reason)));
+</script>
+<script type="module">
+import { worldLayers, checkLayerStack, describeLayerStack, LAYER_KINDS } from "../../src/systems/world-layers.js";
+import { CONFIG } from "../../src/config.js";
+
+const results = [];
+const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
+const byId = (layers, id) => layers.find((layer) => layer.id === id) ?? null;
+
+const layers = worldLayers(CONFIG);
+ok("every system that occupies a distance is in the stack",
+  ["terrain", "treeLine", "ground", "PaintedForest", "PaintedPeaks", "floatingIslands", "sky"]
+    .every((id) => byId(layers, id)),
+  layers.map((l) => l.id).join(", "));
+ok("every layer declares a kind the checker understands",
+  layers.every((layer) => LAYER_KINDS.includes(layer.kind)),
+  layers.filter((l) => !LAYER_KINDS.includes(l.kind)).map((l) => `${l.id}:${l.kind}`).join(", "));
+ok("the stack comes out ordered from the player outward",
+  layers.every((layer, i) => i === 0 || layer.farthest >= layers[i - 1].farthest),
+  describeLayerStack(layers));
+
+/**
+ * The reach matters. Everything centred on the world is `worldLimit` further
+ * away when the player stands on the opposite edge, and measuring from the
+ * centre instead is what hid the first painted band.
+ */
+ok("world-centred layers are measured from the far side of the walkable world",
+  byId(layers, "PaintedForest").farthest
+    === CONFIG.paintedBackdrop.bands.find((b) => b.name === "PaintedForest").radius + CONFIG.worldLimit);
+ok("the sky dome is measured from the camera, because it rides with it",
+  byId(layers, "sky").cameraCentred === true
+    && byId(layers, "sky").farthest === CONFIG.sky.radius);
+
+const shipped = checkLayerStack(CONFIG);
+ok("the shipped stack has no faults",
+  shipped.clipped.length === 0 && shipped.outsideSky.length === 0 && shipped.overrunning.length === 0,
+  JSON.stringify({
+    clipped: shipped.clipped.map((l) => l.id),
+    outsideSky: shipped.outsideSky.map((l) => l.id),
+    overrunning: shipped.overrunning.map((l) => l.id),
+  }));
+ok("the sky is genuinely the outermost thing in the world",
+  shipped.layers.at(-1).kind === "sky",
+  shipped.layers.at(-1).id);
+
+/**
+ * The three faults, each reinstated.
+ *
+ * The third one has never been visible and no earlier test could have found
+ * it: the dome sat at 700 m with a painted band at 720 m outside it, and it
+ * only rendered because nothing in the chain writes depth. One `depthWrite:
+ * true` on the dome would have erased the mountains with no error anywhere.
+ */
+const clipped = checkLayerStack({
+  ...CONFIG,
+  paintedBackdrop: {
+    ...CONFIG.paintedBackdrop,
+    bands: CONFIG.paintedBackdrop.bands.map((band) => ({ ...band, radius: CONFIG.camera.far + 50 })),
+  },
+});
+ok("a band past the camera's far plane is reported",
+  clipped.clipped.length === CONFIG.paintedBackdrop.bands.length,
+  clipped.clipped.map((l) => `${l.id}@${Math.round(l.farthest)}`).join(", "));
+
+const overrun = checkLayerStack({
+  ...CONFIG,
+  outerWorld: { ...CONFIG.outerWorld, outerRadius: 520 },
+});
+ok("ground running past the nearest backdrop is reported",
+  overrun.overrunning.length === 1 && overrun.overrunning[0].id === "ground",
+  `nearest backdrop ${overrun.nearestBackdrop?.id} at ${overrun.nearestBackdrop?.near}`);
+
+const insideOut = checkLayerStack({ ...CONFIG, sky: { ...CONFIG.sky, radius: 700 } });
+ok("a backdrop standing outside the sky dome is reported",
+  insideOut.outsideSky.some((layer) => layer.id === "PaintedPeaks"),
+  insideOut.outsideSky.map((l) => `${l.id}@${Math.round(l.farthest)} vs sky@700`).join(", "));
+
+// A layer switched off is not a layer, so it constrains nothing.
+const noBands = checkLayerStack({ ...CONFIG, paintedBackdrop: { bands: [] } });
+ok("with no backdrops nothing can overrun one",
+  noBands.overrunning.length === 0 && noBands.nearestBackdrop === null);
+const noIslands = worldLayers({ ...CONFIG, floatingIslands: { ...CONFIG.floatingIslands, enabled: false } });
+ok("a disabled layer leaves the stack",
+  byId(noIslands, "floatingIslands") === null);
+
+// Empty config must not throw: the panel resolves partial objects while a
+// slider is mid-drag, and a checker that crashes there is worse than no check.
+const empty = checkLayerStack({});
+ok("an empty config produces a stack rather than an exception",
+  Array.isArray(empty.layers) && empty.layers.every((l) => Number.isFinite(l.farthest)),
+  describeLayerStack(empty.layers));
+
+window.__results = results;
+window.__done = true;
+document.querySelector("#out").textContent =
+  results.map((r) => `${r.pass ? "PASS" : "FAIL"} ${r.name}${r.detail ? ` | ${r.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>

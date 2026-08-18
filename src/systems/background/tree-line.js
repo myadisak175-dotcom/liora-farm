@@ -27,7 +27,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
  *
  * ## 2. Generated from a seed, never saved
  *
- * This is scenery, like `mountainBackdrop.chunks`, not something the player
+ * This is scenery, like the painted backdrop bands, not something the player
  * owns. It must not go through the builder or the layout store: a few hundred
  * trees in the save file would bloat every autosave, and the player would be
  * able to delete the horizon by accident.
