@@ -66,11 +66,12 @@ ok("rough ground widens the band the scenery has to clear",
   &&roughResolved.outerWorld.heightVariation===12,
   `${roughGround.min.toFixed(1)}..${roughGround.max.toFixed(1)}`);
 
-// With bands carrying the horizon, the rim is hidden by standing behind one,
-// so what breaks it is ground that runs past the nearest band.
-ok("ground authored past the nearest painted band reports the rim rule",
-  ruleById(check({...defaults,groundRadius:520}),"rim").pass===false
-  &&ruleById(check(defaults),"rim").pass===true);
+// One rule over the whole stack now — see systems/world-layers.js. Ground
+// that runs past the nearest backdrop is one of the three ways it can break.
+ok("ground authored past the nearest painted band reports the stack rule",
+  ruleById(check({...defaults,groundRadius:520}),"stack").pass===false
+  &&ruleById(check(defaults),"stack").pass===true,
+  ruleById(check({...defaults,groundRadius:520}),"stack").detail);
 // And the wash that turned the last stretch of meadow into a cream bar: two
 // individually mild numbers, compounding.
 ok("fog and sky-blend compounding into a wall of haze is reported",
@@ -87,16 +88,14 @@ ok("ground taller than the bands reports the rooting rule",
   ruleById(checkHorizonRules(
     resolveHorizon({...defaults,groundVariation:12,groundY:20},buriedBands),buriedBands),"rooted").pass===false);
 
-// Painted bands answer the same questions with different geometry: buried at
-// the bottom, clear of the land at the top, and inside the camera's far plane.
 const paintedRules=check(defaults);
-ok("the shipped painted horizon passes its own rules",
-  ruleById(paintedRules,"painted").pass===true&&ruleById(paintedRules,"rooted").pass===true,
-  JSON.stringify([ruleById(paintedRules,"painted").detail,ruleById(paintedRules,"rooted").detail]));
+ok("the shipped horizon passes the stack and rooting rules",
+  ruleById(paintedRules,"stack").pass===true&&ruleById(paintedRules,"rooted").pass===true,
+  JSON.stringify([ruleById(paintedRules,"stack").detail,ruleById(paintedRules,"rooted").detail]));
 const clippedBand={...PAINTED,paintedBackdrop:{...CONFIG.paintedBackdrop,
   bands:CONFIG.paintedBackdrop.bands.map((band)=>({...band,radius:CONFIG.camera.far+50}))}};
 ok("a band authored past the camera's far plane is reported, not silently invisible",
-  ruleById(checkHorizonRules(resolveHorizon(defaults,clippedBand),clippedBand),"painted").pass===false);
+  ruleById(checkHorizonRules(resolveHorizon(defaults,clippedBand),clippedBand),"stack").pass===false);
 const floatingBand={...PAINTED,paintedBackdrop:{...CONFIG.paintedBackdrop,
   bands:CONFIG.paintedBackdrop.bands.map((band)=>({...band,y:400}))}};
 ok("a band floating above the land reports the rooting rule",

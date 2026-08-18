@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-8-even-light";
+export const BUILD = "worlds-9-one-stack";
 
 export const CONFIG = Object.freeze({
   /**
@@ -30,7 +30,10 @@ export const CONFIG = Object.freeze({
   maxWalkSlope: 0.75,
   animationSpeed: { idle: 1, walk: 0.9, run: 1 },
   camera: {
-    fov: 38, near: 0.35, far: 780,
+    // `far` has to clear the sky dome, which has to clear every painted band
+    // seen from the far side of the walkable world. See systems/world-layers.js
+    // — the stack is checked rather than trusted.
+    fov: 38, near: 0.35, far: 900,
     baseOffset: new THREE.Vector3(8, 10, 10),
     minZoom: 0.65, maxZoom: 1.55, zoomStep: 0.12,
     orbitSensitivity: 0.006, pitchSensitivity: 0.0045,
@@ -286,7 +289,7 @@ export const CONFIG = Object.freeze({
    * colour only in the last stretch above the ground.
    */
   sky: {
-    radius: 700, zenithColor: 0x3f9de3, horizonColor: 0xe4f4ff, lowerColor: 0xbfe4f6,
+    radius: 820, zenithColor: 0x3f9de3, horizonColor: 0xe4f4ff, lowerColor: 0xbfe4f6,
     zenithHold: 0.12,
     // The sun is drawn into the dome itself, so it costs no draw call. Size is
     // the angular radius of the disc; the glow is what actually sells warmth.

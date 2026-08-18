@@ -13,6 +13,8 @@
  * in, pure data out, which is why the rules can be tested directly.
  */
 
+import { checkLayerStack, describeLayerStack } from "./world-layers.js";
+
 const DEG = 180 / Math.PI;
 
 export const HORIZON_STORAGE_KEY = "liora.horizon.v1";
@@ -206,7 +208,6 @@ export function checkHorizonRules(resolved, config) {
   const fogSpan = Math.max(1, resolved.fog.far - resolved.fog.near);
   const fogAt = (d) => clamp((d - resolved.fog.near) / fogSpan, 0, 1);
 
-  const nearestRim = resolved.outerWorld.outerRadius - reach;
   const farmDiagonal = Math.hypot(reach + terrainHalf, reach + terrainHalf);
   const topEdgeDeg = resolved.cameraMinPitch * DEG - config.camera.fov / 2;
 
@@ -268,24 +269,21 @@ export function checkHorizonRules(resolved, config) {
   const rooted = painted.every((band) => band.bottom < resolved.ground.min);
   const clears = painted.every((band) => band.top > resolved.ground.max + 2);
 
-  // A painted band is drawn without scene fog, so haze can never erase it —
-  // but the camera's far plane can, silently and completely. A band authored
-  // past it renders nothing at all, which is exactly how the first attempt
-  // at 800 m disappeared.
-  const clipped = painted
-    .filter((band) => band.radius + reach >= config.camera.far)
-    .map((band) => `${band.name} ${Math.round(band.radius)} ม.`);
-
-  // Ground authored past a painted band is either invisible or, since the
-  // bands deliberately do not write depth, drawn straight over them. The first
-  // painted build ran the ground 170 m past the forest band, and the strip of
-  // it that stood above the band's base was a bar of flat fog colour lying
-  // across the treeline. Nothing errored; it simply looked wrong.
-  const nearestBand = painted.length
-    ? Math.min(...painted.map((band) => band.radius))
-    : Infinity;
-  const groundOverruns = painted.length > 0
-    && resolved.outerWorld.outerRadius > nearestBand;
+  // Distance is one question, so it is asked once, over the whole stack —
+  // see systems/world-layers.js. This replaces three rules that were each
+  // written after a different layer broke a different way.
+  const stack = checkLayerStack({
+    ...config,
+    outerWorld: resolved.outerWorld,
+    treeLine: resolved.treeLine,
+    paintedBackdrop: resolved.paintedBackdrop,
+    floatingIslands: resolved.floatingIslands,
+  });
+  const stackFaults = [
+    ...stack.clipped.map((l) => `${l.label} เลยระยะกล้อง (${Math.round(l.farthest)} ม.)`),
+    ...stack.outsideSky.map((l) => `${l.label} อยู่นอกโดมฟ้า (${Math.round(l.farthest)} ม.)`),
+    ...stack.overrunning.map((l) => `${l.label} ทะลุ ${stack.nearestBackdrop?.label} (${Math.round(l.far)} ม.)`),
+  ];
 
   /**
    * How much of the far ground's own colour has been replaced by pale air.
@@ -308,29 +306,13 @@ export function checkHorizonRules(resolved, config) {
   const rimWash = 1 - (1 - rimBlend) * (1 - rimFog);
 
   return [
-    // One question — is the edge of the world hidden? — with two answers,
-    // because the two horizons hide it by different means. Built ranges rely
-    // on fog closing over the rim; painted bands stand behind it instead, and
-    // demanding fog as well is what bleached the last stretch of meadow white.
-    painted.length > 0
-      ? {
-          id: "rim",
-          label: "ขอบโลกอยู่หลังแถบภาพ ไม่โผล่พ้น",
-          pass: !groundOverruns,
-          detail: groundOverruns
-            ? `พื้นไกลถึง ${Math.round(resolved.outerWorld.outerRadius)} ม. `
-              + `แต่แถบภาพใกล้สุดอยู่ที่ ${Math.round(nearestBand)} ม.`
-            : `พื้นไกลจบที่ ${Math.round(resolved.outerWorld.outerRadius)} ม. `
-              + `ก่อนแถบภาพที่ ${Math.round(nearestBand)} ม.`,
-          fix: "ลดขนาดพื้นที่มองเห็น หรือดันแถบภาพออกไปไกลขึ้น",
-        }
-      : {
-          id: "rim",
-          label: "ขอบโลกถูกหมอกกลืนสนิท",
-          pass: resolved.fog.far < nearestRim,
-          detail: `หมอกทึบที่ ${Math.round(resolved.fog.far)} ม. · ขอบใกล้สุด ${Math.round(nearestRim)} ม.`,
-          fix: "ขยายพื้น หรือลดระยะหมอก",
-        },
+    {
+      id: "stack",
+      label: "ชั้นระยะเรียงถูก ไม่มีชั้นไหนทะลุกัน",
+      pass: stackFaults.length === 0,
+      detail: stackFaults.length ? stackFaults.join(" · ") : describeLayerStack(stack.layers),
+      fix: "ลดขนาดพื้นที่มองเห็น ดึงแถบภาพเข้ามา หรือขยายโดมฟ้าและระยะกล้อง",
+    },
     {
       id: "farm",
       label: "ไร่ยังคมชัด ไม่โดนหมอก",
@@ -379,17 +361,6 @@ export function checkHorizonRules(resolved, config) {
         + `เริ่มกลืนฟ้าที่ ${Math.round(resolved.outerWorld.skyBlendStart)} ม. · `
         + `เดินได้ถึง ${reach} ม.`,
       fix: "เพิ่มความกว้างรอยกลืน หรือขยายพื้นที่มองเห็น",
-    },
-    {
-      id: "painted",
-      label: "แถบภาพขอบฟ้าอยู่ในระยะกล้อง",
-      pass: clipped.length === 0,
-      detail: painted.length === 0
-        ? "ใช้ภูเขาแบบสร้างจากโค้ด"
-        : clipped.length
-          ? `เลยระยะกล้อง (${Math.round(config.camera.far)} ม.): ${clipped.join(", ")}`
-          : `แถบภาพ ${painted.length} ชั้น อยู่ในระยะทั้งหมด`,
-      fix: "ดึงแถบภาพเข้ามาใกล้ หรือเพิ่มระยะมองเห็นของกล้อง",
     },
     {
       id: "airy",
