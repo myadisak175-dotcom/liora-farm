@@ -140,21 +140,85 @@ export function pickButterflyTarget(insect, context = {}) {
     range = 2.6,
   } = context;
   const angle = random() * TAU;
-  const distance = 0.6 + random() * Math.max(0.2, range);
-  const x = insect.x + Math.cos(angle) * distance;
-  const z = insect.z + Math.sin(angle) * distance;
+  const distance = 0.35 + random() * Math.max(0.2, range);
+  // Anchored to the patch it belongs to. Wandering from wherever it currently
+  // is turns a group of butterflies into a slow random walk across the field;
+  // real ones stay with the flowers they are working.
+  const homeX = Number.isFinite(insect.patchX) ? insect.patchX : insect.x;
+  const homeZ = Number.isFinite(insect.patchZ) ? insect.patchZ : insect.z;
+  const x = homeX + Math.cos(angle) * distance;
+  const z = homeZ + Math.sin(angle) * distance;
   const ground = Number(sample(x, z)) || 0;
   // Landing is a choice made when the destination is picked, so the approach
   // can slope down into it instead of dropping out of the air on arrival.
   const wantsRest = random() < BUTTERFLY_REST_CHANCE && !overWater(x, z);
   insect.targetX = x;
   insect.targetZ = z;
+  const bloom = Number.isFinite(insect.patchBloom) ? Math.max(0, insect.patchBloom) : 0;
   insect.targetY = wantsRest
-    ? ground + 0.06
+    ? ground + (bloom > 0.05 ? bloom : 0.06)
     : ground + minHeight + random() * Math.max(0.01, maxHeight - minHeight);
   insect.landing = wantsRest;
   insect.legTime = 0;
   return insect;
+}
+
+/** Ground the player has painted as flowering, by any of its names. */
+export const FLOWER_SURFACES = new Set(["flower_grass", "flowers", "meadow"]);
+
+/**
+ * Where a group of butterflies should be working.
+ *
+ * Order matters: a flower bush the player actually placed beats a painted
+ * flower meadow, which beats open grass. Without this they spread evenly
+ * around the player, which reads as a cloud of insects following her rather
+ * than as butterflies visiting flowers.
+ */
+export function findFlowerPatch({
+  player,
+  radius = 8.5,
+  random = Math.random,
+  flowerSpots = null,
+  surfaceAt = null,
+  attempts = 6,
+} = {}) {
+  const px = Number(player?.x) || 0;
+  const pz = Number(player?.z) || 0;
+
+  const spots = typeof flowerSpots === "function" ? flowerSpots() : null;
+  if (Array.isArray(spots) && spots.length > 0) {
+    const near = spots.filter((spot) => {
+      const dx = Number(spot?.x) - px;
+      const dz = Number(spot?.z) - pz;
+      return Number.isFinite(dx) && Number.isFinite(dz) && dx * dx + dz * dz <= radius * radius;
+    });
+    if (near.length > 0) {
+      const spot = near[Math.min(near.length - 1, Math.floor(random() * near.length))];
+      const bloom = Number(spot.bloom);
+      return {
+        x: Number(spot.x),
+        z: Number(spot.z),
+        // How far above the ground the flowers themselves are, so a butterfly
+        // settles in the bloom instead of on the grass under it.
+        bloom: Number.isFinite(bloom) && bloom > 0 ? bloom : 0,
+        kind: "bush",
+      };
+    }
+  }
+
+  let fallback = null;
+  for (let attempt = 0; attempt < Math.max(1, attempts); attempt += 1) {
+    const angle = random() * TAU;
+    const distance = 1.5 + Math.sqrt(random()) * Math.max(1, radius - 1.5);
+    const x = px + Math.cos(angle) * distance;
+    const z = pz + Math.sin(angle) * distance;
+    fallback ??= { x, z, bloom: 0, kind: "open" };
+    if (typeof surfaceAt !== "function") break;
+    let surface = "";
+    try { surface = String(surfaceAt(x, z) ?? ""); } catch { surface = ""; }
+    if (FLOWER_SURFACES.has(surface)) return { x, z, bloom: 0, kind: "painted" };
+  }
+  return fallback ?? { x: px, z: pz, bloom: 0, kind: "open" };
 }
 
 export function stepButterfly(insect, delta, context = {}) {
@@ -247,6 +311,13 @@ export function createEnvironmentLife({
   getGroundHeight = () => 0,
   waterLevel = null,
   quality = {},
+  /**
+   * The painted ground under a point, used to find flowering meadow. Renamed
+   * locally because `surfaceAt` below already means the walkable height.
+   */
+  surfaceAt: paintedSurfaceAt = null,
+  /** Positions of flower bushes the player has placed, if any. */
+  flowerSpots = null,
 } = {}) {
   const enabled = config.enabled !== false;
   const leafConfig = config.leaves ?? {};
@@ -350,6 +421,7 @@ export function createEnvironmentLife({
     for (let i = 0; i < insectMaximum; i += 1) {
       insects.push({
         x: 0, y: 0, z: 0,
+        patchX: 0, patchZ: 0, patchBloom: 0, patchTimer: 0,
         targetX: 0, targetY: 0, targetZ: 0,
         mode: "cruise", landing: false, restTimer: 0, legTime: 0,
         initialized: false,
@@ -486,16 +558,32 @@ export function createEnvironmentLife({
       overWater: (x, z) => groundAt(getGroundHeight, x, z) < flightFloor - 0.02,
       minHeight,
       maxHeight: Math.max(minHeight, Number(insectConfig.maxHeight) || 1.75),
-      range: Math.max(0.6, Number(insectConfig.wanderRange) || 2.6),
+      range: Math.max(0.4, Number(insectConfig.wanderRange) || 1.5),
     };
+  }
+
+  /** How long one butterfly works a patch before looking for a better one. */
+  function patchLifetime() {
+    const base = Math.max(2, Number(insectConfig.patchSeconds) || 14);
+    return base + Math.random() * base * 0.6;
+  }
+
+  function movePatch(insect, patch) {
+    insect.patchX = patch.x;
+    insect.patchZ = patch.z;
+    insect.patchBloom = Number(patch.bloom) || 0;
+    insect.patchTimer = patchLifetime();
   }
 
   function respawnInsect(insect, player) {
     const radius = Math.max(2, Number(insectConfig.radius) || 8.5);
+    // Butterflies are re-seeded onto a patch of flowers rather than scattered
+    // evenly around the player.
+    movePatch(insect, findFlowerPatch({ player, radius, flowerSpots, surfaceAt: paintedSurfaceAt }));
     const angle = Math.random() * TAU;
-    const distance = 1.2 + Math.sqrt(Math.random()) * (radius - 1.2);
-    insect.x = player.x + Math.cos(angle) * distance;
-    insect.z = player.z + Math.sin(angle) * distance;
+    const spread = Math.max(0.4, Number(insectConfig.patchSpread) || 1.4);
+    insect.x = patch.x + Math.cos(angle) * spread * Math.sqrt(Math.random());
+    insect.z = patch.z + Math.sin(angle) * spread * Math.sqrt(Math.random());
     const context = butterflyContext();
     const ground = surfaceAt(insect.x, insect.z);
     insect.y = ground + context.minHeight + Math.random() * (context.maxHeight - context.minHeight);
@@ -523,7 +611,16 @@ export function createEnvironmentLife({
       const dx = insect.x - player.x;
       const dz = insect.z - player.z;
       if (dx * dx + dz * dz > limitSq) respawnInsect(insect, player);
+      else if (!Number.isFinite(insect.patchX)) respawnInsect(insect, player);
 
+      // The world changes underneath them: flowers get planted, moved, dug up,
+      // and ground gets painted. Re-reading on a timer is what lets a butterfly
+      // find a bush that appeared after it took off, instead of working an
+      // empty patch until something pushes it out of range.
+      insect.patchTimer -= step;
+      if (insect.patchTimer <= 0 && insect.mode !== "rest") {
+        movePatch(insect, findFlowerPatch({ player, radius, flowerSpots, surfaceAt: paintedSurfaceAt }));
+      }
       stepButterfly(insect, step, context);
       position.set(insect.x, insect.y, insect.z);
 

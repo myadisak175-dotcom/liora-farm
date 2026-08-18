@@ -18,6 +18,11 @@ play area. No collider wall, visible ring or physical gap is rendered.
 visual scenery. It blends ground paint, colour, height variation and fog into
 the distant world, but it does not expand the walkable area.
 
+The current horizon release keeps that ground greener for longer: fog begins
+at 150 m and reaches full blend at 552 m. The nearest possible outer-world rim
+is 562 m away (`outerWorld.outerRadius - worldLimit`), so the geometry is still
+fully swallowed before the player can see its edge.
+
 ## Why the old ridge is not the baseline
 
 `src/systems/world-boundary.js` still contains the reusable generated-boundary

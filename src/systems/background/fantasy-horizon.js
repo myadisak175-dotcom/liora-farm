@@ -17,20 +17,116 @@ function setInstance(mesh, index, position, scale, rotationY = 0) {
   mesh.setMatrixAt(index, matrix);
 }
 
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
+
+function hash(a, b) {
+  const value = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function lerpColor(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
 /**
- * One instanced ring of cone peaks. Unlit on purpose: at 200 m-plus the only
- * thing that should shape these is atmosphere, and a flat silhouette tinted
- * toward the sky is exactly how distance reads.
+ * One snow-capped summit, built rather than coned.
+ *
+ * A `ConeGeometry` in a single flat colour is a paper cut-out: straight
+ * flanks, a perfectly round base, and the same grey from foot to summit. This
+ * gives it the three things that read as a mountain at distance: flanks that
+ * steepen toward the top, ridgelines running down the sides, and snow above a
+ * ragged line.
+ *
+ * It is not free. A 6-sided cone is about 12 triangles; this is 9 x 6 x 2 =
+ * 108, so the two rings go from roughly 290 triangles to 3,500. That is still
+ * nothing next to one tree, and the draw calls — one per ring — do not change,
+ * which is the budget the horizon tests actually guard.
+ */
+function makePeakGeometry(spec = {}) {
+  const radial = Math.max(5, Math.round(Number(spec.radialSegments) || 9));
+  const rows = Math.max(3, Math.round(Number(spec.heightSegments) || 6));
+  const seed = Number(spec.seed) || 1337;
+  const ridge = clamp01(Number(spec.ridge ?? 0.26));
+  const snowLine = clamp01(Number(spec.snowLine ?? 0.55));
+  const snowRoughness = clamp01(Number(spec.snowRoughness ?? 0.12));
+  const rock = [0.3, 0.35, 0.44];
+  const rockShadow = [0.17, 0.21, 0.3];
+  const snow = [1, 1, 1];
+
+  const positions = [];
+  const colors = [];
+  const indices = [];
+
+  for (let row = 0; row <= rows; row += 1) {
+    const u = row / rows;
+    // Concave flanks: a straight cone rises linearly, a mountain leaves its
+    // base wide and pulls in sharply near the summit.
+    const radius = Math.pow(1 - u, 1.45);
+    for (let step = 0; step <= radial; step += 1) {
+      const angle = (step % radial) / radial * TAU;
+      // Two spur terms: one broad enough to carve a ridgeline down the whole
+      // flank, one finer so the silhouette breaks up instead of reading as a
+      // cone someone dented.
+      const index = step % radial;
+      const spur = 1
+        + (hash(seed, index) - 0.5) * 2 * ridge * (1 - u * 0.3)
+        + (hash(seed * 3.1, index * 2.7 + u * 9) - 0.5) * ridge * 0.45 * (1 - u);
+      const x = Math.cos(angle) * radius * spur;
+      const z = Math.sin(angle) * radius * spur;
+      const line = snowLine + (hash(seed * 1.7, step % radial) - 0.5) * 2 * snowRoughness;
+      const cover = clamp01((u - line) / Math.max(0.05, 1 - line));
+      // The side facing away from the light stays in shadow all the way up,
+      // which is what separates one summit from the next behind it.
+      const lit = 0.5 + 0.5 * Math.cos(angle - 0.9);
+      const base = lerpColor(rockShadow, rock, lit);
+      const color = lerpColor(base, snow, cover * cover * (3 - 2 * cover));
+      positions.push(x, u, z);
+      colors.push(color[0], color[1], color[2]);
+    }
+  }
+
+  const stride = radial + 1;
+  for (let row = 0; row < rows; row += 1) {
+    for (let step = 0; step < radial; step += 1) {
+      const a = row * stride + step;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/**
+ * One instanced ring of peaks. Unlit on purpose: at 200 m-plus the only thing
+ * that should shape these is atmosphere, and a silhouette tinted toward the
+ * sky is exactly how distance reads.
  *
  * `baseY` sits well below the visual ground so a peak always rises out of the
- * land; the cone's own base is buried and never seen.
+ * land; the peak's own base is buried and never seen.
  */
 function makePeakRing(spec = {}) {
   const count = Math.max(0, Math.round(Number(spec.count) || 0));
   const random = seededRandom(Number(spec.seed) || 1337);
-  const geometry = new THREE.ConeGeometry(1, 1, 6, 1, false);
-  geometry.translate(0, 0.5, 0);
-  const material = new THREE.MeshBasicMaterial({ color: spec.color ?? 0x9ca7c4, fog: true });
+  const geometry = makePeakGeometry(spec);
+  // vertexColors carries the rock/snow gradient; material.color is the
+  // aerial-perspective tint for this whole ring, so a far range reads bluer
+  // than the one in front of it without rebuilding the geometry.
+  const material = new THREE.MeshBasicMaterial({
+    color: spec.color ?? 0x9ca7c4,
+    vertexColors: true,
+    // Scene fog would be a second haze on top of setAtmosphere's, and two
+    // blends toward a near-white horizon is what turned these summits into
+    // pale glass. Distance is expressed once, by the tint below.
+    fog: false,
+  });
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   mesh.name = `DistantPeaks-${spec.seed ?? 0}`;
   mesh.frustumCulled = false;
@@ -245,7 +341,9 @@ export function createFantasyHorizon(config = {}) {
    */
   function setAtmosphere(horizonColor, lowerColor) {
     for (let i = 0; i < peaks.length; i += 1) {
-      const blend = peaks.length === 1 ? 0.5 : 0.4 + (i / (peaks.length - 1)) * 0.34;
+      // Enough tint to sit back in the air, not so much that rock and snow
+      // both arrive at the same pale grey.
+      const blend = peaks.length === 1 ? 0.2 : 0.16 + (i / (peaks.length - 1)) * 0.2;
       peaks[i].material.color.copy(basePeaks[i]).lerp(horizonColor, blend);
     }
     if (haze) haze.material.color.copy(baseHaze).lerp(horizonColor, 0.35);

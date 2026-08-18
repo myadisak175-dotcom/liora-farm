@@ -36,7 +36,12 @@
 
 - `src/systems/environment-life.js`
   - owns optional leaf/insect instance pools and butterfly state math
-  - reads terrain/water/wind through injected callbacks; decorative failure is non-blocking
+  - reads terrain height, water and wind through injected callbacks
+  - reads painted surface names and catalog-derived bloom positions/heights
+    through injected callbacks rather than importing Builder or paint ownership
+  - re-evaluates butterfly flower patches on a timer so later Builder/paint
+    changes can affect already-active insects
+  - remains decorative and system-registry failures are isolated from gameplay
 
 - `src/systems/audio-mix.js`
   - owns DOM-free mix policy, track weights, retry/stop decisions and footstep cadence

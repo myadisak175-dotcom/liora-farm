@@ -11,9 +11,12 @@
 <script type="module">
 import { CONFIG } from "../../src/config.js";
 import { BUILDABLE_ASSETS } from "../../src/editor/asset-catalog.js";
+import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS, isBloomAsset } from "../../src/editor/nature-catalog-v2.js";
 import {
   BUTTERFLY_REST_CHANCE,
+  FLOWER_SURFACES,
   createEnvironmentLifeFallback,
+  findFlowerPatch,
   pickButterflyTarget,
   resolveEnvironmentCounts,
   stepButterfly,
@@ -224,6 +227,103 @@ await test("the per-instance tint cannot render the swarm black again", async ()
   // instance sampled an unset attribute and rendered pure black. Every
   // butterfly in the game was a dark blob because of this one flag.
   assert(!/vertexColors:\s*true/.test(life), "vertexColors is on again with no colour attribute on the geometry");
+});
+
+await test("butterflies gather on planted flower bushes", () => {
+  const player = { x: 0, z: 0 };
+  const bushes = [{ x: 4, z: 1 }, { x: -3, z: 2 }, { x: 60, z: 60 }];
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const patch = findFlowerPatch({ player, radius: 8.5, flowerSpots: () => bushes, random: Math.random });
+    assert(patch.kind === "bush", `a planted bush was ignored (${patch.kind})`);
+    assert(Math.hypot(patch.x, patch.z) < 8.5, "a patch was chosen outside the butterfly radius");
+  }
+  // A bush on the far side of the island is not a reason to fly there.
+  const far = findFlowerPatch({ player, radius: 8.5, flowerSpots: () => [{ x: 90, z: 90 }], surfaceAt: () => "grass" });
+  assert(far.kind !== "bush", "butterflies crossed the map to a bush out of range");
+});
+
+await test("without bushes they settle on painted flower meadow", () => {
+  const player = { x: 0, z: 0 };
+  // Only the eastern half is painted as flowering.
+  const patch = findFlowerPatch({
+    player, radius: 8.5, flowerSpots: () => [],
+    surfaceAt: (x) => (x > 0 ? "flower_grass" : "dirt"),
+    random: (() => { let i = 0; return () => [0.05, 0.4, 0.6, 0.2, 0.9, 0.5][i++ % 6]; })(),
+  });
+  assert(patch.kind === "painted", `painted flowers were ignored (${patch.kind})`);
+  assert(patch.x > 0, "the patch landed on the unpainted side");
+  assert(FLOWER_SURFACES.has("flower_grass"), "the painted flower surface is no longer recognized");
+  // Plain grass everywhere still yields somewhere to go, rather than nothing.
+  const open = findFlowerPatch({ player, radius: 8.5, surfaceAt: () => "grass" });
+  assert(open.kind === "open" && Number.isFinite(open.x), "a meadow with no flowers left the butterflies homeless");
+});
+
+await test("a butterfly works its patch instead of drifting across the field", () => {
+  const flat = { groundAt: () => 0, overWater: () => false, random: Math.random, minHeight: 0.4, maxHeight: 1.6, range: 1.5 };
+  const insect = {
+    x: 5, y: 1, z: 5, patchX: 5, patchZ: 5,
+    mode: "cruise", speed: 1, flapRate: 9, flapPhase: 0, wobblePhase: 0,
+  };
+  pickButterflyTarget(insect, flat);
+  let furthest = 0;
+  for (let frame = 0; frame < 2000; frame += 1) {
+    stepButterfly(insect, 1 / 60, flat);
+    furthest = Math.max(furthest, Math.hypot(insect.x - 5, insect.z - 5));
+  }
+  assert(furthest < 3.4, `it wandered ${furthest.toFixed(2)}m from its flowers`);
+  assert(furthest > 0.2, "it never moved around the patch at all");
+});
+
+await test("the meadow is not swarming with butterflies", () => {
+  assert(CONFIG.environmentLife.insects.maxCount <= 6, `maxCount is ${CONFIG.environmentLife.insects.maxCount}`);
+  for (const tier of Object.values(QUALITY_PRESETS)) {
+    assert(tier.insectCount <= CONFIG.environmentLife.insects.maxCount,
+      `${tier.id} asks for ${tier.insectCount} butterflies`);
+  }
+  assert(QUALITY_PRESETS.high.insectCount <= 6, "the high tier still fills the field with butterflies");
+});
+
+await test("a bloom is identified by what the asset is, not by its id text", () => {
+  // The two that a substring match on the id gets wrong, in both directions.
+  assert(BLOOM_ASSET_IDS.has("v2-plant-2"), "v2-plant-2 is a flower bush and was missed");
+  assert(!BLOOM_ASSET_IDS.has("v2-bush"), "v2-bush is a plain green bush and was counted as flowers");
+  assert(BLOOM_ASSET_IDS.has("v2-flower-1-clump") && BLOOM_ASSET_IDS.has("v2-petals-1"), "obvious flowers are missing");
+  assert(!BLOOM_ASSET_IDS.has("v2-pinetree-1"), "a pine tree counted as flowers");
+  for (const id of BLOOM_ASSET_IDS) assert(isBloomAsset(NATURE_V2_ASSETS[id]), `${id} does not survive its own predicate`);
+  assert(BLOOM_ASSET_IDS.size >= 8, `only ${BLOOM_ASSET_IDS.size} flowering assets found`);
+  // The frozen catalog item exposes modelPath/sourceHeight; reading `file` or
+  // `height` returns undefined and fails quietly.
+  const bloom = NATURE_V2_ASSETS["v2-plant-flowers"];
+  assert(bloom.modelPath.endsWith("flower-bushes.glb") && bloom.file === undefined, "the catalog item shape changed");
+  assert(Number.isFinite(bloom.sourceHeight) && bloom.height === undefined, "bloom height is no longer sourceHeight");
+});
+
+await test("a butterfly rests in the bloom, not on the grass under it", () => {
+  const player = { x: 0, z: 0 };
+  const patch = findFlowerPatch({ player, radius: 8.5, flowerSpots: () => [{ x: 2, z: 0, bloom: 0.8 }] });
+  assert(patch.kind === "bush" && patch.bloom === 0.8, JSON.stringify(patch));
+
+  const settling = { groundAt: () => 0, overWater: () => false, random: () => 0, minHeight: 0.4, maxHeight: 1.6 };
+  const insect = { x: 2, y: 1.2, z: 0, patchX: 2, patchZ: 0, patchBloom: patch.bloom, mode: "cruise", speed: 1, flapRate: 9, flapPhase: 0, wobblePhase: 0 };
+  pickButterflyTarget(insect, settling);
+  assert(insect.landing === true, "it did not choose to land");
+  assert(Math.abs(insect.targetY - 0.8) < 0.01, `it aimed at ${insect.targetY.toFixed(2)} instead of the flower head`);
+
+  // Painted meadow has no bloom height, so that lands on the ground as before.
+  const onGround = { ...insect, patchBloom: 0 };
+  pickButterflyTarget(onGround, settling);
+  assert(onGround.targetY < 0.2, "a painted-meadow landing left the ground");
+});
+
+await test("flowers planted while a butterfly is flying get found", async () => {
+  const source = await fetch("../../src/systems/environment-life.js").then((response) => response.text());
+  // Without this the patch is only re-read on respawn, so planting a bush next
+  // to a butterfly does nothing until it happens to drift out of range.
+  assert(source.includes("insect.patchTimer -= step"), "patches are never re-read while flying");
+  assert(/patchTimer <= 0[\s\S]{0,120}findFlowerPatch/.test(source), "the timer does not lead to a new patch");
+  assert(source.includes("function patchLifetime()"), "there is no patch lifetime at all");
+  assert(CONFIG.environmentLife.insects.patchSeconds <= 30,
+    `a butterfly holds a patch for ${CONFIG.environmentLife.insects.patchSeconds}s before looking again`);
 });
 
 window.__results = results;
