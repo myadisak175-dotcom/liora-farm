@@ -20,6 +20,10 @@ function mixColor(a, b, t) {
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 }
 
+function bellFalloff(side) {
+  return Math.max(0, 1 - side * side);
+}
+
 function crestNoise(seed, i) {
   const a = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
   const b = Math.sin(seed * 39.3468 + i * 11.135) * 24634.6345;
@@ -49,6 +53,15 @@ function buildLayerGeometry(layer = {}) {
   const low = colorChannels(layer.colorLow ?? 0x6d8360);
   const mid = colorChannels(layer.colorMid ?? 0x7d8f72);
   const peak = colorChannels(layer.colorPeak ?? 0x93a08d);
+  const snow = colorChannels(layer.colorSnow ?? 0xffffff);
+  // Where the snow starts, as a fraction of this chunk's own rise. 1 means a
+  // range with no snow on it at all, which is the default for foothills.
+  const snowLine = clamp(Number(layer.snowLine ?? 1), 0, 1);
+  const snowRoughness = clamp(Number(layer.snowRoughness ?? 0.12), 0, 0.5);
+  // How pointed the crest is. The old fixed 0.85 gave every chunk the same
+  // broad dome; a real range has steeper flanks and a narrower summit.
+  const sharpness = clamp(Number(layer.peakSharpness ?? 0.85), 0.4, 3);
+  const subPeaks = clamp(Number(layer.subPeaks ?? 0), 0, 4);
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
     const chunk = chunks[chunkIndex];
@@ -80,7 +93,12 @@ function buildLayerGeometry(layer = {}) {
     for (let i = 0; i <= crestSegments; i += 1) {
       const u = i / crestSegments;
       const side = u * 2 - 1;
-      const bell = Math.pow(Math.cos(side * Math.PI * 0.5), 0.85);
+      // A single cosine hump is a hill. Beating a few slow ridges against it
+      // is what turns one hump into a summit with shoulders either side.
+      const ridges = subPeaks > 0
+        ? 1 + Math.sin(u * Math.PI * subPeaks + seed) * 0.16 * bellFalloff(side)
+        : 1;
+      const bell = Math.pow(Math.cos(side * Math.PI * 0.5), sharpness) * ridges;
       const wobble = 1 + crestNoise(seed, i) * crestRoughness;
       const shoulder = shoulderRatio + (1 - shoulderRatio) * bell;
       const crestY = baseY + rise * bell * shoulder * Math.max(0.05, wobble);
@@ -99,9 +117,16 @@ function buildLayerGeometry(layer = {}) {
       const f = frontRow[i];
       const c = crestRow[i];
       const b = backRow[i];
-      const crestColor = c.heightMix < 0.55
+      let crestColor = c.heightMix < 0.55
         ? mixColor(low, mid, c.heightMix / 0.55)
         : mixColor(mid, peak, (c.heightMix - 0.55) / 0.45);
+      if (snowLine < 1) {
+        // A ragged snow line, not a contour drawn with a ruler: the same crest
+        // noise that shapes the ridge decides how far the snow reaches here.
+        const line = snowLine + crestNoise(seed * 2.3, i + 11) * snowRoughness;
+        const cover = clamp((c.heightMix - line) / Math.max(0.04, 1 - line), 0, 1);
+        crestColor = mixColor(crestColor, snow, cover * cover * (3 - 2 * cover));
+      }
       frontIndex.push(pushVertex(positions, colors, f.x, f.y, f.z, low));
       crestIndex.push(pushVertex(positions, colors, c.point.x, c.point.y, c.point.z, crestColor));
       backIndex.push(pushVertex(positions, colors, b.x, b.y, b.z, low));

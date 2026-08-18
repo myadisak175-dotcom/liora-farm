@@ -37,7 +37,7 @@ player standing at the near edge of the farm, island at the top of its bob.
 The hero is centred on the default camera heading; the supports sit about six
 degrees to either side so the whole cluster fits the narrow horizontal FOV.
 
-`fog.far` is 520 rather than 460, or the hero arrives about 57% blended into
+`fog.far` is 552 rather than 460, or the hero arrives about 57% blended into
 the sky colour. It still sits under the nearest world rim
 (`outerWorld.outerRadius - worldLimit` = 562), so the fog rule still passes.
 

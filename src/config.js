@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-3-gentle-living-environment";
+export const BUILD = "worlds-4-mountain-horizon";
 
 export const CONFIG = Object.freeze({
   /**
@@ -109,15 +109,15 @@ export const CONFIG = Object.freeze({
     rings: 18,
     noiseSeed: 37,
     colorNear: 0xffffff,
-    colorMid: 0xdfe6cd,
-    colorFar: 0xc6d3c8,
+    colorMid: 0xa8c47c,
+    colorFar: 0x86a86a,
     edgeBlendWidth: 40,
     textureFadeReach: 1.45,
     textureFadeStart: 80,
     textureFadeEnd: 150,
-    skyBlendStrength: 0.72,
-    skyBlendStart: 120,
-    skyBlendEnd: 460,
+    skyBlendStrength: 0.5,
+    skyBlendStart: 230,
+    skyBlendEnd: 520,
     renderOrder: -8,
   },
   /**
@@ -164,7 +164,7 @@ export const CONFIG = Object.freeze({
   },
   mountainBackdrop: {
     enabled: true,
-    hazeStrength: 0.45,
+    hazeStrength: 0.18,
     castShadow: false,
     receiveShadow: false,
     near: {
@@ -173,20 +173,22 @@ export const CONFIG = Object.freeze({
       baseY: -16,
       shoulderRatio: 0.6,
       depthJitter: 5,
-      crestSegments: 9,
+      crestSegments: 11,
       crestRoughness: 0.3,
-      colorLow: 0x6d8360,
-      colorMid: 0x7d8f72,
-      colorPeak: 0x93a08d,
+      peakSharpness: 1.15,
+      subPeaks: 2,
+      colorLow: 0x5f7a4e,
+      colorMid: 0x6f8659,
+      colorPeak: 0x8b9a79,
       chunks: [
-        { angle: 12, radius: 172, span: 26, height: 15 },
-        { angle: 48, radius: 191, span: 22, height: 13.5 },
-        { angle: 88, radius: 168, span: 24, height: 16 },
-        { angle: 141, radius: 187, span: 21, height: 14 },
-        { angle: 196, radius: 170, span: 26, height: 16.5 },
-        { angle: 237, radius: 194, span: 22, height: 14.5 },
-        { angle: 281, radius: 167, span: 23, height: 15.5 },
-        { angle: 328, radius: 184, span: 22, height: 13.5 },
+        { angle: 12, radius: 172, span: 26, height: 20 },
+        { angle: 48, radius: 191, span: 22, height: 18 },
+        { angle: 88, radius: 168, span: 24, height: 21.5 },
+        { angle: 141, radius: 187, span: 21, height: 18.5 },
+        { angle: 196, radius: 170, span: 26, height: 22 },
+        { angle: 237, radius: 194, span: 22, height: 19 },
+        { angle: 281, radius: 167, span: 23, height: 20.5 },
+        { angle: 328, radius: 184, span: 22, height: 18 },
       ],
     },
     far: {
@@ -195,20 +197,25 @@ export const CONFIG = Object.freeze({
       baseY: -22,
       shoulderRatio: 0.66,
       depthJitter: 9,
-      crestSegments: 11,
+      crestSegments: 13,
       crestRoughness: 0.34,
-      colorLow: 0x7e8f9e,
-      colorMid: 0x8d9dab,
-      colorPeak: 0xa8b3bd,
+      peakSharpness: 1.35,
+      subPeaks: 3,
+      colorLow: 0x4a6076,
+      colorMid: 0x64798f,
+      colorPeak: 0x94a6b6,
+      colorSnow: 0xffffff,
+      snowLine: 0.6,
+      snowRoughness: 0.14,
       chunks: [
-        { angle: 26, radius: 268, span: 30, height: 21 },
-        { angle: 70, radius: 291, span: 26, height: 18.5 },
-        { angle: 112, radius: 256, span: 28, height: 22 },
-        { angle: 158, radius: 284, span: 24, height: 19.5 },
-        { angle: 205, radius: 261, span: 30, height: 21.5 },
-        { angle: 249, radius: 295, span: 26, height: 20 },
-        { angle: 296, radius: 254, span: 27, height: 23 },
-        { angle: 344, radius: 287, span: 25, height: 19 },
+        { angle: 26, radius: 268, span: 30, height: 32 },
+        { angle: 70, radius: 291, span: 26, height: 29 },
+        { angle: 112, radius: 256, span: 28, height: 34 },
+        { angle: 158, radius: 284, span: 24, height: 30 },
+        { angle: 205, radius: 261, span: 30, height: 33 },
+        { angle: 249, radius: 295, span: 26, height: 31 },
+        { angle: 296, radius: 254, span: 27, height: 34 },
+        { angle: 344, radius: 287, span: 25, height: 30 },
       ],
     },
   },
@@ -216,14 +223,18 @@ export const CONFIG = Object.freeze({
     enabled: true,
     peaks: [
       {
-        count: 11, radiusMin: 330, radiusMax: 385, baseY: -24,
-        heightMin: 47, heightMax: 57, widthMin: 68, widthMax: 112,
-        color: 0x93a3bd, seed: 17,
+        count: 15, radiusMin: 330, radiusMax: 385, baseY: -24,
+        heightMin: 58, heightMax: 74, widthMin: 46, widthMax: 78,
+        color: 0xccd8e6, seed: 17,
+        snowLine: 0.5, snowRoughness: 0.14, ridge: 0.36,
+        radialSegments: 9, heightSegments: 6,
       },
       {
-        count: 13, radiusMin: 400, radiusMax: 462, baseY: -28,
-        heightMin: 59, heightMax: 71, widthMin: 84, widthMax: 138,
-        color: 0xa6b4ca, seed: 91,
+        count: 17, radiusMin: 400, radiusMax: 462, baseY: -28,
+        heightMin: 78, heightMax: 96, widthMin: 58, widthMax: 96,
+        color: 0xdae3ee, seed: 91,
+        snowLine: 0.42, snowRoughness: 0.12, ridge: 0.32,
+        radialSegments: 9, heightSegments: 6,
       },
     ],
     haze: {
@@ -411,20 +422,30 @@ export const CONFIG = Object.freeze({
       speed: 0.92, fallSpeed: 0.16, swirl: 0.34, size: 0.12,
     },
     insects: {
-      enabled: true, maxCount: 14, radius: 8.5, minHeight: 0.45, maxHeight: 1.75,
-      // How far a butterfly picks its next destination. Short hops read as
-      // flitting; long ones look like a bird crossing the field.
-      wanderRange: 2.6,
+      // Six, not fourteen. A meadow with a dozen butterflies in every frame
+      // reads as an infestation; a few working one patch of flowers reads as
+      // summer.
+      enabled: true, maxCount: 6, radius: 8.5, minHeight: 0.45, maxHeight: 1.75,
+      // How far a butterfly wanders from its patch, and how wide the patch is.
+      // Short hops read as flitting; long ones look like a bird crossing the
+      // field.
+      wanderRange: 1.5,
+      patchSpread: 1.4,
+      // How long a butterfly works one patch before looking around again. Short
+      // enough that flowers planted while it is flying get found.
+      patchSeconds: 14,
       speedMin: 0.55, speedMax: 1.15, size: 0.21,
     },
   },
+
   /**
-   * `far` was 460, which put the hero island ~57% blended into the sky colour
-   * before it was even on screen. 520 keeps it readable and still sits under
-   * the nearest world rim (outerWorld.outerRadius - worldLimit = 562), so the
-   * "ขอบโลกถูกหมอกกลืนสนิท" rule still passes.
+   * Fog starts further out than it used to. At near 88 the meadow was already
+   * half-bleached by 200 m, which is what put a flat cream band between the
+   * grass and the foothills and made the world stop at the horizon instead of
+   * running into it. `far` still lands inside the nearest rim (562 m), so the
+   * world edge is swallowed exactly as before.
    */
-  fog: { near: 88, far: 520 },
+  fog: { near: 150, far: 552 },
 });
 
 const MODEL_DIR = "./assets/models/builder";

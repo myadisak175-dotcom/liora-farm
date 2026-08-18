@@ -158,16 +158,24 @@ await test("a footstep failure cannot take the long tracks down with it", async 
 
 await test("a release cannot ship new audio behind a stale world-switch revision", async () => {
   const page = await fetch("../../index.html").then((response) => response.text());
-  const main = await fetch("../../src/main.js").then((response) => response.text());
+  const mainSource = await fetch("../../src/main.js").then((response) => response.text());
   const audioRevision = page.match(/audio-bootstrap-v8\.js\?v=([\w.-]+)/)?.[1];
   const entryRevision = page.match(/main\.js\?v=([\w.-]+)/)?.[1];
-  const appRevision = main.match(/const APP_REVISION = "([\w.-]+)"/)?.[1];
+  const appRevision = mainSource.match(/const APP_REVISION = "([\w.-]+)"/)?.[1];
   assert(audioRevision, "the audio bootstrap lost its cache-busting revision");
   assert(entryRevision === audioRevision, `the entry module ships ${entryRevision} while audio ships ${audioRevision}`);
   // Switching worlds is a reload, and the revision on that URL is what stops a
   // phone reusing the previous release's cached index document — which would
   // quietly load the previous audio bootstrap with it.
   assert(appRevision === audioRevision, `world-switch URLs would still carry ${appRevision} after an ${audioRevision} release`);
+  // A release that changes how the world looks but keeps the previous
+  // release's revision ships behind a cache key players already hold.
+  const config = await fetch("../../src/config.js").then((response) => response.text());
+  const build = config.match(/export const BUILD = "([\w.-]+)"/)?.[1];
+  assert(build && build !== audioRevision, "the build marker is missing");
+  assert(/sourceHeight/.test(mainSource), "main reads a catalog height field the frozen item does not have");
+  const audioTest = await fetch("../../audio-test.html").then((response) => response.text());
+  assert(audioTest.includes(`?v=${audioRevision}`), "the audio test page links back to a stale revision");
 });
 
 window.__results = results;
