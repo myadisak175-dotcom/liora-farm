@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audio mix tests</title>
+</head>
+<body><pre id="out"></pre>
+<script type="module">
+import {
+  STEP_PROFILE,
+  STREAM_MIX,
+  STREAM_PAUSE_LEVEL,
+  STREAM_PLAY_LEVEL,
+  approach,
+  birdWeight,
+  createStepper,
+  nightWeight,
+  normalizeHour,
+  profileKeyFor,
+  runBankForSurface,
+  shouldStreamPlay,
+  streamLevels,
+  windBreath,
+} from "../../src/systems/audio-mix.js";
+
+const results = [];
+const out = document.querySelector("#out");
+async function test(name, fn) {
+  try { await fn(); results.push({ name, pass: true, detail: "" }); }
+  catch (error) { results.push({ name, pass: false, detail: String(error?.message ?? error) }); }
+}
+function assert(value, message) { if (!value) throw new Error(message); }
+function close(a, b, tolerance, message) {
+  assert(Math.abs(a - b) <= tolerance, `${message} (${a} vs ${b})`);
+}
+
+await test("an unusable clock never silences the ambience", () => {
+  assert(normalizeHour(undefined) === 12, "a missing hour is not treated as midday");
+  assert(normalizeHour(Number.NaN) === 12, "NaN is not treated as midday");
+  assert(normalizeHour("6.5") === 6.5, "a numeric string hour is rejected");
+  close(normalizeHour(25), 1, 1e-9, "an hour past midnight does not wrap");
+  close(normalizeHour(-1), 23, 1e-9, "a negative hour does not wrap");
+  assert(nightWeight(25) === 1, "a wrapped small-hours clock lost the night ambience");
+  assert(birdWeight(25) === 0, "a wrapped small-hours clock started the birds");
+});
+
+await test("dawn and daytime stay bird-only while night stays cricket-only", () => {
+  for (const hour of [5.3, 6.5, 9, 12, 16, 18.4]) {
+    assert(birdWeight(hour) > 0, `birds are silent at ${hour}`);
+    assert(nightWeight(hour) === 0, `crickets bleed into the daytime at ${hour}`);
+  }
+  for (const hour of [0, 2, 4.7, 19.5, 22]) {
+    assert(nightWeight(hour) > 0, `night ambience is silent at ${hour}`);
+    assert(birdWeight(hour) === 0, `birds sing in the middle of the night at ${hour}`);
+  }
+  assert(birdWeight(5.2) === 0 && birdWeight(5.25) > 0, "the bird layer does not open at dawn");
+  assert(nightWeight(5.2) === 0, "crickets are still running when the birds start");
+});
+
+await test("weights hand over continuously instead of jumping", () => {
+  for (const [from, to] of [[4.6, 5.4], [18.2, 19.6], [16.3, 18.6]]) {
+    let previousBird = birdWeight(from);
+    let previousNight = nightWeight(from);
+    for (let hour = from; hour <= to; hour += 0.005) {
+      const bird = birdWeight(hour);
+      const night = nightWeight(hour);
+      assert(Math.abs(bird - previousBird) < 0.03, `bird weight jumps at ${hour.toFixed(3)}`);
+      assert(Math.abs(night - previousNight) < 0.03, `night weight jumps at ${hour.toFixed(3)}`);
+      previousBird = bird;
+      previousNight = night;
+    }
+  }
+});
+
+await test("stream levels follow the clock and collapse to silence when muted", () => {
+  const noon = streamLevels({ hour: 12, windPhase: 0 });
+  assert(noon.birds > 0.5, "daytime birds are too quiet to hear");
+  assert(noon.night === 0, "the night track is audible at noon");
+  close(noon.music, STREAM_MIX.music, 1e-9, "music left its mix level");
+  assert(noon.wind > 0.2 && noon.wind <= STREAM_MIX.wind, "tree wind left its range");
+
+  const midnight = streamLevels({ hour: 0, windPhase: 3 });
+  assert(midnight.night > 0.5, "night ambience is too quiet to hear");
+  assert(midnight.birds === 0, "birds sing at midnight");
+
+  const silent = streamLevels({ hour: 12, muted: true, windPhase: 3 });
+  assert(Object.values(silent).every((level) => level === 0), "mute leaves a track audible");
+
+  for (let phase = 0; phase < 60; phase += 0.37) {
+    const level = streamLevels({ hour: 12, windPhase: phase }).wind;
+    assert(level >= 0 && level <= STREAM_MIX.wind, `wind breathing left its range at ${phase.toFixed(2)}`);
+  }
+  assert(windBreath(0) !== windBreath(4), "tree wind sits flat instead of breathing");
+});
+
+await test("a crossfade reaches its target exactly instead of trailing forever", () => {
+  let level = 0.8;
+  for (let step = 0; step < 400; step += 1) level = approach(level, 0, 0.016);
+  assert(level === 0, "a faded-out track keeps an inaudible residue and never pauses");
+
+  let up = 0;
+  for (let step = 0; step < 400; step += 1) up = approach(up, 0.8, 0.016);
+  assert(up === 0.8, "a faded-in track never reaches its mix level");
+
+  // Frame rate must not change how fast a fade runs.
+  let fast = 0, slow = 0;
+  for (let step = 0; step < 60; step += 1) fast = approach(fast, 1, 1 / 60);
+  for (let step = 0; step < 15; step += 1) slow = approach(slow, 1, 1 / 15);
+  close(fast, slow, 0.02, "fade speed depends on the frame rate");
+  assert(approach(0.5, 1, Number.NaN) > 0.5, "a broken frame time freezes the fade");
+});
+
+await test("inaudible tracks stop, and the threshold has hysteresis", () => {
+  assert(shouldStreamPlay(0.5, false) === true, "an audible track stays stopped");
+  assert(shouldStreamPlay(0, true) === false, "a silent track keeps playing and burning battery");
+  assert(STREAM_PAUSE_LEVEL < STREAM_PLAY_LEVEL, "pause and play thresholds cannot be equal");
+  const between = (STREAM_PAUSE_LEVEL + STREAM_PLAY_LEVEL) / 2;
+  assert(shouldStreamPlay(between, true) === true, "a fading track stutters on the way down");
+  assert(shouldStreamPlay(between, false) === false, "a rising track starts before it is audible");
+});
+
+await test("movement state picks the footstep profile", () => {
+  assert(profileKeyFor({ moving: true }) === "walk", "walking lost its profile");
+  assert(profileKeyFor({ running: true }) === "run", "running lost its profile");
+  assert(profileKeyFor({ waterDepth: 0.2 }) === "waterWalk", "wading does not splash");
+  assert(profileKeyFor({ waterDepth: 0.2, running: true }) === "waterRun", "running through water does not splash");
+  assert(profileKeyFor({ waterDepth: 0.05 }) === "walk", "damp ground already counts as water");
+  assert(profileKeyFor(null) === "walk", "a missing state throws instead of walking");
+  assert(profileKeyFor({ waterDepth: "nope" }) === "walk", "a broken depth reading throws");
+});
+
+await test("painted ground picks the running bank", () => {
+  for (const surface of ["dirt", "sand", "cracked_dirt"]) {
+    assert(runBankForSurface(surface) === "runDirt", `${surface} lost the dirt bank`);
+  }
+  for (const surface of ["rock", "cobblestone_path"]) {
+    assert(runBankForSurface(surface) === "runGround", `${surface} lost the hard-ground bank`);
+  }
+  for (const surface of ["grass", "", undefined]) {
+    assert(runBankForSurface(surface) === "run", "unpainted ground left the grass bank");
+  }
+});
+
+await test("footstep cadence follows ground travel", () => {
+  const stepper = createStepper();
+  const spacing = STEP_PROFILE.walk.spacing;
+  // The first step lands part-way into the stride, not on the first frame.
+  assert(stepper.advance({ moving: true, profileKey: "walk", distance: 0.01 }) === 0, "a step fires the instant she moves");
+  let steps = 0;
+  let travelled = 0.01;
+  while (travelled < spacing * 4) {
+    steps += stepper.advance({ moving: true, profileKey: "walk", distance: 0.05 });
+    travelled += 0.05;
+  }
+  assert(steps === 4, `four strides of travel produced ${steps} steps`);
+  assert(stepper.profile === "walk", "the active profile is not reported");
+});
+
+await test("standing still and teleporting never fire footsteps", () => {
+  const stepper = createStepper();
+  for (let frame = 0; frame < 30; frame += 1) {
+    assert(stepper.advance({ moving: false, profileKey: "walk", distance: 0 }) === 0, "standing still made a footstep");
+  }
+  assert(stepper.profile === "-", "an idle stepper still reports a profile");
+  // A world switch or a respawn moves her metres in one frame.
+  assert(stepper.advance({ moving: true, profileKey: "walk", distance: 40 }) === 0, "a teleport fired footsteps");
+  assert(stepper.advance({ moving: true, profileKey: "walk", distance: Number.NaN }) === 0, "a broken position fired footsteps");
+});
+
+await test("a lag spike cannot machine-gun footsteps", () => {
+  const stepper = createStepper();
+  stepper.advance({ moving: true, profileKey: "run", distance: 0.1 });
+  // One dropped frame worth of travel: capped, and the backlog is dropped
+  // rather than banked into the frames that follow.
+  const burst = stepper.advance({ moving: true, profileKey: "run", distance: STEP_PROFILE.run.spacing * 6 });
+  assert(burst <= 2, `a lag spike fired ${burst} steps in one frame`);
+  const after = stepper.advance({ moving: true, profileKey: "run", distance: 0.02 });
+  assert(after === 0, "the dropped frame is still firing steps afterwards");
+});
+
+await test("changing gait keeps the stride phase instead of doubling a step", () => {
+  const stepper = createStepper();
+  let steps = 0;
+  for (let frame = 0; frame < 20; frame += 1) steps += stepper.advance({ moving: true, profileKey: "walk", distance: 0.06 });
+  const atSwitch = steps;
+  // Switching to a run on the very next frame must not land a step on top of
+  // the walking one just because the profile changed.
+  steps += stepper.advance({ moving: true, profileKey: "run", distance: 0.06 });
+  assert(steps - atSwitch <= 1, "switching gait fired an extra step");
+  assert(stepper.profile === "run", "the stepper did not switch profile");
+  steps += stepper.advance({ moving: true, profileKey: "waterRun", distance: 0.06 });
+  assert(stepper.profile === "waterRun", "wading did not switch profile");
+  assert(stepper.advance({ moving: true, profileKey: "nonsense", distance: 0.06 }) >= 0, "an unknown profile throws");
+  assert(stepper.profile === "walk", "an unknown profile is not treated as walking");
+});
+
+window.__results = results;
+window.__done = true;
+out.textContent = results.map((result) => `${result.pass ? "PASS" : "FAIL"} ${result.name}${result.detail ? ` | ${result.detail}` : ""}`).join("\n");
+</script>
+</body>
+</html>

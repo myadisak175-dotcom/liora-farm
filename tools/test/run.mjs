@@ -50,6 +50,7 @@ const PAGES = [
   { file: "tools/test/builder-hud.test.html", viewports: [[375, 667]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
   { file: "tools/test/audio-assets.test.html", viewports: [[390, 664]] },
+  { file: "tools/test/audio-mix.test.html", viewports: [[900, 800]] },
 ];
 
 const MIME = {

@@ -1,8 +1,16 @@
-# Liora Farm — Audio Foundation v7
+# Liora Farm — Audio Foundation v8
 
 Short footsteps are decoded into Web Audio buffers. The longer music and ambience files stream through native media-element output, which avoids both keeping several minutes of decoded audio in mobile RAM and the silent `MediaElementSource` path seen on some Android devices. Morning/day birds and evening/night forest ambience crossfade from the in-game clock; synthesized calls remain only as a fallback if an ambience stream cannot start.
 
-Every world-switch URL carries the current release revision so returning to the default world cannot revive an older cached audio bootstrap. If Android blocks the first media start, later game touches retry the long tracks until they start. The ground-paint splat map now selects grass, dirt or hard-ground running banks at each foot plant; water depth selects a compact eight-splash bank. Tree wind remains a low, slowly breathing native stream.
+**Levels.** iOS ignores writes to `HTMLMediaElement.volume`, so on an iPhone every long track used to play at full level at once and mute left them audible. The runtime probes once whether a volume write sticks: if it does the crossfade stays on element volume (Android, desktop), and if it does not the elements are routed through Web Audio gain nodes instead. A track the mix has faded out is also stopped outright rather than left running at zero, which is the only way to silence one where volume is read-only — and it stops a silent night track from streaming all day on someone's data.
+
+**Recovery.** If Android blocks the first media start, later game touches retry the long tracks. A track the browser refused, or that a phone call or another app paused, is picked up by a retry pass a few seconds later without waiting for the player to find the sound button; a file that is genuinely missing is retried a few times and then left alone.
+
+**The player's choice sticks.** Turning sound off is remembered across a world switch — switching worlds is a full page reload, and it used to bring the music back every time. Ordinary game touches never override that choice, and the music resumes near where it left off instead of restarting the same opening bars.
+
+Every world-switch URL carries the current release revision so returning to the default world cannot revive an older cached audio bootstrap. The ground-paint splat map selects grass, dirt or hard-ground running banks at each foot plant; water depth selects a compact eight-splash bank. Tree wind remains a low, slowly breathing native stream.
+
+The decisions behind all of this — hour weights, crossfade timing, when a track is quiet enough to stop, footstep cadence — live in `src/systems/audio-mix.js` with no DOM attached, and are covered by `tools/test/audio-mix.test.html`. `src/audio-bootstrap-v8.js` owns only the wiring.
 
 | Runtime file | Supplied source filename | Use |
 |---|---|---|
