@@ -369,6 +369,10 @@ try {
     getGroundHeight: world.getGroundHeight,
     waterLevel: CONFIG.water.level,
     quality: QUALITY,
+    surfaceAt: (x, z) => world.paint.surfaceAt(x, z),
+    // Butterflies gather on flowers, so they need to know where the flowers
+    // are: anything the player has planted whose asset reads as a bloom.
+    flowerSpots: () => builder.items.filter((item) => /flower|petal|blossom|bush/i.test(String(item?.assetId ?? ""))),
   });
 } catch (error) {
   console.warn("Environment life unavailable", error);
