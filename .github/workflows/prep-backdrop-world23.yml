@@ -1,14 +1,6 @@
 name: Prep Backdrop World23
 
 on:
-  push:
-    branches:
-      - agent/backdrop-world23
-    paths:
-      - backdrop-meadow-src.png
-      - backdrop-treeline.png
-      - tools/prep_backdrop.py
-      - .github/workflows/prep-backdrop-world23.yml
   pull_request:
     branches:
       - main
