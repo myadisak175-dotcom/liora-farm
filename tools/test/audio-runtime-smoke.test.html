@@ -9,9 +9,9 @@ const out=document.querySelector('#out');
 async function test(name,fn){try{await fn();results.push({name,pass:true,detail:''});}catch(error){results.push({name,pass:false,detail:String(error?.message??error)});}}
 function assert(value,message){if(!value)throw new Error(message);}
 window.__lioraAudioRuntime={hour:12,surface:'grass',state:{moving:false,running:false,waterDepth:0,special:false,position:{x:0,y:0,z:0}}};
-await import('../../src/audio-runtime.js?smoke=native20');
+await import('../../src/audio-runtime.js?smoke=native21');
 await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-await test('selector keeps non-Apple browsers on native route',()=>{assert(window.__lioraAudioPlatform?.revision==='audio20','selector revision mismatch');assert(window.__lioraAudioPlatform?.route==='native',`unexpected route ${window.__lioraAudioPlatform?.route}`);});
+await test('selector keeps non-Apple browsers on native route',()=>{assert(window.__lioraAudioPlatform?.revision==='audio21','selector revision mismatch');assert(window.__lioraAudioPlatform?.route==='native',`unexpected route ${window.__lioraAudioPlatform?.route}`);});
 await test('verified native runtime stays audio19 and locked',()=>{assert(window.__lioraAudio,'audio api missing');assert(window.__lioraAudio.status.revision==='audio19','native runtime changed revision');assert(window.__lioraAudio.unlocked===false,'activated without gesture');assert(window.__lioraAudio.muted===false,'fresh runtime muted');});
 await test('native runtime still owns four streams',()=>{const streams=window.__lioraAudio.status.streams;assert(Object.keys(streams).length===4,'wrong stream count');for(const stream of Object.values(streams))assert(stream.paused===true,'stream started before gesture');});
 await test('native route still creates five audio19 media elements',()=>{const media=[...document.querySelectorAll('audio')];assert(media.length===5,`wrong media count ${media.length}`);for(const audio of media)assert(audio.src.includes('?v=audio19'),`native media behavior changed ${audio.src}`);});
