@@ -3,10 +3,13 @@
 
 Pipeline:
   magenta key -> despill -> crop transparent rows -> optional skyline crop
-  -> heal strong interior seams -> verify every vertical join -> WebP
+  -> heal only catastrophic interior joins -> verify the real left/right wrap
+  -> WebP
 
-The command is deterministic and exits non-zero if a remaining seam is more
-than four times the image's normal column-to-column variation.
+Generated treelines naturally contain sharp vertical edges at trunks and canopy
+clumps. Those are not seams. The guard therefore treats the outer wrap as its
+own invariant and only heals an interior join when it is a true statistical
+outlier, rather than repeatedly blurring normal artwork.
 """
 from __future__ import annotations
 
@@ -38,7 +41,6 @@ def key_magenta(image: Image.Image, tolerance: int = 90) -> Image.Image:
             for i, channel in enumerate((r, g, b)):
                 value = (channel - KEY[i] * (1 - alpha)) / alpha if alpha > 0 else 0
                 out.append(max(0, min(255, round(value))))
-            # Remove the violet fringe left by the generated magenta key.
             out[0] = min(out[0], out[1] + 12)
             out[2] = min(out[2], out[1] + 12)
             px[x, y] = (*out, round(alpha * 255))
@@ -53,7 +55,7 @@ def crop_transparent_rows(image: Image.Image) -> Image.Image:
 
 
 def column_gaps(image: Image.Image) -> list[float]:
-    """Mean premultiplied RGBA difference for each vertical join, including wrap."""
+    """Premultiplied RGBA difference for every vertical join, wrap included."""
     width, height = image.size
     px = image.load()
     gaps: list[float] = []
@@ -74,21 +76,56 @@ def column_gaps(image: Image.Image) -> list[float]:
     return gaps
 
 
-def heal_one_seam(image: Image.Image, overlap: int, threshold: float = 4.0) -> tuple[Image.Image, dict | None]:
-    width, height = image.size
-    gaps = column_gaps(image)
-    mean = sum(gaps) / len(gaps)
-    seam = max(range(width), key=gaps.__getitem__)
+def percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = round((len(ordered) - 1) * fraction)
+    return ordered[max(0, min(len(ordered) - 1, index))]
 
-    # The outer wrap is not an interior cut. If it is the outlier, refuse later
-    # in verify() rather than smearing the two ends independently.
-    if min(seam, width - 1 - seam) < overlap * 2 or gaps[seam] < mean * threshold:
+
+def gap_stats(image: Image.Image) -> dict:
+    gaps = column_gaps(image)
+    interior = gaps[:-1]
+    mean = sum(interior) / len(interior) if interior else 0.0
+    p95 = percentile(interior, 0.95)
+    worst_x = max(range(len(interior)), key=interior.__getitem__) if interior else 0
+    worst = interior[worst_x] if interior else 0.0
+    wrap = gaps[-1] if gaps else 0.0
+    return {
+        "gaps": gaps,
+        "mean": mean,
+        "p95": p95,
+        "worst_x": worst_x,
+        "worst": worst,
+        "wrap": wrap,
+        "worst_mean_ratio": worst / mean if mean else 0.0,
+        "worst_p95_ratio": worst / p95 if p95 else 0.0,
+        "wrap_mean_ratio": wrap / mean if mean else 0.0,
+        "wrap_p95_ratio": wrap / p95 if p95 else 0.0,
+    }
+
+
+def is_catastrophic(stats: dict) -> bool:
+    """A generated cut, not an ordinary tree/grass edge."""
+    return stats["worst"] > max(stats["mean"] * 8.0, stats["p95"] * 3.0)
+
+
+def heal_one_catastrophic_seam(image: Image.Image, overlap: int) -> tuple[Image.Image, dict | None]:
+    stats = gap_stats(image)
+    seam = stats["worst_x"]
+    width, height = image.size
+    if not is_catastrophic(stats):
         return image, None
+    if min(seam, width - 1 - seam) < overlap * 2:
+        raise ValueError(
+            f"catastrophic join x={seam} is too close to the wrap to heal safely"
+        )
 
     left = image.crop((0, 0, seam + 1, height))
     right = image.crop((seam + 1, 0, width, height))
     if left.width <= overlap or right.width <= overlap:
-        return image, None
+        raise ValueError(f"catastrophic join x={seam} has too little artwork around it")
 
     blended = Image.new("RGBA", (width - overlap, height))
     blended.paste(left.crop((0, 0, left.width - overlap, height)), (0, 0))
@@ -105,15 +142,14 @@ def heal_one_seam(image: Image.Image, overlap: int, threshold: float = 4.0) -> t
             a, b = tail[x, y], head[x, y]
             out[x, y] = tuple(round(a[i] * (1 - t) + b[i] * t) for i in range(4))
     blended.paste(patch, (left.width - overlap, 0))
-    return blended, {"x": seam, "gap": gaps[seam], "mean": mean, "overlap": overlap}
+    return blended, stats
 
 
-def heal_strong_seams(image: Image.Image, overlap: int, max_passes: int = 6) -> tuple[Image.Image, list[dict]]:
-    """Heal multiple independent generated joins, strongest first."""
+def heal_catastrophic_seams(image: Image.Image, overlap: int, max_passes: int = 3) -> tuple[Image.Image, list[dict]]:
     healed = image
     reports: list[dict] = []
     for _ in range(max_passes):
-        next_image, report = heal_one_seam(healed, overlap)
+        next_image, report = heal_one_catastrophic_seam(healed, overlap)
         if report is None:
             break
         healed = next_image
@@ -121,16 +157,22 @@ def heal_strong_seams(image: Image.Image, overlap: int, max_passes: int = 6) -> 
     return healed, reports
 
 
-def verify(image: Image.Image, max_ratio: float = 4.0) -> tuple[int, float, float]:
-    gaps = column_gaps(image)
-    mean = sum(gaps) / len(gaps)
-    worst = max(range(len(gaps)), key=gaps.__getitem__)
-    ratio = gaps[worst] / mean if mean else 0.0
-    if ratio > max_ratio:
+def verify(image: Image.Image) -> dict:
+    stats = gap_stats(image)
+    if is_catastrophic(stats):
         raise ValueError(
-            f"worst vertical seam x={worst} is {ratio:.1f}x mean ({gaps[worst]:.2f}/{mean:.2f})"
+            f"interior join x={stats['worst_x']} is still catastrophic: "
+            f"{stats['worst_mean_ratio']:.1f}x mean / {stats['worst_p95_ratio']:.1f}x p95"
         )
-    return worst, ratio, mean
+
+    # This is the seam users actually see when the cylinder wraps. It may be a
+    # little sharper than an average tree edge, but it must not be an outlier.
+    if stats["wrap"] > max(stats["mean"] * 4.0, stats["p95"] * 2.5):
+        raise ValueError(
+            f"left/right wrap is not seamless: {stats['wrap_mean_ratio']:.1f}x mean / "
+            f"{stats['wrap_p95_ratio']:.1f}x p95"
+        )
+    return stats
 
 
 def main() -> int:
@@ -141,7 +183,7 @@ def main() -> int:
     parser.add_argument("--keep-top", type=int, default=0)
     parser.add_argument("--tolerance", type=int, default=90)
     parser.add_argument("--quality", type=int, default=88)
-    parser.add_argument("--max-heals", type=int, default=6)
+    parser.add_argument("--max-heals", type=int, default=3)
     args = parser.parse_args()
 
     source = Path(args.source)
@@ -157,18 +199,23 @@ def main() -> int:
         cropped = cropped.crop((0, 0, cropped.width, min(args.keep_top, cropped.height)))
         print(f"crop  skyline top {cropped.height}px")
 
-    healed, reports = heal_strong_seams(cropped, args.overlap, args.max_heals)
+    healed, reports = heal_catastrophic_seams(cropped, args.overlap, args.max_heals)
     if reports:
         for index, seam in enumerate(reports, start=1):
             print(
-                f"heal{index} x={seam['x']} {seam['gap'] / seam['mean']:.1f}x mean "
-                f"over {seam['overlap']}px"
+                f"heal{index} x={seam['worst_x']} "
+                f"{seam['worst_mean_ratio']:.1f}x mean / {seam['worst_p95_ratio']:.1f}x p95 "
+                f"over {args.overlap}px"
             )
     else:
-        print("heal  no strong interior seam")
+        print("heal  no catastrophic interior join")
 
-    worst, ratio, _ = verify(healed)
-    print(f"check worst x={worst} {ratio:.2f}x mean")
+    stats = verify(healed)
+    print(
+        f"check interior x={stats['worst_x']} {stats['worst_mean_ratio']:.2f}x mean / "
+        f"{stats['worst_p95_ratio']:.2f}x p95; wrap "
+        f"{stats['wrap_mean_ratio']:.2f}x mean / {stats['wrap_p95_ratio']:.2f}x p95"
+    )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     healed.save(destination, "WEBP", quality=args.quality, method=6)
