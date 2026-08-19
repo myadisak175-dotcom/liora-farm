@@ -1,5 +1,6 @@
 name: Prep Backdrop World23
 
+# Kept branch-scoped so generated binary assets never touch main before review.
 on:
   push:
     branches:
