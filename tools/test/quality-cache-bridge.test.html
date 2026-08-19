@@ -31,7 +31,7 @@ await test('cached v1 detector is forced to high instead of medium',()=>{
 
 await test('quality bridge leaves world revision alone and accepts current audio release',()=>{
   assert(page.includes('./src/main.js?v=world23'),'quality bridge changed the authored world revision');
-  assert(page.includes('./src/audio-runtime.js?v=audio20'),'audio selector revision is not current');
+  assert(page.includes('./src/audio-runtime.js?v=audio21'),'audio selector revision is not current');
 });
 
 window.__results=results;window.__done=true;
