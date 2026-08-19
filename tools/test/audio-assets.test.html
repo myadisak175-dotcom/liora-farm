@@ -105,8 +105,10 @@ await test("a failed footstep attempt is not counted as audible playback", async
   const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
   assert(source.includes("attemptedSteps += 1"), "footstep attempts are not observable");
   assert(source.includes("playedSteps += 1"), "successful native plays are not observable");
-  const playBlock = source.match(/const started = stepAudio\.play\(\);([\s\S]*?)\.catch\(/)?.[1] ?? "";
-  assert(playBlock.includes("playedSteps += 1"), "playedSteps increments before play() succeeds");
+  const nativeStep = source.match(/function playNativeStep\([\s\S]*?\n\}\n\nfunction checkForStalledStreams/)?.[0] ?? "";
+  assert(nativeStep.includes("const started = stepAudio.play();"), "native footstep no longer calls play()");
+  assert(/const started = stepAudio\.play\(\);[\s\S]*?Promise\.resolve\(started\)\.then\(\(\) => \{[\s\S]*?playedSteps \+= 1/.test(nativeStep),
+    "playedSteps is not incremented inside the successful play() continuation");
   assert(!/attemptedSteps\s*===\s*playedSteps/.test(source), "attempts and actual playback are still conflated");
 });
 
