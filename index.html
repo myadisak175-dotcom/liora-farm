@@ -30,15 +30,31 @@
   }});
   document.head.append(map);
 
+  // One-release bridge for Safari module caches. A query on main.js does not
+  // propagate to nested ES-module imports, so pretending to ship "render24"
+  // would not actually refresh a cached quality.js. Instead make both the old
+  // v1 detector and the current v2 detector agree: on a high-end Retina Apple
+  // device with no current v2 choice, seed the legacy key to high. A deliberate
+  // v2 choice always wins, and an old explicit v1 "low" is preserved.
+  try {
+    const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const cores = Number(navigator.hardwareConcurrency) || 0;
+    const legacyQuality = localStorage.getItem("liora.quality.v1");
+    const currentQuality = localStorage.getItem("liora.quality.v2");
+    if (appleMobile && devicePixelRatio >= 3 && cores >= 6
+        && currentQuality === null && legacyQuality !== "low") {
+      localStorage.setItem("liora.quality.v1", "high");
+    }
+  } catch {}
+
   const entry = document.createElement("script");
   entry.type = "module";
   entry.src = "./src/main.js?v=world23";
   document.head.append(entry);
 
-  // One audio owner, one cache revision. The previous release loaded a core
-  // bootstrap plus Android recovery plus an iOS footstep fallback; those three
-  // modules could disagree about mute/unlock/footstep state. audio19 replaces
-  // the whole stack with one runtime.
+  // One audio owner, one cache revision. audio19 replaces the previous split
+  // bootstrap/recovery/iOS-fallback stack.
   const audio = document.createElement("script");
   audio.type = "module";
   audio.src = "./src/audio-runtime.js?v=audio19";

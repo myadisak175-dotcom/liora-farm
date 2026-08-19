@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Quality cache bridge</title></head>
+<body><pre id="out"></pre>
+<script type="module">
+const results=[];
+const out=document.querySelector('#out');
+async function test(name,fn){try{await fn();results.push({name,pass:true,detail:''});}catch(error){results.push({name,pass:false,detail:String(error?.message??error)});}}
+function assert(value,message){if(!value)throw new Error(message);}
+const page=await fetch('../../index.html').then((response)=>response.text());
+
+await test('bridge targets only high-end Apple mobile signatures',()=>{
+  assert(page.includes('/iPad|iPhone|iPod/'),'Apple mobile detection missing');
+  assert(page.includes('devicePixelRatio >= 3'),'Retina DPR guard missing');
+  assert(page.includes('cores >= 6'),'core-count guard missing');
+});
+
+await test('current v2 user choice always blocks legacy migration',()=>{
+  assert(page.includes('const currentQuality = localStorage.getItem("liora.quality.v2")'),'v2 choice is not read');
+  assert(page.includes('currentQuality === null'),'migration can overwrite a current v2 choice');
+});
+
+await test('old explicit low remains respected',()=>{
+  assert(page.includes('legacyQuality !== "low"'),'legacy low is not protected');
+});
+
+await test('cached v1 detector is forced to high instead of medium',()=>{
+  assert(page.includes('localStorage.setItem("liora.quality.v1", "high")'),'legacy cache bridge does not seed high');
+  assert(!page.includes('localStorage.setItem("liora.quality.v2", "high")'),'bridge incorrectly turns auto detection into a permanent v2 choice');
+});
+
+await test('world and audio revisions remain unchanged by quality bridge',()=>{
+  assert(page.includes('./src/main.js?v=world23'),'quality bridge changed the authored world revision');
+  assert(page.includes('./src/audio-runtime.js?v=audio19'),'quality bridge changed the validated audio revision');
+});
+
+window.__results=results;window.__done=true;
+out.textContent=results.map((r)=>`${r.pass?'PASS':'FAIL'} ${r.name}${r.detail?` | ${r.detail}`:''}`).join('\n');
+</script>
+</body></html>
