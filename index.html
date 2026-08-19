@@ -53,11 +53,12 @@
   entry.src = "./src/main.js?v=world23";
   document.head.append(entry);
 
-  // One audio owner, one cache revision. audio19 replaces the previous split
-  // bootstrap/recovery/iOS-fallback stack.
+  // audio20 is a platform selector: Android keeps the verified native runtime,
+  // while iOS uses one AudioContext for ambience and footsteps so Safari never
+  // has to run several native media elements and seek a short clip every step.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio19";
+  audio.src = "./src/audio-runtime.js?v=audio20";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
