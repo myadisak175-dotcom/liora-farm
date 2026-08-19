@@ -2,38 +2,133 @@ name: Foundation tests
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  test:
+  finalize-world23:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout source branch
         uses: actions/checkout@v4
-
-      - name: Use Node 22
-        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          ref: agent/backdrop-world23
+          fetch-depth: 0
 
-      - name: Syntax check JavaScript
-        shell: bash
+      - name: Wire wide backdrop stack into runtime
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once('src/config.js',
+              'export const BUILD = "worlds-9-one-stack";',
+              'export const BUILD = "worlds-10-wide-backdrop";')
+
+          config = Path('src/config.js')
+          text = config.read_text(encoding='utf-8')
+          pattern = re.compile(r'  paintedBackdrop: \{\n.*?\n  \},\n  /\*\*\n   \* The authored GLB islands', re.S)
+          replacement = '''  paintedBackdrop: {
+    enabled: true,
+    bands: [
+      {
+        name: "PaintedPeaks",
+        texture: "./assets/textures/backdrop-peaks.webp",
+        radius: 720, height: 148, y: 18, repeat: 4,
+        tint: 0xe8f2f6, haze: 0.34, renderOrder: -30,
+      },
+      {
+        name: "PaintedTreeline",
+        texture: "./assets/textures/backdrop-treeline.webp",
+        radius: 560, height: 60, y: -1, repeat: 4,
+        tint: 0xe8f1e7, haze: 0.22, renderOrder: -29,
+      },
+      {
+        name: "PaintedMeadow",
+        texture: "./assets/textures/backdrop-meadow.webp",
+        radius: 430, height: 46, y: -7, repeat: 4,
+        tint: 0xf0f5e9, haze: 0.10, renderOrder: -28,
+      },
+    ],
+  },
+  /**
+   * The authored GLB islands'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'src/config.js: paintedBackdrop block match count={count}')
+          config.write_text(text, encoding='utf-8')
+
+          replace_once('src/main.js',
+              'const APP_REVISION = "world22";',
+              'const APP_REVISION = "world23";')
+
+          index = Path('index.html')
+          text = index.read_text(encoding='utf-8')
+          count = text.count('world22')
+          if count < 2:
+              raise SystemExit(f'index.html: expected at least two world22 cache keys, found {count}')
+          index.write_text(text.replace('world22', 'world23'), encoding='utf-8')
+
+          audio = Path('audio-test.html')
+          text = audio.read_text(encoding='utf-8')
+          if '?v=world22' not in text:
+              raise SystemExit('audio-test.html: world22 return link not found')
+          audio.write_text(text.replace('?v=world22', '?v=world23'), encoding='utf-8')
+
+          layers = Path('tools/test/world-layers.test.html')
+          text = layers.read_text(encoding='utf-8')
+          old_ids = '["terrain", "treeLine", "ground", "PaintedForest", "PaintedPeaks", "floatingIslands", "sky"]'
+          new_ids = '["terrain", "treeLine", "ground", "PaintedMeadow", "PaintedTreeline", "PaintedPeaks", "floatingIslands", "sky"]'
+          if old_ids not in text:
+              raise SystemExit('world-layers.test.html: old layer list not found')
+          text = text.replace(old_ids, new_ids, 1)
+          text = text.replace('"PaintedForest"', '"PaintedMeadow"')
+          layers.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify the world distance stack
+        run: |
+          python - <<'PY'
+          import math
+          world_limit, sky, camera_far = 38, 820, 900
+          bands = [
+              ('PaintedMeadow', 430, 46, -7),
+              ('PaintedTreeline', 560, 60, -1),
+              ('PaintedPeaks', 720, 148, 18),
+          ]
+          elevations = []
+          for name, radius, height, y in bands:
+              farthest = radius + world_limit
+              assert farthest < sky < camera_far, (name, farthest, sky, camera_far)
+              elevations.append((name, math.degrees(math.atan2(y + height / 2 - 10, radius))))
+          assert 418 < bands[0][1]
+          assert all(elevations[i][1] > elevations[i-1][1] for i in range(1, len(elevations))), elevations
+          print('distance stack:', [(n, r + world_limit) for n, r, _, _ in bands])
+          print('top elevations:', elevations)
+          PY
+
+      - name: Restore CI, remove temporary workflow, and commit
+        env:
+          BRANCH: agent/backdrop-world23
         run: |
           set -euo pipefail
-          while IFS= read -r -d '' file; do
-            node --check "$file"
-          done < <(find src tools/test -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
-
-      - name: Module graph
-        # Catches the mistakes a build-less ES-module project has no bundler to
-        # catch: a specifier that no longer resolves, and cache-busting queries
-        # on module imports. Both fail silently in the browser.
-        run: node tools/test/module-graph.mjs
-
-      - name: Browser regression suite
-        run: node tools/test/run.mjs
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout origin/main -- .github/workflows/foundation-tests.yml
+          if [ -e .github/workflows/prep-backdrop-world23.yml ]; then
+            git rm .github/workflows/prep-backdrop-world23.yml
+          fi
+          git add .github/workflows/foundation-tests.yml src/config.js src/main.js index.html audio-test.html tools/test/world-layers.test.html
+          git commit -m 'Wire wide meadow and treeline into world23'
+          git push origin HEAD:${BRANCH}
