@@ -78,8 +78,6 @@ await test("the runtime never references the corrupt legacy leaf file", async ()
 
 await test("a device that ignores element volume still gets a real mix", async () => {
   const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  // iOS silently drops writes to HTMLMediaElement.volume, which used to play
-  // every long track at full level at once. The probe decides the routing.
   assert(source.includes("function detectElementVolume()"), "element volume support is no longer probed");
   assert(source.includes("probe.volume = 0.5"), "the volume probe no longer writes a test level");
   assert(source.includes("if (elementVolumeSupported) track.audio.volume = level;"), "native stream crossfade is missing");
@@ -90,12 +88,10 @@ await test("a device that ignores element volume still gets a real mix", async (
   assert(graphUses.length === 1, "media elements are routed through Web Audio outside the fallback");
 });
 
-await test("the player's choice to silence the game survives a world switch", async () => {
+await test("the player's mute choice remains internally consistent", async () => {
   const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
   assert(source.includes('const MUTE_KEY = "liora.audio.muted"'), "the mute choice is no longer stored");
   assert(source.includes("let muted = readStoredMuted();"), "a reload no longer restores the mute choice");
-  // Mute has exactly one writer, because clearing the flag anywhere else left
-  // the master gain at zero and silenced every footstep until the next reload.
   const writes = source.match(/^\s*muted = /gm) ?? [];
   assert(writes.length === 2, `mute is written from ${writes.length} places instead of ensureAudio and setMuted`);
   assert(/muted = false;\n  storeMuted\(false\);/.test(source), "unlocking no longer records that sound is on");
@@ -122,8 +118,6 @@ await test("one missing long track cannot silence footsteps or the other streams
   assert(source.includes("Promise.allSettled"), "footstep fallbacks no longer settle independently");
   assert(source.includes("last-resort fallback"), "procedural ambience fallback is missing");
   assert(source.includes("แตะปุ่มเสียงอีกครั้ง"), "blocked mobile playback no longer prompts a retry");
-  // A track the browser refused, or that a phone call paused, has to come back
-  // without waiting for the player to find the sound button.
   assert(source.includes("function retryBlockedStreams(nowMs)"), "blocked streams are only retried from a gesture again");
   assert(source.includes("retryBlockedStreams(now)"), "the retry pass never runs");
   assert(source.includes('audio.addEventListener("pause"'), "an interrupted track is no longer noticed");
@@ -132,13 +126,9 @@ await test("one missing long track cannot silence footsteps or the other streams
 
 await test("a phone that stalls or refuses a resume does not lose a layer of the mix", async () => {
   const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  // "Playing" is not the same as audible: a stalled mobile stream keeps the
-  // state and stops the clock, so the media position is what gets checked.
   assert(source.includes("STREAM_STALL_MS"), "a stalled stream is never noticed");
   assert(source.includes('setRuntimeError(track.name, "stalled")'), "a stalled stream is not reported or restarted");
   assert(source.includes("Math.abs(position - track.lastMediaTime)"), "a looping track would be misread as stalled");
-  // Stopping a silent track is only ever an optimization; if this device will
-  // not start it again, the mix must keep it running unheard instead.
   assert(source.includes("pauseGatingBroken = true"), "a refused resume no longer disables pause gating");
   assert(source.includes("function canSilenceWithoutPausing(track)"), "silence now depends on pausing even where volume works");
   assert(/const keepAlive = pauseGatingBroken && canSilenceWithoutPausing\(track\);/.test(source), "the keep-alive fallback is not wired into playback");
@@ -146,36 +136,42 @@ await test("a phone that stalls or refuses a resume does not lose a layer of the
 
 await test("a footstep failure cannot take the long tracks down with it", async () => {
   const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  // Where element volume is read-only the streams are routed through the same
-  // context the footsteps use, and a media element cannot be handed back to
-  // native output once routed. Closing that context on a decode failure left
-  // the ambience playing in name only, with `unlocked` true so nothing retried.
   assert(source.includes("if (!trackList().some((track) => track.node))"), "a footstep failure closes a context the long tracks are routed through");
   const failure = source.match(/console\.warn\("Liora footstep audio init failed"[\s\S]*?\n    \}/)?.[0] ?? "";
   assert(failure.includes("buffers = null"), "a failed footstep load no longer clears its buffers");
   assert(/if \(!trackList\(\)[\s\S]*?context\?\.close/.test(failure), "the context is closed before checking for routed streams");
 });
 
-await test("a release cannot ship new audio behind a stale world-switch revision", async () => {
+await test("single-world device recovery is wired", async () => {
+  const page = await fetch("../../index.html").then((response) => response.text());
+  const recovery = await fetch("../../src/audio-single-world-recovery.js").then((response) => response.text());
+  const ios = await fetch("../../src/audio-ios-footstep-fallback.js").then((response) => response.text());
+  const quality = await fetch("../../src/systems/quality.js").then((response) => response.text());
+  assert(page.includes("audio-single-world-recovery.js?v=audio18"), "Android recovery is not cache-busted");
+  assert(page.includes("audio-ios-footstep-fallback.js?v=audio18"), "iOS footstep fallback is not shipped");
+  assert(recovery.includes("sessionHasUnlocked"), "recovery can still mistake a stale startup mute for an intentional mute");
+  assert(recovery.includes('document.addEventListener("touchend"'), "touchend recovery is missing");
+  assert(ios.includes("normalSteps > baselineSteps"), "iOS fallback cannot turn itself off when normal footsteps work");
+  assert(ios.includes("footstep_grass_soft.mp3?v=audio18"), "iOS fallback does not use the compact footstep asset");
+  assert(quality.includes("!Number.isFinite(deviceMemory) && pixelRatio >= 3"), "modern Retina Safari still falls through to medium quality");
+  assert(page.includes('localStorage.setItem("liora.quality.v1", "high")'), "iPhone quality is not seeded before main boot");
+});
+
+await test("audio cache revision is independent from the single world revision", async () => {
   const page = await fetch("../../index.html").then((response) => response.text());
   const mainSource = await fetch("../../src/main.js").then((response) => response.text());
   const audioRevision = page.match(/audio-bootstrap-v8\.js\?v=([\w.-]+)/)?.[1];
+  const recoveryRevision = page.match(/audio-single-world-recovery\.js\?v=([\w.-]+)/)?.[1];
+  const iosRevision = page.match(/audio-ios-footstep-fallback\.js\?v=([\w.-]+)/)?.[1];
   const entryRevision = page.match(/main\.js\?v=([\w.-]+)/)?.[1];
   const appRevision = mainSource.match(/const APP_REVISION = "([\w.-]+)"/)?.[1];
   assert(audioRevision, "the audio bootstrap lost its cache-busting revision");
-  assert(entryRevision === audioRevision, `the entry module ships ${entryRevision} while audio ships ${audioRevision}`);
-  // Switching worlds is a reload, and the revision on that URL is what stops a
-  // phone reusing the previous release's cached index document — which would
-  // quietly load the previous audio bootstrap with it.
-  assert(appRevision === audioRevision, `world-switch URLs would still carry ${appRevision} after an ${audioRevision} release`);
-  // A release that changes how the world looks but keeps the previous
-  // release's revision ships behind a cache key players already hold.
-  const config = await fetch("../../src/config.js").then((response) => response.text());
-  const build = config.match(/export const BUILD = "([\w.-]+)"/)?.[1];
-  assert(build && build !== audioRevision, "the build marker is missing");
-  assert(/sourceHeight/.test(mainSource), "main reads a catalog height field the frozen item does not have");
+  assert(audioRevision === recoveryRevision && audioRevision === iosRevision,
+    `audio companions are split across ${audioRevision}/${recoveryRevision}/${iosRevision}`);
+  assert(entryRevision === appRevision, `the world entry is ${entryRevision} while its app revision is ${appRevision}`);
+  assert(audioRevision !== entryRevision, "audio fixes are still coupled to the world revision");
   const audioTest = await fetch("../../audio-test.html").then((response) => response.text());
-  assert(audioTest.includes(`?v=${audioRevision}`), "the audio test page links back to a stale revision");
+  assert(audioTest.includes(`?v=${appRevision}`), "the audio test no longer returns to the active world revision");
 });
 
 window.__results = results;

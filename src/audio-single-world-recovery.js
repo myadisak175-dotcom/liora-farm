@@ -1,12 +1,13 @@
 // Single-world mobile audio recovery.
 //
-// audio-bootstrap-v8 owns the actual mix. This tiny companion only supplies a
-// second gesture path after the old world-switch UI was removed. On some
-// Android builds the first pointerdown is consumed while media/Web Audio is
-// still starting; a later pointerup/click should be allowed to retry blocked
-// long tracks without asking the player to find the sound button.
+// audio-bootstrap-v8 owns the actual mix. This companion supplies extra
+// gesture paths after the old world-switch UI was removed. Some Android builds
+// consume the first pointerdown while media/Web Audio is still starting; later
+// pointerup/click/touchend gestures retry the same public runtime instead of
+// creating a second audio system.
 
 const BROKEN_STREAM_STATES = new Set(["blocked", "failed"]);
+let sessionHasUnlocked = false;
 
 function isAudioButtonTarget(target) {
   const button = document.querySelector("#audio-toggle");
@@ -20,7 +21,19 @@ function recoverAudioFromGesture(event) {
   if (!audio) return;
 
   const status = audio.status;
-  if (!status || status.loading || status.muted) return;
+  if (!status) return;
+  if (status.unlocked) sessionHasUnlocked = true;
+
+  // Before audio has ever succeeded in this page, a stale mute bit is treated
+  // as legacy startup state. Clear it once from a real game gesture. Once sound
+  // has successfully unlocked, later mute choices are respected and this path
+  // never turns them back on behind the player's back.
+  if (!sessionHasUnlocked && status.muted) {
+    audio.setMuted(false);
+    return;
+  }
+
+  if (status.loading || status.muted) return;
 
   if (!status.unlocked) {
     void audio.unlock();
@@ -32,11 +45,12 @@ function recoverAudioFromGesture(event) {
 
   // setMuted(false) is intentionally used as the public recovery path: inside
   // audio-bootstrap it resumes the AudioContext and calls startAllStreams()
-  // without changing the player's mute choice.
+  // without changing the player's current unmuted state.
   if (hasBrokenStream) audio.setMuted(false);
 }
 
 document.addEventListener("pointerup", recoverAudioFromGesture, { capture: true });
 document.addEventListener("click", recoverAudioFromGesture, { capture: true });
+document.addEventListener("touchend", recoverAudioFromGesture, { capture: true, passive: true });
 
-window.__lioraAudioRecovery = Object.freeze({ revision: "single-world-1" });
+window.__lioraAudioRecovery = Object.freeze({ revision: "single-world-2" });

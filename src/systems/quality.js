@@ -96,6 +96,17 @@ export function detectQualityId({
   if (Number.isFinite(deviceMemory) && deviceMemory > 0 && deviceMemory <= 3) return "low";
   if (Number.isFinite(cores) && cores > 0 && cores <= 4) return "low";
   if (Number.isFinite(deviceMemory) && deviceMemory >= 6) return "high";
+
+  // Safari intentionally does not expose navigator.deviceMemory. Modern
+  // Retina iPhones therefore used to miss the high tier even when they expose
+  // six performance/efficiency cores and a 3x display, landing on medium with
+  // antialiasing disabled and DPR capped at 1.5. Treat "no RAM signal + dense
+  // display + >=6 cores" as a modern high-end mobile signature. Android
+  // browsers normally expose deviceMemory, so this does not promote ordinary
+  // six-core phones that already have a real memory signal.
+  if (!Number.isFinite(deviceMemory) && pixelRatio >= 3
+      && Number.isFinite(cores) && cores >= 6) return "high";
+
   if (pixelRatio >= 3 && Number.isFinite(cores) && cores >= 8) return "high";
   return "medium";
 }
