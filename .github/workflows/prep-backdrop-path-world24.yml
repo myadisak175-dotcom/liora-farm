@@ -1,11 +1,12 @@
 name: Prep backdrop path world24
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/distant-path-world24
-    paths:
-      - tools/.run-backdrop-path-world24
+      - main
+    types:
+      - opened
+      - synchronize
 
 permissions:
   contents: write
