@@ -28,11 +28,11 @@
     three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
     "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
     // Bust the visual-only modules together so a phone cannot combine the new
-    // hill/village with an older cached backdrop graph. APP_REVISION remains
-    // world23 and audio remains on its independent audio21 release.
+    // hill/village/World Tree with an older cached backdrop graph. APP_REVISION
+    // remains world23 and audio remains on its independent audio21 release.
     "./src/config.js": "./src/config.js?v=village3",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
-    "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=village3",
+    "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree1",
   }});
   document.head.append(map);
 
@@ -56,7 +56,7 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23&visual=village3";
+  entry.src = "./src/main.js?v=world23&visual=worldtree1";
   document.head.append(entry);
 
   // audio21 keeps Android on its verified audio19 native runtime. iOS now
