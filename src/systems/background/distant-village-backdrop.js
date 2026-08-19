@@ -12,8 +12,12 @@ export async function createDistantVillageBackdrop({
   url,
   radius = 500,
   bearingDeg = -135,
-  y = 19,
-  width = 165,
+  // The sprite is anchored close to its bottom edge, so this is effectively
+  // the village hill's ground line rather than the image centre. Keeping that
+  // line above the far meadow stops the outer ground from cutting away half
+  // the artwork while still making the village feel planted in the landscape.
+  y = 9,
+  width = 150,
   tint = 0xffffff,
   haze = 0.14,
   renderOrder = -28.5,
@@ -62,8 +66,12 @@ export async function createDistantVillageBackdrop({
   const distance = Math.max(20, Number(radius) || 500);
   const sprite = new THREE.Sprite(material);
   sprite.name = "DistantVillage";
+  // Anchor almost at the bottom of the authored cutout instead of its centre.
+  // This raises the whole village without inventing a floating hill and keeps
+  // only a tiny base overlap available for the meadow to hide naturally.
+  sprite.center.set(0.5, 0.06);
   sprite.position.set(Math.cos(angle) * distance, Number(y) || 0, Math.sin(angle) * distance);
-  sprite.scale.set(Math.max(1, Number(width) || 165), spriteHeight, 1);
+  sprite.scale.set(Math.max(1, Number(width) || 150), spriteHeight, 1);
   sprite.renderOrder = Number.isFinite(renderOrder) ? renderOrder : -28.5;
   sprite.frustumCulled = true;
   group.add(sprite);
@@ -79,6 +87,7 @@ export async function createDistantVillageBackdrop({
       width: sprite.scale.x,
       height: sprite.scale.y,
       bearingDeg: Number(bearingDeg) || 0,
+      groundY: Number(y) || 0,
     },
     /** Match the existing painted horizon through sunset and night. */
     setAtmosphere(horizonColor) {
