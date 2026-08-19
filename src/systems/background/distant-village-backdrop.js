@@ -50,8 +50,8 @@ function makeSprite({
   const distance = Math.max(20, Number(radius) || 20);
   const sprite = new THREE.Sprite(material);
   sprite.name = name;
-  // Both authored cutouts contain transparent space above the artwork. Pinning
-  // near the bottom turns y into a useful ground line instead of an image-centre
+  // Authored cutouts contain transparent space above the artwork. Pinning near
+  // the bottom turns y into a useful ground line instead of an image-centre
   // offset, and lets the nearer meadow hide just the base of each layer.
   sprite.center.set(0.5, 0.06);
   sprite.position.set(Math.cos(angle) * distance, Number(y) || 0, Math.sin(angle) * distance);
@@ -74,17 +74,17 @@ function tintForAtmosphere(layer, horizonColor, haze) {
 }
 
 /**
- * One authored village accent plus a small nearer hill on the far horizon.
+ * Authored horizon landmarks that do not repeat around the world.
  *
- * These assets are intentionally not seamless. They stay in one real world
- * direction while the existing meadow / treeline / peaks rings continue around
- * the full horizon. Layer order is: peaks -> treeline -> village -> hill ->
- * meadow, so the hill can lead the eye toward town without replacing any of the
- * mountain stack that already works.
+ * The village remains at -135 degrees with its small foreground hill. The
+ * World Tree is an independent transparent sprite at 45 degrees, exactly the
+ * opposite direction, so the two landmarks never compete in the same view.
+ * Existing meadow / treeline / peaks bands are unchanged.
  */
 export async function createDistantVillageBackdrop({
   url,
   foregroundUrl,
+  worldTreeUrl,
   radius = 500,
   bearingDeg = -135,
   y = 9,
@@ -94,15 +94,22 @@ export async function createDistantVillageBackdrop({
   tint = 0xffffff,
   haze = 0.14,
   renderOrder = -28.5,
-  // The new grassy knoll sits a little closer than the village, but still
-  // behind PaintedMeadow (radius 430 / renderOrder -28). Only its upper roll
-  // and path should be visible, enough to connect the meadow to the town.
+  // The grassy knoll sits a little closer than the village, but still behind
+  // PaintedMeadow (radius 430 / renderOrder -28).
   foregroundRadius = 474,
   foregroundY = -3,
   foregroundWidth = 156,
   foregroundTint = 0xffffff,
   foregroundHaze = 0.08,
   foregroundRenderOrder = -28.25,
+  // World Tree: one quiet landmark on the exact opposite horizon.
+  worldTreeBearingDeg = 45,
+  worldTreeRadius = 520,
+  worldTreeY = 9,
+  worldTreeWidth = 128,
+  worldTreeTint = 0xffffff,
+  worldTreeHaze = 0.16,
+  worldTreeRenderOrder = -28.6,
   anisotropy = 1,
 } = {}) {
   const group = new THREE.Group();
@@ -113,6 +120,7 @@ export async function createDistantVillageBackdrop({
       group,
       sprite: null,
       foreground: null,
+      worldTree: null,
       stats: { drawCalls: 0 },
       setAtmosphere() {},
       dispose() {},
@@ -153,21 +161,45 @@ export async function createDistantVillageBackdrop({
       });
       group.add(foreground.sprite);
     } catch (error) {
-      // The hill is decorative. If its upload is missing or stale, keep the
-      // already-proven village and game running instead of failing the world.
+      // Decorative only: keep the proven village/game alive if the hill fails.
       console.warn("Distant village foreground hill unavailable", error);
+    }
+  }
+
+  let worldTree = null;
+  const resolvedWorldTreeUrl = worldTreeUrl || siblingAssetUrl(url, "world_tree_background.webp");
+  if (resolvedWorldTreeUrl) {
+    try {
+      const worldTreeTexture = prepareTexture(await loader.loadAsync(resolvedWorldTreeUrl), anisotropy);
+      worldTree = makeSprite({
+        texture: worldTreeTexture,
+        name: "WorldTreeLandmark",
+        angle: THREE.MathUtils.degToRad(Number(worldTreeBearingDeg) || 45),
+        radius: worldTreeRadius,
+        y: worldTreeY,
+        width: worldTreeWidth,
+        tint: worldTreeTint,
+        renderOrder: Number.isFinite(worldTreeRenderOrder) ? worldTreeRenderOrder : -28.6,
+        opacity: 0.98,
+      });
+      group.add(worldTree.sprite);
+    } catch (error) {
+      // The tree is a visual landmark only and must never block game startup.
+      console.warn("World Tree landmark unavailable", error);
     }
   }
 
   const villageHaze = THREE.MathUtils.clamp(Number(haze) || 0, 0, 1);
   const hillHaze = THREE.MathUtils.clamp(Number(foregroundHaze) || 0, 0, 1);
+  const treeHaze = THREE.MathUtils.clamp(Number(worldTreeHaze) || 0, 0, 1);
 
   return {
     group,
     sprite: village.sprite,
     foreground: foreground?.sprite ?? null,
+    worldTree: worldTree?.sprite ?? null,
     stats: {
-      drawCalls: foreground ? 2 : 1,
+      drawCalls: 1 + (foreground ? 1 : 0) + (worldTree ? 1 : 0),
       radius: village.radius,
       width: village.width,
       height: village.height,
@@ -179,14 +211,22 @@ export async function createDistantVillageBackdrop({
         height: foreground.height,
         groundY: Number(foregroundY) || 0,
       } : null,
+      worldTree: worldTree ? {
+        radius: worldTree.radius,
+        width: worldTree.width,
+        height: worldTree.height,
+        bearingDeg: Number(worldTreeBearingDeg) || 45,
+        groundY: Number(worldTreeY) || 0,
+      } : null,
     },
-    /** Match both cutouts to the established painted horizon at every hour. */
+    /** Match all authored cutouts to the established horizon at every hour. */
     setAtmosphere(horizonColor) {
       tintForAtmosphere(village, horizonColor, villageHaze);
       tintForAtmosphere(foreground, horizonColor, hillHaze);
+      tintForAtmosphere(worldTree, horizonColor, treeHaze);
     },
     dispose() {
-      for (const layer of [foreground, village]) {
+      for (const layer of [worldTree, foreground, village]) {
         if (!layer) continue;
         group.remove(layer.sprite);
         layer.material.dispose();
