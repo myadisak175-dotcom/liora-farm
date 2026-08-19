@@ -29,8 +29,8 @@ await test('cached v1 detector is forced to high instead of medium',()=>{
   assert(!page.includes('localStorage.setItem("liora.quality.v2", "high")'),'bridge incorrectly turns auto detection into a permanent v2 choice');
 });
 
-await test('quality bridge keeps audio21 and loads the cache-safe path25 visual entry',()=>{
-  assert(page.includes('./src/world25-entry.js?v=path25'),'path25 visual entry is not current');
+await test('quality bridge leaves world revision alone and accepts current audio release',()=>{
+  assert(page.includes('./src/main.js?v=world23'),'quality bridge changed the authored world revision');
   assert(page.includes('./src/audio-runtime.js?v=audio21'),'audio selector revision is not current');
 });
 
