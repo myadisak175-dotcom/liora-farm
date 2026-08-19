@@ -19,7 +19,7 @@ const byId = (layers, id) => layers.find((layer) => layer.id === id) ?? null;
 
 const layers = worldLayers(CONFIG);
 ok("every system that occupies a distance is in the stack",
-  ["terrain", "treeLine", "ground", "PaintedForest", "PaintedPeaks", "floatingIslands", "sky"]
+  ["terrain", "treeLine", "ground", "PaintedMeadow", "PaintedTreeline", "PaintedPeaks", "floatingIslands", "sky"]
     .every((id) => byId(layers, id)),
   layers.map((l) => l.id).join(", "));
 ok("every layer declares a kind the checker understands",
@@ -35,8 +35,8 @@ ok("the stack comes out ordered from the player outward",
  * centre instead is what hid the first painted band.
  */
 ok("world-centred layers are measured from the far side of the walkable world",
-  byId(layers, "PaintedForest").farthest
-    === CONFIG.paintedBackdrop.bands.find((b) => b.name === "PaintedForest").radius + CONFIG.worldLimit);
+  byId(layers, "PaintedMeadow").farthest
+    === CONFIG.paintedBackdrop.bands.find((b) => b.name === "PaintedMeadow").radius + CONFIG.worldLimit);
 ok("the sky dome is measured from the camera, because it rides with it",
   byId(layers, "sky").cameraCentred === true
     && byId(layers, "sky").farthest === CONFIG.sky.radius);

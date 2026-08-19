@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-9-one-stack";
+export const BUILD = "worlds-10-wide-backdrop";
 
 export const CONFIG = Object.freeze({
   /**
@@ -180,13 +180,10 @@ export const CONFIG = Object.freeze({
     ],
   },
   /**
-   * Painted horizon bands — an alternative to the built ranges above.
-   *
-   * `repeat` is chosen so one copy of the strip keeps roughly its painted
-   * aspect ratio at that radius: a strip 3172 px wide and 333 tall wrapped
-   * once around r=800 would be 500 m tall. Four copies bring it to ~130 m,
-   * which is the 7-8 degrees the portrait camera can actually show, and it
-   * quadruples the pixels per degree at the same time.
+   * Wide painted distance stack. The nearest meadow hides the visual-ground
+   * rim, the 4096 px treeline supplies the irregular middle silhouette, and
+   * the established peak band stays farthest. All three remain inside the sky
+   * dome when measured from the far side of the walkable world.
    */
   paintedBackdrop: {
     enabled: true,
@@ -194,13 +191,20 @@ export const CONFIG = Object.freeze({
       {
         name: "PaintedPeaks",
         texture: "./assets/textures/backdrop-peaks.webp",
-        // Inside camera.far (780), or the whole band is clipped away.
-        radius: 720, height: 148, y: 18, repeat: 4, tint: 0xe8f2f6, haze: 0.34, renderOrder: -28,
+        radius: 720, height: 148, y: 18, repeat: 4,
+        tint: 0xe8f2f6, haze: 0.34, renderOrder: -30,
       },
       {
-        name: "PaintedForest",
-        texture: "./assets/textures/backdrop-forest.webp",
-        radius: 430, height: 78, y: -3, repeat: 3, tint: 0xecf4ec, haze: 0.2, renderOrder: -27,
+        name: "PaintedTreeline",
+        texture: "./assets/textures/backdrop-treeline.webp",
+        radius: 560, height: 60, y: -1, repeat: 4,
+        tint: 0xe8f1e7, haze: 0.22, renderOrder: -29,
+      },
+      {
+        name: "PaintedMeadow",
+        texture: "./assets/textures/backdrop-meadow.webp",
+        radius: 430, height: 46, y: -7, repeat: 4,
+        tint: 0xf0f5e9, haze: 0.10, renderOrder: -28,
       },
     ],
   },

@@ -1,0 +1,14 @@
+name: Backdrop Prep (archived)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archived:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Note
+        run: echo "Backdrop prep completed for world23. Use tools/prep_backdrop.py for future assets."

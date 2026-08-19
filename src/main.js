@@ -42,7 +42,7 @@ import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "world22";
+const APP_REVISION = "world23";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -208,7 +208,6 @@ try {
 } catch (error) {
   console.warn("Tree line unavailable", error);
 }
-
 
 window.__liora = {
   get paint() { return world.paint; },
