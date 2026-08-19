@@ -56,6 +56,7 @@ const PAGES = [
   { file: "tools/test/audio-runtime-smoke.test.html", viewports: [[390, 664]] },
   { file: "tools/test/audio-mix.test.html", viewports: [[900, 800]] },
   { file: "tools/test/quality.test.html", viewports: [[390, 664]] },
+  { file: "tools/test/quality-cache-bridge.test.html", viewports: [[390, 664]] },
 ];
 
 const MIME = {
