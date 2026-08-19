@@ -105,7 +105,7 @@ export async function createDistantVillageBackdrop({
   // World Tree: one quiet landmark on the exact opposite horizon.
   worldTreeBearingDeg = 45,
   worldTreeRadius = 520,
-  worldTreeY = 9,
+  worldTreeY = 13,
   worldTreeWidth = 128,
   worldTreeTint = 0xffffff,
   worldTreeHaze = 0.16,
