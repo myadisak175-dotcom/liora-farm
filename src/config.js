@@ -197,7 +197,7 @@ export const CONFIG = Object.freeze({
       {
         name: "PaintedTreeline",
         texture: "./assets/textures/backdrop-treeline.webp",
-        radius: 560, height: 60, y: -1, repeat: 4,
+        radius: 560, height: 60, y: 3, repeat: 4,
         tint: 0xe8f1e7, haze: 0.22, renderOrder: -29,
       },
       {
