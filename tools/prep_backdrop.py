@@ -3,7 +3,7 @@
 
 Pipeline:
   magenta key -> despill -> crop transparent rows -> optional skyline crop
-  -> heal strongest interior seam -> verify all seams -> WebP
+  -> heal strong interior seams -> verify every vertical join -> WebP
 
 The command is deterministic and exits non-zero if a remaining seam is more
 than four times the image's normal column-to-column variation.
@@ -74,14 +74,15 @@ def column_gaps(image: Image.Image) -> list[float]:
     return gaps
 
 
-def heal_seam(image: Image.Image, overlap: int) -> tuple[Image.Image, dict | None]:
+def heal_one_seam(image: Image.Image, overlap: int, threshold: float = 4.0) -> tuple[Image.Image, dict | None]:
     width, height = image.size
     gaps = column_gaps(image)
     mean = sum(gaps) / len(gaps)
     seam = max(range(width), key=gaps.__getitem__)
 
-    # A seam at the outer wrap belongs to the tile boundary, not the interior.
-    if min(seam, width - 1 - seam) < overlap * 2 or gaps[seam] < mean * 4:
+    # The outer wrap is not an interior cut. If it is the outlier, refuse later
+    # in verify() rather than smearing the two ends independently.
+    if min(seam, width - 1 - seam) < overlap * 2 or gaps[seam] < mean * threshold:
         return image, None
 
     left = image.crop((0, 0, seam + 1, height))
@@ -107,6 +108,19 @@ def heal_seam(image: Image.Image, overlap: int) -> tuple[Image.Image, dict | Non
     return blended, {"x": seam, "gap": gaps[seam], "mean": mean, "overlap": overlap}
 
 
+def heal_strong_seams(image: Image.Image, overlap: int, max_passes: int = 6) -> tuple[Image.Image, list[dict]]:
+    """Heal multiple independent generated joins, strongest first."""
+    healed = image
+    reports: list[dict] = []
+    for _ in range(max_passes):
+        next_image, report = heal_one_seam(healed, overlap)
+        if report is None:
+            break
+        healed = next_image
+        reports.append(report)
+    return healed, reports
+
+
 def verify(image: Image.Image, max_ratio: float = 4.0) -> tuple[int, float, float]:
     gaps = column_gaps(image)
     mean = sum(gaps) / len(gaps)
@@ -127,6 +141,7 @@ def main() -> int:
     parser.add_argument("--keep-top", type=int, default=0)
     parser.add_argument("--tolerance", type=int, default=90)
     parser.add_argument("--quality", type=int, default=88)
+    parser.add_argument("--max-heals", type=int, default=6)
     args = parser.parse_args()
 
     source = Path(args.source)
@@ -142,12 +157,13 @@ def main() -> int:
         cropped = cropped.crop((0, 0, cropped.width, min(args.keep_top, cropped.height)))
         print(f"crop  skyline top {cropped.height}px")
 
-    healed, seam = heal_seam(cropped, args.overlap)
-    if seam:
-        print(
-            f"heal  x={seam['x']} {seam['gap'] / seam['mean']:.1f}x mean "
-            f"over {seam['overlap']}px"
-        )
+    healed, reports = heal_strong_seams(cropped, args.overlap, args.max_heals)
+    if reports:
+        for index, seam in enumerate(reports, start=1):
+            print(
+                f"heal{index} x={seam['x']} {seam['gap'] / seam['mean']:.1f}x mean "
+                f"over {seam['overlap']}px"
+            )
     else:
         print("heal  no strong interior seam")
 
