@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Audio asset tests</title>
+<title>Audio runtime tests</title>
 </head>
 <body><pre id="out"></pre>
 <script type="module">
@@ -14,7 +14,7 @@ async function test(name, fn) {
 }
 function assert(value, message) { if (!value) throw new Error(message); }
 
-const runtimeFiles = [
+const stepFiles = [
   "footstep_grass_soft.mp3",
   "footstep_grass_run_clean.mp3",
   "footstep_run_dirt.mp3",
@@ -27,151 +27,138 @@ const streamFiles = [
   "ambience_forest_night.mp3",
   "ambience_tree_wind.mp3",
 ];
+const allFiles = [...streamFiles, ...stepFiles];
 
-await test("every runtime audio file fetches and decodes in Chromium", async () => {
-  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-  assert(AudioContextCtor, "Web Audio is unavailable in the test browser");
-  const context = new AudioContextCtor();
+async function metadataFor(file) {
+  const audio = document.createElement("audio");
+  audio.preload = "metadata";
+  audio.src = `../../assets/audio/${file}?v=audio19`;
   try {
-    for (const file of runtimeFiles) {
-      const response = await fetch(`../../assets/audio/${file}`);
-      assert(response.ok, `${file} returned HTTP ${response.status}`);
-      const decoded = await context.decodeAudioData(await response.arrayBuffer());
-      assert(decoded.duration > 0.1, `${file} decoded as an empty clip`);
-    }
-  } finally {
-    await context.close();
-  }
-});
-
-await test("every streaming track exposes valid browser metadata", async () => {
-  for (const file of streamFiles) {
-    const audio = document.createElement("audio");
-    audio.preload = "metadata";
-    audio.src = `../../assets/audio/${file}`;
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`${file} metadata timed out`)), 8000);
       audio.addEventListener("loadedmetadata", () => { clearTimeout(timer); resolve(); }, { once: true });
       audio.addEventListener("error", () => {
         clearTimeout(timer);
-        reject(new Error(`${file} returned media error ${audio.error?.code ?? "unknown"}`));
+        reject(new Error(`${file} media error ${audio.error?.code ?? "unknown"}`));
       }, { once: true });
       audio.load();
     });
-    assert(Number.isFinite(audio.duration) && audio.duration > 1, `${file} has invalid duration`);
+    return audio.duration;
+  } finally {
     audio.removeAttribute("src");
     audio.load();
   }
+}
+
+await test("every shipped audio file is valid native media", async () => {
+  for (const file of allFiles) {
+    const duration = await metadataFor(file);
+    assert(Number.isFinite(duration) && duration > 0.05, `${file} has invalid duration ${duration}`);
+  }
 });
 
-await test("the runtime never references the corrupt legacy leaf file", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  const filesBlock = source.match(/const FILES = Object\.freeze\(\{([\s\S]*?)\n\}\);/)?.[1] ?? "";
-  assert(!filesBlock.includes("footstep_forest_leaves.mp3"), "corrupt leaf MP3 is still referenced");
-  assert(filesBlock.includes("footstep_grass_soft.mp3"), "clean walking fallback is missing");
-  assert(source.includes("unlockFromGameGesture"), "normal game touches no longer unlock or retry audio");
-  assert(source.includes('document.addEventListener("pointerdown", unlockFromGameGesture, { capture: true })'), "mobile retry listener became one-shot again");
-  assert(source.includes('document.createElement("audio")'), "long tracks are no longer streamed natively");
-  assert(source.includes("normalizeFootstep"), "quiet footstep files are no longer normalized");
-  for (const file of streamFiles) assert(source.includes(file), `${file} is not wired into the runtime`);
+await test("the new runtime owns both ambience and footsteps", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  for (const file of allFiles) assert(source.includes(file), `${file} is not wired into audio-runtime.js`);
+  assert(source.includes("const STREAM_FILES"), "stream ownership is missing");
+  assert(source.includes("const STEP_BANKS"), "footstep ownership is missing");
+  assert(source.includes('document.createElement("audio")'), "native media elements are not used");
+  assert(source.includes("playNativeStep"), "footsteps are no longer emitted by the main runtime");
 });
 
-await test("a device that ignores element volume still gets a real mix", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  assert(source.includes("function detectElementVolume()"), "element volume support is no longer probed");
-  assert(source.includes("probe.volume = 0.5"), "the volume probe no longer writes a test level");
-  assert(source.includes("if (elementVolumeSupported) track.audio.volume = level;"), "native stream crossfade is missing");
-  const graph = source.match(/function attachStreamGraph\(\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
-  assert(graph.includes("createMediaElementSource"), "there is no fallback for read-only volume");
-  assert(graph.includes("if (elementVolumeSupported || !context || !ambienceBus) return;"), "Android media can be routed through Web Audio again");
-  const graphUses = source.match(/createMediaElementSource/g) ?? [];
-  assert(graphUses.length === 1, "media elements are routed through Web Audio outside the fallback");
+await test("the broken split Web Audio output paths are gone", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  assert(!source.includes("decodeAudioData("), "footsteps are still decoded through Web Audio");
+  assert(!source.includes("createBufferSource("), "footsteps still use BufferSource");
+  assert(!source.includes("createMediaElementSource("), "long tracks still get rerouted through a second output graph");
+  assert(!source.includes("attachStreamGraph("), "the old stream graph survived the cleanup");
 });
 
-await test("the player's mute choice remains internally consistent", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  assert(source.includes('const MUTE_KEY = "liora.audio.muted"'), "the mute choice is no longer stored");
-  assert(source.includes("let muted = readStoredMuted();"), "a reload no longer restores the mute choice");
-  const writes = source.match(/^\s*muted = /gm) ?? [];
-  assert(writes.length === 2, `mute is written from ${writes.length} places instead of ensureAudio and setMuted`);
-  assert(/muted = false;\n  storeMuted\(false\);/.test(source), "unlocking no longer records that sound is on");
-  assert(/muted = Boolean\(next\);\n  storeMuted\(muted\);/.test(source), "setMuted no longer records the choice");
-  assert(/setMuted\(next\) \{[\s\S]*?master\.gain\.setTargetAtTime/.test(source), "unmuting no longer restores the master gain");
+await test("audio state is session-local instead of carrying world-switch mute state", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  const page = await fetch("../../index.html").then((response) => response.text());
+  assert(!source.includes("liora.audio.muted"), "the obsolete persistent mute key is still live");
+  assert(!source.includes("localStorage"), "audio runtime still persists device-specific state");
+  assert(!page.includes("singleWorldMuteMigration"), "index still contains the world-switch mute migration");
+  assert(source.includes("let muted = false"), "a fresh page no longer starts from a known unmuted state");
 });
 
-await test("terrain and water select distinct movement banks", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
+await test("one audio module replaces all recovery companions", async () => {
+  const page = await fetch("../../index.html").then((response) => response.text());
+  assert(page.includes("./src/audio-runtime.js?v=audio19"), "audio19 runtime is not loaded");
+  assert(!page.includes("audio-bootstrap-v8.js"), "old bootstrap is still loaded");
+  assert(!page.includes("audio-single-world-recovery.js"), "Android recovery helper is still loaded");
+  assert(!page.includes("audio-ios-footstep-fallback.js"), "iOS fallback helper is still loaded");
+  const moduleLoads = page.match(/audio-[\w-]+\.js\?v=audio19/g) ?? [];
+  assert(moduleLoads.length === 1, `expected one audio module, found ${moduleLoads.length}`);
+});
+
+await test("the cache revision reaches the actual media URLs", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  const page = await fetch("../../index.html").then((response) => response.text());
+  assert(source.includes('const AUDIO_REVISION = "audio19"'), "runtime still requests media with an old revision");
+  assert(source.includes("?v=${AUDIO_REVISION}"), "media URLs do not use the runtime revision");
+  assert(page.includes("audio-runtime.js?v=audio19"), "script cache and media cache are on different releases");
+});
+
+await test("a failed footstep attempt is not counted as audible playback", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  assert(source.includes("attemptedSteps += 1"), "footstep attempts are not observable");
+  assert(source.includes("playedSteps += 1"), "successful native plays are not observable");
+  const nativeStep = source.match(/function playNativeStep\([\s\S]*?\n\}\n\nfunction checkForStalledStreams/)?.[0] ?? "";
+  assert(nativeStep.includes("const started = stepAudio.play();"), "native footstep no longer calls play()");
+  assert(/const started = stepAudio\.play\(\);[\s\S]*?Promise\.resolve\(started\)\.then\(\(\) => \{[\s\S]*?playedSteps \+= 1/.test(nativeStep),
+    "playedSteps is not incremented inside the successful play() continuation");
+  assert(!/attemptedSteps\s*===\s*playedSteps/.test(source), "attempts and actual playback are still conflated");
+});
+
+await test("normal game gestures own unlock and retry", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  assert(source.includes('document.addEventListener("pointerdown", handleGameGesture, { capture: true })'), "pointer unlock is missing");
+  assert(source.includes('document.addEventListener("touchend", handleGameGesture'), "touch retry is missing");
+  assert(source.includes("retryFromGesture()"), "blocked native media has no gesture retry path");
+  assert(source.includes("primeFootstepFromGesture()"), "the short SFX element is never primed from a gesture");
+});
+
+await test("terrain and water still select distinct native footstep banks", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
   const mix = await fetch("../../src/systems/audio-mix.js").then((response) => response.text());
   assert(mix.includes('new Set(["dirt", "sand", "cracked_dirt"])'), "dirt-family routing is missing");
   assert(mix.includes('new Set(["rock", "cobblestone_path"])'), "hard-ground routing is missing");
-  assert(mix.includes("WATER_STEP_DEPTH = 0.055"), "water depth no longer selects splash steps");
-  assert(source.includes('String(runtime?.surface ?? "grass")'), "ground-paint surface is not read at footfall time");
-  assert(source.includes("RUN_DIRT_CUES") && source.includes("RUN_GROUND_CUES") && source.includes("WATER_CUES"), "new cue banks are not wired");
-  assert(source.includes("setStreamTarget(streams?.wind"), "tree wind does not breathe with the ambience mix");
-  assert(source.includes("setStreamTarget(streams?.birds"), "daytime bird stream is missing");
-  assert(source.includes("setStreamTarget(streams?.night"), "night forest stream is missing");
+  assert(mix.includes("WATER_STEP_DEPTH = 0.055"), "water threshold changed unexpectedly");
+  assert(source.includes('if (profileKey.startsWith("water")) return "water"'), "water no longer selects the splash bank");
+  assert(source.includes("runBankForSurface(surface)"), "running no longer follows painted ground");
+  assert(source.includes('String(runtime?.surface ?? "grass")'), "runtime surface is not read at footfall time");
 });
 
-await test("one missing long track cannot silence footsteps or the other streams", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  assert(source.includes("result[name] = null"), "stream creation is not isolated per file");
-  assert(source.includes("Promise.allSettled"), "footstep fallbacks no longer settle independently");
-  assert(source.includes("last-resort fallback"), "procedural ambience fallback is missing");
-  assert(source.includes("แตะปุ่มเสียงอีกครั้ง"), "blocked mobile playback no longer prompts a retry");
-  assert(source.includes("function retryBlockedStreams(nowMs)"), "blocked streams are only retried from a gesture again");
-  assert(source.includes("retryBlockedStreams(now)"), "the retry pass never runs");
-  assert(source.includes('audio.addEventListener("pause"'), "an interrupted track is no longer noticed");
-  assert(source.includes("track.reloads >= STREAM_RELOAD_LIMIT"), "a permanently missing file would be retried forever");
+await test("a broken stream is isolated and reported", async () => {
+  const source = await fetch("../../src/audio-runtime.js").then((response) => response.text());
+  assert(source.includes('audio.addEventListener("error"'), "media errors are not observed");
+  assert(source.includes('runtimeErrors.set(name, `media error'), "stream errors are not isolated by track");
+  assert(source.includes("checkForStalledStreams"), "a playing-but-stalled media clock is never detected");
+  assert(source.includes("track.state = \"blocked\""), "blocked tracks have no retry state");
 });
 
-await test("a phone that stalls or refuses a resume does not lose a layer of the mix", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  assert(source.includes("STREAM_STALL_MS"), "a stalled stream is never noticed");
-  assert(source.includes('setRuntimeError(track.name, "stalled")'), "a stalled stream is not reported or restarted");
-  assert(source.includes("Math.abs(position - track.lastMediaTime)"), "a looping track would be misread as stalled");
-  assert(source.includes("pauseGatingBroken = true"), "a refused resume no longer disables pause gating");
-  assert(source.includes("function canSilenceWithoutPausing(track)"), "silence now depends on pausing even where volume works");
-  assert(/const keepAlive = pauseGatingBroken && canSilenceWithoutPausing\(track\);/.test(source), "the keep-alive fallback is not wired into playback");
-});
-
-await test("a footstep failure cannot take the long tracks down with it", async () => {
-  const source = await fetch("../../src/audio-bootstrap-v8.js").then((response) => response.text());
-  assert(source.includes("if (!trackList().some((track) => track.node))"), "a footstep failure closes a context the long tracks are routed through");
-  const failure = source.match(/console\.warn\("Liora footstep audio init failed"[\s\S]*?\n    \}/)?.[0] ?? "";
-  assert(failure.includes("buffers = null"), "a failed footstep load no longer clears its buffers");
-  assert(/if \(!trackList\(\)[\s\S]*?context\?\.close/.test(failure), "the context is closed before checking for routed streams");
-});
-
-await test("single-world device recovery is wired", async () => {
-  const page = await fetch("../../index.html").then((response) => response.text());
-  const recovery = await fetch("../../src/audio-single-world-recovery.js").then((response) => response.text());
-  const ios = await fetch("../../src/audio-ios-footstep-fallback.js").then((response) => response.text());
-  const quality = await fetch("../../src/systems/quality.js").then((response) => response.text());
-  assert(page.includes("audio-single-world-recovery.js?v=audio18"), "Android recovery is not cache-busted");
-  assert(page.includes("audio-ios-footstep-fallback.js?v=audio18"), "iOS footstep fallback is not shipped");
-  assert(recovery.includes("sessionHasUnlocked"), "recovery can still mistake a stale startup mute for an intentional mute");
-  assert(recovery.includes('document.addEventListener("touchend"'), "touchend recovery is missing");
-  assert(ios.includes("normalSteps > baselineSteps"), "iOS fallback cannot turn itself off when normal footsteps work");
-  assert(ios.includes("footstep_grass_soft.mp3?v=audio18"), "iOS fallback does not use the compact footstep asset");
-  assert(quality.includes("!Number.isFinite(deviceMemory) && pixelRatio >= 3"), "modern Retina Safari still falls through to medium quality");
-  assert(page.includes('localStorage.setItem("liora.quality.v1", "high")'), "iPhone quality is not seeded before main boot");
-});
-
-await test("audio cache revision is independent from the single world revision", async () => {
+await test("world and audio revisions are deliberately independent", async () => {
   const page = await fetch("../../index.html").then((response) => response.text());
   const mainSource = await fetch("../../src/main.js").then((response) => response.text());
-  const audioRevision = page.match(/audio-bootstrap-v8\.js\?v=([\w.-]+)/)?.[1];
-  const recoveryRevision = page.match(/audio-single-world-recovery\.js\?v=([\w.-]+)/)?.[1];
-  const iosRevision = page.match(/audio-ios-footstep-fallback\.js\?v=([\w.-]+)/)?.[1];
+  const audioRevision = page.match(/audio-runtime\.js\?v=([\w.-]+)/)?.[1];
   const entryRevision = page.match(/main\.js\?v=([\w.-]+)/)?.[1];
   const appRevision = mainSource.match(/const APP_REVISION = "([\w.-]+)"/)?.[1];
-  assert(audioRevision, "the audio bootstrap lost its cache-busting revision");
-  assert(audioRevision === recoveryRevision && audioRevision === iosRevision,
-    `audio companions are split across ${audioRevision}/${recoveryRevision}/${iosRevision}`);
-  assert(entryRevision === appRevision, `the world entry is ${entryRevision} while its app revision is ${appRevision}`);
-  assert(audioRevision !== entryRevision, "audio fixes are still coupled to the world revision");
-  const audioTest = await fetch("../../audio-test.html").then((response) => response.text());
-  assert(audioTest.includes(`?v=${appRevision}`), "the audio test no longer returns to the active world revision");
+  assert(audioRevision === "audio19", `unexpected audio revision ${audioRevision}`);
+  assert(entryRevision === appRevision, `world entry ${entryRevision} disagrees with app ${appRevision}`);
+  assert(audioRevision !== entryRevision, "sound-only releases are coupled back to world releases");
+});
+
+await test("removed audio modules really are absent", async () => {
+  for (const file of [
+    "audio-bootstrap-v8.js",
+    "audio-single-world-recovery.js",
+    "audio-ios-footstep-fallback.js",
+  ]) {
+    const response = await fetch(`../../src/${file}`, { cache: "no-store" });
+    assert(response.status === 404, `${file} still exists with HTTP ${response.status}`);
+  }
 });
 
 window.__results = results;

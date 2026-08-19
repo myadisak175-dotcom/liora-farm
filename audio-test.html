@@ -5,162 +5,123 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Liora Audio Test</title>
 <style>
-body{margin:0;padding:24px;background:#102a33;color:#f6fbfa;font:16px/1.45 system-ui,sans-serif}main{max-width:680px;margin:auto}h1{font-size:24px}h2{font-size:19px;margin-top:28px}.card{padding:14px 16px;margin:12px 0;border:1px solid #ffffff35;border-radius:16px;background:#ffffff0e}.name{font-weight:700;margin-bottom:8px}.status{font-size:13px;opacity:.8;margin-top:6px}audio{width:100%}a{color:#a7e7df}
-button.run{appearance:none;width:100%;padding:14px;border-radius:14px;border:1px solid #ffffff45;background:#1c5568;color:#fff;font:700 17px system-ui,sans-serif}
-button.run:disabled{opacity:.55}
-button.copy{appearance:none;margin-top:10px;padding:9px 14px;border-radius:11px;border:1px solid #ffffff3a;background:#ffffff14;color:#fff;font:600 14px system-ui,sans-serif}
-#report{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,monospace;margin:12px 0 0;padding:12px;border-radius:12px;background:#00000047;min-height:1.5em}
-.ok{color:#9ff0c8}.bad{color:#ffb4aa}.warn{color:#ffd79a}
+body{margin:0;padding:24px;background:#102a33;color:#f6fbfa;font:16px/1.45 system-ui,sans-serif}main{max-width:680px;margin:auto}h1{font-size:24px}h2{font-size:19px;margin-top:28px}.card{padding:14px 16px;margin:12px 0;border:1px solid #ffffff35;border-radius:16px;background:#ffffff0e}.name{font-weight:700;margin-bottom:8px}.status{font-size:13px;opacity:.8;margin-top:6px}audio{width:100%}a{color:#a7e7df}button.run{appearance:none;width:100%;padding:14px;border-radius:14px;border:1px solid #ffffff45;background:#1c5568;color:#fff;font:700 17px system-ui,sans-serif}button.run:disabled{opacity:.55}button.copy{appearance:none;margin-top:10px;padding:9px 14px;border-radius:11px;border:1px solid #ffffff3a;background:#ffffff14;color:#fff;font:600 14px system-ui,sans-serif}#report{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,monospace;margin:12px 0 0;padding:12px;border-radius:12px;background:#00000047;min-height:1.5em}.ok{color:#9ff0c8}.bad{color:#ffb4aa}.warn{color:#ffd79a}
 </style>
 </head>
 <body><main>
-<h1>🎧 Liora Audio Foundation v8</h1>
+<h1>🎧 Liora Audio 19 — Native Media Test</h1>
+<p>หน้านี้ตรวจเส้นทางเดียวกับเกมรุ่นใหม่: HTML Audio โดยตรง ไม่มี Web Audio / AudioContext สำหรับเสียงเดิน</p>
 
-<h2>ตรวจระบบเสียงของเครื่องนี้</h2>
-<p>ถ้าในเกมมีเสียงบางอย่างหายไป กดปุ่มนี้บนเครื่องที่มีปัญหา แล้วส่งผลที่ได้มาให้ดู — มันจะบอกว่าไฟล์ไหนโหลดไม่ได้ ถอดรหัสไม่ผ่าน หรือเครื่องเล่นเสียงพร้อมกันหลายเสียงไม่ได้</p>
+<h2>ตรวจเครื่องนี้</h2>
 <div class="card">
-  <button type="button" class="run" id="run">▶ เริ่มตรวจ (ใช้เวลาประมาณ 10 วินาที)</button>
+  <button type="button" class="run" id="run">▶ เริ่มตรวจเสียง</button>
   <pre id="report">กดปุ่มด้านบนเพื่อเริ่ม</pre>
   <button type="button" class="copy" id="copy" hidden>คัดลอกผล</button>
 </div>
 
-<h2>ฟังไฟล์ที่เกมใช้จริง</h2>
-<p>กด Play เพื่อตรวจทีละไฟล์ เพลงและบรรยากาศใช้ระบบเสียงมือถือโดยตรง ส่วนจังหวะเท้าจะเปลี่ยนตามหญ้า ดิน พื้นแข็ง และน้ำ</p>
+<h2>ฟังไฟล์จริงทีละไฟล์</h2>
 <div id="list"></div>
-<p><a href="./?v=world23">← กลับเกม</a></p>
+<p><a href="./?v=audio19">← กลับเกม audio19</a></p>
+<p><a href="./?v=audio19&audiodebug=1">เปิดเกมพร้อม Audio Debug</a></p>
 
 <script>
+const REV='audio19';
 const STREAMS=[
-  ["เพลงหลัก — Lanternfields Overture","assets/audio/music_lanternfields_overture.mp3"],
-  ["เช้า/กลางวัน — เสียงนก","assets/audio/ambience_morning_birdsong.mp3"],
-  ["เย็น/กลางคืน — ป่า ลม และจิ้งหรีด","assets/audio/ambience_forest_night.mp3"],
-  ["บรรยากาศ — ลมพัดต้นไม้","assets/audio/ambience_tree_wind.mp3"],
+  ['เพลงหลัก','assets/audio/music_lanternfields_overture.mp3'],
+  ['เสียงนก','assets/audio/ambience_morning_birdsong.mp3'],
+  ['ป่ากลางคืน','assets/audio/ambience_forest_night.mp3'],
+  ['ลมพัดต้นไม้','assets/audio/ambience_tree_wind.mp3'],
 ];
 const STEPS=[
-  ["เดินช้าบนหญ้า","assets/audio/footstep_grass_soft.mp3"],
-  ["วิ่งบนหญ้า","assets/audio/footstep_grass_run_clean.mp3"],
-  ["วิ่งบนดินและทราย","assets/audio/footstep_run_dirt.mp3"],
-  ["วิ่งบนพื้นแข็งและทางหิน","assets/audio/footstep_run_ground.mp3"],
-  ["เดินหรือวิ่งลุยน้ำ — คลังเสียงสาด 8 แบบ","assets/audio/footstep_water_wade_bank.mp3"],
+  ['เดินหญ้า','assets/audio/footstep_grass_soft.mp3'],
+  ['วิ่งหญ้า','assets/audio/footstep_grass_run_clean.mp3'],
+  ['วิ่งดิน','assets/audio/footstep_run_dirt.mp3'],
+  ['วิ่งพื้นแข็ง','assets/audio/footstep_run_ground.mp3'],
+  ['ลุยน้ำ','assets/audio/footstep_water_wade_bank.mp3'],
 ];
+const ALL=[...STREAMS,...STEPS];
 
 const list=document.querySelector('#list');
-for(const [name,src] of [...STREAMS,...STEPS]){
+for(const [name,src] of ALL){
   const card=document.createElement('div');card.className='card';
   const title=document.createElement('div');title.className='name';title.textContent=name;
-  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=src;
-  const status=document.createElement('div');status.className='status';status.textContent='กำลังตรวจไฟล์…';
-  audio.addEventListener('loadedmetadata',()=>status.textContent=`พร้อม • ${Number(audio.duration||0).toFixed(1)} วินาที`);
-  audio.addEventListener('error',()=>{status.textContent='❌ โหลดไม่ได้';status.style.color='#ffb4aa';});
+  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.playsInline=true;audio.src=`${src}?v=${REV}`;
+  const status=document.createElement('div');status.className='status';status.textContent='กำลังอ่านไฟล์…';
+  audio.addEventListener('loadedmetadata',()=>status.textContent=`พร้อม • ${Number(audio.duration||0).toFixed(2)} วินาที`);
+  audio.addEventListener('error',()=>{status.textContent=`❌ media error ${audio.error?.code??'?'}`;status.style.color='#ffb4aa';});
   card.append(title,audio,status);list.append(card);
 }
 
-// --- device report -------------------------------------------------------
-// Everything the game's audio depends on, checked in the same order the game
-// does it, so a missing sound points at one line instead of the whole system.
 const report=document.querySelector('#report');
 const runButton=document.querySelector('#run');
 const copyButton=document.querySelector('#copy');
 const lines=[];
-function say(text,kind){
-  lines.push(text);
-  const row=document.createElement('span');
-  row.textContent=text+"\n";
-  if(kind)row.className=kind;
-  report.append(row);
-}
+function say(text,kind){lines.push(text);const row=document.createElement('span');row.textContent=text+'\n';if(kind)row.className=kind;report.append(row);}
 const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 
-async function decodeCheck(context,src){
-  const response=await fetch(src,{cache:'no-store'});
-  if(!response.ok)throw new Error(`โหลดไม่ได้ HTTP ${response.status}`);
-  const bytes=await response.arrayBuffer();
-  // decodeAudioData detaches the buffer, so measure it first.
-  const kb=Math.round(bytes.byteLength/1024);
-  const buffer=await context.decodeAudioData(bytes);
-  return {seconds:buffer.duration,kb};
+function makeAudio(src,{muted=false,loop=false}={}){
+  const a=document.createElement('audio');
+  a.src=`${src}?v=${REV}`;a.preload='auto';a.playsInline=true;a.loop=loop;a.muted=muted;a.hidden=true;
+  a.setAttribute('playsinline','');a.setAttribute('webkit-playsinline','');document.body.append(a);return a;
 }
 
-async function playCheck(src){
-  const audio=document.createElement('audio');
-  audio.src=src;audio.loop=true;audio.preload='auto';audio.playsInline=true;
-  audio.setAttribute('playsinline','');audio.volume=0.35;
-  audio.hidden=true;document.body.append(audio);
-  let failure='';
-  try{ await audio.play(); }catch(error){ failure=String(error?.name||error); }
-  return {audio,failure,startedAt:audio.currentTime};
+async function playProbe(name,src,{muted=false,listenMs=900}={}){
+  const a=makeAudio(src,{muted});
+  const at=a.currentTime;
+  let error='';
+  try{await a.play();}catch(e){error=String(e?.name||e?.message||e);}
+  await wait(listenMs);
+  const moved=a.currentTime-at;
+  const result={name,error,moved,paused:a.paused,code:a.error?.code??0,ready:a.readyState,network:a.networkState};
+  try{a.pause();}catch{}a.removeAttribute('src');try{a.load();}catch{}a.remove();
+  return result;
 }
 
 async function runReport(){
-  runButton.disabled=true;
-  report.textContent='';
-  lines.length=0;
-  say('=== Liora audio report ===');
+  runButton.disabled=true;report.textContent='';lines.length=0;
+  say('=== Liora audio19 native report ===');
   say(new Date().toISOString());
   say(navigator.userAgent);
+  say(`visibility=${document.visibilityState}`);
+  const volumeProbe=document.createElement('audio');volumeProbe.volume=.37;
+  const volumeWritable=Math.abs(volumeProbe.volume-.37)<.01;
+  say(`element volume writable=${volumeWritable}`,volumeWritable?'ok':'warn');
 
-  // 1. Can this device set a volume at all? iOS cannot, and the whole mix
-  //    depends on knowing that.
-  const probe=document.createElement('audio');
-  probe.volume=0.5;
-  const volumeWritable=Math.abs(probe.volume-0.5)<0.01;
-  say(`ตั้งระดับเสียงได้: ${volumeWritable?'ได้ (ใช้ element volume)':'ไม่ได้ (ต้องใช้ Web Audio gain — ปกติของ iPhone)'}`,volumeWritable?'ok':'warn');
+  say('1) เสียงเดินแบบ native จาก gesture นี้');
+  const step=await playProbe('walk',STEPS[0][1],{listenMs:650});
+  if(step.error) say(`  ❌ play() rejected: ${step.error}`,'bad');
+  else if(step.code) say(`  ❌ media error ${step.code}`,'bad');
+  else if(step.moved<.05) say(`  ⚠️ play resolved แต่ clock เดิน ${step.moved.toFixed(2)}s`,'warn');
+  else say(`  ✅ clock เดิน ${step.moved.toFixed(2)}s`,'ok');
 
-  // 2. Web Audio: footsteps live here, and they vanish on their own if the
-  //    context or a decode fails.
-  const Ctor=window.AudioContext||window.webkitAudioContext;
-  if(!Ctor){
-    say('Web Audio: ไม่รองรับ → เสียงฝีเท้าจะไม่ดังเลย','bad');
-  }else{
-    const context=new Ctor({latencyHint:'interactive'});
-    try{ await context.resume(); }catch(error){ say(`resume ล้มเหลว: ${error?.message??error}`,'bad'); }
-    say(`Web Audio: ${context.state} • ${context.sampleRate}Hz`,context.state==='running'?'ok':'warn');
-    for(const [name,src] of STEPS){
-      try{
-        const {seconds,kb}=await decodeCheck(context,src);
-        say(`  ✅ ${name} — ${seconds.toFixed(2)}s / ${kb}KB`,'ok');
-      }catch(error){
-        say(`  ❌ ${name} — ${error?.message??error}`,'bad');
-      }
-    }
-    try{ await context.close(); }catch{}
+  say('2) เพลงหลักแบบ native');
+  const music=await playProbe('music',STREAMS[0][1],{listenMs:1100});
+  if(music.error) say(`  ❌ play() rejected: ${music.error}`,'bad');
+  else if(music.code) say(`  ❌ media error ${music.code}`,'bad');
+  else if(music.moved<.1) say(`  ⚠️ play resolved แต่ clock เดิน ${music.moved.toFixed(2)}s`,'warn');
+  else say(`  ✅ clock เดิน ${music.moved.toFixed(2)}s`,'ok');
+
+  say('3) metadata ของทุกไฟล์');
+  for(const [name,src] of ALL){
+    const a=makeAudio(src,{muted:true});
+    let detail='';
+    try{
+      await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>reject(new Error('timeout')),5000);
+        a.addEventListener('loadedmetadata',()=>{clearTimeout(timer);resolve();},{once:true});
+        a.addEventListener('error',()=>{clearTimeout(timer);reject(new Error(`media ${a.error?.code??'?'}`));},{once:true});
+        a.load();
+      });
+      detail=`${Number(a.duration||0).toFixed(2)}s`;
+      say(`  ✅ ${name} ${detail}`,'ok');
+    }catch(e){say(`  ❌ ${name} ${e?.message??e}`,'bad');}
+    a.removeAttribute('src');try{a.load();}catch{}a.remove();
   }
-
-  // 3. The four long tracks, started together the way the game starts them.
-  //    Some phones only let one media element play at a time; that shows up
-  //    here as tracks whose clock never moves.
-  say('เล่นเสียงยาวพร้อมกัน 4 แทร็ก…');
-  const started=[];
-  for(const [name,src] of STREAMS) started.push([name,await playCheck(src)]);
-  await wait(3200);
-  let playing=0;
-  for(const [name,handle] of started){
-    const moved=handle.audio.currentTime-handle.startedAt;
-    const code=handle.audio.error?.code;
-    if(handle.failure) say(`  ❌ ${name} — เริ่มไม่ได้ (${handle.failure})`,'bad');
-    else if(code) say(`  ❌ ${name} — media error ${code}`,'bad');
-    else if(handle.audio.paused) say(`  ❌ ${name} — ถูกหยุดเอง (เครื่องอาจเล่นได้ทีละเสียง)`,'bad');
-    else if(moved<0.25) say(`  ⚠️ ${name} — เล่นอยู่แต่เวลาไม่เดิน (${moved.toFixed(2)}s) เน็ตอาจช้า`,'warn');
-    else{ playing+=1; say(`  ✅ ${name} — เล่นได้ ${moved.toFixed(2)}s`,'ok'); }
-  }
-  for(const [,handle] of started){ try{handle.audio.pause();}catch{} handle.audio.remove(); }
-  say(`เล่นพร้อมกันได้จริง ${playing}/${started.length} แทร็ก`,playing===started.length?'ok':'bad');
-
-  // 4. Whatever the running game thinks, if this page was opened from it.
-  const status=window.opener?.__lioraAudio?.status;
-  if(status) say(`เกม: ${JSON.stringify(status)}`);
 
   say('=== จบการตรวจ ===');
-  copyButton.hidden=false;
-  runButton.disabled=false;
-  runButton.textContent='▶ ตรวจอีกครั้ง';
+  copyButton.hidden=false;runButton.disabled=false;runButton.textContent='▶ ตรวจอีกครั้ง';
 }
-
-runButton.addEventListener('click',()=>{ runReport().catch((error)=>say(`ตรวจไม่สำเร็จ: ${error?.message??error}`,'bad')); });
-copyButton.addEventListener('click',async()=>{
-  const text=lines.join("\n");
-  try{ await navigator.clipboard.writeText(text); copyButton.textContent='คัดลอกแล้ว ✓'; }
-  catch{ copyButton.textContent='คัดลอกไม่ได้ — กดค้างที่ข้อความเพื่อคัดลอก'; }
-});
+runButton.addEventListener('click',()=>runReport().catch((error)=>{say(`ตรวจไม่สำเร็จ: ${error?.message??error}`,'bad');runButton.disabled=false;}));
+copyButton.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(lines.join('\n'));copyButton.textContent='คัดลอกแล้ว ✓';}catch{copyButton.textContent='คัดลอกไม่ได้';}});
 </script>
 </main></body></html>

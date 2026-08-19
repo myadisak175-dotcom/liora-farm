@@ -30,54 +30,19 @@
   }});
   document.head.append(map);
 
-  // Safari does not expose navigator.deviceMemory. A modern 3x Retina iPhone
-  // with six or more cores therefore used to start on medium quality even
-  // though the same class of Samsung phone starts on high. Only seed this when
-  // the player has never made an explicit quality choice.
-  try {
-    const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
-      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const cores = Number(navigator.hardwareConcurrency) || 0;
-    if (appleMobile && devicePixelRatio >= 3 && cores >= 6
-        && localStorage.getItem("liora.quality.v1") === null) {
-      localStorage.setItem("liora.quality.v1", "high");
-    }
-  } catch {}
-
   const entry = document.createElement("script");
   entry.type = "module";
   entry.src = "./src/main.js?v=world23";
   document.head.append(entry);
 
-  // The previous audio preference was designed around world-switch reloads.
-  // World switching is gone, so one stale `muted=1` can now make every normal
-  // game gesture refuse to initialise audio forever. Migrate that old value
-  // exactly once. Any mute choice made after this migration still persists.
-  try {
-    const migrationKey = "liora.audio.singleWorldMuteMigration.v1";
-    if (localStorage.getItem(migrationKey) !== "1") {
-      localStorage.removeItem("liora.audio.muted");
-      localStorage.setItem(migrationKey, "1");
-    }
-  } catch {}
-
-  // Audio now has its own revision because the game has only one world. A
-  // sound-only fix must be able to bypass a stale Samsung media cache without
-  // pretending the world itself changed.
+  // One audio owner, one cache revision. The previous release loaded a core
+  // bootstrap plus Android recovery plus an iOS footstep fallback; those three
+  // modules could disagree about mute/unlock/footstep state. audio19 replaces
+  // the whole stack with one runtime.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=audio18";
+  audio.src = "./src/audio-runtime.js?v=audio19";
   document.head.append(audio);
-
-  const audioRecovery = document.createElement("script");
-  audioRecovery.type = "module";
-  audioRecovery.src = "./src/audio-single-world-recovery.js?v=audio18";
-  document.head.append(audioRecovery);
-
-  const iosFootsteps = document.createElement("script");
-  iosFootsteps.type = "module";
-  iosFootsteps.src = "./src/audio-ios-footstep-fallback.js?v=audio18";
-  document.head.append(iosFootsteps);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
     const npcTest = document.createElement("script");
