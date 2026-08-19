@@ -1,10 +1,18 @@
 name: Prep Backdrop World23
 
-# Kept branch-scoped so generated binary assets never touch main before review.
 on:
   push:
     branches:
       - agent/backdrop-world23
+    paths:
+      - backdrop-meadow-src.png
+      - backdrop-treeline.png
+      - tools/prep_backdrop.py
+      - .github/workflows/prep-backdrop-world23.yml
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
     paths:
       - backdrop-meadow-src.png
       - backdrop-treeline.png
@@ -19,9 +27,10 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
+      - name: Checkout source branch
         uses: actions/checkout@v4
         with:
+          ref: agent/backdrop-world23
           fetch-depth: 0
 
       - name: Set up Python
@@ -73,6 +82,8 @@ jobs:
           PY
 
       - name: Commit generated assets
+        env:
+          BRANCH: agent/backdrop-world23
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -83,4 +94,4 @@ jobs:
             exit 0
           fi
           git commit -m 'Prepare wide meadow and treeline backdrops'
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin HEAD:${BRANCH}
