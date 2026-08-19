@@ -1,26 +1,108 @@
 import * as THREE from "three";
 
+function siblingAssetUrl(url, filename) {
+  const source = String(url ?? "");
+  const queryAt = source.indexOf("?");
+  const clean = queryAt >= 0 ? source.slice(0, queryAt) : source;
+  const slashAt = clean.lastIndexOf("/");
+  return slashAt >= 0 ? `${clean.slice(0, slashAt + 1)}${filename}` : filename;
+}
+
+function prepareTexture(texture, anisotropy) {
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = Math.max(1, Number(anisotropy) || 1);
+  return texture;
+}
+
+function makeSprite({
+  texture,
+  name,
+  angle,
+  radius,
+  y,
+  width,
+  tint,
+  renderOrder,
+  opacity = 0.98,
+}) {
+  const imageWidth = Number(texture.image?.naturalWidth || texture.image?.width || 0);
+  const imageHeight = Number(texture.image?.naturalHeight || texture.image?.height || 0);
+  const aspect = imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 3;
+  const resolvedWidth = Math.max(1, Number(width) || 1);
+  const height = resolvedWidth / Math.max(0.1, aspect);
+  const base = new THREE.Color(tint ?? 0xffffff);
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    color: base,
+    transparent: true,
+    opacity,
+    alphaTest: 0.02,
+    depthTest: true,
+    depthWrite: false,
+    fog: false,
+    toneMapped: true,
+  });
+
+  const distance = Math.max(20, Number(radius) || 20);
+  const sprite = new THREE.Sprite(material);
+  sprite.name = name;
+  // Both authored cutouts contain transparent space above the artwork. Pinning
+  // near the bottom turns y into a useful ground line instead of an image-centre
+  // offset, and lets the nearer meadow hide just the base of each layer.
+  sprite.center.set(0.5, 0.06);
+  sprite.position.set(Math.cos(angle) * distance, Number(y) || 0, Math.sin(angle) * distance);
+  sprite.scale.set(resolvedWidth, height, 1);
+  sprite.renderOrder = renderOrder;
+  sprite.frustumCulled = true;
+
+  return { sprite, material, texture, base, radius: distance, width: resolvedWidth, height };
+}
+
+function tintForAtmosphere(layer, horizonColor, haze) {
+  if (!layer || !horizonColor) return;
+  const luminance = horizonColor.r * 0.2126 + horizonColor.g * 0.7152 + horizonColor.b * 0.0722;
+  const exposure = 0.22 + 0.78 * THREE.MathUtils.clamp(luminance, 0, 1);
+  const eveningBlend = THREE.MathUtils.clamp(1 - luminance, 0, 1);
+  layer.material.color
+    .copy(layer.base)
+    .lerp(horizonColor, THREE.MathUtils.clamp(haze + eveningBlend * 0.3, 0, 1))
+    .multiplyScalar(exposure);
+}
+
 /**
- * One authored village accent on the far horizon.
+ * One authored village accent plus a small nearer hill on the far horizon.
  *
- * Unlike the painted meadow / treeline / peaks rings, this texture is not
- * seamless and must not wrap around the whole world. A camera-facing sprite
- * keeps the authored village intact while still pinning it to one real world
- * direction, so it appears only when the player looks toward that horizon.
+ * These assets are intentionally not seamless. They stay in one real world
+ * direction while the existing meadow / treeline / peaks rings continue around
+ * the full horizon. Layer order is: peaks -> treeline -> village -> hill ->
+ * meadow, so the hill can lead the eye toward town without replacing any of the
+ * mountain stack that already works.
  */
 export async function createDistantVillageBackdrop({
   url,
+  foregroundUrl,
   radius = 500,
   bearingDeg = -135,
-  // The sprite is anchored close to its bottom edge, so this is effectively
-  // the village hill's ground line rather than the image centre. Keeping that
-  // line above the far meadow stops the outer ground from cutting away half
-  // the artwork while still making the village feel planted in the landscape.
   y = 9,
-  width = 150,
+  // Slightly smaller than village2 so the town reads farther away and leaves
+  // more mountain visible around its silhouette.
+  width = 138,
   tint = 0xffffff,
   haze = 0.14,
   renderOrder = -28.5,
+  // The new grassy knoll sits a little closer than the village, but still
+  // behind PaintedMeadow (radius 430 / renderOrder -28). Only its upper roll
+  // and path should be visible, enough to connect the meadow to the town.
+  foregroundRadius = 474,
+  foregroundY = -3,
+  foregroundWidth = 156,
+  foregroundTint = 0xffffff,
+  foregroundHaze = 0.08,
+  foregroundRenderOrder = -28.25,
   anisotropy = 1,
 } = {}) {
   const group = new THREE.Group();
@@ -30,80 +112,86 @@ export async function createDistantVillageBackdrop({
     return {
       group,
       sprite: null,
+      foreground: null,
       stats: { drawCalls: 0 },
       setAtmosphere() {},
       dispose() {},
     };
   }
 
-  const texture = await new THREE.TextureLoader().loadAsync(url);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.anisotropy = Math.max(1, Number(anisotropy) || 1);
-
-  const imageWidth = Number(texture.image?.naturalWidth || texture.image?.width || 0);
-  const imageHeight = Number(texture.image?.naturalHeight || texture.image?.height || 0);
-  const aspect = imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 3;
-  const spriteHeight = Math.max(1, Number(width) / Math.max(0.1, aspect));
-
-  const base = new THREE.Color(tint);
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    color: base,
-    transparent: true,
-    opacity: 0.98,
-    alphaTest: 0.02,
-    depthTest: true,
-    depthWrite: false,
-    fog: false,
-    toneMapped: true,
-  });
-
+  const loader = new THREE.TextureLoader();
   const angle = THREE.MathUtils.degToRad(Number(bearingDeg) || 0);
-  const distance = Math.max(20, Number(radius) || 500);
-  const sprite = new THREE.Sprite(material);
-  sprite.name = "DistantVillage";
-  // Anchor almost at the bottom of the authored cutout instead of its centre.
-  // This raises the whole village without inventing a floating hill and keeps
-  // only a tiny base overlap available for the meadow to hide naturally.
-  sprite.center.set(0.5, 0.06);
-  sprite.position.set(Math.cos(angle) * distance, Number(y) || 0, Math.sin(angle) * distance);
-  sprite.scale.set(Math.max(1, Number(width) || 150), spriteHeight, 1);
-  sprite.renderOrder = Number.isFinite(renderOrder) ? renderOrder : -28.5;
-  sprite.frustumCulled = true;
-  group.add(sprite);
 
-  const hazeAmount = THREE.MathUtils.clamp(Number(haze) || 0, 0, 1);
+  const villageTexture = prepareTexture(await loader.loadAsync(url), anisotropy);
+  const village = makeSprite({
+    texture: villageTexture,
+    name: "DistantVillage",
+    angle,
+    radius,
+    y,
+    width,
+    tint,
+    renderOrder: Number.isFinite(renderOrder) ? renderOrder : -28.5,
+  });
+  group.add(village.sprite);
+
+  let foreground = null;
+  const resolvedForegroundUrl = foregroundUrl || siblingAssetUrl(url, "hill_front_layer.webp");
+  if (resolvedForegroundUrl) {
+    try {
+      const foregroundTexture = prepareTexture(await loader.loadAsync(resolvedForegroundUrl), anisotropy);
+      foreground = makeSprite({
+        texture: foregroundTexture,
+        name: "DistantVillageFrontHill",
+        angle,
+        radius: foregroundRadius,
+        y: foregroundY,
+        width: foregroundWidth,
+        tint: foregroundTint,
+        renderOrder: Number.isFinite(foregroundRenderOrder) ? foregroundRenderOrder : -28.25,
+        opacity: 0.99,
+      });
+      group.add(foreground.sprite);
+    } catch (error) {
+      // The hill is decorative. If its upload is missing or stale, keep the
+      // already-proven village and game running instead of failing the world.
+      console.warn("Distant village foreground hill unavailable", error);
+    }
+  }
+
+  const villageHaze = THREE.MathUtils.clamp(Number(haze) || 0, 0, 1);
+  const hillHaze = THREE.MathUtils.clamp(Number(foregroundHaze) || 0, 0, 1);
 
   return {
     group,
-    sprite,
+    sprite: village.sprite,
+    foreground: foreground?.sprite ?? null,
     stats: {
-      drawCalls: 1,
-      radius: distance,
-      width: sprite.scale.x,
-      height: sprite.scale.y,
+      drawCalls: foreground ? 2 : 1,
+      radius: village.radius,
+      width: village.width,
+      height: village.height,
       bearingDeg: Number(bearingDeg) || 0,
       groundY: Number(y) || 0,
+      foreground: foreground ? {
+        radius: foreground.radius,
+        width: foreground.width,
+        height: foreground.height,
+        groundY: Number(foregroundY) || 0,
+      } : null,
     },
-    /** Match the existing painted horizon through sunset and night. */
+    /** Match both cutouts to the established painted horizon at every hour. */
     setAtmosphere(horizonColor) {
-      if (!horizonColor) return;
-      const luminance = horizonColor.r * 0.2126 + horizonColor.g * 0.7152 + horizonColor.b * 0.0722;
-      const exposure = 0.22 + 0.78 * THREE.MathUtils.clamp(luminance, 0, 1);
-      const eveningBlend = THREE.MathUtils.clamp(1 - luminance, 0, 1);
-      material.color
-        .copy(base)
-        .lerp(horizonColor, THREE.MathUtils.clamp(hazeAmount + eveningBlend * 0.3, 0, 1))
-        .multiplyScalar(exposure);
+      tintForAtmosphere(village, horizonColor, villageHaze);
+      tintForAtmosphere(foreground, horizonColor, hillHaze);
     },
     dispose() {
-      group.remove(sprite);
-      material.dispose();
-      texture.dispose();
+      for (const layer of [foreground, village]) {
+        if (!layer) continue;
+        group.remove(layer.sprite);
+        layer.material.dispose();
+        layer.texture.dispose();
+      }
       group.clear();
     },
   };
