@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Audio runtime smoke</title></head>
+<head><meta charset="utf-8"><title>Native audio runtime smoke</title></head>
 <body data-mode="play">
 <div id="toast"></div><pre id="out"></pre>
 <script type="module">
@@ -9,13 +9,14 @@ const out=document.querySelector('#out');
 async function test(name,fn){try{await fn();results.push({name,pass:true,detail:''});}catch(error){results.push({name,pass:false,detail:String(error?.message??error)});}}
 function assert(value,message){if(!value)throw new Error(message);}
 window.__lioraAudioRuntime={hour:12,surface:'grass',state:{moving:false,running:false,waterDepth:0,special:false,position:{x:0,y:0,z:0}}};
-await import('../../src/audio-runtime.js?smoke=1');
+await import('../../src/audio-runtime.js?smoke=native20');
 await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-await test('runtime boots locked and unmuted',()=>{assert(window.__lioraAudio,'audio api missing');assert(window.__lioraAudio.status.revision==='audio19','wrong revision');assert(window.__lioraAudio.unlocked===false,'activated without gesture');assert(window.__lioraAudio.muted===false,'fresh runtime muted');});
-await test('runtime owns four streams',()=>{const streams=window.__lioraAudio.status.streams;assert(Object.keys(streams).length===4,'wrong stream count');for(const stream of Object.values(streams))assert(stream.paused===true,'stream started before gesture');});
-await test('five native media elements use audio19',()=>{const media=[...document.querySelectorAll('audio')];assert(media.length===5,`wrong media count ${media.length}`);for(const audio of media)assert(audio.src.includes('?v=audio19'),`stale media url ${audio.src}`);});
+await test('selector keeps non-Apple browsers on native route',()=>{assert(window.__lioraAudioPlatform?.revision==='audio20','selector revision mismatch');assert(window.__lioraAudioPlatform?.route==='native',`unexpected route ${window.__lioraAudioPlatform?.route}`);});
+await test('verified native runtime stays audio19 and locked',()=>{assert(window.__lioraAudio,'audio api missing');assert(window.__lioraAudio.status.revision==='audio19','native runtime changed revision');assert(window.__lioraAudio.unlocked===false,'activated without gesture');assert(window.__lioraAudio.muted===false,'fresh runtime muted');});
+await test('native runtime still owns four streams',()=>{const streams=window.__lioraAudio.status.streams;assert(Object.keys(streams).length===4,'wrong stream count');for(const stream of Object.values(streams))assert(stream.paused===true,'stream started before gesture');});
+await test('native route still creates five audio19 media elements',()=>{const media=[...document.querySelectorAll('audio')];assert(media.length===5,`wrong media count ${media.length}`);for(const audio of media)assert(audio.src.includes('?v=audio19'),`native media behavior changed ${audio.src}`);});
 await test('one sound button exists',()=>assert(document.querySelectorAll('#audio-toggle').length===1,'duplicate audio button'));
-await test('dispose removes owned media',()=>{window.__lioraAudio.dispose();assert(document.querySelector('#audio-toggle')===null,'button survived dispose');assert(document.querySelectorAll('audio').length===0,'media survived dispose');});
+await test('dispose removes native-owned media',()=>{window.__lioraAudio.dispose();assert(document.querySelector('#audio-toggle')===null,'button survived dispose');assert(document.querySelectorAll('audio').length===0,'media survived dispose');});
 window.__results=results;window.__done=true;out.textContent=results.map((r)=>`${r.pass?'PASS':'FAIL'} ${r.name}${r.detail?` | ${r.detail}`:''}`).join('\n');
 </script>
 </body></html>
