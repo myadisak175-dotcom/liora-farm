@@ -12,6 +12,9 @@ addEventListener("unhandledrejection",(e)=>fail("unhandled rejection: "+((e.reas
 <script type="module">
 import { worldLayers, checkLayerStack, describeLayerStack, LAYER_KINDS } from "../../src/systems/world-layers.js";
 import { CONFIG } from "../../src/config.js";
+import { applyDistantPathBackdrop } from "../../src/world24-config.js";
+
+applyDistantPathBackdrop(CONFIG);
 
 const results = [];
 const ok = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
@@ -19,9 +22,13 @@ const byId = (layers, id) => layers.find((layer) => layer.id === id) ?? null;
 
 const layers = worldLayers(CONFIG);
 ok("every system that occupies a distance is in the stack",
-  ["terrain", "treeLine", "ground", "PaintedMeadow", "PaintedTreeline", "PaintedPeaks", "floatingIslands", "sky"]
+  ["terrain", "treeLine", "ground", "PaintedPath", "PaintedMeadow", "PaintedTreeline", "PaintedPeaks", "floatingIslands", "sky"]
     .every((id) => byId(layers, id)),
   layers.map((l) => l.id).join(", "));
+ok("the new path sits between outer ground and the existing meadow",
+  CONFIG.outerWorld.outerRadius < byId(layers, "PaintedPath").near
+    && byId(layers, "PaintedPath").near < byId(layers, "PaintedMeadow").near,
+  `ground=${CONFIG.outerWorld.outerRadius} path=${byId(layers, "PaintedPath").near} meadow=${byId(layers, "PaintedMeadow").near}`);
 ok("every layer declares a kind the checker understands",
   layers.every((layer) => LAYER_KINDS.includes(layer.kind)),
   layers.filter((l) => !LAYER_KINDS.includes(l.kind)).map((l) => `${l.id}:${l.kind}`).join(", "));
