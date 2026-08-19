@@ -31,7 +31,7 @@
   document.head.append(map);
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23";
+  entry.src = "./src/main.js?v=world24";
   document.head.append(entry);
 
   // The previous audio preference was designed around world-switch reloads.
@@ -46,20 +46,25 @@
     }
   } catch {}
 
-  // Audio v16 fixes the mobile mix: levels on devices that ignore element
-  // volume, silent tracks stopped, and a mute choice that survives a reload.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-bootstrap-v8.js?v=world23";
+  audio.src = "./src/audio-bootstrap-v8.js?v=world24";
   document.head.append(audio);
 
-  // A second gesture path for the single-world build. The main audio runtime
-  // still owns playback; this only retries blocked streams on pointerup/click
-  // after Android consumed the first pointerdown while media was starting.
+  // Android single-world recovery: later gestures retry an autoplay-blocked
+  // first start without relying on the world-switch UI that no longer exists.
   const audioRecovery = document.createElement("script");
   audioRecovery.type = "module";
-  audioRecovery.src = "./src/audio-single-world-recovery.js?v=audio17";
+  audioRecovery.src = "./src/audio-single-world-recovery.js?v=audio18";
   document.head.append(audioRecovery);
+
+  // Safari can play the long HTMLAudio tracks while decoded Web Audio
+  // footsteps remain silent. This Apple-only companion supplies a compact
+  // media-element footstep until the normal runtime proves it is working.
+  const iosFootsteps = document.createElement("script");
+  iosFootsteps.type = "module";
+  iosFootsteps.src = "./src/audio-ios-footstep-fallback.js?v=audio18";
+  document.head.append(iosFootsteps);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
     const npcTest = document.createElement("script");
