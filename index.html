@@ -48,12 +48,12 @@
     }
   } catch {}
 
-  // path24 applies the new painted road/fence strip before the existing game
-  // modules read CONFIG. The world/gameplay revision stays world23; this is a
-  // cache-safe visual layer release rather than a save-format change.
+  // path25 switches PaintedPath to the newly uploaded full-resolution PNG and
+  // removes the old over-compressed WebP. The world/gameplay revision remains
+  // world23; this is only a cache-safe visual asset replacement.
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/world24-entry.js?v=path24";
+  entry.src = "./src/world25-entry.js?v=path25";
   document.head.append(entry);
 
   // audio21 keeps Android on its verified audio19 native runtime. iOS now
