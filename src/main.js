@@ -38,6 +38,7 @@ import { createFullscreenControl } from "./ui/fullscreen.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
 import { createSystemRegistry } from "./systems/registry.js";
 import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
+import { createDistantVillageBackdrop } from "./systems/background/distant-village-backdrop.js";
 import { createTreeLine } from "./systems/background/tree-line.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
@@ -176,6 +177,18 @@ try {
   console.warn("Floating island backdrop unavailable", error);
 }
 
+let distantVillageBackdrop = null;
+try {
+  distantVillageBackdrop = await createDistantVillageBackdrop({
+    url: `${ASSETS.textureDir}/liora_village_background.webp`,
+    anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
+  });
+  scene.add(distantVillageBackdrop.group);
+} catch (error) {
+  // A missing decorative village must never prevent the farm from booting.
+  console.warn("Distant village backdrop unavailable", error);
+}
+
 const input = createInput();
 const cameraController = createCameraController(camera, CONFIG.camera, renderer.domElement);
 const runFx = createRunFx(scene, CONFIG.runFx);
@@ -218,6 +231,7 @@ window.__liora = {
   get wind() { return wind; },
   get life() { return environmentLife?.stats ?? null; },
   get treeLine() { return treeLine?.stats ?? null; },
+  get village() { return distantVillageBackdrop?.stats ?? null; },
   get systems() { return systems.names; },
   /**
    * Tear the whole game down. Nothing calls this yet — it exists so that
@@ -545,6 +559,10 @@ systems.add("objectShadows", {
     objectShadows.refresh();
   },
   dispose: () => objectShadows.dispose?.(),
+});
+systems.add("distantVillage", {
+  update: () => distantVillageBackdrop?.setAtmosphere(scene.fog?.color),
+  dispose: () => distantVillageBackdrop?.dispose?.(),
 });
 systems.add("floatingIslands", floatingIslandBackdrop);
 systems.add("treeLine", treeLine);
