@@ -13,7 +13,7 @@ if (document.readyState === "loading") {
   await new Promise((resolve) => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
 }
 
-const AUDIO_BASE = "./assets/audio/";
+const AUDIO_BASE = new URL("../assets/audio/", import.meta.url);
 const AUDIO_REVISION = "audio20";
 const STREAM_FILES = Object.freeze({
   music: "music_lanternfields_overture.mp3",
@@ -62,6 +62,12 @@ const STEP_BANKS = Object.freeze({
 });
 
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+function audioUrl(file) {
+  const url = new URL(file, AUDIO_BASE);
+  url.searchParams.set("v", AUDIO_REVISION);
+  return url.href;
+}
+
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 const context = new AudioContextCtor({ latencyHint: "interactive" });
 const masterGain = context.createGain();
@@ -76,7 +82,7 @@ masterGain.connect(context.destination);
 
 function makeMusic() {
   const audio = document.createElement("audio");
-  audio.src = `${AUDIO_BASE}${STREAM_FILES.music}?v=${AUDIO_REVISION}`;
+  audio.src = audioUrl(STREAM_FILES.music);
   audio.loop = true;
   audio.preload = "auto";
   audio.playsInline = true;
@@ -177,7 +183,7 @@ let windPhase = 0;
 const stepper = createStepper();
 
 async function decodeFile(file) {
-  const response = await fetch(`${AUDIO_BASE}${file}?v=${AUDIO_REVISION}`, { cache: "force-cache" });
+  const response = await fetch(audioUrl(file), { cache: "force-cache" });
   if (!response.ok) throw new Error(`${file} HTTP ${response.status}`);
   const bytes = await response.arrayBuffer();
   return context.decodeAudioData(bytes);
