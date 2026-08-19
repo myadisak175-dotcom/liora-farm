@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>iOS audio runtime smoke</title></head>
+<body data-mode="play">
+<div id="toast"></div><pre id="out"></pre>
+<script type="module">
+const results=[];
+const out=document.querySelector('#out');
+async function test(name,fn){try{await fn();results.push({name,pass:true,detail:''});}catch(error){results.push({name,pass:false,detail:String(error?.message??error)});}}
+function assert(value,message){if(!value)throw new Error(message);}
+const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+window.__lioraAudioRuntime={hour:12,surface:'grass',state:{moving:false,running:false,waterDepth:0,special:false,position:{x:0,y:0,z:0}}};
+await import('../../src/audio-ios-runtime.js?smoke=ios20');
+await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+await test('iOS runtime boots locked on one context route',()=>{const status=window.__lioraAudio?.status;assert(status,'audio api missing');assert(status.revision==='audio20','wrong iOS revision');assert(status.platform==='ios','wrong platform');assert(status.routing==='ios-single-context','wrong routing');assert(window.__lioraAudio.unlocked===false,'activated without gesture');assert(window.__lioraAudio.muted===false,'fresh runtime muted');});
+await test('iOS route creates only one native media element',()=>{const media=[...document.querySelectorAll('audio')];assert(media.length===1,`expected one music element, found ${media.length}`);assert(media[0].src.includes('music_lanternfields_overture.mp3?v=audio20'),`wrong music source ${media[0].src}`);});
+await test('iOS runtime decodes all ambience and step banks before use',async()=>{for(let i=0;i<80;i+=1){const status=window.__lioraAudio.status;if(status.decodedAmbience===3&&status.decodedSteps===5)return;await wait(100);}const status=window.__lioraAudio.status;throw new Error(`decoded ambience=${status.decodedAmbience}/3 steps=${status.decodedSteps}/5 err=${status.error}`);});
+await test('one sound button exists',()=>assert(document.querySelectorAll('#audio-toggle').length===1,'duplicate audio button'));
+await test('dispose removes music and closes owned UI',async()=>{await window.__lioraAudio.dispose();assert(document.querySelector('#audio-toggle')===null,'button survived dispose');assert(document.querySelectorAll('audio').length===0,'music survived dispose');});
+window.__results=results;window.__done=true;out.textContent=results.map((r)=>`${r.pass?'PASS':'FAIL'} ${r.name}${r.detail?` | ${r.detail}`:''}`).join('\n');
+</script>
+</body></html>
