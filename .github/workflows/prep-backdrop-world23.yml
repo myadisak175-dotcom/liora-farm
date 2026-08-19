@@ -3,7 +3,7 @@ name: Finalize Backdrop World23
 on:
   pull_request:
     branches: [main]
-    types: [synchronize]
+    types: [opened, synchronize, reopened]
     paths:
       - .github/workflows/prep-backdrop-world23.yml
 
