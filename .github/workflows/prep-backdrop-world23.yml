@@ -1,137 +1,14 @@
-name: Finalize Backdrop World23
+name: Backdrop Prep (archived)
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-    paths:
-      - .github/workflows/prep-backdrop-world23.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  finalize:
-    if: github.actor != 'github-actions[bot]'
+  archived:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source branch
-        uses: actions/checkout@v4
-        with:
-          ref: agent/backdrop-world23
-          fetch-depth: 0
-
-      - name: Wire the wide distance stack into world23
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old!r}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          replace_once('src/config.js',
-              'export const BUILD = "worlds-9-one-stack";',
-              'export const BUILD = "worlds-10-wide-backdrop";')
-
-          config = Path('src/config.js')
-          text = config.read_text(encoding='utf-8')
-          pattern = re.compile(r'  paintedBackdrop: \{\n.*?\n  \},\n  /\*\*\n   \* The authored GLB islands', re.S)
-          replacement = '''  paintedBackdrop: {
-    enabled: true,
-    bands: [
-      {
-        name: "PaintedPeaks",
-        texture: "./assets/textures/backdrop-peaks.webp",
-        radius: 720, height: 148, y: 18, repeat: 4,
-        tint: 0xe8f2f6, haze: 0.34, renderOrder: -30,
-      },
-      {
-        name: "PaintedTreeline",
-        texture: "./assets/textures/backdrop-treeline.webp",
-        radius: 560, height: 60, y: -1, repeat: 4,
-        tint: 0xe8f1e7, haze: 0.22, renderOrder: -29,
-      },
-      {
-        name: "PaintedMeadow",
-        texture: "./assets/textures/backdrop-meadow.webp",
-        radius: 430, height: 46, y: -7, repeat: 4,
-        tint: 0xf0f5e9, haze: 0.10, renderOrder: -28,
-      },
-    ],
-  },
-  /**
-   * The authored GLB islands'''
-          text, count = pattern.subn(replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f'src/config.js: paintedBackdrop block match count={count}')
-          config.write_text(text, encoding='utf-8')
-
-          replace_once('src/main.js',
-              'const APP_REVISION = "world22";',
-              'const APP_REVISION = "world23";')
-
-          index = Path('index.html')
-          text = index.read_text(encoding='utf-8')
-          count = text.count('world22')
-          if count < 2:
-              raise SystemExit(f'index.html: expected at least 2 world22 cache keys, found {count}')
-          index.write_text(text.replace('world22', 'world23'), encoding='utf-8')
-
-          audio = Path('audio-test.html')
-          text = audio.read_text(encoding='utf-8')
-          if '?v=world22' not in text:
-              raise SystemExit('audio-test.html: world22 return link not found')
-          audio.write_text(text.replace('?v=world22', '?v=world23'), encoding='utf-8')
-
-          layers = Path('tools/test/world-layers.test.html')
-          text = layers.read_text(encoding='utf-8')
-          old_ids = '["terrain", "treeLine", "ground", "PaintedForest", "PaintedPeaks", "floatingIslands", "sky"]'
-          new_ids = '["terrain", "treeLine", "ground", "PaintedMeadow", "PaintedTreeline", "PaintedPeaks", "floatingIslands", "sky"]'
-          if old_ids not in text:
-              raise SystemExit('world-layers.test.html: expected old layer-id list not found')
-          text = text.replace(old_ids, new_ids, 1)
-          text = text.replace('"PaintedForest"', '"PaintedMeadow"')
-          layers.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Verify the ordered distance stack
-        run: |
-          python - <<'PY'
-          import math
-          world_limit = 38
-          camera_far = 900
-          sky = 820
-          bands = [
-              ('PaintedMeadow', 430, 46, -7),
-              ('PaintedTreeline', 560, 60, -1),
-              ('PaintedPeaks', 720, 148, 18),
-          ]
-          tops = []
-          for name, radius, height, y in bands:
-              farthest = radius + world_limit
-              assert farthest < sky < camera_far, (name, farthest, sky, camera_far)
-              top_deg = math.degrees(math.atan2(y + height / 2 - 10, radius))
-              tops.append((name, top_deg))
-          assert all(tops[i][1] > tops[i-1][1] for i in range(1, len(tops))), tops
-          assert 418 < bands[0][1]
-          print('stack:', ', '.join(f'{n} {r+world_limit}m' for n, r, _, _ in bands))
-          print('elevation:', ', '.join(f'{n} {d:.2f}deg' for n, d in tops))
-          PY
-
-      - name: Commit world23 wiring and remove this temporary workflow
-        env:
-          BRANCH: agent/backdrop-world23
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/prep-backdrop-world23.yml
-          git add src/config.js src/main.js index.html audio-test.html tools/test/world-layers.test.html
-          git commit -m 'Wire wide meadow and treeline into world23'
-          git push origin HEAD:${BRANCH}
+      - name: Note
+        run: echo "Backdrop prep completed for world23. Use tools/prep_backdrop.py for future assets."
