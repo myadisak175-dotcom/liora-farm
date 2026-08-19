@@ -53,6 +53,7 @@ const PAGES = [
   { file: "tools/test/fullscreen.test.html", viewports: [[390, 664]] },
   { file: "tools/test/paint-panel.test.html", viewports: [[390, 664], [360, 560], [320, 480]] },
   { file: "tools/test/audio-assets.test.html", viewports: [[390, 664]] },
+  { file: "tools/test/audio-runtime-smoke.test.html", viewports: [[390, 664]] },
   { file: "tools/test/audio-mix.test.html", viewports: [[900, 800]] },
   { file: "tools/test/quality.test.html", viewports: [[390, 664]] },
 ];
