@@ -30,12 +30,12 @@
   }});
   document.head.append(map);
 
-  // One-release bridge for Safari module caches. Some iPhones can still reuse
-  // a v1 quality module after the detector itself was fixed. If this is a
-  // high-end Retina Apple device and there is no current v2 choice, seed the
-  // legacy key to high as well. That makes both an old cached v1 detector and
-  // the current v2 detector choose the same quality. A deliberate v2 choice
-  // always wins, and an old explicit v1 "low" is preserved.
+  // One-release bridge for Safari module caches. A query on main.js does not
+  // propagate to nested ES-module imports, so pretending to ship "render24"
+  // would not actually refresh a cached quality.js. Instead make both the old
+  // v1 detector and the current v2 detector agree: on a high-end Retina Apple
+  // device with no current v2 choice, seed the legacy key to high. A deliberate
+  // v2 choice always wins, and an old explicit v1 "low" is preserved.
   try {
     const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
       || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -50,9 +50,7 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  // render24 is a cache release only. The authored world remains world23;
-  // changing this URL forces Safari to fetch the current bootstrap immediately.
-  entry.src = "./src/main.js?v=render24";
+  entry.src = "./src/main.js?v=world23";
   document.head.append(entry);
 
   // One audio owner, one cache revision. audio19 replaces the previous split
