@@ -18,12 +18,12 @@ const APPLE_MOBILE = typeof navigator !== "undefined" && (
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
 );
 const DISPLAY_PIXEL_RATIO = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
-// A native 3x iPhone canvas is unnecessarily expensive for this world, but the
-// old 2x cap visibly softened fine grass, character edges and the painted
-// horizon on Retina displays. 2.5x is the high-end iOS sweet spot: much sharper
-// without doubling the pixel cost of the established 2x high preset.
+// Native 3x rendering is wasteful for a WebGL game. 2.5x looked extremely
+// sharp, but real-device testing showed occasional frame spikes on iPhone.
+// 2.25x keeps most of the Retina clarity while cutting roughly one fifth of
+// the fragment workload versus 2.5x, without touching shadows or scene detail.
 const HIGH_PIXEL_RATIO_CAP = APPLE_MOBILE
-  ? Math.min(2.5, Math.max(2, DISPLAY_PIXEL_RATIO))
+  ? Math.min(2.25, Math.max(2, DISPLAY_PIXEL_RATIO))
   : 2;
 
 export const QUALITY_PRESETS = Object.freeze({
