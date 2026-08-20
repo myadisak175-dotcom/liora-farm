@@ -100,6 +100,21 @@ await test("a failed write is reported rather than swallowed", () => {
   }
 });
 
+await test("restricted storage reads fail safely instead of crashing boot", () => {
+  const key = freshKey();
+  const store = createLocalStore({ key, version: 1 });
+  const original = localStorage.getItem;
+  localStorage.getItem = () => { throw new Error("SecurityError"); };
+  try {
+    assert(store.load() === null, "blocked load must return null");
+    assert(store.lastIssue?.kind === "load-failed", `wrong load issue: ${store.lastIssue?.kind}`);
+    assert(store.has() === false, "blocked has() must report false");
+    assert(store.lastIssue?.kind === "read-failed", `wrong read issue: ${store.lastIssue?.kind}`);
+  } finally {
+    localStorage.getItem = original;
+  }
+});
+
 await test("layout store keeps its schema and its issue kinds", () => {
   const key = freshKey();
   const store = createLayoutStore({ storageKey: key });
