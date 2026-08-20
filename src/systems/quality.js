@@ -13,6 +13,19 @@
 // corrected detector and leave Retina rendering soft even after the code fix.
 export const QUALITY_STORAGE_KEY = "liora.quality.v2";
 
+const APPLE_MOBILE = typeof navigator !== "undefined" && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+);
+const DISPLAY_PIXEL_RATIO = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
+// A native 3x iPhone canvas is unnecessarily expensive for this world, but the
+// old 2x cap visibly softened fine grass, character edges and the painted
+// horizon on Retina displays. 2.5x is the high-end iOS sweet spot: much sharper
+// without doubling the pixel cost of the established 2x high preset.
+const HIGH_PIXEL_RATIO_CAP = APPLE_MOBILE
+  ? Math.min(2.5, Math.max(2, DISPLAY_PIXEL_RATIO))
+  : 2;
+
 export const QUALITY_PRESETS = Object.freeze({
   low: Object.freeze({
     id: "low",
@@ -53,12 +66,12 @@ export const QUALITY_PRESETS = Object.freeze({
   high: Object.freeze({
     id: "high",
     label: "สูง",
-    hint: "คอม / มือถือแรง",
-    maxPixelRatio: 2,
+    hint: APPLE_MOBILE ? "Retina iPhone / iPad" : "คอม / มือถือแรง",
+    maxPixelRatio: HIGH_PIXEL_RATIO_CAP,
     antialias: true,
     shadowMapSize: 2048,
     shadowBounds: 20,
-    anisotropy: 8,
+    anisotropy: APPLE_MOBILE ? 12 : 8,
     cloudShadows: true,
     groundAO: true,
     detailNormals: true,
@@ -76,17 +89,21 @@ export const QUALITY_ORDER = Object.freeze(["low", "medium", "high"]);
  * Best guess at a starting tier.
  *
  * Missing browser signals are never interpreted as "slow". Safari does not
- * expose navigator.deviceMemory, so a dense 3x display plus six or more cores
- * is enough to identify a modern high-end mobile class. Android devices with a
- * real memory signal continue to use that stronger signal first.
+ * expose navigator.deviceMemory and some iOS releases report a conservative
+ * hardwareConcurrency value, so a Retina Apple phone is treated as high-end
+ * before the generic core-count fallback can incorrectly classify it as low.
  */
 export function detectQualityId({
   isTouch = false,
   deviceMemory = null,
   cores = null,
   pixelRatio = 1,
+  appleMobile = false,
 } = {}) {
   if (!isTouch) return "high";
+  if (appleMobile && pixelRatio >= 3) return "high";
+  if (appleMobile && pixelRatio >= 2
+      && Number.isFinite(cores) && cores >= 6) return "high";
   if (Number.isFinite(deviceMemory) && deviceMemory > 0 && deviceMemory <= 3) return "low";
   if (Number.isFinite(cores) && cores > 0 && cores <= 4) return "low";
   if (Number.isFinite(deviceMemory) && deviceMemory >= 6) return "high";
@@ -119,11 +136,15 @@ function writeStoredId(id) {
 export function createQuality(environment = {}) {
   const isTouch = environment.isTouch
     ?? (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
+  const pixelRatio = environment.pixelRatio
+    ?? (typeof devicePixelRatio === "number" ? devicePixelRatio : 1);
+  const appleMobile = environment.appleMobile ?? APPLE_MOBILE;
   const detected = detectQualityId({
     isTouch,
     deviceMemory: environment.deviceMemory ?? navigator?.deviceMemory ?? null,
     cores: environment.cores ?? navigator?.hardwareConcurrency ?? null,
-    pixelRatio: environment.pixelRatio ?? (typeof devicePixelRatio === "number" ? devicePixelRatio : 1),
+    pixelRatio,
+    appleMobile,
   });
 
   let id = resolveQualityId(environment.stored ?? readStoredId(), detected);
@@ -131,6 +152,7 @@ export function createQuality(environment = {}) {
 
   const api = {
     isTouch,
+    appleMobile,
     detected,
     get id() { return id; },
     get preset() { return QUALITY_PRESETS[id]; },
@@ -140,7 +162,7 @@ export function createQuality(environment = {}) {
       if (!QUALITY_ORDER.includes(next) || next === id) return api.preset;
       id = next;
       if (persist) writeStoredId(next);
-      for (const listener of listeners) listener(QUALITY_PRESETS[id]);
+      for (const listener of listeners) listener(api.preset);
       return api.preset;
     },
     onChange(listener) {
