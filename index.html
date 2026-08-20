@@ -27,44 +27,39 @@
   map.textContent = JSON.stringify({ imports: {
     three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
     "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
-    // Bust the visual-only modules together so a phone cannot combine the new
-    // hill/village/World Tree with an older cached backdrop graph. APP_REVISION
-    // remains world23 and audio remains on its independent audio21 release.
+    // Keep the visual-only graph coherent on phones that aggressively cache
+    // nested ES modules. world23/gameplay is unchanged; these are presentation
+    // revisions only.
     "./src/config.js": "./src/config.js?v=village3",
+    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx1",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
     "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
   }});
   document.head.append(map);
 
-  // One-release bridge for Safari module caches. A query on main.js does not
-  // propagate to nested ES-module imports, so pretending to ship "render24"
-  // would not actually refresh a cached quality.js. Instead make both the old
-  // v1 detector and the current v2 detector agree: on a high-end Retina Apple
-  // device with no current v2 choice, seed the legacy key to high. A deliberate
-  // v2 choice always wins, and an old explicit v1 "low" is preserved.
+  // Modern Retina iPhones should never begin on the soft generic mobile tier.
+  // Only seed a choice when the player has no v2 preference; an explicit saved
+  // Low/Medium/High choice still wins.
   try {
     const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
       || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const cores = Number(navigator.hardwareConcurrency) || 0;
-    const legacyQuality = localStorage.getItem("liora.quality.v1");
     const currentQuality = localStorage.getItem("liora.quality.v2");
-    if (appleMobile && devicePixelRatio >= 3 && cores >= 6
-        && currentQuality === null && legacyQuality !== "low") {
-      localStorage.setItem("liora.quality.v1", "high");
+    if (appleMobile && devicePixelRatio >= 3 && currentQuality === null) {
+      localStorage.setItem("liora.quality.v2", "high");
     }
   } catch {}
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23&visual=worldtree2";
+  entry.src = "./src/main.js?v=world23&visual=iosgfx1";
   document.head.append(entry);
 
-  // audio21 keeps Android on its verified audio19 native runtime. iOS now
-  // creates its live AudioContext only inside a real user gesture and recovers
-  // WebKit's non-standard "interrupted" state without hanging STARTING.
+  // audio22 leaves Android on the verified native runtime and routes iOS to a
+  // new WebKit-specific module that repairs the first-tap suspended-context
+  // case without requiring the player to toggle sound off and on again.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio21";
+  audio.src = "./src/audio-runtime.js?v=audio22";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
