@@ -31,7 +31,7 @@
     // version. tools/test/module-graph.mjs enforces that rule so Safari's
     // nested-module cache workaround cannot silently redirect a module.
     "./src/config.js": "./src/config.js?v=village3",
-    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx3",
+    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx4",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
     "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
   }});
@@ -44,15 +44,14 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23&visual=iosgfx3";
+  entry.src = "./src/main.js?v=world23&visual=iosgfx4";
   document.head.append(entry);
 
-  // audio23 keeps Android on the verified native runtime. iOS keeps the
-  // WebKit context path and automatically performs the output off/on reset
-  // that some devices still required manually after the first unlock.
+  // iOS keeps the verified WebKit context route but uses the faster output
+  // stabilizer; Android remains on the native runtime unchanged.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio23";
+  audio.src = "./src/audio-runtime.js?v=audio23-fast1";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
