@@ -49,7 +49,7 @@ export function storageFootprint() {
       bytes += key.length + (localStorage.getItem(key)?.length ?? 0);
       if (key.endsWith(".backup")) backups += 1;
     }
-  } catch { /* private mode */ }
+  } catch { /* private / restricted storage mode */ }
   return { bytes, backups };
 }
 
@@ -68,14 +68,26 @@ export function createLocalStore({ key, version }) {
       console.warn(`"${key}" kept at "${backupKey}" (${kind})`);
     } catch (error) {
       // Out of quota while trying to rescue data. Say so rather than pretend.
-      lastIssue = { kind, backupKey: null };
+      lastIssue = { kind, backupKey: null, error: String(error) };
       console.warn(`"${key}" backup failed (${kind})`, error);
       report("พื้นที่เก็บข้อมูลเต็ม — สำรองข้อมูลเดิมไม่สำเร็จ");
     }
   }
 
+  function readRaw(targetKey, kind = "load-failed") {
+    try {
+      return localStorage.getItem(targetKey);
+    } catch (error) {
+      lastIssue = { kind, backupKey: null, error: String(error) };
+      console.warn(`"${targetKey}" could not be read`, error);
+      report("อ่านข้อมูลที่บันทึกไว้ไม่ได้ — เบราว์เซอร์ปิดกั้นพื้นที่เก็บข้อมูล");
+      return null;
+    }
+  }
+
   function has() {
-    return localStorage.getItem(key) !== null;
+    lastIssue = null;
+    return readRaw(key, "read-failed") !== null;
   }
 
   function save(payload) {
@@ -105,7 +117,9 @@ export function createLocalStore({ key, version }) {
       localStorage.removeItem(backupKey);
       if (lastIssue?.backupKey === backupKey) lastIssue = null;
       return true;
-    } catch {
+    } catch (error) {
+      lastIssue = { kind: "clear-failed", backupKey, error: String(error) };
+      console.warn(`"${backupKey}" could not be removed`, error);
       return false;
     }
   }
@@ -119,7 +133,7 @@ export function createLocalStore({ key, version }) {
   /** The stored payload, or null when there is nothing usable to load. */
   function load() {
     lastIssue = null;
-    lastRaw = localStorage.getItem(key);
+    lastRaw = readRaw(key, "load-failed");
     if (lastRaw === null) return null;
 
     let payload = null;
@@ -149,7 +163,15 @@ export function createLocalStore({ key, version }) {
   }
 
   function clear() {
-    localStorage.removeItem(key);
+    try {
+      localStorage.removeItem(key);
+      return true;
+    } catch (error) {
+      lastIssue = { kind: "clear-failed", backupKey: null, error: String(error) };
+      console.warn(`"${key}" could not be cleared`, error);
+      report("ล้างข้อมูลที่บันทึกไว้ไม่ได้ — เบราว์เซอร์ปิดกั้นพื้นที่เก็บข้อมูล");
+      return false;
+    }
   }
 
   return {
