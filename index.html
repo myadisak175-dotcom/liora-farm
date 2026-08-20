@@ -47,11 +47,11 @@
   entry.src = "./src/main.js?v=world23&visual=iosgfx4";
   document.head.append(entry);
 
-  // iOS keeps the verified WebKit context route but uses the faster output
-  // stabilizer; Android remains on the native runtime unchanged.
+  // iOS now prioritizes walk/run + birds/wind before situational banks, while
+  // keeping the verified WebKit output repair. Android remains unchanged.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio23-fast1";
+  audio.src = "./src/audio-runtime.js?v=audio24-priority1";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
