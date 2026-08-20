@@ -20,11 +20,12 @@ const APPLE_MOBILE = typeof navigator !== "undefined" && (
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
 );
 const DISPLAY_PIXEL_RATIO = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
-// Native 3x rendering is wasteful for a WebGL game. 2.25x keeps most of the
-// Retina clarity while leaving enough GPU headroom for the adaptive controller
-// below to protect frame pacing when the world gets busy.
+// 2.25x looked excellent but could saturate an iPhone GPU before the adaptive
+// controller had time to react. Start at 2.0x instead: it still renders a crisp
+// Retina image, while cutting about 21% of the fragment workload versus 2.25x.
+// All High-tier lighting, shadows, AO, normals and cloud effects remain intact.
 const HIGH_PIXEL_RATIO_CAP = APPLE_MOBILE
-  ? Math.min(2.25, Math.max(2, DISPLAY_PIXEL_RATIO))
+  ? Math.min(2, Math.max(1.8, DISPLAY_PIXEL_RATIO))
   : 2;
 
 /**
@@ -38,7 +39,7 @@ const HIGH_PIXEL_RATIO_CAP = APPLE_MOBILE
  *
  * WebGLRenderer.setPixelRatio() already resizes the drawing buffer without
  * changing the canvas' CSS size, so this is cheap enough to do occasionally.
- * A long cooldown and small 0.15 DPR steps keep each transition subtle.
+ * A long cooldown and small DPR steps keep each transition subtle.
  */
 function installIOSAdaptiveResolution() {
   if (!APPLE_MOBILE || typeof window === "undefined" || typeof performance === "undefined") return;
@@ -51,14 +52,14 @@ function installIOSAdaptiveResolution() {
 
   const STATE = Symbol("lioraAdaptiveResolution");
   const STEP = 0.15;
-  const FLOOR = 1.8;
-  const SLOW_EMA_MS = 19.2;       // ~52 fps sustained
-  const STABLE_EMA_MS = 17.35;    // ~58+ fps sustained
-  const SLOW_HOLD_MS = 850;
-  const STABLE_HOLD_MS = 5500;
-  const DOWN_COOLDOWN_MS = 1500;
-  const UP_COOLDOWN_MS = 2600;
-  const WARMUP_MS = 2600;
+  const FLOOR = 1.7;
+  const SLOW_EMA_MS = 18.5;       // ~54 fps sustained
+  const STABLE_EMA_MS = 17.25;    // ~58+ fps sustained
+  const SLOW_HOLD_MS = 520;
+  const STABLE_HOLD_MS = 7000;
+  const DOWN_COOLDOWN_MS = 1200;
+  const UP_COOLDOWN_MS = 3500;
+  const WARMUP_MS = 900;
 
   function roundDpr(value) {
     return Math.round(value * 100) / 100;
@@ -145,13 +146,13 @@ function installIOSAdaptiveResolution() {
         // not look like a catastrophic GPU frame and force resolution down.
         if (frameMs > 0 && frameMs < 250) {
           const sample = Math.min(frameMs, 50);
-          state.emaMs += (sample - state.emaMs) * 0.08;
+          state.emaMs += (sample - state.emaMs) * 0.1;
 
           if (now >= state.warmupUntil) {
             if (state.emaMs > SLOW_EMA_MS) {
               // A genuinely bad 30+ ms frame carries extra weight, so thermal
               // throttling or a dense scene gets relief quickly.
-              state.slowMs += frameMs * (frameMs >= 30 ? 1.65 : 1);
+              state.slowMs += frameMs * (frameMs >= 30 ? 1.7 : 1);
               state.stableMs = Math.max(0, state.stableMs - frameMs * 1.8);
             } else if (state.emaMs < STABLE_EMA_MS) {
               state.stableMs += frameMs;
@@ -173,7 +174,7 @@ function installIOSAdaptiveResolution() {
           state.emaMs = 16.67;
           state.slowMs = 0;
           state.stableMs = 0;
-          state.warmupUntil = now + 1200;
+          state.warmupUntil = now + 900;
         }
       }
       state.lastFrameAt = now;
