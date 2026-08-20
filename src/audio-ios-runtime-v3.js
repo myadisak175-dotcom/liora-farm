@@ -65,6 +65,16 @@ const STEP_BANKS = Object.freeze({
   }),
 });
 
+// iPhone Safari used to decode every footstep bank serially before it even
+// reached the ambience files. That made the music begin while birds/wind and
+// the first useful footsteps stayed silent for noticeably longer. Keep the
+// first audible layer tiny and high-priority, then fill the situational banks
+// after the player already has a responsive world.
+const PRIMARY_STEP_KEYS = Object.freeze(["walk", "run"]);
+const SECONDARY_STEP_KEYS = Object.freeze(["runDirt", "runGround", "water"]);
+const PRIMARY_AMBIENCE_NAMES = Object.freeze(["birds", "wind"]);
+const SECONDARY_AMBIENCE_NAMES = Object.freeze(["night"]);
+
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 const OfflineAudioContextCtor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -174,6 +184,8 @@ const rawAudio = new Map();
 const runtimeErrors = new Map();
 const activeStepVoices = new Set();
 const stepper = createStepper();
+const pendingStepLoads = new Map();
+const pendingAmbienceLoads = new Map();
 
 let decoder = null;
 try {
@@ -244,77 +256,105 @@ function startAmbienceLoop(name) {
   }
 }
 
-async function preloadAmbience(name) {
+async function preloadAmbience(name, { live = false } = {}) {
   const track = ambience[name];
-  try {
-    const buffer = await decodeAhead(STREAM_FILES[name]);
-    if (buffer) {
-      track.buffer = buffer;
-      decodedAmbience += 1;
-      track.state = "ready";
-      runtimeErrors.delete(name);
-      if (activated) startAmbienceLoop(name);
-    } else {
-      track.state = "bytes-ready";
+  if (!track || track.buffer) return track?.buffer ?? null;
+  if (pendingAmbienceLoads.has(name)) return pendingAmbienceLoads.get(name);
+
+  const task = (async () => {
+    try {
+      const buffer = live
+        ? await decodeWithLiveContext(STREAM_FILES[name])
+        : await decodeAhead(STREAM_FILES[name]);
+      if (buffer && !track.buffer) {
+        track.buffer = buffer;
+        decodedAmbience += 1;
+        track.state = "ready";
+        runtimeErrors.delete(name);
+        if (activated) startAmbienceLoop(name);
+      } else if (!buffer && !track.buffer) {
+        track.state = "bytes-ready";
+      }
+      return track.buffer;
+    } catch (error) {
+      track.state = "failed";
+      runtimeErrors.set(name, String(error?.message ?? error));
+      return null;
+    } finally {
+      pendingAmbienceLoads.delete(name);
     }
-  } catch (error) {
-    track.state = "failed";
-    runtimeErrors.set(name, String(error?.message ?? error));
-  }
+  })();
+  pendingAmbienceLoads.set(name, task);
+  return task;
 }
 
-async function preloadStepBank(key) {
+async function preloadStepBank(key, { live = false } = {}) {
   const bank = STEP_BANKS[key];
-  try {
-    const buffer = await decodeAhead(bank.file);
-    if (buffer) {
-      stepBuffers.set(key, buffer);
-      decodedSteps += 1;
-      runtimeErrors.delete(`step-${key}`);
+  if (!bank || stepBuffers.has(key)) return stepBuffers.get(key) ?? null;
+  if (pendingStepLoads.has(key)) return pendingStepLoads.get(key);
+
+  const task = (async () => {
+    try {
+      const buffer = live
+        ? await decodeWithLiveContext(bank.file)
+        : await decodeAhead(bank.file);
+      if (buffer && !stepBuffers.has(key)) {
+        stepBuffers.set(key, buffer);
+        decodedSteps += 1;
+        runtimeErrors.delete(`step-${key}`);
+      }
+      return stepBuffers.get(key) ?? null;
+    } catch (error) {
+      runtimeErrors.set(`step-${key}`, String(error?.message ?? error));
+      return null;
+    } finally {
+      pendingStepLoads.delete(key);
     }
-  } catch (error) {
-    runtimeErrors.set(`step-${key}`, String(error?.message ?? error));
-  }
+  })();
+  pendingStepLoads.set(key, task);
+  return task;
+}
+
+async function loadPrimaryGameplayAudio({ live = false } = {}) {
+  await Promise.all([
+    ...PRIMARY_STEP_KEYS.map((key) => preloadStepBank(key, { live })),
+    ...PRIMARY_AMBIENCE_NAMES.map((name) => preloadAmbience(name, { live })),
+  ]);
+}
+
+async function loadSecondaryGameplayAudio({ live = false } = {}) {
+  await Promise.all([
+    ...SECONDARY_STEP_KEYS.map((key) => preloadStepBank(key, { live })),
+    ...SECONDARY_AMBIENCE_NAMES.map((name) => preloadAmbience(name, { live })),
+  ]);
 }
 
 async function hydrateMissingBuffers() {
   if (!context || context.state === "closed") return;
-  for (const key of Object.keys(STEP_BANKS)) {
-    if (disposed || stepBuffers.has(key)) continue;
-    try {
-      const buffer = await decodeWithLiveContext(STEP_BANKS[key].file);
-      if (!buffer) continue;
-      stepBuffers.set(key, buffer);
-      decodedSteps += 1;
-      runtimeErrors.delete(`step-${key}`);
-    } catch (error) {
-      runtimeErrors.set(`step-${key}`, String(error?.message ?? error));
-    }
-  }
-  for (const name of ["birds", "night", "wind"]) {
-    const track = ambience[name];
-    if (disposed || track.buffer) continue;
-    try {
-      const buffer = await decodeWithLiveContext(STREAM_FILES[name]);
-      if (!buffer) continue;
-      track.buffer = buffer;
-      decodedAmbience += 1;
-      track.state = "ready";
-      runtimeErrors.delete(name);
-      if (activated) startAmbienceLoop(name);
-    } catch (error) {
-      track.state = "failed";
-      runtimeErrors.set(name, String(error?.message ?? error));
-    }
-  }
+
+  // The sounds heard immediately after tapping are hydrated together first.
+  // Situational banks follow after a short yield so decode work does not block
+  // the first footstep / first birds-and-wind mix on iPhone.
+  await loadPrimaryGameplayAudio({ live: true });
+  if (disposed || !context || context.state === "closed") return;
+  for (const name of PRIMARY_AMBIENCE_NAMES) startAmbienceLoop(name);
+  applyMix();
+  setTimeout(() => {
+    if (disposed || !context || context.state === "closed") return;
+    void loadSecondaryGameplayAudio({ live: true });
+  }, 120);
 }
 
-// Pre-decode with OfflineAudioContext. This never opens the live output session,
-// so Safari cannot put the gameplay AudioContext into "interrupted" before the
-// player has actually tapped the page.
+// Pre-decode the immediately audible layer first. The old serial queue decoded
+// five step banks before birds/wind, so ambience could arrive several seconds
+// after music on a cold iPhone cache. Two footsteps + birds + wind now start in
+// parallel; dirt/ground/water/night fill in after a short yield.
 (async () => {
-  for (const key of Object.keys(STEP_BANKS)) await preloadStepBank(key);
-  for (const name of ["birds", "night", "wind"]) await preloadAmbience(name);
+  await loadPrimaryGameplayAudio();
+  if (disposed) return;
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  if (disposed) return;
+  await loadSecondaryGameplayAudio();
 })().catch((error) => runtimeErrors.set("preload", String(error?.message ?? error)));
 
 function stopContextSources() {
@@ -449,6 +489,11 @@ function applyMix(dt = 1 / 60) {
     track.level = approach(track.level, track.target, dt);
     if (track.gain) track.gain.gain.setTargetAtTime(track.level, now, 0.05);
     if (activated && track.buffer && !track.source) startAmbienceLoop(name);
+    // If the player changes time before a secondary ambience bank is ready,
+    // promote that bank immediately instead of waiting for the background queue.
+    if (activated && track.target > 0.01 && !track.buffer) {
+      void preloadAmbience(name, { live: true });
+    }
   }
 }
 
@@ -579,6 +624,9 @@ function playStep(profileKey, surface) {
   const buffer = stepBuffers.get(bankKey);
   if (!buffer) {
     runtimeErrors.set("footsteps", `${bankKey} buffer not ready`);
+    // Promote the exact surface the player is using. The next cadence hit can
+    // play as soon as decoding completes; it no longer waits behind every bank.
+    void preloadStepBank(bankKey, { live: true });
     return;
   }
 
