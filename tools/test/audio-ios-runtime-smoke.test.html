@@ -11,10 +11,10 @@ function assert(value,message){if(!value)throw new Error(message);}
 const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 window.__lioraAudioRuntime={hour:12,surface:'grass',state:{moving:false,running:false,waterDepth:0,special:false,position:{x:0,y:0,z:0}}};
 
-// Mirror the production audio23 iOS route instead of pinning the retired v2
-// runtime. The query is test-only cache isolation; module-graph validates it.
-await import('../../src/audio-ios-runtime-v3.js?smoke=audio23');
-await import('../../src/audio-ios-output-stabilizer.js?smoke=audio23');
+// Mirror the production iOS route. The query is test-only cache isolation;
+// module-graph validates it.
+await import('../../src/audio-ios-runtime-v3.js?smoke=audio23-fast1');
+await import('../../src/audio-ios-output-stabilizer.js?smoke=audio23-fast1');
 await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 
 await test('production iOS runtime boots locked without a live output context',()=>{
@@ -28,10 +28,10 @@ await test('production iOS runtime boots locked without a live output context',(
   assert(window.__lioraAudio.muted===false,'fresh runtime muted');
 });
 
-await test('audio23 output stabilizer is installed',()=>{
+await test('fast iOS output stabilizer is installed',()=>{
   const stabilizer=window.__lioraAudioStabilizer;
   assert(stabilizer,'stabilizer missing');
-  assert(stabilizer.revision==='audio23',`wrong stabilizer revision ${stabilizer.revision}`);
+  assert(stabilizer.revision==='audio23-fast1',`wrong stabilizer revision ${stabilizer.revision}`);
 });
 
 await test('iOS route creates only one native media element',()=>{
@@ -72,7 +72,7 @@ await test('recovery diagnostics remain observable',()=>{
 
 await test('one sound button exists',()=>assert(document.querySelectorAll('#audio-toggle').length===1,'duplicate audio button'));
 
-await test('dispose removes audio23 UI and owned media',async()=>{
+await test('dispose removes audio UI and owned media',async()=>{
   window.__lioraAudioStabilizer?.dispose?.();
   await window.__lioraAudio.dispose();
   assert(document.querySelector('#audio-toggle')===null,'button survived dispose');
