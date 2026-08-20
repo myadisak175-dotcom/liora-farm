@@ -13,8 +13,8 @@ window.__lioraAudioRuntime={hour:12,surface:'grass',state:{moving:false,running:
 
 // Mirror the production iOS route. The query is test-only cache isolation;
 // module-graph validates it.
-await import('../../src/audio-ios-runtime-v3.js?smoke=audio24-priority1');
-await import('../../src/audio-ios-output-stabilizer.js?smoke=audio23-fast1');
+await import('../../src/audio-ios-runtime-v3.js?smoke=audio24-route2');
+await import('../../src/audio-ios-output-stabilizer.js?smoke=audio24-route2');
 await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 
 await test('production iOS runtime boots locked without a live output context',()=>{
@@ -38,10 +38,20 @@ await test('priority loader keeps first footsteps and daytime ambience ahead of 
   assert(source.includes('preloadStepBank(bankKey, { live: true })'),'missing surface footsteps are not promoted on demand');
 });
 
-await test('fast iOS output stabilizer is installed',()=>{
+await test('two-phase iOS output stabilizer is installed',()=>{
   const stabilizer=window.__lioraAudioStabilizer;
   assert(stabilizer,'stabilizer missing');
-  assert(stabilizer.revision==='audio23-fast1',`wrong stabilizer revision ${stabilizer.revision}`);
+  assert(stabilizer.revision==='audio24-route2',`wrong stabilizer revision ${stabilizer.revision}`);
+  assert(stabilizer.routeSettled===false,'route should begin unsettled');
+  assert(stabilizer.gameplaySettled===false,'gameplay WebAudio should begin unsettled');
+});
+
+await test('stabilizer waits for primary WebAudio before declaring gameplay settled',async()=>{
+  const source=await fetch('../../src/audio-ios-output-stabilizer.js').then((response)=>response.text());
+  assert(source.includes('Number(current?.decodedSteps ?? 0) >= 2'),'primary footsteps are not part of readiness');
+  assert(source.includes('ambience.birds?.loaded'),'birds are not part of readiness');
+  assert(source.includes('ambience.wind?.loaded'),'wind is not part of readiness');
+  assert(source.includes('gameplaySettled = true'),'second-stage gameplay repair is missing');
 });
 
 await test('iOS route creates only one native media element',()=>{
