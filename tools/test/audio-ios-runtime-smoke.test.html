@@ -13,7 +13,7 @@ window.__lioraAudioRuntime={hour:12,surface:'grass',state:{moving:false,running:
 
 // Mirror the production iOS route. The query is test-only cache isolation;
 // module-graph validates it.
-await import('../../src/audio-ios-runtime-v3.js?smoke=audio23-fast1');
+await import('../../src/audio-ios-runtime-v3.js?smoke=audio24-priority1');
 await import('../../src/audio-ios-output-stabilizer.js?smoke=audio23-fast1');
 await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 
@@ -26,6 +26,16 @@ await test('production iOS runtime boots locked without a live output context',(
   assert(status.contextGeneration===0,`unexpected context generation ${status.contextGeneration}`);
   assert(window.__lioraAudio.unlocked===false,'activated without gesture');
   assert(window.__lioraAudio.muted===false,'fresh runtime muted');
+});
+
+await test('priority loader keeps first footsteps and daytime ambience ahead of situational banks',async()=>{
+  const source=await fetch('../../src/audio-ios-runtime-v3.js').then((response)=>response.text());
+  assert(source.includes('PRIMARY_STEP_KEYS = Object.freeze(["walk", "run"])'),'walk/run are not the primary step bank');
+  assert(source.includes('PRIMARY_AMBIENCE_NAMES = Object.freeze(["birds", "wind"])'),'birds/wind are not the primary ambience bank');
+  const primary=source.indexOf('await loadPrimaryGameplayAudio();');
+  const secondary=source.indexOf('await loadSecondaryGameplayAudio();');
+  assert(primary>=0&&secondary>primary,'secondary preload no longer follows the primary preload');
+  assert(source.includes('preloadStepBank(bankKey, { live: true })'),'missing surface footsteps are not promoted on demand');
 });
 
 await test('fast iOS output stabilizer is installed',()=>{
