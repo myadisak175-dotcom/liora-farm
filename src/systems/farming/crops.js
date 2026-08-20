@@ -1,6 +1,12 @@
 import * as THREE from "three";
 import { createLocalStore } from "../local-store.js";
 
+export const SOIL_STATES = Object.freeze({
+  PLAIN: "plain",
+  TILLED: "tilled",
+  WATERED: "watered",
+});
+
 export const CROP_STATES = Object.freeze({
   EMPTY: "empty",
   GROWING: "growing",
@@ -8,25 +14,27 @@ export const CROP_STATES = Object.freeze({
 });
 
 /**
- * The first gameplay loop: plant -> wait -> harvest -> pouch.
+ * Harvest-Moon-style first farm loop:
+ * plain -> hoe -> tilled -> water -> watered -> plant -> grow -> harvest.
  *
- * The 3x3 plot has existed as decoration since the beginning — plot.js already
- * handed out `cells`, nothing ever read them. This owns what is growing in
- * each of those cells and the meshes that show it. It touches no DOM; main.js
- * reads `pouch` and the current target to update the HUD.
+ * Save schema intentionally stays at v1. Older v1 saves had only crop state;
+ * when they load, empty cells become plain soil and planted cells become
+ * watered soil so existing crops survive this upgrade instead of being reset.
  */
 export function createCrops({ plot, config, onChange = () => {} }) {
   const group = new THREE.Group();
   group.name = "Crops";
   plot.group.add(group);
 
-  // Cell centres in world space, measured once — the plot never moves.
   plot.group.updateMatrixWorld(true);
   const cells = plot.cells.map((cell, index) => ({
     index,
     local: cell.position.clone(),
     world: plot.group.localToWorld(cell.position.clone()),
+    soilState: SOIL_STATES.PLAIN,
+    wateredToday: false,
     state: CROP_STATES.EMPTY,
+    cropType: null,
     plantedAt: 0,
     view: null,
   }));
@@ -85,7 +93,11 @@ export function createCrops({ plot, config, onChange = () => {} }) {
     return THREE.MathUtils.clamp(seconds / config.growSeconds, 0, 1);
   }
 
-  function applyView(cell) {
+  function applySoilView(cell) {
+    plot.setSoilState?.(cell.index, cell.soilState);
+  }
+
+  function applyCropView(cell) {
     if (cell.state === CROP_STATES.EMPTY) {
       if (cell.view) {
         group.remove(cell.view);
@@ -115,7 +127,7 @@ export function createCrops({ plot, config, onChange = () => {} }) {
         cell.state = CROP_STATES.RIPE;
         changed = true;
       }
-      applyView(cell);
+      applyCropView(cell);
     }
     return changed;
   }
@@ -128,6 +140,9 @@ export function createCrops({ plot, config, onChange = () => {} }) {
         i: cell.index,
         s: cell.state,
         t: cell.plantedAt,
+        o: cell.soilState,
+        w: cell.wateredToday,
+        c: cell.cropType,
       })),
     };
   }
@@ -138,19 +153,37 @@ export function createCrops({ plot, config, onChange = () => {} }) {
 
   function load() {
     const data = store.load();
-    if (!data) return;
+    if (!data) {
+      for (const cell of cells) applySoilView(cell);
+      return;
+    }
     if (!Array.isArray(data.cells)) {
       store.rejectLoaded("malformed");
       return;
     }
+
     pouch = Number.isFinite(data.pouch) ? data.pouch : 0;
     for (const entry of data.cells) {
       const cell = cells[entry.i];
       if (!cell) continue;
       if (!Object.values(CROP_STATES).includes(entry.s)) continue;
+
       cell.state = entry.s;
       cell.plantedAt = Number(entry.t) || 0;
-      applyView(cell);
+      cell.cropType = typeof entry.c === "string"
+        ? entry.c
+        : cell.state === CROP_STATES.EMPTY ? null : "radish";
+
+      const savedSoil = Object.values(SOIL_STATES).includes(entry.o) ? entry.o : null;
+      cell.soilState = savedSoil ?? (
+        cell.state === CROP_STATES.EMPTY ? SOIL_STATES.PLAIN : SOIL_STATES.WATERED
+      );
+      cell.wateredToday = typeof entry.w === "boolean"
+        ? entry.w
+        : cell.soilState === SOIL_STATES.WATERED;
+
+      applySoilView(cell);
+      applyCropView(cell);
     }
     refreshRipeness();
   }
@@ -170,19 +203,56 @@ export function createCrops({ plot, config, onChange = () => {} }) {
       }
     }
     if (!best) return null;
-    return { index: best.index, state: best.state, progress: progressOf(best) };
+    return {
+      index: best.index,
+      state: best.state,
+      cropState: best.state,
+      soilState: best.soilState,
+      cropType: best.cropType,
+      wateredToday: best.wateredToday,
+      progress: progressOf(best),
+    };
   }
 
   function cellAt(index) {
     return cells[index] ?? null;
   }
 
-  function plant(index) {
+  function hoe(index) {
     const cell = cellAt(index);
     if (!cell || cell.state !== CROP_STATES.EMPTY) return false;
+    if (cell.soilState !== SOIL_STATES.PLAIN) return false;
+
+    cell.soilState = SOIL_STATES.TILLED;
+    cell.wateredToday = false;
+    applySoilView(cell);
+    save();
+    onChange();
+    return true;
+  }
+
+  function water(index) {
+    const cell = cellAt(index);
+    if (!cell || cell.soilState === SOIL_STATES.PLAIN) return false;
+    if (cell.soilState === SOIL_STATES.WATERED) return false;
+
+    cell.soilState = SOIL_STATES.WATERED;
+    cell.wateredToday = true;
+    applySoilView(cell);
+    save();
+    onChange();
+    return true;
+  }
+
+  function plant(index, cropType = "radish") {
+    const cell = cellAt(index);
+    if (!cell || cell.state !== CROP_STATES.EMPTY) return false;
+    if (cell.soilState !== SOIL_STATES.WATERED) return false;
+
     cell.state = CROP_STATES.GROWING;
+    cell.cropType = cropType;
     cell.plantedAt = Date.now();
-    applyView(cell);
+    applyCropView(cell);
     save();
     onChange();
     return true;
@@ -191,9 +261,14 @@ export function createCrops({ plot, config, onChange = () => {} }) {
   function harvest(index) {
     const cell = cellAt(index);
     if (!cell || cell.state !== CROP_STATES.RIPE) return false;
+
     cell.state = CROP_STATES.EMPTY;
+    cell.cropType = null;
     cell.plantedAt = 0;
-    applyView(cell);
+    cell.soilState = SOIL_STATES.TILLED;
+    cell.wateredToday = false;
+    applyCropView(cell);
+    applySoilView(cell);
     pouch += 1;
     save();
     onChange();
@@ -207,8 +282,11 @@ export function createCrops({ plot, config, onChange = () => {} }) {
   return {
     group,
     cells,
+    SOIL_STATES,
     CROP_STATES,
     getTarget,
+    hoe,
+    water,
     plant,
     harvest,
     get pouch() {
@@ -221,8 +299,6 @@ export function createCrops({ plot, config, onChange = () => {} }) {
       return store.backupKey;
     },
     update(delta) {
-      // Growth is wall-clock based, so it only needs a look a few times a
-      // second — not every frame.
       sinceCheck += delta;
       if (sinceCheck < 0.25) return;
       sinceCheck = 0;
