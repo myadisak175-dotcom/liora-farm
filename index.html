@@ -47,11 +47,12 @@
   entry.src = "./src/main.js?v=world23&visual=iosgfx4";
   document.head.append(entry);
 
-  // iOS now prioritizes walk/run + birds/wind before situational banks, while
-  // keeping the verified WebKit output repair. Android remains unchanged.
+  // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio
+  // route kick when those primary buffers are genuinely ready. Android remains
+  // on the verified native route unchanged.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio24-priority1";
+  audio.src = "./src/audio-runtime.js?v=audio24-route2";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
