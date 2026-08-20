@@ -15,6 +15,36 @@
 <link rel="stylesheet" href="./styles/terrain-controls.css?v=horizon4">
 <script>
 (async () => {
+  // Blank-land baseline. Run once per browser profile so existing builder,
+  // terrain, paint and crop saves cannot repopulate the old starter scene.
+  // Keep a copy under a revisioned backup key instead of destroying the old
+  // work; after this marker is written, anything the player builds is kept.
+  const BLANK_START_REVISION = "blank-land-v1";
+  const BLANK_START_MARKER = "liora.blank-start.revision";
+  const BLANK_START_KEYS = [
+    "liora.island-layout.v1",
+    "liora-home-island-layout",
+    "liora.terrain-height.v1",
+    "liora.ground-paint.v1",
+    "liora.farm.v1",
+  ];
+  try {
+    if (localStorage.getItem(BLANK_START_MARKER) !== BLANK_START_REVISION) {
+      for (const key of BLANK_START_KEYS) {
+        const previous = localStorage.getItem(key);
+        if (previous !== null) {
+          localStorage.setItem(`${key}.before-${BLANK_START_REVISION}`, previous);
+          localStorage.removeItem(key);
+        }
+      }
+      localStorage.setItem(BLANK_START_MARKER, BLANK_START_REVISION);
+    }
+  } catch (error) {
+    // Private/restricted storage still gets the blank default map; it just
+    // cannot preserve a one-time backup or remember the migration marker.
+    console.warn("Blank-start migration could not access localStorage", error);
+  }
+
   const LOCAL = "./vendor/three/";
   const CDN = "https://cdn.jsdelivr.net/npm/three@0.180.0/";
   let base = CDN;
@@ -44,7 +74,7 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23&visual=iosgfx4";
+  entry.src = "./src/main.js?v=world23-blank1&visual=iosgfx4";
   document.head.append(entry);
 
   // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio
