@@ -1,37 +1,40 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Quality cache bridge</title></head>
+<head><meta charset="utf-8"><title>Quality bootstrap regression</title></head>
 <body><pre id="out"></pre>
 <script type="module">
+import { detectQualityId, resolveQualityId } from '../../src/systems/quality.js?test=bootstrap';
+
 const results=[];
 const out=document.querySelector('#out');
 async function test(name,fn){try{await fn();results.push({name,pass:true,detail:''});}catch(error){results.push({name,pass:false,detail:String(error?.message??error)});}}
 function assert(value,message){if(!value)throw new Error(message);}
 const page=await fetch('../../index.html').then((response)=>response.text());
 
-await test('bridge targets only high-end Apple mobile signatures',()=>{
-  assert(page.includes('/iPad|iPhone|iPod/'),'Apple mobile detection missing');
-  assert(page.includes('devicePixelRatio >= 3'),'Retina DPR guard missing');
-  assert(page.includes('cores >= 6'),'core-count guard missing');
+await test('index does not turn automatic quality into a saved preference',()=>{
+  assert(!page.includes('localStorage.setItem("liora.quality.v2"'),'index still writes a permanent v2 quality choice');
+  assert(!page.includes("localStorage.setItem('liora.quality.v2'"),'index still writes a permanent v2 quality choice');
 });
 
-await test('current v2 user choice always blocks legacy migration',()=>{
-  assert(page.includes('const currentQuality = localStorage.getItem("liora.quality.v2")'),'v2 choice is not read');
-  assert(page.includes('currentQuality === null'),'migration can overwrite a current v2 choice');
+await test('Retina Apple mobile still auto-detects High without the old bridge',()=>{
+  const detected=detectQualityId({isTouch:true,deviceMemory:null,cores:6,pixelRatio:3,appleMobile:true});
+  assert(detected==='high',`Retina Apple mobile detected as ${detected}`);
 });
 
-await test('old explicit low remains respected',()=>{
-  assert(page.includes('legacyQuality !== "low"'),'legacy low is not protected');
+await test('explicit current-generation choice still wins',()=>{
+  assert(resolveQualityId('low','high')==='low','explicit low was overwritten');
+  assert(resolveQualityId('medium','high')==='medium','explicit medium was overwritten');
+  assert(resolveQualityId(null,'high')==='high','automatic result did not survive');
 });
 
-await test('cached v1 detector is forced to high instead of medium',()=>{
-  assert(page.includes('localStorage.setItem("liora.quality.v1", "high")'),'legacy cache bridge does not seed high');
-  assert(!page.includes('localStorage.setItem("liora.quality.v2", "high")'),'bridge incorrectly turns auto detection into a permanent v2 choice');
+await test('quality maintenance leaves authored world and audio releases alone',()=>{
+  assert(page.includes('./src/main.js?v=world23'),'authored world revision changed');
+  assert(page.includes('./src/audio-runtime.js?v=audio23'),'audio selector revision is not audio23');
 });
 
-await test('quality bridge leaves world revision alone and accepts current audio release',()=>{
-  assert(page.includes('./src/main.js?v=world23'),'quality bridge changed the authored world revision');
-  assert(page.includes('./src/audio-runtime.js?v=audio21'),'audio selector revision is not current');
+await test('Safari cache aliases remain same-path version aliases',()=>{
+  assert(page.includes('"./src/config.js": "./src/config.js?v='),'config cache alias is no longer a self-alias');
+  assert(page.includes('"./src/systems/quality.js": "./src/systems/quality.js?v='),'quality cache alias is no longer a self-alias');
 });
 
 window.__results=results;window.__done=true;
