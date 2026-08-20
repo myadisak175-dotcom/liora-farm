@@ -29,6 +29,10 @@ function softOutputCycle(reason = "post-unlock") {
   const api = runtime();
   const current = status();
   if (!api || current?.platform !== "ios" || api.muted) return false;
+  // Wait until the original first-tap async resume/play sequence has completely
+  // settled. Cycling while `activating` is still true would make api.unlock()
+  // short-circuit and could mark the repair complete too early.
+  if (current?.activating) return false;
   if (!api.unlocked || current?.contextState !== "running") return false;
 
   try {
@@ -66,9 +70,9 @@ function clearTimers() {
 
 function schedulePostUnlockCycle() {
   clearTimers();
-  // Fast path plus two late checks for Safari versions whose resume/play
-  // promises settle unusually slowly. Only the first successful cycle runs.
-  for (const delay of [180, 700, 1400]) {
+  // Fast path plus late checks for Safari versions whose resume/play promises
+  // settle unusually slowly. Only the first successful cycle runs.
+  for (const delay of [180, 700, 1400, 2200]) {
     timers.push(setTimeout(() => {
       if (!settled) softOutputCycle(`post-unlock-${delay}`);
     }, delay));
@@ -91,7 +95,7 @@ function onGesture(event) {
   }
 
   const current = status();
-  if (!settled && api.unlocked && current?.contextState === "running") {
+  if (!settled && !current?.activating && api.unlocked && current?.contextState === "running") {
     softOutputCycle("first-game-gesture");
   } else if (!api.unlocked) {
     // Keep the existing retry path tied to a real user gesture when WebKit did
