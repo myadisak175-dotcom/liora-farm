@@ -6,6 +6,8 @@
  *
  *   - a relative import may add ?v=... (or a test-only ?smoke=... / ?test=...)
  *     as long as the pathname still resolves to the same real file;
+ *   - the main entry may also carry ?visual=... so presentation-only cache
+ *     revisions can move without changing the authored world revision;
  *   - a local import-map alias may add a query to the same pathname, but may
  *     never redirect one local module name to a different local file.
  *
@@ -29,7 +31,7 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const problems = [];
 const warnings = [];
-const APPROVED_QUERY_KEYS = new Set(["v", "smoke", "test"]);
+const APPROVED_QUERY_KEYS = new Set(["v", "visual", "smoke", "test"]);
 
 const IMPORT_PATTERNS = [
   /\bimport\s+[^"';]*?from\s*["']([^"']+)["']/g,
@@ -61,7 +63,7 @@ function validateQuery(raw, from) {
   if (bad.length) {
     problems.push(
       `${from}\n    imports "${raw}"\n    -> unsupported module query key(s): ${bad.join(", ")}. `
-      + `Use only ?v= for production cache-busting or ?smoke= / ?test= in tests.`
+      + `Use ?v= / ?visual= for production cache-busting or ?smoke= / ?test= in tests.`
     );
   }
 }
