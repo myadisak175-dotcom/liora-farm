@@ -1,9 +1,11 @@
-const STABILIZER_REVISION = "audio23-fast1";
+const STABILIZER_REVISION = "audio24-route2";
 
-let settled = false;
+let routeSettled = false;
+let gameplaySettled = false;
 let disposed = false;
 let kickCount = 0;
-let timers = [];
+let repairTimer = 0;
+let repairStartedAt = 0;
 let lastGestureAt = 0;
 
 function runtime() {
@@ -15,82 +17,135 @@ function status() {
   catch { return null; }
 }
 
+function primaryGameplayReady(current = status()) {
+  const ambience = current?.ambience ?? {};
+  return Number(current?.decodedSteps ?? 0) >= 2
+    && Boolean(ambience.birds?.loaded)
+    && Boolean(ambience.wind?.loaded);
+}
+
+function publish(reason = "waiting", error = null) {
+  const current = status();
+  window.__lioraAudioStabilizer = {
+    revision: STABILIZER_REVISION,
+    settled: gameplaySettled,
+    routeSettled,
+    gameplaySettled,
+    gameplayReady: primaryGameplayReady(current),
+    kickCount,
+    reason,
+    ...(error ? { error } : {}),
+    dispose,
+  };
+}
+
 /**
- * Some iOS/WebKit builds report both HTMLAudio and AudioContext as healthy
- * after the first unlock gesture while the physical output route is still
- * silent. Manually toggling the in-game sound off and on fixes that route.
- *
- * Reproduce that exact reset automatically once the runtime is genuinely
- * unlocked: gate both outputs off, immediately restore them, then run the
- * existing iOS prime path again. No track is restarted and current music time
- * is preserved.
+ * iOS/WebKit can report a running AudioContext while its physical WebAudio
+ * route is still silent. A real off/on tap repairs that route, so reproduce the
+ * same gate without restarting music or resetting currentTime.
  */
-function softOutputCycle(reason = "post-unlock") {
-  if (disposed || settled || document.hidden) return false;
+function outputCycle(reason) {
+  if (disposed || document.hidden) return false;
   const api = runtime();
   const current = status();
   if (!api || current?.platform !== "ios" || api.muted) return false;
-  // Wait until the original first-tap async resume/play sequence has completely
-  // settled. Cycling while `activating` is still true would make api.unlock()
-  // short-circuit and could mark the repair complete too early.
   if (current?.activating) return false;
   if (!api.unlocked || current?.contextState !== "running") return false;
 
   try {
     api.setMuted(true);
     api.setMuted(false);
-    // With the context already running and music already playing, this does not
-    // need a fresh media permission. It re-primes WebKit's output path using the
-    // same oscillator path as a successful second tap used to do manually.
+    // The context is already running here. This call only re-primes the output
+    // oscillator path and does not depend on a new autoplay permission grant.
     void api.unlock?.();
-    settled = true;
     kickCount += 1;
-    clearTimers();
-    window.__lioraAudioStabilizer = {
-      revision: STABILIZER_REVISION,
-      settled,
-      kickCount,
-      reason,
-      dispose,
-    };
+    publish(reason);
     return true;
   } catch (error) {
-    window.__lioraAudioStabilizer = {
-      revision: STABILIZER_REVISION,
-      settled: false,
-      kickCount,
-      reason,
-      error: String(error?.message ?? error),
-      dispose,
-    };
+    publish(reason, String(error?.message ?? error));
     return false;
   }
 }
 
-function clearTimers() {
-  for (const timer of timers) clearTimeout(timer);
-  timers = [];
+function clearRepairTimer() {
+  if (repairTimer) clearTimeout(repairTimer);
+  repairTimer = 0;
 }
 
-function schedulePostUnlockCycle() {
-  if (timers.length) return;
-  // Poll tightly during the first half-second. On some iPhones the old first
-  // check landed while the runtime was still `activating`, then the next chance
-  // was 700 ms later. These shorter checks repair the physical output route as
-  // soon as resume/play has actually settled, without requiring another tap.
-  for (const delay of [60, 120, 220, 340, 480, 650, 900, 1250]) {
-    timers.push(setTimeout(() => {
-      if (!settled) softOutputCycle(`post-unlock-${delay}`);
-    }, delay));
+/**
+ * Repair in two phases:
+ *  1) as soon as music + AudioContext are unlocked, repair the general route;
+ *  2) once walk/run + birds/wind have actually decoded, gate WebAudio again.
+ *
+ * The second phase is important. The previous stabilizer could mark itself
+ * settled before any audible WebAudio buffer existed, so footsteps/ambience
+ * stayed silent until the player manually toggled sound off/on later.
+ */
+function runRepairs(reason = "scheduled") {
+  if (disposed || document.hidden) return false;
+  const api = runtime();
+  const current = status();
+  if (!api || api.muted) return false;
+
+  if (!routeSettled) {
+    if (!current?.activating && api.unlocked && current?.contextState === "running") {
+      if (outputCycle(`${reason}-route`)) {
+        routeSettled = true;
+        publish(`${reason}-route`);
+      }
+    } else if (!api.unlocked) {
+      return false;
+    }
+    // Never perform both gates back-to-back in the same task. Give WebKit one
+    // turn to settle after the route kick before the gameplay-output kick.
+    if (routeSettled) return true;
   }
+
+  const refreshed = status();
+  if (!gameplaySettled
+      && !refreshed?.activating
+      && runtime()?.unlocked
+      && refreshed?.contextState === "running"
+      && primaryGameplayReady(refreshed)) {
+    if (outputCycle(`${reason}-gameplay`)) {
+      gameplaySettled = true;
+      clearRepairTimer();
+      publish(`${reason}-gameplay`);
+      return true;
+    }
+  }
+
+  publish(reason);
+  return routeSettled;
+}
+
+function scheduleRepairWindow() {
+  if (disposed || repairTimer || gameplaySettled) return;
+  repairStartedAt = performance.now();
+
+  const tick = () => {
+    repairTimer = 0;
+    runRepairs("post-unlock");
+    if (disposed || gameplaySettled) return;
+
+    const elapsed = performance.now() - repairStartedAt;
+    // Keep watching long enough for a cold-cache iPhone to download/decode the
+    // primary SFX. After 8s the next ordinary game gesture retries immediately.
+    if (elapsed >= 8000) {
+      publish("waiting-for-next-gesture");
+      return;
+    }
+    const delay = elapsed < 900 ? 80 : elapsed < 2500 ? 150 : 300;
+    repairTimer = setTimeout(tick, delay);
+  };
+
+  repairTimer = setTimeout(tick, 50);
 }
 
 function onGesture(event) {
   if (disposed) return;
   const now = performance.now();
-  // Modern iOS can emit both pointer and touch completion for one physical tap.
-  // Treat them as one gesture so the second event cannot clear/restart recovery
-  // timers and accidentally add hundreds of milliseconds of silence.
+  // Modern iOS may emit pointer + touch completion for one physical tap.
   if (now - lastGestureAt < 140) return;
   lastGestureAt = now;
 
@@ -100,36 +155,43 @@ function onGesture(event) {
   const target = event.target;
   const audioButton = target instanceof Element && Boolean(target.closest?.("#audio-toggle"));
   if (audioButton) {
-    // The runtime unlock starts on pointerdown. Run the automatic off/on repair
-    // after that first gesture, and keep the existing timers if touchend follows
-    // pointerup for the same physical tap.
-    settled = false;
-    clearTimers();
-    schedulePostUnlockCycle();
+    routeSettled = false;
+    gameplaySettled = false;
+    clearRepairTimer();
+    scheduleRepairWindow();
+    publish("audio-button");
     return;
   }
 
   const current = status();
-  if (!settled && !current?.activating && api.unlocked && current?.contextState === "running") {
-    softOutputCycle("first-game-gesture");
-  } else if (!api.unlocked) {
-    // Keep the existing retry path tied to a real user gesture when WebKit did
-    // actually reject/suspend the context.
+  if (!api.unlocked) {
+    // A genuine gesture is still required if Safari really suspended/rejected
+    // the context rather than merely leaving its output route silent.
+    api.retry?.();
+    scheduleRepairWindow();
+    return;
+  }
+
+  if (!gameplaySettled) {
+    runRepairs("game-gesture");
+    scheduleRepairWindow();
+  } else if (current?.contextState !== "running") {
     api.retry?.();
   }
 }
 
 function onReturnToPage() {
   if (document.hidden) return;
-  settled = false;
-  clearTimers();
-  // Do not resume here: Safari may require the next genuine gesture. The next
-  // tap will either repair the context or run the soft output cycle.
+  routeSettled = false;
+  gameplaySettled = false;
+  clearRepairTimer();
+  publish("returned-to-page");
+  // Do not resume a suspended context outside a user gesture.
 }
 
 function dispose() {
   disposed = true;
-  clearTimers();
+  clearRepairTimer();
   document.removeEventListener("pointerup", onGesture, { capture: true });
   document.removeEventListener("touchend", onGesture, { capture: true });
   window.removeEventListener("pageshow", onReturnToPage);
@@ -141,10 +203,4 @@ document.addEventListener("touchend", onGesture, { capture: true, passive: true 
 window.addEventListener("pageshow", onReturnToPage);
 document.addEventListener("visibilitychange", onReturnToPage);
 
-window.__lioraAudioStabilizer = {
-  revision: STABILIZER_REVISION,
-  settled,
-  kickCount,
-  reason: "waiting",
-  dispose,
-};
+publish("waiting");
