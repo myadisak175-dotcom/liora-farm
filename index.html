@@ -31,7 +31,7 @@
     // nested ES modules. world23/gameplay is unchanged; these are presentation
     // revisions only.
     "./src/config.js": "./src/config.js?v=village3",
-    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx2",
+    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx3",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
     "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
   }});
@@ -39,7 +39,8 @@
 
   // Modern Retina iPhones should never begin on the soft generic mobile tier.
   // Only seed a choice when the player has no v2 preference; an explicit saved
-  // Low/Medium/High choice still wins.
+  // Low/Medium/High choice still wins. High now adapts only its render
+  // resolution at runtime when sustained frame pacing drops.
   try {
     const appleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
       || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -51,12 +52,11 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23&visual=iosgfx2";
+  entry.src = "./src/main.js?v=world23&visual=iosgfx3";
   document.head.append(entry);
 
   // audio22 leaves Android on the verified native runtime and routes iOS to a
-  // new WebKit-specific module that repairs the first-tap suspended-context
-  // case without requiring the player to toggle sound off and on again.
+  // WebKit-specific module that repairs the first-tap suspended-context case.
   const audio = document.createElement("script");
   audio.type = "module";
   audio.src = "./src/audio-runtime.js?v=audio22";
