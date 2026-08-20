@@ -1,9 +1,10 @@
-const STABILIZER_REVISION = "audio23";
+const STABILIZER_REVISION = "audio23-fast1";
 
 let settled = false;
 let disposed = false;
 let kickCount = 0;
 let timers = [];
+let lastGestureAt = 0;
 
 function runtime() {
   return window.__lioraAudio ?? null;
@@ -44,11 +45,13 @@ function softOutputCycle(reason = "post-unlock") {
     void api.unlock?.();
     settled = true;
     kickCount += 1;
+    clearTimers();
     window.__lioraAudioStabilizer = {
       revision: STABILIZER_REVISION,
       settled,
       kickCount,
       reason,
+      dispose,
     };
     return true;
   } catch (error) {
@@ -58,6 +61,7 @@ function softOutputCycle(reason = "post-unlock") {
       kickCount,
       reason,
       error: String(error?.message ?? error),
+      dispose,
     };
     return false;
   }
@@ -69,10 +73,12 @@ function clearTimers() {
 }
 
 function schedulePostUnlockCycle() {
-  clearTimers();
-  // Fast path plus late checks for Safari versions whose resume/play promises
-  // settle unusually slowly. Only the first successful cycle runs.
-  for (const delay of [180, 700, 1400, 2200]) {
+  if (timers.length) return;
+  // Poll tightly during the first half-second. On some iPhones the old first
+  // check landed while the runtime was still `activating`, then the next chance
+  // was 700 ms later. These shorter checks repair the physical output route as
+  // soon as resume/play has actually settled, without requiring another tap.
+  for (const delay of [60, 120, 220, 340, 480, 650, 900, 1250]) {
     timers.push(setTimeout(() => {
       if (!settled) softOutputCycle(`post-unlock-${delay}`);
     }, delay));
@@ -81,6 +87,13 @@ function schedulePostUnlockCycle() {
 
 function onGesture(event) {
   if (disposed) return;
+  const now = performance.now();
+  // Modern iOS can emit both pointer and touch completion for one physical tap.
+  // Treat them as one gesture so the second event cannot clear/restart recovery
+  // timers and accidentally add hundreds of milliseconds of silence.
+  if (now - lastGestureAt < 140) return;
+  lastGestureAt = now;
+
   const api = runtime();
   if (!api || api.muted) return;
 
@@ -88,8 +101,10 @@ function onGesture(event) {
   const audioButton = target instanceof Element && Boolean(target.closest?.("#audio-toggle"));
   if (audioButton) {
     // The runtime unlock starts on pointerdown. Run the automatic off/on repair
-    // only after that first gesture has had time to settle.
+    // after that first gesture, and keep the existing timers if touchend follows
+    // pointerup for the same physical tap.
     settled = false;
+    clearTimers();
     schedulePostUnlockCycle();
     return;
   }
@@ -112,6 +127,15 @@ function onReturnToPage() {
   // tap will either repair the context or run the soft output cycle.
 }
 
+function dispose() {
+  disposed = true;
+  clearTimers();
+  document.removeEventListener("pointerup", onGesture, { capture: true });
+  document.removeEventListener("touchend", onGesture, { capture: true });
+  window.removeEventListener("pageshow", onReturnToPage);
+  document.removeEventListener("visibilitychange", onReturnToPage);
+}
+
 document.addEventListener("pointerup", onGesture, { capture: true, passive: true });
 document.addEventListener("touchend", onGesture, { capture: true, passive: true });
 window.addEventListener("pageshow", onReturnToPage);
@@ -122,12 +146,5 @@ window.__lioraAudioStabilizer = {
   settled,
   kickCount,
   reason: "waiting",
-  dispose() {
-    disposed = true;
-    clearTimers();
-    document.removeEventListener("pointerup", onGesture, { capture: true });
-    document.removeEventListener("touchend", onGesture, { capture: true });
-    window.removeEventListener("pageshow", onReturnToPage);
-    document.removeEventListener("visibilitychange", onReturnToPage);
-  },
+  dispose,
 };
