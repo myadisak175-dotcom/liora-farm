@@ -27,9 +27,9 @@ await test('explicit current-generation choice still wins',()=>{
   assert(resolveQualityId(null,'high')==='high','automatic result did not survive');
 });
 
-await test('quality maintenance leaves authored world and audio releases alone',()=>{
+await test('quality maintenance leaves authored world and current audio release alone',()=>{
   assert(page.includes('./src/main.js?v=world23'),'authored world revision changed');
-  assert(page.includes('./src/audio-runtime.js?v=audio23'),'audio selector revision is not audio23');
+  assert(page.includes('./src/audio-runtime.js?v=audio24-priority1'),'audio selector revision is not the prioritized iOS release');
 });
 
 await test('Safari cache aliases remain same-path version aliases',()=>{
