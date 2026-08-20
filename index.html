@@ -55,11 +55,12 @@
   entry.src = "./src/main.js?v=world23&visual=iosgfx3";
   document.head.append(entry);
 
-  // audio22 leaves Android on the verified native runtime and routes iOS to a
-  // WebKit-specific module that repairs the first-tap suspended-context case.
+  // audio23 keeps Android on the verified native runtime. iOS keeps the
+  // WebKit context path and automatically performs the output off/on reset
+  // that some devices still required manually after the first unlock.
   const audio = document.createElement("script");
   audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio22";
+  audio.src = "./src/audio-runtime.js?v=audio23";
   document.head.append(audio);
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
