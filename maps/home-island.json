@@ -1,137 +1,14 @@
 {
   "version": 2,
   "mapId": "home-island",
-  "name": "เกาะบ้าน",
-  "savedAt": "2026-08-16T06:33:00.000Z",
+  "name": "เกาะบ้าน — พื้นเปล่า",
+  "savedAt": "2026-08-20T16:15:00.000Z",
   "horizon": {},
-  "objects": [
-    {
-      "id": "2700cc4a-d8a1-4a58-84c8-80f4439766cb",
-      "assetId": "v2-normaltree-1",
-      "x": -15.812,
-      "z": 15.117,
-      "rotation": -3.1727,
-      "scale": 1
-    },
-    {
-      "id": "7cb27380-2e82-4a51-b71f-8ddba24993e9",
-      "assetId": "house",
-      "x": -8.041,
-      "z": 8.204,
-      "rotation": -3.6156,
-      "scale": 1.36
-    },
-    {
-      "id": "15c6037d-fdde-4edb-8b3e-0bdef18742d2",
-      "assetId": "v2-pinetree-1",
-      "x": -2.745,
-      "z": 14.981,
-      "rotation": -0.3564,
-      "scale": 1
-    },
-    {
-      "id": "0a7f1fd4-ea6b-4116-a76d-bdebb8e878e6",
-      "assetId": "v2-normaltree-2",
-      "x": 17.662,
-      "z": -5.542,
-      "rotation": -1.5572,
-      "scale": 1
-    },
-    {
-      "id": "dadecf9d-b8d7-48db-b919-0431b781b1b5",
-      "assetId": "v2-pinetree-2",
-      "x": 14.902,
-      "z": 14.775,
-      "rotation": 0.0896,
-      "scale": 1
-    },
-    {
-      "id": "c1f3c501-4282-4f3d-bede-32344a70e1cc",
-      "assetId": "v2-pinetree-3",
-      "x": 17.18,
-      "z": 8.197,
-      "rotation": -0.3817,
-      "scale": 1
-    },
-    {
-      "id": "964b5299-c9ee-41b2-92ef-7412c7ed5fce",
-      "assetId": "v2-pinetree-4",
-      "x": -7.455,
-      "z": -14.454,
-      "rotation": 0.0547,
-      "scale": 1
-    },
-    {
-      "id": "b88e619c-74bf-4ecb-9719-0b36d4bba987",
-      "assetId": "v2-pinetree-5",
-      "x": 14.705,
-      "z": 4.18,
-      "rotation": 0.3913,
-      "scale": 1
-    },
-    {
-      "id": "8ca0a26e-3f98-47ac-a90c-38bda0b3e1f0",
-      "assetId": "v2-normaltree-3",
-      "x": -14.989,
-      "z": 5.94,
-      "rotation": -1.6253,
-      "scale": 1
-    },
-    {
-      "id": "50caf09c-3ede-418b-b975-e07285121b2e",
-      "assetId": "v2-pinetree-1",
-      "x": -11.227,
-      "z": -4.734,
-      "rotation": 2.4294,
-      "scale": 1
-    },
-    {
-      "id": "3983b770-d17e-4533-a227-4a66ad817079",
-      "assetId": "v2-pinetree-2",
-      "x": -16.05,
-      "z": -1.19,
-      "rotation": -0.122,
-      "scale": 1
-    },
-    {
-      "id": "9dfd8bb8-8e3a-40b6-acff-ccbbbf07a0cd",
-      "assetId": "v2-pinetree-3",
-      "x": -14.765,
-      "z": -8.207,
-      "rotation": -0.0408,
-      "scale": 1
-    },
-    {
-      "id": "d4ddd3af-9cb1-488c-9332-0a98a32459e1",
-      "assetId": "v2-normaltree-4",
-      "x": -13.121,
-      "z": -14.815,
-      "rotation": -4.9538,
-      "scale": 1
-    },
-    {
-      "id": "58953bf4-c414-4a64-b4b9-79becb1e9803",
-      "assetId": "v2-pinetree-4",
-      "x": 17.86,
-      "z": 1.968,
-      "rotation": -0.7878,
-      "scale": 1
-    },
-    {
-      "id": "486e8ea4-1b0d-4d29-9c94-f86dd2de06cb",
-      "assetId": "v2-pinetree-5",
-      "x": 12.063,
-      "z": 0.894,
-      "rotation": 0.8807,
-      "scale": 1
-    },
-    {
-      "id": "53965e05-c51a-4155-b33f-c6af87245e11",
-      "assetId": "v2-palmtree-1",
-      "x": 16.4147,
-      "z": 10.2212,
-      "rotation": -1.400773,
-      "scale": 1
-    }
-  ]
+  "objects": [],
+  "groundPaint": {
+    "version": 1,
+    "strokes": [],
+    "groups": [],
+    "autoSurface": true
+  }
 }
