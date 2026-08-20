@@ -1,26 +1,23 @@
 /**
- * Walks the real module graph from index.html and fails on the mistakes a
+ * Walks the real module graph from index.html and fails on mistakes a
  * build-less ES-module project cannot otherwise catch.
  *
- * This exists because of a bug that survived two rounds of tuning. `index.html`
- * carried an import map that aliased
+ * Cache-busting is allowed, but only in a deliberately narrow form:
  *
- *   "./src/config.js?v=floating-island-b-lite"
- *     -> "./src/config-floating-island-tuned.js?v=floating-island-tune2"
+ *   - a relative import may add ?v=... (or a test-only ?smoke=... / ?test=...)
+ *     as long as the pathname still resolves to the same real file;
+ *   - a local import-map alias may add a query to the same pathname, but may
+ *     never redirect one local module name to a different local file.
  *
- * so the config the game actually ran depended on three `?v=` strings matching
- * byte-for-byte across three files. A single typo would have loaded the old
- * config with no error and no warning, and every test imported `src/config.js`
- * directly and so could never have noticed. There is no bundler here to
- * complain, so the check has to be written down.
+ * This keeps the Safari cache workaround used by production while still
+ * catching the dangerous case that originally motivated this checker: a stale
+ * alias silently routing ./src/config.js to some other config file.
  *
  * What it enforces:
  *
  *   1. Every relative import resolves to a file that exists.
- *   2. No relative import carries a `?query` — cache-busting belongs on assets
- *      fetched by URL, not on module specifiers, where it silently forks the
- *      module identity and defeats the import map.
- *   3. Import-map keys that look like local modules resolve to real files.
+ *   2. Query-busted relative imports use only the approved cache/test keys.
+ *   3. Local import-map aliases are self-aliases only (same pathname).
  *   4. Nothing under src/ is orphaned (reported, not fatal — a module nothing
  *      imports is usually a rename that half-landed).
  *
@@ -32,6 +29,7 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const problems = [];
 const warnings = [];
+const APPROVED_QUERY_KEYS = new Set(["v", "smoke", "test"]);
 
 const IMPORT_PATTERNS = [
   /\bimport\s+[^"';]*?from\s*["']([^"']+)["']/g,
@@ -48,6 +46,26 @@ function specifiers(source) {
   return [...found];
 }
 
+function splitSpecifier(raw) {
+  const question = raw.indexOf("?");
+  if (question === -1) return { pathname: raw, query: "" };
+  return { pathname: raw.slice(0, question), query: raw.slice(question + 1) };
+}
+
+function validateQuery(raw, from) {
+  const { query } = splitSpecifier(raw);
+  if (!query) return;
+  const params = new URLSearchParams(query);
+  const keys = [...params.keys()];
+  const bad = keys.filter((key) => !APPROVED_QUERY_KEYS.has(key));
+  if (bad.length) {
+    problems.push(
+      `${from}\n    imports "${raw}"\n    -> unsupported module query key(s): ${bad.join(", ")}. `
+      + `Use only ?v= for production cache-busting or ?smoke= / ?test= in tests.`
+    );
+  }
+}
+
 const seen = new Set();
 const reachable = new Set();
 
@@ -62,13 +80,9 @@ function walk(file) {
     if (!raw.startsWith(".") && !raw.startsWith("/")) continue;
 
     const from = path.relative(ROOT, file);
-    if (raw.includes("?")) {
-      problems.push(
-        `${from}\n    imports "${raw}"\n    -> a module specifier must not carry a ?query. It forks module `
-        + `identity, defeats the import map, and fails silently when the string drifts.`
-      );
-    }
-    const target = path.resolve(path.dirname(file), raw.split("?")[0]);
+    validateQuery(raw, from);
+    const { pathname } = splitSpecifier(raw);
+    const target = path.resolve(path.dirname(file), pathname);
     if (!fs.existsSync(target)) {
       problems.push(`${from}\n    imports "${raw}"\n    -> no such file: ${path.relative(ROOT, target)}`);
       continue;
@@ -77,26 +91,46 @@ function walk(file) {
   }
 }
 
-// 1. Entry points: index.html's module script, plus the import map itself.
+// 1. Entry points: index.html's module scripts, plus the import map itself.
 const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
 
-for (const match of html.matchAll(/entry\.src\s*=\s*["']([^"']+)["']/g)) {
-  const entry = path.resolve(ROOT, match[1].split("?")[0]);
+for (const match of html.matchAll(/(?:entry|audio|npcTest)\.src\s*=\s*["']([^"']+)["']/g)) {
+  const raw = match[1];
+  validateQuery(raw, "index.html");
+  const { pathname } = splitSpecifier(raw);
+  const entry = path.resolve(ROOT, pathname);
   if (!fs.existsSync(entry)) {
-    problems.push(`index.html\n    entry script "${match[1]}"\n    -> no such file`);
+    problems.push(`index.html\n    entry script "${raw}"\n    -> no such file`);
   } else {
     walk(entry);
   }
 }
 
-for (const match of html.matchAll(/["'](\.\/src\/[^"']+)["']\s*:/g)) {
+// Local module aliases are permitted only as same-path cache-bust aliases.
+// Example allowed:
+//   "./src/config.js": "./src/config.js?v=village3"
+// Example rejected:
+//   "./src/config.js": "./src/config-floating-island-tuned.js?v=..."
+for (const match of html.matchAll(/["'](\.\/src\/[^"']+)["']\s*:\s*["'](\.\/src\/[^"']+)["']/g)) {
   const key = match[1];
-  const target = path.resolve(ROOT, key.split("?")[0]);
-  problems.push(
-    `index.html\n    import map aliases "${key}"\n    -> local modules must not be aliased in the import map. `
-    + `A build-less project has no bundler to flag a stale specifier`
-    + `${fs.existsSync(target) ? "" : ", and this one no longer resolves"}.`
-  );
+  const value = match[2];
+  const keyParts = splitSpecifier(key);
+  const valueParts = splitSpecifier(value);
+  const keyTarget = path.resolve(ROOT, keyParts.pathname);
+  const valueTarget = path.resolve(ROOT, valueParts.pathname);
+
+  if (!fs.existsSync(keyTarget)) {
+    problems.push(`index.html\n    import map key "${key}"\n    -> no such file`);
+  }
+  if (!fs.existsSync(valueTarget)) {
+    problems.push(`index.html\n    import map target "${value}"\n    -> no such file`);
+  }
+  if (keyParts.pathname !== valueParts.pathname) {
+    problems.push(
+      `index.html\n    import map aliases "${key}" -> "${value}"\n    -> local aliases may only add a cache query to the same pathname.`
+    );
+  }
+  validateQuery(value, "index.html import map");
 }
 
 // 2. Test pages are entry points too, so a stub gap shows up here as well.
@@ -106,7 +140,9 @@ for (const name of fs.readdirSync(testDir)) {
   const source = fs.readFileSync(path.join(testDir, name), "utf8");
   for (const raw of specifiers(source)) {
     if (!raw.startsWith(".")) continue;
-    const target = path.resolve(testDir, raw.split("?")[0]);
+    validateQuery(raw, `tools/test/${name}`);
+    const { pathname } = splitSpecifier(raw);
+    const target = path.resolve(testDir, pathname);
     if (!fs.existsSync(target)) {
       problems.push(`tools/test/${name}\n    imports "${raw}"\n    -> no such file`);
     } else if (/\.(mjs|js)$/.test(target)) {
