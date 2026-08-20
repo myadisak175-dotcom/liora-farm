@@ -1,3 +1,5 @@
+import * as THREE from "three";
+
 /**
  * One place that decides how expensive this frame is allowed to be.
  *
@@ -18,13 +20,177 @@ const APPLE_MOBILE = typeof navigator !== "undefined" && (
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
 );
 const DISPLAY_PIXEL_RATIO = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
-// Native 3x rendering is wasteful for a WebGL game. 2.5x looked extremely
-// sharp, but real-device testing showed occasional frame spikes on iPhone.
-// 2.25x keeps most of the Retina clarity while cutting roughly one fifth of
-// the fragment workload versus 2.5x, without touching shadows or scene detail.
+// Native 3x rendering is wasteful for a WebGL game. 2.25x keeps most of the
+// Retina clarity while leaving enough GPU headroom for the adaptive controller
+// below to protect frame pacing when the world gets busy.
 const HIGH_PIXEL_RATIO_CAP = APPLE_MOBILE
   ? Math.min(2.25, Math.max(2, DISPLAY_PIXEL_RATIO))
   : 2;
+
+/**
+ * iOS dynamic resolution, installed before main.js creates its renderer.
+ *
+ * We deliberately adapt only the render resolution — never shadows, AO,
+ * normals, clouds or world detail. The player therefore keeps the High visual
+ * preset while the GPU gets a temporary pixel-count reduction during sustained
+ * slow frames. Resolution climbs back only after several seconds of stable
+ * ~60 fps pacing, which avoids visible oscillation while the camera is moving.
+ *
+ * WebGLRenderer.setPixelRatio() already resizes the drawing buffer without
+ * changing the canvas' CSS size, so this is cheap enough to do occasionally.
+ * A long cooldown and small 0.15 DPR steps keep each transition subtle.
+ */
+function installIOSAdaptiveResolution() {
+  if (!APPLE_MOBILE || typeof window === "undefined" || typeof performance === "undefined") return;
+  const proto = THREE.WebGLRenderer?.prototype;
+  if (!proto || proto.__lioraAdaptiveResolutionInstalled) return;
+
+  const originalSetPixelRatio = proto.setPixelRatio;
+  const originalRender = proto.render;
+  if (typeof originalSetPixelRatio !== "function" || typeof originalRender !== "function") return;
+
+  const STATE = Symbol("lioraAdaptiveResolution");
+  const STEP = 0.15;
+  const FLOOR = 1.8;
+  const SLOW_EMA_MS = 19.2;       // ~52 fps sustained
+  const STABLE_EMA_MS = 17.35;    // ~58+ fps sustained
+  const SLOW_HOLD_MS = 850;
+  const STABLE_HOLD_MS = 5500;
+  const DOWN_COOLDOWN_MS = 1500;
+  const UP_COOLDOWN_MS = 2600;
+  const WARMUP_MS = 2600;
+
+  function roundDpr(value) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function publish(state) {
+    state.stats.enabled = state.active;
+    state.stats.currentPixelRatio = state.current;
+    state.stats.minPixelRatio = state.floor;
+    state.stats.maxPixelRatio = state.ceiling;
+    state.stats.emaFrameMs = Math.round(state.emaMs * 100) / 100;
+    state.stats.emaFps = Math.round((1000 / Math.max(1, state.emaMs)) * 10) / 10;
+    state.stats.changes = state.changes;
+    state.stats.lastDirection = state.lastDirection;
+    window.__lioraAdaptiveResolution = state.stats;
+  }
+
+  function configure(renderer, requested) {
+    const ceiling = Math.max(0.5, Number(requested) || 1);
+    let state = renderer[STATE];
+    if (!state) {
+      state = {
+        ceiling,
+        floor: ceiling,
+        current: ceiling,
+        active: false,
+        emaMs: 16.67,
+        lastFrameAt: 0,
+        slowMs: 0,
+        stableMs: 0,
+        cooldownUntil: 0,
+        warmupUntil: performance.now() + WARMUP_MS,
+        changes: 0,
+        lastDirection: "initial",
+        stats: {},
+      };
+      renderer[STATE] = state;
+    }
+
+    state.ceiling = roundDpr(ceiling);
+    // Dynamic scaling is a High/Retina feature only. Medium and Low remain
+    // exact player choices and are never silently pushed below their preset.
+    state.active = state.ceiling >= 1.95 && DISPLAY_PIXEL_RATIO >= 2;
+    state.floor = state.active ? Math.min(state.ceiling, FLOOR) : state.ceiling;
+    state.current = state.ceiling;
+    state.emaMs = 16.67;
+    state.lastFrameAt = 0;
+    state.slowMs = 0;
+    state.stableMs = 0;
+    state.cooldownUntil = performance.now() + DOWN_COOLDOWN_MS;
+    state.warmupUntil = performance.now() + WARMUP_MS;
+    state.lastDirection = "preset";
+    publish(state);
+    return state;
+  }
+
+  function applyAdaptive(renderer, state, next, direction, now) {
+    const resolved = roundDpr(Math.max(state.floor, Math.min(state.ceiling, next)));
+    if (Math.abs(resolved - state.current) < 0.01) return;
+    state.current = resolved;
+    state.changes += 1;
+    state.lastDirection = direction;
+    state.slowMs = 0;
+    state.stableMs = 0;
+    state.cooldownUntil = now + (direction === "down" ? DOWN_COOLDOWN_MS : UP_COOLDOWN_MS);
+    // Call the original method directly so this adaptive change is not mistaken
+    // for a new player-selected quality ceiling by our wrapper below.
+    originalSetPixelRatio.call(renderer, resolved);
+    publish(state);
+  }
+
+  proto.setPixelRatio = function lioraSetPixelRatio(value) {
+    configure(this, value);
+    return originalSetPixelRatio.call(this, value);
+  };
+
+  proto.render = function lioraAdaptiveRender(scene, camera) {
+    const state = this[STATE];
+    if (state?.active) {
+      const now = performance.now();
+      if (state.lastFrameAt > 0) {
+        const frameMs = now - state.lastFrameAt;
+        // Returning from the background or hitting a debugger breakpoint must
+        // not look like a catastrophic GPU frame and force resolution down.
+        if (frameMs > 0 && frameMs < 250) {
+          const sample = Math.min(frameMs, 50);
+          state.emaMs += (sample - state.emaMs) * 0.08;
+
+          if (now >= state.warmupUntil) {
+            if (state.emaMs > SLOW_EMA_MS) {
+              // A genuinely bad 30+ ms frame carries extra weight, so thermal
+              // throttling or a dense scene gets relief quickly.
+              state.slowMs += frameMs * (frameMs >= 30 ? 1.65 : 1);
+              state.stableMs = Math.max(0, state.stableMs - frameMs * 1.8);
+            } else if (state.emaMs < STABLE_EMA_MS) {
+              state.stableMs += frameMs;
+              state.slowMs = Math.max(0, state.slowMs - frameMs * 1.4);
+            } else {
+              state.slowMs = Math.max(0, state.slowMs - frameMs * 0.5);
+              state.stableMs = Math.max(0, state.stableMs - frameMs * 0.35);
+            }
+
+            if (now >= state.cooldownUntil) {
+              if (state.slowMs >= SLOW_HOLD_MS && state.current > state.floor + 0.01) {
+                applyAdaptive(this, state, state.current - STEP, "down", now);
+              } else if (state.stableMs >= STABLE_HOLD_MS && state.current < state.ceiling - 0.01) {
+                applyAdaptive(this, state, state.current + STEP, "up", now);
+              }
+            }
+          }
+        } else if (frameMs >= 250) {
+          state.emaMs = 16.67;
+          state.slowMs = 0;
+          state.stableMs = 0;
+          state.warmupUntil = now + 1200;
+        }
+      }
+      state.lastFrameAt = now;
+      publish(state);
+    }
+    return originalRender.call(this, scene, camera);
+  };
+
+  Object.defineProperty(proto, "__lioraAdaptiveResolutionInstalled", {
+    value: true,
+    configurable: false,
+    enumerable: false,
+    writable: false,
+  });
+}
+
+installIOSAdaptiveResolution();
 
 export const QUALITY_PRESETS = Object.freeze({
   low: Object.freeze({
