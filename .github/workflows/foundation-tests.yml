@@ -31,8 +31,9 @@ jobs:
 
       - name: Module graph
         # Catches the mistakes a build-less ES-module project has no bundler to
-        # catch: a specifier that no longer resolves, and cache-busting queries
-        # on module imports. Both fail silently in the browser.
+        # catch: missing relative imports, unsafe cross-file local aliases and
+        # unsupported cache-query forms. Same-path ?v= aliases remain allowed
+        # because production uses them to work around aggressive Safari caches.
         run: node tools/test/module-graph.mjs
 
       - name: Browser regression suite
