@@ -42,9 +42,15 @@ function installWorldEventFeedback({ durationMs = 1400 } = {}) {
     show(`เข้าเขต: ${node.label || node.kind || "Zone"}`);
   });
 
+  const unsubscribeActions = WORLD_ACTIONS.subscribe((result) => {
+    if (result?.ok || result?.action?.type !== "portal") return;
+    show("Portal ใช้งานไม่ได้ — ตรวจ Map และ Marker");
+  });
+
   return () => {
     unregisterToast();
     unsubscribeFallback();
+    unsubscribeActions();
     clearTimeout(timer);
     timer = null;
   };
