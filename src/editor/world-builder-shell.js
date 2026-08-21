@@ -1,98 +1,9 @@
-import { createLocalStore } from "../systems/local-store.js";
-import {
-  DEFAULT_MAP_ID,
-  readMapIdFromLocation,
-  scopeStorageKey,
-} from "../systems/map-scope.js";
-
-const LOGIC_STORAGE_KEY = "liora.world-logic.v1";
-const LOGIC_VERSION = 1;
-const DEFAULT_SPAWN = Object.freeze({ x: 0, z: 5 });
-
-const mapId = readMapIdFromLocation() ?? DEFAULT_MAP_ID;
-const store = createLocalStore({
-  key: scopeStorageKey(LOGIC_STORAGE_KEY, mapId, DEFAULT_MAP_ID),
-  version: LOGIC_VERSION,
-});
+import { WORLD_LOGIC, WORLD_LOGIC_KINDS } from "../systems/world-logic.js";
 
 function finite(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
-
-function sanitizeLogic(value) {
-  if (!value || typeof value !== "object") return null;
-  const source = value.spawn;
-  if (!source || typeof source !== "object") return null;
-  const x = Number(source.x);
-  const z = Number(source.z);
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
-  return {
-    version: LOGIC_VERSION,
-    spawn: { x, z },
-  };
-}
-
-function cloneLogic(value) {
-  const source = sanitizeLogic(value) ?? {
-    version: LOGIC_VERSION,
-    spawn: DEFAULT_SPAWN,
-  };
-  return {
-    version: LOGIC_VERSION,
-    spawn: { x: source.spawn.x, z: source.spawn.z },
-  };
-}
-
-const stored = sanitizeLogic(store.load());
-let authored = null;
-let touched = Boolean(stored);
-let logic = cloneLogic(stored);
-let rerender = () => {};
-
-function save() {
-  touched = true;
-  store.save(cloneLogic(logic));
-  rerender();
-}
-
-function setSpawn(position) {
-  const x = Number(position?.x);
-  const z = Number(position?.z);
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
-  logic.spawn = { x, z };
-  save();
-  return true;
-}
-
-function resetToAuthored() {
-  store.clear();
-  touched = false;
-  logic = cloneLogic(authored);
-  rerender();
-}
-
-function importData(next) {
-  authored = sanitizeLogic(next);
-  if (touched) return false;
-  logic = cloneLogic(authored);
-  rerender();
-  return true;
-}
-
-function exportData() {
-  return cloneLogic(logic);
-}
-
-window.__lioraWorldLogic = {
-  importData,
-  exportData,
-  setSpawn,
-  resetToAuthored,
-  get mapId() { return mapId; },
-  get spawn() { return { ...logic.spawn }; },
-  get storeIssue() { return store.lastIssue; },
-};
 
 function setupWorldBuilderUI() {
   const root = document.querySelector("#build-panel");
@@ -148,7 +59,7 @@ function setupWorldBuilderUI() {
     #build-panel[data-wb-mode="logic"] #build-body > :not(#wb-overlay),
     #build-panel[data-wb-mode="manage"] #build-body > :not(#wb-overlay) { display: none !important; }
     #build-panel[data-wb-mode="logic"] #wb-overlay,
-    #build-panel[data-wb-mode="manage"] #wb-overlay { display: block; }
+    #build-panel[data-wb-mode="manage"] #wb-overlay { display: grid; gap: 8px; }
     #build-panel[data-wb-mode="logic"] #build-actions,
     #build-panel[data-wb-mode="manage"] #build-actions { display: none !important; }
     #wb-overlay .wb-card {
@@ -156,15 +67,28 @@ function setupWorldBuilderUI() {
       gap: 8px;
       padding: 10px;
       border-radius: 14px;
-      background: color-mix(in srgb, Canvas 90%, transparent);
+      background: rgba(255,255,255,.9);
     }
     #wb-overlay .wb-title { font-weight: 800; }
     #wb-overlay .wb-note { font-size: 12px; opacity: .8; line-height: 1.45; }
     #wb-overlay .wb-row { display: flex; gap: 8px; flex-wrap: wrap; }
-    #wb-overlay .wb-row button { flex: 1 1 130px; padding: 8px 10px; }
+    #wb-overlay .wb-row button { flex: 1 1 120px; padding: 8px 10px; }
     #wb-overlay .primary { font-weight: 800; }
     #wb-overlay .danger { opacity: .9; }
     #wb-overlay .wb-coord { font-variant-numeric: tabular-nums; font-weight: 700; }
+    #wb-overlay .wb-list { display: grid; gap: 6px; max-height: 132px; overflow: auto; }
+    #wb-overlay .wb-node {
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto;
+      gap: 6px;
+      align-items: center;
+      padding: 7px 8px;
+      border-radius: 10px;
+      background: rgba(0,0,0,.055);
+    }
+    #wb-overlay .wb-node small { display: block; opacity: .7; margin-top: 2px; }
+    #wb-overlay .wb-mini { display: flex; gap: 4px; }
+    #wb-overlay .wb-mini button { min-width: 38px; min-height: 38px; padding: 4px 7px; }
   `;
   document.head.append(style);
 
@@ -214,9 +138,7 @@ function setupWorldBuilderUI() {
   let terrainTool = "paint";
   let notice = "";
 
-  function clickHiddenTab(button) {
-    button?.click();
-  }
+  const clickHiddenTab = (button) => button?.click();
 
   function playerPosition() {
     const position = window.__lioraAudioRuntime?.state?.position;
@@ -253,42 +175,118 @@ function setupWorldBuilderUI() {
     });
   }
 
-  function renderLogic() {
+  function spawnCard() {
+    const spawn = WORLD_LOGIC.spawn;
     const card = document.createElement("div");
     card.className = "wb-card";
+
     const title = document.createElement("div");
     title.className = "wb-title";
-    title.textContent = "Logic · จุดเกิดผู้เล่น";
+    title.textContent = "📍 Player Spawn";
+
     const coord = document.createElement("div");
     coord.className = "wb-coord";
-    coord.textContent = `Spawn  X ${finite(logic.spawn.x).toFixed(1)} · Z ${finite(logic.spawn.z).toFixed(1)}`;
+    coord.textContent = `X ${finite(spawn.x).toFixed(1)} · Z ${finite(spawn.z).toFixed(1)}`;
+
     const note = document.createElement("div");
     note.className = "wb-note";
-    note.textContent = notice || "ไปโหมดเล่น เดิน Liora ไปยืนตรงที่ต้องการ แล้วกลับมาที่ Logic เพื่อบันทึกจุดเกิด โลกที่ export จะจำตำแหน่งนี้ไปด้วย";
+    note.textContent = "จุดเริ่มเกมของผู้เล่นเป็นข้อมูลของโลก ไม่ได้ฝังอยู่ในโมเดลหรือฉาก";
+
     const row = document.createElement("div");
     row.className = "wb-row";
     row.append(
       makeButton("▶ ไปยืนเลือกจุด", () => {
         document.querySelector('#mode-bar [data-mode="play"]')?.click();
       }),
-      makeButton("📍 ใช้ตำแหน่ง Liora ตอนนี้", () => {
+      makeButton("📍 ตั้งตรง Liora", () => {
         const position = playerPosition();
         if (!position) {
           setNotice("ยังอ่านตำแหน่ง Liora ไม่ได้ — เข้าโหมดเล่นก่อนหนึ่งครั้ง");
           return;
         }
-        setSpawn(position);
+        WORLD_LOGIC.setSpawn(position);
         notice = `ตั้งจุดเกิดแล้ว X ${position.x.toFixed(1)} · Z ${position.z.toFixed(1)}`;
         renderOverlay();
-      }, "primary"),
-      makeButton("↺ คืนค่าของแผนที่", () => {
-        resetToAuthored();
-        notice = "คืนค่าจุดเกิดตามไฟล์แผนที่แล้ว";
-        renderOverlay();
-      }, "danger")
+      }, "primary")
     );
     card.append(title, coord, note, row);
-    overlay.replaceChildren(card);
+    return card;
+  }
+
+  function zoneRow(node) {
+    const row = document.createElement("div");
+    row.className = "wb-node";
+    const info = document.createElement("div");
+    const name = document.createElement("b");
+    name.textContent = node.label;
+    const detail = document.createElement("small");
+    detail.textContent = `X ${node.x.toFixed(1)} · Z ${node.z.toFixed(1)} · รัศมี ${node.radius.toFixed(1)} ม.`;
+    info.append(name, detail);
+
+    const tools = document.createElement("div");
+    tools.className = "wb-mini";
+    tools.append(
+      makeButton("−", () => WORLD_LOGIC.updateNode(node.id, { radius: Math.max(0.5, node.radius - 0.5) })),
+      makeButton("＋", () => WORLD_LOGIC.updateNode(node.id, { radius: Math.min(20, node.radius + 0.5) })),
+      makeButton("✕", () => WORLD_LOGIC.removeNode(node.id), "danger")
+    );
+    row.append(info, tools);
+    return row;
+  }
+
+  function zonesCard() {
+    const zones = WORLD_LOGIC.listNodes(WORLD_LOGIC_KINDS.ZONE);
+    const card = document.createElement("div");
+    card.className = "wb-card";
+
+    const title = document.createElement("div");
+    title.className = "wb-title";
+    title.textContent = `⭕ Gameplay Zones · ${zones.length}`;
+
+    const note = document.createElement("div");
+    note.className = "wb-note";
+    note.textContent = "Zone เป็น primitive กลาง: รอบต่อไป node เดียวกันสามารถกำหนดเป็นเขตฟาร์ม, Trigger, เขต NPC, ประตู หรือ Quest ได้";
+
+    const add = makeButton("＋ เพิ่ม Zone ตรง Liora", () => {
+      const position = playerPosition();
+      if (!position) {
+        setNotice("เข้าโหมดเล่นและพา Liora ไปยืนตรงกลางพื้นที่ก่อน");
+        return;
+      }
+      const index = zones.length + 1;
+      WORLD_LOGIC.addNode(WORLD_LOGIC_KINDS.ZONE, {
+        x: position.x,
+        z: position.z,
+        radius: 2.5,
+        label: `Zone ${index}`,
+        data: { role: "generic" },
+      });
+      notice = `เพิ่ม Zone ${index} แล้ว — ปรับรัศมีด้วย − / ＋`;
+      renderOverlay();
+    }, "primary");
+
+    const list = document.createElement("div");
+    list.className = "wb-list";
+    if (zones.length) list.append(...zones.map(zoneRow));
+    else {
+      const empty = document.createElement("div");
+      empty.className = "wb-note";
+      empty.textContent = "ยังไม่มี Zone ในโลกนี้";
+      list.append(empty);
+    }
+
+    card.append(title, note, add, list);
+    return card;
+  }
+
+  function renderLogic() {
+    overlay.replaceChildren(spawnCard(), zonesCard());
+    if (notice) {
+      const message = document.createElement("div");
+      message.className = "wb-card wb-note";
+      message.textContent = notice;
+      overlay.append(message);
+    }
   }
 
   function renderManage() {
@@ -296,14 +294,19 @@ function setupWorldBuilderUI() {
     card.className = "wb-card";
     const title = document.createElement("div");
     title.className = "wb-title";
-    title.textContent = "Manage · โลกนี้";
+    title.textContent = "💾 Manage World";
     const note = document.createElement("div");
     note.className = "wb-note";
-    note.textContent = notice || "บันทึกโลกจะรวม Objects + พื้นที่ระบาย + Terrain + ขอบฟ้า + Logic ลงในไฟล์แผนที่เดียว";
+    note.textContent = notice || `โลกนี้มี Logic ${WORLD_LOGIC.nodeCount} node · บันทึกโลกจะรวม Terrain + Ground + Objects + Horizon + Logic ในไฟล์เดียว`;
     const row = document.createElement("div");
     row.className = "wb-row";
     row.append(
       makeButton("💾 บันทึกโลก .json", () => builderAction("บันทึก"), "primary"),
+      makeButton("↺ คืนค่า Logic", () => {
+        WORLD_LOGIC.resetToAuthored();
+        notice = "คืนค่า Logic ตามไฟล์โลกแล้ว";
+        renderOverlay();
+      }),
       makeButton("↺ รีเซ็ตสิ่งของ", () => builderAction("รีเซ็ต"), "danger"),
       makeButton("🔄 โหลดโลกใหม่", () => location.reload())
     );
@@ -345,7 +348,10 @@ function setupWorldBuilderUI() {
   for (const [id, button] of primaryButtons) button.onclick = () => activate(id);
   for (const [id, button] of subButtons) button.onclick = () => activateTerrainTool(id);
 
-  rerender = () => renderOverlay();
+  const unsubscribe = WORLD_LOGIC.subscribe(() => {
+    if (mode === "logic" || mode === "manage") renderOverlay();
+  });
+  window.addEventListener("pagehide", unsubscribe, { once: true });
   activate("objects");
 }
 
