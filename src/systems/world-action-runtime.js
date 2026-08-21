@@ -37,3 +37,10 @@ export function createWorldActionRuntime({
     },
   };
 }
+
+/**
+ * The page currently owns one active world at a time, so one action bridge is
+ * enough. The factory above already exposes teardown for future in-place world
+ * switching, where this instance can move under the system registry.
+ */
+export const WORLD_ACTION_RUNTIME = createWorldActionRuntime();
