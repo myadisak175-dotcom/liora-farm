@@ -1,51 +1,17 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import {
-  DEFAULT_MAP_ID,
-  scopeStorageKey,
-} from "../systems/map-scope.js";
-
-const LOGIC_STORAGE_KEY = "liora.world-logic.v1";
-const LOGIC_VERSION = 1;
-const FALLBACK_SPAWN = Object.freeze({ x: 0, z: 5 });
-
-function sanitizeSpawn(value) {
-  const x = Number(value?.x);
-  const z = Number(value?.z);
-  return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : null;
-}
-
-function readStoredSpawn(mapId) {
-  if (typeof localStorage === "undefined") return null;
-  const key = scopeStorageKey(LOGIC_STORAGE_KEY, mapId, DEFAULT_MAP_ID);
-  try {
-    const payload = JSON.parse(localStorage.getItem(key) ?? "null");
-    if (payload?.version !== LOGIC_VERSION) return null;
-    return sanitizeSpawn(payload.spawn);
-  } catch {
-    return null;
-  }
-}
-
-async function readAuthoredSpawn(mapId) {
-  if (typeof fetch !== "function") return null;
-  try {
-    const response = await fetch(`./maps/${mapId}.json`, { cache: "no-store" });
-    if (!response.ok) return null;
-    const map = await response.json();
-    return sanitizeSpawn(map?.logic?.spawn);
-  } catch {
-    return null;
-  }
-}
+import { DEFAULT_MAP_ID } from "../systems/map-scope.js";
+import { WORLD_LOGIC } from "../systems/world-logic.js";
 
 async function resolveSpawn() {
   const mapId = typeof window !== "undefined" && typeof window.__lioraMap === "string"
     ? window.__lioraMap
     : DEFAULT_MAP_ID;
-  return readStoredSpawn(mapId)
-    ?? await readAuthoredSpawn(mapId)
-    ?? FALLBACK_SPAWN;
+
+  // The current registry uses ./maps/<id>.json. WORLD_LOGIC keeps a local edit
+  // if one exists and only applies this authored value to untouched worlds.
+  await WORLD_LOGIC.importMap(`./maps/${mapId}.json`);
+  return WORLD_LOGIC.spawn;
 }
 
 export async function createPlayer({
@@ -120,13 +86,6 @@ export async function createPlayer({
     current = next;
   }
 
-  /**
-   * One-shot actions must never be able to strand the player in `special`.
-   * Three normally emits `finished`, but a malformed/replaced clip or an
-   * interrupted mixer can miss that event. A clip-duration watchdog provides
-   * a second exit path and the run token prevents an older callback from
-   * ending a newer action.
-   */
   function playSpecial(name, onDone) {
     const action = actions[name];
     if (special || !action) return false;
@@ -172,9 +131,6 @@ export async function createPlayer({
     isSpecial: () => special,
   };
 
-  // Test-only bridge. It exists only when the URL explicitly asks for NPCs,
-  // keeping the normal game surface unchanged while the sidecar test module
-  // reuses the player's already-loaded model and clips.
   if (new URLSearchParams(location.search).get("npc") === "1") {
     window.__lioraNpcSource = api;
   }
