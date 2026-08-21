@@ -1,16 +1,17 @@
 import { WORLD_LOGIC } from "./world-logic.js";
+import { WORLD_EVENTS } from "./world-events.js";
 
 /**
  * Minimal gameplay runtime for authored logic nodes.
  *
  * It knows only geometry and lifecycle: a node with x/z/radius can be entered
- * and exited. What "enter" means belongs to an action/plugin layer later.
+ * and exited. What "enter" means belongs to subscribers on WORLD_EVENTS.
  * This keeps the primitive reusable for farms, doors, quests, NPC work areas,
  * ambience volumes, checkpoints and anything else that needs proximity.
  */
 export function createWorldLogicRuntime({
   logic = WORLD_LOGIC,
-  onEvent = () => {},
+  onEvent = (event) => WORLD_EVENTS.emit(event),
 } = {}) {
   let nodes = logic.listNodes();
   let inside = new Set();
