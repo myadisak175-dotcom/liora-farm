@@ -95,6 +95,7 @@ export function createLayoutRuntime({
     // player's own save: the sky is a property of the world, not of what they
     // have built in it, so a returning player still gets this map's sky.
     await applyAuthoredHorizon();
+    await applyAuthoredLogic();
 
     await spawnAll();
     const report = builder.loadReport;
@@ -121,6 +122,21 @@ export function createLayoutRuntime({
     }
   }
 
+  /**
+   * Gameplay authoring follows the same precedence as the horizon: a map may
+   * define defaults, while a local edit for this map wins until the player
+   * explicitly resets it. The world-builder shell owns the store and schema;
+   * this runtime only moves the data in and out of the map file.
+   */
+  async function applyAuthoredLogic() {
+    try {
+      const map = await fetchDefaultMap();
+      window.__lioraWorldLogic?.importData?.(map?.logic ?? null);
+    } catch {
+      window.__lioraWorldLogic?.importData?.(null);
+    }
+  }
+
   async function reset() {
     try {
       const map = await fetchDefaultMap();
@@ -141,10 +157,10 @@ export function createLayoutRuntime({
       mapId,
       name: mapName || mapId,
       savedAt: new Date().toISOString(),
-      // A world is one file: sky, ground shape, ground surface and objects.
-      // Splitting the horizon out into config.js is what made a second map
-      // impossible to author without editing source.
+      // A world is one file: sky, ground shape, ground surface, gameplay logic
+      // and objects. Logic is deliberately data-only, just like the layout.
       horizon: getHorizon() ?? {},
+      logic: window.__lioraWorldLogic?.exportData?.() ?? {},
       objects: items.map(({ id, assetId, x, z, rotation, scale }) => ({
         id,
         assetId,
@@ -174,5 +190,6 @@ export function createLayoutRuntime({
     exportMap,
     spawnAll,
     applyAuthoredHorizon,
+    applyAuthoredLogic,
   };
 }
