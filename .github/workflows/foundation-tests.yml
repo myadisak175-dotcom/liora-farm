@@ -46,5 +46,8 @@ jobs:
       - name: World navigation foundation
         run: node tools/test/world-navigation.test.mjs
 
+      - name: Portal action plugin
+        run: node tools/test/world-portal-action.test.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs
