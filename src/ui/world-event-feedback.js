@@ -10,17 +10,18 @@ void WORLD_ACTION_RUNTIME;
 /**
  * Presentation adapters for authored world actions.
  *
- * The gameplay action registry stays DOM-free. This module teaches it only the
- * `toast` presentation action and keeps a small fallback for legacy/generic
- * zones that have no authored action list yet.
+ * Register immediately at module boot so the action vocabulary is complete
+ * before gameplay can emit its first event. The DOM element is resolved lazily
+ * only when feedback is actually shown, so this is safe while <body> is still
+ * being parsed.
  */
 function installWorldEventFeedback({ durationMs = 1400 } = {}) {
-  const element = document.querySelector("#toast");
-  if (!element) return () => {};
   let timer = null;
 
   function show(text) {
     if (!text) return;
+    const element = document.querySelector("#toast");
+    if (!element) return;
     element.textContent = text;
     element.classList.add("on");
     clearTimeout(timer);
@@ -49,13 +50,5 @@ function installWorldEventFeedback({ durationMs = 1400 } = {}) {
   };
 }
 
-function boot() {
-  const dispose = installWorldEventFeedback();
-  window.addEventListener("pagehide", dispose, { once: true });
-}
-
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot, { once: true });
-} else {
-  boot();
-}
+const dispose = installWorldEventFeedback();
+window.addEventListener("pagehide", dispose, { once: true });
