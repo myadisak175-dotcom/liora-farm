@@ -63,7 +63,7 @@ function cloneData(value) {
 }
 
 function sanitizeNode(value, fallbackId = null) {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const id = cleanId(value.id) ?? cleanId(fallbackId);
   if (!id) return null;
   const kind = cleanKind(value.kind);
@@ -77,6 +77,27 @@ function sanitizeNode(value, fallbackId = null) {
     enabled: value.enabled !== false,
     data: cloneData(value.data),
   };
+}
+
+/**
+ * Local saves are stricter than authored map input. Authored content may omit
+ * optional fields and be normalized; a persisted payload that has lost its
+ * spawn, node array or node identities is treated as damaged so local-store can
+ * rescue the original bytes before anything overwrites them.
+ */
+function isUsableStoredPayload(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const x = Number(value.spawn?.x);
+  const z = Number(value.spawn?.z);
+  if (!Number.isFinite(x) || !Number.isFinite(z) || !Array.isArray(value.nodes)) return false;
+
+  const ids = new Set();
+  for (const candidate of value.nodes) {
+    const node = sanitizeNode(candidate);
+    if (!node || ids.has(node.id)) return false;
+    ids.add(node.id);
+  }
+  return true;
 }
 
 /**
@@ -117,6 +138,9 @@ function loadLegacy(mapId, defaultId = DEFAULT_MAP_ID) {
   try {
     const payload = JSON.parse(localStorage.getItem(key) ?? "null");
     if (payload?.version !== 1) return null;
+    const x = Number(payload.spawn?.x);
+    const z = Number(payload.spawn?.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
     return sanitizeWorldLogic(payload);
   } catch {
     return null;
@@ -161,7 +185,11 @@ export function createWorldLogic({
     version: WORLD_LOGIC_VERSION,
   });
   const options = { defaultSpawn };
-  const stored = store.load();
+  let stored = store.load();
+  if (stored && !isUsableStoredPayload(stored)) {
+    store.rejectLoaded("malformed-world-logic");
+    stored = null;
+  }
   const legacy = stored ? null : loadLegacy(mapId, defaultId);
 
   let authored = cloneLogic(null, options);
@@ -200,9 +228,10 @@ export function createWorldLogic({
   }
 
   function setSpawn(value) {
-    const next = point(value, state.spawn);
-    if (!Number.isFinite(next.x) || !Number.isFinite(next.z)) return false;
-    state.spawn = next;
+    const x = Number(value?.x);
+    const z = Number(value?.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
+    state.spawn = { x, z };
     persist("spawn");
     return true;
   }
