@@ -37,5 +37,8 @@ jobs:
         # because production uses them to work around aggressive Safari caches.
         run: node tools/test/module-graph.mjs
 
+      - name: World logic foundation
+        run: node tools/test/world-logic.test.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs
