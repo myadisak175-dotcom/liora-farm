@@ -151,10 +151,10 @@ export function createWorldNavigation({
     if (!isValidMapId(mapId) || !validMarkerId(markerId)) {
       return { ok: false, code: "invalid-target" };
     }
-    const markers = await listMarkers(mapId);
-    if (!markers.some((marker) => marker.id === markerId)) {
-      return { ok: false, code: "missing-marker" };
-    }
+    // Validate the world, but let the destination page resolve the marker from
+    // its live World Logic document. That document may contain local authoring
+    // edits that have not been exported back to the repository yet.
+    if (!await mapEntry(mapId)) return { ok: false, code: "unknown-map" };
     const url = urlFor(mapId);
     if (!url || !setArrival({ mapId, markerId })) {
       return { ok: false, code: "arrival-save-failed" };
