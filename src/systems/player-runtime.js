@@ -23,13 +23,9 @@ export function createPlayerRuntime({
 
   // Player movement is the authoritative resolved position, so proximity logic
   // runs here after collision/slope/water resolution rather than following raw
-  // joystick input. The runtime itself remains a separate, data-only system.
-  const logicRuntime = worldLogicRuntime ?? createWorldLogicRuntime({
-    onEvent: (event) => {
-      if (typeof window === "undefined" || typeof CustomEvent === "undefined") return;
-      window.dispatchEvent(new CustomEvent("liora:world-logic", { detail: event }));
-    },
-  });
+  // joystick input. The runtime publishes plain events through WORLD_EVENTS;
+  // presentation and gameplay systems subscribe independently.
+  const logicRuntime = worldLogicRuntime ?? createWorldLogicRuntime();
 
   let lastState = {
     moving: false,
