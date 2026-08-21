@@ -1,4 +1,5 @@
 import { createPlayerWaterInteraction } from "./player-water.js";
+import { createWorldLogicRuntime } from "./world-logic-runtime.js";
 
 export function createPlayerRuntime({
   player,
@@ -9,17 +10,25 @@ export function createPlayerRuntime({
   runFx,
   contactShadow,
   waterInteraction = null,
+  worldLogicRuntime = null,
   dayNight,
   lighting,
   surfaceAt = null,
 }) {
-  // The player is already parented to the world scene before this runtime is
-  // created. Keeping the visual water helper here avoids adding more bootstrap
-  // ownership to main.js while still making it easy to inject a test double.
   const playerWater = waterInteraction ?? createPlayerWaterInteraction({
     scene: player?.root?.parent ?? null,
     player,
     config: config.water,
+  });
+
+  // Player movement is the authoritative resolved position, so proximity logic
+  // runs here after collision/slope/water resolution rather than following raw
+  // joystick input. The runtime itself remains a separate, data-only system.
+  const logicRuntime = worldLogicRuntime ?? createWorldLogicRuntime({
+    onEvent: (event) => {
+      if (typeof window === "undefined" || typeof CustomEvent === "undefined") return;
+      window.dispatchEvent(new CustomEvent("liora:world-logic", { detail: event }));
+    },
   });
 
   let lastState = {
@@ -58,6 +67,8 @@ export function createPlayerRuntime({
       delta,
     });
     snapshotState(state);
+
+    if (active) logicRuntime.update(player.root.position);
 
     if (!player.isSpecial()) {
       player.fadeTo(
@@ -112,15 +123,14 @@ export function createPlayerRuntime({
     get water() {
       return playerWater;
     },
+    get worldLogic() {
+      return logicRuntime;
+    },
     get position() {
       return player?.root?.position ?? null;
     },
   };
 
-  // Audio reads the *actual resolved movement* from here, not the joystick CSS.
-  // That matters when Liora is blocked by a collider, wading, in a special
-  // animation, or the controls are disabled: footsteps then follow the world
-  // state instead of merely following the player's finger.
   const audioBridge = {
     get state() {
       return api.state;
