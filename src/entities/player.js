@@ -1,5 +1,52 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import {
+  DEFAULT_MAP_ID,
+  scopeStorageKey,
+} from "../systems/map-scope.js";
+
+const LOGIC_STORAGE_KEY = "liora.world-logic.v1";
+const LOGIC_VERSION = 1;
+const FALLBACK_SPAWN = Object.freeze({ x: 0, z: 5 });
+
+function sanitizeSpawn(value) {
+  const x = Number(value?.x);
+  const z = Number(value?.z);
+  return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : null;
+}
+
+function readStoredSpawn(mapId) {
+  if (typeof localStorage === "undefined") return null;
+  const key = scopeStorageKey(LOGIC_STORAGE_KEY, mapId, DEFAULT_MAP_ID);
+  try {
+    const payload = JSON.parse(localStorage.getItem(key) ?? "null");
+    if (payload?.version !== LOGIC_VERSION) return null;
+    return sanitizeSpawn(payload.spawn);
+  } catch {
+    return null;
+  }
+}
+
+async function readAuthoredSpawn(mapId) {
+  if (typeof fetch !== "function") return null;
+  try {
+    const response = await fetch(`./maps/${mapId}.json`, { cache: "no-store" });
+    if (!response.ok) return null;
+    const map = await response.json();
+    return sanitizeSpawn(map?.logic?.spawn);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveSpawn() {
+  const mapId = typeof window !== "undefined" && typeof window.__lioraMap === "string"
+    ? window.__lioraMap
+    : DEFAULT_MAP_ID;
+  return readStoredSpawn(mapId)
+    ?? await readAuthoredSpawn(mapId)
+    ?? FALLBACK_SPAWN;
+}
 
 export async function createPlayer({
   url,
@@ -9,7 +56,8 @@ export async function createPlayer({
   animations,
 }) {
   const root = new THREE.Group();
-  root.position.set(0, 0, 5);
+  const spawn = await resolveSpawn();
+  root.position.set(spawn.x, 0, spawn.z);
 
   const gltf = await new GLTFLoader().loadAsync(url);
   const model = gltf.scene;
