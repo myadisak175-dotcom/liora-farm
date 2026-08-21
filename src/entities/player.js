@@ -1,12 +1,26 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { WORLD_LOGIC } from "../systems/world-logic.js";
+import { WORLD_MARKER_KIND, WORLD_NAVIGATION } from "../systems/world-navigation.js";
 
 async function resolveSpawn() {
   // The logic system resolves the current map through maps/index.json, so a
   // world may move to a different file path without teaching the player model
   // about registry conventions.
   await WORLD_LOGIC.importCurrentMap();
+
+  // Portal arrivals are deliberately session-only. Consume the token once and
+  // resolve the marker from this map's live logic document, so locally-authored
+  // markers work before their JSON has been exported back to the repository.
+  const arrival = WORLD_NAVIGATION.consumeArrival(WORLD_LOGIC.mapId);
+  if (arrival) {
+    const marker = WORLD_LOGIC.getNode(arrival.markerId);
+    const x = Number(marker?.x);
+    const z = Number(marker?.z);
+    if (marker?.kind === WORLD_MARKER_KIND && Number.isFinite(x) && Number.isFinite(z)) {
+      return { x, z };
+    }
+  }
   return WORLD_LOGIC.spawn;
 }
 
