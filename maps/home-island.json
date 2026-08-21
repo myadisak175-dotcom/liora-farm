@@ -5,11 +5,12 @@
   "savedAt": "2026-08-20T16:15:00.000Z",
   "horizon": {},
   "logic": {
-    "version": 1,
+    "version": 2,
     "spawn": {
       "x": 0,
       "z": 5
-    }
+    },
+    "nodes": []
   },
   "objects": [],
   "groundPaint": {
