@@ -4,6 +4,13 @@
   "name": "เกาะบ้าน — พื้นเปล่า",
   "savedAt": "2026-08-20T16:15:00.000Z",
   "horizon": {},
+  "logic": {
+    "version": 1,
+    "spawn": {
+      "x": 0,
+      "z": 5
+    }
+  },
   "objects": [],
   "groundPaint": {
     "version": 1,
