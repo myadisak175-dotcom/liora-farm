@@ -1,5 +1,11 @@
+import { WORLD_ACTION_RUNTIME } from "../systems/world-action-runtime.js";
 import { WORLD_ACTIONS } from "../systems/world-actions.js";
 import { WORLD_EVENTS } from "../systems/world-events.js";
+
+// Importing the singleton starts the data-driven event -> action bridge before
+// the first player movement event. Keep the reference explicit for module-graph
+// tools and for the future teardown move into the main system registry.
+void WORLD_ACTION_RUNTIME;
 
 /**
  * Presentation adapters for authored world actions.
