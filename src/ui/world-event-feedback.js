@@ -1,11 +1,12 @@
+import { WORLD_ACTIONS } from "../systems/world-actions.js";
 import { WORLD_EVENTS } from "../systems/world-events.js";
 
 /**
- * Lightweight player feedback for authored world events.
+ * Presentation adapters for authored world actions.
  *
- * This is intentionally only presentation. Game rules subscribe to the same
- * WORLD_EVENTS bus elsewhere, so replacing these toasts with quest UI, audio,
- * portals or cutscenes never changes the proximity runtime.
+ * The gameplay action registry stays DOM-free. This module teaches it only the
+ * `toast` presentation action and keeps a small fallback for legacy/generic
+ * zones that have no authored action list yet.
  */
 function installWorldEventFeedback({ durationMs = 1400 } = {}) {
   const element = document.querySelector("#toast");
@@ -20,16 +21,23 @@ function installWorldEventFeedback({ durationMs = 1400 } = {}) {
     timer = setTimeout(() => element.classList.remove("on"), durationMs);
   }
 
-  const unsubscribe = WORLD_EVENTS.subscribe((event) => {
+  const unregisterToast = WORLD_ACTIONS.register("toast", (action, context) => {
+    const authored = String(action.text ?? action.message ?? "").trim();
+    show(authored || context?.node?.label || "เหตุการณ์ในโลก");
+  });
+
+  const unsubscribeFallback = WORLD_EVENTS.subscribe((event) => {
     if (event?.type !== "enter") return;
     const node = event.node;
     if (!node?.enabled) return;
-    const authored = String(node.data?.message ?? "").trim();
-    show(authored || `เข้าเขต: ${node.label || node.kind || "Zone"}`);
+    const actions = node.data?.actions?.enter;
+    if (Array.isArray(actions) && actions.length) return;
+    show(`เข้าเขต: ${node.label || node.kind || "Zone"}`);
   });
 
   return () => {
-    unsubscribe();
+    unregisterToast();
+    unsubscribeFallback();
     clearTimeout(timer);
     timer = null;
   };
