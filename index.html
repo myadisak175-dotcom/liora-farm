@@ -67,11 +67,13 @@
   }});
   document.head.append(map);
 
-  // Authoring UI and runtime feedback share the same data/event modules but
-  // remain separate concerns. Both are tiny and load before main.js so the
-  // player spawn can use authored/local World Logic on the first frame.
+  // World Builder features and gameplay actions are plugins over the same
+  // data/event core. Load the vocabulary before main.js creates the player so
+  // Spawn, Marker and Portal behaviour is deterministic from frame one.
   await Promise.all([
     import("./src/editor/world-builder-shell.js"),
+    import("./src/editor/world-builder-portal-plugin.js"),
+    import("./src/systems/world-navigation-actions.js"),
     import("./src/ui/world-event-feedback.js"),
   ]);
 
