@@ -126,6 +126,9 @@ async function portalCard(maps) {
     addPortal.disabled = true;
     const mapId = targetMap.value;
     const markers = mapId ? await markersFor(mapId) : [];
+    // The player can change the map selector while another map file is still
+    // loading on a phone. Never let an older request overwrite the new choice.
+    if (targetMap.value !== mapId) return;
     for (const marker of markers) {
       const option = document.createElement("option");
       option.value = marker.id;
@@ -235,14 +238,11 @@ function installStyles() {
   document.head.append(style);
 }
 
-async function setup() {
-  const root = document.querySelector("#build-panel");
-  const overlay = document.querySelector("#wb-overlay");
-  if (!root || !overlay) return;
+async function activate(root, overlay) {
   installStyles();
   const maps = await WORLD_NAVIGATION.listMaps();
-
   let scheduled = false;
+
   async function enhance() {
     scheduled = false;
     const mode = root.dataset.wbMode;
@@ -266,9 +266,34 @@ async function setup() {
 
   const observer = new MutationObserver(schedule);
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-wb-mode"] });
-  WORLD_LOGIC.subscribe(schedule);
+  const unsubscribe = WORLD_LOGIC.subscribe(schedule);
   schedule();
-  window.addEventListener("pagehide", () => observer.disconnect(), { once: true });
+  window.addEventListener("pagehide", () => {
+    observer.disconnect();
+    unsubscribe();
+  }, { once: true });
+}
+
+function setup() {
+  const root = document.querySelector("#build-panel");
+  if (!root) return;
+  const overlay = root.querySelector("#wb-overlay");
+  if (overlay) {
+    activate(root, overlay);
+    return;
+  }
+
+  // The shell and plugins are intentionally loaded in parallel. If this plugin
+  // wins the DOMContentLoaded race, observe the build panel until the shell
+  // creates its overlay instead of silently giving up for the entire session.
+  const bootObserver = new MutationObserver(() => {
+    const ready = root.querySelector("#wb-overlay");
+    if (!ready) return;
+    bootObserver.disconnect();
+    activate(root, ready);
+  });
+  bootObserver.observe(root, { childList: true, subtree: true });
+  window.addEventListener("pagehide", () => bootObserver.disconnect(), { once: true });
 }
 
 if (document.readyState === "loading") {
