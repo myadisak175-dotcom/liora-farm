@@ -29,13 +29,14 @@ assert(migrated.version === WORLD_LOGIC_VERSION, "v1 logic did not migrate to cu
 assert(migrated.spawn.x === 3 && migrated.spawn.z === -4, "v1 spawn moved during migration");
 assert(Array.isArray(migrated.nodes) && migrated.nodes.length === 0, "v1 migration invented nodes");
 
-const storageKey = "liora.test.world-logic.v2";
-const logic = createWorldLogic({ mapId: "logic-test", storageKey });
-logic.importData({
+const authored = {
   version: WORLD_LOGIC_VERSION,
   spawn: { x: 1, z: 2 },
   nodes: [],
-});
+};
+const storageKey = "liora.test.world-logic.v2";
+const logic = createWorldLogic({ mapId: "logic-test", storageKey });
+logic.importData(authored);
 assert(logic.spawn.x === 1 && logic.spawn.z === 2, "authored spawn was not applied");
 
 logic.setSpawn({ x: 7.25, z: -1.5 });
@@ -55,6 +56,9 @@ logic.updateNode(zone.id, { radius: 4 });
 assert(logic.getNode(zone.id)?.radius === 4, "node update did not persist");
 
 const reloaded = createWorldLogic({ mapId: "logic-test", storageKey });
+// Authored defaults are loaded every boot even when a local edit wins. This is
+// what makes "reset" deterministic after reopening the game.
+reloaded.importData(authored);
 assert(reloaded.spawn.x === 7.25, "spawn did not persist through store reload");
 assert(reloaded.getNode(zone.id)?.data.role === "test", "node data did not persist through store reload");
 
