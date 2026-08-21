@@ -2,13 +2,26 @@
 
 Production Builder GLB files belong in this folder.
 
-Expected promoted assets:
+Current legacy Builder assets include:
 
 - `tree.glb` — Tree
 - `palm.glb` — Palm
 - `pine.glb` — Pine
 - `house.glb` — House
+- `house2.glb` — House 2
+- `crate.glb` — Crate
+- `wine_barrel.glb` — Wine barrel
+- `path_tile.glb` — Path tile
 
-The current standalone prototypes embed these models directly. The models have been extracted into a migration pack and should be promoted here as binary GLB files before changing the catalog `modelPath` values from `null`.
+These files are already split binary assets and are loaded through
+`src/editor/asset-catalog.js`. `defineAsset()` derives each `modelPath` from
+`ASSETS.modelDir`; the production page does not embed GLBs.
 
-Do not point `asset-catalog.js` at a model path until the corresponding GLB exists in this folder. This keeps the production Builder from breaking during migration.
+World V2 trees, rocks and plants live under
+`assets/models/world-v2/nature/` and follow `docs/ASSET-SET-POLICY.md`. The
+older `tree`, `pine` and `palm` files here remain loadable for saved-map
+compatibility but are hidden from new placement. Legacy `grass` remains a
+deliberate reusable exception.
+
+Do not add a catalog entry until its GLB exists at the exact path. Keep stable
+asset IDs when replacing content so existing maps and local saves still load.

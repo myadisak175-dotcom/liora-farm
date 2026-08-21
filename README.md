@@ -15,11 +15,19 @@ Then open `http://localhost:8000` on the phone. A server is required — ES modu
 ## What works
 
 - **เล่น** — walk, run, action animations, orbit camera, day/night clock.
-- **โลกมีชีวิต** — ฟ้าสดใส เมฆและเงาเมฆไหลตามลม หมอกขอบโลกเคลื่อนเป็นชั้น ผีเสื้อหลากสีบิน และหญ้า/พุ่ม/ดอกไม้แหวกเบา ๆ รอบตัวละคร.
+- **โลกและขอบฟ้า** — ทุ่งหญ้าเชื่อมต่อไปถึงเชิงเขา หมอกเริ่มไกลขึ้น และภูเขา 3 ระยะมีสันเขา เงาหิน และยอดหิมะ.
+- **โลกมีชีวิต** — ฟ้าสดใส เมฆและเงาเมฆไหลตามลม หมอกขอบโลกเคลื่อนเป็นชั้น และหญ้า/พุ่ม/ดอกไม้แหวกเบา ๆ รอบตัวละคร.
+- **เสียงบนมือถือ** — Audio Foundation v8 แยกเสียงฝีเท้าตามพื้นผิว, crossfade บรรยากาศกลางวัน/กลางคืน, จำสถานะ mute ข้ามโลก และกู้ stream ที่ถูกมือถือหยุดหรือค้าง.
+- **เต็มจอ** — ปุ่ม Fullscreen ใช้ API มาตรฐานและ WebKit fallback; บน iPhone ที่ไม่รองรับจะแนะนำ Add to Home Screen แทนปุ่มที่กดแล้วไม่ทำงาน.
 - **สร้าง → วางของ** — place assets, drag to move, rotate, scale, duplicate, delete. Autosaves.
 - **สร้าง → ระบายพื้น** — free-brush multiple ground surfaces over grass, with undo.
 - **สร้าง → ปั้นพื้น** — raise, lower, smooth and flatten terrain. Terrain follows real mesh vertices, saves locally and exports with the map.
 - **บันทึกแผนที่** — exports objects, ground paint and sculpted terrain in `home-island.json`.
+
+> **Known regression on `main` (`05bc91d`):** the new butterfly patch logic
+> references an undeclared `patch` inside `respawnInsect()`. The system registry
+> keeps the rest of the game rendering, but butterflies do not run and the
+> browser logs the same update error every frame. See `docs/CURRENT-BASELINE.md`.
 
 ## Frame cost readout
 
@@ -103,6 +111,7 @@ through every `addEventListener` in the repo. Attach listeners through
 - Binary files (`.glb`, `.webp`) must stay binary; do not paste them through text-only tooling.
 - `stable-liora-2026-08-14` is the rollback baseline from before terrain sculpting.
 - See `docs/ARCHITECTURE.md` and `docs/TERRAIN-PLAN.md` before changing the terrain system.
+- `docs/CURRENT-BASELINE.md` records the accepted runtime commit, build marker and intentionally disabled experiments.
 
 ## HUD budget test
 
