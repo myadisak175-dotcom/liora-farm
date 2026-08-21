@@ -67,6 +67,11 @@
   }});
   document.head.append(map);
 
+  // The blended World Builder owns gameplay-authoring data (starting with the
+  // player spawn) and must exist before main.js loads the map. It has no bare
+  // three.js imports, so boot can initialize it safely before the runtime.
+  await import("./src/editor/world-builder-shell.js");
+
   // Quality auto-detection belongs in systems/quality.js. Do not seed a
   // localStorage choice here: writing "high" at boot turns an automatic choice
   // into a permanent explicit preference and makes later detector fixes unable
