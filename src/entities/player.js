@@ -1,5 +1,28 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { WORLD_LOGIC } from "../systems/world-logic.js";
+import { WORLD_MARKER_KIND, WORLD_NAVIGATION } from "../systems/world-navigation.js";
+
+async function resolveSpawn() {
+  // The logic system resolves the current map through maps/index.json, so a
+  // world may move to a different file path without teaching the player model
+  // about registry conventions.
+  await WORLD_LOGIC.importCurrentMap();
+
+  // Portal arrivals are deliberately session-only. Consume the token once and
+  // resolve the marker from this map's live logic document, so locally-authored
+  // markers work before their JSON has been exported back to the repository.
+  const arrival = WORLD_NAVIGATION.consumeArrival(WORLD_LOGIC.mapId);
+  if (arrival) {
+    const marker = WORLD_LOGIC.getNode(arrival.markerId);
+    const x = Number(marker?.x);
+    const z = Number(marker?.z);
+    if (marker?.kind === WORLD_MARKER_KIND && Number.isFinite(x) && Number.isFinite(z)) {
+      return { x, z };
+    }
+  }
+  return WORLD_LOGIC.spawn;
+}
 
 export async function createPlayer({
   url,
@@ -9,7 +32,8 @@ export async function createPlayer({
   animations,
 }) {
   const root = new THREE.Group();
-  root.position.set(0, 0, 5);
+  const spawn = await resolveSpawn();
+  root.position.set(spawn.x, 0, spawn.z);
 
   const gltf = await new GLTFLoader().loadAsync(url);
   const model = gltf.scene;
@@ -72,13 +96,6 @@ export async function createPlayer({
     current = next;
   }
 
-  /**
-   * One-shot actions must never be able to strand the player in `special`.
-   * Three normally emits `finished`, but a malformed/replaced clip or an
-   * interrupted mixer can miss that event. A clip-duration watchdog provides
-   * a second exit path and the run token prevents an older callback from
-   * ending a newer action.
-   */
   function playSpecial(name, onDone) {
     const action = actions[name];
     if (special || !action) return false;
@@ -124,9 +141,6 @@ export async function createPlayer({
     isSpecial: () => special,
   };
 
-  // Test-only bridge. It exists only when the URL explicitly asks for NPCs,
-  // keeping the normal game surface unchanged while the sidecar test module
-  // reuses the player's already-loaded model and clips.
   if (new URLSearchParams(location.search).get("npc") === "1") {
     window.__lioraNpcSource = api;
   }

@@ -67,6 +67,16 @@
   }});
   document.head.append(map);
 
+  // World Builder features and gameplay actions are plugins over the same
+  // data/event core. Load the vocabulary before main.js creates the player so
+  // Spawn, Marker and Portal behaviour is deterministic from frame one.
+  await Promise.all([
+    import("./src/editor/world-builder-shell.js"),
+    import("./src/editor/world-builder-portal-plugin.js"),
+    import("./src/systems/world-navigation-actions.js"),
+    import("./src/ui/world-event-feedback.js"),
+  ]);
+
   // Quality auto-detection belongs in systems/quality.js. Do not seed a
   // localStorage choice here: writing "high" at boot turns an automatic choice
   // into a permanent explicit preference and makes later detector fixes unable

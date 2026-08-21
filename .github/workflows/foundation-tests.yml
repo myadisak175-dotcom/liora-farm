@@ -37,5 +37,17 @@ jobs:
         # because production uses them to work around aggressive Safari caches.
         run: node tools/test/module-graph.mjs
 
+      - name: World logic foundation
+        run: node tools/test/world-logic.test.mjs
+
+      - name: World action pipeline
+        run: node tools/test/world-actions.test.mjs
+
+      - name: World navigation foundation
+        run: node tools/test/world-navigation.test.mjs
+
+      - name: Portal action plugin
+        run: node tools/test/world-portal-action.test.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs

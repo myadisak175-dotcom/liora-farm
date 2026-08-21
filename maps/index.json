@@ -6,6 +6,11 @@
       "id": "home-island",
       "name": "เกาะบ้าน",
       "file": "./maps/home-island.json"
+    },
+    {
+      "id": "meadow-demo",
+      "name": "ทุ่งทดลอง",
+      "file": "./maps/meadow-demo.json"
     }
   ]
 }

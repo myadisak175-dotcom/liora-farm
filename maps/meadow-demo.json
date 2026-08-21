@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "mapId": "home-island",
-  "name": "เกาะบ้าน — พื้นเปล่า",
+  "mapId": "meadow-demo",
+  "name": "ทุ่งทดลอง",
   "savedAt": "2026-08-22T04:05:00.000Z",
   "horizon": {},
   "logic": {
@@ -12,9 +12,9 @@
     },
     "nodes": [
       {
-        "id": "home-arrival",
+        "id": "meadow-arrival",
         "kind": "marker",
-        "label": "Home Arrival",
+        "label": "Meadow Arrival",
         "x": 0,
         "z": 5,
         "radius": 0.5,
@@ -24,23 +24,23 @@
         }
       },
       {
-        "id": "meadow-gate",
+        "id": "home-gate",
         "kind": "portal",
-        "label": "Meadow Gate",
+        "label": "Home Gate",
         "x": 4,
         "z": 5,
         "radius": 1.25,
         "enabled": true,
         "data": {
           "role": "portal",
-          "targetMap": "meadow-demo",
-          "targetMarker": "meadow-arrival",
+          "targetMap": "home-island",
+          "targetMarker": "home-arrival",
           "actions": {
             "enter": [
               {
                 "type": "portal",
-                "mapId": "meadow-demo",
-                "markerId": "meadow-arrival"
+                "mapId": "home-island",
+                "markerId": "home-arrival"
               }
             ]
           }
