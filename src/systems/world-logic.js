@@ -107,15 +107,46 @@ function cloneLogic(value, options) {
   return sanitizeWorldLogic(value, options);
 }
 
+function legacyStorageKey(mapId, defaultId = DEFAULT_MAP_ID) {
+  return scopeStorageKey(LEGACY_WORLD_LOGIC_STORAGE_KEY, mapId, defaultId);
+}
+
 function loadLegacy(mapId, defaultId = DEFAULT_MAP_ID) {
   if (typeof localStorage === "undefined") return null;
-  const key = scopeStorageKey(LEGACY_WORLD_LOGIC_STORAGE_KEY, mapId, defaultId);
+  const key = legacyStorageKey(mapId, defaultId);
   try {
     const payload = JSON.parse(localStorage.getItem(key) ?? "null");
     if (payload?.version !== 1) return null;
     return sanitizeWorldLogic(payload);
   } catch {
     return null;
+  }
+}
+
+function clearLegacy(mapId, defaultId = DEFAULT_MAP_ID) {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    localStorage.removeItem(legacyStorageKey(mapId, defaultId));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveMapUrl(mapId) {
+  const fallback = `./maps/${mapId}.json`;
+  if (typeof fetch !== "function") return fallback;
+  try {
+    const response = await fetch("./maps/index.json", { cache: "no-store" });
+    if (!response.ok) return fallback;
+    const index = await response.json();
+    const entry = Array.isArray(index?.maps)
+      ? index.maps.find((candidate) => candidate?.id === mapId)
+      : null;
+    const file = String(entry?.file ?? "").trim();
+    return file || fallback;
+  } catch {
+    return fallback;
   }
 }
 
@@ -139,9 +170,9 @@ export function createWorldLogic({
   let sequence = state.nodes.length;
   const listeners = new Set();
 
-  // A v1 save came from the first prototype branch. Preserve it under v2 on
-  // first load so the next save/export has one canonical schema.
-  if (!stored && legacy) store.save(state);
+  // A v1 save came from the first prototype branch. Move it forward only after
+  // the v2 write succeeds; leaving both copies means Reset could resurrect v1.
+  if (!stored && legacy && store.save(state)) clearLegacy(mapId, defaultId);
 
   function emit(reason = "change") {
     const snapshot = exportData();
@@ -248,6 +279,7 @@ export function createWorldLogic({
 
   function resetToAuthored() {
     store.clear();
+    clearLegacy(mapId, defaultId);
     touched = false;
     state = cloneLogic(authored, options);
     sequence = state.nodes.length;
@@ -273,6 +305,10 @@ export function createWorldLogic({
     }
   }
 
+  async function importCurrentMap() {
+    return importMap(await resolveMapUrl(mapId));
+  }
+
   function subscribe(listener) {
     if (typeof listener !== "function") return () => {};
     listeners.add(listener);
@@ -291,6 +327,7 @@ export function createWorldLogic({
     getNode,
     importData,
     importMap,
+    importCurrentMap,
     resetToAuthored,
     exportData,
     subscribe,
