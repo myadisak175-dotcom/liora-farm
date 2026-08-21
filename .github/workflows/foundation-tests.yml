@@ -40,5 +40,8 @@ jobs:
       - name: World logic foundation
         run: node tools/test/world-logic.test.mjs
 
+      - name: World action pipeline
+        run: node tools/test/world-actions.test.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs
