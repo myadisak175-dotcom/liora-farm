@@ -1,4 +1,5 @@
 import { applyBlockoutPreset } from "../systems/blockout-preset.js";
+import { WORLD_LOGIC } from "../systems/world-logic.js";
 
 const MAP_SCHEMA_VERSION = 2;
 
@@ -60,9 +61,6 @@ export function createLayoutRuntime({
           builder.save({ immediate: true });
         }
 
-        // Blockout maps keep their first-pass terrain and routes compact and
-        // readable. The seed is applied only on first load; once exported from
-        // the editor the map contains ordinary baked groundPaint/terrainHeight.
         if (map.blockout) {
           const seeded = applyBlockoutPreset({
             height: world.height,
@@ -77,7 +75,6 @@ export function createLayoutRuntime({
           }
         }
 
-        // Explicit baked data wins over a compact seed when both are present.
         if (map.groundPaint) world.paint.importData(map.groundPaint);
         if (map.terrainHeight) {
           if (!world.height.importData(map.terrainHeight)) {
@@ -91,9 +88,9 @@ export function createLayoutRuntime({
       builder.load();
     }
 
-    // The horizon travels with the map even when the objects came from the
-    // player's own save: the sky is a property of the world, not of what they
-    // have built in it, so a returning player still gets this map's sky.
+    // Sky and gameplay logic are properties of the map itself. A local edit
+    // still wins, but untouched players always follow what the authored map
+    // says after a content update.
     await applyAuthoredHorizon();
     await applyAuthoredLogic();
 
@@ -108,11 +105,6 @@ export function createLayoutRuntime({
     }
   }
 
-  /**
-   * Reads just the horizon block out of the map file. Deliberately a separate
-   * fetch path from `load`, because the objects may come from localStorage
-   * while the horizon still has to come from the file.
-   */
   async function applyAuthoredHorizon() {
     try {
       const map = await fetchDefaultMap();
@@ -122,18 +114,12 @@ export function createLayoutRuntime({
     }
   }
 
-  /**
-   * Gameplay authoring follows the same precedence as the horizon: a map may
-   * define defaults, while a local edit for this map wins until the player
-   * explicitly resets it. The world-builder shell owns the store and schema;
-   * this runtime only moves the data in and out of the map file.
-   */
   async function applyAuthoredLogic() {
     try {
       const map = await fetchDefaultMap();
-      window.__lioraWorldLogic?.importData?.(map?.logic ?? null);
+      WORLD_LOGIC.importData(map?.logic ?? null);
     } catch {
-      window.__lioraWorldLogic?.importData?.(null);
+      WORLD_LOGIC.importData(null);
     }
   }
 
@@ -157,10 +143,10 @@ export function createLayoutRuntime({
       mapId,
       name: mapName || mapId,
       savedAt: new Date().toISOString(),
-      // A world is one file: sky, ground shape, ground surface, gameplay logic
-      // and objects. Logic is deliberately data-only, just like the layout.
+      // One world file owns presentation, geometry and gameplay authoring data.
+      // Runtime objects never enter this payload: every section is plain data.
       horizon: getHorizon() ?? {},
-      logic: window.__lioraWorldLogic?.exportData?.() ?? {},
+      logic: WORLD_LOGIC.exportData(),
       objects: items.map(({ id, assetId, x, z, rotation, scale }) => ({
         id,
         assetId,
