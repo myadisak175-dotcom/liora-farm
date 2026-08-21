@@ -1,16 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { DEFAULT_MAP_ID } from "../systems/map-scope.js";
 import { WORLD_LOGIC } from "../systems/world-logic.js";
 
 async function resolveSpawn() {
-  const mapId = typeof window !== "undefined" && typeof window.__lioraMap === "string"
-    ? window.__lioraMap
-    : DEFAULT_MAP_ID;
-
-  // The current registry uses ./maps/<id>.json. WORLD_LOGIC keeps a local edit
-  // if one exists and only applies this authored value to untouched worlds.
-  await WORLD_LOGIC.importMap(`./maps/${mapId}.json`);
+  // The logic system resolves the current map through maps/index.json, so a
+  // world may move to a different file path without teaching the player model
+  // about registry conventions.
+  await WORLD_LOGIC.importCurrentMap();
   return WORLD_LOGIC.spawn;
 }
 
