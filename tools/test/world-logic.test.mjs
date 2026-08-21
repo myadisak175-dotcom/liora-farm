@@ -29,6 +29,29 @@ assert(migrated.version === WORLD_LOGIC_VERSION, "v1 logic did not migrate to cu
 assert(migrated.spawn.x === 3 && migrated.spawn.z === -4, "v1 spawn moved during migration");
 assert(Array.isArray(migrated.nodes) && migrated.nodes.length === 0, "v1 migration invented nodes");
 
+// A correctly-versioned but damaged payload must be rescued before any future
+// save can overwrite it. This is the same no-data-loss policy as terrain/paint.
+const malformedKey = "liora.test.malformed-world-logic.v2";
+localStorage.setItem(malformedKey, JSON.stringify({
+  version: WORLD_LOGIC_VERSION,
+  spawn: { x: "broken", z: 2 },
+  nodes: [],
+}));
+const damaged = createWorldLogic({ mapId: "home-island", storageKey: malformedKey });
+assert(damaged.storeIssue?.kind === "malformed-world-logic", "malformed v2 payload was silently accepted");
+assert(localStorage.getItem(`${malformedKey}.backup`) !== null, "malformed v2 payload was not backed up");
+
+// Migrate the original prototype key once, then remove it. Otherwise Reset in
+// v2 could resurrect the v1 spawn on the next page load.
+const legacyMapId = "legacy-test";
+const legacyKey = `liora.world-logic.v1::${legacyMapId}`;
+const migratedV2Key = `liora.test.legacy-world-logic.v2::${legacyMapId}`;
+localStorage.setItem(legacyKey, JSON.stringify({ version: 1, spawn: { x: 8, z: 9 } }));
+const legacyLogic = createWorldLogic({ mapId: legacyMapId, storageKey: "liora.test.legacy-world-logic.v2" });
+assert(legacyLogic.spawn.x === 8 && legacyLogic.spawn.z === 9, "legacy local spawn was not migrated");
+assert(localStorage.getItem(legacyKey) === null, "legacy key survived successful v2 migration");
+assert(localStorage.getItem(migratedV2Key) !== null, "migrated v2 payload was not persisted");
+
 const authored = {
   version: WORLD_LOGIC_VERSION,
   spawn: { x: 1, z: 2 },
@@ -38,6 +61,7 @@ const storageKey = "liora.test.world-logic.v2";
 const logic = createWorldLogic({ mapId: "logic-test", storageKey });
 logic.importData(authored);
 assert(logic.spawn.x === 1 && logic.spawn.z === 2, "authored spawn was not applied");
+assert(logic.setSpawn({ x: "bad", z: 4 }) === false, "invalid spawn edit was accepted");
 
 logic.setSpawn({ x: 7.25, z: -1.5 });
 assert(logic.spawn.x === 7.25 && logic.spawn.z === -1.5, "spawn edit was not kept");
