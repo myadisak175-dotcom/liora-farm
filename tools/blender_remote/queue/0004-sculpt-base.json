@@ -1,0 +1,10 @@
+{
+  "type": "sculpt_create_sphere",
+  "params": {
+    "name": "MCP_Sculpt_Test",
+    "location": [0, 0, 0],
+    "radius": 1.0,
+    "segments": 64,
+    "rings": 32
+  }
+}
