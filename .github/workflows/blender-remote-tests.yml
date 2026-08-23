@@ -1,0 +1,46 @@
+name: Blender Remote Tests
+
+on:
+  pull_request:
+    paths:
+      - "tools/blender_remote/**"
+      - "docs/BLENDER-REMOTE-RUNPOD.md"
+      - ".github/workflows/blender-remote-tests.yml"
+  push:
+    branches:
+      - "feature/blender-remote-b"
+    paths:
+      - "tools/blender_remote/**"
+      - ".github/workflows/blender-remote-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-remote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile queue worker
+        run: python3 -m py_compile tools/blender_remote/queue_worker.py
+
+      - name: Validate bootstrap shell syntax
+        run: bash -n tools/blender_remote/runpod_bootstrap.sh
+
+      - name: Validate staged queue JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          files = sorted(Path("tools/blender_remote/queue").glob("*.json"))
+          assert files, "expected at least one staged smoke-test request"
+          for path in files:
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              assert isinstance(payload, dict), path
+              assert isinstance(payload.get("type"), str) and payload["type"], path
+              assert isinstance(payload.get("params", {}), dict), path
+              print(f"ok: {path} -> {payload['type']}")
+          PY
