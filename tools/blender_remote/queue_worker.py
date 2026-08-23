@@ -33,8 +33,6 @@ ALLOW_CODE = os.getenv("BLENDER_REMOTE_ALLOW_CODE", "0") == "1"
 GITHUB_TOKEN = os.getenv("LIORA_GITHUB_TOKEN", "")
 GIT_ASKPASS = REMOTE_DIR / ".git-askpass.sh"
 
-# Direct commands confirmed in the current upstream BlenderMCP add-on.
-# Provider commands remain allowlisted for later opt-in integrations.
 SAFE_TYPES = {
     "ping",
     "get_scene_info",
@@ -124,7 +122,6 @@ def validate_request(payload: dict) -> None:
 
 
 def send_to_blender(payload: dict, timeout: float = 120.0) -> dict:
-    """Forward one BlenderMCP JSON command over its local TCP socket."""
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     chunks: list[bytes] = []
 
@@ -151,14 +148,21 @@ def send_to_blender(payload: dict, timeout: float = 120.0) -> dict:
     return json.loads(raw.decode("utf-8"))
 
 
+def blender_ready() -> bool:
+    """Do not consume queue files until the Blender add-on socket is live."""
+    try:
+        response = send_to_blender({"type": "ping", "params": {}}, timeout=5.0)
+        return isinstance(response, dict) and response.get("status") == "success"
+    except (OSError, RuntimeError, json.JSONDecodeError):
+        return False
+
+
 def extract_preview(request_id: str, request: dict, response: dict) -> str | None:
-    """Persist a viewport screenshot as a normal image in results/."""
     if not isinstance(response, dict):
         return None
 
     result = response.get("result")
     if isinstance(result, dict):
-        # Some forks/providers return screenshot bytes inline.
         image_b64 = result.pop("image_base64", None) or result.pop("image_data", None)
         if image_b64:
             image_format = str(result.get("format", "png")).lower()
@@ -167,9 +171,6 @@ def extract_preview(request_id: str, request: dict, response: dict) -> str | Non
             preview_path.write_bytes(base64.b64decode(image_b64))
             return str(preview_path.relative_to(ROOT))
 
-    # Current upstream direct socket screenshot writes to the caller-supplied
-    # filepath; the MCP stdio server normally reads that file afterward. Our
-    # queue worker is the caller, so copy it into the repository ourselves.
     if request.get("type") == "get_viewport_screenshot":
         params = request.get("params", {})
         source_value = params.get("filepath") if isinstance(params, dict) else None
@@ -248,8 +249,21 @@ def main() -> int:
         f"poll={POLL_SECONDS}s, arbitrary_code={'on' if ALLOW_CODE else 'off'}, "
         f"git_push={'on' if GITHUB_TOKEN else 'read-only'}"
     )
+
+    announced_wait = False
     while True:
         sync_repo()
+        if not blender_ready():
+            if not announced_wait:
+                print("Waiting for BlenderMCP localhost socket...", flush=True)
+                announced_wait = True
+            time.sleep(POLL_SECONDS)
+            continue
+
+        if announced_wait:
+            print("BlenderMCP is ready; queue processing enabled.", flush=True)
+            announced_wait = False
+
         for path in sorted(QUEUE_DIR.glob("*.json")):
             process_file(path)
         time.sleep(POLL_SECONDS)
