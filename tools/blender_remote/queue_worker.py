@@ -68,8 +68,6 @@ def git_env() -> dict[str, str]:
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     if GITHUB_TOKEN:
-        # The helper reads the token from the environment, so the credential is
-        # never written into .git/config or committed to the repository.
         GIT_ASKPASS.write_text(
             "#!/bin/sh\n"
             "case \"$1\" in\n"
@@ -111,7 +109,6 @@ def validate_request(payload: dict) -> None:
     if not isinstance(command_type, str) or not command_type:
         raise ValueError("Missing non-empty 'type'")
 
-    # The Blender add-on calls this direct socket command `execute_code`.
     if command_type == "execute_code":
         if not ALLOW_CODE:
             raise PermissionError(
@@ -154,25 +151,42 @@ def send_to_blender(payload: dict, timeout: float = 120.0) -> dict:
     return json.loads(raw.decode("utf-8"))
 
 
-def extract_preview(request_id: str, response: dict) -> str | None:
-    """Persist a BlenderMCP base64 screenshot as a normal image in results/."""
+def extract_preview(request_id: str, request: dict, response: dict) -> str | None:
+    """Persist a viewport screenshot as a normal image in results/."""
     if not isinstance(response, dict):
         return None
 
     result = response.get("result")
-    if not isinstance(result, dict):
-        return None
+    if isinstance(result, dict):
+        # Some forks/providers return screenshot bytes inline.
+        image_b64 = result.pop("image_base64", None) or result.pop("image_data", None)
+        if image_b64:
+            image_format = str(result.get("format", "png")).lower()
+            extension = "jpg" if image_format in {"jpg", "jpeg"} else "png"
+            preview_path = RESULT_DIR / f"{request_id}.{extension}"
+            preview_path.write_bytes(base64.b64decode(image_b64))
+            return str(preview_path.relative_to(ROOT))
 
-    # Upstream integrations have used both names over time; accept either.
-    image_b64 = result.pop("image_base64", None) or result.pop("image_data", None)
-    if not image_b64:
-        return None
+    # Current upstream direct socket screenshot writes to the caller-supplied
+    # filepath; the MCP stdio server normally reads that file afterward. Our
+    # queue worker is the caller, so copy it into the repository ourselves.
+    if request.get("type") == "get_viewport_screenshot":
+        params = request.get("params", {})
+        source_value = params.get("filepath") if isinstance(params, dict) else None
+        if source_value:
+            source = Path(str(source_value)).expanduser()
+            if source.is_file():
+                fmt = str(params.get("format", "png")).lower()
+                extension = "jpg" if fmt in {"jpg", "jpeg"} else "png"
+                preview_path = RESULT_DIR / f"{request_id}.{extension}"
+                preview_path.write_bytes(source.read_bytes())
+                try:
+                    source.unlink()
+                except OSError:
+                    pass
+                return str(preview_path.relative_to(ROOT))
 
-    image_format = str(result.get("format", "png")).lower()
-    extension = "jpg" if image_format in {"jpg", "jpeg"} else "png"
-    preview_path = RESULT_DIR / f"{request_id}.{extension}"
-    preview_path.write_bytes(base64.b64decode(image_b64))
-    return str(preview_path.relative_to(ROOT))
+    return None
 
 
 def process_file(path: Path) -> None:
@@ -193,10 +207,10 @@ def process_file(path: Path) -> None:
         output["request"] = payload
         validate_request(payload)
         response = send_to_blender(payload)
-        output["preview"] = extract_preview(request_id, response)
+        output["preview"] = extract_preview(request_id, payload, response)
         output["response"] = response
         output["status"] = "success"
-    except Exception as exc:  # Record failures rather than killing the daemon.
+    except Exception as exc:
         output["error"] = f"{type(exc).__name__}: {exc}"
     finally:
         output["finished_at"] = utc_now()
@@ -210,8 +224,6 @@ def process_file(path: Path) -> None:
     run_git("add", "-A", str(REMOTE_DIR.relative_to(ROOT)))
     commit = run_git("commit", "-m", f"Blender remote result: {request_id}", check=False)
     if commit.returncode == 0:
-        # A new command may have landed while Blender was processing the last one.
-        # Rebase the result commit before pushing instead of losing that request.
         rebase = run_git("pull", "--rebase", check=False)
         if rebase.returncode != 0:
             print(rebase.stderr, file=sys.stderr)
