@@ -23,8 +23,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compile queue worker
-        run: python3 -m py_compile tools/blender_remote/queue_worker.py
+      - name: Compile remote Python
+        run: |
+          python3 -m py_compile tools/blender_remote/queue_worker.py
+          python3 -m py_compile tools/blender_remote/sculpt_semantic.py
+
+      - name: Validate semantic sculpt compiler
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "tools/blender_remote")
+          from sculpt_semantic import SCULPT_TYPES, compile_sculpt_command
+
+          samples = {
+              "sculpt_create_sphere": {"name": "TestHead", "radius": 1.0},
+              "sculpt_inflate": {"object": "TestHead", "center": [0, 0, 0.6], "radius": 0.5, "strength": 0.1},
+              "sculpt_grab": {"object": "TestHead", "center": [0, 0, 0.5], "radius": 0.5, "delta": [0, 0.1, 0], "strength": 0.5},
+              "sculpt_smooth": {"object": "TestHead", "factor": 0.25, "iterations": 2},
+              "sculpt_flatten": {"object": "TestHead", "center": [0, 0, 0], "normal": [0, 1, 0], "radius": 1.0, "strength": 0.25},
+              "sculpt_symmetrize_x": {"object": "TestHead", "direction": "-X_TO_+X"},
+              "sculpt_voxel_remesh": {"object": "TestHead", "voxel_size": 0.05},
+          }
+          assert set(samples) == SCULPT_TYPES
+          for command_type, params in samples.items():
+              transport = compile_sculpt_command(command_type, params)
+              assert transport["type"] == "execute_code"
+              assert isinstance(transport["params"]["code"], str) and transport["params"]["code"]
+              print(f"ok: {command_type}")
+
+          try:
+              compile_sculpt_command("sculpt_inflate", {"object": "Head", "center": [0, 0], "radius": 1})
+          except ValueError:
+              print("ok: invalid vector rejected")
+          else:
+              raise AssertionError("invalid sculpt vector should be rejected")
+          PY
 
       - name: Validate bootstrap shell syntax
         run: bash -n tools/blender_remote/runpod_bootstrap.sh
