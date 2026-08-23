@@ -33,12 +33,17 @@ ALLOW_CODE = os.getenv("BLENDER_REMOTE_ALLOW_CODE", "0") == "1"
 GITHUB_TOKEN = os.getenv("LIORA_GITHUB_TOKEN", "")
 GIT_ASKPASS = REMOTE_DIR / ".git-askpass.sh"
 
-# Commands confirmed by the upstream BlenderMCP add-on plus optional provider
-# handlers. Editing through arbitrary bpy is kept behind an explicit host flag.
+# Direct commands confirmed in the current upstream BlenderMCP add-on.
+# Provider commands remain allowlisted for later opt-in integrations.
 SAFE_TYPES = {
+    "ping",
     "get_scene_info",
+    "get_world_state_snapshot",
+    "get_addon_info",
     "get_object_info",
     "get_viewport_screenshot",
+    "get_telemetry_consent",
+    "set_telemetry_consent",
     "get_polyhaven_status",
     "get_polyhaven_categories",
     "search_polyhaven_assets",
@@ -150,7 +155,7 @@ def send_to_blender(payload: dict, timeout: float = 120.0) -> dict:
 
 
 def extract_preview(request_id: str, response: dict) -> str | None:
-    """Persist BlenderMCP screenshot base64 as a normal image in results/."""
+    """Persist a BlenderMCP base64 screenshot as a normal image in results/."""
     if not isinstance(response, dict):
         return None
 
@@ -158,7 +163,8 @@ def extract_preview(request_id: str, response: dict) -> str | None:
     if not isinstance(result, dict):
         return None
 
-    image_b64 = result.pop("image_base64", None)
+    # Upstream integrations have used both names over time; accept either.
+    image_b64 = result.pop("image_base64", None) or result.pop("image_data", None)
     if not image_b64:
         return None
 
@@ -204,6 +210,12 @@ def process_file(path: Path) -> None:
     run_git("add", "-A", str(REMOTE_DIR.relative_to(ROOT)))
     commit = run_git("commit", "-m", f"Blender remote result: {request_id}", check=False)
     if commit.returncode == 0:
+        # A new command may have landed while Blender was processing the last one.
+        # Rebase the result commit before pushing instead of losing that request.
+        rebase = run_git("pull", "--rebase", check=False)
+        if rebase.returncode != 0:
+            print(rebase.stderr, file=sys.stderr)
+            return
         push = run_git("push", check=False)
         if push.returncode != 0:
             print(push.stderr, file=sys.stderr)
