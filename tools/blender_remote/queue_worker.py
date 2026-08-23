@@ -30,6 +30,8 @@ BLENDER_HOST = os.getenv("BLENDER_HOST", "127.0.0.1")
 BLENDER_PORT = int(os.getenv("BLENDER_PORT", "9876"))
 POLL_SECONDS = max(2, int(os.getenv("BLENDER_REMOTE_POLL", "5")))
 ALLOW_CODE = os.getenv("BLENDER_REMOTE_ALLOW_CODE", "0") == "1"
+GITHUB_TOKEN = os.getenv("LIORA_GITHUB_TOKEN", "")
+GIT_ASKPASS = REMOTE_DIR / ".git-askpass.sh"
 
 # Commands confirmed by the upstream BlenderMCP add-on plus optional provider
 # handlers. Editing through arbitrary bpy is kept behind an explicit host flag.
@@ -57,9 +59,33 @@ SAFE_TYPES = {
 }
 
 
+def git_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    if GITHUB_TOKEN:
+        # The helper reads the token from the environment, so the credential is
+        # never written into .git/config or committed to the repository.
+        GIT_ASKPASS.write_text(
+            "#!/bin/sh\n"
+            "case \"$1\" in\n"
+            "  *Username*) echo x-access-token ;;\n"
+            "  *) echo \"$LIORA_GITHUB_TOKEN\" ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        GIT_ASKPASS.chmod(0o700)
+        env["GIT_ASKPASS"] = str(GIT_ASKPASS)
+    return env
+
+
 def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", *args], cwd=ROOT, text=True, capture_output=True, check=check
+        ["git", *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=check,
+        env=git_env(),
     )
 
 
@@ -124,7 +150,7 @@ def send_to_blender(payload: dict, timeout: float = 120.0) -> dict:
 
 
 def extract_preview(request_id: str, response: dict) -> str | None:
-    """Persist BlenderMCP screenshot base64 as a normal PNG in results/."""
+    """Persist BlenderMCP screenshot base64 as a normal image in results/."""
     if not isinstance(response, dict):
         return None
 
@@ -195,7 +221,8 @@ def main() -> int:
     ensure_dirs()
     print(
         f"Blender Remote worker: {BLENDER_HOST}:{BLENDER_PORT}, "
-        f"poll={POLL_SECONDS}s, arbitrary_code={'on' if ALLOW_CODE else 'off'}"
+        f"poll={POLL_SECONDS}s, arbitrary_code={'on' if ALLOW_CODE else 'off'}, "
+        f"git_push={'on' if GITHUB_TOKEN else 'read-only'}"
     )
     while True:
         sync_repo()
