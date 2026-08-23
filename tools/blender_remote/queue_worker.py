@@ -6,6 +6,8 @@ forwards queued JSON commands to BlenderMCP on localhost, then writes results
 back to the repository.
 
 The BlenderMCP TCP port stays private. Git is the cross-device control plane.
+Semantic sculpt requests are compiled locally into fixed Blender Python
+programs; arbitrary user-supplied Python remains disabled by default.
 """
 
 from __future__ import annotations
@@ -19,6 +21,8 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from sculpt_semantic import SCULPT_TYPES, compile_sculpt_command, validate_sculpt_request
 
 ROOT = Path(__file__).resolve().parents[2]
 REMOTE_DIR = ROOT / "tools" / "blender_remote"
@@ -59,7 +63,7 @@ SAFE_TYPES = {
     "create_hunyuan_job",
     "poll_hunyuan_job_status",
     "import_generated_asset_hunyuan",
-}
+} | SCULPT_TYPES
 
 
 def git_env() -> dict[str, str]:
@@ -107,18 +111,20 @@ def validate_request(payload: dict) -> None:
     if not isinstance(command_type, str) or not command_type:
         raise ValueError("Missing non-empty 'type'")
 
+    params = payload.get("params", {})
+    if not isinstance(params, dict):
+        raise ValueError("'params' must be an object")
+
     if command_type == "execute_code":
         if not ALLOW_CODE:
             raise PermissionError(
                 "execute_code is disabled. Set BLENDER_REMOTE_ALLOW_CODE=1 on "
                 "the Blender host only if arbitrary bpy execution is intentional."
             )
+    elif command_type in SCULPT_TYPES:
+        validate_sculpt_request(command_type, params)
     elif command_type not in SAFE_TYPES:
         raise PermissionError(f"Command type '{command_type}' is not allowlisted")
-
-    params = payload.get("params", {})
-    if not isinstance(params, dict):
-        raise ValueError("'params' must be an object")
 
 
 def send_to_blender(payload: dict, timeout: float = 120.0) -> dict:
@@ -207,9 +213,27 @@ def process_file(path: Path) -> None:
         payload = json.loads(path.read_text(encoding="utf-8"))
         output["request"] = payload
         validate_request(payload)
-        response = send_to_blender(payload)
-        output["preview"] = extract_preview(request_id, payload, response)
-        output["response"] = response
+
+        if payload["type"] in SCULPT_TYPES:
+            transport = compile_sculpt_command(payload["type"], payload.get("params", {}))
+            sculpt_response = send_to_blender(transport)
+            screenshot_request = {
+                "type": "get_viewport_screenshot",
+                "params": {"max_size": 800, "format": "png"},
+            }
+            screenshot_response = send_to_blender(screenshot_request)
+            output["preview"] = extract_preview(
+                request_id, screenshot_request, screenshot_response
+            )
+            output["response"] = {
+                "sculpt": sculpt_response,
+                "viewport": screenshot_response,
+            }
+        else:
+            response = send_to_blender(payload)
+            output["preview"] = extract_preview(request_id, payload, response)
+            output["response"] = response
+
         output["status"] = "success"
     except Exception as exc:
         output["error"] = f"{type(exc).__name__}: {exc}"
@@ -247,7 +271,7 @@ def main() -> int:
     print(
         f"Blender Remote worker: {BLENDER_HOST}:{BLENDER_PORT}, "
         f"poll={POLL_SECONDS}s, arbitrary_code={'on' if ALLOW_CODE else 'off'}, "
-        f"git_push={'on' if GITHUB_TOKEN else 'read-only'}"
+        f"semantic_sculpt=on, git_push={'on' if GITHUB_TOKEN else 'read-only'}"
     )
 
     announced_wait = False
