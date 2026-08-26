@@ -37,6 +37,10 @@ button {
   font-weight: 700;
 }
 
+#boot[hidden] {
+  display: none !important;
+}
+
 #hud {
   position: fixed;
   inset: 0;
