@@ -37,6 +37,13 @@ button {
   font-weight: 700;
 }
 
+/* The author-level display:grid above overrides the browser's default
+   treatment of the hidden attribute on some engines. Make the boot overlay
+   disappear deterministically once main.js has finished booting. */
+#boot[hidden] {
+  display: none !important;
+}
+
 #hud {
   position: fixed;
   inset: 0;
