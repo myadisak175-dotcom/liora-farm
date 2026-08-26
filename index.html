@@ -1,174 +1,38 @@
 <!doctype html>
 <html lang="th">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#173c4b">
-<!-- iPhone has no Fullscreen API. Launching from the home screen is the
-     only way to lose the browser chrome there, and these two make that
-     launch open standalone instead of in Safari. -->
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Liora's Farm</title>
-<link rel="stylesheet" href="./styles/main.css?v=horizon4">
-<link rel="stylesheet" href="./styles/terrain-controls.css?v=horizon4">
-<script>
-(async () => {
-  // Blank-land baseline. Run once per browser profile so existing builder,
-  // terrain, paint and crop saves cannot repopulate the old starter scene.
-  // Keep a copy under a revisioned backup key instead of destroying the old
-  // work; after this marker is written, anything the player builds is kept.
-  const BLANK_START_REVISION = "blank-land-v1";
-  const BLANK_START_MARKER = "liora.blank-start.revision";
-  const BLANK_START_KEYS = [
-    "liora.island-layout.v1",
-    "liora-home-island-layout",
-    "liora.terrain-height.v1",
-    "liora.ground-paint.v1",
-    "liora.farm.v1",
-  ];
-  try {
-    if (localStorage.getItem(BLANK_START_MARKER) !== BLANK_START_REVISION) {
-      for (const key of BLANK_START_KEYS) {
-        const previous = localStorage.getItem(key);
-        if (previous !== null) {
-          localStorage.setItem(`${key}.before-${BLANK_START_REVISION}`, previous);
-          localStorage.removeItem(key);
-        }
-      }
-      localStorage.setItem(BLANK_START_MARKER, BLANK_START_REVISION);
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#bfe5ff" />
+  <title>Liora Farm — Rebuild</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
     }
-  } catch (error) {
-    // Private/restricted storage still gets the blank default map; it just
-    // cannot preserve a one-time backup or remember the migration marker.
-    console.warn("Blank-start migration could not access localStorage", error);
   }
-
-  const LOCAL = "./vendor/three/";
-  const CDN = "https://cdn.jsdelivr.net/npm/three@0.180.0/";
-  let base = CDN;
-  try {
-    const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store" });
-    if (probe.ok) base = LOCAL;
-  } catch {}
-  const map = document.createElement("script");
-  map.type = "importmap";
-  map.textContent = JSON.stringify({ imports: {
-    three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
-    "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
-    // Local aliases may only point back to the same pathname with a cache
-    // version. tools/test/module-graph.mjs enforces that rule so Safari's
-    // nested-module cache workaround cannot silently redirect a module.
-    "./src/config.js": "./src/config.js?v=village3",
-    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx4",
-    "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
-    "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
-  }});
-  document.head.append(map);
-
-  // World Builder features and gameplay actions are plugins over the same
-  // data/event core. Load the vocabulary before main.js creates the player so
-  // Spawn, Marker and Portal behaviour is deterministic from frame one.
-  await Promise.all([
-    import("./src/editor/world-builder-shell.js"),
-    import("./src/editor/world-builder-portal-plugin.js"),
-    import("./src/systems/world-navigation-actions.js"),
-    import("./src/ui/world-event-feedback.js"),
-  ]);
-
-  // Quality auto-detection belongs in systems/quality.js. Do not seed a
-  // localStorage choice here: writing "high" at boot turns an automatic choice
-  // into a permanent explicit preference and makes later detector fixes unable
-  // to take effect. Retina Apple devices are already detected as High there.
-
-  const entry = document.createElement("script");
-  entry.type = "module";
-  entry.src = "./src/main.js?v=world23-blank1&visual=iosgfx4";
-  document.head.append(entry);
-
-  // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio
-  // route kick when those primary buffers are genuinely ready. Android remains
-  // on the verified native route unchanged.
-  const audio = document.createElement("script");
-  audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio24-route2";
-  document.head.append(audio);
-
-  if (new URLSearchParams(location.search).get("npc") === "1") {
-    const npcTest = document.createElement("script");
-    npcTest.type = "module";
-    npcTest.src = "./src/npc-test-bootstrap.js?v=npc1";
-    document.head.append(npcTest);
-  }
-})();
-</script>
+  </script>
 </head>
-<body data-mode="play">
-<div id="status">กำลังโหลด…</div>
-<div id="pouch" hidden><span class="glyph">🥕</span><span id="pouch-count">0</span></div>
-<nav id="mode-bar">
-  <button type="button" data-mode="play" class="active">เล่น</button>
-  <button type="button" data-mode="build">สร้าง</button>
-  <button type="button" id="fullscreen" class="icon" aria-label="เต็มจอ" aria-pressed="false">⛶</button>
-</nav>
-<button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button>
-<div id="joy"><div id="stick"></div></div>
-<div id="actions">
-  <button data-action="farm">ถอนผัก</button>
-  <button data-action="pickUp">เก็บของ</button>
-  <button data-action="hammer">ทุบ</button>
-  <button data-action="mirror">ส่องกระจก</button>
-</div>
-<div id="zoom">
-  <button id="camera-reset" aria-label="รีเซ็ตมุมกล้อง">↻</button>
-  <button id="zin" aria-label="ซูมเข้า">＋</button>
-  <button id="zout" aria-label="ซูมออก">−</button>
-</div>
-<section id="build-panel" aria-label="โหมดสร้าง">
-  <div id="build-tabs">
-    <button type="button" id="tab-place" class="active">วางของ</button>
-    <button type="button" id="tab-paint">ระบายพื้น</button>
-    <button type="button" id="tab-sculpt">ปั้นพื้น</button>
-    <button type="button" id="tab-horizon">ขอบฟ้า</button>
-    <button type="button" id="build-more" class="chip" aria-label="ตัวเลือกเพิ่มเติม" aria-expanded="false" hidden>⚙︎</button>
-    <button type="button" id="build-collapse" class="chip" aria-label="ย่อแผงเครื่องมือ" aria-expanded="true">⌄</button>
-  </div>
-  <div id="build-body">
-    <div id="build-hint"></div>
-    <div id="asset-cats" class="strip cats"></div>
-    <div id="asset-strip" class="strip"></div>
-    <div id="paint-strip" class="brushes"></div>
-    <div id="paint-size" class="sizerow"></div>
-    <div id="sculpt-strip" class="toolrow"></div>
-    <div id="sculpt-size" class="sizerow"></div>
-    <div id="sculpt-extra">
-      <div id="sculpt-presets" class="strip"></div>
-      <div id="sculpt-extra-size" class="sizerow stack"></div>
+<body>
+  <div id="boot">กำลังเปิด Liora…</div>
+
+  <div id="hud">
+    <div id="badge">REBUILD · M1</div>
+    <div id="perf">-- fps</div>
+
+    <div id="camera-controls" aria-label="Camera controls">
+      <button id="zout" type="button" aria-label="Zoom out">−</button>
+      <button id="camera-reset" type="button" aria-label="Reset camera">◎</button>
+      <button id="zin" type="button" aria-label="Zoom in">＋</button>
     </div>
-    <div id="horizon-strip"></div>
-    <div id="build-tools" class="strip tools"></div>
+
+    <div id="joy" aria-label="Move">
+      <div id="stick"></div>
+    </div>
   </div>
-  <div id="build-actions" class="actions"></div>
-</section>
-<div id="toast" aria-live="polite"></div>
-<script>
-function showBootProblem(text, detail = "") {
-  if (window.__lioraBooted) return;
-  const status = document.querySelector("#status");
-  if (!status) return;
-  status.textContent = text;
-  status.title = detail;
-  status.classList.add("error");
-}
-window.addEventListener("error", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — ลองรีโหลดหน้า", String(event.error?.message ?? event.message ?? "")));
-window.addEventListener("unhandledrejection", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — ลองรีโหลดหน้า", String(event.reason?.message ?? event.reason ?? "")));
-window.addEventListener("load", () => {
-  setTimeout(() => {
-    if (window.__lioraBooted) return;
-    showBootProblem(`โหลดนานผิดปกติ (${window.__lioraBootState ?? "starting"}) — ลองรีโหลดหน้า`, String(window.__lioraBootError ?? ""));
-  }, 12000);
-});
-</script>
+
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
