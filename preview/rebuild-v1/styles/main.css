@@ -1,0 +1,105 @@
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #bfe5ff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid rgba(255,255,255,.5);
+  background: rgba(24, 48, 47, .58);
+  color: white;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+}
+
+#boot {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  color: #244b43;
+  background: linear-gradient(#c7eaff, #e8f4d8);
+  font-weight: 700;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#badge, #perf {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(24, 48, 47, .54);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: .08em;
+  backdrop-filter: blur(10px);
+}
+
+#badge { left: 12px; }
+#perf { right: 12px; letter-spacing: 0; }
+
+#camera-controls {
+  position: absolute;
+  right: 14px;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 10px);
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+#camera-controls button {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  font-size: 22px;
+}
+
+#joy {
+  position: absolute;
+  left: 18px;
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 8px);
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.42);
+  background: rgba(24, 48, 47, .20);
+  box-shadow: inset 0 0 0 12px rgba(255,255,255,.035);
+  pointer-events: auto;
+}
+
+#stick {
+  position: absolute;
+  left: calc(50% - 27px);
+  top: calc(50% - 27px);
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.82);
+  box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  pointer-events: none;
+}
+
+@media (min-width: 700px) {
+  #joy { width: 132px; height: 132px; }
+}

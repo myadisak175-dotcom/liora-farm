@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#bfe5ff" />
+  <title>Liora Farm — Rebuild</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="boot">กำลังเปิด Liora…</div>
+
+  <div id="hud">
+    <div id="badge">REBUILD · M1</div>
+    <div id="perf">-- fps</div>
+
+    <div id="camera-controls" aria-label="Camera controls">
+      <button id="zout" type="button" aria-label="Zoom out">−</button>
+      <button id="camera-reset" type="button" aria-label="Reset camera">◎</button>
+      <button id="zin" type="button" aria-label="Zoom in">＋</button>
+    </div>
+
+    <div id="joy" aria-label="Move">
+      <div id="stick"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
