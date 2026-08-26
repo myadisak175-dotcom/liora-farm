@@ -1,22 +1,31 @@
 # Middle ground
 
-## The hole this fills
+## Current scenery bands
 
-Mapping every scenery band against `config.js` gave this:
+The layers overlap; they are listed by their own authored ranges rather than as
+exclusive slices of the map.
 
 | distance | what is there |
 |---|---|
 | 0–38 m | playable farm |
-| **38–166 m** | **nothing — flat ground, 128 m of it** |
-| 166–196 m | near mountain band |
-| 252–298 m | mid mountain band |
-| 330–462 m | distant peaks |
+| 38.5–600 m | non-walkable outer-world ground |
+| **52–96 m** | **seeded middle-ground tree line** |
+| 96–166 m | open outer meadow leading into the foothills |
+| 166–196 m | green, pointed foothill band |
 | 236–320 m | floating islands (in the sky) |
+| 252–298 m | rocky ridge band with snow high on its crests |
+| 330–462 m | two rings of built, snow-capped distant summits |
 
-That empty stretch is also the one that fills the most screen. A 12 m object
-covers 30% of the screen height at 60 m, 18% at 100 m, and only 10% by the time
-it reaches the first mountain band at 180 m. Every piece of scenery in the
-project sat past 166 m, so the nearest and largest band was the emptiest one.
+Before `tree-line.js`, the whole 38–166 m stretch was flat ground. That was also
+the band that fills the most screen: a 12 m object covers 30% of the screen
+height at 60 m, 18% at 100 m, and only 10% by the time it reaches the first
+mountain band at 180 m. The 52–96 m ring now fills the nearest part of that old
+hole while leaving a readable meadow transition before the foothills.
+
+PR #49 changed the mountain shapes and angular height, not these distance
+bands. The distant rings still cost one draw call each; their custom 9 x 6
+summits raise the combined geometry from roughly 290 cone triangles to about
+3,500 triangles, which remains small beside the visible tree-line budget.
 
 ## Why not just decimate the tree models
 
