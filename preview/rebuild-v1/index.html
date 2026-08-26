@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#bfe5ff" />
   <title>Liora Farm — Rebuild</title>
-  <link rel="stylesheet" href="./styles/main.css" />
+  <link rel="stylesheet" href="./styles/main.css?v=bootfix1" />
   <script type="importmap">
   {
     "imports": {
@@ -33,6 +33,18 @@
     </div>
   </div>
 
-  <script type="module" src="./src/main.js"></script>
+  <script>
+    const bootEl = document.querySelector("#boot");
+    function showBootProblem(message) {
+      if (!bootEl || bootEl.hidden) return;
+      bootEl.textContent = message;
+    }
+    window.addEventListener("error", () => showBootProblem("โหลด Liora ไม่สำเร็จ — ลองรีโหลดหน้า"));
+    window.addEventListener("unhandledrejection", () => showBootProblem("โหลด Liora ไม่สำเร็จ — ลองรีโหลดหน้า"));
+    setTimeout(() => {
+      if (!bootEl?.hidden) showBootProblem("โหลดนานผิดปกติ — ลองรีโหลดหน้า");
+    }, 12000);
+  </script>
+  <script type="module" src="./src/main.js?v=bootfix1"></script>
 </body>
 </html>
