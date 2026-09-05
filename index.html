@@ -13,6 +13,7 @@
 <title>Liora's Farm</title>
 <link rel="stylesheet" href="./styles/main.css?v=horizon4">
 <link rel="stylesheet" href="./styles/terrain-controls.css?v=horizon4">
+<link rel="stylesheet" href="./styles/game-feel.css?v=first-basket1">
 <script>
 (async () => {
   // Blank-land baseline. Run once per browser profile so existing builder,
@@ -64,6 +65,9 @@
     "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx4",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
     "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
+    "./src/ui/farm-ui.js": "./src/ui/farm-ui.js?v=first-basket1",
+    "./src/systems/farming/crops.js": "./src/systems/farming/crops.js?v=first-basket1",
+    "./src/systems/player-runtime.js": "./src/systems/player-runtime.js?v=first-basket1",
   }});
   document.head.append(map);
 
@@ -84,7 +88,7 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23-blank1&visual=iosgfx4";
+  entry.src = "./src/main.js?v=world23-blank1&visual=first-basket1";
   document.head.append(entry);
 
   // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio
@@ -113,12 +117,30 @@
   <button type="button" id="fullscreen" class="icon" aria-label="เต็มจอ" aria-pressed="false">⛶</button>
 </nav>
 <button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button>
+<section id="farm-journey" aria-label="เป้าหมายฟาร์ม" hidden>
+  <button id="journey-toggle" type="button" aria-expanded="true" aria-controls="journey-details">
+    <span id="journey-title">ตะกร้าแรกของเรา</span>
+    <span id="journey-count">0 / 3</span>
+  </button>
+  <div id="journey-details">
+    <p id="journey-hint">เดินไปแปลงดิน แล้วพรวนช่องที่มีวงแสง</p>
+    <div class="journey-steps" aria-hidden="true">
+      <span class="journey-step">พรวน</span><span class="journey-step">รดน้ำ</span>
+      <span class="journey-step">ปลูก</span><span class="journey-step">เก็บ</span>
+    </div>
+    <progress id="journey-progress" max="3" value="0" aria-label="เก็บเกี่ยวผักให้ครบ 3 หัว"></progress>
+  </div>
+</section>
+<div id="farm-feedback-layer" aria-hidden="true"></div>
 <div id="joy"><div id="stick"></div></div>
 <div id="actions">
-  <button data-action="farm">ถอนผัก</button>
-  <button data-action="pickUp">เก็บของ</button>
-  <button data-action="hammer">ทุบ</button>
-  <button data-action="mirror">ส่องกระจก</button>
+  <div id="emote-menu" role="group" aria-label="ท่าทางตัวละคร" hidden>
+    <button type="button" data-action="pickUp">ก้มเก็บ</button>
+    <button type="button" data-action="hammer">ท่าทุบ</button>
+    <button type="button" data-action="mirror">ส่องกระจก</button>
+  </div>
+  <button type="button" id="emote-toggle" aria-expanded="false" aria-controls="emote-menu">ท่าทาง</button>
+  <button type="button" data-action="farm" disabled>เข้าใกล้แปลงผัก</button>
 </div>
 <div id="zoom">
   <button id="camera-reset" aria-label="รีเซ็ตมุมกล้อง">↻</button>

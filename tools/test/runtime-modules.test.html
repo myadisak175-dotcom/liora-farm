@@ -203,20 +203,21 @@ await test("player runtime preserves movement-animation-fx update contract", () 
   assert(window.__lioraAudioRuntime.surface === "dirt", "painted surface is not exposed to audio");
 });
 
-await test("farm UI keeps target labels and plant action behavior", () => {
+await test("farm UI resolves watered targets and confirms planting after animation", () => {
   const button = document.createElement("button");
   const pouch = document.createElement("span");
   let planted = 0;
   let toast = "";
+  let finish = null;
   const crops = {
     pouch: 4,
-    getTarget() { return { index: 2, state: "empty", progress: 0 }; },
+    getTarget() { return { index: 2, state: "empty", soilState: "watered", progress: 0 }; },
     plant(index) { planted = index; return true; },
     harvest() { return false; },
   };
   const playerRuntime = {
     position: { x: 0, y: 0, z: 0 },
-    playSpecial(name, done) { done?.(); return name === "pick"; },
+    playSpecial(name, done) { finish = done; return name === "pick"; },
   };
   const farm = createFarmUI({
     crops,
@@ -228,12 +229,15 @@ await test("farm UI keeps target labels and plant action behavior", () => {
   });
   farm.refresh();
   assert(pouch.textContent === "4", "pouch count changed");
-  assert(button.disabled, "farm button should start disabled without a target");
+  assert(!button.disabled, "refresh should resolve the current target immediately");
   farm.update(0.2, { active: true });
-  assert(button.textContent === "ปลูกผัก" && !button.disabled, "empty crop target label changed");
+  assert(button.textContent === "🌱 หยอดเมล็ด" && !button.disabled, "watered crop target label changed");
   button.click();
+  assert(button.disabled && planted === 0, "planting must wait for the action animation");
+  finish();
   assert(planted === 2, "plant target index changed");
-  assert(toast === "ปลูกแล้ว 🌱", "plant toast changed");
+  assert(toast === "หยอดเมล็ดแล้ว 🌱", "plant toast changed");
+  farm.dispose();
 });
 
 await test("generic player action buttons still toggle active around specials", () => {

@@ -32,6 +32,7 @@ import { HORIZON_STORAGE_KEY } from "./systems/horizon-settings.js";
 import { createNotifications } from "./ui/notifications.js";
 import { setStoreReporter, storageFootprint } from "./systems/local-store.js";
 import { createFarmUI } from "./ui/farm-ui.js";
+import { createFarmPresentation } from "./ui/farm-presentation.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 import { createFullscreenControl } from "./ui/fullscreen.js";
@@ -400,6 +401,13 @@ try {
   environmentLife = createEnvironmentLifeFallback(wind);
 }
 const farmButton = document.querySelector('[data-action="farm"]');
+const farmPresentation = createFarmPresentation({
+  plot: world.farmPlot,
+  crops: world.crops,
+  camera,
+  growSeconds: CONFIG.farming.growSeconds,
+  onToast: toast,
+});
 farmUI = createFarmUI({
   crops: world.crops,
   playerRuntime,
@@ -407,6 +415,9 @@ farmUI = createFarmUI({
   pouchCount,
   animations: ANIMATIONS,
   onToast: toast,
+  onTargetChange: (target) => farmPresentation.setTarget(target),
+  onActionStart: ({ position }) => playerRuntime.facePoint(position),
+  onActionComplete: (event) => farmPresentation.onAction(event),
 });
 bindPlayerActionButtons({
   buttons: document.querySelectorAll("[data-action]"),
@@ -426,6 +437,8 @@ function setMode(next) {
   cameraController.setOrbitEnabled(!buildMode);
   if (!buildMode) cameraController.clearPan();
   builderUI.show(buildMode);
+  farmUI.setActive(!buildMode);
+  farmPresentation.setActive(!buildMode);
   for (const button of modeButtons) {
     button.classList.toggle("active", button.dataset.mode === next);
   }
@@ -546,7 +559,11 @@ systems.add("environmentLife", {
   dispose: () => environmentLife.dispose(),
 });
 systems.add("crops", { update: (delta) => world.crops.update(delta) });
-systems.add("farmUI", { update: (delta) => farmUI.update(delta, { active: mode === "play" }) });
+systems.add("farmUI", {
+  update: (delta) => farmUI.update(delta, { active: mode === "play" }),
+  dispose: () => farmUI.dispose(),
+});
+systems.add("farmPresentation", farmPresentation);
 systems.add("camera", {
   update: (delta) => cameraController.update(cameraTarget, delta),
   dispose: () => cameraController.dispose?.(),

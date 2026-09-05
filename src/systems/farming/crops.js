@@ -1,17 +1,7 @@
 import * as THREE from "three";
 import { createLocalStore } from "../local-store.js";
-
-export const SOIL_STATES = Object.freeze({
-  PLAIN: "plain",
-  TILLED: "tilled",
-  WATERED: "watered",
-});
-
-export const CROP_STATES = Object.freeze({
-  EMPTY: "empty",
-  GROWING: "growing",
-  RIPE: "ripe",
-});
+import { SOIL_STATES, CROP_STATES } from "./states.js";
+export { SOIL_STATES, CROP_STATES } from "./states.js";
 
 /**
  * Harvest-Moon-style first farm loop:

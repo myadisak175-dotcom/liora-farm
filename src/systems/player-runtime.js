@@ -113,6 +113,14 @@ export function createPlayerRuntime({
   const api = {
     update,
     playSpecial,
+    facePoint(position) {
+      if (!player || !position) return;
+      const dx = Number(position.x) - player.root.position.x;
+      const dz = Number(position.z) - player.root.position.z;
+      if (Number.isFinite(dx) && Number.isFinite(dz) && Math.hypot(dx, dz) > 0.01) {
+        player.root.rotation.y = Math.atan2(dx, dz);
+      }
+    },
     get state() {
       return lastState;
     },

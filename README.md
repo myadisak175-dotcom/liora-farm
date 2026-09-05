@@ -15,6 +15,8 @@ Then open `http://localhost:8000` on the phone. A server is required — ES modu
 ## What works
 
 - **เล่น** — walk, run, action animations, orbit camera, day/night clock.
+- **ตะกร้าแรกของเรา** — เก็บผักให้ครบ 3 หัว พร้อมคำแนะนำจากสถานะแปลงจริง วงเลือกช่องดิน ปุ่มกิจกรรมตามบริบท และ +1 ตอนเก็บเกี่ยว ความคืบหน้าใช้เซฟฟาร์มเดิมของแต่ละแผนที่.
+- **ท่าทาง** — เปิดท่าก้มเก็บ/ทุบ/ส่องกระจกจากปุ่มเดียว ขณะปุ่มทำฟาร์มเป็นกิจกรรมหลัก.
 - **โลกมีชีวิต** — ฟ้าสดใส เมฆและเงาเมฆไหลตามลม หมอกขอบโลกเคลื่อนเป็นชั้น ผีเสื้อหลากสีบิน และหญ้า/พุ่ม/ดอกไม้แหวกเบา ๆ รอบตัวละคร.
 - **สร้าง → วางของ** — place assets, drag to move, rotate, scale, duplicate, delete. Autosaves.
 - **สร้าง → ระบายพื้น** — free-brush multiple ground surfaces over grass, with undo.
