@@ -49,5 +49,8 @@ jobs:
       - name: Portal action plugin
         run: node tools/test/world-portal-action.test.mjs
 
+      - name: Farm interactions and first basket
+        run: node tools/test/farm-game-feel.test.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs
