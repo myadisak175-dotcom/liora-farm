@@ -1,0 +1,8 @@
+{
+  "type": "get_viewport_screenshot",
+  "params": {
+    "max_size": 800,
+    "filepath": "/workspace/liora-blender-smoke.png",
+    "format": "png"
+  }
+}
