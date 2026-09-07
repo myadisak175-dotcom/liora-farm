@@ -18,6 +18,7 @@ Then open `http://localhost:8000` on the phone. A server is required — ES modu
 - **ตะกร้าแรกของเรา** — เก็บผักให้ครบ 3 หัว พร้อมคำแนะนำจากสถานะแปลงจริง วงเลือกช่องดิน ปุ่มกิจกรรมตามบริบท และ +1 ตอนเก็บเกี่ยว ความคืบหน้าใช้เซฟฟาร์มเดิมของแต่ละแผนที่.
 - **ท่าทาง** — เปิดท่าก้มเก็บ/ทุบ/ส่องกระจกจากปุ่มเดียว ขณะปุ่มทำฟาร์มเป็นกิจกรรมหลัก.
 - **โลกมีชีวิต** — ฟ้าสดใส เมฆและเงาเมฆไหลตามลม หมอกขอบโลกเคลื่อนเป็นชั้น ผีเสื้อหลากสีบิน และหญ้า/พุ่ม/ดอกไม้แหวกเบา ๆ รอบตัวละคร.
+- **ป่าริมฟาร์ม** — เดินตามทางดินจากข้างแปลงผักเข้าป่าเบิร์ชและสน มีทางวนกลับและลานพัก ต้นไม้ชนได้และเปิดมุมมองเมื่อบังตัวละคร พุ่มและหญ้าปรับตามระดับคุณภาพ ใช้พื้นที่ป่าในแผนที่เกาะบ้านและเว้นรอบสิ่งปลูกสร้างที่บันทึกไว้.
 - **สร้าง → วางของ** — place assets, drag to move, rotate, scale, duplicate, delete. Autosaves.
 - **สร้าง → ระบายพื้น** — free-brush multiple ground surfaces over grass, with undo.
 - **สร้าง → ปั้นพื้น** — raise, lower, smooth and flatten terrain. Terrain follows real mesh vertices, saves locally and exports with the map.
@@ -64,6 +65,9 @@ vendor/three/addons/loaders/GLTFLoader.js
 Nothing else changes — the import map is built at boot from whichever is there.
 
 ## Middle-ground trees
+
+The walkable woodland is a separate, map-scoped system on the 80 m terrain.
+Tune `CONFIG.woodland`; see `docs/WOODLAND.md` for paths, saved edits and budgets.
 
 `src/systems/background/tree-line.js` scatters a seeded ring of trees between
 the farm edge and the first mountain band, which was 128 m of empty ground.

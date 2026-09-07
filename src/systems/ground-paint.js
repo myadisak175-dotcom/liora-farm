@@ -30,6 +30,9 @@ export function createGroundPaint({
   const manualOverrideSize = Math.max(64, Math.min(size, config.manualOverrideResolution ?? 256));
   const manualPixelsPerUnit = manualOverrideSize / worldSize;
   const stamps = [];
+  // Map-authored ground is replayed underneath the player's strokes. It is
+  // never written to their save or counted as an undoable brush action.
+  let authoredStamps = [];
   const groups = [];
   const pages = new Map();
   const store = createLocalStore({ key: config.storageKey, version: 1 });
@@ -346,6 +349,7 @@ export function createGroundPaint({
       clearSnapshot(page);
       page.texture.needsUpdate = true;
     }
+    for (const entry of authoredStamps) drawStroke(entry, { recordManual: false });
     for (const entry of stamps) {
       drawStroke(entry);
       for (const page of pages.values()) {
@@ -642,6 +646,10 @@ export function createGroundPaint({
     releaseMaterial,
     exportData,
     importData,
+    setAuthoredStrokes(entries = []) {
+      authoredStamps = entries.map(normalizeStroke).filter((entry) => entry && entry[2] > 0);
+      replayAll();
+    },
     beginStroke,
     strokeTo,
     endStroke,
@@ -707,13 +715,7 @@ export function createGroundPaint({
       openGroup = null;
       stamps.length = 0;
       groups.length = 0;
-      clearManualOverride();
-      for (const page of pages.values()) {
-        page.stamps.length = 0;
-        fillBlack(page.ctx);
-        clearSnapshot(page);
-        page.texture.needsUpdate = true;
-      }
+      replayAll();
       scheduleSave();
     },
     dispose() {

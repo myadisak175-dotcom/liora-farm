@@ -8,7 +8,7 @@ import { createQuality } from "./systems/quality.js";
  */
 export const QUALITY = createQuality();
 
-export const BUILD = "worlds-10-wide-backdrop";
+export const BUILD = "worlds-24-woodland";
 
 export const CONFIG = Object.freeze({
   /**
@@ -177,6 +177,66 @@ export const CONFIG = Object.freeze({
       { id: "v2-birchtree-4", weight: 1 },
       { id: "v2-deadtree-5", weight: 1 },
       { id: "v2-rock-4", weight: 1 },
+    ],
+  },
+  // Walkable woodland on the authored terrain. The distant treeLine remains
+  // scenery; these trunks participate in movement and follow sculpted ground.
+  woodland: {
+    enabled: true,
+    mapIds: ["home-island"],
+    seed: 20260908,
+    bounds: { minX: -26, maxX: 34, minZ: -34, maxZ: -5 },
+    groves: [
+      { x: -14, z: -22, radius: 14 },
+      { x: 9, z: -24, radius: 16 },
+      { x: 26, z: -16, radius: 13 },
+    ],
+    clearings: [
+      { x: -5.2, z: -2.8, radius: 6.2 },
+      { x: 0, z: 5, radius: 5.5 },
+      { x: 4, z: 5, radius: 3.5 },
+      { x: 19, z: -22, radius: 4.2 },
+    ],
+    trails: [
+      [[1, 1], [4, -4], [8, -8], [9, -14], [14, -19], [19, -22]],
+      [[19, -22], [25, -22], [29, -17], [28, -11], [23, -7], [16, -6], [8, -8]],
+      [[9, -14], [2, -18], [-6, -22], [-14, -24], [-18, -20]],
+    ],
+    trailRadius: 1.55,
+    trailSpacing: 0.55,
+    trailStrength: 0.48,
+    dirtLayer: 0,
+    treeCount: 78,
+    treeSpacing: 3.25,
+    treeScaleMin: 0.88,
+    treeScaleMax: 1.28,
+    rockCount: 18,
+    plantCount: 360,
+    plantSpacing: 0.5,
+    placementAttempts: 90,
+    obstacleMargin: 0.75,
+    maxSlope: 0.85,
+    waterClearance: 0.08,
+    litterRadius: 1.35,
+    litterStrength: 0.2,
+    cutawayRadius: 1.2,
+    cutawayStrength: 0.9,
+    plantDensity: { low: 0.45, medium: 0.75, high: 1 },
+    trees: [
+      { id: "v2-birchtree-5", weight: 3 },
+      { id: "v2-birchtree-1", weight: 2 },
+      { id: "v2-birchtree-4", weight: 1 },
+      { id: "v2-pinetree-2", weight: 3 },
+      { id: "v2-pinetree-1", weight: 2 },
+      { id: "v2-normaltree-5", weight: 2 },
+      { id: "v2-normaltree-3", weight: 1 },
+    ],
+    rocks: [{ id: "v2-rock-1", weight: 2 }, { id: "v2-rock-2", weight: 2 }],
+    plants: [
+      { id: "v2-grass-small", weight: 9 },
+      { id: "v2-plant-1", weight: 2 },
+      { id: "v2-bush", weight: 2 },
+      { id: "v2-flower-5-clump", weight: 1 },
     ],
   },
   /**
