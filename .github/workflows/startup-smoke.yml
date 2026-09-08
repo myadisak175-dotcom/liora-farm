@@ -1,0 +1,87 @@
+name: Production startup smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, fix/main-startup-20260908]
+    paths: ["src/**", "index.html", ".github/workflows/startup-smoke.yml"]
+  pull_request:
+    paths: ["src/**", "index.html", ".github/workflows/startup-smoke.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare exact rendering dependency for offline browser testing
+        run: |
+          npm install --prefix /tmp/liora-smoke --no-audit --no-fund three@0.180.0 playwright@1.55.0
+          mkdir -p vendor/three smoke-results
+          cp /tmp/liora-smoke/node_modules/three/build/three.module.js vendor/three/
+          cp /tmp/liora-smoke/node_modules/three/build/three.core.js vendor/three/
+          cp -R /tmp/liora-smoke/node_modules/three/examples/jsm vendor/three/addons
+          cp /tmp/liora-smoke/node_modules/three/LICENSE vendor/three/LICENSE
+      - name: Boot the actual index and keep errors and screenshots
+        shell: bash
+        run: |
+          python3 -m http.server 8000 >/tmp/liora-http.log 2>&1 &
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import { chromium } from '/tmp/liora-smoke/node_modules/playwright/index.mjs';
+          const browser = await chromium.launch({
+            executablePath: '/usr/bin/google-chrome',
+            args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader'],
+          });
+          let failures = 0;
+          try {
+            for (const [name, width, height, mobile] of [['phone', 390, 844, true], ['desktop', 1280, 720, false]]) {
+              const context = await browser.newContext({ viewport: { width, height }, isMobile: mobile, hasTouch: mobile });
+              const page = await context.newPage();
+              const report = { name, errors: [], console: [], failedRequests: [] };
+              page.on('pageerror', error => report.errors.push(error.stack || String(error)));
+              page.on('console', message => {
+                if (['error', 'warning'].includes(message.type())) report.console.push(message.text());
+              });
+              page.on('requestfailed', request => report.failedRequests.push({ url: request.url(), reason: request.failure()?.errorText }));
+              await page.goto('http://127.0.0.1:8000/', { waitUntil: 'domcontentloaded' });
+              try {
+                await page.waitForFunction(() => window.__lioraBooted === true, { timeout: 45000 });
+              } catch (error) { report.waitError = String(error); }
+              await page.waitForTimeout(1500);
+              report.state = await page.evaluate(() => ({
+                booted: window.__lioraBooted, state: window.__lioraBootState, error: window.__lioraBootError,
+                status: document.querySelector('#status')?.textContent,
+                detail: document.querySelector('#status')?.title,
+                build: window.__lioraBuild, woodland: window.__liora?.woodland,
+                canvas: Boolean(document.querySelector('canvas')),
+              }));
+              await page.screenshot({ path: `smoke-results/${name}.png` });
+              fs.writeFileSync(`smoke-results/${name}.json`, JSON.stringify(report, null, 2));
+              console.log(JSON.stringify(report, null, 2));
+              if (!report.state.booted || report.errors.length) failures++;
+              await context.close();
+            }
+          } finally { await browser.close(); }
+          process.exitCode = failures ? 1 : 0;
+          JS
+      - name: Keep startup diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: startup-diagnostics
+          path: smoke-results/
+          retention-days: 3
+      - name: Keep the exact test renderer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: startup-renderer
+          path: vendor/
+          retention-days: 1
