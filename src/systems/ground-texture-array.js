@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { withLoadBudget } from "./load-budget.js";
 
 /**
  * Packs every ground surface into ONE sampler2DArray.
@@ -55,7 +56,7 @@ export async function createGroundTextureArray({
   const loaded = await Promise.all(
     slices.map(async (layer) => {
       try {
-        const texture = await textureLoader.loadAsync(layer.texture);
+        const texture = await withLoadBudget(textureLoader.loadAsync(layer.texture), 8000, layer.texture, (late) => late.dispose());
         images.set(layer.key, texture.image);
         // The image is copied into the array below; the standalone GPU texture
         // this loader made would just sit there costing memory.
@@ -66,7 +67,13 @@ export async function createGroundTextureArray({
         // unfinished, not stop the island from loading.
         console.warn(`Ground texture missing for "${layer.key}"`, error);
         missing.push(layer.key);
-        return fallbackTile(size);
+        const pixels = fallbackTile(size);
+        // The base-map path needs an image as well as the array's pixels.
+        const image = document.createElement("canvas");
+        image.width = image.height = size;
+        image.getContext("2d").putImageData(new ImageData(pixels, size, size), 0, 0);
+        images.set(layer.key, image);
+        return pixels;
       }
     })
   );

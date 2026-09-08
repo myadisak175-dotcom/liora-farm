@@ -1,5 +1,6 @@
 import { applyBlockoutPreset } from "../systems/blockout-preset.js";
 import { WORLD_LOGIC } from "../systems/world-logic.js";
+import { fetchBootJSON } from "../systems/load-budget.js";
 
 const MAP_SCHEMA_VERSION = 2;
 
@@ -19,9 +20,7 @@ export function createLayoutRuntime({
   onTerrainSync = () => {},
 }) {
   async function fetchDefaultMap() {
-    const response = await fetch(defaultMapUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Default map request failed: ${response.status}`);
-    return response.json();
+    return fetchBootJSON(defaultMapUrl);
   }
 
   async function spawnAll() {
@@ -47,9 +46,12 @@ export function createLayoutRuntime({
   }
 
   async function load() {
+    // Reuse the same authored map instead of three consecutive no-store loads.
+    const mapRequest = fetchDefaultMap();
+    mapRequest.catch(() => {});
     if (!layoutStore.hasSavedLayout()) {
       try {
-        const map = await fetchDefaultMap();
+        const map = await mapRequest;
         if (Array.isArray(map.objects)) {
           for (const object of map.objects) {
             builder.addItem(object, {
@@ -91,8 +93,8 @@ export function createLayoutRuntime({
     // Sky and gameplay logic are properties of the map itself. A local edit
     // still wins, but untouched players always follow what the authored map
     // says after a content update.
-    await applyAuthoredHorizon();
-    await applyAuthoredLogic();
+    await applyAuthoredHorizon(mapRequest);
+    await applyAuthoredLogic(mapRequest);
 
     await spawnAll();
     const report = builder.loadReport;
@@ -105,18 +107,18 @@ export function createLayoutRuntime({
     }
   }
 
-  async function applyAuthoredHorizon() {
+  async function applyAuthoredHorizon(mapRequest = null) {
     try {
-      const map = await fetchDefaultMap();
+      const map = await (mapRequest ?? fetchDefaultMap());
       onHorizon(map?.horizon ?? null);
     } catch {
       onHorizon(null);
     }
   }
 
-  async function applyAuthoredLogic() {
+  async function applyAuthoredLogic(mapRequest = null) {
     try {
-      const map = await fetchDefaultMap();
+      const map = await (mapRequest ?? fetchDefaultMap());
       WORLD_LOGIC.importData(map?.logic ?? null);
     } catch {
       WORLD_LOGIC.importData(null);

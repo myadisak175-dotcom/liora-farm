@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { withLoadBudget } from "../systems/load-budget.js";
 import { createFloatingIsland } from "../systems/floating-island.js";
 import { createTerrain } from "../systems/terrain.js";
 import { createTerrainHeight } from "../systems/terrain-height.js";
@@ -79,7 +80,7 @@ export async function createHomeIsland({
   let waterTexture = null;
   if (config.water.texture) {
     try {
-      waterTexture = await textureLoader.loadAsync(`${assets.textureDir}/${config.water.texture}`);
+      waterTexture = await withLoadBudget(textureLoader.loadAsync(`${assets.textureDir}/${config.water.texture}`), 8000, "water texture", (late) => late.dispose());
       waterTexture.wrapS = waterTexture.wrapT = THREE.RepeatWrapping;
       waterTexture.colorSpace = THREE.SRGBColorSpace;
       waterTexture.anisotropy = anisotropy;

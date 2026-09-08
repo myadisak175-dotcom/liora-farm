@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { fetchBootJSON, withLoadBudget } from "./systems/load-budget.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { CONFIG, QUALITY, ASSETS, ANIMATIONS, BUILD } from "./config.js";
 import { createPlayer } from "./entities/player.js";
@@ -45,13 +46,22 @@ import { createWoodland } from "./systems/woodland.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "world24";
+const APP_REVISION = "world24-startup2";
+const recoveryMode = new URLSearchParams(location.search).get("safe") === "1";
+if (recoveryMode) QUALITY.set("low", { persist: false });
+window.__lioraRecoveryMode = recoveryMode;
+let appDisposed = false;
+let previewFrame = 0;
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
 window.__lioraBootState = "starting";
 window.__lioraBootError = null;
-function setBootState(state) { window.__lioraBootState = state; }
+function setBootState(state) {
+  window.__lioraBootState = state;
+  const labels = { renderer: "กำลังเริ่มภาพ 3D…", map: "กำลังอ่านแผนที่…", world: "กำลังโหลดพื้นฟาร์ม…", systems: "กำลังเตรียมฟาร์ม…", player: "กำลังโหลดตัวละคร…", layout: "กำลังโหลดสิ่งของที่บันทึกไว้…" };
+  if (labels[state]) window.__lioraSetBootStatus?.(labels[state]);
+}
 function setBootError(error) { window.__lioraBootError = String(error?.message ?? error ?? "unknown error"); }
 
 const status = document.querySelector("#status");
@@ -108,9 +118,9 @@ setBootState("map");
  */
 let mapRegistry = [];
 try {
-  const response = await fetch(CONFIG.builder.mapIndex, { cache: "no-store" });
-  if (response.ok) {
-    const index = await response.json();
+  const response = await fetchBootJSON(CONFIG.builder.mapIndex);
+  if (response) {
+    const index = response;
     if (Array.isArray(index?.maps)) mapRegistry = index.maps;
   }
 } catch (error) {
@@ -124,6 +134,7 @@ const mapScope = createMapScope({
 window.__lioraMap = mapScope.id;
 const MAP_CONFIG = {
   ...CONFIG,
+  paintedBackdrop: recoveryMode ? { ...CONFIG.paintedBackdrop, enabled: false } : CONFIG.paintedBackdrop,
   sculpt: { ...CONFIG.sculpt, storageKey: mapScope.key(CONFIG.sculpt.storageKey) },
   groundPaint: { ...CONFIG.groundPaint, storageKey: mapScope.key(CONFIG.groundPaint.storageKey) },
   farming: { ...CONFIG.farming, storageKey: mapScope.key(CONFIG.farming.storageKey) },
@@ -164,13 +175,29 @@ const dayNight = createDayNight({
 });
 clockButton.onclick = () => dayNight.nextPreset();
 
+// Show actual terrain while the player model and saved objects are pending.
+const previewTarget = new THREE.Vector3(0, 0.7, 5);
+camera.position.copy(CONFIG.camera.baseOffset).add(previewTarget);
+camera.lookAt(previewTarget);
+function renderBootPreview() {
+  if (appDisposed || window.__lioraBooted) return;
+  renderer.render(scene, camera);
+  window.__lioraFirstFrameAt ??= performance.now();
+  previewFrame = requestAnimationFrame(renderBootPreview);
+}
+renderBootPreview();
+renderer.domElement.addEventListener("webglcontextlost", (event) => {
+  event.preventDefault();
+  window.__lioraShowBootProblem?.("ระบบภาพหยุดทำงาน — เปิดโหมดเบาได้โดยไม่ลบเซฟ", "WebGL context lost", true);
+});
+
 createFullscreenControl({ button: document.querySelector("#fullscreen"), notify: toast });
 
 let floatingIslandBackdrop = null;
 try {
   floatingIslandBackdrop = await createFloatingIslandBackdrop({
     url: ASSETS.floatingIslandHero,
-    config: CONFIG.floatingIslands,
+    config: recoveryMode ? { ...CONFIG.floatingIslands, enabled: false } : CONFIG.floatingIslands,
     anisotropy: Math.min(2, renderer.capabilities.getMaxAnisotropy()),
   });
   scene.add(floatingIslandBackdrop.group);
@@ -180,15 +207,16 @@ try {
 }
 
 let distantVillageBackdrop = null;
-try {
-  distantVillageBackdrop = await createDistantVillageBackdrop({
+if (!recoveryMode) {
+  // An optional image that never completes must not postpone the first frame.
+  createDistantVillageBackdrop({
     url: `${ASSETS.textureDir}/liora_village_background.webp`,
     anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
-  });
-  scene.add(distantVillageBackdrop.group);
-} catch (error) {
-  // A missing decorative village must never prevent the farm from booting.
-  console.warn("Distant village backdrop unavailable", error);
+  }).then((backdrop) => {
+    if (appDisposed) { backdrop.dispose(); return; }
+    distantVillageBackdrop = backdrop;
+    scene.add(backdrop.group);
+  }).catch((error) => console.warn("Distant village backdrop unavailable", error));
 }
 
 const input = createInput();
@@ -214,7 +242,7 @@ let outerGroundHeightAt = createOuterWorldHeightSampler(CONFIG.outerWorld, CONFI
 let treeLine = null;
 try {
   treeLine = await createTreeLine({
-    config: CONFIG.treeLine,
+    config: recoveryMode ? { ...CONFIG.treeLine, enabled: false } : CONFIG.treeLine,
     assets: NATURE_V2_ASSETS,
     heightAt: (x, z) => outerGroundHeightAt(x, z),
     anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
@@ -243,6 +271,8 @@ window.__liora = {
    * than a hunt through 34 listeners.
    */
   dispose() {
+    appDisposed = true;
+    cancelAnimationFrame(previewFrame);
     systems.dispose();
     renderer.dispose();
   },
@@ -364,13 +394,13 @@ const movement = createMovementSystem(camera, CONFIG, world.getGroundHeight, () 
 setBootState("player");
 let player = null;
 try {
-  player = await createPlayer({
+  player = await withLoadBudget(createPlayer({
     url: ASSETS.player,
     height: CONFIG.playerHeight,
     groundOffset: CONFIG.playerGroundOffset,
     renderOrder: CONFIG.depth.playerOrder,
     animations: ANIMATIONS,
-  });
+  }), 25000, "player model");
   scene.add(player.root);
   pouchEl.hidden = false;
 } catch (error) {
@@ -634,31 +664,11 @@ farmUI.refresh();
 setBootState("layout");
 setStatus("กำลังโหลดแผนที่…");
 await layoutRuntime.load();
-// Generate after saved terrain and objects are restored. This environment
-// reaches returning players too, without resetting or migrating their saves.
-if (CONFIG.woodland.enabled && CONFIG.woodland.mapIds.includes(mapScope.id)) {
-  setStatus("กำลังโหลดป่าริมฟาร์ม…");
-  try {
-    woodland = await createWoodland({
-      scene, config: CONFIG.woodland, mapId: mapScope.id,
-      assets: NATURE_V2_ASSETS, loader: builderLoader, paint: world.paint,
-      heightAt: world.getGroundHeight, waterLevel: CONFIG.water.level,
-      blockers: woodlandBlockers(), quality: QUALITY.preset,
-      prepareModel: (model, asset) => wind.attach(model, asset),
-      onCollidersChange: (next) => {
-        woodlandColliders = next;
-        colliders = [...builderColliders, ...woodlandColliders];
-      },
-    });
-    if (woodland.stats.failedAssets.length) toast("ต้นไม้บางชนิดโหลดไม่ครบ ลองเปิดเกมใหม่อีกครั้งค่ะ");
-  } catch (error) {
-    console.warn("Walkable woodland unavailable", error);
-    toast("โหลดป่าไม่สำเร็จ ลองเปิดเกมใหม่อีกครั้งค่ะ");
-  }
-}
 reportRescuedSaves();
 setBootState(player ? "ready" : "ready-degraded");
 window.__lioraBooted = true;
+cancelAnimationFrame(previewFrame);
+window.__lioraFinishBoot?.();
 // Which world you are in has to be visible somewhere, or a second map is a
 // silent state you can only detect by recognising the scenery.
 if (!mapScope.isDefault) document.title = `${mapScope.entry.name} — Liora's Farm`;
@@ -668,3 +678,41 @@ if (player) {
 else setStatus("โหลดตัวละครไม่สำเร็จ — โหมดสร้างยังใช้ได้");
 // The registry owns the frame now, so the loop can actually be stopped.
 systems.start(animate);
+// Let the first playable frame render before beginning optional woodland work.
+window.__lioraWoodlandState = recoveryMode ? "skipped-recovery" : "pending";
+requestAnimationFrame(() => { if (!appDisposed) void loadWoodland(); });
+
+async function loadWoodland() {
+// Generate after saved terrain and objects are restored. This environment
+// reaches returning players too, without resetting or migrating their saves.
+if (!recoveryMode && CONFIG.woodland?.enabled && CONFIG.woodland.mapIds.includes(mapScope.id)) {
+  window.__lioraWoodlandState = "loading";
+  try {
+    const loaded = await createWoodland({
+      scene, config: CONFIG.woodland, mapId: mapScope.id,
+      assets: NATURE_V2_ASSETS, loader: builderLoader, paint: world.paint,
+      heightAt: world.getGroundHeight, waterLevel: CONFIG.water.level,
+      blockers: woodlandBlockers(), quality: QUALITY.preset,
+      prepareModel: (model, asset) => wind.attach(model, asset),
+      onCollidersChange: (next) => {
+        if (appDisposed) return;
+        woodlandColliders = next;
+        colliders = [...builderColliders, ...woodlandColliders];
+      },
+    });
+    if (appDisposed) { loaded?.dispose(); return; }
+    woodland = loaded;
+    // Account for edits or quality changes made while the assets were pending.
+    woodland?.setBlockers(woodlandBlockers());
+    woodland?.setQuality(QUALITY.preset);
+    window.__lioraWoodlandState = woodland?.stats.failedAssets.length ? "degraded" : "ready";
+    if (woodland?.stats.failedAssets.length) toast("ต้นไม้บางชนิดโหลดไม่ครบ ลองเปิดเกมใหม่อีกครั้งค่ะ");
+  } catch (error) {
+    window.__lioraWoodlandState = "error";
+    console.warn("Walkable woodland unavailable", error);
+    toast("โหลดป่าไม่สำเร็จ ลองเปิดเกมใหม่อีกครั้งค่ะ");
+  }
+}
+  if (window.__lioraWoodlandState === "pending") window.__lioraWoodlandState = "disabled";
+}
+

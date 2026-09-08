@@ -15,6 +15,11 @@
 <link rel="stylesheet" href="./styles/terrain-controls.css?v=horizon4">
 <link rel="stylesheet" href="./styles/game-feel.css?v=first-basket1">
 <script>
+window.__lioraBootState = "engine";
+window.__lioraSetBootStatus = (text) => {
+  const el = document.querySelector("#status");
+  if (el) { el.textContent = text; el.classList.remove("hidden", "error"); }
+};
 (async () => {
   // Blank-land baseline. Run once per browser profile so existing builder,
   // terrain, paint and crop saves cannot repopulate the old starter scene.
@@ -50,9 +55,15 @@
   const CDN = "https://cdn.jsdelivr.net/npm/three@0.180.0/";
   let base = CDN;
   try {
-    const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store" });
-    if (probe.ok) base = LOCAL;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store", signal: controller.signal });
+      if (probe.ok) base = LOCAL;
+    } finally { clearTimeout(timer); }
   } catch {}
+  window.__lioraEngineSource = base === LOCAL ? "local" : "cdn";
+  window.__lioraSetBootStatus("กำลังโหลดระบบภาพ 3D…");
   const map = document.createElement("script");
   map.type = "importmap";
   map.textContent = JSON.stringify({ imports: {
@@ -61,8 +72,13 @@
     // Local aliases may only point back to the same pathname with a cache
     // version. tools/test/module-graph.mjs enforces that rule so Safari's
     // nested-module cache workaround cannot silently redirect a module.
-    "./src/config.js": "./src/config.js?v=woodland1",
-    "./src/systems/ground-paint.js": "./src/systems/ground-paint.js?v=woodland1",
+    "./src/config.js": "./src/config.js?v=startup2",
+    "./src/systems/ground-paint.js": "./src/systems/ground-paint.js?v=startup2",
+    "./src/zones/home-island.js": "./src/zones/home-island.js?v=startup2",
+    "./src/systems/ground-texture-array.js": "./src/systems/ground-texture-array.js?v=startup2",
+    "./src/editor/asset-loader.js": "./src/editor/asset-loader.js?v=startup2",
+    "./src/editor/layout-runtime.js": "./src/editor/layout-runtime.js?v=startup2",
+    "./src/systems/world-logic.js": "./src/systems/world-logic.js?v=startup2",
     "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx4",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
     "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
@@ -75,6 +91,7 @@
   // World Builder features and gameplay actions are plugins over the same
   // data/event core. Load the vocabulary before main.js creates the player so
   // Spawn, Marker and Portal behaviour is deterministic from frame one.
+  window.__lioraBootState = "modules";
   await Promise.all([
     import("./src/editor/world-builder-shell.js"),
     import("./src/editor/world-builder-portal-plugin.js"),
@@ -89,16 +106,20 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=woodland1";
+  entry.src = "./src/main.js?v=startup2";
   document.head.append(entry);
 
   // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio
   // route kick when those primary buffers are genuinely ready. Android remains
   // on the verified native route unchanged.
-  const audio = document.createElement("script");
-  audio.type = "module";
-  audio.src = "./src/audio-runtime.js?v=audio24-route2";
-  document.head.append(audio);
+  const startAudio = () => {
+    const audio = document.createElement("script");
+    audio.type = "module";
+    audio.src = "./src/audio-runtime.js?v=audio24-route2";
+    document.head.append(audio);
+  };
+  if (window.__lioraBooted) startAudio();
+  else window.addEventListener("liora:boot-ready", startAudio, { once: true });
 
   if (new URLSearchParams(location.search).get("npc") === "1") {
     const npcTest = document.createElement("script");
@@ -176,22 +197,49 @@
 </section>
 <div id="toast" aria-live="polite"></div>
 <script>
-function showBootProblem(text, detail = "") {
-  if (window.__lioraBooted) return;
+function showBootProblem(text, detail = "", force = false) {
+  if (window.__lioraBooted && !force) return;
   const status = document.querySelector("#status");
-  if (!status) return;
   status.textContent = text;
   status.title = detail;
+  status.classList.remove("hidden");
   status.classList.add("error");
+  window.__lioraBootError = detail || window.__lioraBootError;
+  document.querySelector("#boot-recovery").hidden = false;
 }
-window.addEventListener("error", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — ลองรีโหลดหน้า", String(event.error?.message ?? event.message ?? "")));
-window.addEventListener("unhandledrejection", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — ลองรีโหลดหน้า", String(event.reason?.message ?? event.reason ?? "")));
-window.addEventListener("load", () => {
-  setTimeout(() => {
-    if (window.__lioraBooted) return;
-    showBootProblem(`โหลดนานผิดปกติ (${window.__lioraBootState ?? "starting"}) — ลองรีโหลดหน้า`, String(window.__lioraBootError ?? ""));
-  }, 12000);
-});
+window.__lioraShowBootProblem = showBootProblem;
+const recovery = document.createElement("div");
+recovery.id = "boot-recovery";
+recovery.hidden = true;
+recovery.style.cssText = "position:fixed;z-index:10000;left:16px;right:16px;top:110px;text-align:center";
+for (const [label, safe] of [["ลองโหลดใหม่", false], ["เปิดโหมดเบา (ไม่ลบเซฟ)", true]]) {
+  const button = document.createElement("button");
+  button.textContent = label;
+  button.type = "button";
+  button.style.cssText = "margin:4px;padding:12px;border-radius:12px;background:#fff;color:#173c4b;border:1px solid #173c4b";
+  button.onclick = () => {
+    const url = new URL(location.href);
+    url.searchParams.set("retry", Date.now());
+    if (safe) url.searchParams.set("safe", "1");
+    else url.searchParams.delete("safe");
+    location.assign(url);
+  };
+  recovery.append(button);
+}
+document.body.append(recovery);
+window.addEventListener("error", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — กดลองใหม่ได้โดยไม่ลบเซฟ", String(event.error?.message ?? event.message ?? "")));
+window.addEventListener("unhandledrejection", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — กดลองใหม่ได้โดยไม่ลบเซฟ", String(event.reason?.message ?? event.reason ?? "")));
+// Do not wait for window.load: the resource that hangs can prevent it firing.
+const bootWatchdog = setInterval(() => {
+  if (window.__lioraBooted) return;
+  showBootProblem(`กำลังโหลดนาน (${window.__lioraBootState ?? "starting"}) — ลองใหม่หรือเปิดโหมดเบาได้`, String(window.__lioraBootError ?? ""));
+}, 12000);
+window.__lioraFinishBoot = () => {
+  clearInterval(bootWatchdog);
+  recovery.hidden = true;
+  document.querySelector("#status").classList.remove("error");
+  window.dispatchEvent(new Event("liora:boot-ready"));
+};
 </script>
 </body>
 </html>

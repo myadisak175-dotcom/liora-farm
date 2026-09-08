@@ -1,3 +1,4 @@
+import { fetchBootJSON } from "./load-budget.js";
 import { createLocalStore } from "./local-store.js";
 import {
   DEFAULT_MAP_ID,
@@ -161,9 +162,7 @@ async function resolveMapUrl(mapId) {
   const fallback = `./maps/${mapId}.json`;
   if (typeof fetch !== "function") return fallback;
   try {
-    const response = await fetch("./maps/index.json", { cache: "no-store" });
-    if (!response.ok) return fallback;
-    const index = await response.json();
+    const index = await fetchBootJSON("./maps/index.json");
     const entry = Array.isArray(index?.maps)
       ? index.maps.find((candidate) => candidate?.id === mapId)
       : null;
@@ -322,9 +321,7 @@ export function createWorldLogic({
 
   async function importMap(url) {
     try {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error(`World logic map request failed: ${response.status}`);
-      const map = await response.json();
+      const map = await fetchBootJSON(url);
       importData(map?.logic ?? null);
       return true;
     } catch (error) {

@@ -1,4 +1,5 @@
 import { getBuildableAsset } from "./asset-catalog.js";
+import { withLoadBudget } from "../systems/load-budget.js";
 
 export function createBuilderAssetLoader({ gltfLoader } = {}) {
   if (!gltfLoader) throw new Error("Builder asset loader requires a GLTFLoader instance");
@@ -18,7 +19,7 @@ export function createBuilderAssetLoader({ gltfLoader } = {}) {
     if (cache.has(path)) return cache.get(path);
     if (pending.has(path)) return pending.get(path);
 
-    const request = loadWithThree(path)
+    const request = withLoadBudget(loadWithThree(path), 12000, path)
       .then((gltf) => {
         if (!gltf?.scene) throw new Error(`GLB has no scene: ${path}`);
         cache.set(path, gltf.scene);
