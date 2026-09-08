@@ -138,6 +138,30 @@ function grabShader(paint) {
   return { source: shader.fragmentShader, uniforms: shader.uniforms, key: material.customProgramCacheKey() };
 }
 
+// Authored woodland ground stays below edits, outside save/undo history.
+const authored = makePaint(shipped, "test.authored");
+authored.paintAt(-4, 0, { layer: 3, radius: 2, strength: 1 });
+const savedAuthored = JSON.stringify(authored.exportData());
+authored.setAuthoredStrokes(Array.from({ length: 21 }, (_, i) => [-5 + i * 0.5, 0, 1.3, 0, 0.8]));
+eq("authored trail changes the footstep surface", authored.surfaceAt(2, 0), "dirt");
+eq("existing grass edit wins over a new trail", authored.surfaceAt(-4, 0), "grass");
+eq("authored strokes never enter the saved paint", JSON.stringify(authored.exportData()), savedAuthored);
+eq("authored trail adds no undo action", authored.strokeCount, 1);
+authored.paintAt(2, 0, { layer: 3, radius: 2, strength: 1 });
+eq("player can paint grass over the trail", authored.surfaceAt(2, 0), "grass");
+authored.undo();
+eq("undo restores authored pixels across snapshots", authored.surfaceAt(2, 0), "dirt");
+eq("undo restores the original saved payload", JSON.stringify(authored.exportData()), savedAuthored);
+authored.clear();
+eq("clear restores the map-authored trail", authored.surfaceAt(-4, 0), "dirt");
+eq("clear leaves empty player paint history", authored.stampCount, 0);
+authored.importData(JSON.parse(savedAuthored));
+eq("import preserves manual priority over authored ground", authored.surfaceAt(-4, 0), "grass");
+authored.setAuthoredStrokes([]);
+eq("removing woodland reveals the original base ground", authored.surfaceAt(2, 0), "grass");
+eq("removing woodland preserves the saved edit", JSON.stringify(authored.exportData()), savedAuthored);
+authored.dispose();
+
 const p1 = makePaint(shipped, "test.p1");
 eq("fresh world has 1 page", p1.pageCount, 1);
 eq("fresh world samples as grass", p1.surfaceAt(0, 0), "grass");

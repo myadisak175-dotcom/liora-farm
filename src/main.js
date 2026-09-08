@@ -41,10 +41,11 @@ import { createSystemRegistry } from "./systems/registry.js";
 import { createFloatingIslandBackdrop } from "./systems/background/floating-island-backdrop.js";
 import { createDistantVillageBackdrop } from "./systems/background/distant-village-backdrop.js";
 import { createTreeLine } from "./systems/background/tree-line.js";
+import { createWoodland } from "./systems/woodland.js";
 import { createOuterWorldHeightSampler } from "./systems/outer-world-ground.js";
 import { BLOOM_ASSET_IDS, NATURE_V2_ASSETS } from "./editor/nature-catalog-v2.js";
 
-const APP_REVISION = "world23";
+const APP_REVISION = "world24";
 window.__lioraBuild = BUILD;
 window.__lioraRevision = APP_REVISION;
 window.__lioraBooted = false;
@@ -196,6 +197,7 @@ const runFx = createRunFx(scene, CONFIG.runFx);
 const contactShadow = createContactShadow(scene, CONFIG.contactShadow);
 const wind = createWindSystem({ config: CONFIG.wind ?? {}, quality: QUALITY });
 let environmentLife = null;
+let woodland = null;
 
 /**
  * Middle-ground trees, between the farm edge and the first mountain band.
@@ -232,6 +234,7 @@ window.__liora = {
   get wind() { return wind; },
   get life() { return environmentLife?.stats ?? null; },
   get treeLine() { return treeLine?.stats ?? null; },
+  get woodland() { return woodland?.stats ?? null; },
   get village() { return distantVillageBackdrop?.stats ?? null; },
   get systems() { return systems.names; },
   /**
@@ -266,6 +269,20 @@ const builderView = createBuilderView({
 let builderUI = null;
 let horizonPanel = null;
 let colliders = [];
+let builderColliders = [];
+let woodlandColliders = [];
+function woodlandBlockers() {
+  return [...RESERVED_AREAS, ...builder.items.map((item) => ({
+    x: item.x,
+    z: item.z,
+    radius: (BUILDABLE_ASSETS[item.assetId]?.footprintRadius ?? 0.5) * item.scale,
+  }))];
+}
+function syncWorldColliders(next) {
+  builderColliders = next;
+  woodland?.setBlockers(woodlandBlockers());
+  colliders = [...builderColliders, ...woodlandColliders];
+}
 const builder = createBuilderController({
   state: builderState,
   catalog: BUILDABLE_ASSETS,
@@ -278,8 +295,8 @@ const builder = createBuilderController({
   onContextChange: () => builderUI?.render(),
   onSelectionChange: (item) => builderUI?.setSelection(item),
   onPreviewChange: (preview) => builderUI?.setPreview(preview),
-  onLayoutChange: () => { colliders = builder.getColliders(); },
-  onItemsRestored: () => { colliders = builder.getColliders(); },
+  onLayoutChange: () => syncWorldColliders(builder.getColliders()),
+  onItemsRestored: () => syncWorldColliders(builder.getColliders()),
 });
 const syncBuilderToTerrain = () => {
   for (const item of builder.items) builderView.update(item);
@@ -299,7 +316,7 @@ const layoutRuntime = createLayoutRuntime({
   getHorizon: () => horizonPanel?.toMap?.(),
   onHorizon: (authored) => horizonPanel?.setAuthored?.(authored),
   onToast: toast,
-  onCollidersChange: (next) => { colliders = next; },
+  onCollidersChange: syncWorldColliders,
   onTerrainSync: syncBuilderToTerrain,
 });
 builderUI = createBuilderUI({
@@ -388,7 +405,7 @@ try {
     // them rather than on the grass underneath. `bloom` is a little under the
     // authored height so a resting butterfly sits in the flower head, not
     // hovering above its tip.
-    flowerSpots: () => builder.items
+    flowerSpots: () => [...builder.items, ...(woodland?.items ?? [])]
       .filter((item) => BLOOM_ASSET_IDS.has(String(item?.assetId ?? "")))
       .map((item) => ({
         x: item.x,
@@ -513,6 +530,7 @@ function applyQuality(preset) {
   sky.setQuality?.(preset);
   wind.setQuality?.(preset);
   environmentLife.setQuality?.(preset);
+  woodland?.setQuality(preset);
   objectShadows.setShadowBounds(preset.shadowBounds);
   objectShadows.setOpacity(preset.blobShadows ? CONFIG.objectShadows.opacity : 0);
 }
@@ -545,7 +563,12 @@ const systems = createSystemRegistry({
 
 systems.add("dayNight", dayNight);
 systems.add("wind", wind);
-systems.add("world", { update: (delta) => world.refresh(delta), dispose: () => world.dispose?.() });
+systems.add("world", {
+  update: (delta) => {
+    if (world.refresh(delta)) woodland?.refreshTerrain();
+  },
+  dispose: () => world.dispose?.(),
+});
 systems.add("player", {
   update: (delta) => playerRuntime.update(delta, { active: mode === "play", cameraTarget }),
 });
@@ -583,6 +606,10 @@ systems.add("distantVillage", {
 });
 systems.add("floatingIslands", floatingIslandBackdrop);
 systems.add("treeLine", treeLine);
+systems.add("woodland", {
+  update: (delta) => woodland?.update(delta, { camera, position: playerRuntime.position, active: mode === "play" }),
+  dispose: () => woodland?.dispose(),
+});
 systems.add("sky", { update: (delta) => sky.update(camera, delta), dispose: () => sky.dispose?.() });
 systems.add("input", { dispose: () => input.dispose?.() });
 systems.add("builder", { dispose: () => builder.dispose?.() });
@@ -607,6 +634,28 @@ farmUI.refresh();
 setBootState("layout");
 setStatus("กำลังโหลดแผนที่…");
 await layoutRuntime.load();
+// Generate after saved terrain and objects are restored. This environment
+// reaches returning players too, without resetting or migrating their saves.
+if (CONFIG.woodland.enabled && CONFIG.woodland.mapIds.includes(mapScope.id)) {
+  setStatus("กำลังโหลดป่าริมฟาร์ม…");
+  try {
+    woodland = await createWoodland({
+      scene, config: CONFIG.woodland, mapId: mapScope.id,
+      assets: NATURE_V2_ASSETS, loader: builderLoader, paint: world.paint,
+      heightAt: world.getGroundHeight, waterLevel: CONFIG.water.level,
+      blockers: woodlandBlockers(), quality: QUALITY.preset,
+      prepareModel: (model, asset) => wind.attach(model, asset),
+      onCollidersChange: (next) => {
+        woodlandColliders = next;
+        colliders = [...builderColliders, ...woodlandColliders];
+      },
+    });
+    if (woodland.stats.failedAssets.length) toast("ต้นไม้บางชนิดโหลดไม่ครบ ลองเปิดเกมใหม่อีกครั้งค่ะ");
+  } catch (error) {
+    console.warn("Walkable woodland unavailable", error);
+    toast("โหลดป่าไม่สำเร็จ ลองเปิดเกมใหม่อีกครั้งค่ะ");
+  }
+}
 reportRescuedSaves();
 setBootState(player ? "ready" : "ready-degraded");
 window.__lioraBooted = true;

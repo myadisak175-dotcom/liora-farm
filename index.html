@@ -61,7 +61,8 @@
     // Local aliases may only point back to the same pathname with a cache
     // version. tools/test/module-graph.mjs enforces that rule so Safari's
     // nested-module cache workaround cannot silently redirect a module.
-    "./src/config.js": "./src/config.js?v=village3",
+    "./src/config.js": "./src/config.js?v=woodland1",
+    "./src/systems/ground-paint.js": "./src/systems/ground-paint.js?v=woodland1",
     "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx4",
     "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
     "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
@@ -88,7 +89,7 @@
 
   const entry = document.createElement("script");
   entry.type = "module";
-  entry.src = "./src/main.js?v=world23-blank1&visual=first-basket1";
+  entry.src = "./src/main.js?v=woodland1";
   document.head.append(entry);
 
   // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio

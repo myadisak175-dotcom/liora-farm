@@ -52,5 +52,8 @@ jobs:
       - name: Farm interactions and first basket
         run: node tools/test/farm-game-feel.test.mjs
 
+      - name: Walkable woodland layout
+        run: node tools/test/woodland-layout.test.mjs
+
       - name: Browser regression suite
         run: node tools/test/run.mjs
