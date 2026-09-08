@@ -43,6 +43,8 @@ async function run(name, browser, { baseline = false, hold = null, safe = false,
   page.on('console', (message) => { if (['warning', 'error'].includes(message.type())) report.warnings.push(message.text()); });
   await page.route('**/*', (route) => {
     const url = new URL(route.request().url());
+    // WebKit exposes in-memory GLB image blobs here; these are not CDN traffic.
+    if (url.protocol === 'blob:' || url.protocol === 'data:') return route.continue();
     // A working first-party engine must not rely on any third-party CDN.
     if (url.hostname !== '127.0.0.1') {
       report.externalRequests.push(url.href);
@@ -90,6 +92,7 @@ async function run(name, browser, { baseline = false, hold = null, safe = false,
       if (previewOnly) assert.equal(report.state.booted, false);
       else assert.equal(report.state.booted, true);
       if (hold || texture) assert.ok(report.held.length, 'fault injection must affect a real request');
+      if (!hold && !texture) assert.ok(!report.warnings.some(message => message.includes("Couldn't load texture")), 'normal boot must retain embedded GLB textures');
       if (safe) {
         assert.equal(report.state.recoveryMode, true);
         assert.equal(report.state.savedQuality, 'high', 'recovery quality must not overwrite saved preference');
