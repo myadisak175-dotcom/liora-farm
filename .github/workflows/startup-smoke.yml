@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main, fix/main-startup-20260908]
-    paths: ["src/**", "index.html", ".github/workflows/startup-smoke.yml"]
+    paths: ["src/**", "index.html", "vendor/three/**", "tools/repair-startup.py", "tools/test/startup-network.mjs", ".github/workflows/startup-smoke.yml"]
   pull_request:
-    paths: ["src/**", "index.html", ".github/workflows/startup-smoke.yml"]
+    paths: ["src/**", "index.html", "vendor/three/**", "tools/test/startup-network.mjs", ".github/workflows/startup-smoke.yml"]
 
 permissions:
   contents: read
@@ -14,62 +14,61 @@ permissions:
 jobs:
   startup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    env:
+      LIBGL_ALWAYS_SOFTWARE: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Prepare browsers and exact rendering dependency
+      - name: Preserve baseline and apply the one-time repair on its branch
+        if: github.ref == 'refs/heads/fix/main-startup-20260908' && hashFiles('tools/repair-startup.py') != ''
+        run: |
+          mkdir -p /tmp/liora-baseline
+          cp -R src assets maps styles index.html /tmp/liora-baseline/
+          python3 tools/repair-startup.py
+      - name: Prepare browsers and vendor the exact engine without a runtime CDN dependency
         run: |
           npm install --prefix /tmp/liora-smoke --no-audit --no-fund three@0.180.0 playwright@1.55.0
           /tmp/liora-smoke/node_modules/.bin/playwright install --with-deps webkit
-          mkdir -p vendor/three smoke-results
+          mkdir -p vendor/three/addons/loaders vendor/three/addons/utils smoke-results
           cp /tmp/liora-smoke/node_modules/three/build/three.module.js vendor/three/
           cp /tmp/liora-smoke/node_modules/three/build/three.core.js vendor/three/
-          cp -R /tmp/liora-smoke/node_modules/three/examples/jsm vendor/three/addons
+          cp /tmp/liora-smoke/node_modules/three/examples/jsm/loaders/GLTFLoader.js vendor/three/addons/loaders/
+          cp /tmp/liora-smoke/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js vendor/three/addons/utils/
+          cp /tmp/liora-smoke/node_modules/three/examples/jsm/utils/SkeletonUtils.js vendor/three/addons/utils/
           cp /tmp/liora-smoke/node_modules/three/LICENSE vendor/three/LICENSE
-      - name: Boot real index in Chromium and WebKit
-        shell: bash
-        env:
-          LIBGL_ALWAYS_SOFTWARE: "1"
+          if [ -d /tmp/liora-baseline ]; then cp -R vendor /tmp/liora-baseline/; fi
+      - name: Syntax, module graph, saved-world and farming checks
         run: |
-          python3 -m http.server 8000 >/tmp/liora-http.log 2>&1 &
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          import { chromium, webkit, devices } from '/tmp/liora-smoke/node_modules/playwright/index.mjs';
-          const chrome = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader'] });
-          const safari = await webkit.launch();
-          let failures = 0;
-          try {
-            for (const [name, browser, mobile, live] of [
-              ['chrome-local', chrome, true, false],
-              ['webkit-local', safari, true, false],
-              ['chrome-live', chrome, true, true],
-              ['webkit-live', safari, true, true],
-            ]) {
-              const context = await browser.newContext(mobile ? { ...devices['iPhone 13'], deviceScaleFactor: 1 } : { viewport: { width: 1280, height: 720 } });
-              const page = await context.newPage();
-              const report = { name, errors: [], console: [], failedRequests: [] };
-              page.on('pageerror', error => report.errors.push(error.stack || String(error)));
-              page.on('console', message => { if (['error', 'warning'].includes(message.type())) report.console.push(message.text()); });
-              page.on('requestfailed', request => report.failedRequests.push({ url: request.url(), reason: request.failure()?.errorText }));
-              const url = live ? 'https://myadisak175-dotcom.github.io/liora-farm/' : 'http://127.0.0.1:8000/';
-              try {
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-                await page.waitForFunction(() => window.__lioraBooted === true, null, { timeout: 45000 });
-              } catch (error) { report.waitError = String(error); }
-              await page.waitForTimeout(1500);
-              report.state = await page.evaluate(() => ({ booted: window.__lioraBooted, state: window.__lioraBootState, error: window.__lioraBootError, status: document.querySelector('#status')?.textContent, detail: document.querySelector('#status')?.title, build: window.__lioraBuild, woodland: window.__liora?.woodland, canvas: Boolean(document.querySelector('canvas')) }));
-              await page.screenshot({ path: `smoke-results/${name}.png` });
-              fs.writeFileSync(`smoke-results/${name}.json`, JSON.stringify(report, null, 2));
-              console.log(JSON.stringify(report, null, 2));
-              if (!report.state.booted || report.errors.length) failures++;
-              await context.close();
-            }
-          } finally { await chrome.close(); await safari.close(); }
-          process.exitCode = failures ? 1 : 0;
-          JS
+          set -euo pipefail
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find src tools/test -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+          node tools/test/module-graph.mjs
+          node tools/test/world-logic.test.mjs
+          node tools/test/world-actions.test.mjs
+          node tools/test/world-navigation.test.mjs
+          node tools/test/world-portal-action.test.mjs
+          node tools/test/farm-game-feel.test.mjs
+          node tools/test/woodland-layout.test.mjs
+      - name: Reproduce and fix the blank frame under stalled network requests
+        run: node tools/test/startup-network.mjs
+      - name: Commit only the successfully tested repair to its branch
+        if: github.ref == 'refs/heads/fix/main-startup-20260908' && github.event_name == 'push'
+        run: |
+          git add src index.html
+          git add -f vendor/three/
+          if git ls-files --error-unmatch tools/repair-startup.py >/dev/null 2>&1; then git add -u tools/repair-startup.py; fi
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'fix: render farm before scenery, bound pending loads and self-host Three.js'
+            git push origin HEAD:refs/heads/fix/main-startup-20260908
+          fi
       - name: Keep startup diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,10 +76,3 @@ jobs:
           name: startup-diagnostics
           path: smoke-results/
           retention-days: 3
-      - name: Keep the exact test renderer
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: startup-renderer
-          path: vendor/
-          retention-days: 1
