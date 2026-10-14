@@ -52,6 +52,9 @@ jobs:
       - name: Farm interactions and first basket
         run: node tools/test/farm-game-feel.test.mjs
 
+      - name: Sound effect decisions
+        run: node tools/test/sfx-bank.test.mjs
+
       - name: Walkable woodland layout
         run: node tools/test/woodland-layout.test.mjs
 

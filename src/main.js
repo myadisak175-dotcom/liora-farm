@@ -35,6 +35,7 @@ import { setStoreReporter, storageFootprint } from "./systems/local-store.js";
 import { createFarmUI } from "./ui/farm-ui.js";
 import { createFarmPresentation } from "./ui/farm-presentation.js";
 import { bindPlayerActionButtons } from "./ui/player-actions.js";
+import { WORLD_EVENTS } from "./systems/world-events.js";
 import { createPerfHud, isPerfHudEnabled } from "./ui/perf-hud.js";
 import { createFullscreenControl } from "./ui/fullscreen.js";
 import { createMapScope, DEFAULT_MAP_ID } from "./systems/map-scope.js";
@@ -464,7 +465,18 @@ farmUI = createFarmUI({
   onToast: toast,
   onTargetChange: (target) => farmPresentation.setTarget(target),
   onActionStart: ({ position }) => playerRuntime.facePoint(position),
-  onActionComplete: (event) => farmPresentation.onAction(event),
+  onActionComplete: (event) => {
+    farmPresentation.onAction(event);
+    // Published on the shared channel so sound (and later quests or stats)
+    // can react without farm-ui knowing they exist.
+    WORLD_EVENTS.emit({
+      type: "farm-action",
+      action: event.type,
+      index: event.index,
+      position: event.position,
+      pouch: event.pouch,
+    });
+  },
 });
 bindPlayerActionButtons({
   buttons: document.querySelectorAll("[data-action]"),
