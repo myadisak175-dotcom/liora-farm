@@ -135,7 +135,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           const px = pos.x + Math.cos(heading) * stepSide * 0.12, pz = pos.z - Math.sin(heading) * stepSide * 0.12;
           // gentle pushes, a little apart: stacked up too close and too hard the surface rebounds under her legs like jelly
           const body = (0.7 + 0.6 * Math.min(1, depthHere / 0.4)) * 0.55;
-          level.ripple(px, pz, moving ? body : body * 0.8, moving ? 0.34 : 0.42);
+          level.ripple(px, pz, moving ? body : body * 0.8, moving ? 0.34 : 0.42, moving ? 'step' : 'plain');
           wade = moving ? 0.2 : 1.5;
         }
       } else wade = 0;

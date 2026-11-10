@@ -20,6 +20,7 @@ import * as G from './stylized-grassfield.js';
 import * as Cliffs from './stylized-cliffs.js';
 import * as W from './stylized-water.js';
 import { createAnimeCells } from './anime-cells.js';
+import { createWaterDroplets } from './water-droplets.js';
 
 const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -334,6 +335,9 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   const foamTexture = await W.loadFoamTexture();
   await onStep('เติมน้ำ');
   const animeCells = createAnimeCells();
+  const droplets = createWaterDroplets({ time: N._internal.shared.uTime });
+  droplets.points.userData.dispose = droplets.dispose;
+  group.add(droplets.points);
   let water, sim, optics, pads3d = null;
   const flowRows = [];            // [x, z, downstream x, downstream z, F] for every row of the water ribbon
   {
@@ -373,14 +377,19 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
     group.add(water);
   }
-  // something touches the water, and the wave simulation does the rest. A splash (a tap, a jump) makes the water swell up a little
-  // and throws a patch of foam with a broken rim; a footstep presses a dip that rings outward and leaves a wisp of foam behind;
-  // mode 'plain' is a dip with no foam (the falls, a fish).
+  // something touches the water, and the wave simulation does the rest. A splash (a tap, a jump) makes the water swell up a little,
+  // throws a patch of foam with a broken rim and a handful of drops; a footstep ('step') presses a dip that rings outward, leaves a
+  // wisp of foam and flicks a drop or two; mode 'plain' is a dip with nothing else (the falls, a fish, standing still).
   const ripple = (x, z, strength = 1, radius = 0.26, mode = null) => {
-    const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value;
+    const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * k);
-    else if (mode === 'splash' || (mode === null && strength >= 1.5)) sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
-    else sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.4, 0.5 * strength) * foam);
+    else if (mode === 'splash' || (mode === null && strength >= 1.5)) {
+      sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
+      if (drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, strength / 2.4 * drop, Math.round(9 * Math.min(1.5, drop)));
+    } else {
+      sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.55, 0.75 * strength) * foam);
+      if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, 0.16 * drop, 2);
+    }
   };
   // lily pads: a few rafts in the pond's quiet shallows, some in flower
   const pondSpots = [];           // open water of the pond, for the odd ripple from a fish
@@ -466,7 +475,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   let nextStir = 3;
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
-  const hidden = [water, grass, pads3d, ].filter(Boolean);
+  const hidden = [water, grass, pads3d, droplets.points].filter(Boolean);
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0;
   const waterSpheres = [];
@@ -480,6 +489,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       sim.step(renderer, dt);
+      droplets.update(renderer);
       if (!scene || !camera) return;
       // the two water pictures cost a redraw of the scene each, so they are only refreshed when water is on screen
       // and close enough to matter: the see-through picture every frame, the mirror every 2nd (or 4th) frame

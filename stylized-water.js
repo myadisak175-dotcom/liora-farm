@@ -78,6 +78,8 @@ export const WATER_TUNE = {
   // splashes are made by the wave simulation itself: a heap of water where something lands, and painted foam thrown onto it
   splashBump: { value: 1 },        // how high the water swells where it is hit
   splashFoam: { value: 1 },        // how much foam a splash or a footstep leaves
+  drops: { value: 1 },             // drops of water thrown into the air (water-droplets.js); 0 = none
+  ring: { value: 1 },              // how brightly the crests of the simulated rings catch the light
   lace: { value: 1 },              // foam islands drifting on the surface
 };
 const TUNE_UNIFORMS = () => ({
@@ -191,7 +193,7 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       // foam thrown by a touch. f > 0: a splash = a soft patch with a broken, uneven rim around it. f < 0: a footstep = one small wisp.
       float foamPoke(vec4 i, float f, vec2 xz) {
         vec2 d = xz - i.xy;
-        if (f < 0.0) { float r = i.z * 0.8; return -f * exp(-dot(d, d) / (r * r)); }
+        if (f < 0.0) { float r = i.z * 0.9; return -f * exp(-dot(d, d) / (r * r)); }
         float k = length(d) / (i.z * 1.35), ang = atan(d.y, d.x);
         float lobes = 0.55 + 0.45 * sin(ang * 7.0 + i.x * 3.1 + i.y * 1.7) * sin(ang * 3.0 - i.x * 2.3 + 1.0);
         return f * max(0.6 * exp(-k * k * 2.2), lobes * exp(-(k - 0.85) * (k - 0.85) * 7.0));
@@ -416,7 +418,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
     uSim: S.texture, uSimRect: { value: S.rect }, uSimPx: { value: S.enabled ? S.rect.z / S.size : 1 },
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
-    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uLace: WATER_TUNE.lace,
+    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uLace: WATER_TUNE.lace, uRing: WATER_TUNE.ring,
     uFoamMap: { value: foamMap },
     uFoamMapOn: { value: foamTexture ? 1 : 0 },
     uFoam: { value: rgb(L.foam) }, uCell: { value: rgb(L.cell) }, uSky: { value: rgb(L.sky) },
@@ -462,7 +464,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       ${SHORE_WAVES}
       ${SIM_PARS}
       uniform sampler2D uHeight, uThrough, uMirror, uFoamMap, uAnimeCells;
-      uniform float uAnimeOn, uLace;
+      uniform float uAnimeOn, uLace, uRing;
       uniform float uFoamMapOn, uBrushScale;
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
@@ -635,6 +637,9 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float spec = pow(max(dot(N, Hh), 0.0), 140.0);
         white = max(white, min(0.55, spec * 0.5) * uGlint * smoothstep(0.1, 0.35, depth));
 
+        // the crests of the rings made by a touch catch the light: a soft pale band riding each ring, so the rings read from any angle
+        float crest = smoothstep(0.004, 0.022, s0) * (1.0 - smoothstep(0.06, 0.16, s0) * 0.5);
+        col = mix(col, uCell, clamp(crest * 0.42 * uRing, 0.0, 0.8) * smoothstep(0.0, 0.06, depth));
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
         col = mix(col, uFar, smoothstep(uFadeA, uFadeB, length(xz)));

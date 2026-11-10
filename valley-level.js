@@ -13,6 +13,7 @@ import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import { createAnimeCells } from './anime-cells.js';
+import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall } from './stylized-waterfall.js';
 
 const { mulberry32 } = N._internal;
@@ -184,6 +185,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const stream = [];
   for (let z = fall.z - 0.6; z <= B.z1; z += 0.5) stream.push([rx(z), z, WL, rw(z), 1.3]);
   const animeCells = createAnimeCells();
+  const droplets = createWaterDroplets({ time: N._internal.shared.uTime });
+  droplets.points.userData.dispose = droplets.dispose;
+  group.add(droplets.points);
   let water, sim, optics, upperWater, waterfall;
   // a ribbon of water along a list of [x, z, level, half width] rows, carrying the flow coordinates the water shader needs
   const flowRibbon = (rows, across, extra) => {
@@ -258,14 +262,19 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
   }
-  // something touches the water, and the wave simulation does the rest. A splash (a tap, a jump) makes the water swell up a little
-  // and throws a patch of foam with a broken rim; a footstep presses a dip that rings outward and leaves a wisp of foam behind;
-  // mode 'plain' is a dip with no foam (the falls, a fish).
+  // something touches the water, and the wave simulation does the rest. A splash (a tap, a jump) makes the water swell up a little,
+  // throws a patch of foam with a broken rim and a handful of drops; a footstep ('step') presses a dip that rings outward, leaves a
+  // wisp of foam and flicks a drop or two; mode 'plain' is a dip with nothing else (the falls, a fish, standing still).
   const ripple = (x, z, strength = 1, radius = 0.26, mode = null) => {
-    const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value;
+    const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * k);
-    else if (mode === 'splash' || (mode === null && strength >= 1.5)) sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
-    else sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.4, 0.5 * strength) * foam);
+    else if (mode === 'splash' || (mode === null && strength >= 1.5)) {
+      sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
+      if (drop > 0 && sim.inside(x, z)) droplets.emit(x, WL, z, strength / 2.4 * drop, Math.round(9 * Math.min(1.5, drop)));
+    } else {
+      sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.55, 0.75 * strength) * foam);
+      if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, WL, z, 0.16 * drop, 2);
+    }
   };
 
   // ------------------------------------------------------------------ forest batches
@@ -318,7 +327,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
 
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
-  const hidden = [water, grass];
+  const hidden = [water, grass, droplets.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0, nextSplash = 0, lastRenderer = null;
   const waterSpheres = [];
@@ -350,6 +359,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
       sim.step(renderer, dt);
+      droplets.update(renderer);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
       const nowT = N._internal.shared.uTime.value;
       if (castBusy) {
