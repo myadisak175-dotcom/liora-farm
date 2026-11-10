@@ -54,12 +54,13 @@
   html:fullscreen, html:-webkit-full-screen { width: 100%; height: 100%; }
   #waterView, #splashTest { position:fixed; left:max(10px,env(safe-area-inset-left)); top:calc(38px + env(safe-area-inset-top)); z-index:4; border:1px solid #ffffff88; border-radius:999px; padding:9px 14px; background:#205f70dc; color:white; font:600 12px system-ui; touch-action:manipulation; }
   #splashTest { top:calc(80px + env(safe-area-inset-top)); background:#f6fcfff0; color:#205f70; }
+  #animeBtn { position:fixed; left:max(10px,env(safe-area-inset-left)); top:calc(122px + env(safe-area-inset-top)); z-index:4; border:1px solid #ffffff88; border-radius:999px; padding:9px 14px; background:#2d7fd0dc; color:white; font:600 12px system-ui; touch-action:manipulation; }
 </style>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "./anime-cells.js": "./anime-cells.js?v=sim1",
-  "./water-droplets.js": "./water-droplets.js?v=step3",
+  "./water-droplets.js": "./water-droplets.js?v=anime1",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=bark2",
   "./stylized-terrain.js": "./stylized-terrain.js?v=foamphysics1",
@@ -68,18 +69,18 @@
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=tod3",
   "./stylized-character.js": "./stylized-character.js?v=foamphysics1",
-  "./meadow-level.js": "./meadow-level.js?v=step3",
-  "./stylized-water.js": "./stylized-water.js?v=step3net3",
-  "./water-tuner.js": "./water-tuner.js?v=step3",
+  "./meadow-level.js": "./meadow-level.js?v=anime1",
+  "./stylized-water.js": "./stylized-water.js?v=anime1net3",
+  "./water-tuner.js": "./water-tuner.js?v=anime1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
   "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
   "./time-of-day.js": "./time-of-day.js?v=tod3",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
-  "./hills-level.js": "./hills-level.js?v=step3",
-  "./valley-level.js": "./valley-level.js?v=step3",
+  "./hills-level.js": "./hills-level.js?v=anime1",
+  "./valley-level.js": "./valley-level.js?v=anime1",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall6",
-  "./player.js": "./player.js?v=step3"
+  "./player.js": "./player.js?v=anime1"
 } }
 </script>
 </head>
@@ -206,6 +207,12 @@ fit();
 const waterView = document.createElement('button'); waterView.id = 'waterView'; waterView.textContent = 'ไปดูน้ำ'; document.body.append(waterView);
 const splashTest = document.createElement('button'); splashTest.id = 'splashTest'; splashTest.textContent = 'ทดสอบน้ำกระเซ็น'; document.body.append(splashTest);
 let splashTarget = null;
+// anime water / realistic water: one tap, remembered
+const animeBtn = document.createElement('button'); animeBtn.id = 'animeBtn'; document.body.append(animeBtn);
+try { const a = localStorage.getItem('meadow.water.anime'); if (a !== null) WATER_TUNE.anime.value = +a ? 1 : 0; } catch (e) { /* nothing saved */ }
+const paintAnime = () => { animeBtn.textContent = WATER_TUNE.anime.value ? 'น้ำ: อนิเมะ' : 'น้ำ: สมจริง'; };
+animeBtn.onclick = () => { WATER_TUNE.anime.value = WATER_TUNE.anime.value ? 0 : 1; try { localStorage.setItem('meadow.water.anime', WATER_TUNE.anime.value); } catch (e) { /* not remembered */ } paintAnime(); };
+paintAnime();
 function visitWater() {
   const origin = player.position;
   let best = null, score = Infinity;

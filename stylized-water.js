@@ -82,10 +82,11 @@ export const WATER_TUNE = {
   ring: { value: 1 },              // how brightly the crests of the simulated rings catch the light
   stepRing: { value: 1 },          // anime foam rings thrown out by footsteps, splashes and the falls (0 = none)
   lace: { value: 1 },              // foam islands drifting on the surface
+  anime: { value: 1 },             // 1 = anime water (flat colour bands, hard-edged foam, drawn strokes, hardly any mirror); 0 = the clear, realistic water
 };
 const TUNE_UNIFORMS = () => ({
   uCaustic: WATER_TUNE.caustic, uCausticScale: WATER_TUNE.causticScale, uSwell: WATER_TUNE.swell, uShimmer: WATER_TUNE.shimmer, uSpeed: WATER_TUNE.speed,
-  uRefract: WATER_TUNE.refract, uReflect: WATER_TUNE.reflect, uClear: WATER_TUNE.clear, uFoamAmt: WATER_TUNE.foam, uGlint: WATER_TUNE.glint, uFleck: WATER_TUNE.fleck, uShore: WATER_TUNE.shore, uBrushScale: WATER_TUNE.brushScale,
+  uRefract: WATER_TUNE.refract, uReflect: WATER_TUNE.reflect, uClear: WATER_TUNE.clear, uFoamAmt: WATER_TUNE.foam, uGlint: WATER_TUNE.glint, uFleck: WATER_TUNE.fleck, uShore: WATER_TUNE.shore, uBrushScale: WATER_TUNE.brushScale, uToon: WATER_TUNE.anime,
 });
 
 // FLOW. Everything that moves on the water moves downstream, at the speed of the water where it is.
@@ -519,7 +520,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       ${SHORE_WAVES}
       ${SIM_PARS}
       uniform sampler2D uHeight, uThrough, uMirror, uFoamMap, uAnimeCells;
-      uniform float uAnimeOn, uLace, uRing;
+      uniform float uAnimeOn, uLace, uRing, uToon;
       uniform float uFoamMapOn, uBrushScale;
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
@@ -616,7 +617,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
 
         // ---- what lies under the water, seen through a surface that bends the view
         vec2 suv = gl_FragCoord.xy * uInvRes;
-        vec3 under = texture2D(uThrough, suv + N.xz * (0.012 + 0.035 * smoothstep(0.0, 0.9, depth)) * uOptics * uRefract).rgb;
+        vec3 under = texture2D(uThrough, suv + N.xz * (0.012 + 0.035 * smoothstep(0.0, 0.9, depth)) * uOptics * uRefract * (1.0 - 0.75 * uToon)).rgb;
         // sunlight netting on the bottom: two soft layers of cells sliding over each other (glow, not drawn lines)
         vec2 cp = q * uCausticScale + (vec2(noise2(q * 0.5 + 2.0), noise2(q * 0.5 + 9.0)) - 0.5) * 1.6 + N.xz * 0.5;
         float net = ridge(cp * 0.9) * ridge(cp * 1.5 + vec2(4.7, -t * 0.1));
@@ -630,14 +631,24 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         body = mix(body, uMid, smoothstep(0.1, 0.9, dn));
         body = mix(body, uDeep, smoothstep(0.5, 1.7, dn));
         body = mix(body, uAbyss, smoothstep(1.2, 3.0, dn));
-        body += uCell * caustic * uCaustic * 0.3;
-        vec3 col = mix(under, body, mix(0.16, 0.95, smoothstep(0.0, uClear, depth)));
+        float cover = mix(0.16, 0.95, smoothstep(0.0, uClear, depth));
+        if (uToon > 0.5) {
+          // anime water: a few flat colours with drawn edges between them instead of a soft run of depth, and hardly see-through
+          float dt2 = depth + (noise2(xz * 0.35 + 3.0) - 0.5) * 0.3;
+          body = mix(vec3(0.62, 0.93, 0.86), uShallow, smoothstep(0.10, 0.13, dt2));
+          body = mix(body, mix(uShallow, uMid, 0.75), smoothstep(0.34, 0.38, dt2));
+          body = mix(body, uMid, smoothstep(0.75, 0.80, dt2));
+          body = mix(body, mix(uMid, uDeep, 0.6), smoothstep(1.50, 1.58, dt2));
+          cover = mix(0.5, 0.96, smoothstep(0.0, 0.22, depth));
+        }
+        body += uCell * caustic * uCaustic * 0.3 * (1.0 - 0.6 * uToon);
+        vec3 col = mix(under, body, cover);
         // faces of the waves turned to the sun are a little lighter, the others a little darker: soft, no outlines
         col *= 1.0 + clamp(dot(sl, -normalize(uSun.xz)) * 2.2 + vLift * 3.0, -0.13, 0.16);
         // Sunlight glowing through the thin water at the edges, strongest when looking towards the sun.
         float throughSun = pow(max(dot(-V, normalize(uSun)), 0.0), 2.0);
         float thin = 1.0 - smoothstep(0.05, 0.85, dn);
-        col += vec3(0.50, 0.92, 0.52) * thin * (0.08 + 0.20 * throughSun) * smoothstep(0.0, 0.05, depth);
+        col += vec3(0.50, 0.92, 0.52) * thin * (0.08 + 0.20 * throughSun) * smoothstep(0.0, 0.05, depth) * (1.0 - uToon);
 
         // ---- the scene mirrored on the surface, stronger at low angles, broken up by the waves
         float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
@@ -646,7 +657,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         // blended between them it left a straight crease along every triangle edge, which the mirror showed as long diagonal lines.
         vec4 mc = uMirrorMatrix * vec4(vWP.x, vWP.y - vLift, vWP.z, 1.0);
         vec3 refl = mix(uSky, texture2D(uMirror, mc.xy / mc.w + N.xz * 0.06).rgb, uOptics * uMirrorOn);
-        col = mix(col, refl, fres * uReflect * smoothstep(0.0, 0.15, depth));
+        col = mix(col, refl, fres * uReflect * (1.0 - 0.85 * uToon) * smoothstep(0.0, 0.15, depth));
 
         // The open surface carries no drawn lines or blotches: its look comes from the fine ripples above
         // (they bend the mirrored scene) plus the soft sun sparkle below.
@@ -711,7 +722,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         // Soft sun sparkle on the small ripples: broad, rounded highlights, never lines.
         vec3 Hh = normalize(normalize(uSun) + V);
         float spec = pow(max(dot(N, Hh), 0.0), 140.0);
-        white = max(white, min(0.55, spec * 0.5) * uGlint * smoothstep(0.1, 0.35, depth));
+        white = max(white, min(0.55, spec * 0.5) * uGlint * smoothstep(0.1, 0.35, depth) * (1.0 - uToon));
 
         // the tops of the rings made by a touch are a shade paler: a soft glow with no edge of its own, strongest on a fresh
         // splash and next to nothing on the small rings of a footstep. The rings' shape is left to the light bending through them.
@@ -721,6 +732,20 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 rings = foamRings(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth);
         col = mix(col, uCell, clamp(rings.y * 0.6, 0.0, 0.8));
         white = max(white, rings.x * 0.95);
+        if (uToon > 0.5) {
+          // short white strokes, all lying the same way and drifting slowly, coming and going: the drawn highlights of anime water
+          vec2 dp = vec2(xz.x * 0.7 - t * 0.02, xz.y * 2.0) + (noise2(xz * 0.3 + 4.0) - 0.5) * 0.4;
+          vec2 di = floor(dp), df = fract(dp) - 0.5;
+          float dh = hash2(di + 17.0);
+          vec2 dj = df - (hash22(di + 3.0) - 0.5) * 0.5;
+          float len = 0.12 + 0.16 * hash2(di + 41.0), along = abs(dj.x) / len;
+          float wide = 0.11 * (1.0 - along * along);
+          float dash = (1.0 - smoothstep(wide * 0.7, wide, abs(dj.y))) * step(along, 1.0);
+          dash *= step(0.5, dh) * smoothstep(0.1, 0.4, sin(uTime * 0.6 + dh * 40.0));
+          dash *= smoothstep(0.2, 0.45, depth) * (1.0 - smoothstep(30.0, 60.0, length(cameraPosition - vWP)));
+          white = max(white, dash * 0.9);
+          white = smoothstep(0.28, 0.4, white);          // foam has a drawn edge: white or not
+        }
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
         col = mix(col, uFar, smoothstep(uFadeA, uFadeB, length(xz)));
