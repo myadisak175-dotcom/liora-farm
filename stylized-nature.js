@@ -1346,3 +1346,4 @@ export function createAlphaFix() {
 
 // shared pieces for sibling modules (stylized-terrain.js)
 export const _internal = { NOISE, VCOMMON, HAZEF, rgb, fbm3, mulberry32, range, shared, canvasTex };
+export { rockMaterial };

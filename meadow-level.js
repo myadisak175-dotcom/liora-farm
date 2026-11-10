@@ -17,6 +17,7 @@ import * as N from './stylized-nature.js';
 import * as T from './stylized-terrain.js';
 import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
+import * as Cliffs from './stylized-cliffs.js';
 import * as W from './stylized-water.js';
 
 const { fbm3, mulberry32 } = N._internal;
@@ -240,6 +241,62 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   // meadow
   rock('boulder', -30, 20, 1.1, 0.2); rock('slab', 26, 31, 1.0, 0.1); rock('stones', -8, -22, 0.9); rock('boulder', 8, -40, 1.0, 0.2);
   rock('stones', -52, 22, 1.0); rock('boulder', 62, -28, 1.2, 0.2);
+
+  // ------------------------------------------------------------------ cliffs, big boulders and shore stones
+  // Everything here is tried from a candidate list: a spot that is taken (tree, trail, water, another rock) is simply
+  // skipped. A failure in this block never stops the meadow from loading.
+  await onStep('ตั้งหน้าผาและก้อนหินใหญ่');
+  try {
+    const clearAt = (x, z, r) => gridAt(wEdge, x, z) > r + 1.2 && trailDist(x, z) > r + 1.3 && inPlot(x, z) > r + 1
+      && Math.hypot(x - M.lawn.x, z - M.lawn.z) > M.lawn.r + r && Math.hypot(x - M.spawn.x, z - M.spawn.z) > 5 + r
+      && placed.every(p => Math.hypot(p[0] - x, p[1] - z) > p[2] + r);
+    const cliffList = [];
+    let cs = seed * 53;
+    // a piece standing at (x, z) with its face towards (fx, fz); its feet follow the lowest ground under it
+    const cliff = (type, x, z, fx, fz, opts = {}) => {
+      const rotY = Math.atan2(fx - x, fz - z), c = Math.cos(rotY), s = Math.sin(rotY);
+      const fp = Cliffs.cliffFootprint(type, opts).map(([u, v, r]) => [x + u * c + v * s, z - u * s + v * c, r]);
+      if (!fp.every(([px, pz, r]) => clearAt(px, pz, r))) return false;
+      const y = Math.min(...fp.map(([px, pz]) => H(px, pz))) - 0.2;
+      cliffList.push({ type, x, y, z, rotY, seed: ++cs, opts });
+      for (const [px, pz, r] of fp) { colliders.push([px, pz, r]); placed.push([px, pz, r]); shade.push([px, pz, r * 2, 0.5]); }
+      return true;
+    };
+    // the stone-circle hill: a broken ring of cliff on its flanks, the trail left open
+    for (let a = 0; a < 360; a += 30) {
+      if (rng() < 0.25) continue;
+      const ang = a * Math.PI / 180, x = M.hill.x + Math.cos(ang) * 13.5, z = M.hill.z + Math.sin(ang) * 13.5;
+      cliff(rng() < 0.3 ? 'corner' : 'wall', x, z, x + Math.cos(ang) * 10, z + Math.sin(ang) * 10, { width: 5.5 + rng() * 2.5 });
+    }
+    // the far bank of the pond and the stream's inflow
+    for (const [x, z] of [[47, -9], [47.5, 0], [46, 7]]) cliff('ledge', x, z, 31, -3, { width: 6 + rng() * 2 });
+    for (const [x, z] of [[34, -26], [27, -24]]) cliff('wall', x, z, 31, -8, { width: 5.5 });
+    // the rim of the map, where the land already rises under the forest
+    for (let a = 0; a < 360; a += 11) {
+      if (rng() < 0.35) continue;
+      const ang = a * Math.PI / 180, x = Math.cos(ang) * 64, z = Math.sin(ang) * 64;
+      cliff(rng() < 0.2 ? 'spire' : 'wall', x, z, 0, 10, { width: 6 + rng() * 3, height: 4.2 + rng() * 1.6 });
+    }
+    if (cliffList.length) rocks.add(Cliffs.createCliffSet(cliffList));
+    // big mossy boulders
+    let bigBoulders = 0;
+    for (const [x, z, sc] of [[-14, -48, 2.4], [-46, -40, 2.6], [-44, -16, 2.2], [14, -30, 2.4], [50, -24, 2.6], [56, 10, 2.3], [-60, -5, 2.5], [40, 40, 2.4], [-20, 50, 2.3], [-38, -52, 2.8]]) {
+      if (clearAt(x, z, 1.15 * sc)) { rock('boulder', x, z, sc, 0.35); bigBoulders++; }
+    }
+    // round stones in the shallows along the pond's edge
+    const shore = [];
+    for (let x = 14; x <= 48; x += 1.5) for (let z = -24; z <= 24; z += 1.5) {
+      const e = gridAt(wEdge, x, z);
+      if (e > 0.3 && e < 1.5 && trailDist(x, z) > 2.5) shore.push([x, z]);
+    }
+    let shoreStones = 0;
+    for (let i = shore.length - 1; i > 0 && shoreStones < 18; i--) {
+      const j = Math.floor(rng() * (i + 1)); [shore[i], shore[j]] = [shore[j], shore[i]];
+      const [x, z] = shore[i], sc = 0.8 + rng() * 0.7;
+      if (placed.every(p => Math.hypot(p[0] - x, p[1] - z) > p[2] + 0.7 * sc + 1.8)) { rock('river', x, z, sc, 0.15); shoreStones++; }
+    }
+    console.info('[meadow] cliffs', cliffList.length, 'big boulders', bigBoulders, 'shore stones', shoreStones);
+  } catch (err) { console.warn('[meadow] cliffs skipped:', err); }
 
   // ------------------------------------------------------------------ ground colour map (reads the plan above)
   await onStep('ระบายสีพื้น');
