@@ -132,7 +132,9 @@ const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
 // Bound Retina render cost; recover resolution gradually when the device has headroom.
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const maxDPR = Math.min(devicePixelRatio || 1, 2);
+const fastMode = new URLSearchParams(location.search).get('fps') === '120';
+const targetFPS = fastMode ? 120 : 60;
+const maxDPR = Math.min(devicePixelRatio || 1, fastMode ? 1.25 : 2);
 let renderDPR = IOS ? Math.min(maxDPR, 1.5) : maxDPR;
 renderer.setPixelRatio(renderDPR);
 renderer.setSize(innerWidth, innerHeight);
@@ -163,11 +165,11 @@ const b64ToBuffer = b64 => { const bin = atob(b64), u = new Uint8Array(bin.lengt
 N.setHaze({ color: HAZE, near: 45, far: 230, max: 0.6 });
 await onStep('วาดท้องฟ้า');
 const Q = new URLSearchParams(location.search);          // ?grass=120000 to force a blade count, ?still=1 to render on demand (tests), ?sky=1024 panorama width
-const skyW = +Q.get('sky') || (IOS ? 1536 : 2560);
+const skyW = +Q.get('sky') || (fastMode ? 1024 : IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
 scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
-const level = await buildMeadowLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 200000 });
+const level = await buildMeadowLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || (fastMode ? 120000 : 200000) });
 scene.add(level.group);
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
@@ -189,6 +191,7 @@ setStyle(Q.get('paint') !== '0');
 
 const tunerPanel = document.getElementById('tuner');
 createWaterTuner({ tune: WATER_TUNE, optics: level.optics, button: document.getElementById('tune'), panel: tunerPanel });
+if (fastMode) level.optics.setQuality(1);
 // cloud shadows: only with the volumetric sky (they ride on its wind), and only once everything is in the scene
 const shadows = sky.userData.tune ? createCloudShadows({ sky }) : null;
 if (shadows) shadows.apply(scene);
@@ -204,23 +207,23 @@ function tune(dt) {
   const fps = fpsN / fpsT; fpsN = 0; fpsT = 0;
   const g = level.grass.userData;
   if (warm > 4) {
-    if (fps < 47 && renderDPR > 1) {
+    if (fps < targetFPS * 0.78 && renderDPR > 1) {
       renderDPR = Math.max(1, renderDPR - 0.125); renderer.setPixelRatio(renderDPR); fit();
       warm = 2; good = 0; return;
     }
-    if (fps > 58 && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
+    if (fps > targetFPS * 0.97 && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
       if (++good >= 8) { renderDPR = Math.min(maxDPR, renderDPR + 0.125); renderer.setPixelRatio(renderDPR); fit(); warm = 2; good = 0; }
       return;
     }
     // too slow: first give up mirror quality (the costliest thing on screen), only then thin the grass
-    if (fps < 47 && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); warm = 2; good = 0; }       // cheapest saving first: redraw the clouds less often
-    else if (fps < 47 && level.optics.quality > 0) { level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); warm = 2; good = 0; }
-    else if (fps < 47 && g.density > 0.3) { g.setDensity(g.density * 0.8); good = 0; }
-    else if (fps > 56 && g.density < 1) { if (++good >= 3) { g.setDensity(g.density * 1.12); good = 0; } }
-    else if (fps > 56 && sky.userData.rate < 1) { if (++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); good = 0; } }
+    if (fps < targetFPS * 0.78 && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); warm = 2; good = 0; }       // cheapest saving first: redraw the clouds less often
+    else if (fps < targetFPS * 0.78 && level.optics.quality > 0) { level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); warm = 2; good = 0; }
+    else if (fps < targetFPS * 0.78 && g.density > 0.3) { g.setDensity(g.density * 0.8); good = 0; }
+    else if (fps > targetFPS * 0.93 && g.density < 1) { if (++good >= 3) { g.setDensity(g.density * 1.12); good = 0; } }
+    else if (fps > targetFPS * 0.93 && sky.userData.rate < 1) { if (++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); good = 0; } }
     else good = 0;
   }
-  fpsEl.textContent = Math.round(fps) + ' fps · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
+  fpsEl.textContent = Math.round(fps) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
 }
 
 const clock = new THREE.Clock();
