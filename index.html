@@ -40,6 +40,8 @@
   #loading span { font-size: 13px; color: #6d8a4f; min-height: 1.3em; }
   #bar { width: min(240px, 60vw); height: 5px; border-radius: 3px; background: #cfe0bd; overflow: hidden; }
   #bar i { display: block; height: 100%; width: 0; background: #6f9a3c; transition: width .25s; }
+  #fullscreen { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 142px; z-index: 4; font: inherit; font-size: 12px; color: white; background: rgba(39,52,26,.78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; }
+  html:fullscreen, html:-webkit-full-screen { width: 100%; height: 100%; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -63,6 +65,35 @@
 </script>
 </head>
 <body>
+<button id="fullscreen" aria-label="เปิดโหมดเต็มจอ" aria-pressed="false">⛶ เต็มจอ</button>
+<script>
+(() => {
+  const button = document.getElementById('fullscreen');
+  const active = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const sync = () => {
+    button.textContent = active() ? '⛶ ออกจากเต็มจอ' : '⛶ เต็มจอ';
+    button.setAttribute('aria-pressed', String(!!active()));
+    button.setAttribute('aria-label', active() ? 'ออกจากโหมดเต็มจอ' : 'เปิดโหมดเต็มจอ');
+    window.dispatchEvent(new Event('resize'));
+  };
+  button.onclick = async () => {
+    try {
+      if (active()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+      } else {
+        const root = document.documentElement;
+        const enter = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (!enter) { button.textContent = 'เบราว์เซอร์นี้ไม่รองรับเต็มจอ'; return; }
+        await enter.call(root);
+      }
+    } catch (error) { button.textContent = 'แตะเพื่อลองเต็มจออีกครั้ง'; }
+    // Keep the device orientation free: portrait and landscape both remain available.
+  };
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+})();
+</script>
 <div id="stick"><i></i></div>
 <div id="fps"></div>
 <button id="style">หญ้า: พู่กัน</button>
