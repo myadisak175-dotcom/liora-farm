@@ -458,6 +458,16 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
                    shoreH(xz + vec2(0.0, eps), restDepth + ground - gz, t) - sh0)
                    / eps * uShore * mix(1.0, 0.18, stream);
         vec2 shimmer = (vec2(noise2(q * 2.6 + 1.0), noise2(q2 * 2.6 + 5.0)) - 0.5) * 1.6 * uShimmer * smoothstep(0.02, 0.3, depth);
+        // Fine ripples: two small wave layers crossing in different directions. They only tilt the surface
+        // (so the mirrored scene and sun wobble); nothing is painted on top. Faded out with distance to avoid crawling.
+        vec2 rpA = xz * 3.4 + vec2(t * 0.30, t * 0.18);
+        vec2 rpB = xz * 5.6 + vec2(-t * 0.24, t * 0.34);
+        const vec2 dE = vec2(0.07, 0.0);
+        float rA = noise2(rpA), rB = noise2(rpB);
+        vec2 ripple = vec2(noise2(rpA + dE.xy) - rA, noise2(rpA + dE.yx) - rA) * 0.6
+                    + vec2(noise2(rpB + dE.xy) - rB, noise2(rpB + dE.yx) - rB) * 0.4;
+        float rippleFade = 1.0 - smoothstep(22.0, 55.0, length(cameraPosition - vWP));
+        shimmer += ripple * 9.0 * uShimmer * rippleFade * smoothstep(0.02, 0.3, depth);
         vec3 N = normalize(vec3(-sl.x * 3.0 - shimmer.x, 1.0, -sl.y * 3.0 - shimmer.y));
         vec3 V = normalize(cameraPosition - vWP);
 
@@ -475,8 +485,6 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec3 body = mix(uShallow, uMid, smoothstep(0.05, 1.0, dn));
         body = mix(body, uDeep, smoothstep(0.6, 2.0, dn));
         body = mix(body, uAbyss, smoothstep(1.6, 3.5, dn));
-        float blot = noise2(q * 0.42) * 0.6 + noise2(q * 1.1 + 4.0) * 0.4;      // darker drifting blotches
-        body *= 1.0 - 0.07 * smoothstep(0.5, 0.58, blot) * smoothstep(0.3, 0.6, depth);
         body += uCell * caustic * uCaustic * 0.3;
         vec3 col = mix(under, body, mix(0.16, 0.95, smoothstep(0.0, uClear, depth)));
         // faces of the waves turned to the sun are a little lighter, the others a little darker: soft, no outlines
@@ -488,19 +496,10 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec3 refl = mix(uSky, texture2D(uMirror, mc.xy / mc.w + N.xz * 0.06).rgb, uOptics * uMirrorOn);
         col = mix(col, refl, fres * uReflect * smoothstep(0.0, 0.15, depth));
 
-        // Short curved brush strokes, sparse over open water, carried downstream.
+        // The open surface carries no drawn lines or blotches: its look comes from the fine ripples above
+        // (they bend the mirrored scene) plus the soft sun sparkle below.
         vec2 drift = q + (vec2(noise2(q * 0.65 + 2.0), noise2(q * 0.65 + 8.0)) - 0.5) * 0.9;
-        float trailNoise = noise2(vec2(drift.x * 2.1, drift.y * 5.0));
-        float wavelet = smoothstep(0.75, 0.88, trailNoise)
-          * smoothstep(0.48, 0.72, noise2(drift * 1.3 + 17.0));
-        float surfaceBand = 1.0 - smoothstep(0.018, 0.065, abs(noise2(drift * vec2(3.3, 4.5)) - 0.54));
-        surfaceBand *= smoothstep(0.52, 0.76, noise2(drift * 1.9 + 31.0));
-        col = mix(col, uSky, surfaceBand * 0.13 * smoothstep(0.08, 0.25, depth));
-        // Painted strokes are the shape source. Noise only bends and breaks that artwork.
-        vec2 brushUV = drift * uBrushScale;
-        brushUV += (vec2(noise2(q * 0.5 + 1.0), noise2(q * 0.5 + 12.0)) - 0.5) * 0.035;
-        float brush = smoothstep(0.10, 0.72, paintedFoam(brushUV));
-        float white = wavelet * uFleck * 0.1 * smoothstep(0.12, 0.3, depth);
+        float white = 0.0;
 
         // Swash carries broken painted wisps towards the beach; backwash leaves short-lived foam.
         float shoreMask = (1.0 - smoothstep(0.22, 0.42, restDepth)) * smoothstep(-0.012, 0.022, depth);
@@ -543,6 +542,10 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         float wink = pow(max(0.0, sin(uTime * 1.3 + gh * 60.0)), 8.0);
         float sparkle = exp(-dot(go * vec2(14.0, 24.0), go * vec2(14.0, 24.0)));
         white = max(white, sparkle * wink * step(0.82, gh) * smoothstep(0.15, 0.4, depth) * uGlint);
+        // Soft sun sparkle on the small ripples: broad, rounded highlights, never lines.
+        vec3 Hh = normalize(normalize(uSun) + V);
+        float spec = pow(max(dot(N, Hh), 0.0), 140.0);
+        white = max(white, min(0.55, spec * 0.5) * uGlint * smoothstep(0.1, 0.35, depth));
 
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
