@@ -82,7 +82,7 @@ export const WATER_TUNE = {
   ring: { value: 1 },              // how brightly the crests of the simulated rings catch the light
   stepRing: { value: 1 },          // anime foam rings thrown out by footsteps, splashes and the falls (0 = none)
   lace: { value: 1 },              // foam islands drifting on the surface
-  anime: { value: 1 },             // 1 = anime water (flat colour bands, hard-edged foam, drawn strokes, hardly any mirror); 0 = the clear, realistic water
+  anime: { value: 0 },             // 1 = anime water (flat colour bands, hard-edged foam, drawn strokes, hardly any mirror); 0 = the clear, realistic water (the default)
 };
 const TUNE_UNIFORMS = () => ({
   uCaustic: WATER_TUNE.caustic, uCausticScale: WATER_TUNE.causticScale, uSwell: WATER_TUNE.swell, uShimmer: WATER_TUNE.shimmer, uSpeed: WATER_TUNE.speed,

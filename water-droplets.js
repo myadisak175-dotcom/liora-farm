@@ -79,7 +79,66 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
   points.frustumCulled = false;
   points.renderOrder = 3;
   points.visible = false;
-  let cursor = 0, last = -100;
+  // ---- the cone of water: where something lands, a thin sheet of water is thrown up and outwards in a cone (a crown), opens as it
+  // rises, tears into strands along its ragged lip and falls back. One instanced draw, a child of the drops so it shows and hides with them.
+  const CONES = 12;
+  const tube = new THREE.CylinderGeometry(1, 1, 1, 28, 6, true);
+  const cgeo = new THREE.InstancedBufferGeometry();
+  cgeo.index = tube.index;
+  cgeo.setAttribute('position', tube.attributes.position);
+  cgeo.setAttribute('uv', tube.attributes.uv);
+  const cone = new Float32Array(CONES * 4), coneSize = new Float32Array(CONES);
+  for (let i = 0; i < CONES; i++) cone[i * 4 + 3] = -100;
+  const aCone = new THREE.InstancedBufferAttribute(cone, 4), aConeSize = new THREE.InstancedBufferAttribute(coneSize, 1);
+  aCone.setUsage(THREE.DynamicDrawUsage); aConeSize.setUsage(THREE.DynamicDrawUsage);
+  cgeo.setAttribute('aCone', aCone);                                    // x, y, z, time of birth
+  cgeo.setAttribute('aSize', aConeSize);                                // metres
+  cgeo.instanceCount = CONES;
+  const cmat = new THREE.ShaderMaterial({
+    uniforms: { uTime: time, uToon: WATER_TUNE.anime, uLight: { value: new THREE.Color(light) }, uBody: { value: new THREE.Color(body) } },
+    vertexShader: /* glsl */`
+      attribute vec4 aCone;
+      attribute float aSize;
+      uniform float uTime;
+      varying float vV, vA, vK, vSeed;
+      void main() {
+        float life = 0.5 + 0.35 * aSize, k = (uTime - aCone.w) / life;
+        float v = position.y + 0.5;                                       // 0 at the water, 1 at the lip
+        float rise = sin(clamp(k, 0.0, 1.0) * 3.14159);
+        float h = aSize * 1.15 * pow(rise, 0.8);                          // up, then back down
+        float r = aSize * (0.2 + 0.6 * k) * (1.0 + 0.8 * v * v * (0.4 + k));     // widening all the time, the lip leaning out
+        vec3 p = aCone.xyz + vec3(position.x * r, v * h, position.z * r);
+        vV = v; vA = uv.x; vK = k; vSeed = fract(aCone.x * 0.37 + aCone.z * 0.71);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        if (k < 0.0 || k > 1.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uLight, uBody;
+      uniform float uToon;
+      varying float vV, vA, vK, vSeed;
+      void main() {
+        float a = vA * 6.2831853;
+        // a ragged lip: tongues of different heights round the rim, longer as the sheet thins
+        float top = 1.0 - (0.18 + 0.32 * vK) * (0.5 + 0.5 * sin(a * 7.0 + vSeed * 20.0)) * (0.6 + 0.4 * sin(a * 3.0 + vSeed * 9.0));
+        if (vV > top) discard;
+        // late on, the sheet splits from the lip down into strands
+        float tear = 0.5 + 0.5 * sin(a * 11.0 + vSeed * 31.0);
+        if (vV > 0.3 && tear * (1.0 - vV * 0.45) < (vK - 0.45) * 1.5) discard;
+        float lip = smoothstep(top - 0.14, top, vV);
+        vec3 col = mix(uBody, uLight, max(smoothstep(0.1, 0.8, vV) * 0.75, lip));
+        float alpha = mix(0.5, 0.9, max(vV, lip)) * (1.0 - smoothstep(0.8, 1.0, vK)) * smoothstep(0.0, 0.06, vV);
+        // anime water: flat colours, a white lip, no see-through
+        if (uToon > 0.5) { col = mix(mix(uBody, uLight, 0.45), uLight, step(top - 0.16, vV)); alpha = step(vK, 0.92); }
+        gl_FragColor = vec4(col, alpha);
+      }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const cones = new THREE.Mesh(cgeo, cmat);
+  cones.name = 'waterCones';
+  cones.frustumCulled = false;
+  cones.renderOrder = 3;
+  points.add(cones);
+  let cursor = 0, last = -100, coneCursor = 0;
   return {
     points,
     emit(x, y, z, power = 1, count = 8) {
@@ -97,6 +156,11 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
         cursor = (cursor + 1) % capacity;
       }
       aStart.needsUpdate = aVel.needsUpdate = aPar.needsUpdate = true;
+      // and the cone of water under them: knee-high for a full splash, ankle-high for a footstep
+      cone.set([x, y, z, now], coneCursor * 4);
+      coneSize[coneCursor] = (big ? 0.8 : 0.55) * s;
+      coneCursor = (coneCursor + 1) % CONES;
+      aCone.needsUpdate = aConeSize.needsUpdate = true;
       last = now;
       points.visible = true;
     },
@@ -108,6 +172,6 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
       }
       if (points.visible && time.value - last > 1.8) points.visible = false;        // nothing in the air: no draw at all
     },
-    dispose() { geo.dispose(); mat.dispose(); },
+    dispose() { geo.dispose(); mat.dispose(); cgeo.dispose(); tube.dispose(); cmat.dispose(); },
   };
 }
