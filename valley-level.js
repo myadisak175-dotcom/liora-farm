@@ -97,11 +97,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     plants.push({ kind: 'bush', type: rng() < 0.35 ? 'flowering' : 'round', seed: ++ps, x, y: HV(x, z), z, rotY: rng() * 6.28, scale });
     colliders.push([x, z, 0.75 * scale]); shade.push([x, z, 1.7 * scale, 0.45]); placed.push([x, z, 1.0 * scale]); castBall(x, z, 0.55 * scale, 0.95 * scale, 0.8, 0.2);
   };
+  const cameraTrunks = [];
   const tree = (type, x, z, scale = 1, detail = 0.8, bush = false) => {
     const y = HV(x, z);
     plants.push({ kind: 'tree', type, seed: ++ps, detail, x, y, z, rotY: rng() * 6.28, scale });
     placed.push([x, z, CROWN[type] * scale * 0.42]);
     colliders.push([x, z, TRUNK[type] * scale + 0.22]);
+    cameraTrunks.push([x, z, TRUNK[type] * scale + 0.12, y, y + CROWN_Y[type] * scale]);
     crowns.push([x, y + CROWN_Y[type] * scale, z, CROWN_R[type] * scale]);
     shade.push([x, z, CROWN[type] * scale * 1.05, 0.4]); bare.push([x, z, TRUNK[type] * scale * 1.5]);
     castBall(x, z, CROWN_Y[type] * scale, CROWN_R[type] * scale, 0.88, 0.3);
@@ -357,7 +359,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
-    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, spawn, radius: 1e4, confine,
+    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, confine,
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
     ripple, sim, optics, waterLevelAt: (x, z) => WL,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
@@ -410,4 +412,5 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
   };
 }
+
 
