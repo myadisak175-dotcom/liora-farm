@@ -57,6 +57,7 @@ export function loadFoamTexture() {
 // The look can be tuned while the game runs: every water material and lily pad reads these same values.
 // (water-tuner.js puts sliders on them; the numbers here are the defaults)
 export const WATER_TUNE = {
+  foamDrift: { value: 1 },       // scale the simulated foam transport
   brushScale: { value: 0.22 },    // painted foam texture repetitions per metre
   shore: { value: 0.85 },         // shore-breaking swell strength
   foamLife: { value: 1.8 },        // seconds for surface foam to dissipate
@@ -135,7 +136,7 @@ const NO_SIM = () => {
 // ==========================================================================
 // WAVE SIMULATION: a height field that obeys the wave equation, stepped on the GPU
 // ==========================================================================
-export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, field = null, level = -0.6 } = {}) {
+export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, field = null, level = -0.6, foamTexture = null } = {}) {
   const [minX, minZ, span] = rect;
   const opts = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
   let a = new THREE.WebGLRenderTarget(size, size, opts), b = new THREE.WebGLRenderTarget(size, size, opts);
@@ -146,6 +147,8 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
   const maskTex = new THREE.DataTexture(md, size, size, THREE.RedFormat);
   maskTex.magFilter = maskTex.minFilter = THREE.NearestFilter;
   maskTex.needsUpdate = true;
+  const foamMap = foamTexture || new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  if (!foamTexture) foamMap.needsUpdate = true;
   const texel = span / size, HZ = 60;
   const I = () => ({ value: new THREE.Vector4(0, 0, 1, 0) });
   const uniforms = {
@@ -156,7 +159,8 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
     uHeightRect: { value: field ? field.rect : new THREE.Vector4(0, 0, 0, 0) },
     uTerrainOn: { value: field ? 1 : 0 }, uLevel: { value: level },
     uTime: shared.uTime, uSpeed: WATER_TUNE.speed, uShore: WATER_TUNE.shore,
-    uFoamLife: WATER_TUNE.foamLife,
+    uFoamLife: WATER_TUNE.foamLife, uFoamDrift: WATER_TUNE.foamDrift,
+    uFoamMap: { value: foamMap }, uBrushScale: WATER_TUNE.brushScale,
     uI0: I(), uI1: I(), uI2: I(), uI3: I(),
   };
   const stepMat = new THREE.ShaderMaterial({
@@ -164,9 +168,9 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
     vertexShader: /* glsl */`varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: /* glsl */`
       ${SHORE_WAVES}
-      uniform sampler2D uState, uMask, uHeight;
+      uniform sampler2D uState, uMask, uHeight, uFoamMap;
       uniform vec4 uHeightRect;
-      uniform float uTime, uSpeed, uShore, uLevel, uTerrainOn, uFoamLife;
+      uniform float uTime, uSpeed, uShore, uLevel, uTerrainOn, uFoamLife, uFoamDrift, uBrushScale;
       uniform float uPx, uC2, uDamp;
       uniform vec3 uRect;
       uniform vec4 uI0, uI1, uI2, uI3;      // x, z, radius, strength: something touched the water here
@@ -175,8 +179,13 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       // a neighbour's height; a neighbour on land mirrors this cell, which is what makes waves bounce off the shore
       float nb(vec2 uv, float h) { return mix(h, texture2D(uState, uv).r, step(0.5, texture2D(uMask, uv).r)); }
       float bottom(vec2 p) { return texture2D(uHeight, (p - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r; }
+      // Alpha stores velocity potential: its spatial gradient is the horizontal current.
+      // Reflecting solid boundaries give zero potential gradient through the bank.
+      float phi(vec2 uv, float center) {
+        return mix(center, texture2D(uState, uv).a, step(0.5, texture2D(uMask, uv).r));
+      }
       void main() {
-        if (texture2D(uMask, vUv).r < 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+        if (texture2D(uMask, vUv).r < 0.5) { gl_FragColor = vec4(0.0); return; }
         vec4 s = texture2D(uState, vUv);
         float h = s.r, before = s.g;
         float around = nb(vUv + vec2(uPx, 0.0), h) + nb(vUv - vec2(uPx, 0.0), h) + nb(vUv + vec2(0.0, uPx), h) + nb(vUv - vec2(0.0, uPx), h);
@@ -186,23 +195,34 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
         // soak waves up at the edge of the simulated square, so nothing bounces off an invisible wall
         vec2 e = min(vUv, 1.0 - vUv);
         next *= mix(0.86, 1.0, smoothstep(0.0, 0.05, min(e.x, e.y)));
-        // Persistent foam rides a shallow-water swash/backwash, then decays in seconds.
+        // Potential flow is accelerated by wave pressure, then loses energy to drag.
+        // R/G: wave height history, B: advected painted foam, A: current potential.
         float dx = uRect.z * uPx;
         float ground = bottom(xz), depth = uLevel - ground;
-        vec2 slope = vec2(bottom(xz + vec2(dx, 0.0)) - bottom(xz - vec2(dx, 0.0)),
-                          bottom(xz + vec2(0.0, dx)) - bottom(xz - vec2(0.0, dx))) / (2.0 * dx);
-        vec2 towardLand = slope / max(length(slope), 0.025);
         float t = uTime * uSpeed;
         float phase = shorePhase(xz, depth, t);
-        vec2 velocity = towardLand * (0.14 + 0.22 * sin(phase)) * uShore;
+        float swell = shoreH(xz, depth, t) * uShore * uTerrainOn;
+        float potential = clamp((s.a - 9.81 * (h + swell) / 60.0) * exp(-0.65 / 60.0), -0.65, 0.65);
+        vec2 velocity = vec2(phi(vUv + vec2(uPx, 0.0), s.a) - phi(vUv - vec2(uPx, 0.0), s.a),
+                             phi(vUv + vec2(0.0, uPx), s.a) - phi(vUv - vec2(0.0, uPx), s.a)) / (2.0 * dx);
+        velocity *= uFoamDrift;
+        velocity *= min(1.0, 0.85 / max(length(velocity), 0.001));
+        // No transport through dry cells: the tangential component can continue along the edge.
+        if (texture2D(uMask, vUv + vec2(sign(velocity.x) * uPx, 0.0)).r < 0.5) velocity.x = 0.0;
+        if (texture2D(uMask, vUv + vec2(0.0, sign(velocity.y) * uPx)).r < 0.5) velocity.y = 0.0;
         vec2 sourceUV = clamp(vUv - velocity / (60.0 * uRect.z), 0.0, 1.0);
         float carried = texture2D(uState, sourceUV).b * step(0.5, texture2D(uMask, sourceUV).r);
         float foam = carried * exp(-1.0 / (60.0 * max(0.2, uFoamLife)));
         float breaking = smoothstep(0.78, 0.98, sin(phase)) * shoreGroup(xz, t)
           * smoothstep(0.015, 0.1, depth) * (1.0 - smoothstep(0.12, 0.32, depth));
-        float disturbed = smoothstep(0.002, 0.018, abs(h - before)) * (1.0 - smoothstep(0.12, 0.45, depth));
-        foam = clamp(foam + (breaking * uShore * 0.018 + disturbed * 0.012) * uTerrainOn, 0.0, 1.0);
-        gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, foam, 1.0);
+        float disturbance = abs(next - h) * 60.0;
+        float disturbed = smoothstep(0.05, 0.35, disturbance) * (1.0 - smoothstep(0.25, 0.95, depth));
+        // Rasterize the artwork only when foam is born. Thereafter B carries and deforms that shape.
+        vec2 artUV = xz * uBrushScale + vec2(t * 0.013, -t * 0.019);
+        float pattern = smoothstep(0.08, 0.65, texture2D(uFoamMap, fract(artUV)).r);
+        foam = clamp(foam + (breaking * uShore * pattern * 0.08
+          + disturbed * (0.2 + pattern * 0.8) * 0.065) * uTerrainOn, 0.0, 1.0);
+        gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, foam, potential);
       }`,
     depthTest: false, depthWrite: false,
   });
@@ -239,7 +259,7 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       }
       renderer.setRenderTarget(target);
     },
-    dispose() { a.dispose(); b.dispose(); maskTex.dispose(); stepMat.dispose(); quad.geometry.dispose(); },
+    dispose() { a.dispose(); b.dispose(); maskTex.dispose(); if (!foamTexture) foamMap.dispose(); stepMat.dispose(); quad.geometry.dispose(); },
   };
   return sim;
 }
@@ -480,7 +500,7 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec2 brushUV = drift * uBrushScale;
         brushUV += (vec2(noise2(q * 0.5 + 1.0), noise2(q * 0.5 + 12.0)) - 0.5) * 0.035;
         float brush = smoothstep(0.10, 0.72, paintedFoam(brushUV));
-        float white = mix(wavelet, brush, uFoamMapOn) * uFleck * 0.22 * smoothstep(0.12, 0.3, depth);
+        float white = wavelet * uFleck * 0.1 * smoothstep(0.12, 0.3, depth);
 
         // Swash carries broken painted wisps towards the beach; backwash leaves short-lived foam.
         float shoreMask = (1.0 - smoothstep(0.22, 0.42, restDepth)) * smoothstep(-0.012, 0.022, depth);
@@ -503,17 +523,17 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
           shoreUV += vec2(broad, detail) * 0.035;
           float shoreBrush = smoothstep(0.08, 0.65, paintedFoam(shoreUV));
           shoreBrush = mix(broken, shoreBrush, uFoamMapOn);
-          vec2 uv = (xz - uSimRect.xy) / uSimRect.z;
-          float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-          float memory = texture2D(uSim, clamp(uv, 0.0, 1.0)).b * inside * uSimRect.w;
-          float remnants = brush * smoothstep(0.08, 0.55, memory) * (1.0 - smoothstep(0.1, 0.28, restDepth));
           float foam = contact * (0.45 + 0.55 * shoreBrush) * (0.5 + 0.5 * broken)
-                     + pulse * shoreBrush * 1.1 + remnants * 0.7;
+                     + pulse * shoreBrush * 0.25 * (1.0 - uSimRect.w);
           white = max(white, min(0.9, foam * shoreMask * uFoamAmt));
         }
+        vec2 foamStateUV = (xz - uSimRect.xy) / uSimRect.z;
+        float inState = step(0.0, foamStateUV.x) * step(foamStateUV.x, 1.0) * step(0.0, foamStateUV.y) * step(foamStateUV.y, 1.0);
+        float movingFoam = texture2D(uSim, clamp(foamStateUV, 0.0, 1.0)).b * inState * uSimRect.w;
+        white = max(white, smoothstep(0.025, 0.55, movingFoam) * 0.9 * uFoamAmt * smoothstep(0.0, 0.04, depth));
         // Touch ripples remain primarily refraction, with only a faint highlight at the crest.
         float touchFoam = smoothstep(0.01, 0.045, abs(s0)) * smoothstep(0.04, 0.15, depth);
-        white = max(white, touchFoam * (0.08 + brush * 0.55) * uFoamAmt);
+        white = max(white, touchFoam * 0.08 * uFoamAmt);
 
         // Rounded sun glints, not large four-point stars or long white scratches.
         vec2 gp = drift * 3.2;
