@@ -555,6 +555,13 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       // a bright wandering line wherever the noise crosses its middle value: two of these, crossed, look like the net
       // of sunlight on a shallow bottom, and cost a fraction of a proper cell pattern
       float ridge(vec2 p) { return 1.0 - abs(noise2(p) * 2.0 - 1.0); }
+      // the drawn pattern of the anime surface: edges of cells, bent by a slow wobble and broken into curling strokes
+      float surfLines(vec2 u, float tt) {
+        vec2 w = u + (vec2(noise2(u * 0.45 + tt * 0.03), noise2(u * 0.45 + 7.0 - tt * 0.03)) - 0.5) * 1.3
+                   + (vec2(noise2(u * 1.7 + 3.0 - tt * 0.05), noise2(u * 1.7 + 12.0 + tt * 0.05)) - 0.5) * 0.45;
+        float e = texture2D(uAnimeCells, w * 0.16).g;
+        return (1.0 - smoothstep(0.07, 0.11, e)) * smoothstep(0.36, 0.48, noise2(u * 0.5 + 2.0));
+      }
       void main() {
         vec2 xz = vWP.xz;
         float ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
@@ -655,6 +662,18 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float thin = 1.0 - smoothstep(0.05, 0.85, dn);
         col += vec3(0.50, 0.92, 0.52) * thin * (0.08 + 0.20 * throughSun) * smoothstep(0.0, 0.05, depth) * (1.0 - uToon);
 
+        if (uToon > 0.5) {
+          // anime water: a pattern of pale curling lines on the surface, carried by the current. It is laid out in metres (so it is
+          // never stretched) and slid along the flow direction at the water's own speed; two copies half a cycle apart fade into
+          // one another, so the pattern travels without end and without ever being pulled out of shape
+          float flowSp = mix(${FLOW.pond.toFixed(3)}, ${FLOW.stream.toFixed(3)}, stream);
+          float f1 = fract(t * 0.2), f2 = fract(t * 0.2 + 0.5);
+          float lines = surfLines(xz - T * flowSp * (f1 - 0.5) * 5.0, t) * (1.0 - abs(2.0 * f1 - 1.0))
+                      + surfLines(xz - T * flowSp * (f2 - 0.5) * 5.0 + 3.7, t) * (1.0 - abs(2.0 * f2 - 1.0));
+          lines *= smoothstep(0.12, 0.3, depth) * (1.0 - smoothstep(35.0, 70.0, length(cameraPosition - vWP))) * uAnimeOn;
+          col = mix(col, mix(uCell, vec3(1.0), 0.25), lines * 0.5);
+        }
+
         // ---- the scene mirrored on the surface, stronger at low angles, broken up by the waves
         float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
         // the mirror picture is of the FLAT water plane, so it is looked up at the point of that plane under this pixel. Looking it up at
@@ -731,7 +750,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 go = gf - (hash22(gi + 5.0) - 0.5) * 0.6;
         float wink = pow(max(0.0, sin(uTime * 1.3 + gh * 60.0)), 8.0);
         float sparkle = exp(-dot(go * vec2(14.0, 24.0), go * vec2(14.0, 24.0)));
-        white = max(white, sparkle * wink * step(0.82, gh) * smoothstep(0.15, 0.4, depth) * uGlint);
+        white = max(white, sparkle * wink * step(0.82, gh) * smoothstep(0.15, 0.4, depth) * max(uGlint, uToon * 0.9));      // anime water: small white sparks
         // Soft sun sparkle on the small ripples: broad, rounded highlights, never lines.
         vec3 Hh = normalize(normalize(uSun) + V);
         float spec = pow(max(dot(N, Hh), 0.0), 140.0);
@@ -749,18 +768,6 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         white = max(white, rings.x * 0.95);
         if (uToon > 0.5) {
           white = max(white, smoothstep(0.035, 0.04, s0) * min(uRing, 1.0) * 0.9 * smoothstep(0.0, 0.06, depth));
-          // short white strokes lying along the current and carried downstream by it (flow coordinates: q.y runs with the water,
-          // q.x across it), longer where the water runs faster; they come and go
-          vec2 dp = vec2(q.x * 2.0, q.y * 0.7) + (noise2(q * 0.3 + 4.0) - 0.5) * 0.4;
-          vec2 di = floor(dp), df = fract(dp) - 0.5;
-          float dh = hash2(di + 17.0);
-          vec2 dj = df - (hash22(di + 3.0) - 0.5) * 0.5;
-          float len = 0.12 + 0.16 * hash2(di + 41.0), along = abs(dj.y) / len;
-          float wide = 0.11 * (1.0 - along * along);
-          float dash = (1.0 - smoothstep(wide * 0.7, wide, abs(dj.x))) * step(along, 1.0);
-          dash *= step(0.5, dh) * smoothstep(0.1, 0.4, sin(uTime * 0.6 + dh * 40.0));
-          dash *= smoothstep(0.2, 0.45, depth) * (1.0 - smoothstep(30.0, 60.0, length(cameraPosition - vWP)));
-          white = max(white, dash * 0.9);
           white = smoothstep(0.28, 0.4, white);          // foam has a drawn edge: white or not
         }
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
