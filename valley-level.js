@@ -183,7 +183,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   await onStep('เติมน้ำ');
   const stream = [];
   for (let z = fall.z - 0.6; z <= B.z1; z += 0.5) stream.push([rx(z), z, WL, rw(z), 1.3]);
-  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => WL });
+  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => WL , tune: W.WATER_TUNE });
   group.add(animeFX.group);
   animeFX.group.userData.dispose = () => animeFX.dispose();
   let water, sim, optics, upperWater, waterfall;

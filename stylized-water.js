@@ -75,6 +75,13 @@ export const WATER_TUNE = {
   ripple: { value: 1.75 },          // strength of the waves made by touching the water
   simSpeed: { value: 1.8 },        // how fast those waves travel (m/s)
   calm: { value: 0.979 },          // how long they last (closer to 1 = longer)
+  // splash effects (anime-splash.js) and the lace of foam islands on the surface
+  splashSize: { value: 1 },        // size of the crown, spout and rings
+  splashAlpha: { value: 1 },       // how solid the foam of a splash is
+  dropSize: { value: 1 },          // size of the flying droplets
+  splashFrom: { value: 0.95 },     // weakest touch that still splashes (higher = fewer splashes)
+  splashGap: { value: 0.38 },      // seconds between small splashes
+  lace: { value: 1 },              // foam islands drifting on the surface
 };
 const TUNE_UNIFORMS = () => ({
   uCaustic: WATER_TUNE.caustic, uCausticScale: WATER_TUNE.causticScale, uSwell: WATER_TUNE.swell, uShimmer: WATER_TUNE.shimmer, uSpeed: WATER_TUNE.speed,
@@ -359,7 +366,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
     uSim: S.texture, uSimRect: { value: S.rect }, uSimPx: { value: S.enabled ? S.rect.z / S.size : 1 },
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
-    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 },
+    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uLace: WATER_TUNE.lace,
     uFoamMap: { value: foamMap },
     uFoamMapOn: { value: foamTexture ? 1 : 0 },
     uFoam: { value: rgb(L.foam) }, uCell: { value: rgb(L.cell) }, uSky: { value: rgb(L.sky) },
@@ -405,7 +412,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       ${SHORE_WAVES}
       ${SIM_PARS}
       uniform sampler2D uHeight, uThrough, uMirror, uFoamMap, uAnimeCells;
-      uniform float uAnimeOn;
+      uniform float uAnimeOn, uLace;
       uniform float uFoamMapOn, uBrushScale;
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
@@ -554,7 +561,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float animeLace = smoothstep(0.16, 0.26, animeCell.r) * (1.0 - smoothstep(0.12, 0.26, animeCell.g));
         float animeShore = (1.0 - smoothstep(0.10, 0.38, restDepth)) * smoothstep(0.0, 0.04, depth);
         float animePulse = smoothstep(0.35, 0.75, 0.5 + 0.5 * sin(restDepth * 16.0 - t * 1.8 + noise2(q * 0.6) * 1.6));
-        white = max(white, min(0.45, animeLace * animeShore * animePulse * uFoamAmt) * uAnimeOn);
+        white = max(white, min(0.45, animeLace * animeShore * animePulse * uFoamAmt * uLace) * uAnimeOn);
         // Crown meshes and droplets accompany physical impulses; the simulation still bends the view.
 
         // Rounded sun glints, not large four-point stars or long white scratches.

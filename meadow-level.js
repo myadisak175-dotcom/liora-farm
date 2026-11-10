@@ -333,7 +333,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   await onStep('วาดริ้วฟองน้ำ');
   const foamTexture = await W.loadFoamTexture();
   await onStep('เติมน้ำ');
-  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => gridAt(wLevel, x, z) });
+  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => gridAt(wLevel, x, z) , tune: W.WATER_TUNE });
   group.add(animeFX.group);
   animeFX.group.userData.dispose = () => animeFX.dispose();
   let water, sim, optics, pads3d = null;

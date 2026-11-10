@@ -19,14 +19,16 @@ function cells() {
   tex.minFilter=tex.magFilter=THREE.LinearFilter; tex.needsUpdate=true; return tex;
 }
 
-export function createAnimeSplashes({field, waterLevelAt, capacity=8}) {
+export function createAnimeSplashes({field, waterLevelAt, capacity=8, tune=null}) {
+  // tune: the WATER_TUNE sliders (splashSize, splashAlpha, dropSize, splashFrom, splashGap); plain defaults without it
+  const T={splashSize:{value:1},splashAlpha:{value:1},dropSize:{value:1},splashFrom:{value:.95},splashGap:{value:.38},...(tune||{})};
   const group=new THREE.Group(); group.name='anime-water-fx';
   const tex=cells(), impacts=new Float32Array(capacity*4), params=new Float32Array(capacity*4);
   for(let i=0;i<capacity;i++){ impacts[i*4+3]=-100; params[i*4+2]=1; }
   const impact=new THREE.InstancedBufferAttribute(impacts,4), param=new THREE.InstancedBufferAttribute(params,4);
   impact.setUsage(THREE.DynamicDrawUsage); param.setUsage(THREE.DynamicDrawUsage);
   const time={value:0}, foam={value:1}; let cursor=0, lastSmall=-1, lastTap=-1;
-  const uniforms={uTime:time,uCells:{value:tex},uHeight:{value:field.texture},uHeightRect:{value:field.rect},uFoamAmt:foam};
+  const uniforms={uAlphaK:T.splashAlpha,uDropK:T.dropSize,uTime:time,uCells:{value:tex},uHeight:{value:field.texture},uHeightRect:{value:field.rect},uFoamAmt:foam};
   const vertexHead=`attribute vec4 aImpact,aParams;
     uniform float uTime;
     varying vec2 vUV; varying float vAge,vSeed; varying vec3 vWorld;
@@ -38,13 +40,13 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=8}) {
   const vertexEnd=`vWorld=p+aImpact.xyz;
     if(uTime<aImpact.w || uTime-aImpact.w>aParams.z) gl_Position=vec4(2.,2.,2.,1.);
     else gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.); }`;
-  const fragmentHead=`uniform sampler2D uCells,uHeight; uniform vec4 uHeightRect; uniform float uFoamAmt;
+  const fragmentHead=`uniform float uAlphaK; uniform sampler2D uCells,uHeight; uniform vec4 uHeightRect; uniform float uFoamAmt;
     varying vec2 vUV; varying float vAge,vSeed; varying vec3 vWorld;
     void main(){
       float ground=texture2D(uHeight,(vWorld.xz-uHeightRect.xy)*uHeightRect.z+uHeightRect.w).r;
       if(vWorld.y<ground+0.005) discard;
       float fade=(1.-smoothstep(.55,1.,vAge))*smoothstep(0.,.035,vAge);`;
-  const finish=`if(alpha<.015)discard; gl_FragColor=vec4(col,alpha);
+  const finish=`alpha*=uAlphaK; if(alpha<.015)discard; gl_FragColor=vec4(col,alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     }`;
@@ -99,20 +101,20 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=8}) {
   da.setUsage(THREE.DynamicDrawUsage);db.setUsage(THREE.DynamicDrawUsage);
   g.setAttribute('aImpact',da);g.setAttribute('aParams',db);g.setAttribute('aDrop',new THREE.InstancedBufferAttribute(ds,1));
   const dm=new THREE.ShaderMaterial({uniforms,transparent:true,depthWrite:false,
-    vertexShader:`attribute vec4 aImpact,aParams; attribute float aDrop; uniform float uTime; varying vec2 vUV; varying float vFade; varying vec3 vWorld;
+    vertexShader:`attribute vec4 aImpact,aParams; attribute float aDrop; uniform float uTime,uDropK; varying vec2 vUV; varying float vFade; varying vec3 vWorld;
       void main(){float age=(uTime-aImpact.w)/aParams.z; float t=max(0.,uTime-aImpact.w);
       float a=aDrop*2.39996+aParams.y;
       float vy=(1.8+fract(aDrop*.618)*1.4)*sqrt(aParams.x);
       vec3 p=aImpact.xyz+vec3(cos(a)*t*aParams.x,vy*t-3.8*t*t,sin(a)*t*aParams.x);
-      float size=(.045+fract(aDrop*.37)*.04)*sqrt(aParams.x)*(1.-smoothstep(.5,1.,age));
+      float size=(.045+fract(aDrop*.37)*.04)*sqrt(aParams.x)*uDropK*(1.-smoothstep(.5,1.,age));
       vUV=uv; vFade=1.-smoothstep(.45,.9,age); vWorld=p;
       vec4 mv=viewMatrix*vec4(p,1.);mv.xy+=position.xy*vec2(1.,1.6)*size;
       gl_Position=projectionMatrix*mv;
       if(age<0. || age>1. || p.y<aImpact.y+.02)gl_Position=vec4(2.,2.,2.,1.);}`,
-    fragmentShader:`uniform sampler2D uHeight; uniform vec4 uHeightRect; varying vec2 vUV; varying float vFade; varying vec3 vWorld;
+    fragmentShader:`uniform float uAlphaK; uniform sampler2D uHeight; uniform vec4 uHeightRect; varying vec2 vUV; varying float vFade; varying vec3 vWorld;
       void main(){float ground=texture2D(uHeight,(vWorld.xz-uHeightRect.xy)*uHeightRect.z+uHeightRect.w).r;
       if(vWorld.y<ground)discard;
-      float r=length(vUV-.5);float alpha=(1.-smoothstep(.32,.5,r))*vFade;if(alpha<.02)discard;
+      float r=length(vUV-.5);float alpha=(1.-smoothstep(.32,.5,r))*vFade*min(1.,uAlphaK);if(alpha<.02)discard;
       vec3 col=mix(vec3(.48,.84,.94),vec3(.97,1.,1.),smoothstep(.25,.7,vUV.y)); gl_FragColor=vec4(col,alpha);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -123,12 +125,12 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=8}) {
   let lastEvent=-100;
   return {group, texture:tex,
     emit(x,z,strength=1){
-      if(strength<.95)return;        // only knee-deep wading and real impacts splash; ankle-deep steps stay plain ripples
+      if(strength<T.splashFrom.value)return;        // only knee-deep wading and real impacts splash; ankle-deep steps stay plain ripples
       const now=time.value;
-      if(strength<1.5&&now-lastSmall<.38)return;
+      if(strength<1.5&&now-lastSmall<T.splashGap.value)return;
       if(strength>=1.5&&now-lastTap<.08)return;
       if(strength<1.5)lastSmall=now;else lastTap=now;
-      const o=cursor*4, power=Math.min(1.1,Math.max(.3,strength*.42)), duration=1.15+power*.25;
+      const o=cursor*4, power=Math.min(1.1,Math.max(.3,strength*.42))*T.splashSize.value, duration=1.15+power*.25;
       impacts.set([x,waterLevelAt(x,z)+.035,z,now],o);params.set([power,(cursor*13.71+now)%100,duration,1],o);
       for(let j=0;j<6;j++){const d=(cursor*6+j)*4;di.set(impacts.subarray(o,o+4),d);dp.set(params.subarray(o,o+4),d);}
       impact.needsUpdate=param.needsUpdate=da.needsUpdate=db.needsUpdate=true;
