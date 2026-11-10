@@ -16,7 +16,7 @@
 //   scene.add(createLilyPads({ pads: [[x, z, radius, flower 0/1, level, across, F]], sim }))
 //
 // Depth is read per pixel from the terrain height texture, so shorelines follow the land exactly.
-// Phone-safe GLSL: no uniform arrays, no loops (the nine cell neighbours and the four impulses are written out).
+// Bounded GLSL: no uniform arrays; a 3x3 foam-cell search runs only in shallow pixels.
 
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
@@ -36,6 +36,8 @@ export const WATER_LOOK = {
 // The look can be tuned while the game runs: every water material and lily pad reads these same values.
 // (water-tuner.js puts sliders on them; the numbers here are the defaults)
 export const WATER_TUNE = {
+  shore: { value: 0.85 },         // shore-breaking swell strength
+  foamLife: { value: 4.5 },        // seconds for surface foam to dissipate
   caustic: { value: 0.16 },        // brightness of the light netting on the bottom
   causticScale: { value: 1.1 },    // bigger number = smaller pattern
   swell: { value: 0.8 },           // height of the slow waves
@@ -53,7 +55,7 @@ export const WATER_TUNE = {
 };
 const TUNE_UNIFORMS = () => ({
   uCaustic: WATER_TUNE.caustic, uCausticScale: WATER_TUNE.causticScale, uSwell: WATER_TUNE.swell, uShimmer: WATER_TUNE.shimmer, uSpeed: WATER_TUNE.speed,
-  uRefract: WATER_TUNE.refract, uReflect: WATER_TUNE.reflect, uClear: WATER_TUNE.clear, uFoamAmt: WATER_TUNE.foam, uGlint: WATER_TUNE.glint, uFleck: WATER_TUNE.fleck,
+  uRefract: WATER_TUNE.refract, uReflect: WATER_TUNE.reflect, uClear: WATER_TUNE.clear, uFoamAmt: WATER_TUNE.foam, uGlint: WATER_TUNE.glint, uFleck: WATER_TUNE.fleck, uShore: WATER_TUNE.shore,
 });
 
 // FLOW. Everything that moves on the water moves downstream, at the speed of the water where it is.
@@ -78,6 +80,22 @@ vec2 waveSlope(vec2 p, float t) {
   float c3 = 0.008 * 4.3 * cos((p.y + 0.10 * p.x) * 4.3 - t * 2.6 + 4.0);
   return vec2(0.35 * c1 - 0.30 * c2 + 0.10 * c3, c1 + c2 + c3);
 }`;
+// Contours of depth define the incoming front: phase advances toward shallower water.
+// Broad wave groups avoid a mechanically repeating, perfectly straight foam stripe.
+const SHORE_WAVES = /* glsl */`
+float shorePhase(vec2 p, float depth, float t) {
+  return depth * 10.5 + t * 1.3 + sin(p.x * 0.38 + p.y * 0.27) * 0.75
+    + sin(p.y * 0.65 - p.x * 0.14) * 0.3;
+}
+float shoreGroup(vec2 p, float t) {
+  return 0.65 + 0.35 * sin(t * 0.29 + p.x * 0.07 + p.y * 0.05);
+}
+float shoreH(vec2 p, float depth, float t) {
+  float phase = shorePhase(p, depth, t);
+  float crest = pow(max(0.0, sin(phase)), 3.0);
+  return (crest - 0.2) * 0.095 * shoreGroup(p, t)
+    * smoothstep(-0.025, 0.1, depth) * (1.0 - smoothstep(0.7, 1.5, depth));
+}`;
 const SIM_PARS = /* glsl */`
 uniform sampler2D uSim;
 uniform vec4 uSimRect;       // min x, min z, size (metres), on/off
@@ -95,7 +113,7 @@ const NO_SIM = () => {
 // ==========================================================================
 // WAVE SIMULATION: a height field that obeys the wave equation, stepped on the GPU
 // ==========================================================================
-export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null } = {}) {
+export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, field = null, level = -0.6 } = {}) {
   const [minX, minZ, span] = rect;
   const opts = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
   let a = new THREE.WebGLRenderTarget(size, size, opts), b = new THREE.WebGLRenderTarget(size, size, opts);
@@ -112,13 +130,21 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null } = 
     uState: { value: a.texture }, uMask: { value: maskTex }, uPx: { value: 1 / size },
     uC2: { value: 0 }, uDamp: WATER_TUNE.calm,
     uRect: { value: new THREE.Vector3(minX, minZ, span) },
+    uHeight: { value: field ? field.texture : maskTex },
+    uHeightRect: { value: field ? field.rect : new THREE.Vector4(0, 0, 0, 0) },
+    uTerrainOn: { value: field ? 1 : 0 }, uLevel: { value: level },
+    uTime: shared.uTime, uSpeed: WATER_TUNE.speed, uShore: WATER_TUNE.shore,
+    uFoamLife: WATER_TUNE.foamLife,
     uI0: I(), uI1: I(), uI2: I(), uI3: I(),
   };
   const stepMat = new THREE.ShaderMaterial({
     uniforms,
     vertexShader: /* glsl */`varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D uState, uMask;
+      ${SHORE_WAVES}
+      uniform sampler2D uState, uMask, uHeight;
+      uniform vec4 uHeightRect;
+      uniform float uTime, uSpeed, uShore, uLevel, uTerrainOn, uFoamLife;
       uniform float uPx, uC2, uDamp;
       uniform vec3 uRect;
       uniform vec4 uI0, uI1, uI2, uI3;      // x, z, radius, strength: something touched the water here
@@ -126,6 +152,7 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null } = 
       float poke(vec4 i, vec2 xz) { vec2 d = xz - i.xy; return i.w * exp(-dot(d, d) / (i.z * i.z)); }
       // a neighbour's height; a neighbour on land mirrors this cell, which is what makes waves bounce off the shore
       float nb(vec2 uv, float h) { return mix(h, texture2D(uState, uv).r, step(0.5, texture2D(uMask, uv).r)); }
+      float bottom(vec2 p) { return texture2D(uHeight, (p - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r; }
       void main() {
         if (texture2D(uMask, vUv).r < 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         vec4 s = texture2D(uState, vUv);
@@ -137,7 +164,23 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null } = 
         // soak waves up at the edge of the simulated square, so nothing bounces off an invisible wall
         vec2 e = min(vUv, 1.0 - vUv);
         next *= mix(0.86, 1.0, smoothstep(0.0, 0.05, min(e.x, e.y)));
-        gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, 0.0, 1.0);
+        // Persistent foam rides a shallow-water swash/backwash, then decays in seconds.
+        float dx = uRect.z * uPx;
+        float ground = bottom(xz), depth = uLevel - ground;
+        vec2 slope = vec2(bottom(xz + vec2(dx, 0.0)) - bottom(xz - vec2(dx, 0.0)),
+                          bottom(xz + vec2(0.0, dx)) - bottom(xz - vec2(0.0, dx))) / (2.0 * dx);
+        vec2 towardLand = slope / max(length(slope), 0.025);
+        float t = uTime * uSpeed;
+        float phase = shorePhase(xz, depth, t);
+        vec2 velocity = towardLand * (0.14 + 0.22 * sin(phase)) * uShore;
+        vec2 sourceUV = clamp(vUv - velocity / (60.0 * uRect.z), 0.0, 1.0);
+        float carried = texture2D(uState, sourceUV).b * step(0.5, texture2D(uMask, sourceUV).r);
+        float foam = carried * exp(-1.0 / (60.0 * max(0.2, uFoamLife)));
+        float breaking = smoothstep(0.78, 0.98, sin(phase)) * shoreGroup(xz, t)
+          * smoothstep(0.015, 0.1, depth) * (1.0 - smoothstep(0.35, 0.85, depth));
+        float disturbed = smoothstep(0.002, 0.018, abs(h - before)) * (1.0 - smoothstep(0.2, 0.9, depth));
+        foam = clamp(foam + (breaking * uShore * 0.045 + disturbed * 0.025) * uTerrainOn, 0.0, 1.0);
+        gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, foam, 1.0);
       }`,
     depthTest: false, depthWrite: false,
   });
@@ -278,12 +321,13 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
     uniforms,
     vertexShader: /* glsl */`
       ${WAVES}
+      ${SHORE_WAVES}
       ${SIM_PARS}
       attribute vec3 aFlow;
       attribute vec2 aDir;
       uniform sampler2D uHeight;
       uniform vec4 uHeightRect;
-      uniform float uTime, uHazeNear, uHazeFar, uHazeMax, uSwell, uSpeed;
+      uniform float uTime, uHazeNear, uHazeFar, uHazeMax, uSwell, uSpeed, uShore;
       varying vec3 vWP;
       varying vec3 vFlow;
       varying vec2 vDir;
@@ -296,6 +340,7 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         float depth = wp.y - ground;
         vCalm = mix(1.0, 0.4, aFlow.z) * smoothstep(0.02, 0.55, depth) * uSwell;   // gentle at the shore and in the stream
         vLift = waveH(vec2(aFlow.y, aFlow.x), uTime * uSpeed) * vCalm + simAt(wp.xz) * smoothstep(0.0, 0.12, depth);
+        vLift += shoreH(wp.xz, depth, uTime * uSpeed) * uShore * mix(1.0, 0.18, aFlow.z);
         wp.y += vLift;
         vWP = wp.xyz;
         vFlow = aFlow;
@@ -307,13 +352,14 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
     fragmentShader: /* glsl */`
       ${NOISE}
       ${WAVES}
+      ${SHORE_WAVES}
       ${SIM_PARS}
       uniform sampler2D uHeight, uThrough, uMirror;
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
       uniform vec4 uHeightRect;
       uniform float uTime, uFadeA, uFadeB, uSimPx, uOptics, uMirrorOn;
-      uniform float uCaustic, uCausticScale, uShimmer, uSpeed, uRefract, uReflect, uClear, uFoamAmt, uGlint, uFleck;
+      uniform float uCaustic, uCausticScale, uShimmer, uSpeed, uRefract, uReflect, uClear, uFoamAmt, uGlint, uFleck, uShore;
       uniform vec3 uShallow, uMid, uDeep, uAbyss, uFoam, uCell, uSky, uSun, uFar, uHaze;
       varying vec3 vWP;
       varying vec3 vFlow;
@@ -323,6 +369,17 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
       varying float vCalm;
 
       vec2 hash22(vec2 p) { return vec2(hash2(p), hash2(p + 37.31)); }
+      float foamCells(vec2 p) {
+        vec2 cell = floor(p), f = fract(p);
+        float first = 8.0, second = 8.0;
+        for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+          vec2 offset = vec2(float(i), float(j));
+          vec2 r = offset + 0.15 + 0.7 * hash22(cell + offset) - f;
+          float d = dot(r, r);
+          if (d < first) { second = first; first = d; } else second = min(second, d);
+        }
+        return second - first;
+      }
       // a bright wandering line wherever the noise crosses its middle value: two of these, crossed, look like the net
       // of sunlight on a shallow bottom, and cost a fraction of a proper cell pattern
       float ridge(vec2 p) { return 1.0 - abs(noise2(p) * 2.0 - 1.0); }
@@ -330,6 +387,7 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec2 xz = vWP.xz;
         float ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
         float depth = vWP.y - ground;
+        float restDepth = depth - vLift;
         if (depth < -0.01) discard;
         float t = uTime * uSpeed;
         float stream = vFlow.z;
@@ -346,6 +404,14 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec2 simSl = vec2(simAt(xz + vec2(e, 0.0)) - simAt(xz - vec2(e, 0.0)), simAt(xz + vec2(0.0, e)) - simAt(xz - vec2(0.0, e))) / (2.0 * e);
         vec2 ws = waveSlope(vec2(vFlow.y, vFlow.x), t) * vCalm;
         vec2 sl = A * ws.x + T * (ws.y * squeeze) + simSl;
+        // Refract and reflect the same incoming swell that displaces the geometry.
+        float eps = 0.16;
+        float gx = texture2D(uHeight, (xz + vec2(eps, 0.0) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
+        float gz = texture2D(uHeight, (xz + vec2(0.0, eps) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
+        float sh0 = shoreH(xz, restDepth, t);
+        sl += vec2(shoreH(xz + vec2(eps, 0.0), restDepth + ground - gx, t) - sh0,
+                   shoreH(xz + vec2(0.0, eps), restDepth + ground - gz, t) - sh0)
+                   / eps * uShore * mix(1.0, 0.18, stream);
         vec2 shimmer = (vec2(noise2(q * 2.6 + 1.0), noise2(q2 * 2.6 + 5.0)) - 0.5) * 1.6 * uShimmer * smoothstep(0.02, 0.3, depth);
         vec3 N = normalize(vec3(-sl.x * 3.0 - shimmer.x, 1.0, -sl.y * 3.0 - shimmer.y));
         vec3 V = normalize(cameraPosition - vWP);
@@ -387,16 +453,24 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         float stroke = (1.0 - smoothstep(0.0, 0.11 * taper, abs(sf.x - 0.3 - 0.4 * sh))) * step(mix(0.88, 0.52, stream), sh) * taper;
         float white = stroke * mix(0.4, 1.1, stream) * uFleck * smoothstep(0.08, 0.2, depth);
 
-        // ---- foam where water meets land: a soft lip, and lacy patches of froth that hug the shore
-        float wob = (noise2(q * 1.3) - 0.5) * 0.09;
-        float lip = 1.0 - smoothstep(0.02, 0.06, depth + wob * 0.6);
-        float near = 1.0 - smoothstep(0.06, 0.42, depth + wob);
-        // (the froth pattern is bent and layered at different angles, or its patches come out square)
-        vec2 lw = q + (vec2(noise2(q * 1.1 + 3.0), noise2(q * 1.1 + 8.0)) - 0.5) * 1.2;
-        vec2 lr = vec2(lw.x * 0.8 - lw.y * 0.6, lw.x * 0.6 + lw.y * 0.8);
-        float lace = noise2(lw * 2.4) * 0.45 + noise2(lr * 3.7) * 0.35 + noise2(lw * 7.3 + 5.0) * 0.2;
-        float froth = smoothstep(0.5, 0.58, lace * 0.75 + near * 0.42) * near;
-        white = max(white, max(lip * clamp(uFoamAmt * 2.0, 0.0, 1.0), froth * 0.9 * uFoamAmt));
+        // ---- breaking front + persistent backwash froth; small irregular holes, no fixed white border.
+        float wob = (noise2(xz * 1.7) - 0.5) * 0.06;
+        float shallow = (1.0 - smoothstep(0.55, 1.25, restDepth)) * smoothstep(-0.01, 0.035, depth);
+        if (shallow > 0.001) {
+          vec2 fw = xz + (vec2(noise2(xz * 1.1 + 3.0), noise2(xz * 1.1 + 8.0)) - 0.5) * 0.28;
+          fw += T * t * 0.035 + normalize(vec2(ground - gx, ground - gz) + vec2(0.0001)) * sin(t * 0.65) * 0.06;
+          float lace = foamCells(fw * 7.5);
+          float fine = noise2(fw * 23.0 + 2.0);
+          vec2 uv = (xz - uSimRect.xy) / uSimRect.z;
+          float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+          float memory = texture2D(uSim, clamp(uv, 0.0, 1.0)).b * inside * uSimRect.w;
+          float front = pow(max(0.0, sin(shorePhase(xz, restDepth + wob, t))), 16.0);
+          float breaker = front * (1.0 - smoothstep(0.35, 0.8, restDepth)) * shoreGroup(xz, t) * uShore * mix(1.0, 0.2, stream);
+          float bubbles = (1.0 - smoothstep(0.025, 0.14, lace)) * (0.7 + fine * 0.3);
+          float remnants = smoothstep(0.10, 0.75, memory) * mix(bubbles, 1.0, memory * 0.55);
+          float lip = (1.0 - smoothstep(0.015, 0.055, depth + wob)) * (0.15 + 0.6 * front);
+          white = max(white, clamp((breaker * mix(bubbles, 1.0, 0.6) + remnants * 0.8 + lip * 0.35) * shallow * uFoamAmt, 0.0, 0.96));
+        }
         // a simulated wave's crest catches a soft light (wide and faint: the ring shows mostly by how it bends the view)
         white = max(white, smoothstep(0.004, 0.02, s0) * 0.28 * smoothstep(0.02, 0.1, depth));
 
@@ -484,6 +558,7 @@ export function createLilyPads({ pads = [], seed = 1, sim = null } = {}) {
     uniforms: { uTime: shared.uTime, uSwell: WATER_TUNE.swell, uSpeed: WATER_TUNE.speed, uSim: S.texture, uSimRect: { value: S.rect }, uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax },
     vertexShader: /* glsl */`
       ${WAVES}
+      ${SHORE_WAVES}
       ${SIM_PARS}
       attribute vec3 aCol;
       attribute vec3 aPad;

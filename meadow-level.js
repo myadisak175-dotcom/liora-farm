@@ -302,7 +302,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 2));
     g.setIndex(idx);
     // the wave simulation covers the pond and the first stretch of the outlet
-    sim = W.createWaterSim({ rect: [6, -27, 56], size: 512, mask: (x, z) => waterDepthAt(x, z) > 0.03 });
+    sim = W.createWaterSim({ rect: [6, -27, 56], size: 512, field, level: -0.6, mask: (x, z) => waterDepthAt(x, z) > 0.03 });
     optics = W.createWaterOptics({ level: -0.6 });
     water = new THREE.Mesh(g, W.waterMaterial({ field, sim, optics, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
     water.name = 'water';

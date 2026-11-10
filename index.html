@@ -54,20 +54,20 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "./stylized-nature.js": "./stylized-nature.js?v=19",
-  "./stylized-terrain.js": "./stylized-terrain.js?v=19",
-  "./stylized-sky.js": "./stylized-sky.js?v=19",
-  "./volumetric-sky.js": "./volumetric-sky.js?v=19",
-  "./stylized-animals.js": "./stylized-animals.js?v=19",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=19",
-  "./stylized-character.js": "./stylized-character.js?v=19",
-  "./meadow-level.js": "./meadow-level.js?v=19",
-  "./stylized-water.js": "./stylized-water.js?v=19",
-  "./water-tuner.js": "./water-tuner.js?v=19",
-  "./sky-tuner.js": "./sky-tuner.js?v=19",
-  "./cloud-shadows.js": "./cloud-shadows.js?v=19",
-  "./tuner-panel.js": "./tuner-panel.js?v=19",
-  "./player.js": "./player.js?v=19"
+  "./stylized-nature.js": "./stylized-nature.js?v=shorefoam1",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=shorefoam1",
+  "./stylized-sky.js": "./stylized-sky.js?v=shorefoam1",
+  "./volumetric-sky.js": "./volumetric-sky.js?v=shorefoam1",
+  "./stylized-animals.js": "./stylized-animals.js?v=shorefoam1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=shorefoam1",
+  "./stylized-character.js": "./stylized-character.js?v=shorefoam1",
+  "./meadow-level.js": "./meadow-level.js?v=shorefoam1",
+  "./stylized-water.js": "./stylized-water.js?v=shorefoam1",
+  "./water-tuner.js": "./water-tuner.js?v=shorefoam1",
+  "./sky-tuner.js": "./sky-tuner.js?v=shorefoam1",
+  "./cloud-shadows.js": "./cloud-shadows.js?v=shorefoam1",
+  "./tuner-panel.js": "./tuner-panel.js?v=shorefoam1",
+  "./player.js": "./player.js?v=shorefoam1"
 } }
 </script>
 </head>
@@ -109,7 +109,7 @@
 <button id="skyBtn">ปรับฟ้า</button>
 <div id="tuner" class="tuner"></div>
 <div id="skyTuner" class="tuner"></div>
-<div id="credit">v19 · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
+<div id="credit">v20 · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
 <div id="hint"><span id="hintText">แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง</span></div>
 <div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span></div>
 <script type="module">
@@ -178,6 +178,7 @@ const onTap = (cx, cy) => {                          // tap the water: a stone's
   ray.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
+if (Q.get('view') === 'water') { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }
 const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
 level.addUnderwater(player.object);
