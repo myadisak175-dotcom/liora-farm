@@ -499,6 +499,11 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float second = texture2D(uFoamMap, b).r * eb.x * eb.y * 0.55;
         return max(first, second);
       }
+      // the height texture averaged over one whole cell around uv (four taps): rounds off the crease at every cell edge
+      float cellAvg(vec2 uv, float u) {
+        return 0.25 * (texture2D(uHeight, uv + vec2(-0.5, -0.5) * u).r + texture2D(uHeight, uv + vec2(0.5, -0.5) * u).r
+                     + texture2D(uHeight, uv + vec2(-0.5, 0.5) * u).r + texture2D(uHeight, uv + vec2(0.5, 0.5) * u).r);
+      }
       // a bright wandering line wherever the noise crosses its middle value: two of these, crossed, look like the net
       // of sunlight on a shallow bottom, and cost a fraction of a proper cell pattern
       float ridge(vec2 p) { return 1.0 - abs(noise2(p) * 2.0 - 1.0); }
@@ -524,13 +529,17 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 ws = waveSlope(vec2(vFlow.y, vFlow.x), t) * vCalm;
         vec2 sl = A * ws.x + T * (ws.y * squeeze) + simSl;
         // Refract and reflect the same incoming swell that displaces the geometry.
-        // The bed's slope is measured across two whole cells of the height texture. Measured across less than one cell it is
-        // constant inside each cell and jumps at the cell edges, which showed up as square tiles in the mirrored sky.
-        float eps = 0.16, hs = uHeightStep;
-        float bedX = (texture2D(uHeight, (xz + vec2(hs, 0.0) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r
-                    - texture2D(uHeight, (xz - vec2(hs, 0.0) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r) / (2.0 * hs);
-        float bedZ = (texture2D(uHeight, (xz + vec2(0.0, hs) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r
-                    - texture2D(uHeight, (xz - vec2(0.0, hs) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r) / (2.0 * hs);
+        // The bed's slope, measured so that it changes smoothly across the whole river. The height texture is piecewise linear
+        // (a crease at every cell edge), so a slope read straight from it has creases too, and the mirror turns every crease
+        // into a thin line: a square net over the reflected sky. Averaging the height over a whole cell first (four taps)
+        // rounds the creases off, and the slope is then taken across two cells of that.
+        float eps = 0.16, hs = uHeightStep, bedX = 0.0, bedZ = 0.0;
+        if (restDepth < 1.6) {
+          vec2 o = (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w;
+          float u = uHeightRect.z * hs;                                    // one cell, in texture coordinates
+          bedX = (cellAvg(o + vec2(u, 0.0), u) - cellAvg(o - vec2(u, 0.0), u)) / (2.0 * hs);
+          bedZ = (cellAvg(o + vec2(0.0, u), u) - cellAvg(o - vec2(0.0, u), u)) / (2.0 * hs);
+        }
         float gx = ground + bedX * eps, gz = ground + bedZ * eps;
         float sh0 = shoreH(xz, restDepth, t);
         sl += vec2(shoreH(xz + vec2(eps, 0.0), restDepth + ground - gx, t) - sh0,
@@ -539,14 +548,19 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 shimmer = (vec2(noise2(q * 2.6 + 1.0), noise2(q2 * 2.6 + 5.0)) - 0.5) * 1.6 * uShimmer * smoothstep(0.02, 0.3, depth);
         // Fine ripples: two small wave layers crossing in different directions. They only tilt the surface
         // (so the mirrored scene and sun wobble); nothing is painted on top. Faded out with distance to avoid crawling.
-        vec2 rpA = xz * 3.4 + vec2(t * 0.30, t * 0.18);
-        vec2 rpB = xz * 5.6 + vec2(-t * 0.24, t * 0.34);
-        const vec2 dE = vec2(0.07, 0.0);
-        float rA = noise2(rpA), rB = noise2(rpB);
-        vec2 ripple = vec2(noise2(rpA + dE.xy) - rA, noise2(rpA + dE.yx) - rA) * 0.6
-                    + vec2(noise2(rpB + dE.xy) - rB, noise2(rpB + dE.yx) - rB) * 0.4;
+        // Sums of crossing sine waves, not value noise: the slope of value noise is zero along every line of its lattice, which
+        // drew a square net over the mirrored sky. Waves have no lattice, and their directions and lengths do not repeat.
+        vec2 ripple = vec2(0.0);
+        {
+          vec2 pw = xz + vec2(noise2(xz * 0.7 + t * 0.05), noise2(xz * 0.7 + 9.0 - t * 0.05)) * 0.35;      // slightly bent, so they never line up
+          float a0 = dot(pw, vec2(0.97, 0.26)) * 19.0 + t * 1.9, a1 = dot(pw, vec2(-0.50, 0.87)) * 23.0 - t * 2.3;
+          float a2 = dot(pw, vec2(0.20, -0.98)) * 29.0 + t * 2.9, a3 = dot(pw, vec2(-0.88, -0.47)) * 17.0 - t * 1.7;
+          float a4 = dot(pw, vec2(0.65, -0.76)) * 33.0 + t * 3.1, a5 = dot(pw, vec2(-0.12, 0.99)) * 27.0 - t * 2.6;
+          ripple = vec2(0.97, 0.26) * cos(a0) + vec2(-0.50, 0.87) * cos(a1) + vec2(0.20, -0.98) * cos(a2)
+                 + vec2(-0.88, -0.47) * cos(a3) + vec2(0.65, -0.76) * cos(a4) + vec2(-0.12, 0.99) * cos(a5);
+        }
         float rippleFade = 1.0 - smoothstep(22.0, 55.0, length(cameraPosition - vWP));
-        shimmer += ripple * 4.0 * uShimmer * rippleFade * smoothstep(0.02, 0.3, depth);
+        shimmer += ripple * 0.075 * uShimmer * rippleFade * smoothstep(0.02, 0.3, depth);
         vec3 N = normalize(vec3(-sl.x * 3.0 - shimmer.x, 1.0, -sl.y * 3.0 - shimmer.y));
         vec3 V = normalize(cameraPosition - vWP);
 
