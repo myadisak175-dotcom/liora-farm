@@ -1,245 +1,194 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#173c4b">
-<!-- iPhone has no Fullscreen API. Launching from the home screen is the
-     only way to lose the browser chrome there, and these two make that
-     launch open standalone instead of in Safari. -->
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Liora's Farm</title>
-<link rel="stylesheet" href="./styles/main.css?v=horizon4">
-<link rel="stylesheet" href="./styles/terrain-controls.css?v=horizon4">
-<link rel="stylesheet" href="./styles/game-feel.css?v=first-basket1">
-<script>
-window.__lioraBootState = "engine";
-window.__lioraSetBootStatus = (text) => {
-  const el = document.querySelector("#status");
-  if (el) { el.textContent = text; el.classList.remove("hidden", "error"); }
-};
-(async () => {
-  // Blank-land baseline. Run once per browser profile so existing builder,
-  // terrain, paint and crop saves cannot repopulate the old starter scene.
-  // Keep a copy under a revisioned backup key instead of destroying the old
-  // work; after this marker is written, anything the player builds is kept.
-  const BLANK_START_REVISION = "blank-land-v1";
-  const BLANK_START_MARKER = "liora.blank-start.revision";
-  const BLANK_START_KEYS = [
-    "liora.island-layout.v1",
-    "liora-home-island-layout",
-    "liora.terrain-height.v1",
-    "liora.ground-paint.v1",
-    "liora.farm.v1",
-  ];
-  try {
-    if (localStorage.getItem(BLANK_START_MARKER) !== BLANK_START_REVISION) {
-      for (const key of BLANK_START_KEYS) {
-        const previous = localStorage.getItem(key);
-        if (previous !== null) {
-          localStorage.setItem(`${key}.before-${BLANK_START_REVISION}`, previous);
-          localStorage.removeItem(key);
-        }
-      }
-      localStorage.setItem(BLANK_START_MARKER, BLANK_START_REVISION);
-    }
-  } catch (error) {
-    // Private/restricted storage still gets the blank default map; it just
-    // cannot preserve a one-time backup or remember the migration marker.
-    console.warn("Blank-start migration could not access localStorage", error);
-  }
-
-  const LOCAL = "./vendor/three/";
-  const CDN = "https://cdn.jsdelivr.net/npm/three@0.180.0/";
-  let base = CDN;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    try {
-      const probe = await fetch(`${LOCAL}three.module.js`, { method: "HEAD", cache: "no-store", signal: controller.signal });
-      if (probe.ok) base = LOCAL;
-    } finally { clearTimeout(timer); }
-  } catch {}
-  window.__lioraEngineSource = base === LOCAL ? "local" : "cdn";
-  window.__lioraSetBootStatus("กำลังโหลดระบบภาพ 3D…");
-  const map = document.createElement("script");
-  map.type = "importmap";
-  map.textContent = JSON.stringify({ imports: {
-    three: base === LOCAL ? `${LOCAL}three.module.js` : `${CDN}build/three.module.js`,
-    "three/addons/": base === LOCAL ? `${LOCAL}addons/` : `${CDN}examples/jsm/`,
-    // Local aliases may only point back to the same pathname with a cache
-    // version. tools/test/module-graph.mjs enforces that rule so Safari's
-    // nested-module cache workaround cannot silently redirect a module.
-    "./src/config.js": "./src/config.js?v=startup2",
-    "./src/systems/ground-paint.js": "./src/systems/ground-paint.js?v=startup2",
-    "./src/zones/home-island.js": "./src/zones/home-island.js?v=startup2",
-    "./src/systems/ground-texture-array.js": "./src/systems/ground-texture-array.js?v=startup2",
-    "./src/editor/asset-loader.js": "./src/editor/asset-loader.js?v=startup2",
-    "./src/editor/layout-runtime.js": "./src/editor/layout-runtime.js?v=startup2",
-    "./src/systems/world-logic.js": "./src/systems/world-logic.js?v=startup2",
-    "./src/systems/quality.js": "./src/systems/quality.js?v=iosgfx4",
-    "./src/systems/background/painted-backdrop.js": "./src/systems/background/painted-backdrop.js?v=village2",
-    "./src/systems/background/distant-village-backdrop.js": "./src/systems/background/distant-village-backdrop.js?v=worldtree2",
-    "./src/ui/farm-ui.js": "./src/ui/farm-ui.js?v=first-basket1",
-    "./src/systems/farming/crops.js": "./src/systems/farming/crops.js?v=first-basket1",
-    "./src/systems/player-runtime.js": "./src/systems/player-runtime.js?v=first-basket1",
-  }});
-  document.head.append(map);
-
-  // World Builder features and gameplay actions are plugins over the same
-  // data/event core. Load the vocabulary before main.js creates the player so
-  // Spawn, Marker and Portal behaviour is deterministic from frame one.
-  window.__lioraBootState = "modules";
-  await Promise.all([
-    import("./src/editor/world-builder-shell.js"),
-    import("./src/editor/world-builder-portal-plugin.js"),
-    import("./src/systems/world-navigation-actions.js"),
-    import("./src/ui/world-event-feedback.js"),
-  ]);
-
-  // Quality auto-detection belongs in systems/quality.js. Do not seed a
-  // localStorage choice here: writing "high" at boot turns an automatic choice
-  // into a permanent explicit preference and makes later detector fixes unable
-  // to take effect. Retina Apple devices are already detected as High there.
-
-  const entry = document.createElement("script");
-  entry.type = "module";
-  entry.src = "./src/main.js?v=startup2";
-  document.head.append(entry);
-
-  // iOS prioritizes walk/run + birds/wind, then performs a second WebAudio
-  // route kick when those primary buffers are genuinely ready. Android remains
-  // on the verified native route unchanged.
-  const startAudio = () => {
-    const audio = document.createElement("script");
-    audio.type = "module";
-    audio.src = "./src/audio-runtime.js?v=audio24-route2";
-    document.head.append(audio);
-  };
-  if (window.__lioraBooted) startAudio();
-  else window.addEventListener("liora:boot-ready", startAudio, { once: true });
-
-  if (new URLSearchParams(location.search).get("npc") === "1") {
-    const npcTest = document.createElement("script");
-    npcTest.type = "module";
-    npcTest.src = "./src/npc-test-bootstrap.js?v=npc1";
-    document.head.append(npcTest);
-  }
-})();
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ทุ่งหญ้า — เดินสำรวจ</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cde6f2; overscroll-behavior: none;
+    font-family: system-ui, -apple-system, "Noto Sans Thai", "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  #fps { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 8px; font-size: 11px; color: rgba(39, 52, 26, .75);
+    background: rgba(255, 255, 255, .62); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
+  #style { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 34px; font: inherit; font-size: 12px; color: #fff;
+    background: rgba(39, 52, 26, .72); border: 0; padding: 7px 13px; border-radius: 999px; }
+  #tune, #skyBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 70px; font: inherit; font-size: 12px; color: #fff;
+    background: rgba(30, 86, 122, .78); border: 0; padding: 7px 13px; border-radius: 999px; }
+  #skyBtn { top: 106px; background: rgba(52, 104, 178, .8); }
+  .tuner { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-height: 44vh; overflow-y: auto; display: none; box-sizing: border-box;
+    padding: 6px 14px max(12px, env(safe-area-inset-bottom)); background: rgba(250, 253, 255, .86); color: #223a4a; font-size: 12px;
+    border-radius: 16px 16px 0 0; box-shadow: 0 -4px 18px rgba(20, 50, 70, .18); -webkit-user-select: none; user-select: none; }
+  .tuner.open { display: block; }
+  .tuner h4 { margin: 10px 0 2px; font-size: 12px; color: #1e567a; }
+  .tuner label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 8px; padding: 2px 0; }
+  .tuner label b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tuner input[type=range] { grid-column: 1 / 3; width: 100%; height: 26px; margin: 0; accent-color: #2f8fbe; }
+  .tuner .bar { display: flex; gap: 8px; margin: 10px 0 6px; }
+  .tuner .bar button { flex: 1; font: inherit; font-size: 12px; padding: 9px 6px; border: 0; border-radius: 10px; background: #1e567a; color: #fff; }
+  .tuner textarea { width: 100%; box-sizing: border-box; font: 11px/1.4 ui-monospace, monospace; border: 1px solid #b9d2e0; border-radius: 8px; padding: 6px; }
+  #hint { position: fixed; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; justify-content: center; pointer-events: none;
+    transition: opacity .8s; }
+  #hint span { background: rgba(39, 52, 26, .72); color: #fff; font-size: 13px; padding: 8px 16px; border-radius: 999px; }
+  #credit { position: fixed; left: max(8px, env(safe-area-inset-left)); top: 8px; font-size: 9.5px; color: rgba(39, 52, 26, .55); pointer-events: none; max-width: 60vw; }
+  #loading { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center;
+    color: #3e5d2b; background: #eaf3df; transition: opacity .6s; }
+  #loading b { font-size: 20px; letter-spacing: .02em; }
+  #loading span { font-size: 13px; color: #6d8a4f; min-height: 1.3em; }
+  #bar { width: min(240px, 60vw); height: 5px; border-radius: 3px; background: #cfe0bd; overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 0; background: #6f9a3c; transition: width .25s; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./stylized-nature.js": "./stylized-nature.js?v=19",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=19",
+  "./stylized-sky.js": "./stylized-sky.js?v=19",
+  "./volumetric-sky.js": "./volumetric-sky.js?v=19",
+  "./stylized-animals.js": "./stylized-animals.js?v=19",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=19",
+  "./stylized-character.js": "./stylized-character.js?v=19",
+  "./meadow-level.js": "./meadow-level.js?v=19",
+  "./stylized-water.js": "./stylized-water.js?v=19",
+  "./water-tuner.js": "./water-tuner.js?v=19",
+  "./sky-tuner.js": "./sky-tuner.js?v=19",
+  "./cloud-shadows.js": "./cloud-shadows.js?v=19",
+  "./tuner-panel.js": "./tuner-panel.js?v=19",
+  "./player.js": "./player.js?v=19"
+} }
 </script>
 </head>
-<body data-mode="play">
-<div id="status">กำลังโหลด…</div>
-<div id="pouch" hidden><span class="glyph">🥕</span><span id="pouch-count">0</span></div>
-<nav id="mode-bar">
-  <button type="button" data-mode="play" class="active">เล่น</button>
-  <button type="button" data-mode="build">สร้าง</button>
-  <button type="button" id="fullscreen" class="icon" aria-label="เต็มจอ" aria-pressed="false">⛶</button>
-</nav>
-<button type="button" id="clock" aria-label="เปลี่ยนช่วงเวลาในเกม">--:--</button>
-<section id="farm-journey" aria-label="เป้าหมายฟาร์ม" hidden>
-  <button id="journey-toggle" type="button" aria-expanded="true" aria-controls="journey-details">
-    <span id="journey-title">ตะกร้าแรกของเรา</span>
-    <span id="journey-count">0 / 3</span>
-  </button>
-  <div id="journey-details">
-    <p id="journey-hint">เดินไปแปลงดิน แล้วพรวนช่องที่มีวงแสง</p>
-    <div class="journey-steps" aria-hidden="true">
-      <span class="journey-step">พรวน</span><span class="journey-step">รดน้ำ</span>
-      <span class="journey-step">ปลูก</span><span class="journey-step">เก็บ</span>
-    </div>
-    <progress id="journey-progress" max="3" value="0" aria-label="เก็บเกี่ยวผักให้ครบ 3 หัว"></progress>
-  </div>
-</section>
-<div id="farm-feedback-layer" aria-hidden="true"></div>
-<div id="joy"><div id="stick"></div></div>
-<div id="actions">
-  <div id="emote-menu" role="group" aria-label="ท่าทางตัวละคร" hidden>
-    <button type="button" data-action="pickUp">ก้มเก็บ</button>
-    <button type="button" data-action="hammer">ท่าทุบ</button>
-    <button type="button" data-action="mirror">ส่องกระจก</button>
-  </div>
-  <button type="button" id="emote-toggle" aria-expanded="false" aria-controls="emote-menu">ท่าทาง</button>
-  <button type="button" data-action="farm" disabled>เข้าใกล้แปลงผัก</button>
-</div>
-<div id="zoom">
-  <button id="camera-reset" aria-label="รีเซ็ตมุมกล้อง">↻</button>
-  <button id="zin" aria-label="ซูมเข้า">＋</button>
-  <button id="zout" aria-label="ซูมออก">−</button>
-</div>
-<section id="build-panel" aria-label="โหมดสร้าง">
-  <div id="build-tabs">
-    <button type="button" id="tab-place" class="active">วางของ</button>
-    <button type="button" id="tab-paint">ระบายพื้น</button>
-    <button type="button" id="tab-sculpt">ปั้นพื้น</button>
-    <button type="button" id="tab-horizon">ขอบฟ้า</button>
-    <button type="button" id="build-more" class="chip" aria-label="ตัวเลือกเพิ่มเติม" aria-expanded="false" hidden>⚙︎</button>
-    <button type="button" id="build-collapse" class="chip" aria-label="ย่อแผงเครื่องมือ" aria-expanded="true">⌄</button>
-  </div>
-  <div id="build-body">
-    <div id="build-hint"></div>
-    <div id="asset-cats" class="strip cats"></div>
-    <div id="asset-strip" class="strip"></div>
-    <div id="paint-strip" class="brushes"></div>
-    <div id="paint-size" class="sizerow"></div>
-    <div id="sculpt-strip" class="toolrow"></div>
-    <div id="sculpt-size" class="sizerow"></div>
-    <div id="sculpt-extra">
-      <div id="sculpt-presets" class="strip"></div>
-      <div id="sculpt-extra-size" class="sizerow stack"></div>
-    </div>
-    <div id="horizon-strip"></div>
-    <div id="build-tools" class="strip tools"></div>
-  </div>
-  <div id="build-actions" class="actions"></div>
-</section>
-<div id="toast" aria-live="polite"></div>
-<script>
-function showBootProblem(text, detail = "", force = false) {
-  if (window.__lioraBooted && !force) return;
-  const status = document.querySelector("#status");
-  status.textContent = text;
-  status.title = detail;
-  status.classList.remove("hidden");
-  status.classList.add("error");
-  window.__lioraBootError = detail || window.__lioraBootError;
-  document.querySelector("#boot-recovery").hidden = false;
-}
-window.__lioraShowBootProblem = showBootProblem;
-const recovery = document.createElement("div");
-recovery.id = "boot-recovery";
-recovery.hidden = true;
-recovery.style.cssText = "position:fixed;z-index:10000;left:16px;right:16px;top:110px;text-align:center";
-for (const [label, safe] of [["ลองโหลดใหม่", false], ["เปิดโหมดเบา (ไม่ลบเซฟ)", true]]) {
-  const button = document.createElement("button");
-  button.textContent = label;
-  button.type = "button";
-  button.style.cssText = "margin:4px;padding:12px;border-radius:12px;background:#fff;color:#173c4b;border:1px solid #173c4b";
-  button.onclick = () => {
-    const url = new URL(location.href);
-    url.searchParams.set("retry", Date.now());
-    if (safe) url.searchParams.set("safe", "1");
-    else url.searchParams.delete("safe");
-    location.assign(url);
-  };
-  recovery.append(button);
-}
-document.body.append(recovery);
-window.addEventListener("error", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — กดลองใหม่ได้โดยไม่ลบเซฟ", String(event.error?.message ?? event.message ?? "")));
-window.addEventListener("unhandledrejection", (event) => showBootProblem("โหลดเกมไม่สำเร็จ — กดลองใหม่ได้โดยไม่ลบเซฟ", String(event.reason?.message ?? event.reason ?? "")));
-// Do not wait for window.load: the resource that hangs can prevent it firing.
-const bootWatchdog = setInterval(() => {
-  if (window.__lioraBooted) return;
-  showBootProblem(`กำลังโหลดนาน (${window.__lioraBootState ?? "starting"}) — ลองใหม่หรือเปิดโหมดเบาได้`, String(window.__lioraBootError ?? ""));
-}, 12000);
-window.__lioraFinishBoot = () => {
-  clearInterval(bootWatchdog);
-  recovery.hidden = true;
-  document.querySelector("#status").classList.remove("error");
-  window.dispatchEvent(new Event("liora:boot-ready"));
+<body>
+<div id="stick"><i></i></div>
+<div id="fps"></div>
+<button id="style">หญ้า: พู่กัน</button>
+<button id="tune">ปรับน้ำ</button>
+<button id="skyBtn">ปรับฟ้า</button>
+<div id="tuner" class="tuner"></div>
+<div id="skyTuner" class="tuner"></div>
+<div id="credit">v19 · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
+<div id="hint"><span id="hintText">แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง</span></div>
+<div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span></div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import * as A from './stylized-animals.js';
+import * as Sky from './stylized-sky.js';
+import { createVolumetricSky } from './volumetric-sky.js';
+import { buildMeadowLevel } from './meadow-level.js';
+import { loadCharacter } from './stylized-character.js';
+import { createPlayer } from './player.js';
+import { WATER_TUNE } from './stylized-water.js';
+import { createWaterTuner } from './water-tuner.js';
+import { createSkyTuner } from './sky-tuner.js';
+import { createCloudShadows } from './cloud-shadows.js';
+import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
+import DEER_GLB from './deer-glb.js';
+
+const HAZE = '#cde6f2';
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(HAZE);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.12, 1400);
+const fit = () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.fov = camera.aspect < 1 ? 70 : 55;           // made for landscape; portrait still works
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  document.getElementById('hintText').textContent = (camera.aspect < 1 ? 'หมุนจอเป็นแนวนอนจะเห็นกว้างกว่า · ' : '') + 'แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง · แตะผิวน้ำให้กระเพื่อม';
 };
+addEventListener('resize', fit);
+
+const stepEl = document.getElementById('step'), barEl = document.querySelector('#bar i');
+let steps = 0;
+const onStep = async text => {
+  stepEl.textContent = text + '…';
+  barEl.style.width = Math.min(96, ++steps * 7) + '%';
+  await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));     // let the screen repaint between heavy steps
+};
+const b64ToBuffer = b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; };
+
+N.setHaze({ color: HAZE, near: 45, far: 230, max: 0.6 });
+await onStep('วาดท้องฟ้า');
+const Q = new URLSearchParams(location.search);          // ?grass=120000 to force a blade count, ?still=1 to render on demand (tests), ?sky=1024 panorama width
+const skyW = +Q.get('sky') || 2560;
+let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
+if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
+scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
+const level = await buildMeadowLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 200000 });
+scene.add(level.group);
+await onStep('ปลุก Vivi');
+const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
+const ray = new THREE.Raycaster();
+const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
+  ray.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
+  level.tapWater(ray.ray.origin, ray.ray.direction);
+};
+const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
+scene.add(player.object);
+level.addUnderwater(player.object);
+fit();
+
+// ---- grass look: painterly dabs or smooth blades, to compare on the device
+const styleBtn = document.getElementById('style');
+const setStyle = on => { level.grass.userData.setPainterly(on); styleBtn.textContent = 'หญ้า: ' + (on ? 'พู่กัน' : 'เนียน'); };
+styleBtn.onclick = () => setStyle(!level.grass.userData.painterly);
+setStyle(Q.get('paint') !== '0');
+
+const tunerPanel = document.getElementById('tuner');
+createWaterTuner({ tune: WATER_TUNE, optics: level.optics, button: document.getElementById('tune'), panel: tunerPanel });
+// cloud shadows: only with the volumetric sky (they ride on its wind), and only once everything is in the scene
+const shadows = sky.userData.tune ? createCloudShadows({ sky }) : null;
+if (shadows) shadows.apply(scene);
+const skyBtn = document.getElementById('skyBtn');
+if (sky.userData.tune) createSkyTuner({ sky, button: skyBtn, panel: document.getElementById('skyTuner') }); else skyBtn.remove();      // the painted fallback sky has nothing to tune
+
+// ---- keep it smooth: thin the grass when the phone struggles, thicken it again when there is room
+const fpsEl = document.getElementById('fps');
+let fpsN = 0, fpsT = 0, warm = 0, good = 0;
+function tune(dt) {
+  fpsN++; fpsT += dt; warm += dt;
+  if (fpsT < 1) return;
+  const fps = fpsN / fpsT; fpsN = 0; fpsT = 0;
+  const g = level.grass.userData;
+  if (warm > 4) {
+    // too slow: first give up mirror quality (the costliest thing on screen), only then thin the grass
+    if (fps < 47 && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); warm = 2; good = 0; }       // cheapest saving first: redraw the clouds less often
+    else if (fps < 47 && level.optics.quality > 0) { level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); warm = 2; good = 0; }
+    else if (fps < 47 && g.density > 0.3) { g.setDensity(g.density * 0.8); good = 0; }
+    else if (fps > 56 && g.density < 1) { if (++good >= 3) { g.setDensity(g.density * 1.12); good = 0; } }
+    else if (fps > 56 && sky.userData.rate < 1) { if (++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); good = 0; } }
+    else good = 0;
+  }
+  fpsEl.textContent = Math.round(fps) + ' fps · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
+}
+
+const clock = new THREE.Clock();
+let moved = false;
+const frame = (dt = clock.getDelta()) => {
+  N.update(dt);
+  A.updateAnimals(dt);
+  player.update(dt);
+  level.follow(player.position, player.lookDir);
+  if (sky.userData.update) sky.userData.update(renderer, dt);
+  if (shadows) shadows.update();
+  level.update(renderer, dt, scene, camera);
+  renderer.render(scene, camera);
+  tune(dt);
+  if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
+};
+if (!Q.get('still')) renderer.setAnimationLoop(() => frame());
+barEl.style.width = '100%';
+document.getElementById('loading').style.opacity = 0;
+setTimeout(() => document.getElementById('loading').remove(), 700);
+window.__game = { THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows };
 </script>
 </body>
 </html>

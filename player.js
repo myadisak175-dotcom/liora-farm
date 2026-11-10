@@ -1,0 +1,185 @@
+// player.js
+// Third-person walking for touch screens (landscape first) and keyboard + mouse.
+//
+//   left side of the screen  : floating joystick (push far = run)        keyboard: WASD / arrows, Shift = walk
+//   right side of the screen : drag to look around                       mouse: drag
+//
+//   const player = createPlayer({ character, level, camera, dom: renderer.domElement, ui: document.getElementById('stick') });
+//   every frame: player.update(dt)
+
+import * as THREE from 'three';
+
+export function createPlayer({ character, level, camera, dom, ui = null, onTap = null }) {
+  const pos = new THREE.Vector3(level.spawn.x, 0, level.spawn.z);
+  pos.y = level.heightAt(pos.x, pos.z);
+  let heading = level.spawn.yaw;              // where the character faces (0 = +Z)
+  let camYaw = level.spawn.yaw - Math.PI, camPitch = 0.17, camDist = 4.3;   // the camera starts behind her
+  let speed = 0;
+  const move = new THREE.Vector2();           // joystick / keys, -1..1
+  const keys = new Set();
+
+  // ---- blob shadow under the feet
+  const shadow = (() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(38,66,30,0.5)'); gr.addColorStop(0.55, 'rgba(38,66,30,0.28)'); gr.addColorStop(1, 'rgba(38,66,30,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.renderOrder = 2;
+    return m;
+  })();
+  const root = new THREE.Group();
+  root.name = 'player';
+  root.add(character.object, shadow);
+  shadow.position.y = 0.06;
+
+  // ---- touch: one finger on each half of the screen
+  let stickId = null, lookId = null;
+  const stick0 = new THREE.Vector2(), look0 = new THREE.Vector2(), tap0 = new THREE.Vector2();
+  let tapT = 0;
+  const STICK_R = 56;
+  const base = ui, knob = ui ? ui.firstElementChild : null;
+  const showStick = (on, x = 0, y = 0) => { if (base) { base.style.opacity = on ? 1 : 0; if (on) { base.style.left = x + 'px'; base.style.top = y + 'px'; } } };
+  const setKnob = (dx, dy) => { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; };
+  dom.addEventListener('pointerdown', e => {
+    dom.setPointerCapture(e.pointerId);
+    const touch = e.pointerType !== 'mouse';
+    if (touch && e.clientX < innerWidth * 0.45 && stickId === null) {
+      stickId = e.pointerId; stick0.set(e.clientX, e.clientY); showStick(true, e.clientX, e.clientY); setKnob(0, 0);
+    } else if (lookId === null) { lookId = e.pointerId; look0.set(e.clientX, e.clientY); tap0.set(e.clientX, e.clientY); tapT = performance.now(); }
+  });
+  dom.addEventListener('pointermove', e => {
+    if (e.pointerId === stickId) {
+      let dx = e.clientX - stick0.x, dy = e.clientY - stick0.y;
+      const l = Math.hypot(dx, dy);
+      if (l > STICK_R) { dx *= STICK_R / l; dy *= STICK_R / l; }
+      setKnob(dx, dy);
+      move.set(dx / STICK_R, dy / STICK_R);
+    } else if (e.pointerId === lookId) {
+      const k = 0.0052 * Math.min(1.6, 900 / Math.max(innerWidth, innerHeight) + 0.55);
+      camYaw -= (e.clientX - look0.x) * k;
+      camPitch = Math.min(1.05, Math.max(-0.22, camPitch + (e.clientY - look0.y) * k * 0.8));
+      look0.set(e.clientX, e.clientY);
+    }
+  });
+  const up = e => {
+    if (e.pointerId === stickId) { stickId = null; move.set(0, 0); showStick(false); }
+    if (e.pointerId === lookId) {
+      lookId = null;
+      // a quick touch that did not drag is a tap on the world
+      if (onTap && e.type === 'pointerup' && performance.now() - tapT < 320 && Math.hypot(e.clientX - tap0.x, e.clientY - tap0.y) < 10) onTap(e.clientX, e.clientY);
+    }
+  };
+  dom.addEventListener('pointerup', up);
+  dom.addEventListener('pointercancel', up);
+  dom.addEventListener('wheel', e => { camDist = Math.min(9, Math.max(2.6, camDist + e.deltaY * 0.004)); }, { passive: true });
+  addEventListener('keydown', e => keys.add(e.code));
+  addEventListener('keyup', e => keys.delete(e.code));
+  addEventListener('blur', () => keys.clear());
+
+  const tmp = new THREE.Vector3(), look = new THREE.Vector3(), camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
+  let camReady = false, camReach = camDist, wade = 0;
+  const WALK = 1.45, RUN = 3.3, DEEP = 0.5;      // DEEP: water she will not wade into
+
+  // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
+  function collide(p) {
+    for (const [cx, cz, cr] of level.colliders) {
+      const dx = p.x - cx, dz = p.z - cz, r = cr + 0.28, d2 = dx * dx + dz * dz;
+      if (d2 < r * r && d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * r; p.z = cz + dz / d * r; }
+    }
+    const rr = Math.hypot(p.x, p.z);
+    if (rr > level.radius) { p.x *= level.radius / rr; p.z *= level.radius / rr; }
+  }
+
+  const player = {
+    object: root, position: pos, character,
+    get heading() { return heading; }, get camYaw() { return camYaw; }, get speed() { return speed; },
+    lookDir: new THREE.Vector3(0, 0, -1),
+    teleport(x, z, yaw = heading) { pos.set(x, level.heightAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; },
+    setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
+    update(dt) {
+      dt = Math.min(dt, 0.05);
+      // ---- input -> wish direction in the world, relative to the camera
+      let mx = move.x, mz = move.y;
+      if (stickId === null) {
+        mx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+        mz = (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0);
+        const l = Math.hypot(mx, mz);
+        if (l > 0) { const k = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 0.5 : 1) / l; mx *= k; mz *= k; }
+      }
+      const amount = Math.min(1, Math.hypot(mx, mz));
+      // the camera sits behind the character at camYaw: "forward" on the stick goes away from the camera
+      const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);          // away from the camera
+      const rx = -fz, rz = fx;                                        // to the camera's right
+      const wx = rx * mx - fx * mz, wz = rz * mx - fz * mz;
+      let target = 0;
+      if (amount > 0.12) {
+        target = amount > 0.72 ? RUN : WALK * Math.max(0.6, amount / 0.72);
+        const want = Math.atan2(wx, wz);
+        let d = want - heading; d = Math.atan2(Math.sin(d), Math.cos(d));
+        heading += d * Math.min(1, dt * 11);
+      }
+      // wading slows you down; deep water stops you
+      const depthHere = level.waterDepthAt(pos.x, pos.z);
+      if (depthHere > 0.15) target *= 0.72;
+      // rings spread from her legs while she wades
+      if (depthHere > 0.04 && level.ripple) {
+        wade -= dt;
+        // walking: a steady string of small pushes, which the water turns into a wake; standing: a slow ring now and then
+        if (wade <= 0) { level.ripple(pos.x, pos.z, speed > 0.3 ? 0.55 : 0.5); wade = speed > 0.3 ? 0.09 : 1.6; }
+      } else wade = 0;
+      speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 : 10));
+      if (speed > 0.02) {
+        tmp.set(pos.x + Math.sin(heading) * speed * dt, 0, pos.z + Math.cos(heading) * speed * dt);
+        if (level.waterDepthAt(tmp.x, tmp.z) > DEEP && level.waterDepthAt(tmp.x, tmp.z) > depthHere) {
+          // too deep ahead: try sliding along the shore instead of walking in
+          const ax = pos.x + Math.sin(heading + 1.1) * speed * dt, az = pos.z + Math.cos(heading + 1.1) * speed * dt;
+          const bx = pos.x + Math.sin(heading - 1.1) * speed * dt, bz = pos.z + Math.cos(heading - 1.1) * speed * dt;
+          const da = level.waterDepthAt(ax, az), db = level.waterDepthAt(bx, bz);
+          if (Math.min(da, db) > DEEP) tmp.set(pos.x, 0, pos.z); else if (da < db) tmp.set(ax, 0, az); else tmp.set(bx, 0, bz);
+        }
+        collide(tmp);
+        const went = Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt;
+        pos.x = tmp.x; pos.z = tmp.z;
+        speed = Math.min(speed, went * 1.15 + 0.05);          // pushing against something: stop walking on the spot
+      }
+      const ground = level.heightAt(pos.x, pos.z);
+      pos.y += (ground - pos.y) * Math.min(1, dt * 18);
+      // ---- animation follows the real speed, so feet do not slide
+      const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 ? 'walk' : 'run';
+      if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : 0.2);
+      character.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (character.speeds[st] || 1))));
+      character.update(dt);
+      root.position.copy(pos);
+      character.object.rotation.y = heading;
+      // ---- camera: orbits a point above the shoulders, never dips under the ground
+      look.set(pos.x, pos.y + character.height * 0.82, pos.z);
+      const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
+      // tree crowns: if the line from her shoulders to the camera runs into a leaf mass, the camera comes closer and stays
+      // under the canopy instead of diving into the leaves
+      const dx = Math.sin(camYaw) * cp, dy = sp, dz = Math.cos(camYaw) * cp;
+      let reach = camDist;
+      for (const [cx, cy, cz, cr] of level.crowns || []) {
+        const ox = look.x - cx, oy = look.y - cy, oz = look.z - cz, r = cr + 0.5;
+        if (Math.abs(ox) > r + camDist || Math.abs(oz) > r + camDist) continue;
+        const b = ox * dx + oy * dy + oz * dz, c = ox * ox + oy * oy + oz * oz - r * r;
+        if (c <= 0) continue;                              // she is standing inside the sphere: ignore it
+        const disc = b * b - c;
+        if (disc <= 0) continue;
+        const hit = -b - Math.sqrt(disc);
+        if (hit > 0 && hit < reach) reach = hit;
+      }
+      camReach += (Math.max(1.3, reach - 0.25) - camReach) * Math.min(1, dt * (reach < camReach ? 16 : 3.5));   // in fast, out slowly
+      camPos.set(look.x + dx * camReach, look.y + dy * camReach + 0.25, look.z + dz * camReach);
+      const floor = level.heightAt(camPos.x, camPos.z) + 0.45;
+      if (camPos.y < floor) camPos.y = floor;
+      if (!camReady) { camera.position.copy(camPos); camTarget.copy(look); camReady = true; }
+      camera.position.lerp(camPos, Math.min(1, dt * 14));
+      camTarget.lerp(look, Math.min(1, dt * 16));
+      camera.lookAt(camTarget);
+      player.lookDir.set(-Math.sin(camYaw), 0, -Math.cos(camYaw));
+    },
+  };
+  return player;
+}
