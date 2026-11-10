@@ -348,7 +348,7 @@ const NO_OPTICS = () => {
 // ==========================================================================
 // WATER SURFACE
 // ==========================================================================
-export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2', fadeA = 96, fadeB = 118, look = WATER_LOOK, foamTexture = null, sun = [-0.4, 0.9, 0.5] } = {}) {
+export function waterMaterial({ field, animeCells = null, sim = null, optics = null, far = '#cde6f2', fadeA = 96, fadeB = 118, look = WATER_LOOK, foamTexture = null, sun = [-0.4, 0.9, 0.5] } = {}) {
   const L = { ...WATER_LOOK, ...look };
   const S = sim || NO_SIM(), O = optics || NO_OPTICS();
   const foamMap = foamTexture || new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
@@ -359,6 +359,7 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
     uSim: S.texture, uSimRect: { value: S.rect }, uSimPx: { value: S.enabled ? S.rect.z / S.size : 1 },
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
+    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 },
     uFoamMap: { value: foamMap },
     uFoamMapOn: { value: foamTexture ? 1 : 0 },
     uFoam: { value: rgb(L.foam) }, uCell: { value: rgb(L.cell) }, uSky: { value: rgb(L.sky) },
@@ -403,7 +404,8 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
       ${WAVES}
       ${SHORE_WAVES}
       ${SIM_PARS}
-      uniform sampler2D uHeight, uThrough, uMirror, uFoamMap;
+      uniform sampler2D uHeight, uThrough, uMirror, uFoamMap, uAnimeCells;
+      uniform float uAnimeOn;
       uniform float uFoamMapOn, uBrushScale;
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
@@ -546,7 +548,14 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         float inState = step(0.0, foamStateUV.x) * step(foamStateUV.x, 1.0) * step(0.0, foamStateUV.y) * step(foamStateUV.y, 1.0);
         float movingFoam = texture2D(uSim, clamp(foamStateUV, 0.0, 1.0)).b * inState * uSimRect.w;
         white = max(white, smoothstep(0.025, 0.55, movingFoam) * 0.9 * uFoamAmt * smoothstep(0.0, 0.04, depth));
-        // Touch ripples are refraction only: no outline drawn around the wave crests.
+        // Baked cells add sparse anime-style foam islands to the existing painted, advected foam.
+        // UVs ride with the flow; depth keeps the larger shapes close to the shore.
+        vec2 animeCell = texture2D(uAnimeCells, q * vec2(0.26, 0.21)).rg;
+        float animeLace = smoothstep(0.16, 0.26, animeCell.r) * (1.0 - smoothstep(0.12, 0.26, animeCell.g));
+        float animeShore = (1.0 - smoothstep(0.10, 0.38, restDepth)) * smoothstep(0.0, 0.04, depth);
+        float animePulse = smoothstep(0.35, 0.75, 0.5 + 0.5 * sin(restDepth * 16.0 - t * 1.8 + noise2(q * 0.6) * 1.6));
+        white = max(white, min(0.75, animeLace * animeShore * animePulse * uFoamAmt) * uAnimeOn);
+        // Crown meshes and droplets accompany physical impulses; the simulation still bends the view.
 
         // Rounded sun glints, not large four-point stars or long white scratches.
         vec2 gp = drift * 3.2;
@@ -668,3 +677,4 @@ export function createLilyPads({ pads = [], seed = 1, sim = null } = {}) {
   mesh.userData = { kind: 'lilyPads', count: pads.length, dispose() { g.dispose(); mat.dispose(); } };
   return mesh;
 }
+

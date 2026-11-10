@@ -52,10 +52,13 @@
   #timeRun { top: 222px; background: rgba(39, 52, 26, .72); }
   #fullscreen { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 142px; z-index: 4; font: inherit; font-size: 12px; color: white; background: rgba(39,52,26,.78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; }
   html:fullscreen, html:-webkit-full-screen { width: 100%; height: 100%; }
+  #waterView, #splashTest { position:fixed; left:max(10px,env(safe-area-inset-left)); top:calc(38px + env(safe-area-inset-top)); z-index:4; border:1px solid #ffffff88; border-radius:999px; padding:9px 14px; background:#205f70dc; color:white; font:600 12px system-ui; touch-action:manipulation; }
+  #splashTest { top:calc(80px + env(safe-area-inset-top)); background:#f6fcfff0; color:#205f70; }
 </style>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "./anime-splash.js": "./anime-splash.js?v=anime1",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=bark1",
   "./stylized-terrain.js": "./stylized-terrain.js?v=foamphysics1",
@@ -64,16 +67,16 @@
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=tod3",
   "./stylized-character.js": "./stylized-character.js?v=foamphysics1",
-  "./meadow-level.js": "./meadow-level.js?v=perf1",
-  "./stylized-water.js": "./stylized-water.js?v=water4",
+  "./meadow-level.js": "./meadow-level.js?v=anime1",
+  "./stylized-water.js": "./stylized-water.js?v=anime1",
   "./water-tuner.js": "./water-tuner.js?v=foamphysics1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
   "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
   "./time-of-day.js": "./time-of-day.js?v=tod3",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
-  "./hills-level.js": "./hills-level.js?v=perf1",
-  "./valley-level.js": "./valley-level.js?v=tod3",
+  "./hills-level.js": "./hills-level.js?v=anime1",
+  "./valley-level.js": "./valley-level.js?v=anime1",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall5",
   "./player.js": "./player.js?v=valley1"
 } }
@@ -119,7 +122,7 @@
 <button id="skyBtn">ปรับฟ้า</button>
 <div id="tuner" class="tuner"></div>
 <div id="skyTuner" class="tuner"></div>
-<div id="credit">v23 · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
+<div id="credit">v24 · Anime Water · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
 <div id="hint"><span id="hintText">แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง</span></div>
 <div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span></div>
 <script type="module">
@@ -197,6 +200,43 @@ const player = createPlayer({ character: vivi, level, camera, dom: renderer.domE
 scene.add(player.object);
 level.addUnderwater(player.object);
 fit();
+
+// Find a collision-free shallow bank on whichever map is active.
+const waterView = document.createElement('button'); waterView.id = 'waterView'; waterView.textContent = 'ไปดูน้ำ'; document.body.append(waterView);
+const splashTest = document.createElement('button'); splashTest.id = 'splashTest'; splashTest.textContent = 'ทดสอบน้ำกระเซ็น'; document.body.append(splashTest);
+let splashTarget = null;
+function visitWater() {
+  const origin = player.position;
+  let best = null, score = Infinity;
+  for (let z = origin.z - 60; z <= origin.z + 60; z += 0.75) for (let x = origin.x - 60; x <= origin.x + 60; x += 0.75) {
+    if (Math.hypot(x,z) > level.radius-0.5) continue;
+    const d = level.waterDepthAt(x, z);
+    if (d < 0.04 || d > 0.25) continue;
+    if (level.colliders.some(([cx, cz, r]) => Math.hypot(cx - x, cz - z) < r + 0.8)) continue;
+    if (level.confine) { const confined = { x, z }; level.confine(confined); if (Math.hypot(confined.x-x,confined.z-z) > 0.1) continue; }
+    let target = null, depth = 0.25;
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6, tx = x + Math.sin(a) * 1.8, tz = z + Math.cos(a) * 1.8, td = level.waterDepthAt(tx, tz);
+      if (td > depth && !level.colliders.some(([cx,cz,r]) => Math.hypot(cx-tx,cz-tz) < r+0.2)) { depth = td; target = { x: tx, z: tz, yaw: a }; }
+    }
+    if (!target) continue;
+    const candidate = Math.hypot(x-origin.x,z-origin.z) + Math.abs(d-0.14)*20;
+    if (candidate < score) { score = candidate; best = { x, z, target }; }
+  }
+  if (!best) return false;
+  player.teleport(best.x, best.z, best.target.yaw);
+  player.setView(best.target.yaw - Math.PI, 0.4, 5.2);
+  splashTarget = best.target;
+  return true;
+}
+waterView.onclick = visitWater;
+splashTest.onclick = () => {
+  if (!splashTarget || Math.hypot(player.position.x-splashTarget.x, player.position.z-splashTarget.z)>5) {
+    if (!visitWater()) return;
+  }
+  level.ripple(splashTarget.x, splashTarget.z, 2.4, 0.36);
+};
+if (Q.get('view') === 'water') visitWater();
 
 // ---- grass look: painterly dabs or smooth blades, to compare on the device
 const styleBtn = document.getElementById('style');
@@ -283,7 +323,8 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod };
+window.__game = { visitWater, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod };
 </script>
 </body>
 </html>
+

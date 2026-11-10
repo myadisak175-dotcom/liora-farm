@@ -12,6 +12,7 @@ import * as T from './stylized-terrain.js';
 import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
+import { createAnimeSplashes } from './anime-splash.js';
 import { createWaterfall } from './stylized-waterfall.js';
 
 const { mulberry32 } = N._internal;
@@ -182,6 +183,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   await onStep('เติมน้ำ');
   const stream = [];
   for (let z = fall.z - 0.6; z <= B.z1; z += 0.5) stream.push([rx(z), z, WL, rw(z), 1.3]);
+  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => WL });
+  group.add(animeFX.group);
+  animeFX.group.userData.dispose = () => animeFX.dispose();
   let water, sim, optics, upperWater, waterfall;
   // a ribbon of water along a list of [x, z, level, half width] rows, carrying the flow coordinates the water shader needs
   const flowRibbon = (rows, across, extra) => {
@@ -240,7 +244,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     const foamWet = (x, z) => waterDepthAt(x, z) > 0.03 && !wetRocks.some(([cx, cz, r]) => (x - cx) ** 2 + (z - cz) ** 2 < (r * 0.75) ** 2);
     sim = W.createWaterSim({ rect: SR, size: 512, field, foamTexture, level: WL, mask: foamWet });
     optics = W.createWaterOptics({ level: WL });
-    water = new THREE.Mesh(g, W.waterMaterial({ field, sim, optics, foamTexture, far, fadeA: FR * 0.9, fadeB: FR * 1.2 }));
+    water = new THREE.Mesh(g, W.waterMaterial({ field, animeCells: animeFX.texture, sim, optics, foamTexture, far, fadeA: FR * 0.9, fadeB: FR * 1.2 }));
     water.name = 'clearWater';
     water.renderOrder = 1;
     water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
@@ -249,7 +253,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     const PLW = V.levels.plateauWater, upRows = [];
     for (let z = B.z0; z <= fall.z - 1.25; z += 0.6) upRows.push([V.plateauRiverX(z), z, PLW, 2.3]);
     const ug = flowRibbon(upRows, 14, 1.6);
-    upperWater = new THREE.Mesh(ug, W.waterMaterial({ field, foamTexture, far, fadeA: FR * 0.9, fadeB: FR * 1.2 }));
+    upperWater = new THREE.Mesh(ug, W.waterMaterial({ field, animeCells: animeFX.texture, foamTexture, far, fadeA: FR * 0.9, fadeB: FR * 1.2 }));
     upperWater.name = 'clearWaterUpper';
     upperWater.renderOrder = 1;
     upperWater.userData = { kind: 'water', dispose() { ug.dispose(); upperWater.material.dispose(); } };
@@ -259,7 +263,10 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
   }
-  const ripple = (x, z, strength = 1, radius = 0.26) => sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
+  const ripple = (x, z, strength = 1, radius = 0.26) => {
+    sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
+    animeFX.emit(x, z, strength);
+  };
 
   // ------------------------------------------------------------------ forest batches
   await onStep('แตกใบ');
@@ -311,7 +318,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
 
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
-  const hidden = [water, grass];
+  const hidden = [water, grass, animeFX.group];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0, nextSplash = 0, lastRenderer = null;
   const waterSpheres = [];
@@ -338,11 +345,12 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   return {
     group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, spawn, radius: 1e4, confine,
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
-    ripple, sim, optics,
+    ripple, sim, optics, animeFX, waterLevelAt: (x, z) => WL,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
       sim.step(renderer, dt);
+      animeFX.update(dt, W.WATER_TUNE.foam.value);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
       const nowT = N._internal.shared.uTime.value;
       if (castBusy) {
@@ -387,3 +395,4 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
   };
 }
+

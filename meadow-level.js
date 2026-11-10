@@ -19,6 +19,7 @@ import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
 import * as Cliffs from './stylized-cliffs.js';
 import * as W from './stylized-water.js';
+import { createAnimeSplashes } from './anime-splash.js';
 
 const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -332,6 +333,9 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   await onStep('วาดริ้วฟองน้ำ');
   const foamTexture = await W.loadFoamTexture();
   await onStep('เติมน้ำ');
+  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => gridAt(wLevel, x, z) });
+  group.add(animeFX.group);
+  animeFX.group.userData.dispose = () => animeFX.dispose();
   let water, sim, optics, pads3d = null;
   const flowRows = [];            // [x, z, downstream x, downstream z, F] for every row of the water ribbon
   {
@@ -365,14 +369,17 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     const foamWet = (x, z) => waterDepthAt(x, z) > 0.03 && !foamObstacles.some(([cx, cz, r]) => (x - cx) ** 2 + (z - cz) ** 2 < (r * 0.75) ** 2);
     sim = W.createWaterSim({ rect: [6, -27, 56], size: 512, field, foamTexture, level: -0.6, mask: foamWet });
     optics = W.createWaterOptics({ level: -0.6 });
-    water = new THREE.Mesh(g, W.waterMaterial({ field, sim, optics, foamTexture, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
+    water = new THREE.Mesh(g, W.waterMaterial({ field, animeCells: animeFX.texture, sim, optics, foamTexture, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
     water.name = 'water';
     water.renderOrder = 1;
     water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
     group.add(water);
   }
   // something dips into the water: the surface is pushed down there, and a ring runs outward
-  const ripple = (x, z, strength = 1, radius = 0.26) => sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
+  const ripple = (x, z, strength = 1, radius = 0.26) => {
+    sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
+    animeFX.emit(x, z, strength);
+  };
   // lily pads: a few rafts in the pond's quiet shallows, some in flower
   const pondSpots = [];           // open water of the pond, for the odd ripple from a fish
   {
@@ -457,7 +464,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   let nextStir = 3;
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
-  const hidden = [water, grass, pads3d].filter(Boolean);
+  const hidden = [water, grass, pads3d, animeFX.group].filter(Boolean);
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0;
   const waterSpheres = [];
@@ -466,11 +473,12 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   return {
     group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, spawn: M.spawn, radius: M.radius,
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
-    ripple, sim, optics,
+    ripple, sim, optics, animeFX, waterLevelAt: (x, z) => gridAt(wLevel, x, z),
     // things that can be seen under the water go on their own layer, so the see-through picture is cheap to draw
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       sim.step(renderer, dt);
+      animeFX.update(dt, W.WATER_TUNE.foam.value);
       if (!scene || !camera) return;
       // the two water pictures cost a redraw of the scene each, so they are only refreshed when water is on screen
       // and close enough to matter: the see-through picture every frame, the mirror every 2nd (or 4th) frame
@@ -505,3 +513,4 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     },
   };
 }
+
