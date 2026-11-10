@@ -718,7 +718,31 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
   const row = radialSeg + 1;
   for (let i = 0; i < lenSeg; i++) for (let j = 0; j < radialSeg; j++) {
     const a = i * row + j, b = a + row;
-    idx.push(a, b, a + 1, b, b + 1, a + 1);
+    // N cos(a) + B sin(a), with B = tangent x N: this order faces OUT.
+    idx.push(a, a + 1, b, b, a + 1, b + 1);
+  }
+  // Close each end. Duplicate the rim so cap normals do not flatten the bark.
+  for (const end of [0, lenSeg]) {
+    const offset = end * row, centre = pos.length / 3;
+    const c = ctr.slice(offset * 3, offset * 3 + 3);
+    const capN = frames.tangents[end].clone().multiplyScalar(end === 0 ? -1 : 1);
+    const appendCap = source => {
+      pos.push(...source);
+      nor.push(capN.x, capN.y, capN.z);
+      ctr.push(...c);
+      jn.push(jn[offset]);
+      ax.push(...ax.slice(offset * 3, offset * 3 + 3));
+      crev.push(crev[offset]);
+    };
+    appendCap(c);
+    for (let j = 0; j <= radialSeg; j++) {
+      appendCap(pos.slice((offset + j) * 3, (offset + j) * 3 + 3));
+    }
+    for (let j = 0; j < radialSeg; j++) {
+      const a = centre + 1 + j, b = a + 1;
+      if (end === 0) idx.push(centre, b, a);
+      else idx.push(centre, a, b);
+    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -1435,3 +1459,4 @@ export function createAlphaFix() {
 // shared pieces for sibling modules (stylized-terrain.js)
 export const _internal = { NOISE, VCOMMON, HAZEF, rgb, fbm3, mulberry32, range, shared, canvasTex };
 export { rockMaterial };
+
