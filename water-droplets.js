@@ -113,13 +113,23 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
         ${LIFE}
         float v = position.y + 0.5;                                       // 0 at the water, 1 at the lip
         float kc = clamp(k, 0.0, 1.0);
-        float up = 1.0 - pow(1.0 - min(kc / 0.3, 1.0), 2.0);              // shoots up...
-        float down = pow(max(kc - 0.3, 0.0) / 0.7, 2.0);                  // ...then sinks back
+        float seed = fract(aCone.x * 0.37 + aCone.z * 0.71) * 6.2831853;
+        float angle = uv.x * 6.2831853;
+        // The root moves first; a small delay carries the lift up to the lip.
+        float phase = clamp((kc - v * 0.055) / (1.0 - v * 0.055), 0.0, 1.0);
+        float up = 1.0 - pow(1.0 - min(phase / 0.3, 1.0), 2.0);
+        float down = pow(max(phase - 0.3, 0.0) / 0.7, 2.0);
         float h = aSize * 0.8 * (up - 0.9 * down);
         float base = aSize * (0.22 + 0.5 * (1.0 - (1.0 - kc) * (1.0 - kc)));       // the foot of the bowl keeps spreading
         float r = base + aSize * (0.2 + 0.5 * kc) * pow(v, 0.75) + aSize * 0.1 * v * v * v * v;      // the wall leans out, the lip curls over
-        vec3 p = aCone.xyz + vec3(position.x * r, v * h, position.z * r);
-        vV = v; vA = uv.x; vK = kc; vSeed = fract(aCone.x * 0.37 + aCone.z * 0.71) * 6.2831853;
+        float lift = max(0.0, sin(pow(phase, 0.72) * 3.14159265));
+        float flutter = sin(angle * 3.0 + seed - phase * 5.2 - v * 3.4) * 0.6
+                      + sin(angle * 5.0 - seed + phase * 3.6 - v * 4.2) * 0.4;
+        // Integer angular frequencies meet at the seam. Flex dies away at the root.
+        r *= 1.0 + v * v * flutter * 0.055 * lift;
+        vec3 p = aCone.xyz + vec3(position.x * r, v * h + v * v * flutter * lift * aSize * 0.055, position.z * r);
+        p.xz += vec2(cos(seed), sin(seed)) * aSize * v * v * lift * 0.065;
+        vV = v; vA = uv.x; vK = kc; vSeed = seed;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
         if (k < 0.0 || k > 1.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       }`,
@@ -154,7 +164,8 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
         col = mix(col, uLight, white);
         float alpha = mix(0.68, 0.95, white) * (1.0 - smoothstep(0.78, 1.0, vK));
         // anime water: flat colours, a white lip, no see-through
-        if (uToon > 0.5) { col = mix(mix(uBody, uLight, gl_FrontFacing ? 0.4 : 0.15), uLight, step(0.5, white)); alpha = step(vK, 0.92); }
+        if (uToon > 0.5) { col = mix(mix(uBody, uLight, gl_FrontFacing ? 0.4 : 0.15), uLight, step(0.5, white)); alpha = 1.0 - smoothstep(0.86, 1.0, vK); }
+        alpha *= smoothstep(0.0, 0.035, vK);
         gl_FragColor = vec4(col, alpha);
       }`,
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -169,11 +180,16 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
       void main() {
         ${LIFE}
         float v = position.y + 0.5;
-        float kj = clamp((k - 0.22) / 0.78, 0.0, 1.0), rise = sin(kj * 3.14159);
+        float kj = clamp((k - 0.22) / 0.78, 0.0, 1.0), rise = max(0.0, sin(kj * 3.14159265));
         float h = aSize * 1.25 * pow(rise, 0.85);
         // a cone: broad where it leaves the water, drawn out to a rounded tip that pinches as it falls back
         float r = aSize * (0.2 * pow(1.0 - v, 1.6) + 0.035 * sqrt(max(1.0 - v * v, 0.0))) * (0.55 + 0.45 * rise);
         vec3 p = aCone.xyz + vec3(position.x * r, v * h, position.z * r);
+        float seed = fract(aCone.x * 0.37 + aCone.z * 0.71) * 6.2831853;
+        float bend = v * v * aSize * rise;
+        // A travelling bend follows the rising jet; its foot stays planted.
+        p.x += bend * (sin(v * 4.0 - kj * 5.4 + seed) * 0.075 + cos(seed) * kj * 0.14);
+        p.z += bend * (cos(v * 3.2 - kj * 4.2 + seed) * 0.055 + sin(seed) * kj * 0.14);
         vV = v; vK = kj;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
         if (k < 0.22 || k > 1.0 || aSize < 0.4) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);      // footsteps throw no cone
@@ -186,7 +202,8 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
         float white = max(smoothstep(0.55, 1.0, vV), 1.0 - smoothstep(0.0, 0.08, vV));
         vec3 col = mix(mix(uBody, uLight, 0.3), uLight, white * 0.9);
         float alpha = mix(0.75, 0.95, white) * (1.0 - smoothstep(0.85, 1.0, vK));
-        if (uToon > 0.5) { col = mix(mix(uBody, uLight, 0.4), uLight, step(0.6, vV)); alpha = step(vK, 0.95); }
+        if (uToon > 0.5) { col = mix(mix(uBody, uLight, 0.4), uLight, step(0.6, vV)); alpha = 1.0 - smoothstep(0.88, 1.0, vK); }
+        alpha *= smoothstep(0.0, 0.035, vK);
         gl_FragColor = vec4(col, alpha);
       }`,
     transparent: true, depthWrite: false,
@@ -233,3 +250,4 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
     dispose() { geo.dispose(); mat.dispose(); cgeo.dispose(); jgeo.dispose(); tube.dispose(); tube2.dispose(); cmat.dispose(); jmat.dispose(); },
   };
 }
+
