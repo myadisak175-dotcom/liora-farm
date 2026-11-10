@@ -57,24 +57,24 @@ export function loadFoamTexture() {
 // The look can be tuned while the game runs: every water material and lily pad reads these same values.
 // (water-tuner.js puts sliders on them; the numbers here are the defaults)
 export const WATER_TUNE = {
-  foamDrift: { value: 1 },       // scale the simulated foam transport
-  brushScale: { value: 0.22 },    // painted foam texture repetitions per metre
-  shore: { value: 0.85 },         // shore-breaking swell strength
-  foamLife: { value: 1.8 },        // seconds for surface foam to dissipate
-  caustic: { value: 0.05 },        // brightness of the light netting on the bottom
-  causticScale: { value: 1.1 },    // bigger number = smaller pattern
-  swell: { value: 0.8 },           // height of the slow waves
-  shimmer: { value: 0.035 },        // fine restless wobble of the surface
-  speed: { value: 1 },             // how fast swell, shimmer and light pattern move
-  refract: { value: 1 },           // how much the view under water bends
-  reflect: { value: 0.55 },        // how strongly the scene is mirrored
-  clear: { value: 1.15 },          // depth (m) at which you no longer see the bottom
-  foam: { value: 0.85 },              // froth along the shore
-  glint: { value: 0.4 },             // winking sparks
-  fleck: { value: 0.35 },           // streaks of foam carried along by the current
-  ripple: { value: 0.6 },          // strength of the waves made by touching the water
-  simSpeed: { value: 1.5 },        // how fast those waves travel (m/s)
-  calm: { value: 0.993 },          // how long they last (closer to 1 = longer)
+  foamDrift: { value: 1.95 },       // scale the simulated foam transport
+  brushScale: { value: 0.49 },    // painted foam texture repetitions per metre
+  shore: { value: 0.6 },         // shore-breaking swell strength
+  foamLife: { value: 2.25 },        // seconds for surface foam to dissipate
+  caustic: { value: 0.49 },        // brightness of the light netting on the bottom
+  causticScale: { value: 2.2 },    // bigger number = smaller pattern
+  swell: { value: 1.35 },           // height of the slow waves
+  shimmer: { value: 0.27 },        // fine restless wobble of the surface
+  speed: { value: 2.25 },             // how fast swell, shimmer and light pattern move
+  refract: { value: 2.3 },           // how much the view under water bends
+  reflect: { value: 0.18 },        // how strongly the scene is mirrored
+  clear: { value: 0.6 },          // depth (m) at which you no longer see the bottom
+  foam: { value: 1.75 },              // froth along the shore
+  glint: { value: 0.1 },             // winking sparks
+  fleck: { value: 1.15 },           // streaks of foam carried along by the current
+  ripple: { value: 1.75 },          // strength of the waves made by touching the water
+  simSpeed: { value: 1.8 },        // how fast those waves travel (m/s)
+  calm: { value: 0.979 },          // how long they last (closer to 1 = longer)
 };
 const TUNE_UNIFORMS = () => ({
   uCaustic: WATER_TUNE.caustic, uCausticScale: WATER_TUNE.causticScale, uSwell: WATER_TUNE.swell, uShimmer: WATER_TUNE.shimmer, uSpeed: WATER_TUNE.speed,
