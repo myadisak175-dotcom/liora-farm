@@ -42,6 +42,8 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=8, tune=null}
     else gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.); }`;
   const fragmentHead=`uniform float uAlphaK; uniform sampler2D uCells,uHeight; uniform vec4 uHeightRect; uniform float uFoamAmt;
     varying vec2 vUV; varying float vAge,vSeed; varying vec3 vWorld;
+    float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+    float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h2(i),h2(i+vec2(1.,0.)),f.x),mix(h2(i+vec2(0.,1.)),h2(i+vec2(1.,1.)),f.x),f.y);}
     void main(){
       float ground=texture2D(uHeight,(vWorld.xz-uHeightRect.xy)*uHeightRect.z+uHeightRect.w).r;
       if(vWorld.y<ground+0.005) discard;
@@ -57,25 +59,19 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=8, tune=null}
       transparent:true,depthWrite:false,side:THREE.DoubleSide});
     const m=new THREE.Mesh(g,mat);m.frustumCulled=false;m.renderOrder=3;group.add(m);geo.dispose();return m;
   }
-  const crown=mesh(new THREE.CylinderGeometry(1,.44,1,48,7,true),`
+  // A soft bell of water: rounded, see-through aqua body (the colour of our water) with long painted white strokes running up it
+  // and a foamy lip. No teeth, no holes: it should read as the same hand-painted water as the river and the falls.
+  const crown=mesh(new THREE.CylinderGeometry(1,.55,1,40,6,true),`
     float h=p.y+.5, angle=atan(p.z,p.x);
-    float teeth=.6+.23*sin(angle*7.+vSeed)+.17*sin(angle*11.-vSeed);
-    p.xz*=power*(.5+age*1.5);
-    p.y=pow(h,.8)*teeth*sin(pow(age,.7)*3.14159)*power*.7;
-    p.y+=.025;`, `
-    vec2 uv=vec2(vUV.x*1.8+vSeed, vUV.y*.65-vAge*.32);
-    vec2 c=texture2D(uCells,uv).rg;
-    float hole=smoothstep(.26,.36,c.r+vUV.y*.1);
-    float lip=smoothstep(.82,.96,vUV.y);
-    float alpha=max(hole,lip)*fade*(1.-smoothstep(.96,1.,vUV.y))*.6*uFoamAmt;
-    vec3 col=mix(vec3(.26,.72,.86),vec3(.94,.995,1.),smoothstep(.3,.8,vUV.y+c.g*.5));`);
-  const jet=mesh(new THREE.CylinderGeometry(.08,.3,1,14,5,true),`
-    float h=p.y+.5; p.xz*=power*(1.-age*.5);
-    p.x+=sin(h*5.+vSeed)*h*.08*power;
-    p.y=h*sin(pow(age,.55)*3.14159)*power*1.25+.025;`, `
-    float pattern=texture2D(uCells,vec2(vUV.x*.6+vSeed,vUV.y-vAge*.7)).r;
-    float alpha=fade*(1.-smoothstep(.82,1.,vUV.y))*.5;
-    vec3 col=mix(vec3(.25,.68,.86),vec3(.92,.99,1.),smoothstep(.22,.5,pattern));`);
+    float wob=.8+.1*sin(angle*5.+vSeed)+.04*sin(angle*8.-vSeed*1.7);
+    p.xz*=power*(.4+age*1.0)*(.72+.28*pow(h,.6));
+    p.y=sin(h*1.45)*wob*sin(pow(age,.7)*3.14159)*power*.8;
+    p.y+=.02;`, `
+    float s=vn(vec2(vUV.x*22.+vSeed*3.,vUV.y*1.6-vAge*1.4))*.6+vn(vec2(vUV.x*9.-vSeed,vUV.y*3.5-vAge*.8))*.4;
+    float stroke=smoothstep(.46,.62,s);
+    float lip=smoothstep(.78,.97,vUV.y);
+    vec3 col=mix(vec3(.3,.74,.88),vec3(.94,.995,1.),max(stroke*.85,lip));
+    float alpha=(.2+stroke*.6+lip*.3)*fade*smoothstep(0.,.12,vUV.y)*(1.-smoothstep(.97,1.,vUV.y))*uFoamAmt;`);
   // Two expanding annuli with irregular, dissolving foam edges.
   const rg=new THREE.BufferGeometry(),rp=[],ru=[],ri=[];
   for(let layer=0;layer<2;layer++)for(let i=0;i<=64;i++)for(let j=0;j<2;j++) {
@@ -89,10 +85,10 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=8, tune=null}
     float wob=sin(vUV.x*37.7+vSeed+a*2.)*.035;
     p.xz*=max(0.01,radius+(vUV.y-.5)*power*(.12+.12*a)+wob);
     p.y=.035+layer*.01+sin(vUV.x*18.85+age*4.)*.012;`, `
-    float c=texture2D(uCells,vec2(vUV.x*2.+vSeed,vUV.y*.12+vAge*.18)).r;
-    float edges=smoothstep(0.,.17,vUV.y)*(1.-smoothstep(.65,1.,vUV.y));
-    float alpha=edges*fade*smoothstep(.12,.25,c-vAge*.1)*.5*uFoamAmt;
-    vec3 col=vec3(.9,.99,1.);`);
+    float c=vn(vec2(vUV.x*16.+vSeed,vUV.y*2.))*.6+vn(vec2(vUV.x*6.-vSeed,vUV.y*.7+vAge))*.4;
+    float edges=smoothstep(0.,.3,vUV.y)*(1.-smoothstep(.55,1.,vUV.y));
+    float alpha=edges*fade*smoothstep(.36,.62,c)*.5*uFoamAmt;
+    vec3 col=mix(vec3(.72,.94,.98),vec3(.96,1.,1.),c);`);
   // Billboard droplets with ballistic flight, all in a single instanced draw.
   const dg=new THREE.PlaneGeometry(1,1), g=new THREE.InstancedBufferGeometry();g.index=dg.index;g.attributes={...dg.attributes};g.instanceCount=capacity*6;
   const di=new Float32Array(capacity*6*4),dp=new Float32Array(capacity*6*4),ds=new Float32Array(capacity*6);
