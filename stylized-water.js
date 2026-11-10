@@ -80,6 +80,7 @@ export const WATER_TUNE = {
   splashFoam: { value: 1 },        // how much foam a splash or a footstep leaves
   drops: { value: 1 },             // drops of water thrown into the air (water-droplets.js); 0 = none
   ring: { value: 1 },              // how brightly the crests of the simulated rings catch the light
+  stepRing: { value: 1 },          // anime foam rings thrown out by footsteps, splashes and the falls (0 = none)
   lace: { value: 1 },              // foam islands drifting on the surface
 };
 const TUNE_UNIFORMS = () => ({
@@ -413,6 +414,47 @@ const NO_OPTICS = () => {
   return { uniforms: { uThrough: { value: px([232, 214, 164, 255]) }, uMirror: { value: px([207, 234, 247, 255]) }, uMirrorMatrix: { value: new THREE.Matrix4() }, uInvRes: { value: new THREE.Vector2(1, 1) }, uOptics: { value: 0 }, uMirrorOn: { value: 0 } } };
 };
 
+// ANIME FOAM RINGS. A footstep, a splash or the falls throws out a ring of white cell-patterned foam, drawn straight in the
+// surface shader: it starts as a pale disc with thick foam round it, spreads, opens a hole in the middle, thins to a lace and
+// breaks into flecks at the rim before it is gone. A handful of slots, reused in turn.
+//   WATER_RINGS.add(x, z, size)        // size: the radius (m) the ring reaches; it lives 0.9 + 0.8 * size seconds
+const RING_SLOTS = 8;
+export const WATER_RINGS = {
+  uniforms: Array.from({ length: RING_SLOTS }, () => ({ value: new THREE.Vector4(0, 0, -100, 1) })),
+  next: 0,
+  add(x, z, size = 0.5) {
+    this.uniforms[this.next].value.set(x, z, shared.uTime.value, size);
+    this.next = (this.next + 1) % RING_SLOTS;
+  },
+};
+const RING_GLSL = /* glsl */`
+  uniform vec4 ${Array.from({ length: RING_SLOTS }, (_, i) => 'uRg' + i).join(', ')};
+  uniform float uStepRing;
+  // x: white foam, y: the pale disc at the heart of a fresh ring
+  vec2 foamRing(vec4 g, vec2 xz) {
+    float life = 0.9 + 0.8 * g.w, age = uTime - g.z;
+    if (age < 0.0 || age > life) return vec2(0.0);
+    float k = age / life;
+    float R = g.w * (0.45 + 0.55 * (1.0 - (1.0 - k) * (1.0 - k)));          // fast at first, then slowing
+    vec2 d = xz - g.xy;
+    float q = length(d) / R;
+    if (q > 1.1) return vec2(0.0);
+    // the cell pattern is pinned to the ring and grows with it, so the foam is seen to spread, not just to appear
+    vec2 c = texture2D(uAnimeCells, d / R * 0.45 + fract(g.xy * 0.37)).rg;
+    float w = mix(0.9, 0.4, smoothstep(0.1, 0.9, q)) * (1.0 - 0.7 * k * k);     // thick at the heart, a lace at the rim, thinner with age
+    float lace = 1.0 - smoothstep(w - 0.05, w + 0.02, c.g);
+    float hole = 0.78 * smoothstep(0.2, 1.0, k);                               // the middle clears first
+    lace *= smoothstep(hole - 0.12, hole + 0.03, q + (c.r - 0.3) * 0.25);
+    lace *= 1.0 - smoothstep(0.82, 1.0, q + (c.r - 0.3) * 0.35);                 // a ragged rim that breaks into flecks
+    lace *= 1.0 - smoothstep(0.75, 1.0, k);
+    float disc = (1.0 - smoothstep(0.22, 0.4, q)) * (1.0 - smoothstep(0.15, 0.55, k));
+    return vec2(lace, disc);
+  }
+  vec2 foamRings(vec2 xz) {
+    vec2 r = ${Array.from({ length: RING_SLOTS }, (_, i) => `foamRing(uRg${i}, xz)`).reduce((a, b) => `max(${a}, ${b})`)};
+    return r * min(uStepRing, 1.5);
+  }`;
+
 // ==========================================================================
 // WATER SURFACE
 // ==========================================================================
@@ -428,6 +470,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
     uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uLace: WATER_TUNE.lace, uRing: WATER_TUNE.ring,
+    uStepRing: WATER_TUNE.stepRing, ...Object.fromEntries(WATER_RINGS.uniforms.map((u, i) => ['uRg' + i, u])),
     uFoamMap: { value: foamMap },
     uFoamMapOn: { value: foamTexture ? 1 : 0 },
     uFoam: { value: rgb(L.foam) }, uCell: { value: rgb(L.cell) }, uSky: { value: rgb(L.sky) },
@@ -489,6 +532,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       varying float vLift;
       varying float vCalm;
 
+      ${RING_GLSL}
       vec2 hash22(vec2 p) { return vec2(hash2(p), hash2(p + 37.31)); }
       float paintedFoam(vec2 uv) {
         vec2 a = fract(uv), b = fract(uv + vec2(0.47, 0.53));
@@ -667,6 +711,10 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         // splash and next to nothing on the small rings of a footstep. The rings' shape is left to the light bending through them.
         float crest = smoothstep(0.006, 0.05, s0);
         col = mix(col, uCell, clamp(crest * 0.2 * uRing, 0.0, 0.5) * smoothstep(0.0, 0.06, depth));
+        // anime foam rings from footsteps, splashes and the falls (only where the cell texture exists)
+        vec2 rings = foamRings(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth);
+        col = mix(col, uCell, clamp(rings.y * 0.6, 0.0, 0.8));
+        white = max(white, rings.x * 0.95);
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
         col = mix(col, uFar, smoothstep(uFadeA, uFadeB, length(xz)));

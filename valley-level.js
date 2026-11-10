@@ -269,11 +269,16 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * k);
     else if (mode === 'splash' || (mode === null && strength >= 1.5)) {
+      if (sim.inside(x, z)) W.WATER_RINGS.add(x, z, Math.min(2, 0.7 * strength));
       sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
       if (drop > 0 && sim.inside(x, z)) droplets.emit(x, WL, z, strength / 2.4 * drop, Math.round(14 * Math.min(1.5, drop)));
     } else {
-      sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.55, 0.75 * strength) * foam);
-      if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, WL, z, 0.16 * drop, 2);
+      // a footstep presses harder than a plain dip: one clear ring of waves and one ring of anime foam for every foot that lands
+      // (only a faint wisp of simulated foam under it, so the lace of the ring stays readable)
+      const st = mode === 'step';
+      if (st && sim.inside(x, z)) W.WATER_RINGS.add(x, z, Math.min(1, 0.7 * strength));
+      sim.impulse(x, z, radius, (st ? -0.042 : -0.03) * strength * k, -Math.min(st ? 0.35 : 0.55, (st ? 0.4 : 0.75) * strength) * foam);
+      if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, WL, z, 0.16 * drop * strength, strength > 1.2 ? 3 : 2);
     }
   };
 
@@ -329,7 +334,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
   const hidden = [water, grass, droplets.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
-  let frameNo = 0, nextSplash = 0, lastRenderer = null;
+  let frameNo = 0, nextSplash = 0, nextFoam = 0, lastRenderer = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
@@ -401,6 +406,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       if (now > nextSplash) {
         ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4, 'plain');
         nextSplash = now + 0.16;
+      }
+      // and a churn of anime foam where the sheet lands: big rings, one after another, across the width of the falls
+      if (now > nextFoam) {
+        W.WATER_RINGS.add(fall.x + (Math.random() - 0.5) * 3.4, fall.z + 1.5 + Math.random() * 0.5, 1.5 + Math.random() * 0.5);
+        nextFoam = now + 0.55;
       }
     },
   };

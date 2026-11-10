@@ -387,11 +387,16 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
     const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * k);
     else if (mode === 'splash' || (mode === null && strength >= 1.5)) {
+      if (sim.inside(x, z)) W.WATER_RINGS.add(x, z, Math.min(2, 0.7 * strength));
       sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
       if (drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, strength / 2.4 * drop, Math.round(14 * Math.min(1.5, drop)));
     } else {
-      sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.55, 0.75 * strength) * foam);
-      if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, 0.16 * drop, 2);
+      // a footstep presses harder than a plain dip: one clear ring of waves and one ring of anime foam for every foot that lands
+      // (only a faint wisp of simulated foam under it, so the lace of the ring stays readable)
+      const st = mode === 'step';
+      if (st && sim.inside(x, z)) W.WATER_RINGS.add(x, z, Math.min(1, 0.7 * strength));
+      sim.impulse(x, z, radius, (st ? -0.042 : -0.03) * strength * k, -Math.min(st ? 0.35 : 0.55, (st ? 0.4 : 0.75) * strength) * foam);
+      if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, 0.16 * drop * strength, strength > 1.2 ? 3 : 2);
     }
   };
   // lily pads: a few rafts in the pond's quiet shallows, some in flower

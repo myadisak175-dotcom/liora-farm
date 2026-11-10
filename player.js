@@ -81,6 +81,10 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   const tmp = new THREE.Vector3(), look = new THREE.Vector3(), camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
   let camReady = false, camReach = camDist, wade = 0, stepSide = 1;
   const WALK = 1.45, RUN = 3.3, DEEP = 0.5;      // DEEP: water she will not wade into
+  // her two feet, followed bone by bone, so the water is touched exactly when and where a foot comes down
+  const feet = [];
+  character.object.traverse(o => { if (o.isBone && /_(L|R)_Foot$/.test(o.name)) feet.push({ bone: o, lo: 0, hi: 0, up: false, seen: false, since: 1 }); });
+  const footPos = new THREE.Vector3();
 
   // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
   function collide(p) {
@@ -124,16 +128,14 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       // wading slows you down; deep water stops you
       const depthHere = level.waterDepthAt(pos.x, pos.z);
       if (depthHere > 0.15) target *= 0.72;
-      // rings spread from her legs while she wades
+      // standing in water: a slow ring now and then. Walking is handled further down, where each foot's own landing makes the ring
       if (depthHere > 0.04 && level.ripple) {
         wade -= dt;
-        // walking: a steady string of small pushes, which the water turns into a wake; standing: a slow ring now and then
-        // each push comes from alternating left/right foot, bigger the deeper she is, so the wake reads as steps
-        if (wade <= 0) {
-          const moving = speed > 0.3;
+        const moving = speed > 0.3;
+        if (wade <= 0 && (!moving || !feet.length)) {
+          // no foot bones to follow: fall back to a steady string of pushes from alternating sides
           stepSide = -stepSide;
           const px = pos.x + Math.cos(heading) * stepSide * 0.12, pz = pos.z - Math.sin(heading) * stepSide * 0.12;
-          // gentle pushes, a little apart: stacked up too close and too hard the surface rebounds under her legs like jelly
           const body = (0.7 + 0.6 * Math.min(1, depthHere / 0.4)) * 0.55;
           level.ripple(px, pz, moving ? body : body * 0.8, moving ? 0.34 : 0.42, moving ? 'step' : 'plain');
           wade = moving ? 0.17 + Math.random() * 0.09 : 1.2 + Math.random() * 0.8;      // never quite in time, like real steps
@@ -163,6 +165,32 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       character.update(dt);
       root.position.copy(pos);
       character.object.rotation.y = heading;
+      // ---- footsteps in water: each foot swings between a low and a high point of its own; the moment it comes back down to the
+      // low point is the step. The range is learnt as she moves, so walk and run (and any other clip) need no numbers of their own.
+      if (feet.length && level.ripple) {
+        root.updateMatrixWorld(true);
+        for (const f of feet) {
+          f.bone.getWorldPosition(footPos);
+          const y = footPos.y - pos.y;
+          if (!f.seen) { f.lo = f.hi = y; f.seen = true; }
+          f.lo = y < f.lo ? y : f.lo + (y - f.lo) * Math.min(1, dt * 0.25);
+          f.hi = y > f.hi ? y : f.hi + (y - f.hi) * Math.min(1, dt * 0.25);
+          f.since += dt;
+          const range = f.hi - f.lo;
+          if (range < 0.03 || speed < 0.3) { f.up = false; continue; }          // standing: feet stay planted
+          if (y > f.lo + range * 0.55) f.up = true;
+          else if (f.up && y < f.lo + range * 0.28) {
+            f.up = false;
+            const d = level.waterDepthAt(footPos.x, footPos.z);
+            if (d > 0.04 && f.since > 0.18) {
+              f.since = 0;
+              // harder the faster she goes and the deeper the water; a run kicks up a wider ring than a walk
+              const pace = Math.min(1, Math.max(0, (speed - WALK) / (RUN - WALK)));
+              level.ripple(footPos.x, footPos.z, (0.75 + 0.35 * Math.min(1, d / 0.4)) * (1 + 0.45 * pace), 0.3 + 0.08 * pace, 'step');
+            }
+          }
+        }
+      }
       // ---- camera: orbits a point above the shoulders, never dips under the ground
       look.set(pos.x, pos.y + character.height * 0.82, pos.z);
       const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
