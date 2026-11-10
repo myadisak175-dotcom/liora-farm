@@ -79,7 +79,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   addEventListener('blur', () => keys.clear());
 
   const tmp = new THREE.Vector3(), look = new THREE.Vector3(), camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
-  let camReady = false, camReach = camDist, wade = 0;
+  let camReady = false, camReach = camDist, wade = 0, stepSide = 1;
   const WALK = 1.45, RUN = 3.3, DEEP = 0.5;      // DEEP: water she will not wade into
 
   // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
@@ -127,7 +127,15 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       if (depthHere > 0.04 && level.ripple) {
         wade -= dt;
         // walking: a steady string of small pushes, which the water turns into a wake; standing: a slow ring now and then
-        if (wade <= 0) { level.ripple(pos.x, pos.z, speed > 0.3 ? 0.55 : 0.5); wade = speed > 0.3 ? 0.09 : 1.6; }
+        // each push comes from alternating left/right foot, bigger the deeper she is, so the wake reads as steps
+        if (wade <= 0) {
+          const moving = speed > 0.3;
+          stepSide = -stepSide;
+          const px = pos.x + Math.cos(heading) * stepSide * 0.12, pz = pos.z - Math.sin(heading) * stepSide * 0.12;
+          const body = 0.7 + 0.6 * Math.min(1, depthHere / 0.4);
+          level.ripple(px, pz, moving ? body : body * 0.8, moving ? 0.3 : 0.42);
+          wade = moving ? 0.12 : 1.5;
+        }
       } else wade = 0;
       speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 : 10));
       if (speed > 0.02) {
