@@ -421,11 +421,15 @@ function barkMaterial(spec) {
       uniform float uFront, uPushLo, uPushHi;
       attribute vec4 aBase;     // tree foot + scale (batched forests); (0,0,0,1) for a single tree
       attribute vec3 aCtr;      // centre-line the paint strokes are measured from (the trunk's, then each limb's own)
+      attribute float aJoin;    // 0..1 how much this spot is still the trunk's wood (the foot of a limb)
+      attribute vec3 aAx;       // the trunk's centre-line there (only x and z are used)
       attribute float aCrev;    // 0..1 shadowed hollow: root valleys and the crotch where a limb leaves the trunk
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
       varying vec3 vCtr;
+      varying vec3 vAx;
+      varying float vJoin;
       varying float vCrev;
       void main() {
         vec3 local = (position - aBase.xyz) / aBase.w;
@@ -434,6 +438,8 @@ function barkMaterial(spec) {
         vOP = local;
         vON = normal;
         vCtr = (aCtr - aBase.xyz) / aBase.w;
+        vAx = (aAx - aBase.xyz) / aBase.w;
+        vJoin = aJoin;
         vCrev = aCrev;
         vec4 wp = modelMatrix * vec4(p, 1.0);
         vec4 mv = viewMatrix * wp;
@@ -456,6 +462,8 @@ function barkMaterial(spec) {
       varying vec3 vOP;
       varying vec3 vON;
       varying vec3 vCtr;
+      varying vec3 vAx;
+      varying float vJoin;
       varying float vCrev;
       float hash3(vec3 p) { p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
       float noise3(vec3 x) {
@@ -464,24 +472,32 @@ function barkMaterial(spec) {
         return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
                    mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
       }
+      // brush strokes at a point: x = tone, y = groove. 'across' = offset from the wood's centre-line, 'c' = centre-line position
+      vec2 strokes(vec3 across, vec3 c) {
+        float big  = noise3(across * 4.2 + c * 0.38);
+        float mid  = noise3(across * 10.0 + c * 1.1 + 7.3);
+        float fine = noise3(across * 24.0 + c * 2.5 + 3.1);
+        return vec2(big * 0.46 + mid * 0.38 + fine * 0.16, noise3(across * 17.0 + c * 2.8 + 9.0));
+      }
       void main() {
         // hand-painted bark: long brush strokes laid along the wood. A 3D field is read from the ring around the wood's own
         // centre-line (fine across) plus the centre-line position itself (slow along), so strokes run lengthways, follow every
         // bend, and a limb's strokes begin exactly where the trunk's are: no seam where the wood forks. The sun only nudges
         // which tone wins, so the trunk never splits into a light and a dark half.
-        vec3 across = vOP - vCtr;
-        float big  = noise3(across * 4.2 + vCtr * 0.38);
-        float mid  = noise3(across * 10.0 + vCtr * 1.1 + 7.3);
-        float fine = noise3(across * 24.0 + vCtr * 2.5 + 3.1);
+        vec2 st = strokes(vOP - vCtr, vCtr);
+        if (vJoin > 0.001) {                       // foot of a limb: paint it as the trunk is painted, then ease into its own strokes
+          vec3 ct = vec3(vAx.x, vOP.y, vAx.z);
+          st = mix(st, strokes(vOP - ct, ct), vJoin);
+        }
         float lit = dot(normalize(vN), uLight);
-        float t = 0.52 + (big * 0.46 + mid * 0.38 + fine * 0.16 - 0.5) * 1.9 + (lit - 0.3) * 0.08;
+        float t = 0.52 + (st.x - 0.5) * 1.9 + (lit - 0.3) * 0.08;
         t -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * 0.3;    // crown shades the branches
-        t -= vCrev * 0.42;                                              // hollows and crotches sit in shade
         vec3 col = mix(uC, uB, smoothstep(0.37, 0.43, t));
         col = mix(col, uA, smoothstep(0.58, 0.64, t));
         col = mix(col, uH, smoothstep(0.72, 0.77, t) * smoothstep(0.0, 0.5, lit) * 0.85);   // dry-brush light on the sunny side
-        float crack = smoothstep(0.76, 0.82, noise3(across * 17.0 + vCtr * 2.8 + 9.0));
-        col = mix(col, uC * 0.75, crack * 0.55 * (1.0 - vCrev));                                // thin dark strokes in the grooves
+        float crack = smoothstep(0.78, 0.86, st.y);
+        col = mix(col, uC * 0.75, crack * 0.4);                                                  // thin dark strokes in the grooves
+        col = mix(col, uC * 0.85, clamp(vCrev, 0.0, 1.0) * 0.4);                                 // hollows and crotches sit in soft shade (smooth, never blotchy)
         if (uMarks > 0.5) {                                           // birch bark dashes
           float ang = atan(vON.z, vON.x);
           vec2 cell = floor(vec2(vOP.y * 4.0, ang * 1.4));
@@ -666,12 +682,12 @@ function rockMaterial(moss, tone = 'warm') {
 // --------------------------------------------------------------------------
 // How finely wood and the leaf core are cut. A forest of hundreds of trees is drawn twice a frame (once more in the water's mirror),
 // so every triangle here is paid hundreds of times. Smooth-shaded tubes hide the lower counts well.
-const TREE_LOD = { trunkRadial: 10, trunkLength: 24, branchRadial: 6, branchLength: 9, coreDetail: 2 };
+const TREE_LOD = { trunkRadial: 10, trunkLength: 24, branchRadial: 7, branchLength: 8, coreDetail: 2 };
 
 function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null, opt = {}) {
   const curve = new THREE.CatmullRomCurve3(points);
   const frames = curve.computeFrenetFrames(lenSeg, false);
-  const pos = [], nor = [], ctr = [], crev = [], idx = [];
+  const pos = [], nor = [], ctr = [], crev = [], jn = [], ax = [], idx = [];
   const P = new THREE.Vector3(), n = new THREE.Vector3(), q = new THREE.Vector3(), nt = new THREE.Vector3();
   const axis = opt.axis || null, blendLen = opt.blend || 0.25;
   for (let i = 0; i <= lenSeg; i++) {
@@ -693,10 +709,9 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
         if (nt.lengthSq() > 1e-6) n.lerp(nt.normalize(), w * 0.8).normalize();
       }
       nor.push(n.x, n.y, n.z);
-      // where the paint is measured from: this wood's own centre-line, but near the foot of a limb the trunk's (same height,
-      // on its axis) so the strokes on the limb start exactly where the trunk's strokes are and then turn along the limb
-      if (w > 0) ctr.push(P.x + (axis.x - P.x) * w, P.y, P.z + (axis.z - P.z) * w);
-      else ctr.push(P.x, P.y, P.z);
+      ctr.push(P.x, P.y, P.z);      // the paint is measured from this wood's own centre-line
+      jn.push(w);                   // ...and near a limb's foot it is also painted the way the trunk is, the two mixed by this weight
+      if (w > 0) ax.push(axis.x, P.y, axis.z); else ax.push(P.x, P.y, P.z);
       crev.push(opt.crev ? opt.crev(t, a, w) : 0);
     }
   }
@@ -709,6 +724,8 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('aCtr', new THREE.Float32BufferAttribute(ctr, 3));
+  g.setAttribute('aJoin', new THREE.Float32BufferAttribute(jn, 1));
+  g.setAttribute('aAx', new THREE.Float32BufferAttribute(ax, 3));
   g.setAttribute('aCrev', new THREE.Float32BufferAttribute(crev, 1));
   g.setIndex(idx);
   return { geo: g, curve };
@@ -1123,7 +1140,7 @@ export function createForest(list) {
       }
     } else {
       const { spec, trunk, core, cards } = treeParts(e.type || 'broadleaf', e.seed ?? 1, e.detail ?? 1);
-      trunk.applyMatrix4(M); trunk.attributes.aCtr.applyMatrix4(M);
+      trunk.applyMatrix4(M); trunk.attributes.aCtr.applyMatrix4(M); trunk.attributes.aAx.applyMatrix4(M);
       (barkB[e.type] || (barkB[e.type] = { spec, geos: [] })).geos.push(withBase(trunk, e.x, e.y, e.z, s));
       (coreB[spec.palette] || (coreB[spec.palette] = [])).push(withBase(core.applyMatrix4(M), e.x, e.y, e.z, s));
       addCards(spec.mask, cards, e, s);
