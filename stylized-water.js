@@ -190,13 +190,22 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       // is there water at this cell? (waves bounce off everything else)
       ${follow ? 'float wet(vec2 uv) { return step(0.03, uLevel - bottom(uRect.xy + uv * uRect.z)); }' : 'float wet(vec2 uv) { return texture2D(uMask, uv).r; }'}
       float poke(vec4 i, vec2 xz) { vec2 d = xz - i.xy; return i.w * exp(-dot(d, d) / (i.z * i.z)); }
-      // foam thrown by a touch. f > 0: a splash = a soft patch with a broken, uneven rim around it. f < 0: a footstep = one small wisp.
+      // foam thrown by a touch, torn into flecks by noise so no two touches leave the same mark and none of them is a clean
+      // stamp. f > 0: a splash = loose flecks in the middle and a broken, uneven ring round them. f < 0: a footstep = a few flecks.
+      float fleckHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float fleckNoise(vec2 p) {
+        vec2 c = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(fleckHash(c), fleckHash(c + vec2(1.0, 0.0)), f.x), mix(fleckHash(c + vec2(0.0, 1.0)), fleckHash(c + vec2(1.0, 1.0)), f.x), f.y);
+      }
       float foamPoke(vec4 i, float f, vec2 xz) {
         vec2 d = xz - i.xy;
-        if (f < 0.0) { float r = i.z * 0.9; return -f * exp(-dot(d, d) / (r * r)); }
-        float k = length(d) / (i.z * 1.35), ang = atan(d.y, d.x);
-        float lobes = 0.55 + 0.45 * sin(ang * 7.0 + i.x * 3.1 + i.y * 1.7) * sin(ang * 3.0 - i.x * 2.3 + 1.0);
-        return f * max(0.6 * exp(-k * k * 2.2), lobes * exp(-(k - 0.85) * (k - 0.85) * 7.0));
+        float broad = fleckNoise(xz * 2.3 + i.xy * 0.7), fine = fleckNoise(xz * 6.0 - i.yx * 1.3);
+        float torn = broad * 0.5 + fine * 0.5;
+        if (f < 0.0) { float r = i.z * 0.85; return -f * exp(-dot(d, d) / (r * r)) * smoothstep(0.45, 0.7, torn); }
+        float k = length(d) / (i.z * 1.35) + (broad - 0.5) * 0.5;           // the outline wanders in and out
+        float body = 0.32 * exp(-k * k * 2.2) * smoothstep(0.4, 0.66, fine);
+        float rim = 0.55 * exp(-(k - 0.9) * (k - 0.9) * 8.0) * smoothstep(0.5, 0.74, torn);
+        return f * max(body, rim);
       }
       // a neighbour's height; a neighbour on land mirrors this cell, which is what makes waves bounce off the shore
       float nb(vec2 uv, float h) { return mix(h, texture2D(uState, uv).r, step(0.5, wet(uv))); }
@@ -637,9 +646,10 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float spec = pow(max(dot(N, Hh), 0.0), 140.0);
         white = max(white, min(0.55, spec * 0.5) * uGlint * smoothstep(0.1, 0.35, depth));
 
-        // the crests of the rings made by a touch catch the light: a soft pale band riding each ring, so the rings read from any angle
-        float crest = smoothstep(0.004, 0.022, s0) * (1.0 - smoothstep(0.06, 0.16, s0) * 0.5);
-        col = mix(col, uCell, clamp(crest * 0.42 * uRing, 0.0, 0.8) * smoothstep(0.0, 0.06, depth));
+        // the tops of the rings made by a touch are a shade paler: a soft glow with no edge of its own, strongest on a fresh
+        // splash and next to nothing on the small rings of a footstep. The rings' shape is left to the light bending through them.
+        float crest = smoothstep(0.006, 0.05, s0);
+        col = mix(col, uCell, clamp(crest * 0.2 * uRing, 0.0, 0.5) * smoothstep(0.0, 0.06, depth));
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
         col = mix(col, uFar, smoothstep(uFadeA, uFadeB, length(xz)));

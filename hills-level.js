@@ -388,7 +388,7 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * k);
     else if (mode === 'splash' || (mode === null && strength >= 1.5)) {
       sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
-      if (drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, strength / 2.4 * drop, Math.round(9 * Math.min(1.5, drop)));
+      if (drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, strength / 2.4 * drop, Math.round(14 * Math.min(1.5, drop)));
     } else {
       sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.55, 0.75 * strength) * foam);
       if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, 0.16 * drop, 2);
