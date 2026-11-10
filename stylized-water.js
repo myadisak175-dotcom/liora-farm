@@ -638,7 +638,10 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
 
         // ---- the scene mirrored on the surface, stronger at low angles, broken up by the waves
         float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
-        vec4 mc = uMirrorMatrix * vec4(vWP, 1.0);
+        // the mirror picture is of the FLAT water plane, so it is looked up at the point of that plane under this pixel. Looking it up at
+        // the lifted surface point instead moved the lookup by the wave height, and that height only exists at the mesh vertices:
+        // blended between them it left a straight crease along every triangle edge, which the mirror showed as long diagonal lines.
+        vec4 mc = uMirrorMatrix * vec4(vWP.x, vWP.y - vLift, vWP.z, 1.0);
         vec3 refl = mix(uSky, texture2D(uMirror, mc.xy / mc.w + N.xz * 0.06).rgb, uOptics * uMirrorOn);
         col = mix(col, refl, fres * uReflect * smoothstep(0.0, 0.15, depth));
 
