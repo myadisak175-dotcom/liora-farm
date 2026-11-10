@@ -12,6 +12,7 @@ import * as T from './stylized-terrain.js';
 import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
+import { createWaterfall } from './stylized-waterfall.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -28,9 +29,21 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true });
   group.add(V.group);
   const terrain = V.group.children.find(o => o.name !== 'water' && o.isMesh);
-  const oldRiver = V.group.children.find(o => o.name === 'water');       // the lower river: replaced by the clear water below
-  if (oldRiver) oldRiver.visible = false;
+  // the valley's own water (flat-colour river, upper river, waterfall, foam clumps) is replaced by the clear water below
+  for (const o of V.group.children) if (['water', 'waterfall', 'foam'].includes(o.name)) o.visible = false;
   const B = V.bounds, CX = (B.x0 + B.x1) / 2, CZ = (B.z0 + B.z1) / 2, FR = Math.max(B.x1 - B.x0, B.z1 - B.z0) / 2 + 10;
+  // the coarse land beyond the map edge is only meant to be seen outside it: inside, its big cells can poke up
+  // through the detailed ground (a green slab beside the waterfall), so sink it well out of sight there
+  const skirt = V.group.getObjectByName('terrainSkirt');
+  if (skirt) {
+    const sp = skirt.geometry.attributes.position;
+    for (let i = 0; i < sp.count; i++) {
+      const x = sp.getX(i), z = sp.getZ(i);
+      if (x > B.x0 + 6 && x < B.x1 - 6 && z > B.z0 + 6 && z < B.z1 - 6) sp.setY(i, sp.getY(i) - 40);
+    }
+    sp.needsUpdate = true;
+    skirt.geometry.computeBoundingSphere();
+  }
   const rx = V.riverX, rw = V.riverHalfWidth, fall = V.waterfall, WL = V.levels.water;
   const HV = V.heightAt;
   const lower = (x, z) => V.waterLevelAt(x, z) === WL;                   // not up on the plateau behind the falls
@@ -143,7 +156,34 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   await onStep('เติมน้ำ');
   const stream = [];
   for (let z = fall.z - 0.6; z <= B.z1; z += 0.5) stream.push([rx(z), z, WL, rw(z), 1.3]);
-  let water, sim, optics;
+  let water, sim, optics, upperWater, waterfall;
+  // a ribbon of water along a list of [x, z, level, half width] rows, carrying the flow coordinates the water shader needs
+  const flowRibbon = (rows, across, extra) => {
+    const pos = [], flow = [], dir = [], idx = [];
+    let F = 0;
+    for (let k = 0; k < rows.length; k++) {
+      const s = rows[k], a = rows[Math.max(0, k - 1)], b = rows[Math.min(rows.length - 1, k + 1)];
+      let tx = b[0] - a[0], tz = b[1] - a[1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+      const half = s[3] + extra;
+      const streaminess = 1 - ss(3.6, 6.2, s[3]);            // 1 in the river, 0 over the plunge pool
+      if (k > 0) F += Math.hypot(s[0] - a[0], s[1] - a[1]) * W.FLOW.pond / lerp(W.FLOW.pond, W.FLOW.stream, streaminess);
+      for (let i = 0; i <= across; i++) {
+        const u = -1 + 2 * i / across, x = s[0] - tz * u * half, z = s[1] + tx * u * half;
+        pos.push(x, s[2], z); flow.push(F, u * half, streaminess); dir.push(tx, tz);
+      }
+    }
+    const row = across + 1;
+    for (let k = 0; k < rows.length - 1; k++) for (let i = 0; i < across; i++) {
+      const a = k * row + i, b = a + row;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 3));
+    g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 2));
+    g.setIndex(idx);
+    return g;
+  };
   {
     const ACROSS = 40, pos = [], flow = [], dir = [], idx = [];
     let F = 0;
@@ -179,6 +219,19 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     water.renderOrder = 1;
     water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
     group.add(water);
+    // the river up on the plateau, running to the lip: same clear water (no wave simulation, no mirror up there)
+    const PLW = V.levels.plateauWater, upRows = [];
+    for (let z = B.z0; z <= fall.z - 1.25; z += 0.6) upRows.push([V.plateauRiverX(z), z, PLW, 2.3]);
+    const ug = flowRibbon(upRows, 14, 1.6);
+    upperWater = new THREE.Mesh(ug, W.waterMaterial({ field, foamTexture, far, fadeA: FR * 0.9, fadeB: FR * 1.2 }));
+    upperWater.name = 'clearWaterUpper';
+    upperWater.renderOrder = 1;
+    upperWater.userData = { kind: 'water', dispose() { ug.dispose(); upperWater.material.dispose(); } };
+    group.add(upperWater);
+    // the waterfall, in the same palette
+    waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6 });
+    waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
+    group.add(waterfall.group);
   }
   const ripple = (x, z, strength = 1, radius = 0.26) => sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
 
@@ -267,6 +320,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     follow(pos, lookDir) {
       grass.userData.follow(pos, lookDir);
+      waterfall.update();
       // the falls keep the plunge pool restless: rings run out from where the sheet lands
       const now = N._internal.shared.uTime.value;
       if (now > nextSplash) {
