@@ -68,6 +68,7 @@
   "./cloud-shadows.js": "./cloud-shadows.js?v=foamphysics1",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
+  "./hills-level.js": "./hills-level.js?v=hills1",
   "./player.js": "./player.js?v=wade2"
 } }
 </script>
@@ -120,6 +121,7 @@ import * as A from './stylized-animals.js';
 import * as Sky from './stylized-sky.js';
 import { createVolumetricSky } from './volumetric-sky.js';
 import { buildMeadowLevel } from './meadow-level.js';
+import { buildHillsLevel } from './hills-level.js';
 import { loadCharacter } from './stylized-character.js';
 import { createPlayer } from './player.js';
 import { WATER_TUNE } from './stylized-water.js';
@@ -170,7 +172,8 @@ const skyW = +Q.get('sky') || (fastMode ? 1024 : IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
 scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
-const level = await buildMeadowLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || (fastMode ? 120000 : 200000) });
+const buildLevel = Q.get('map') === 'meadow' ? buildMeadowLevel : buildHillsLevel;      // ?map=meadow brings the old map back
+const level = await buildLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || (fastMode ? 120000 : 200000) });
 scene.add(level.group);
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
