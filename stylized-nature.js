@@ -402,12 +402,13 @@ function coreMaterial(pal) {
 }
 
 function barkMaterial(spec) {
-  const b = spec.bark || ['#77493b', '#5e3832', '#472a2c'];     // a warm edge of light, the maroon body, a thin shaded edge
+  const b = spec.bark || ['#7d4c3d', '#5e3832', '#432831'];     // a warm edge of light, the maroon body, a cool plum shade
+  const hi = rgb(b[0]).lerp(rgb(spec.barkHi || '#f0c9a0'), 0.4);  // dry-brush highlight laid over the light tone
   return new THREE.ShaderMaterial({
     uniforms: {
       ...shared,
       uLight: { value: new THREE.Vector3(-0.4, 0.9, 0.5).normalize() },  // the same sun as rocks and clouds (world space)
-      uA: { value: rgb(b[0]) }, uB: { value: rgb(b[1]) }, uC: { value: rgb(b[2]) },
+      uA: { value: rgb(b[0]) }, uB: { value: rgb(b[1]) }, uC: { value: rgb(b[2]) }, uH: { value: hi },
       uMarkCol: { value: rgb(spec.markCol || '#2e2a26') },
       uMarks: { value: spec.marks ? 1 : 0 },
       uShadeY: { value: spec.shadeY ?? 99 },
@@ -419,15 +420,21 @@ function barkMaterial(spec) {
       ${VCOMMON}
       uniform float uFront, uPushLo, uPushHi;
       attribute vec4 aBase;     // tree foot + scale (batched forests); (0,0,0,1) for a single tree
+      attribute vec3 aCtr;      // centre-line the paint strokes are measured from (the trunk's, then each limb's own)
+      attribute float aCrev;    // 0..1 shadowed hollow: root valleys and the crotch where a limb leaves the trunk
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
+      varying vec3 vCtr;
+      varying float vCrev;
       void main() {
         vec3 local = (position - aBase.xyz) / aBase.w;
         vec3 p = position + windOffset(local, objPhase() + aBase.x * 0.37 + aBase.z * 0.23) * aBase.w;
         vN = normalize(mat3(modelMatrix) * normal);
         vOP = local;
         vON = normal;
+        vCtr = (aCtr - aBase.xyz) / aBase.w;
+        vCrev = aCrev;
         vec4 wp = modelMatrix * vec4(p, 1.0);
         vec4 mv = viewMatrix * wp;
         // illustration trick: the fork under the crown is drawn over the dark underside
@@ -443,27 +450,44 @@ function barkMaterial(spec) {
     fragmentShader: /* glsl */`
       ${NOISE}
       ${HAZEF}
-      uniform vec3 uLight, uA, uB, uC, uMarkCol;
+      uniform vec3 uLight, uA, uB, uC, uH, uMarkCol;
       uniform float uShadeY, uMarks, uDebug;
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
+      varying vec3 vCtr;
+      varying float vCrev;
+      float hash3(vec3 p) { p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float noise3(vec3 x) {
+        vec3 i = floor(x), f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
+                   mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+      }
       void main() {
-        // painted bark: long brush strokes of three close tones running up the wood. The sun only nudges which tone
-        // wins (more light strokes on the sunny side), so the trunk never splits into a light half and a dark half,
-        // whatever the camera does.
-        vec2 around = normalize(vON.xz + 1e-4);
-        float streak = noise2(vec2(around.x * 2.4 + 5.0, vOP.y * 0.5)) * 0.5 + noise2(vec2(around.y * 2.4, vOP.y * 0.5 + 3.0)) * 0.5;
-        streak = streak * 0.72 + noise2(vec2(around.x * 6.0 + around.y * 4.0, vOP.y * 1.5 + 7.0)) * 0.28;
-        float t = 0.5 + dot(normalize(vN), uLight) * 0.2 + (streak - 0.5) * 0.9;
+        // hand-painted bark: long brush strokes laid along the wood. A 3D field is read from the ring around the wood's own
+        // centre-line (fine across) plus the centre-line position itself (slow along), so strokes run lengthways, follow every
+        // bend, and a limb's strokes begin exactly where the trunk's are: no seam where the wood forks. The sun only nudges
+        // which tone wins, so the trunk never splits into a light and a dark half.
+        vec3 across = vOP - vCtr;
+        float big  = noise3(across * 4.2 + vCtr * 0.38);
+        float mid  = noise3(across * 10.0 + vCtr * 1.1 + 7.3);
+        float fine = noise3(across * 24.0 + vCtr * 2.5 + 3.1);
+        float lit = dot(normalize(vN), uLight);
+        float t = 0.52 + (big * 0.46 + mid * 0.38 + fine * 0.16 - 0.5) * 1.9 + (lit - 0.3) * 0.08;
         t -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * 0.3;    // crown shades the branches
-        vec3 col = t > 0.6 ? uA : (t > 0.4 ? uB : uC);
+        t -= vCrev * 0.42;                                              // hollows and crotches sit in shade
+        vec3 col = mix(uC, uB, smoothstep(0.37, 0.43, t));
+        col = mix(col, uA, smoothstep(0.58, 0.64, t));
+        col = mix(col, uH, smoothstep(0.72, 0.77, t) * smoothstep(0.0, 0.5, lit) * 0.85);   // dry-brush light on the sunny side
+        float crack = smoothstep(0.76, 0.82, noise3(across * 17.0 + vCtr * 2.8 + 9.0));
+        col = mix(col, uC * 0.75, crack * 0.55 * (1.0 - vCrev));                                // thin dark strokes in the grooves
         if (uMarks > 0.5) {                                           // birch bark dashes
           float ang = atan(vON.z, vON.x);
           vec2 cell = floor(vec2(vOP.y * 4.0, ang * 1.4));
           float h = hash2(cell);
-          float f = fract(vOP.y * 4.0);
-          if (h > 0.55 && f > 0.3 && f < 0.42 + h * 0.25) col = uMarkCol;
+          float fy = fract(vOP.y * 4.0);
+          if (h > 0.55 && fy > 0.3 && fy < 0.42 + h * 0.25) col = uMarkCol;
         }
         gl_FragColor = vec4(uDebug > 0.5 ? vec3(0.0, 0.0, 1.0) : mix(col, uHaze, vHaze), 1.0);
       }`,
@@ -642,24 +666,38 @@ function rockMaterial(moss, tone = 'warm') {
 // --------------------------------------------------------------------------
 // How finely wood and the leaf core are cut. A forest of hundreds of trees is drawn twice a frame (once more in the water's mirror),
 // so every triangle here is paid hundreds of times. Smooth-shaded tubes hide the lower counts well.
-const TREE_LOD = { trunkRadial: 12, trunkLength: 28, branchRadial: 6, branchLength: 9, coreDetail: 2 };
+const TREE_LOD = { trunkRadial: 10, trunkLength: 24, branchRadial: 6, branchLength: 9, coreDetail: 2 };
 
-function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null) {
+function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null, opt = {}) {
   const curve = new THREE.CatmullRomCurve3(points);
   const frames = curve.computeFrenetFrames(lenSeg, false);
-  const pos = [], nor = [], idx = [];
-  const P = new THREE.Vector3(), n = new THREE.Vector3();
+  const pos = [], nor = [], ctr = [], crev = [], idx = [];
+  const P = new THREE.Vector3(), n = new THREE.Vector3(), q = new THREE.Vector3(), nt = new THREE.Vector3();
+  const axis = opt.axis || null, blendLen = opt.blend || 0.25;
   for (let i = 0; i <= lenSeg; i++) {
     const t = i / lenSeg;
     curve.getPointAt(t, P);
     const r0 = radiusAt(t);
     const N = frames.normals[i], B = frames.binormals[i];
+    // a limb grows OUT of the wood it leaves: near its foot the shading, paint and shadow all belong to the
+    // trunk and only turn into the limb's own further along (so no seam shows where the two surfaces cross)
+    const wt = axis ? 1 - Math.min(1, t / blendLen) : 0, w = wt * wt * (3 - 2 * wt);
     for (let j = 0; j <= radialSeg; j++) {
       const a = j / radialSeg * Math.PI * 2;
       const r = shape ? r0 * shape(t, a) : r0;
       n.copy(N).multiplyScalar(Math.cos(a)).addScaledVector(B, Math.sin(a)).normalize();
-      pos.push(P.x + n.x * r, P.y + n.y * r, P.z + n.z * r);
+      q.set(P.x + n.x * r, P.y + n.y * r, P.z + n.z * r);
+      pos.push(q.x, q.y, q.z);
+      if (w > 0) {
+        nt.set(q.x - axis.x, 0, q.z - axis.z);
+        if (nt.lengthSq() > 1e-6) n.lerp(nt.normalize(), w * 0.8).normalize();
+      }
       nor.push(n.x, n.y, n.z);
+      // where the paint is measured from: this wood's own centre-line, but near the foot of a limb the trunk's (same height,
+      // on its axis) so the strokes on the limb start exactly where the trunk's strokes are and then turn along the limb
+      if (w > 0) ctr.push(P.x + (axis.x - P.x) * w, P.y, P.z + (axis.z - P.z) * w);
+      else ctr.push(P.x, P.y, P.z);
+      crev.push(opt.crev ? opt.crev(t, a, w) : 0);
     }
   }
   const row = radialSeg + 1;
@@ -670,49 +708,77 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('aCtr', new THREE.Float32BufferAttribute(ctr, 3));
+  g.setAttribute('aCrev', new THREE.Float32BufferAttribute(crev, 1));
   g.setIndex(idx);
   return { geo: g, curve };
 }
 
-// trunk + branches. spec.trunk: { pts:[[x,y,z]..], radius:t=>r, lean },
+// trunk + roots + branches, grown as one piece of wood. spec.trunk: { pts:[[x,y,z]..], radius:t=>r, lean, roots },
 // spec.branches: [{ t:[a,b], n, rise:[a,b], out:[a,b], r, twig }]
 function buildTrunk(rng, spec) {
   const parts = [];
   const lean = (rng() - 0.5) * (spec.trunk.lean ?? 0.14);
+  const sway = (rng() - 0.5) * 2, lph = rng() * 6.28;        // slow S-bend of the stem, and where the root lobes sit
   const pts = spec.trunk.pts.map(([x, y, z], i, arr) => {
     const k = Math.sin(i / (arr.length - 1) * Math.PI);  // lean most in the middle
-    return new THREE.Vector3(x + lean * k, y, z);
+    const w = Math.sin(i * 1.7 + lph) * 0.5 * (spec.trunk.sway ?? 0.1);
+    return new THREE.Vector3(x + lean * k + w * sway, y, z + Math.cos(i * 1.3 + lph) * 0.5 * (spec.trunk.sway ?? 0.1));
   });
-  // a stout trunk that spreads into roots at the foot (buttress lobes), slightly irregular all the way up
-  const height = pts[pts.length - 1].y - pts[0].y, lph = lean * 53;
-  const trunkR = t => spec.trunk.radius(t) * 1.2 * (1 + 0.7 * Math.exp(-t * height / 0.5));
-  const trunk = taperedTube(pts, trunkR, TREE_LOD.trunkRadial, TREE_LOD.trunkLength, (t, a) => 1 + 0.2 * Math.exp(-t * height / 0.65) * Math.cos(a * 5 + lph) + 0.04 * Math.sin(a * 3 + t * 11 + lph));
+  const height = pts[pts.length - 1].y - pts[0].y;
+  // a stout trunk that swells into its roots at the foot, slightly oval and irregular all the way up
+  const trunkR = t => spec.trunk.radius(t) * 1.2 * (1 + 0.1 * Math.exp(-t * height / 0.5));
+  const rootsOn = spec.trunk.roots ?? 5;
+  const foot = spec.trunk.radius(0.15) * 1.2;      // the stem's own girth just above the swelling
+  const trunkShape = (t, a) => 1 + 0.1 * Math.exp(-t * height / 0.8) * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)
+    + 0.05 * Math.cos(a * 2 + lph) + 0.035 * Math.sin(a * 3 + t * 9 + lph * 2);
+  const trunk = taperedTube(pts, trunkR, TREE_LOD.trunkRadial, TREE_LOD.trunkLength, trunkShape,
+    { crev: (t, a) => 0.45 * Math.exp(-t * height / 0.7) * (0.5 - 0.5 * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)) });
   parts.push(trunk.geo);
   const up = new THREE.Vector3(0, 1, 0);
-  // a limb grows OUT of its parent: it starts nearly as thick as the wood it leaves, then narrows to its own size
-  const addBranch = (start, az, rise, out, r0, rParent = r0) => {
+  const hollow = (t, a, w) => 0.2 * w * w;              // shadow in the crotch, fading out along the limb
+  // a limb leaves the trunk heading out and mostly up, then reaches for the light: it starts nearly as thick as the wood
+  // it leaves and narrows to its own size
+  const addBranch = (start, az, rise, out, r0, rParent = r0, axisPt = null, blend = 0.26) => {
     const d = new THREE.Vector3(Math.cos(az), 0, Math.sin(az));
     const bp = [
       start.clone(),
-      start.clone().addScaledVector(d, out * 0.3).addScaledVector(up, rise * 0.36),
-      start.clone().addScaledVector(d, out * 0.68).addScaledVector(up, rise * 0.74),
+      start.clone().addScaledVector(d, out * 0.36).addScaledVector(up, rise * 0.2),
+      start.clone().addScaledVector(d, out * 0.74).addScaledVector(up, rise * 0.58),
       start.clone().addScaledVector(d, out).addScaledVector(up, rise),
     ];
-    const collar = Math.max(r0, rParent * 0.8);
-    const tube = taperedTube(bp, t => { const k = Math.min(1, t / 0.3), e = k * k * (3 - 2 * k); return (collar + (r0 - collar) * e) * (1 - 0.7 * t); }, TREE_LOD.branchRadial, TREE_LOD.branchLength);
+    const collar = Math.max(r0, rParent * 0.7);
+    const tube = taperedTube(bp, t => {
+      const k = Math.min(1, t / 0.3), e = k * k * (3 - 2 * k);
+      return (collar + (r0 - collar) * e) * (1 - 0.72 * t) * (1 + 0.14 * (1 - Math.min(1, t / 0.2)));   // a little flare where it joins
+    }, TREE_LOD.branchRadial, TREE_LOD.branchLength, null, { axis: axisPt, blend, crev: axisPt ? hollow : null });
     parts.push(tube.geo);
     return tube.curve;
   };
+  // buttress roots: short thick limbs that leave the trunk low down and dive into the ground
+  const rN = rootsOn, rph = rng() * 6.28;
+  for (let i = 0; i < rN; i++) {
+    const az = rph + i / rN * Math.PI * 2 + (rng() - 0.5) * 0.6;
+    const d = new THREE.Vector3(Math.cos(az), 0, Math.sin(az));
+    const base = pts[0].clone(); base.y = 0.1 + foot * 1.5;
+    const len = foot * range(rng, 1.7, 2.5);
+    const rp = [base, base.clone().addScaledVector(d, len * 0.4).setY(base.y * 0.55), base.clone().addScaledVector(d, len * 0.75).setY(0.02), base.clone().addScaledVector(d, len).setY(-0.16)];
+    const axisPt = pts[0].clone();
+    const tube = taperedTube(rp, t => foot * 0.7 * (1 - 0.62 * t) + 0.02, 5, 5, null,
+      { axis: axisPt, blend: 0.5, crev: (t, a, w) => 0.12 + 0.25 * w * w });
+    parts.push(tube.geo);
+  }
   for (const B of spec.branches || []) {
     for (let i = 0; i < B.n; i++) {
       const az = i / B.n * Math.PI * 2 + rng() * 0.8;
       const tj = range(rng, B.t[0], B.t[1]);
       const s = trunk.curve.getPointAt(tj);
-      const curve = addBranch(s, az, range(rng, B.rise[0], B.rise[1]), range(rng, B.out[0], B.out[1]), B.r * 1.15, trunkR(tj));
+      const curve = addBranch(s, az, range(rng, B.rise[0], B.rise[1]), range(rng, B.out[0], B.out[1]), B.r * 1.3, trunkR(tj), s);
       if (rng() < (B.twig || 0)) {
-        const tt = range(rng, 0.45, 0.65);
-        addBranch(curve.getPointAt(tt), az + (rng() < 0.5 ? -1 : 1) * range(rng, 0.5, 1.0),
-          range(rng, B.rise[0], B.rise[1]) * 0.5, range(rng, B.out[0], B.out[1]) * 0.45, B.r * 0.6, B.r * 1.15 * (1 - 0.7 * tt));
+        const tt = range(rng, 0.42, 0.62);
+        const ts = curve.getPointAt(tt);
+        addBranch(ts, az + (rng() < 0.5 ? -1 : 1) * range(rng, 0.5, 1.0),
+          range(rng, B.rise[0], B.rise[1]) * 0.5, range(rng, B.out[0], B.out[1]) * 0.45, B.r * 0.7, B.r * 1.3 * (1 - 0.72 * tt), ts, 0.4);
       }
     }
   }
@@ -896,7 +962,7 @@ const TREE_TYPES = {
     palette: 'pine', mask: 'needle', height: 10.5,
     trunk: {
       pts: [[0, -0.05, 0], [0, 2.5, 0], [0.02, 5, 0], [0, 7.5, 0], [0.02, 10, 0]],
-      radius: t => 0.2 - 0.17 * t + 0.12 * Math.exp(-t * 40), lean: 0.05,
+      radius: t => 0.2 - 0.17 * t + 0.12 * Math.exp(-t * 40), lean: 0.05, roots: 3,
     },
     branches: [],
     tiers: (() => {
@@ -919,7 +985,7 @@ const TREE_TYPES = {
     palette: 'birch', mask: 'soft', height: 9.2,
     trunk: {
       pts: [[0, -0.05, 0], [0.05, 1.5, 0], [-0.08, 3, 0.05], [0.05, 4.5, 0], [0.15, 6, 0], [0.1, 7.5, 0], [0.15, 8.6, 0]],
-      radius: t => 0.12 - 0.075 * t + 0.06 * Math.exp(-t * 40), lean: 0.2,
+      radius: t => 0.12 - 0.075 * t + 0.06 * Math.exp(-t * 40), lean: 0.2, roots: 3,
     },
     branches: [{ t: [0.5, 0.85], n: 5, rise: [0.9, 1.4], out: [0.7, 1.2], r: 0.04, twig: 0.5 }],
     tiers: [
@@ -936,7 +1002,7 @@ const TREE_TYPES = {
     palette: 'broad', mask: 'broad', height: 4.6,
     trunk: {
       pts: [[0, -0.05, 0], [0.02, 1.0, 0], [0, 2.0, 0], [0.05, 3.0, 0], [0.08, 3.8, 0]],
-      radius: t => 0.075 - 0.04 * t + 0.04 * Math.exp(-t * 40), lean: 0.12,
+      radius: t => 0.075 - 0.04 * t + 0.04 * Math.exp(-t * 40), lean: 0.12, roots: 3,
     },
     branches: [{ t: [0.55, 0.66], n: 3, rise: [0.6, 0.9], out: [0.5, 0.8], r: 0.035 }],
     tiers: [{ c: [0.05, 3.4, 0], r: [1.35, 1.05, 1.25], clumpR: 0.62, n: 18, taper: 0.3, taperLow: 0.25, openBelow: -0.8 }],
@@ -1057,7 +1123,8 @@ export function createForest(list) {
       }
     } else {
       const { spec, trunk, core, cards } = treeParts(e.type || 'broadleaf', e.seed ?? 1, e.detail ?? 1);
-      (barkB[e.type] || (barkB[e.type] = { spec, geos: [] })).geos.push(withBase(trunk.applyMatrix4(M), e.x, e.y, e.z, s));
+      trunk.applyMatrix4(M); trunk.attributes.aCtr.applyMatrix4(M);
+      (barkB[e.type] || (barkB[e.type] = { spec, geos: [] })).geos.push(withBase(trunk, e.x, e.y, e.z, s));
       (coreB[spec.palette] || (coreB[spec.palette] = [])).push(withBase(core.applyMatrix4(M), e.x, e.y, e.z, s));
       addCards(spec.mask, cards, e, s);
     }
