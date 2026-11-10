@@ -749,14 +749,15 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         white = max(white, rings.x * 0.95);
         if (uToon > 0.5) {
           white = max(white, smoothstep(0.035, 0.04, s0) * min(uRing, 1.0) * 0.9 * smoothstep(0.0, 0.06, depth));
-          // short white strokes, all lying the same way and drifting slowly, coming and going: the drawn highlights of anime water
-          vec2 dp = vec2(xz.x * 0.7 - t * 0.02, xz.y * 2.0) + (noise2(xz * 0.3 + 4.0) - 0.5) * 0.4;
+          // short white strokes lying along the current and carried downstream by it (flow coordinates: q.y runs with the water,
+          // q.x across it), longer where the water runs faster; they come and go
+          vec2 dp = vec2(q.x * 2.0, q.y * 0.7) + (noise2(q * 0.3 + 4.0) - 0.5) * 0.4;
           vec2 di = floor(dp), df = fract(dp) - 0.5;
           float dh = hash2(di + 17.0);
           vec2 dj = df - (hash22(di + 3.0) - 0.5) * 0.5;
-          float len = 0.12 + 0.16 * hash2(di + 41.0), along = abs(dj.x) / len;
+          float len = 0.12 + 0.16 * hash2(di + 41.0), along = abs(dj.y) / len;
           float wide = 0.11 * (1.0 - along * along);
-          float dash = (1.0 - smoothstep(wide * 0.7, wide, abs(dj.y))) * step(along, 1.0);
+          float dash = (1.0 - smoothstep(wide * 0.7, wide, abs(dj.x))) * step(along, 1.0);
           dash *= step(0.5, dh) * smoothstep(0.1, 0.4, sin(uTime * 0.6 + dh * 40.0));
           dash *= smoothstep(0.2, 0.45, depth) * (1.0 - smoothstep(30.0, 60.0, length(cameraPosition - vWP)));
           white = max(white, dash * 0.9);
