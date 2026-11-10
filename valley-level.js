@@ -18,7 +18,7 @@ const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 150000, onStep = async () => {} } = {}) {
+export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 150000, sun = [-0.4, 0.9, 0.5], onStep = async () => {} } = {}) {
   const group = new THREE.Group();
   group.name = 'valleyLevel';
   const rng = mulberry32(seed * 977 + 3);
@@ -70,6 +70,14 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // ------------------------------------------------------------------ plants
   await onStep('ปลูกป่าบนผาและตีนผา');
   const placed = [], plants = [], colliders = [], crowns = [], shade = [], bare = [], press = [];
+  // shadows thrown along the sun's direction. L points at the sun; a point h above the ground throws its shadow h / L.y further out the other way
+  const L = new THREE.Vector3(...sun).normalize(), dxz = Math.hypot(L.x, L.z) || 1;
+  const SU = [-L.x / dxz, -L.z / dxz], SLEN = dxz / L.y;                  // shadow direction on the ground, and how far it runs per metre of height
+  const cast = [];
+  // a ball of radius r whose middle is h above the ground at (x, z)
+  const castBall = (x, z, h, r, st = 0.9, dap = 0) => cast.push([x + SU[0] * SLEN * h, z + SU[1] * SLEN * h, r / Math.max(0.35, L.y) * 1.02, r, SU[0], SU[1], st, dap]);
+  // a thin upright stick from the ground up to height h (a trunk)
+  const castStick = (x, z, h, w, st = 0.75) => { const len = SLEN * h; cast.push([x + SU[0] * len / 2, z + SU[1] * len / 2, len / 2 + w, w, SU[0], SU[1], st, 0]); };
   const CROWN_Y = { broadleaf: 5.7, oak: 5.2, pine: 5.6, birch: 6.6, sapling: 3.4 }, CROWN_R = { broadleaf: 2.9, oak: 3.5, pine: 2.3, birch: 2.0, sapling: 1.3 };
   const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 };
   const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
@@ -78,7 +86,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const shrub = (x, z, scale = 1) => {
     if (HV(x, z) < WL + 0.6) return;
     plants.push({ kind: 'bush', type: rng() < 0.35 ? 'flowering' : 'round', seed: ++ps, x, y: HV(x, z), z, rotY: rng() * 6.28, scale });
-    colliders.push([x, z, 0.75 * scale]); shade.push([x, z, 1.7 * scale, 0.7]); placed.push([x, z, 1.0 * scale]);
+    colliders.push([x, z, 0.75 * scale]); shade.push([x, z, 1.7 * scale, 0.45]); placed.push([x, z, 1.0 * scale]); castBall(x, z, 0.55 * scale, 0.95 * scale, 0.8, 0.2);
   };
   const tree = (type, x, z, scale = 1, detail = 0.8, bush = false) => {
     const y = HV(x, z);
@@ -86,7 +94,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     placed.push([x, z, CROWN[type] * scale * 0.42]);
     colliders.push([x, z, TRUNK[type] * scale + 0.22]);
     crowns.push([x, y + CROWN_Y[type] * scale, z, CROWN_R[type] * scale]);
-    shade.push([x, z, CROWN[type] * scale * 1.05, 1]); bare.push([x, z, TRUNK[type] * scale * 1.5]);
+    shade.push([x, z, CROWN[type] * scale * 1.05, 0.4]); bare.push([x, z, TRUNK[type] * scale * 1.5]);
+    castBall(x, z, CROWN_Y[type] * scale, CROWN_R[type] * scale, 0.88, 0.3);
+    castStick(x, z, CROWN_Y[type] * scale * 0.85, Math.max(0.22, TRUNK[type] * scale * 0.7));
     if (bush) { const a = rng() * 6.28, d = (TRUNK[type] + 1.1) * scale; shrub(x + Math.cos(a) * d, z + Math.sin(a) * d, R(0.75, 1.05)); }
   };
   placed.push([spawn.x, spawn.z, 5]);
@@ -117,7 +127,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     m.position.set(x, HV(x, z) - sink, z); m.rotation.y = rng() * 6.28; m.scale.setScalar(scale);
     rocks.add(m);
     const r = solid ?? ({ boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8, river: 0.7, pebbles: 0 }[type] * scale);
-    if (r > 0) { colliders.push([x, z, r]); press.push([x, z, r * 1.6]); shade.push([x, z, r * 2.0, 0.55]); }
+    if (r > 0) { colliders.push([x, z, r]); press.push([x, z, r * 1.6]); shade.push([x, z, r * 2.0, 0.3]); castBall(x, z, r * 0.5, r * 0.95, 0.85); }
     placed.push([x, z, Math.max(r, 0.6)]);
   };
   for (let z = Z_HEAD + 6; z < B.z1 - 4; z += R(5, 9)) {                    // water-worn stones along both banks
@@ -147,7 +157,16 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     return [earth, sand, 0];
   };
   const colors = { ...G.GROUND_COLORS, deep: '#7a9b3c', mid: '#86a640', sunny: '#a5c04b', shade: '#6d8d38', lawn: '#93b145' };
-  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: Hf, dirt: 0, shade, bare, press, paint, colors });
+  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: Hf, dirt: 0, shade, cast, bare, press, paint, colors });
+  // the bare ground (sand, banks, cliff feet) is drawn by the terrain's own shader: it reads the same shadow picture
+  {
+    const tm = terrain.material, key = 'col = mix(col, uHaze, vHaze);';
+    if (tm && tm.isShaderMaterial && tm.fragmentShader.includes(key)) {
+      Object.assign(tm.uniforms, { uCast: { value: map.cast }, uCastRect: { value: map.rect }, uCastTint: { value: new THREE.Vector3(...map.castTint) } });
+      tm.fragmentShader = 'uniform sampler2D uCast;\nuniform vec3 uCastRect;\nuniform vec3 uCastTint;\n' + tm.fragmentShader.replace(key, 'col *= mix(vec3(1.0), uCastTint, texture2D(uCast, (vWP.xz - uCastRect.xy) * uCastRect.z + 0.5).r);\n        ' + key);
+      tm.needsUpdate = true;
+    }
+  }
   const fade = { far, fadeA: FR * 0.9, fadeB: FR * 1.2 };
 
   // ------------------------------------------------------------------ water: the lower river, from under the falls to the valley mouth
@@ -291,6 +310,19 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
+  // the walker's own shadow: a soft dark patch thrown along the sun's direction (the baked ones above cannot move)
+  const blob = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, 'rgba(36,52,80,0.55)'); grd.addColorStop(0.55, 'rgba(36,52,80,0.4)'); grd.addColorStop(1, 'rgba(36,52,80,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const walkerShadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: blob, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, fog: false }));
+  walkerShadow.name = 'walkerShadow'; walkerShadow.renderOrder = 3; walkerShadow.visible = false;
+  walkerShadow.rotation.y = Math.atan2(-SU[1], SU[0]); walkerShadow.scale.set(1.9, 1, 0.8);      // long side along the shadow direction
+  group.add(walkerShadow);
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
@@ -322,6 +354,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     follow(pos, lookDir) {
       grass.userData.follow(pos, lookDir);
+      const wy = HV(pos.x, pos.z), dry = waterDepthAt(pos.x, pos.z) < 0.05;
+      walkerShadow.visible = dry;
+      if (dry) walkerShadow.position.set(pos.x + SU[0] * SLEN * 0.8, wy + 0.3, pos.z + SU[1] * SLEN * 0.8);
       waterfall.update(lastRenderer);
       // the falls keep the plunge pool restless: rings run out from where the sheet lands
       const now = N._internal.shared.uTime.value;

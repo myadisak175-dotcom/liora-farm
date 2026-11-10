@@ -318,7 +318,7 @@ export function createVolumetricSky({
   };
 
   group.userData = {
-    kind: 'sky', tune: SKY_TUNE, ok: true,
+    kind: 'sky', tune: SKY_TUNE, ok: true, sun: sunDir,
     get picture() { return cur; },                   // the panorama on show (for tests)
     // the first complete picture, in slices so no single draw is long enough to upset a phone's GPU watchdog
     async prewarm(renderer, slices = 16, pause = () => new Promise(r => setTimeout(r, 0))) {

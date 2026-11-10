@@ -50,6 +50,8 @@ export function createGroundMap({
   radius = 48, center = [0, 0], size = 512, seed = 1, heightAt = null,
   dirt = 0.06,          // share of the field that is random bare earth (0 = none)
   shade = [],           // [x, z, radius, strength 0..1]  soft dark pools, e.g. under trees
+  cast = [],            // [x, z, a, b, ux, uz, strength, dapple] shadows thrown by the sun: an ellipse, semi-axis a along (ux, uz), b across
+  castTint = [0.5, 0.6, 0.76],    // what the light is multiplied by inside a shadow (cool, like the cloud shadows)
   bare = [],            // [x, z, radius]                 no grass at all, e.g. trunks
   press = [],           // [x, z, radius]                 short grass, e.g. around rocks
   paint = null,         // (x, z) => [earth, sand, mow] each 0..1, or null: hand-placed paths, plots, beaches, lawns
@@ -114,6 +116,27 @@ export function createGroundMap({
     const k = (1 - sstep(0.25, 1, d)) * 0.75 * s * (data[o + 3] / 255);    // no shade tint on bare earth
     data[o] = lerp(data[o], C.shade[0], k); data[o + 1] = lerp(data[o + 1], C.shade[1], k); data[o + 2] = lerp(data[o + 2], C.shade[2], k);
   });
+  // cast shadows: coverage 0..255 in its own picture (the terrain reads it too), and the grass colour darkened under it
+  const cov = new Uint8Array(size * size);
+  for (const [x, z, a, b, ux, uz, st = 1, dap = 0] of cast) {
+    const r = Math.max(a, b);
+    const i0 = Math.max(0, Math.floor((x - r - cx + radius) / span * size)), i1 = Math.min(size - 1, Math.ceil((x + r - cx + radius) / span * size));
+    const j0 = Math.max(0, Math.floor((z - r - cz + radius) / span * size)), j1 = Math.min(size - 1, Math.ceil((z + r - cz + radius) / span * size));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = cx - radius + (i + 0.5) / size * span, pz = cz - radius + (j + 0.5) / size * span;
+      const dx = px - x, dz = pz - z, u = (dx * ux + dz * uz) / a, v = (-dx * uz + dz * ux) / b, d = Math.hypot(u, v);
+      if (d >= 1) continue;
+      let k = (1 - sstep(0.62, 1, d)) * st;
+      if (dap > 0) k *= 1 - dap * (1 - sstep(0.3, 0.7, fbm3(px * 0.9, 7.7, pz * 0.9, S + 29, 2)));      // light falls through the leaves in patches
+      const o = j * size + i;
+      cov[o] = Math.max(cov[o], Math.round(k * 255));
+    }
+  }
+  for (let q = 0; q < cov.length; q++) {
+    if (!cov[q]) continue;
+    const k = cov[q] / 255, o = q * 4;
+    data[o] *= 1 + (castTint[0] - 1) * k; data[o + 1] *= 1 + (castTint[1] - 1) * k; data[o + 2] *= 1 + (castTint[2] - 1) * k;
+  }
   stamp(press, (o, d) => { data[o + 3] = Math.min(data[o + 3], lerp(90, 255, sstep(0.55, 1, d))); });
   stamp(bare, (o, d) => { data[o + 3] = Math.min(data[o + 3], 255 * sstep(0.6, 1, d)); });
 
@@ -122,6 +145,11 @@ export function createGroundMap({
   texture.magFilter = texture.minFilter = THREE.LinearFilter;
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.needsUpdate = true;
+  const castTex = new THREE.DataTexture(cov, size, size, THREE.RedFormat, THREE.UnsignedByteType);
+  castTex.colorSpace = THREE.NoColorSpace; castTex.unpackAlignment = 1;
+  castTex.magFilter = castTex.minFilter = THREE.LinearFilter;
+  castTex.wrapS = castTex.wrapT = THREE.ClampToEdgeWrapping;
+  castTex.needsUpdate = true;
   // CPU lookup for placing things: grassAt(x, z) -> 0..1
   const grassAt = (x, z) => {
     const i = Math.min(size - 1, Math.max(0, Math.floor((x - cx + radius) / span * size)));
@@ -129,7 +157,7 @@ export function createGroundMap({
     return data[(j * size + i) * 4 + 3] / 255;
   };
   // area: where the live grass currently is (centre x, centre z, tile size; 0 = no follow-grass). Ground and grass share it.
-  return { texture, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, dispose() { texture.dispose(); } };
+  return { texture, cast: castTex, castTint, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, dispose() { texture.dispose(); castTex.dispose(); } };
 }
 
 // GLSL shared by ground and blades: where to look in the map
