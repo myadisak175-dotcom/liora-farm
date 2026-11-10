@@ -435,19 +435,22 @@ const RING_GLSL = /* glsl */`
     float life = 0.9 + 0.8 * g.w, age = uTime - g.z;
     if (age < 0.0 || age > life) return vec2(0.0);
     float k = age / life;
-    float R = g.w * (0.45 + 0.55 * (1.0 - (1.0 - k) * (1.0 - k)));          // fast at first, then slowing
+    float R = g.w * (0.4 + 0.6 * (1.0 - (1.0 - k) * (1.0 - k)));          // fast at first, then slowing
     vec2 d = xz - g.xy;
     float q = length(d) / R;
     if (q > 1.1) return vec2(0.0);
-    // the cell pattern is pinned to the ring and grows with it, so the foam is seen to spread, not just to appear
-    vec2 c = texture2D(uAnimeCells, d / R * 0.45 + fract(g.xy * 0.37)).rg;
-    float w = mix(0.9, 0.4, smoothstep(0.1, 0.9, q)) * (1.0 - 0.7 * k * k);     // thick at the heart, a lace at the rim, thinner with age
-    float lace = 1.0 - smoothstep(w - 0.05, w + 0.02, c.g);
-    float hole = 0.78 * smoothstep(0.2, 1.0, k);                               // the middle clears first
-    lace *= smoothstep(hole - 0.12, hole + 0.03, q + (c.r - 0.3) * 0.25);
-    lace *= 1.0 - smoothstep(0.82, 1.0, q + (c.r - 0.3) * 0.35);                 // a ragged rim that breaks into flecks
-    lace *= 1.0 - smoothstep(0.75, 1.0, k);
-    float disc = (1.0 - smoothstep(0.22, 0.4, q)) * (1.0 - smoothstep(0.15, 0.55, k));
+    // cells laid out round the ring and stretched outwards, pinned to the ring so they grow with it. The foam is white with
+    // round gaps at the cell hearts: tiny near the middle, wide at the rim, and all of them widening with age, so the sheet
+    // of foam tears into threads and then into flecks
+    float ang = atan(d.y, d.x) / 6.2831853 + 0.5;
+    vec2 c = texture2D(uAnimeCells, vec2(ang * 3.0 + fract(g.x * 0.37), q * 0.45 + fract(g.y * 0.37))).rg;
+    float gap = 0.08 + 0.36 * smoothstep(0.15, 1.0, q) + 0.34 * k * k;
+    float lace = max(smoothstep(gap - 0.03, gap + 0.03, c.r), 1.0 - smoothstep(0.2, 0.3, q));
+    float hole = 0.75 * smoothstep(0.25, 1.0, k);                              // the middle clears first
+    lace *= smoothstep(hole - 0.12, hole + 0.04, q + (c.g - 0.3) * 0.2);
+    lace *= 1.0 - smoothstep(0.85, 1.0, q + (c.g - 0.3) * 0.3);                 // a ragged rim
+    lace *= 1.0 - smoothstep(0.82, 1.0, k);
+    float disc = (1.0 - smoothstep(0.3, 0.5, q)) * (1.0 - smoothstep(0.2, 0.7, k));
     return vec2(lace, disc);
   }
   vec2 foamRings(vec2 xz) {

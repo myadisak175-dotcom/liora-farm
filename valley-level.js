@@ -258,7 +258,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     upperWater.userData = { kind: 'water', dispose() { ug.dispose(); upperWater.material.dispose(); } };
     group.add(upperWater);
     // the waterfall, in the same palette
-    waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6, optics, foamTexture });
+    waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6, optics, foamTexture, cells: animeCells });
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
   }
@@ -334,7 +334,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
   const hidden = [water, grass, droplets.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
-  let frameNo = 0, nextSplash = 0, nextFoam = 0, lastRenderer = null;
+  let frameNo = 0, nextSplash = 0, lastRenderer = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
@@ -406,11 +406,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       if (now > nextSplash) {
         ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4, 'plain');
         nextSplash = now + 0.16;
-      }
-      // and a churn of anime foam where the sheet lands: big rings, one after another, across the width of the falls
-      if (now > nextFoam) {
-        W.WATER_RINGS.add(fall.x + (Math.random() - 0.5) * 3.4, fall.z + 1.5 + Math.random() * 0.5, 1.5 + Math.random() * 0.5);
-        nextFoam = now + 0.55;
       }
     },
   };

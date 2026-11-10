@@ -7,7 +7,7 @@
      - the river's palette (WATER_LOOK) and its painted foam texture, stretched into falling white streaks
      - a rounded cross-section, so light, rim brightening and refraction change across the fall (not a flat card)
 
-     const fall = createWaterfall({ x, z, top, bottom, width, optics, foamTexture });
+     const fall = createWaterfall({ x, z, top, bottom, width, optics, foamTexture, cells });      // cells: the anime cell texture, for the anime churn
      scene.add(fall.group);
      every frame: fall.update()
 
@@ -176,6 +176,40 @@ function churnMaterial(common, radius) {
   });
 }
 
+// ---------------------------------------------------------------- anime churn: a sheet of white foam pushed outwards from where the water
+// lands, with round gaps that widen as it travels until the sheet tears into threads and flecks (the same cells as the
+// foam rings of a footstep in stylized-water.js, here flowing without end)
+function animeChurnMaterial(common, radius, cells) {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...common, uR: { value: radius }, uCells: { value: cells } },
+    vertexShader: /* glsl */`
+      varying vec2 vP;
+      void main() { vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uCells;
+      uniform float uTime, uR;
+      uniform vec3 uWhite, uShallow;
+      varying vec2 vP;
+      void main() {
+        vec2 e = vec2(vP.x, vP.y / 0.75) / uR;                 // the churn is an ellipse: measure it as a circle
+        float r = length(e);
+        if (r > 1.0) discard;
+        float ang = atan(e.y, e.x) / 6.2831853 + 0.5;
+        // two sheets sliding outwards at different speeds, so the gaps open, drift apart and close over one another
+        vec2 c1 = texture2D(uCells, vec2(ang * 4.0, r * 0.9 - uTime * 0.13)).rg;
+        vec2 c2 = texture2D(uCells, vec2(ang * 3.0 + 0.37, r * 0.6 - uTime * 0.075 + 0.5)).rg;
+        float gap = 0.07 + 0.42 * smoothstep(0.1, 0.95, r);
+        float foam = smoothstep(gap - 0.03, gap + 0.03, c1.r);
+        foam = max(foam, smoothstep(gap + 0.1, gap + 0.16, c2.r) * (1.0 - smoothstep(0.35, 0.8, r)));
+        foam = max(foam, 1.0 - smoothstep(0.12, 0.22, r + (c1.g - 0.3) * 0.12));        // solid boil right under the fall
+        foam *= 1.0 - smoothstep(0.8, 1.0, r + (c1.g - 0.3) * 0.35);                     // a ragged rim
+        float pale = (1.0 - smoothstep(0.25, 0.75, r)) * 0.5;                            // paler water under the foam
+        gl_FragColor = vec4(mix(mix(uShallow * 1.2, uWhite, 0.6), uWhite, foam), max(foam * 0.96, pale));
+      }`,
+    transparent: true, depthWrite: false,
+  });
+}
+
 // ---------------------------------------------------------------- spray: drops thrown up where the water lands, all moved on the GPU
 function sprayMaterial(common, { count, top }) {
   return new THREE.ShaderMaterial({
@@ -257,7 +291,7 @@ function mistTexture() {
   return tex;
 }
 
-export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, sun = [-0.4, 0.9, 0.5] } = {}) {
+export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, sun = [-0.4, 0.9, 0.5] } = {}) {
   const group = new THREE.Group();
   group.name = 'waterfallClear';
   const common = commonUniforms({ optics, foamTexture, sun });
@@ -272,7 +306,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   const churnGeo = new THREE.CircleGeometry(R, 56);
   churnGeo.rotateX(-Math.PI / 2);
   churnGeo.scale(1, 1, 0.75);
-  const churn = add(new THREE.Mesh(churnGeo, churnMaterial(common, R)), 4);
+  const churn = add(new THREE.Mesh(churnGeo, cells ? animeChurnMaterial(common, R, cells) : churnMaterial(common, R)), 4);
   churn.position.set(x, bottom + 0.27, footZ);
   // spray
   const N = 220, pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
