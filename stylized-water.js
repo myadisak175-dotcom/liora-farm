@@ -75,12 +75,9 @@ export const WATER_TUNE = {
   ripple: { value: 1.75 },          // strength of the waves made by touching the water
   simSpeed: { value: 1.8 },        // how fast those waves travel (m/s)
   calm: { value: 0.979 },          // how long they last (closer to 1 = longer)
-  // splash effects (anime-splash.js) and the lace of foam islands on the surface
-  splashSize: { value: 1 },        // size of the crown, spout and rings
-  splashAlpha: { value: 1 },       // how solid the foam of a splash is
-  dropSize: { value: 1 },          // size of the flying droplets
-  splashFrom: { value: 0.95 },     // weakest touch that still splashes (higher = fewer splashes)
-  splashGap: { value: 0.38 },      // seconds between small splashes
+  // splashes are made by the wave simulation itself: a heap of water where something lands, and painted foam thrown onto it
+  splashBump: { value: 1 },        // how high the water swells where it is hit
+  splashFoam: { value: 1 },        // how much foam a splash or a footstep leaves
   lace: { value: 1 },              // foam islands drifting on the surface
 };
 const TUNE_UNIFORMS = () => ({
@@ -143,14 +140,18 @@ const NO_SIM = () => {
 // ==========================================================================
 // WAVE SIMULATION: a height field that obeys the wave equation, stepped on the GPU
 // ==========================================================================
-export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, field = null, level = -0.6, foamTexture = null } = {}) {
-  const [minX, minZ, span] = rect;
+// follow: true = the simulated square travels with whoever wades (sim.focus(x, z)), so splashes and footsteps work anywhere on
+// the map instead of in one fixed square. The shore is then read from the height texture (needs field and one water level).
+export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, field = null, level = -0.6, foamTexture = null, follow = false } = {}) {
+  let [minX, minZ] = rect;
+  const span = rect[2];
+  follow = follow && !!field;
   const opts = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false };
   let a = new THREE.WebGLRenderTarget(size, size, opts), b = new THREE.WebGLRenderTarget(size, size, opts);
   a.texture.generateMipmaps = b.texture.generateMipmaps = false;
   // where there is water: waves bounce off everything else
   const md = new Uint8Array(size * size);
-  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) md[j * size + i] = !mask || mask(minX + (i + 0.5) / size * span, minZ + (j + 0.5) / size * span) ? 255 : 0;
+  if (!follow) for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) md[j * size + i] = !mask || mask(minX + (i + 0.5) / size * span, minZ + (j + 0.5) / size * span) ? 255 : 0;
   const maskTex = new THREE.DataTexture(md, size, size, THREE.RedFormat);
   maskTex.magFilter = maskTex.minFilter = THREE.NearestFilter;
   maskTex.needsUpdate = true;
@@ -168,7 +169,7 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
     uTime: shared.uTime, uSpeed: WATER_TUNE.speed, uShore: WATER_TUNE.shore,
     uFoamLife: WATER_TUNE.foamLife, uFoamDrift: WATER_TUNE.foamDrift,
     uFoamMap: { value: foamMap }, uBrushScale: WATER_TUNE.brushScale,
-    uI0: I(), uI1: I(), uI2: I(), uI3: I(),
+    uI0: I(), uI1: I(), uI2: I(), uI3: I(), uFo: I(),
   };
   const stepMat = new THREE.ShaderMaterial({
     uniforms,
@@ -181,18 +182,29 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       uniform float uPx, uC2, uDamp;
       uniform vec3 uRect;
       uniform vec4 uI0, uI1, uI2, uI3;      // x, z, radius, strength: something touched the water here
+      uniform vec4 uFo;                     // how much foam each of those touches throws onto the surface
       varying vec2 vUv;
-      float poke(vec4 i, vec2 xz) { vec2 d = xz - i.xy; return i.w * exp(-dot(d, d) / (i.z * i.z)); }
-      // a neighbour's height; a neighbour on land mirrors this cell, which is what makes waves bounce off the shore
-      float nb(vec2 uv, float h) { return mix(h, texture2D(uState, uv).r, step(0.5, texture2D(uMask, uv).r)); }
       float bottom(vec2 p) { return texture2D(uHeight, (p - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r; }
+      // is there water at this cell? (waves bounce off everything else)
+      ${follow ? 'float wet(vec2 uv) { return step(0.03, uLevel - bottom(uRect.xy + uv * uRect.z)); }' : 'float wet(vec2 uv) { return texture2D(uMask, uv).r; }'}
+      float poke(vec4 i, vec2 xz) { vec2 d = xz - i.xy; return i.w * exp(-dot(d, d) / (i.z * i.z)); }
+      // foam thrown by a touch. f > 0: a splash = a soft patch with a broken, uneven rim around it. f < 0: a footstep = one small wisp.
+      float foamPoke(vec4 i, float f, vec2 xz) {
+        vec2 d = xz - i.xy;
+        if (f < 0.0) { float r = i.z * 0.8; return -f * exp(-dot(d, d) / (r * r)); }
+        float k = length(d) / (i.z * 1.35), ang = atan(d.y, d.x);
+        float lobes = 0.55 + 0.45 * sin(ang * 7.0 + i.x * 3.1 + i.y * 1.7) * sin(ang * 3.0 - i.x * 2.3 + 1.0);
+        return f * max(0.6 * exp(-k * k * 2.2), lobes * exp(-(k - 0.85) * (k - 0.85) * 7.0));
+      }
+      // a neighbour's height; a neighbour on land mirrors this cell, which is what makes waves bounce off the shore
+      float nb(vec2 uv, float h) { return mix(h, texture2D(uState, uv).r, step(0.5, wet(uv))); }
       // Alpha stores velocity potential: its spatial gradient is the horizontal current.
       // Reflecting solid boundaries give zero potential gradient through the bank.
       float phi(vec2 uv, float center) {
-        return mix(center, texture2D(uState, uv).a, step(0.5, texture2D(uMask, uv).r));
+        return mix(center, texture2D(uState, uv).a, step(0.5, wet(uv)));
       }
       void main() {
-        if (texture2D(uMask, vUv).r < 0.5) { gl_FragColor = vec4(0.0); return; }
+        if (wet(vUv) < 0.5) { gl_FragColor = vec4(0.0); return; }
         vec4 s = texture2D(uState, vUv);
         float h = s.r, before = s.g;
         float around = nb(vUv + vec2(uPx, 0.0), h) + nb(vUv - vec2(uPx, 0.0), h) + nb(vUv + vec2(0.0, uPx), h) + nb(vUv - vec2(0.0, uPx), h);
@@ -215,10 +227,10 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
         velocity *= uFoamDrift;
         velocity *= min(1.0, 0.85 / max(length(velocity), 0.001));
         // No transport through dry cells: the tangential component can continue along the edge.
-        if (texture2D(uMask, vUv + vec2(sign(velocity.x) * uPx, 0.0)).r < 0.5) velocity.x = 0.0;
-        if (texture2D(uMask, vUv + vec2(0.0, sign(velocity.y) * uPx)).r < 0.5) velocity.y = 0.0;
+        if (wet(vUv + vec2(sign(velocity.x) * uPx, 0.0)) < 0.5) velocity.x = 0.0;
+        if (wet(vUv + vec2(0.0, sign(velocity.y) * uPx)) < 0.5) velocity.y = 0.0;
         vec2 sourceUV = clamp(vUv - velocity / (60.0 * uRect.z), 0.0, 1.0);
-        float carried = texture2D(uState, sourceUV).b * step(0.5, texture2D(uMask, sourceUV).r);
+        float carried = texture2D(uState, sourceUV).b * step(0.5, wet(sourceUV));
         float foam = carried * exp(-1.0 / (60.0 * max(0.2, uFoamLife)));
         float breaking = smoothstep(0.78, 0.98, sin(phase)) * shoreGroup(xz, t)
           * smoothstep(0.015, 0.1, depth) * (1.0 - smoothstep(0.12, 0.32, depth));
@@ -232,6 +244,9 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
         float splash = disturbed * (1.0 - smoothstep(0.1, 0.4, depth));
         foam = clamp(foam + (breaking * uShore * pattern * 0.08
           + splash * 0.006) * uTerrainOn, 0.0, 1.0);
+        // a splash or a footstep throws foam onto the surface, which the flow then carries, pulls apart and wears away like the shore's foam
+        float thrown = clamp(foamPoke(uI0, uFo.x, xz) + foamPoke(uI1, uFo.y, xz) + foamPoke(uI2, uFo.z, xz) + foamPoke(uI3, uFo.w, xz), 0.0, 1.0);
+        foam = max(foam, thrown * uTerrainOn);
         gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, foam, potential);
       }`,
     depthTest: false, depthWrite: false,
@@ -240,6 +255,36 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), stepMat);
   quad.frustumCulled = false;
   scene.add(quad);
+  // moving the square: the whole state is slid over by a whole number of cells, so nothing blurs
+  const shiftMat = new THREE.ShaderMaterial({
+    uniforms: { uState: uniforms.uState, uShift: { value: new THREE.Vector2() } },
+    vertexShader: /* glsl */`varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uState; uniform vec2 uShift; varying vec2 vUv;
+      void main() {
+        vec2 uv = vUv + uShift;
+        float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+        gl_FragColor = texture2D(uState, clamp(uv, 0.0, 1.0)) * inside;
+      }`,
+    depthTest: false, depthWrite: false,
+  });
+  let wantX = minX + span / 2, wantZ = minZ + span / 2;
+  const recentre = renderer => {
+    const cx = minX + span / 2, cz = minZ + span / 2;
+    if (Math.abs(wantX - cx) < span * 0.17 && Math.abs(wantZ - cz) < span * 0.17) return;      // still well inside the square
+    const di = Math.round((wantX - cx) / texel), dj = Math.round((wantZ - cz) / texel);
+    shiftMat.uniforms.uShift.value.set(di / size, dj / size);
+    uniforms.uState.value = a.texture;
+    quad.material = shiftMat;
+    renderer.setRenderTarget(b);
+    renderer.render(scene, cam);
+    quad.material = stepMat;
+    const t = a; a = b; b = t;
+    texture.value = a.texture;
+    minX += di * texel; minZ += dj * texel;
+    uniforms.uRect.value.set(minX, minZ, span);
+    sim.rect.x = minX; sim.rect.y = minZ;
+  };
   const texture = { value: a.texture };
   const pokes = [uniforms.uI0, uniforms.uI1, uniforms.uI2, uniforms.uI3];
   const queue = [];
@@ -247,7 +292,9 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
   const sim = {
     texture, rect: new THREE.Vector4(minX, minZ, span, 1), enabled: true, size,
     inside: (x, z) => x > minX && x < minX + span && z > minZ && z < minZ + span,
-    impulse(x, z, radius = 0.35, strength = 0.05) { if (sim.enabled && sim.inside(x, z) && queue.length < 16) queue.push([x, z, radius, strength]); },
+    // keep the simulated square around this point (only with follow: true)
+    focus(x, z) { if (follow) { wantX = x; wantZ = z; } },
+    impulse(x, z, radius = 0.35, strength = 0.05, foam = 0) { if (sim.enabled && sim.inside(x, z) && queue.length < 16) queue.push([x, z, radius, strength, foam]); },
     step(renderer, dt) {
       if (!sim.enabled) return;
       if (!checked) {          // can this GPU draw into a half-float texture? if not, the water simply stays calm
@@ -258,9 +305,12 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       uniforms.uC2.value = Math.min(0.45, Math.pow(WATER_TUNE.simSpeed.value / (texel * HZ), 2));
       acc = Math.min(acc + dt, 2.5 / HZ);
       const target = renderer.getRenderTarget();
+      if (follow) recentre(renderer);
       while (acc >= 1 / HZ) {
         acc -= 1 / HZ;
-        for (const p of pokes) { const q = queue.shift(); if (q) p.value.set(q[0], q[1], q[2], q[3]); else p.value.w = 0; }
+        const fo = [0, 0, 0, 0];
+        pokes.forEach((p, i) => { const q = queue.shift(); if (q) { p.value.set(q[0], q[1], q[2], q[3]); fo[i] = q[4]; } else p.value.w = 0; });
+        uniforms.uFo.value.set(fo[0], fo[1], fo[2], fo[3]);
         uniforms.uState.value = a.texture;
         renderer.setRenderTarget(b);
         renderer.render(scene, cam);
@@ -269,7 +319,7 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       }
       renderer.setRenderTarget(target);
     },
-    dispose() { a.dispose(); b.dispose(); maskTex.dispose(); if (!foamTexture) foamMap.dispose(); stepMat.dispose(); quad.geometry.dispose(); },
+    dispose() { a.dispose(); b.dispose(); maskTex.dispose(); if (!foamTexture) foamMap.dispose(); stepMat.dispose(); shiftMat.dispose(); quad.geometry.dispose(); },
   };
   return sim;
 }
@@ -362,7 +412,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
   if (!foamTexture) foamMap.needsUpdate = true;
   const uniforms = {
     uTime: shared.uTime,
-    uHeight: { value: field.texture }, uHeightRect: { value: field.rect },
+    uHeight: { value: field.texture }, uHeightRect: { value: field.rect }, uHeightStep: { value: field.step || 0.4 },
     uSim: S.texture, uSimRect: { value: S.rect }, uSimPx: { value: S.enabled ? S.rect.z / S.size : 1 },
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
@@ -417,6 +467,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
       uniform vec4 uHeightRect;
+      uniform float uHeightStep;
       uniform float uTime, uFadeA, uFadeB, uSimPx, uOptics, uMirrorOn;
       uniform float uCaustic, uCausticScale, uShimmer, uSpeed, uRefract, uReflect, uClear, uFoamAmt, uGlint, uFleck, uShore;
       uniform vec3 uShallow, uMid, uDeep, uAbyss, uFoam, uCell, uSky, uSun, uFar, uHaze;
@@ -462,9 +513,14 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 ws = waveSlope(vec2(vFlow.y, vFlow.x), t) * vCalm;
         vec2 sl = A * ws.x + T * (ws.y * squeeze) + simSl;
         // Refract and reflect the same incoming swell that displaces the geometry.
-        float eps = 0.16;
-        float gx = texture2D(uHeight, (xz + vec2(eps, 0.0) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
-        float gz = texture2D(uHeight, (xz + vec2(0.0, eps) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
+        // The bed's slope is measured across two whole cells of the height texture. Measured across less than one cell it is
+        // constant inside each cell and jumps at the cell edges, which showed up as square tiles in the mirrored sky.
+        float eps = 0.16, hs = uHeightStep;
+        float bedX = (texture2D(uHeight, (xz + vec2(hs, 0.0) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r
+                    - texture2D(uHeight, (xz - vec2(hs, 0.0) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r) / (2.0 * hs);
+        float bedZ = (texture2D(uHeight, (xz + vec2(0.0, hs) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r
+                    - texture2D(uHeight, (xz - vec2(0.0, hs) - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r) / (2.0 * hs);
+        float gx = ground + bedX * eps, gz = ground + bedZ * eps;
         float sh0 = shoreH(xz, restDepth, t);
         sl += vec2(shoreH(xz + vec2(eps, 0.0), restDepth + ground - gx, t) - sh0,
                    shoreH(xz + vec2(0.0, eps), restDepth + ground - gz, t) - sh0)
@@ -552,7 +608,9 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           white = max(white, min(0.9, foam * shoreMask * uFoamAmt));
         }
         vec2 foamStateUV = (xz - uSimRect.xy) / uSimRect.z;
-        float inState = step(0.0, foamStateUV.x) * step(foamStateUV.x, 1.0) * step(0.0, foamStateUV.y) * step(foamStateUV.y, 1.0);
+        // foam fades out toward the edge of the simulated square (which travels with the player), so the edge never shows
+        vec2 foamEdge = min(foamStateUV, 1.0 - foamStateUV);
+        float inState = smoothstep(0.0, 0.08, min(foamEdge.x, foamEdge.y));
         float movingFoam = texture2D(uSim, clamp(foamStateUV, 0.0, 1.0)).b * inState * uSimRect.w;
         white = max(white, smoothstep(0.025, 0.55, movingFoam) * 0.9 * uFoamAmt * smoothstep(0.0, 0.04, depth));
         // Baked cells add sparse anime-style foam islands to the existing painted, advected foam.

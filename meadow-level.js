@@ -19,7 +19,7 @@ import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
 import * as Cliffs from './stylized-cliffs.js';
 import * as W from './stylized-water.js';
-import { createAnimeSplashes } from './anime-splash.js';
+import { createAnimeCells } from './anime-cells.js';
 
 const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -333,9 +333,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   await onStep('วาดริ้วฟองน้ำ');
   const foamTexture = await W.loadFoamTexture();
   await onStep('เติมน้ำ');
-  const animeFX = createAnimeSplashes({ field, waterLevelAt: (x, z) => gridAt(wLevel, x, z) , tune: W.WATER_TUNE });
-  group.add(animeFX.group);
-  animeFX.group.userData.dispose = () => animeFX.dispose();
+  const animeCells = createAnimeCells();
   let water, sim, optics, pads3d = null;
   const flowRows = [];            // [x, z, downstream x, downstream z, F] for every row of the water ribbon
   {
@@ -369,16 +367,20 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     const foamWet = (x, z) => waterDepthAt(x, z) > 0.03 && !foamObstacles.some(([cx, cz, r]) => (x - cx) ** 2 + (z - cz) ** 2 < (r * 0.75) ** 2);
     sim = W.createWaterSim({ rect: [6, -27, 56], size: 512, field, foamTexture, level: -0.6, mask: foamWet });
     optics = W.createWaterOptics({ level: -0.6 });
-    water = new THREE.Mesh(g, W.waterMaterial({ field, animeCells: animeFX.texture, sim, optics, foamTexture, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
+    water = new THREE.Mesh(g, W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
     water.name = 'water';
     water.renderOrder = 1;
     water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
     group.add(water);
   }
-  // something dips into the water: the surface is pushed down there, and a ring runs outward
-  const ripple = (x, z, strength = 1, radius = 0.26) => {
-    sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
-    animeFX.emit(x, z, strength);
+  // something touches the water, and the wave simulation does the rest. A splash (a tap, a jump) makes the water swell up a little
+  // and throws a patch of foam with a broken rim; a footstep presses a dip that rings outward and leaves a wisp of foam behind;
+  // mode 'plain' is a dip with no foam (the falls, a fish).
+  const ripple = (x, z, strength = 1, radius = 0.26, mode = null) => {
+    const k = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value;
+    if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * k);
+    else if (mode === 'splash' || (mode === null && strength >= 1.5)) sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
+    else sim.impulse(x, z, radius, -0.03 * strength * k, -Math.min(0.4, 0.5 * strength) * foam);
   };
   // lily pads: a few rafts in the pond's quiet shallows, some in flower
   const pondSpots = [];           // open water of the pond, for the odd ripple from a fish
@@ -464,7 +466,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   let nextStir = 3;
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
-  const hidden = [water, grass, pads3d, animeFX.group].filter(Boolean);
+  const hidden = [water, grass, pads3d, ].filter(Boolean);
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0;
   const waterSpheres = [];
@@ -473,12 +475,11 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   return {
     group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, spawn: M.spawn, radius: M.radius,
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
-    ripple, sim, optics, animeFX, waterLevelAt: (x, z) => gridAt(wLevel, x, z),
+    ripple, sim, optics, waterLevelAt: (x, z) => gridAt(wLevel, x, z),
     // things that can be seen under the water go on their own layer, so the see-through picture is cheap to draw
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       sim.step(renderer, dt);
-      animeFX.update(dt, W.WATER_TUNE.foam.value);
       if (!scene || !camera) return;
       // the two water pictures cost a redraw of the scene each, so they are only refreshed when water is on screen
       // and close enough to matter: the see-through picture every frame, the mirror every 2nd (or 4th) frame
@@ -507,7 +508,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
       const now = N._internal.shared.uTime.value;
       if (pondSpots.length && now > nextStir) {
         const [x, z] = pondSpots[Math.floor(Math.random() * pondSpots.length)];
-        ripple(x + (Math.random() - 0.5) * 2, z + (Math.random() - 0.5) * 2, 0.9);
+        ripple(x + (Math.random() - 0.5) * 2, z + (Math.random() - 0.5) * 2, 0.9, 0.26, 'plain');
         nextStir = now + 2.2 + Math.random() * 3.5;
       }
     },

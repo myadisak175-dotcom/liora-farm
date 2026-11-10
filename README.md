@@ -27,8 +27,8 @@ Foam transport uses a damped wave-pressure velocity potential stored in the simu
 
 
 
-## Anime water impacts
+## Splashes and footsteps
 
-Taps, wading and waterfall impacts now emit pooled crown meshes, a short upward spout, expanding foam rings and ballistic billboard droplets. A 256×256 cellular mask is generated once per map and shared with the surface shader; the existing painted foam transport, wave simulation, waterfall, fullscreen and time-of-day systems remain in place. This adapts the ring/crown/spout approach in Kristof Dedene's Blender tutorial for a real-time web game; no tutorial assets are copied.
+Splashes and wading are made by the water's own wave simulation, in the same painted style as the rest of the water: a tap or jump heaps the surface up (the simulated height lifts the water mesh) and throws painted-brush foam onto it, which the flow then carries and wears away; a footstep presses a dip that rings outward and leaves a little foam behind. There are no separate splash meshes. The sliders are in **ปรับน้ำ** (น้ำนูนขึ้นตรงจุดกระเซ็น, ฟองที่ติดค้างตามรอยเท้า / จุดกระเซ็น). `anime-cells.js` bakes the 256x256 cellular mask the surface samples for its sparse foam islands.
 
-Use **ไปดูน้ำ** to move to a nearby clear shallow bank, then **ทดสอบน้ำกระเซ็น** or tap the water. `?view=water` starts at the bank, including on the default valley map. `?map=meadow&view=water` and `?map=hills&view=water` select the other maps. At most twelve impact groups are active and the four FX draws sleep after the effects finish. Mobile frame rate still needs testing on the target device.
+Use **ไปดูน้ำ** to move to a nearby clear shallow bank, then **ทดสอบน้ำกระเซ็น** or tap the water. `?view=water` starts at the bank, including on the default valley map. `?map=meadow&view=water` and `?map=hills&view=water` select the other maps.
