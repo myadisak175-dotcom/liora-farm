@@ -12,6 +12,7 @@
 //   drops.emit(x, waterLevel, z, power, count);                    // power 1 = a full splash, 0.15 = a footstep
 //   drops.update(renderer);                                        // once a frame
 import * as THREE from 'three';
+import { WATER_TUNE } from './stylized-water.js';
 
 const GRAVITY = 7;        // m/s2: a little floatier than real water, so the arc can be read
 
@@ -25,7 +26,7 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
   geo.setAttribute('aVel', aVel);
   geo.setAttribute('aPar', aPar);                                       // x: time of birth, y: size in metres
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTime: time, uH: { value: 500 }, uAspect: { value: 1 }, uLight: { value: new THREE.Color(light) }, uBody: { value: new THREE.Color(body) } },
+    uniforms: { uToon: WATER_TUNE.anime, uTime: time, uH: { value: 500 }, uAspect: { value: 1 }, uLight: { value: new THREE.Color(light) }, uBody: { value: new THREE.Color(body) } },
     vertexShader: /* glsl */`
       attribute vec3 aVel;
       attribute vec2 aPar;
@@ -54,6 +55,7 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uLight, uBody;
+      uniform float uToon;
       varying float vFade, vStretch;
       varying vec2 vDir;
       void main() {
@@ -65,7 +67,10 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
         if (d > 1.0) discard;
         // a bead of the river's own water: aqua body, a pale lit top
         vec3 col = mix(uBody, uLight, smoothstep(-0.3, 0.6, c.y) * 0.8 + 0.2);
-        gl_FragColor = vec4(col, smoothstep(1.0, 0.35, d) * vFade * 0.8);
+        float a = smoothstep(1.0, 0.35, d) * vFade * 0.8;
+        // anime water: a flat white drop with a drawn edge
+        if (uToon > 0.5) { col = uLight; a = step(d, 0.8) * step(0.3, vFade); }
+        gl_FragColor = vec4(col, a);
       }`,
     transparent: true, depthWrite: false,
   });

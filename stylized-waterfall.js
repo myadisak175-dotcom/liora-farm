@@ -16,7 +16,7 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
-import { WATER_LOOK } from './stylized-water.js';
+import { WATER_LOOK, WATER_TUNE } from './stylized-water.js';
 
 const { NOISE, rgb, shared } = _internal;
 
@@ -33,7 +33,7 @@ float paintedFoam(vec2 uv) {
 
 function commonUniforms({ optics, foamTexture, sun }) {
   return {
-    uTime: shared.uTime,
+    uTime: shared.uTime, uToon: WATER_TUNE.anime,
     uThrough: optics ? optics.uniforms.uThrough : { value: BLANK([200, 190, 160, 255]) },
     uInvRes: optics ? optics.uniforms.uInvRes : { value: new THREE.Vector2(1, 1) },
     uOptics: { value: optics ? 1 : 0 },
@@ -68,7 +68,7 @@ function fallMaterial(common, { layer = 0, speed = 1, white = 0, opacity = 1, wi
       ${NOISE}
       uniform sampler2D uThrough, uFoamMap;
       uniform vec2 uInvRes, uSize;
-      uniform float uTime, uOptics, uFoamOn, uLayer, uSpeedF, uWhiteAmt, uOpacity;
+      uniform float uTime, uOptics, uFoamOn, uLayer, uSpeedF, uWhiteAmt, uOpacity, uToon;
       uniform vec3 uShallow, uMid, uDeep, uSky, uWhite, uSun, uHaze;
       varying vec2 vUv;          // x: across 0..1, y: 0 at the lip .. 1 at the foot
       varying vec3 vWP, vN;
@@ -97,10 +97,13 @@ function fallMaterial(common, { layer = 0, speed = 1, white = 0, opacity = 1, wi
         float thick = (1.0 - edge * edge) * (0.55 + 0.45 * smoothstep(0.0, 0.5, y));
         vec3 body = mix(uShallow, uMid, thick);
         body = mix(body, uDeep, smoothstep(0.55, 0.9, thick) * (1.0 - smoothstep(0.3, 0.85, y)) * 0.6);
-        vec3 col = mix(body, under * mix(vec3(1.0), uShallow * 1.25, 0.45), near * mix(0.55, 0.2, thick));
+        // anime water: two flat blues, a paler one down the middle, and nothing seen through it
+        vec3 flat2 = mix(uMid, mix(uShallow, uMid, 0.35), smoothstep(0.52, 0.56, s1 * 0.5 + (1.0 - edge) * 0.45));
+        body = mix(body, flat2, uToon);
+        vec3 col = mix(body, under * mix(vec3(1.0), uShallow * 1.25, 0.45), near * mix(0.55, 0.2, thick) * (1.0 - uToon));
         // light: the face turned to the sun is lighter, the rims catch the sky
-        col *= 0.9 + 0.22 * max(dot(N, uSun), 0.0);
-        col = mix(col, uSky, pow(1.0 - facing, 3.0) * 0.55);
+        col *= mix(0.9 + 0.22 * max(dot(N, uSun), 0.0), 1.0, uToon);
+        col = mix(col, uSky, pow(1.0 - facing, 3.0) * 0.55 * (1.0 - uToon));
         // ---- white water: the river's painted foam, stretched into falling streaks, more of it as the water breaks up
         float wv = (s1 - 0.5) * 0.08;                                              // let the streaks sway a little
         float brush = paintedFoam(vec2(fp.x * 0.55 + uLayer * 0.37 + wv, fp.y * 0.016 - t * 0.16));
@@ -108,14 +111,15 @@ function fallMaterial(common, { layer = 0, speed = 1, white = 0, opacity = 1, wi
         brush = mix(smoothstep(0.55, 0.85, s1 * 0.6 + s2 * 0.4), smoothstep(0.12, 0.65, brush), uFoamOn);
         float aerate = smoothstep(0.15, 1.0, y) * 0.75 + uWhiteAmt;
         float whiteness = clamp(brush * (0.35 + aerate) + smoothstep(0.55, 1.0, y) * 0.35, 0.0, 0.95);
+        whiteness = mix(whiteness, smoothstep(0.42, 0.5, whiteness) * 0.97, uToon);      // anime water: streaks are white or not
         col = mix(col, uWhite, whiteness);
         col = mix(col, uWhite, (1.0 - smoothstep(0.0, 0.06, y)) * 0.5 * (1.0 - edge));      // the glassy roll over the lip
         // soft sun sparkle on the streaks
         float spec = pow(max(dot(normalize(uSun + V), N), 0.0), 60.0);
-        col += uWhite * spec * 0.25;
+        col += uWhite * spec * 0.25 * (1.0 - uToon);
         col = mix(col, uHaze, vHaze);
         float alpha = side * (1.0 - smoothstep(0.88, 1.0, y)) * uOpacity;
-        alpha *= mix(mix(0.75, 1.0, thick), 1.0, whiteness);
+        alpha *= mix(mix(mix(0.75, 1.0, thick), 1.0, whiteness), 1.0, uToon);
         gl_FragColor = vec4(col, alpha);
       }`,
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -232,12 +236,13 @@ function sprayMaterial(common, { count, top }) {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uWhite;
+      uniform float uToon;
       varying float vFade;
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         float d = dot(c, c) * 4.0;
         if (d > 1.0) discard;
-        gl_FragColor = vec4(uWhite, (1.0 - d) * vFade * 0.8);
+        gl_FragColor = vec4(uWhite, mix((1.0 - d) * vFade * 0.8, step(d, 0.7) * step(0.35, vFade), uToon));
       }`,
     transparent: true, depthWrite: false,
   });
@@ -265,12 +270,13 @@ function fleckMaterial(common) {
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uWhite;
+      uniform float uToon;
       varying float vFade;
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         float d = dot(c, c) * 4.0;
         if (d > 1.0) discard;
-        gl_FragColor = vec4(uWhite, smoothstep(1.0, 0.25, d) * vFade * 0.75);
+        gl_FragColor = vec4(uWhite, mix(smoothstep(1.0, 0.25, d) * vFade * 0.75, step(d, 0.7) * step(0.35, vFade), uToon));
       }`,
     transparent: true, depthWrite: false,
   });

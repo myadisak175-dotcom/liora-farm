@@ -622,6 +622,8 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 cp = q * uCausticScale + (vec2(noise2(q * 0.5 + 2.0), noise2(q * 0.5 + 9.0)) - 0.5) * 1.6 + N.xz * 0.5;
         float net = ridge(cp * 0.9) * ridge(cp * 1.5 + vec2(4.7, -t * 0.1));
         float caustic = smoothstep(0.45, 1.0, net) * smoothstep(0.05, 0.3, depth) * (1.0 - smoothstep(0.9, 1.7, depth));
+        // anime water: the light net is drawn, a line or nothing
+        caustic = mix(caustic, smoothstep(0.66, 0.7, net) * smoothstep(0.05, 0.3, depth) * (1.0 - smoothstep(0.7, 1.2, depth)), uToon);
         under *= 1.0 + caustic * uCaustic;
 
         // ---- the water's own colour, thicker with depth (soft painted bands)
@@ -641,10 +643,13 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           body = mix(body, mix(uMid, uDeep, 0.6), smoothstep(1.50, 1.58, dt2));
           cover = mix(0.5, 0.96, smoothstep(0.0, 0.22, depth));
         }
-        body += uCell * caustic * uCaustic * 0.3 * (1.0 - 0.6 * uToon);
+        body += uCell * caustic * uCaustic * mix(0.3, 0.45, uToon);
         vec3 col = mix(under, body, cover);
         // faces of the waves turned to the sun are a little lighter, the others a little darker: soft, no outlines
-        col *= 1.0 + clamp(dot(sl, -normalize(uSun.xz)) * 2.2 + vLift * 3.0, -0.13, 0.16);
+        float waveLight = clamp(dot(sl, -normalize(uSun.xz)) * 2.2 + vLift * 3.0, -0.13, 0.16);
+        // anime water: waves are shaded in flat steps (a lit face, a shaded face) with a drawn edge between them
+        waveLight = mix(waveLight, smoothstep(0.045, 0.06, waveLight) * 0.1 - smoothstep(-0.045, -0.06, waveLight) * 0.09, uToon);
+        col *= 1.0 + waveLight;
         // Sunlight glowing through the thin water at the edges, strongest when looking towards the sun.
         float throughSun = pow(max(dot(-V, normalize(uSun)), 0.0), 2.0);
         float thin = 1.0 - smoothstep(0.05, 0.85, dn);
@@ -694,6 +699,14 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           float foam = contact * (0.45 + 0.55 * shoreBrush) * (0.5 + 0.5 * broken)
                      + pulse * shoreBrush * 0.25 * (1.0 - uSimRect.w)
                      + wash * (0.06 + 0.10 * broken) * (0.4 + 0.6 * surge);
+          if (uToon > 0.5) {
+            // anime shore: a solid white line where the water meets the sand, and a second broken line a little way out
+            // that slides in and out with the swell
+            float line1 = 1.0 - smoothstep(0.022 + 0.014 * surge, 0.028 + 0.014 * surge, edgeDepth);
+            float out2 = 0.11 + 0.07 * (1.0 - surge);
+            float line2 = (1.0 - smoothstep(0.012, 0.018, abs(edgeDepth - out2))) * step(0.5, broken);
+            foam = max(foam, max(line1, line2));
+          }
           white = max(white, min(0.9, foam * shoreMask * uFoamAmt));
         }
         vec2 foamStateUV = (xz - uSimRect.xy) / uSimRect.z;
@@ -727,12 +740,15 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         // the tops of the rings made by a touch are a shade paler: a soft glow with no edge of its own, strongest on a fresh
         // splash and next to nothing on the small rings of a footstep. The rings' shape is left to the light bending through them.
         float crest = smoothstep(0.006, 0.05, s0);
+        // anime water: the ring is a flat pale band with a drawn edge, and the top of a strong one is white
+        crest = mix(crest, smoothstep(0.009, 0.012, s0) * 2.2, uToon);
         col = mix(col, uCell, clamp(crest * 0.2 * uRing, 0.0, 0.5) * smoothstep(0.0, 0.06, depth));
         // anime foam rings from footsteps, splashes and the falls (only where the cell texture exists)
         vec2 rings = foamRings(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth);
         col = mix(col, uCell, clamp(rings.y * 0.6, 0.0, 0.8));
         white = max(white, rings.x * 0.95);
         if (uToon > 0.5) {
+          white = max(white, smoothstep(0.035, 0.04, s0) * min(uRing, 1.0) * 0.9 * smoothstep(0.0, 0.06, depth));
           // short white strokes, all lying the same way and drifting slowly, coming and going: the drawn highlights of anime water
           vec2 dp = vec2(xz.x * 0.7 - t * 0.02, xz.y * 2.0) + (noise2(xz * 0.3 + 4.0) - 0.5) * 0.4;
           vec2 di = floor(dp), df = fract(dp) - 0.5;
