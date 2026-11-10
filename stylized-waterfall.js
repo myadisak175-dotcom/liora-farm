@@ -154,15 +154,23 @@ function churnMaterial(common, radius) {
       void main() {
         float r = length(vP) / uR;
         if (r > 1.0) discard;
+        vec2 dirR = vP / max(length(vP), 0.001);
         float a = atan(vP.y, vP.x) / 6.2831853 + 0.5;
         // strokes ride outwards in rings, as the landing water pushes the surface away
-        float brush = paintedFoam(vec2(a * 5.0, r * 1.6 - uTime * 0.28));
-        float brush2 = paintedFoam(vec2(a * 3.0 + 0.31, r * 1.1 - uTime * 0.18 + 0.5));
-        float n = noise2(vP * 1.3 + vec2(uTime * 0.3, 0.0));
+        float brush = paintedFoam(vec2(a * 5.0, r * 1.6 - uTime * 0.55));
+        float brush2 = paintedFoam(vec2(a * 3.0 + 0.31, r * 1.1 - uTime * 0.36 + 0.5));
+        // the foam breaks up into patches that are carried away from the landing point
+        float n = noise2(vP * 1.3 + dirR * -uTime * 0.9);
+        float n2 = noise2(vP * 2.6 - dirR * uTime * 1.25 + 7.3);
+        float patches = smoothstep(0.34 + r * 0.26, 0.66 + r * 0.14, n2);
         float art = mix(smoothstep(0.45, 0.8, n), smoothstep(0.1, 0.6, max(brush, brush2 * 0.8)), uFoamOn);
-        float core = 1.0 - smoothstep(0.08, 0.42, r + (n - 0.5) * 0.15);       // solid boil right under the fall
-        float foam = max(core, art * (1.0 - smoothstep(0.35, 0.95, r)));
-        gl_FragColor = vec4(mix(uShallow * 1.2, uWhite, 0.55 + 0.45 * foam), foam * 0.92);
+        art = max(art * 0.85, patches * (0.55 + 0.45 * art));
+        float core = 1.0 - smoothstep(0.06, 0.34, r + (n - 0.5) * 0.15);       // solid boil right under the fall
+        // a ring of foam is thrown out every few seconds and thins as it travels
+        float pulse = fract(uTime * 0.32);
+        float ring = smoothstep(0.16, 0.0, abs(r - pulse)) * (1.0 - pulse) * smoothstep(0.35, 0.7, n2 + 0.25);
+        float foam = max(core, max(art * (1.0 - smoothstep(0.45, 1.0, r)), ring));
+        gl_FragColor = vec4(mix(uShallow * 1.2, uWhite, 0.55 + 0.45 * foam), foam * 0.92 * (1.0 - smoothstep(0.82, 1.0, r)));
       }`,
     transparent: true, depthWrite: false,
   });
@@ -180,8 +188,8 @@ function sprayMaterial(common, { count, top }) {
         float life = 1.25;
         float k = fract(uTime / life + aSeed.x);
         float tt = k * life;
-        vec3 dir = vec3(cos(aSeed.y), 0.0, sin(aSeed.y) * 0.6 + 0.35);
-        vec3 p = position + dir * aSeed.z * tt * 0.9 + vec3(0.0, aSeed.z * 1.4 * tt - 4.9 * tt * tt, 0.0);
+        vec3 dir = vec3(cos(aSeed.y), 0.0, sin(aSeed.y) * 0.8 + 0.2);
+        vec3 p = position + dir * aSeed.z * tt * 1.35 + vec3(0.0, aSeed.z * 1.4 * tt - 4.9 * tt * tt, 0.0);
         p.y = max(p.y, position.y - 0.05);
         vFade = sin(k * 3.14159) * step(position.y - 0.04, p.y);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
@@ -196,6 +204,39 @@ function sprayMaterial(common, { count, top }) {
         float d = dot(c, c) * 4.0;
         if (d > 1.0) discard;
         gl_FragColor = vec4(uWhite, (1.0 - d) * vFade * 0.8);
+      }`,
+    transparent: true, depthWrite: false,
+  });
+}
+
+// ---------------------------------------------------------------- foam flecks: bits of foam flung across the surface from the landing point
+function fleckMaterial(common) {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...common, uPx: { value: 1 } },
+    vertexShader: /* glsl */`
+      attribute vec4 aSeed;          // x: phase, y: angle, z: speed, w: size
+      uniform float uTime, uPx;
+      varying float vFade;
+      void main() {
+        float life = 2.4;
+        float k = fract(uTime / life + aSeed.x);
+        float tt = k * life;
+        vec3 dir = vec3(cos(aSeed.y), 0.0, sin(aSeed.y) * 0.75);
+        float travel = aSeed.z * (1.0 - exp(-tt * 1.6)) / 1.6 * 2.2;      // thrown fast, then drifts to a stop
+        vec3 p = position + dir * travel;
+        vFade = smoothstep(0.0, 0.06, k) * (1.0 - smoothstep(0.45, 1.0, k));
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = aSeed.w * (0.7 + k * 0.8) * uPx * 120.0 / -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uWhite;
+      varying float vFade;
+      void main() {
+        vec2 c = gl_PointCoord - 0.5;
+        float d = dot(c, c) * 4.0;
+        if (d > 1.0) discard;
+        gl_FragColor = vec4(uWhite, smoothstep(1.0, 0.25, d) * vFade * 0.75);
       }`,
     transparent: true, depthWrite: false,
   });
@@ -227,14 +268,14 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   add(new THREE.Mesh(fallGeometry({ x: x - width * 0.05, z, top, bottom, width: width * 0.62, forward, inset: 0.22, bulge: 0.4 }),
     fallMaterial(common, { layer: 1, speed: 1.4, white: 0.25, opacity: 0.6, width: width * 0.62, height: H })), 3);
   // churn on the pool
-  const footZ = z + forward + 0.35, R = width * 1.05;
+  const footZ = z + forward + 0.35, R = width * 1.5;
   const churnGeo = new THREE.CircleGeometry(R, 56);
   churnGeo.rotateX(-Math.PI / 2);
   churnGeo.scale(1, 1, 0.75);
   const churn = add(new THREE.Mesh(churnGeo, churnMaterial(common, R)), 4);
   churn.position.set(x, bottom + 0.27, footZ);
   // spray
-  const N = 160, pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
+  const N = 220, pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {
     pos[i * 3] = x + (Math.random() - 0.5) * width * 1.1; pos[i * 3 + 1] = bottom + 0.3; pos[i * 3 + 2] = footZ + (Math.random() - 0.5) * 0.8;
     seed.set([Math.random(), Math.random() * Math.PI * 2, 1.2 + Math.random() * 2.6, 0.08 + Math.random() * 0.14], i * 4);
@@ -244,6 +285,18 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   sg.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4));
   sg.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, bottom + 2, footZ), width * 2 + 4);
   const spray = add(new THREE.Points(sg, sprayMaterial(common, { count: N, top })), 5);
+  // foam flecks scattering over the pool
+  const FN = 110, fpos = new Float32Array(FN * 3), fseed = new Float32Array(FN * 4);
+  for (let i = 0; i < FN; i++) {
+    fpos[i * 3] = x + (Math.random() - 0.5) * width * 0.7; fpos[i * 3 + 1] = bottom + 0.3; fpos[i * 3 + 2] = footZ + (Math.random() - 0.5) * 0.5;
+    fseed.set([Math.random(), Math.random() * Math.PI * 2, 0.8 + Math.random() * 1.8, 0.16 + Math.random() * 0.26], i * 4);
+  }
+  const fg = new THREE.BufferGeometry();
+  fg.setAttribute('position', new THREE.BufferAttribute(fpos, 3));
+  fg.setAttribute('aSeed', new THREE.BufferAttribute(fseed, 4));
+  fg.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, bottom + 0.3, footZ), width * 2 + 4);
+  const flecks = add(new THREE.Points(fg, fleckMaterial(common)), 4);
+  flecks.renderOrder = 4;
   // a faint veil of mist drifting up from the pool
   const tex = mistTexture();
   const mists = [];
@@ -258,7 +311,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   return {
     group,
     update(renderer = null) {
-      if (renderer) spray.material.uniforms.uPx.value = renderer.getPixelRatio();
+      if (renderer) { const px = renderer.getPixelRatio(); spray.material.uniforms.uPx.value = px; flecks.material.uniforms.uPx.value = px; }
       const now = shared.uTime.value;
       for (const m of mists) {
         const k = (now / LIFE + m.userData.phase) % 1;             // 0 born .. 1 gone
