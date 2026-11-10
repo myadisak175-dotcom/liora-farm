@@ -116,9 +116,11 @@ export function createGroundMap({
     const k = (1 - sstep(0.25, 1, d)) * 0.75 * s * (data[o + 3] / 255);    // no shade tint on bare earth
     data[o] = lerp(data[o], C.shade[0], k); data[o + 1] = lerp(data[o + 1], C.shade[1], k); data[o + 2] = lerp(data[o + 2], C.shade[2], k);
   });
-  // cast shadows: coverage 0..255 in its own picture (the terrain reads it too), and the grass colour darkened under it
-  const cov = new Uint8Array(size * size);
-  for (const [x, z, a, b, ux, uz, st = 1, dap = 0] of cast) {
+  // cast shadows: coverage 0..255 in its own picture (the terrain reads it too), and the grass colour darkened under it.
+  // The shapes are rasterised in slices so a new sun position can be baked in the background (see beginCast / stepCast).
+  const dapN = 128, dap = new Uint8Array(dapN * dapN);                         // light falling through leaves in patches: made once
+  for (let j = 0; j < dapN; j++) for (let i = 0; i < dapN; i++) dap[j * dapN + i] = 255 * sstep(0.3, 0.7, fbm3(i / dapN * 14, 7.7, j / dapN * 14, S + 29, 2));
+  const rasterShape = (cov, [x, z, a, b, ux, uz, st = 1, dp = 0]) => {
     const r = Math.max(a, b);
     const i0 = Math.max(0, Math.floor((x - r - cx + radius) / span * size)), i1 = Math.min(size - 1, Math.ceil((x + r - cx + radius) / span * size));
     const j0 = Math.max(0, Math.floor((z - r - cz + radius) / span * size)), j1 = Math.min(size - 1, Math.ceil((z + r - cz + radius) / span * size));
@@ -127,16 +129,21 @@ export function createGroundMap({
       const dx = px - x, dz = pz - z, u = (dx * ux + dz * uz) / a, v = (-dx * uz + dz * ux) / b, d = Math.hypot(u, v);
       if (d >= 1) continue;
       let k = (1 - sstep(0.62, 1, d)) * st;
-      if (dap > 0) k *= 1 - dap * (1 - sstep(0.3, 0.7, fbm3(px * 0.9, 7.7, pz * 0.9, S + 29, 2)));      // light falls through the leaves in patches
-      const o = j * size + i;
-      cov[o] = Math.max(cov[o], Math.round(k * 255));
+      if (dp > 0) k *= 1 - dp * (1 - dap[(Math.floor(pz * 2.2) & (dapN - 1)) * dapN + (Math.floor(px * 2.2) & (dapN - 1))] / 255);
+      const o = j * size + i, c = Math.round(k * 255);
+      if (c > cov[o]) cov[o] = c;
     }
-  }
-  for (let q = 0; q < cov.length; q++) {
-    if (!cov[q]) continue;
-    const k = cov[q] / 255, o = q * 4;
-    data[o] *= 1 + (castTint[0] - 1) * k; data[o + 1] *= 1 + (castTint[1] - 1) * k; data[o + 2] *= 1 + (castTint[2] - 1) * k;
-  }
+  };
+  const cov = new Uint8Array(size * size);
+  for (const shape of cast) rasterShape(cov, shape);
+  const base = data.slice();                                                     // the colours before any shadow went on
+  const tintCast = k => {                                                        // k: how dark shadows are now (0 = none)
+    for (let q = 0; q < cov.length; q++) {
+      const o = q * 4, c = cov[q] / 255 * k;
+      data[o] = base[o] * (1 + (castTint[0] - 1) * c); data[o + 1] = base[o + 1] * (1 + (castTint[1] - 1) * c); data[o + 2] = base[o + 2] * (1 + (castTint[2] - 1) * c);
+    }
+  };
+  tintCast(1);
   stamp(press, (o, d) => { data[o + 3] = Math.min(data[o + 3], lerp(90, 255, sstep(0.55, 1, d))); });
   stamp(bare, (o, d) => { data[o + 3] = Math.min(data[o + 3], 255 * sstep(0.6, 1, d)); });
 
@@ -156,8 +163,32 @@ export function createGroundMap({
     const j = Math.min(size - 1, Math.max(0, Math.floor((z - cz + radius) / span * size)));
     return data[(j * size + i) * 4 + 3] / 255;
   };
+  // a new set of shadows (the sun moved): beginCast(list, k) starts it, stepCast(ms) works on it for a few milliseconds
+  // per frame and returns true on the frame the new shadows go live
+  let job = null;
+  const beginCast = (list, k = 1) => { job = { list, i: 0, q: 0, cov: new Uint8Array(size * size), stage: data.slice(), k }; };
+  const stepCast = (ms = 3) => {
+    if (!job) return false;
+    const t0 = performance.now();
+    while (job.i < job.list.length && performance.now() - t0 < ms) rasterShape(job.cov, job.list[job.i++]);
+    if (job.i < job.list.length) return false;
+    // the shapes are done: darken a staging copy of the colours, a slice at a time, then swap everything in at once
+    const { cov: nc, stage, k } = job, n = nc.length;
+    while (job.q < n) {
+      const end = Math.min(n, job.q + 40000);
+      for (let q = job.q; q < end; q++) {
+        const o = q * 4, c = nc[q] / 255 * k;
+        stage[o] = base[o] * (1 + (castTint[0] - 1) * c); stage[o + 1] = base[o + 1] * (1 + (castTint[1] - 1) * c); stage[o + 2] = base[o + 2] * (1 + (castTint[2] - 1) * c);
+      }
+      job.q = end;
+      if (performance.now() - t0 > ms) return false;
+    }
+    cov.set(nc); data.set(stage); texture.needsUpdate = true; castTex.needsUpdate = true;
+    job = null;
+    return true;
+  };
   // area: where the live grass currently is (centre x, centre z, tile size; 0 = no follow-grass). Ground and grass share it.
-  return { texture, cast: castTex, castTint, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, dispose() { texture.dispose(); castTex.dispose(); } };
+  return { texture, cast: castTex, castTint, beginCast, stepCast, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, dispose() { texture.dispose(); castTex.dispose(); } };
 }
 
 // GLSL shared by ground and blades: where to look in the map

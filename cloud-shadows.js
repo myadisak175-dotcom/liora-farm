@@ -14,6 +14,8 @@
    `vCloud` (how deep in shadow this vertex is, one texture read), and tints the final colour by it. Skinned
    characters have no haze; they are recognised by three's <project_vertex> chunk instead.
    The water surface is left alone: what shows through it is already shadowed, and a reflection is not.
+   The same hook carries the light of the hour (uGrade): every material of the scene is multiplied by one colour that the
+   time-of-day controller changes (white at noon, warm at dusk, blue at night).
    Mobile-safe: no uniform arrays, no loops in the shaders.
    ========================================================================== */
 import * as THREE from 'three';
@@ -66,6 +68,7 @@ float cloudShade(vec3 viewPos) {
 `;
 const FRAG = /* glsl */`
 uniform vec3 uCloudCol;
+uniform vec3 uGrade;          // the light of the hour: what everything is multiplied by (white at noon, warm at dusk, blue at night)
 varying float vCloud;
 `;
 
@@ -102,11 +105,20 @@ function patch(mat, uniforms) {
   } else return false;
   // tint what the material drew, but not the haze laid over it
   fs = beforeEnd(fs, hazed
-    ? '\n  { vec3 cH = uHaze * vHaze; gl_FragColor.rgb = (gl_FragColor.rgb - cH) * mix(vec3(1.0), uCloudCol, vCloud) + cH; }\n'
-    : '\n  gl_FragColor.rgb *= mix(vec3(1.0), uCloudCol, vCloud);\n');
+    ? '\n  { vec3 cH = uHaze * vHaze; gl_FragColor.rgb = (gl_FragColor.rgb - cH) * mix(vec3(1.0), uCloudCol, vCloud) * uGrade + cH; }\n'
+    : '\n  gl_FragColor.rgb *= mix(vec3(1.0), uCloudCol, vCloud) * uGrade;\n');
   mat.vertexShader = VERT + vs;
   mat.fragmentShader = FRAG + fs;
   Object.assign(mat.uniforms, uniforms);
+  mat.needsUpdate = true;
+  return true;
+}
+
+// a shader that cannot take the cloud shadow still gets the light of the hour (water gets a softer dose: it already mirrors a graded world)
+function patchGrade(mat, uniforms, name) {
+  if (mat.fragmentShader.includes('uniform vec3 ' + name + ';')) return false;
+  mat.fragmentShader = 'uniform vec3 ' + name + ';\n' + beforeEnd(mat.fragmentShader, '\n  gl_FragColor.rgb *= ' + name + ';\n');
+  mat.uniforms[name] = uniforms[name];
   mat.needsUpdate = true;
   return true;
 }
@@ -117,7 +129,9 @@ export function createCloudShadows({ sky, seed = 2, color = [0.55, 0.62, 0.76], 
   const uniforms = {
     uCloudTex: { value: tex }, uCloudOff: { value: new THREE.Vector2() }, uCloudP: { value: new THREE.Vector3(1 / 380, 0.55, 0.5) },
     uCloudCol: { value: new THREE.Vector3(...color) }, uCloudFade: { value: new THREE.Vector2(fadeA, fadeB) },
+    uGrade: { value: new THREE.Vector3(1, 1, 1) }, uGradeW: { value: new THREE.Vector3(1, 1, 1) },
   };
+  let strength = 1;
   const done = new Set();
   return {
     uniforms,
@@ -128,7 +142,10 @@ export function createCloudShadows({ sky, seed = 2, color = [0.55, 0.62, 0.76], 
         for (const m of [].concat(o.material || [])) {
           if (!m.isShaderMaterial || done.has(m)) continue;
           done.add(m);
-          if (!skip(m) && patch(m, uniforms)) n++;
+          if (m.userData && m.userData.noGrade) continue;                                  // the sky draws its own light
+          if (skip(m)) { if (patchGrade(m, uniforms, 'uGradeW')) n++; continue; }          // water: a softer grade
+          if (patch(m, uniforms)) n++;
+          else if (patchGrade(m, uniforms, 'uGrade')) n++;
         }
       });
       return n;
@@ -137,8 +154,10 @@ export function createCloudShadows({ sky, seed = 2, color = [0.55, 0.62, 0.76], 
       const d = sky.userData.drift;
       uniforms.uCloudOff.value.set(d.x, d.y);
       // cloudier sky -> more of the land in shadow
-      uniforms.uCloudP.value.set(1 / tune.shadowSize.value, 0.74 - 0.4 * tune.cover.value, tune.shadow.value);
+      uniforms.uCloudP.value.set(1 / tune.shadowSize.value, 0.74 - 0.4 * tune.cover.value, tune.shadow.value * strength);
     },
+    get strength() { return strength; },
+    set strength(v) { strength = v; },       // cloud shadows fade out with the daylight
     dispose() { tex.dispose(); },
   };
 }

@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
 
-const { rgb, mulberry32 } = _internal;
+const { rgb, mulberry32, shared } = _internal;
 
 // live look controls (uniform objects, shared by the bake and the dome)
 export const SKY_TUNE = {
@@ -229,10 +229,11 @@ function domeMaterial(u) {
     fragmentShader: /* glsl */`
       ${PANO}
       uniform sampler2D uPrev, uCur;
-      uniform float uFade, uShadeK, uBlue, uGlow;
-      uniform vec3 uTop, uMid, uHor, uSun, uSunCol, uLight, uAmbTop, uAmbBot;
+      uniform float uFade, uShadeK, uBlue, uGlow, uStars, uTime;
+      uniform vec3 uTop, uMid, uHor, uSun, uSunCol, uLight, uAmbTop, uAmbBot, uMoon, uMoonCol;
       varying vec3 vW;
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       void main() {
         vec3 d = normalize(vW - cameraPosition);
         // the air: deep blue overhead, paling through the thick air near the horizon
@@ -256,6 +257,22 @@ function domeMaterial(u) {
         // the sun itself: a small hot disc and its bloom, dimmed by any cloud in front
         float disc = smoothstep(0.99935, 0.99962, s) + 0.5 * uGlow * s64 * s64 * s64 * s64;
         vec3 col = sky * open + cl + uSunCol * disc * open * open;
+        // night: a field of small stars (a hashed grid on the sphere, each cell holds at most one) and the moon
+        if (uStars > 0.01 && d.y > -0.02) {
+          vec3 q = d * 85.0, cell = floor(q), f = fract(q) - 0.5;
+          float hs = hash3(cell);
+          vec3 off = vec3(hash3(cell + 3.1), hash3(cell + 7.7), hash3(cell + 11.3)) - 0.5;
+          float r = length(f - off * 0.5);
+          float star = step(0.962, hs) * smoothstep(0.22, 0.0, r) * (0.7 + 0.5 * hash3(cell + 1.7));
+          star *= 0.8 + 0.2 * sin(uTime * (1.5 + hs * 3.0) + hs * 40.0);                // a faint twinkle
+          col += vec3(0.85, 0.9, 1.0) * star * uStars * open * smoothstep(0.0, 0.2, d.y);
+        }
+        float m = dot(d, uMoon);
+        if (m > 0.9) {
+          float moonDisc = smoothstep(0.99905, 0.99925, m);
+          float halo = pow(max(m, 0.0), 160.0) * 0.28 + pow(max(m, 0.0), 24.0) * 0.06;
+          col += uMoonCol * (moonDisc * 0.95 + halo) * open * open;
+        }
         col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;                                         // no banding in the gradient
         gl_FragColor = vec4(col, 1.0);
       }`,
@@ -281,7 +298,8 @@ export function createVolumetricSky({
   let prev = pool[0], cur = pool[0], next = pool[1], row = 0, time = seed * 37.3, stamp = time, ready = false, rate = 1, hurryT = 0;
 
   const drift = new THREE.Vector2();
-  const bake = bakeMaterial(noise, sunDir, SKY_TUNE);
+  const lightDir = sunDir.clone();                  // what lights the clouds: the sun by day, the moon by night
+  const bake = bakeMaterial(noise, lightDir, SKY_TUNE);
   bake.uniforms.uSize.value.set(W, H);
   const bakeScene = new THREE.Scene(), bakeCam = new THREE.Camera();
   const bakeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bake);
@@ -293,9 +311,11 @@ export function createVolumetricSky({
     uShadeK: SKY_TUNE.shade, uBlue: SKY_TUNE.blue, uGlow: SKY_TUNE.glow,
     uTop: { value: rgb(top) }, uMid: { value: rgb(mid) }, uHor: { value: rgb(horizon) }, uSun: { value: sunDir }, uSunCol: { value: rgb(sunColor) },
     uLight: { value: rgb(light) }, uAmbTop: { value: rgb(ambTop) }, uAmbBot: { value: rgb(ambBot) },
+    uStars: { value: 0 }, uTime: shared.uTime, uMoon: { value: new THREE.Vector3(0, -1, 0) }, uMoonCol: { value: new THREE.Vector3(0, 0, 0) },
   };
   const dome = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), domeMaterial(u));
   dome.renderOrder = -1000; dome.frustumCulled = false; dome.name = 'skyDome';
+  dome.material.userData.noGrade = true;
   const group = new THREE.Group();
   group.name = 'volumetricSky';
   group.add(dome);
@@ -318,7 +338,7 @@ export function createVolumetricSky({
   };
 
   group.userData = {
-    kind: 'sky', tune: SKY_TUNE, ok: true, sun: sunDir,
+    kind: 'sky', tune: SKY_TUNE, ok: true, sun: sunDir, look: u, lightDir,
     get picture() { return cur; },                   // the panorama on show (for tests)
     // the first complete picture, in slices so no single draw is long enough to upset a phone's GPU watchdog
     async prewarm(renderer, slices = 16, pause = () => new Promise(r => setTimeout(r, 0))) {

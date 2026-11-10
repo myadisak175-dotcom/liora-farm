@@ -13,7 +13,7 @@
     font-family: system-ui, -apple-system, "Noto Sans Thai", "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
   html, body { height: 100dvh; }
   #fps { margin-top: env(safe-area-inset-top); }
-  #style, #tune, #skyBtn, #fullscreen, #credit { transform: translateY(env(safe-area-inset-top)); }
+  #style, #tune, #skyBtn, #fullscreen, #credit, #timeBtn, #timeRun { transform: translateY(env(safe-area-inset-top)); }
   canvas { display: block; touch-action: none; }
   #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
     background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
@@ -47,6 +47,9 @@
   #loading span { font-size: 13px; color: #6d8a4f; min-height: 1.3em; }
   #bar { width: min(240px, 60vw); height: 5px; border-radius: 3px; background: #cfe0bd; overflow: hidden; }
   #bar i { display: block; height: 100%; width: 0; background: #6f9a3c; transition: width .25s; }
+  #timeBtn, #timeRun { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 180px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
+    background: rgba(94, 62, 130, .8); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; }
+  #timeRun { top: 222px; background: rgba(39, 52, 26, .72); }
   #fullscreen { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 142px; z-index: 4; font: inherit; font-size: 12px; color: white; background: rgba(39,52,26,.78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; }
   html:fullscreen, html:-webkit-full-screen { width: 100%; height: 100%; }
 </style>
@@ -57,19 +60,20 @@
   "./stylized-nature.js": "./stylized-nature.js?v=perf1",
   "./stylized-terrain.js": "./stylized-terrain.js?v=foamphysics1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
-  "./volumetric-sky.js": "./volumetric-sky.js?v=sun1",
+  "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=sun2",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=tod3",
   "./stylized-character.js": "./stylized-character.js?v=foamphysics1",
   "./meadow-level.js": "./meadow-level.js?v=perf1",
   "./stylized-water.js": "./stylized-water.js?v=water4",
   "./water-tuner.js": "./water-tuner.js?v=foamphysics1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
-  "./cloud-shadows.js": "./cloud-shadows.js?v=foamphysics1",
+  "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
+  "./time-of-day.js": "./time-of-day.js?v=tod3",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=perf1",
-  "./valley-level.js": "./valley-level.js?v=sun2",
+  "./valley-level.js": "./valley-level.js?v=tod3",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall5",
   "./player.js": "./player.js?v=valley1"
 } }
@@ -77,6 +81,8 @@
 </head>
 <body>
 <button id="fullscreen" aria-label="เปิดโหมดเต็มจอ" aria-pressed="false">⛶ เต็มจอ</button>
+<button id="timeBtn">☀ กลางวัน</button>
+<button id="timeRun">⏸ หยุดเวลา</button>
 <script>
 (() => {
   const button = document.getElementById('fullscreen');
@@ -131,6 +137,7 @@ import { WATER_TUNE } from './stylized-water.js';
 import { createWaterTuner } from './water-tuner.js';
 import { createSkyTuner } from './sky-tuner.js';
 import { createCloudShadows } from './cloud-shadows.js';
+import { createTimeOfDay } from './time-of-day.js';
 import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
 import DEER_GLB from './deer-glb.js';
 
@@ -206,6 +213,21 @@ if (shadows) shadows.apply(scene);
 const skyBtn = document.getElementById('skyBtn');
 if (sky.userData.tune) createSkyTuner({ sky, button: skyBtn, panel: document.getElementById('skyTuner') }); else skyBtn.remove();      // the painted fallback sky has nothing to tune
 
+// ---- day, evening, night: the clock runs by itself, slowly; the button jumps to the next of noon / dusk / night
+const timeBtn = document.getElementById('timeBtn'), timeRun = document.getElementById('timeRun');
+const tod = sky.userData.look && shadows
+  ? createTimeOfDay({ sky, shadows, scene, level, rgb: N._internal.rgb, setHaze: c => N._internal.shared.uHaze.value.copy(c), hour: Q.has('hour') ? +Q.get('hour') : 12 })
+  : null;
+const ICON = { 'เช้า': '🌅', 'กลางวัน': '☀', 'เย็น': '🌇', 'กลางคืน': '🌙' };
+const showTime = () => { if (tod) timeBtn.textContent = ICON[tod.phase] + ' ' + tod.phase; };
+if (tod) {
+  showTime();
+  timeBtn.onclick = () => { tod.next(); showTime(); };
+  timeRun.onclick = () => { tod.auto = !tod.auto; timeRun.textContent = tod.auto ? '⏸ หยุดเวลา' : '▶ เดินเวลา'; };
+  if (Q.get('time') === 'stop') { tod.auto = false; timeRun.textContent = '▶ เดินเวลา'; }
+  setInterval(showTime, 1000);
+} else { timeBtn.remove(); timeRun.remove(); }
+
 // ---- keep it smooth: thin the grass when the phone struggles, thicken it again when there is room
 const fpsEl = document.getElementById('fps');
 let fpsN = 0, fpsT = 0, warm = 0, good = 0;
@@ -243,6 +265,7 @@ const frame = (dt = clock.getDelta()) => {
   player.update(dt);
   level.follow(player.position, player.lookDir);
   if (sky.userData.update) sky.userData.update(renderer, dt);
+  if (tod) tod.update(dt);
   if (shadows) shadows.update();
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
@@ -260,7 +283,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows };
+window.__game = { THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod };
 </script>
 </body>
 </html>

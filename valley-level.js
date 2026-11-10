@@ -70,14 +70,21 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // ------------------------------------------------------------------ plants
   await onStep('ปลูกป่าบนผาและตีนผา');
   const placed = [], plants = [], colliders = [], crowns = [], shade = [], bare = [], press = [];
-  // shadows thrown along the sun's direction. L points at the sun; a point h above the ground throws its shadow h / L.y further out the other way
-  const L = new THREE.Vector3(...sun).normalize(), dxz = Math.hypot(L.x, L.z) || 1;
-  const SU = [-L.x / dxz, -L.z / dxz], SLEN = dxz / L.y;                  // shadow direction on the ground, and how far it runs per metre of height
-  const cast = [];
-  // a ball of radius r whose middle is h above the ground at (x, z)
-  const castBall = (x, z, h, r, st = 0.9, dap = 0) => cast.push([x + SU[0] * SLEN * h, z + SU[1] * SLEN * h, r / Math.max(0.35, L.y) * 1.02, r, SU[0], SU[1], st, dap]);
-  // a thin upright stick from the ground up to height h (a trunk)
-  const castStick = (x, z, h, w, st = 0.75) => { const len = SLEN * h; cast.push([x + SU[0] * len / 2, z + SU[1] * len / 2, len / 2 + w, w, SU[0], SU[1], st, 0]); };
+  // shadows thrown along the sun's direction. L points at the sun; a point h above the ground throws its shadow h * SLEN further out the other way.
+  // The casters are only remembered here (what, where, how high); sunShadows() turns them into shapes for the sun of the moment.
+  const L = new THREE.Vector3(...sun).normalize();
+  let SU = [0, 1], SLEN = 1, LY = 1;
+  const sunShadows = dir => {
+    L.copy(dir).normalize();
+    const dxz = Math.hypot(L.x, L.z) || 1, ly = Math.max(0.3, L.y);                // a sun on the horizon would throw endless shadows
+    SU = [-L.x / dxz, -L.z / dxz]; SLEN = dxz / ly; LY = ly;
+    return casters.map(([kind, x, z, h, r, st, dap]) => kind === 0
+      ? [x + SU[0] * SLEN * h, z + SU[1] * SLEN * h, r / ly * 1.02, r, SU[0], SU[1], st, dap]                          // a ball: its middle is h up
+      : [x + SU[0] * SLEN * h / 2, z + SU[1] * SLEN * h / 2, SLEN * h / 2 + r, r, SU[0], SU[1], st, 0]);               // a stick: from the foot up to h
+  };
+  const casters = [];
+  const castBall = (x, z, h, r, st = 0.9, dap = 0) => casters.push([0, x, z, h, r, st, dap]);
+  const castStick = (x, z, h, w, st = 0.75) => casters.push([1, x, z, h, w, st, 0]);
   const CROWN_Y = { broadleaf: 5.7, oak: 5.2, pine: 5.6, birch: 6.6, sapling: 3.4 }, CROWN_R = { broadleaf: 2.9, oak: 3.5, pine: 2.3, birch: 2.0, sapling: 1.3 };
   const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 };
   const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
@@ -157,13 +164,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     return [earth, sand, 0];
   };
   const colors = { ...G.GROUND_COLORS, deep: '#7a9b3c', mid: '#86a640', sunny: '#a5c04b', shade: '#6d8d38', lawn: '#93b145' };
-  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: Hf, dirt: 0, shade, cast, bare, press, paint, colors });
+  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: Hf, dirt: 0, shade, cast: sunShadows(new THREE.Vector3(...sun)), bare, press, paint, colors });
   // the bare ground (sand, banks, cliff feet) is drawn by the terrain's own shader: it reads the same shadow picture
   {
     const tm = terrain.material, key = 'col = mix(col, uHaze, vHaze);';
     if (tm && tm.isShaderMaterial && tm.fragmentShader.includes(key)) {
-      Object.assign(tm.uniforms, { uCast: { value: map.cast }, uCastRect: { value: map.rect }, uCastTint: { value: new THREE.Vector3(...map.castTint) } });
-      tm.fragmentShader = 'uniform sampler2D uCast;\nuniform vec3 uCastRect;\nuniform vec3 uCastTint;\n' + tm.fragmentShader.replace(key, 'col *= mix(vec3(1.0), uCastTint, texture2D(uCast, (vWP.xz - uCastRect.xy) * uCastRect.z + 0.5).r);\n        ' + key);
+      Object.assign(tm.uniforms, { uCast: { value: map.cast }, uCastRect: { value: map.rect }, uCastTint: { value: new THREE.Vector3(...map.castTint) }, uCastK: { value: 1 } });
+      tm.fragmentShader = 'uniform sampler2D uCast;\nuniform vec3 uCastRect;\nuniform vec3 uCastTint;\nuniform float uCastK;\n' + tm.fragmentShader.replace(key, 'col *= mix(vec3(1.0), uCastTint, texture2D(uCast, (vWP.xz - uCastRect.xy) * uCastRect.z + 0.5).r * uCastK);\n        ' + key);
       tm.needsUpdate = true;
     }
   }
@@ -320,8 +327,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   })();
   const walkerShadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ map: blob, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, fog: false }));
+  const castUniforms = terrain.material.uniforms;
+  let castSun = new THREE.Vector3(...sun), castK = 1, wantSun = castSun.clone(), wantK = 1, lastCast = -99, castBusy = false;
+  const aimWalkerShadow = () => { walkerShadow.rotation.y = Math.atan2(-SU[1], SU[0]); walkerShadow.scale.set(1.35 + 0.55 / LY, 1, 0.8); };
   walkerShadow.name = 'walkerShadow'; walkerShadow.renderOrder = 3; walkerShadow.visible = false;
-  walkerShadow.rotation.y = Math.atan2(-SU[1], SU[0]); walkerShadow.scale.set(1.9, 1, 0.8);      // long side along the shadow direction
+  aimWalkerShadow();                                                                       // long side along the shadow direction
   group.add(walkerShadow);
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
@@ -333,6 +343,14 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
       sim.step(renderer, dt);
+      // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
+      const nowT = N._internal.shared.uTime.value;
+      if (castBusy) {
+        if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; if (castUniforms.uCastK) castUniforms.uCastK.value = castK; aimWalkerShadow(); }
+      } else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) {
+        castSun.copy(wantSun); castK = wantK; castBusy = true;
+        map.beginCast(sunShadows(castSun), castK);
+      }
       if (!scene || !camera) return;
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       camWorld.setFromMatrixPosition(camera.matrixWorld);
@@ -343,6 +361,8 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       const doThrough = near < 42, doMirror = q > 0 && near < 65 && frameNo % (q === 2 ? 2 : 4) === 0;
       if (doThrough || doMirror) optics.render(renderer, scene, camera, hidden, doThrough, doMirror);
     },
+    // where the sun is (a direction) and how strongly it casts (0 at night); the shadows follow in the background
+    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; walkerShadow.material.opacity = Math.min(1, k * 1.2); },
     tapWater(origin, dir) {
       for (let t = 1; t < 70; t += 0.25) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
@@ -356,7 +376,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       grass.userData.follow(pos, lookDir);
       const wy = HV(pos.x, pos.z), dry = waterDepthAt(pos.x, pos.z) < 0.05;
       walkerShadow.visible = dry;
-      if (dry) walkerShadow.position.set(pos.x + SU[0] * SLEN * 0.8, wy + 0.3, pos.z + SU[1] * SLEN * 0.8);
+      if (dry) { const run = Math.min(SLEN, 2.5) * 0.8; walkerShadow.position.set(pos.x + SU[0] * run, wy + 0.3, pos.z + SU[1] * run); }
       waterfall.update(lastRenderer);
       // the falls keep the plunge pool restless: rings run out from where the sheet lands
       const now = N._internal.shared.uTime.value;
