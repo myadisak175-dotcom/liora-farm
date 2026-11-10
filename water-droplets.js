@@ -79,36 +79,47 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
   points.frustumCulled = false;
   points.renderOrder = 3;
   points.visible = false;
-  // ---- the cone of water: where something lands, a thin sheet of water is thrown up and outwards in a cone (a crown), opens as it
-  // rises, tears into strands along its ragged lip and falls back. One instanced draw, a child of the drops so it shows and hides with them.
+  // ---- the crown and the cone of water. Where something lands, a thin sheet of water is thrown up and outwards as a bowl (the
+  // crown): it shoots up fast, leans out, breaks into pointed fingers along its lip, thins into holes and sinks back while still
+  // widening. Out of the middle of a full splash a cone of water then rises and drops again. Two instanced draws, children of the
+  // drops so they show and hide with them.
   const CONES = 12;
-  const tube = new THREE.CylinderGeometry(1, 1, 1, 28, 6, true);
-  const cgeo = new THREE.InstancedBufferGeometry();
-  cgeo.index = tube.index;
-  cgeo.setAttribute('position', tube.attributes.position);
-  cgeo.setAttribute('uv', tube.attributes.uv);
   const cone = new Float32Array(CONES * 4), coneSize = new Float32Array(CONES);
   for (let i = 0; i < CONES; i++) cone[i * 4 + 3] = -100;
   const aCone = new THREE.InstancedBufferAttribute(cone, 4), aConeSize = new THREE.InstancedBufferAttribute(coneSize, 1);
   aCone.setUsage(THREE.DynamicDrawUsage); aConeSize.setUsage(THREE.DynamicDrawUsage);
-  cgeo.setAttribute('aCone', aCone);                                    // x, y, z, time of birth
-  cgeo.setAttribute('aSize', aConeSize);                                // metres
-  cgeo.instanceCount = CONES;
+  const instanced = src => {
+    const g = new THREE.InstancedBufferGeometry();
+    g.index = src.index;
+    g.setAttribute('position', src.attributes.position);
+    g.setAttribute('uv', src.attributes.uv);
+    g.setAttribute('aCone', aCone);                                     // x, y, z, time of birth
+    g.setAttribute('aSize', aConeSize);                                 // metres
+    g.instanceCount = CONES;
+    return g;
+  };
+  const tube = new THREE.CylinderGeometry(1, 1, 1, 48, 10, true), tube2 = new THREE.CylinderGeometry(1, 1, 1, 16, 8, true);
+  const cgeo = instanced(tube), jgeo = instanced(tube2);
+  const LIFE = 'float life = 0.55 + 0.4 * aSize, k = (uTime - aCone.w) / life;';
+  const coneUniforms = () => ({ uTime: time, uToon: WATER_TUNE.anime, uLight: { value: new THREE.Color(light) }, uBody: { value: new THREE.Color(body) } });
   const cmat = new THREE.ShaderMaterial({
-    uniforms: { uTime: time, uToon: WATER_TUNE.anime, uLight: { value: new THREE.Color(light) }, uBody: { value: new THREE.Color(body) } },
+    uniforms: coneUniforms(),
     vertexShader: /* glsl */`
       attribute vec4 aCone;
       attribute float aSize;
       uniform float uTime;
       varying float vV, vA, vK, vSeed;
       void main() {
-        float life = 0.5 + 0.35 * aSize, k = (uTime - aCone.w) / life;
+        ${LIFE}
         float v = position.y + 0.5;                                       // 0 at the water, 1 at the lip
-        float rise = sin(clamp(k, 0.0, 1.0) * 3.14159);
-        float h = aSize * 1.15 * pow(rise, 0.8);                          // up, then back down
-        float r = aSize * (0.2 + 0.6 * k) * (1.0 + 0.8 * v * v * (0.4 + k));     // widening all the time, the lip leaning out
+        float kc = clamp(k, 0.0, 1.0);
+        float up = 1.0 - pow(1.0 - min(kc / 0.3, 1.0), 2.0);              // shoots up...
+        float down = pow(max(kc - 0.3, 0.0) / 0.7, 2.0);                  // ...then sinks back
+        float h = aSize * 0.8 * (up - 0.9 * down);
+        float base = aSize * (0.22 + 0.5 * (1.0 - (1.0 - kc) * (1.0 - kc)));       // the foot of the bowl keeps spreading
+        float r = base + aSize * (0.2 + 0.5 * kc) * pow(v, 0.75) + aSize * 0.1 * v * v * v * v;      // the wall leans out, the lip curls over
         vec3 p = aCone.xyz + vec3(position.x * r, v * h, position.z * r);
-        vV = v; vA = uv.x; vK = k; vSeed = fract(aCone.x * 0.37 + aCone.z * 0.71);
+        vV = v; vA = uv.x; vK = kc; vSeed = fract(aCone.x * 0.37 + aCone.z * 0.71) * 6.2831853;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
         if (k < 0.0 || k > 1.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       }`,
@@ -116,28 +127,75 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
       uniform vec3 uLight, uBody;
       uniform float uToon;
       varying float vV, vA, vK, vSeed;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      // value noise that joins up round the bowl (period px along x)
+      float wnoise(vec2 p, float px) {
+        vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        float x0 = mod(i.x, px), x1 = mod(i.x + 1.0, px);
+        return mix(mix(hash(vec2(x0, i.y)), hash(vec2(x1, i.y)), f.x), mix(hash(vec2(x0, i.y + 1.0)), hash(vec2(x1, i.y + 1.0)), f.x), f.y);
+      }
       void main() {
         float a = vA * 6.2831853;
-        // a ragged lip: tongues of different heights round the rim, longer as the sheet thins
-        float top = 1.0 - (0.18 + 0.32 * vK) * (0.5 + 0.5 * sin(a * 7.0 + vSeed * 20.0)) * (0.6 + 0.4 * sin(a * 3.0 + vSeed * 9.0));
-        if (vV > top) discard;
-        // late on, the sheet splits from the lip down into strands
-        float tear = 0.5 + 0.5 * sin(a * 11.0 + vSeed * 31.0);
-        if (vV > 0.3 && tear * (1.0 - vV * 0.45) < (vK - 0.45) * 1.5) discard;
-        float lip = smoothstep(top - 0.14, top, vV);
-        vec3 col = mix(uBody, uLight, max(smoothstep(0.1, 0.8, vV) * 0.75, lip));
-        float alpha = mix(0.5, 0.9, max(vV, lip)) * (1.0 - smoothstep(0.8, 1.0, vK)) * smoothstep(0.0, 0.06, vV);
+        // the lip: a sheet with pointed fingers of uneven height and spacing; the sheet between them draws back as it thins
+        float tall = 0.45 + 0.3 * sin(a * 3.0 + vSeed) + 0.25 * sin(a * 5.0 - vSeed * 2.0);
+        float finger = pow(0.5 + 0.5 * sin(a * 9.0 + 1.8 * sin(a * 2.0 + vSeed)), 4.0) * clamp(tall + 0.45, 0.25, 1.0);
+        float sheet = 0.68 - 0.3 * vK + 0.08 * sin(a * 4.0 + vSeed * 3.0);
+        float edge = sheet + (1.0 - sheet) * finger;
+        if (vV > edge) discard;
+        // holes open in the sheet from the top down as it sinks
+        float holes = wnoise(vec2(vA * 14.0, vV * 3.5 - vK * 1.5) + vSeed, 14.0);
+        if (holes < (vK - 0.5) * 1.5 * smoothstep(0.1, 0.7, vV)) discard;
+        float rim = smoothstep(edge - 0.1, edge - 0.02, vV);
+        float streak = smoothstep(0.55, 0.75, wnoise(vec2(vA * 24.0 + vSeed, vV * 1.2 - vK), 24.0)) * smoothstep(0.1, 0.5, vV);
+        float foot = 1.0 - smoothstep(0.0, 0.1, vV);
+        vec3 col = mix(uBody, mix(uBody, uLight, 0.45), smoothstep(0.0, 0.8, vV));
+        if (!gl_FrontFacing) col *= vec3(0.78, 0.86, 0.94);               // the far wall, seen from inside: in shade
+        float white = max(max(rim, foot * 0.8), streak * 0.6);
+        col = mix(col, uLight, white);
+        float alpha = mix(0.68, 0.95, white) * (1.0 - smoothstep(0.78, 1.0, vK));
         // anime water: flat colours, a white lip, no see-through
-        if (uToon > 0.5) { col = mix(mix(uBody, uLight, 0.45), uLight, step(top - 0.16, vV)); alpha = step(vK, 0.92); }
+        if (uToon > 0.5) { col = mix(mix(uBody, uLight, gl_FrontFacing ? 0.4 : 0.15), uLight, step(0.5, white)); alpha = step(vK, 0.92); }
         gl_FragColor = vec4(col, alpha);
       }`,
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
   });
-  const cones = new THREE.Mesh(cgeo, cmat);
-  cones.name = 'waterCones';
-  cones.frustumCulled = false;
-  cones.renderOrder = 3;
-  points.add(cones);
+  const jmat = new THREE.ShaderMaterial({
+    uniforms: coneUniforms(),
+    vertexShader: /* glsl */`
+      attribute vec4 aCone;
+      attribute float aSize;
+      uniform float uTime;
+      varying float vV, vK;
+      void main() {
+        ${LIFE}
+        float v = position.y + 0.5;
+        float kj = clamp((k - 0.22) / 0.78, 0.0, 1.0), rise = sin(kj * 3.14159);
+        float h = aSize * 1.25 * pow(rise, 0.85);
+        // a cone: broad where it leaves the water, drawn out to a rounded tip that pinches as it falls back
+        float r = aSize * (0.2 * pow(1.0 - v, 1.6) + 0.035 * sqrt(max(1.0 - v * v, 0.0))) * (0.55 + 0.45 * rise);
+        vec3 p = aCone.xyz + vec3(position.x * r, v * h, position.z * r);
+        vV = v; vK = kj;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        if (k < 0.22 || k > 1.0 || aSize < 0.4) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);      // footsteps throw no cone
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uLight, uBody;
+      uniform float uToon;
+      varying float vV, vK;
+      void main() {
+        float white = max(smoothstep(0.55, 1.0, vV), 1.0 - smoothstep(0.0, 0.08, vV));
+        vec3 col = mix(mix(uBody, uLight, 0.3), uLight, white * 0.9);
+        float alpha = mix(0.75, 0.95, white) * (1.0 - smoothstep(0.85, 1.0, vK));
+        if (uToon > 0.5) { col = mix(mix(uBody, uLight, 0.4), uLight, step(0.6, vV)); alpha = step(vK, 0.95); }
+        gl_FragColor = vec4(col, alpha);
+      }`,
+    transparent: true, depthWrite: false,
+  });
+  const cones = new THREE.Mesh(cgeo, cmat), jets = new THREE.Mesh(jgeo, jmat);
+  cones.name = 'waterCrowns'; jets.name = 'waterCones';
+  cones.frustumCulled = jets.frustumCulled = false;
+  cones.renderOrder = 3; jets.renderOrder = 3;
+  points.add(cones, jets);
   let cursor = 0, last = -100, coneCursor = 0;
   return {
     points,
@@ -172,6 +230,6 @@ export function createWaterDroplets({ time, capacity = 160, light = '#f6fcff', b
       }
       if (points.visible && time.value - last > 1.8) points.visible = false;        // nothing in the air: no draw at all
     },
-    dispose() { geo.dispose(); mat.dispose(); cgeo.dispose(); tube.dispose(); cmat.dispose(); },
+    dispose() { geo.dispose(); mat.dispose(); cgeo.dispose(); jgeo.dispose(); tube.dispose(); tube2.dispose(); cmat.dispose(); jmat.dispose(); },
   };
 }
