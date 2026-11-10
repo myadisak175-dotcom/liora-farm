@@ -554,7 +554,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float animeLace = smoothstep(0.16, 0.26, animeCell.r) * (1.0 - smoothstep(0.12, 0.26, animeCell.g));
         float animeShore = (1.0 - smoothstep(0.10, 0.38, restDepth)) * smoothstep(0.0, 0.04, depth);
         float animePulse = smoothstep(0.35, 0.75, 0.5 + 0.5 * sin(restDepth * 16.0 - t * 1.8 + noise2(q * 0.6) * 1.6));
-        white = max(white, min(0.75, animeLace * animeShore * animePulse * uFoamAmt) * uAnimeOn);
+        white = max(white, min(0.45, animeLace * animeShore * animePulse * uFoamAmt) * uAnimeOn);
         // Crown meshes and droplets accompany physical impulses; the simulation still bends the view.
 
         // Rounded sun glints, not large four-point stars or long white scratches.

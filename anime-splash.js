@@ -19,7 +19,7 @@ function cells() {
   tex.minFilter=tex.magFilter=THREE.LinearFilter; tex.needsUpdate=true; return tex;
 }
 
-export function createAnimeSplashes({field, waterLevelAt, capacity=12}) {
+export function createAnimeSplashes({field, waterLevelAt, capacity=8}) {
   const group=new THREE.Group(); group.name='anime-water-fx';
   const tex=cells(), impacts=new Float32Array(capacity*4), params=new Float32Array(capacity*4);
   for(let i=0;i<capacity;i++){ impacts[i*4+3]=-100; params[i*4+2]=1; }
@@ -59,20 +59,20 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=12}) {
     float h=p.y+.5, angle=atan(p.z,p.x);
     float teeth=.6+.23*sin(angle*7.+vSeed)+.17*sin(angle*11.-vSeed);
     p.xz*=power*(.5+age*1.5);
-    p.y=pow(h,.8)*teeth*sin(pow(age,.7)*3.14159)*power*.95;
+    p.y=pow(h,.8)*teeth*sin(pow(age,.7)*3.14159)*power*.7;
     p.y+=.025;`, `
     vec2 uv=vec2(vUV.x*1.8+vSeed, vUV.y*.65-vAge*.32);
     vec2 c=texture2D(uCells,uv).rg;
     float hole=smoothstep(.26,.36,c.r+vUV.y*.1);
     float lip=smoothstep(.82,.96,vUV.y);
-    float alpha=max(hole,lip)*fade*(1.-smoothstep(.96,1.,vUV.y))*.88*uFoamAmt;
+    float alpha=max(hole,lip)*fade*(1.-smoothstep(.96,1.,vUV.y))*.6*uFoamAmt;
     vec3 col=mix(vec3(.26,.72,.86),vec3(.94,.995,1.),smoothstep(.3,.8,vUV.y+c.g*.5));`);
   const jet=mesh(new THREE.CylinderGeometry(.08,.3,1,14,5,true),`
     float h=p.y+.5; p.xz*=power*(1.-age*.5);
     p.x+=sin(h*5.+vSeed)*h*.08*power;
     p.y=h*sin(pow(age,.55)*3.14159)*power*1.25+.025;`, `
     float pattern=texture2D(uCells,vec2(vUV.x*.6+vSeed,vUV.y-vAge*.7)).r;
-    float alpha=fade*(1.-smoothstep(.82,1.,vUV.y))*.7;
+    float alpha=fade*(1.-smoothstep(.82,1.,vUV.y))*.5;
     vec3 col=mix(vec3(.25,.68,.86),vec3(.92,.99,1.),smoothstep(.22,.5,pattern));`);
   // Two expanding annuli with irregular, dissolving foam edges.
   const rg=new THREE.BufferGeometry(),rp=[],ru=[],ri=[];
@@ -89,12 +89,12 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=12}) {
     p.y=.035+layer*.01+sin(vUV.x*18.85+age*4.)*.012;`, `
     float c=texture2D(uCells,vec2(vUV.x*2.+vSeed,vUV.y*.12+vAge*.18)).r;
     float edges=smoothstep(0.,.17,vUV.y)*(1.-smoothstep(.65,1.,vUV.y));
-    float alpha=edges*fade*smoothstep(.12,.25,c-vAge*.1)*.85*uFoamAmt;
+    float alpha=edges*fade*smoothstep(.12,.25,c-vAge*.1)*.5*uFoamAmt;
     vec3 col=vec3(.9,.99,1.);`);
   // Billboard droplets with ballistic flight, all in a single instanced draw.
-  const dg=new THREE.PlaneGeometry(1,1), g=new THREE.InstancedBufferGeometry();g.index=dg.index;g.attributes={...dg.attributes};g.instanceCount=capacity*10;
-  const di=new Float32Array(capacity*10*4),dp=new Float32Array(capacity*10*4),ds=new Float32Array(capacity*10);
-  for(let i=0;i<ds.length;i++)ds[i]=i%10;
+  const dg=new THREE.PlaneGeometry(1,1), g=new THREE.InstancedBufferGeometry();g.index=dg.index;g.attributes={...dg.attributes};g.instanceCount=capacity*6;
+  const di=new Float32Array(capacity*6*4),dp=new Float32Array(capacity*6*4),ds=new Float32Array(capacity*6);
+  for(let i=0;i<ds.length;i++)ds[i]=i%6;
   const da=new THREE.InstancedBufferAttribute(di,4),db=new THREE.InstancedBufferAttribute(dp,4);
   da.setUsage(THREE.DynamicDrawUsage);db.setUsage(THREE.DynamicDrawUsage);
   g.setAttribute('aImpact',da);g.setAttribute('aParams',db);g.setAttribute('aDrop',new THREE.InstancedBufferAttribute(ds,1));
@@ -123,14 +123,14 @@ export function createAnimeSplashes({field, waterLevelAt, capacity=12}) {
   let lastEvent=-100;
   return {group, texture:tex,
     emit(x,z,strength=1){
-      if(strength<.53)return;
+      if(strength<.95)return;        // only knee-deep wading and real impacts splash; ankle-deep steps stay plain ripples
       const now=time.value;
-      if(strength<1.5&&now-lastSmall<.20)return;
+      if(strength<1.5&&now-lastSmall<.38)return;
       if(strength>=1.5&&now-lastTap<.08)return;
       if(strength<1.5)lastSmall=now;else lastTap=now;
-      const o=cursor*4, power=Math.min(1.55,Math.max(.32,strength*.57)), duration=1.15+power*.25;
+      const o=cursor*4, power=Math.min(1.1,Math.max(.3,strength*.42)), duration=1.15+power*.25;
       impacts.set([x,waterLevelAt(x,z)+.035,z,now],o);params.set([power,(cursor*13.71+now)%100,duration,1],o);
-      for(let j=0;j<10;j++){const d=(cursor*10+j)*4;di.set(impacts.subarray(o,o+4),d);dp.set(params.subarray(o,o+4),d);}
+      for(let j=0;j<6;j++){const d=(cursor*6+j)*4;di.set(impacts.subarray(o,o+4),d);dp.set(params.subarray(o,o+4),d);}
       impact.needsUpdate=param.needsUpdate=da.needsUpdate=db.needsUpdate=true;
       cursor=(cursor+1)%capacity;lastEvent=now;group.visible=true;
     },

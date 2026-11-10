@@ -263,9 +263,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
   }
-  const ripple = (x, z, strength = 1, radius = 0.26) => {
+  const ripple = (x, z, strength = 1, radius = 0.26, splash = true) => {
     sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
-    animeFX.emit(x, z, strength);
+    if (splash) animeFX.emit(x, z, strength);        // the falls have their own spray: no crowns of foam under them
   };
 
   // ------------------------------------------------------------------ forest batches
@@ -389,7 +389,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       // the falls keep the plunge pool restless: rings run out from where the sheet lands
       const now = N._internal.shared.uTime.value;
       if (now > nextSplash) {
-        ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4);
+        ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4, false);
         nextSplash = now + 0.16;
       }
     },
