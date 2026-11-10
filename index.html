@@ -3,10 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Liora Farm">
+<meta name="theme-color" content="#cde6f2">
 <title>ทุ่งหญ้า — เดินสำรวจ</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #cde6f2; overscroll-behavior: none;
     font-family: system-ui, -apple-system, "Noto Sans Thai", "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
+  html, body { height: 100dvh; }
+  #fps { margin-top: env(safe-area-inset-top); }
+  #style, #tune, #skyBtn, #fullscreen, #credit { transform: translateY(env(safe-area-inset-top)); }
   canvas { display: block; touch-action: none; }
   #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
     background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
@@ -84,12 +91,13 @@
       } else {
         const root = document.documentElement;
         const enter = root.requestFullscreen || root.webkitRequestFullscreen;
-        if (!enter) { button.textContent = 'เบราว์เซอร์นี้ไม่รองรับเต็มจอ'; return; }
+        if (!enter) { alert('บน iPhone/iPad: เปิดเกมใน Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม แล้วเปิดจากไอคอน Liora Farm เพื่อเล่นแบบแอป หมุนจอได้ทั้งแนวตั้งและแนวนอน'); return; }
         await enter.call(root);
       }
     } catch (error) { button.textContent = 'แตะเพื่อลองเต็มจออีกครั้ง'; }
     // Keep the device orientation free: portrait and landscape both remain available.
   };
+  if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) button.hidden = true;
   document.addEventListener('fullscreenchange', sync);
   document.addEventListener('webkitfullscreenchange', sync);
 })();
@@ -122,7 +130,11 @@ import DEER_GLB from './deer-glb.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Bound Retina render cost; recover resolution gradually when the device has headroom.
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const maxDPR = Math.min(devicePixelRatio || 1, 2);
+let renderDPR = IOS ? Math.min(maxDPR, 1.5) : maxDPR;
+renderer.setPixelRatio(renderDPR);
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
@@ -136,6 +148,8 @@ const fit = () => {
   document.getElementById('hintText').textContent = (camera.aspect < 1 ? 'หมุนจอเป็นแนวนอนจะเห็นกว้างกว่า · ' : '') + 'แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง · แตะผิวน้ำให้กระเพื่อม';
 };
 addEventListener('resize', fit);
+if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+addEventListener('orientationchange', () => requestAnimationFrame(fit));
 
 const stepEl = document.getElementById('step'), barEl = document.querySelector('#bar i');
 let steps = 0;
@@ -149,7 +163,7 @@ const b64ToBuffer = b64 => { const bin = atob(b64), u = new Uint8Array(bin.lengt
 N.setHaze({ color: HAZE, near: 45, far: 230, max: 0.6 });
 await onStep('วาดท้องฟ้า');
 const Q = new URLSearchParams(location.search);          // ?grass=120000 to force a blade count, ?still=1 to render on demand (tests), ?sky=1024 panorama width
-const skyW = +Q.get('sky') || 2560;
+const skyW = +Q.get('sky') || (IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
 scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
@@ -190,6 +204,14 @@ function tune(dt) {
   const fps = fpsN / fpsT; fpsN = 0; fpsT = 0;
   const g = level.grass.userData;
   if (warm > 4) {
+    if (fps < 47 && renderDPR > 1) {
+      renderDPR = Math.max(1, renderDPR - 0.125); renderer.setPixelRatio(renderDPR); fit();
+      warm = 2; good = 0; return;
+    }
+    if (fps > 58 && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
+      if (++good >= 8) { renderDPR = Math.min(maxDPR, renderDPR + 0.125); renderer.setPixelRatio(renderDPR); fit(); warm = 2; good = 0; }
+      return;
+    }
     // too slow: first give up mirror quality (the costliest thing on screen), only then thin the grass
     if (fps < 47 && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); warm = 2; good = 0; }       // cheapest saving first: redraw the clouds less often
     else if (fps < 47 && level.optics.quality > 0) { level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); warm = 2; good = 0; }
@@ -204,6 +226,7 @@ function tune(dt) {
 const clock = new THREE.Clock();
 let moved = false;
 const frame = (dt = clock.getDelta()) => {
+  dt = Math.min(Math.max(dt, 0), 0.05);
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
@@ -215,7 +238,14 @@ const frame = (dt = clock.getDelta()) => {
   tune(dt);
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
-if (!Q.get('still')) renderer.setAnimationLoop(() => frame());
+const animate = () => frame();
+const syncVisibility = () => {
+  clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0;
+  renderer.setAnimationLoop(!document.hidden && !Q.get('still') ? animate : null);
+};
+document.addEventListener('visibilitychange', syncVisibility);
+addEventListener('pageshow', syncVisibility);
+syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
