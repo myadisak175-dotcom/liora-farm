@@ -61,7 +61,7 @@ export const WATER_TUNE = {
   brushScale: { value: 0.22 },    // painted foam texture repetitions per metre
   shore: { value: 0.85 },         // shore-breaking swell strength
   foamLife: { value: 1.8 },        // seconds for surface foam to dissipate
-  caustic: { value: 0.16 },        // brightness of the light netting on the bottom
+  caustic: { value: 0.05 },        // brightness of the light netting on the bottom
   causticScale: { value: 1.1 },    // bigger number = smaller pattern
   swell: { value: 0.8 },           // height of the slow waves
   shimmer: { value: 0.035 },        // fine restless wobble of the surface
@@ -220,8 +220,11 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
         // Rasterize the artwork only when foam is born. Thereafter B carries and deforms that shape.
         vec2 artUV = xz * uBrushScale + vec2(t * 0.013, -t * 0.019);
         float pattern = smoothstep(0.08, 0.65, texture2D(uFoamMap, fract(artUV)).r);
+        // Shore foam keeps the painted strokes. Disturbed open water only gets a soft, shapeless splash haze
+        // (no artwork), so waves never leave brush-stroke scribbles floating on the lake.
+        float splash = disturbed * (1.0 - smoothstep(0.1, 0.4, depth));
         foam = clamp(foam + (breaking * uShore * pattern * 0.08
-          + disturbed * (0.2 + pattern * 0.8) * 0.065) * uTerrainOn, 0.0, 1.0);
+          + splash * 0.006) * uTerrainOn, 0.0, 1.0);
         gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, foam, potential);
       }`,
     depthTest: false, depthWrite: false,
@@ -467,7 +470,7 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec2 ripple = vec2(noise2(rpA + dE.xy) - rA, noise2(rpA + dE.yx) - rA) * 0.6
                     + vec2(noise2(rpB + dE.xy) - rB, noise2(rpB + dE.yx) - rB) * 0.4;
         float rippleFade = 1.0 - smoothstep(22.0, 55.0, length(cameraPosition - vWP));
-        shimmer += ripple * 9.0 * uShimmer * rippleFade * smoothstep(0.02, 0.3, depth);
+        shimmer += ripple * 4.0 * uShimmer * rippleFade * smoothstep(0.02, 0.3, depth);
         vec3 N = normalize(vec3(-sl.x * 3.0 - shimmer.x, 1.0, -sl.y * 3.0 - shimmer.y));
         vec3 V = normalize(cameraPosition - vWP);
 
@@ -530,9 +533,7 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         float inState = step(0.0, foamStateUV.x) * step(foamStateUV.x, 1.0) * step(0.0, foamStateUV.y) * step(foamStateUV.y, 1.0);
         float movingFoam = texture2D(uSim, clamp(foamStateUV, 0.0, 1.0)).b * inState * uSimRect.w;
         white = max(white, smoothstep(0.025, 0.55, movingFoam) * 0.9 * uFoamAmt * smoothstep(0.0, 0.04, depth));
-        // Touch ripples remain primarily refraction, with only a faint highlight at the crest.
-        float touchFoam = smoothstep(0.01, 0.045, abs(s0)) * smoothstep(0.04, 0.15, depth);
-        white = max(white, touchFoam * 0.08 * uFoamAmt);
+        // Touch ripples are refraction only: no outline drawn around the wave crests.
 
         // Rounded sun glints, not large four-point stars or long white scratches.
         vec2 gp = drift * 3.2;
