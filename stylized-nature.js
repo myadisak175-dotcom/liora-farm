@@ -640,6 +640,10 @@ function rockMaterial(moss, tone = 'warm') {
 // --------------------------------------------------------------------------
 // geometry builders
 // --------------------------------------------------------------------------
+// How finely wood and the leaf core are cut. A forest of hundreds of trees is drawn twice a frame (once more in the water's mirror),
+// so every triangle here is paid hundreds of times. Smooth-shaded tubes hide the lower counts well.
+const TREE_LOD = { trunkRadial: 12, trunkLength: 28, branchRadial: 6, branchLength: 9, coreDetail: 2 };
+
 function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null) {
   const curve = new THREE.CatmullRomCurve3(points);
   const frames = curve.computeFrenetFrames(lenSeg, false);
@@ -682,7 +686,7 @@ function buildTrunk(rng, spec) {
   // a stout trunk that spreads into roots at the foot (buttress lobes), slightly irregular all the way up
   const height = pts[pts.length - 1].y - pts[0].y, lph = lean * 53;
   const trunkR = t => spec.trunk.radius(t) * 1.2 * (1 + 0.7 * Math.exp(-t * height / 0.5));
-  const trunk = taperedTube(pts, trunkR, 14, 60, (t, a) => 1 + 0.2 * Math.exp(-t * height / 0.65) * Math.cos(a * 5 + lph) + 0.04 * Math.sin(a * 3 + t * 11 + lph));
+  const trunk = taperedTube(pts, trunkR, TREE_LOD.trunkRadial, TREE_LOD.trunkLength, (t, a) => 1 + 0.2 * Math.exp(-t * height / 0.65) * Math.cos(a * 5 + lph) + 0.04 * Math.sin(a * 3 + t * 11 + lph));
   parts.push(trunk.geo);
   const up = new THREE.Vector3(0, 1, 0);
   // a limb grows OUT of its parent: it starts nearly as thick as the wood it leaves, then narrows to its own size
@@ -695,7 +699,7 @@ function buildTrunk(rng, spec) {
       start.clone().addScaledVector(d, out).addScaledVector(up, rise),
     ];
     const collar = Math.max(r0, rParent * 0.8);
-    const tube = taperedTube(bp, t => { const k = Math.min(1, t / 0.3), e = k * k * (3 - 2 * k); return (collar + (r0 - collar) * e) * (1 - 0.7 * t); }, 8, 18);
+    const tube = taperedTube(bp, t => { const k = Math.min(1, t / 0.3), e = k * k * (3 - 2 * k); return (collar + (r0 - collar) * e) * (1 - 0.7 * t); }, TREE_LOD.branchRadial, TREE_LOD.branchLength);
     parts.push(tube.geo);
     return tube.curve;
   };
@@ -728,7 +732,7 @@ function withBase(geo, x = 0, y = 0, z = 0, s = 1) {
 function buildCore(tiers) {
   const pos = [], hh = [];
   for (const T of tiers) {
-    const g = new THREE.IcosahedronGeometry(1, 3);
+    const g = new THREE.IcosahedronGeometry(1, TREE_LOD.coreDetail);
     const p = g.attributes.position;
     const cs = T.coreScale ?? 0.68, cb = T.coreBottom ?? 0.75;
     for (let i = 0; i < p.count; i++) {

@@ -18,7 +18,7 @@ const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 200000, onStep = async () => {} } = {}) {
+export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 150000, onStep = async () => {} } = {}) {
   const group = new THREE.Group();
   group.name = 'valleyLevel';
   const rng = mulberry32(seed * 977 + 3);
@@ -265,7 +265,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
 
   // ------------------------------------------------------------------ fluffy grass that follows the player
   await onStep('ปลูกหญ้า');
-  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, ...fade });
+  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
   group.add(grass);
 
   // ------------------------------------------------------------------ deer grazing across the river from the spawn

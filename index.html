@@ -54,22 +54,22 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "./stylized-nature.js": "./stylized-nature.js?v=cliffs1",
+  "./stylized-nature.js": "./stylized-nature.js?v=perf1",
   "./stylized-terrain.js": "./stylized-terrain.js?v=foamphysics1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=foamphysics1",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=foamphysics1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=perf1",
   "./stylized-character.js": "./stylized-character.js?v=foamphysics1",
-  "./meadow-level.js": "./meadow-level.js?v=cliffs1",
+  "./meadow-level.js": "./meadow-level.js?v=perf1",
   "./stylized-water.js": "./stylized-water.js?v=water4",
   "./water-tuner.js": "./water-tuner.js?v=foamphysics1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
   "./cloud-shadows.js": "./cloud-shadows.js?v=foamphysics1",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
-  "./hills-level.js": "./hills-level.js?v=hills1",
-  "./valley-level.js": "./valley-level.js?v=valley4",
+  "./hills-level.js": "./hills-level.js?v=perf1",
+  "./valley-level.js": "./valley-level.js?v=valley5",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall5",
   "./player.js": "./player.js?v=valley1"
 } }
@@ -140,7 +140,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerP
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const fastMode = new URLSearchParams(location.search).get('fps') === '120';
 const targetFPS = fastMode ? 120 : 60;
-const maxDPR = Math.min(devicePixelRatio || 1, fastMode ? 1.25 : 2);
+const maxDPR = Math.min(devicePixelRatio || 1, +new URLSearchParams(location.search).get('dpr') || (fastMode ? 1.25 : 1.5));      // a phone's own resolution is far more pixels than a painted look needs; ?dpr=2 to compare
 let renderDPR = IOS ? Math.min(maxDPR, 1.5) : maxDPR;
 renderer.setPixelRatio(renderDPR);
 renderer.setSize(innerWidth, innerHeight);
@@ -176,7 +176,7 @@ let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: sky
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
 scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
 const buildLevel = { meadow: buildMeadowLevel, hills: buildHillsLevel }[Q.get('map')] || buildValleyLevel;      // ?map=hills or ?map=meadow for the other maps
-const level = await buildLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || (fastMode ? 120000 : 200000) });
+const level = await buildLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000 });
 scene.add(level.group);
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);

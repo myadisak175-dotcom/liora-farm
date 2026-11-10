@@ -441,7 +441,7 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
 
   // ------------------------------------------------------------------ fluffy grass that follows the player
   await onStep('ปลูกหญ้า');
-  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, ...fade });
+  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
   group.add(grass);
 
   // ------------------------------------------------------------------ deer in the glade across the stream

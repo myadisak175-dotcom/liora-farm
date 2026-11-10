@@ -456,7 +456,7 @@ function tuftGeometry() {
 export function createFollowGrass({
   map, field, count = 200000, tile = 62, seed = 5,
   bladeHeight = 0.34, bladeWidth = 0.055, tuft = 0.11, tip = GRASS_TIP,
-  far = '#eef5e4', fadeA = null, fadeB = null,
+  far = '#eef5e4', fadeA = null, fadeB = null, thin = 1,        // thin > 1: fewer, wider blades (a lighter carpet that still closes)
 } = {}) {
   const rng = mulberry32(seed * 733 + 11);
   map.area.set(map.center[0], map.center[1], tile);
@@ -464,7 +464,7 @@ export function createFollowGrass({
     ...bladeUniforms(map, { tip, far, fadeA, fadeB, bladeHeight, bladeWidth }),
     uHeight: { value: field.texture }, uHeightRect: { value: field.rect },
     uArea: { value: map.area }, uTuft: { value: tuft }, uPaint: map.paint,
-    uThin: { value: 1 },       // widens blades when fewer of them are drawn
+    uThin: { value: thin },       // widens blades when fewer of them are drawn
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -593,7 +593,7 @@ export function createFollowGrass({
     setDensity(d) {
       density = Math.min(1, Math.max(0.2, d));
       g.instanceCount = Math.round(count * density);
-      uniforms.uThin.value = 1 / Math.sqrt(density);
+      uniforms.uThin.value = thin / Math.sqrt(density);
     },
     get density() { return density; },
     setPainterly(on) { map.paint.value = on ? 1 : 0; },
