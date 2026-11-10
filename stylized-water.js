@@ -16,7 +16,7 @@
 //   scene.add(createLilyPads({ pads: [[x, z, radius, flower 0/1, level, across, F]], sim }))
 //
 // Depth is read per pixel from the terrain height texture, so shorelines follow the land exactly.
-// Bounded GLSL: no uniform arrays; a 3x3 foam-cell search runs only in shallow pixels.
+// Bounded GLSL: no uniform arrays; smooth multi-scale noise and broken depth contours, without a cellular foam mesh.
 
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
@@ -24,10 +24,10 @@ import { _internal } from './stylized-nature.js';
 const { NOISE, rgb, mulberry32, shared } = _internal;
 
 export const WATER_LOOK = {
-  shallow: '#6fdccb',   // turquoise
-  mid: '#33b3de',       // bright blue
-  deep: '#2283d0',
-  abyss: '#1c64b6',
+  shallow: '#60d7c9',   // turquoise
+  mid: '#26abc7',       // bright blue
+  deep: '#2084b3',
+  abyss: '#246b9c',
   foam: '#f6fcff',
   cell: '#b4f3ea',      // light cells in the shallows
   sky: '#cfeaf7',       // what the surface mirrors at low angles
@@ -37,18 +37,18 @@ export const WATER_LOOK = {
 // (water-tuner.js puts sliders on them; the numbers here are the defaults)
 export const WATER_TUNE = {
   shore: { value: 0.85 },         // shore-breaking swell strength
-  foamLife: { value: 4.5 },        // seconds for surface foam to dissipate
+  foamLife: { value: 1.8 },        // seconds for surface foam to dissipate
   caustic: { value: 0.16 },        // brightness of the light netting on the bottom
   causticScale: { value: 1.1 },    // bigger number = smaller pattern
   swell: { value: 0.8 },           // height of the slow waves
-  shimmer: { value: 0.07 },        // fine restless wobble of the surface
+  shimmer: { value: 0.035 },        // fine restless wobble of the surface
   speed: { value: 1 },             // how fast swell, shimmer and light pattern move
   refract: { value: 1 },           // how much the view under water bends
-  reflect: { value: 0.85 },        // how strongly the scene is mirrored
+  reflect: { value: 0.55 },        // how strongly the scene is mirrored
   clear: { value: 1.15 },          // depth (m) at which you no longer see the bottom
-  foam: { value: 1 },              // froth along the shore
-  glint: { value: 1 },             // winking sparks
-  fleck: { value: 0.7 },           // streaks of foam carried along by the current
+  foam: { value: 0.85 },              // froth along the shore
+  glint: { value: 0.4 },             // winking sparks
+  fleck: { value: 0.35 },           // streaks of foam carried along by the current
   ripple: { value: 0.6 },          // strength of the waves made by touching the water
   simSpeed: { value: 1.5 },        // how fast those waves travel (m/s)
   calm: { value: 0.993 },          // how long they last (closer to 1 = longer)
@@ -177,9 +177,9 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
         float carried = texture2D(uState, sourceUV).b * step(0.5, texture2D(uMask, sourceUV).r);
         float foam = carried * exp(-1.0 / (60.0 * max(0.2, uFoamLife)));
         float breaking = smoothstep(0.78, 0.98, sin(phase)) * shoreGroup(xz, t)
-          * smoothstep(0.015, 0.1, depth) * (1.0 - smoothstep(0.35, 0.85, depth));
-        float disturbed = smoothstep(0.002, 0.018, abs(h - before)) * (1.0 - smoothstep(0.2, 0.9, depth));
-        foam = clamp(foam + (breaking * uShore * 0.045 + disturbed * 0.025) * uTerrainOn, 0.0, 1.0);
+          * smoothstep(0.015, 0.1, depth) * (1.0 - smoothstep(0.12, 0.32, depth));
+        float disturbed = smoothstep(0.002, 0.018, abs(h - before)) * (1.0 - smoothstep(0.12, 0.45, depth));
+        foam = clamp(foam + (breaking * uShore * 0.018 + disturbed * 0.012) * uTerrainOn, 0.0, 1.0);
         gl_FragColor = vec4(clamp(next, -0.5, 0.5), h, foam, 1.0);
       }`,
     depthTest: false, depthWrite: false,
@@ -369,17 +369,6 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
       varying float vCalm;
 
       vec2 hash22(vec2 p) { return vec2(hash2(p), hash2(p + 37.31)); }
-      float foamCells(vec2 p) {
-        vec2 cell = floor(p), f = fract(p);
-        float first = 8.0, second = 8.0;
-        for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-          vec2 offset = vec2(float(i), float(j));
-          vec2 r = offset + 0.15 + 0.7 * hash22(cell + offset) - f;
-          float d = dot(r, r);
-          if (d < first) { second = first; first = d; } else second = min(second, d);
-        }
-        return second - first;
-      }
       // a bright wandering line wherever the noise crosses its middle value: two of these, crossed, look like the net
       // of sunlight on a shallow bottom, and cost a fraction of a proper cell pattern
       float ridge(vec2 p) { return 1.0 - abs(noise2(p) * 2.0 - 1.0); }
@@ -427,11 +416,9 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
 
         // ---- the water's own colour, thicker with depth (soft painted bands)
         float dn = depth + (noise2(xz * 0.55) - 0.5) * 0.22 + (noise2(xz * 1.9) - 0.5) * 0.07;
-        vec3 body = uShallow;
-        body = mix(body, mix(uShallow, uMid, 0.55), smoothstep(0.3, 0.4, dn));
-        body = mix(body, uMid, smoothstep(0.62, 0.74, dn));
-        body = mix(body, uDeep, smoothstep(1.0, 1.14, dn));
-        body = mix(body, uAbyss, smoothstep(1.46, 1.62, dn));
+        vec3 body = mix(uShallow, uMid, smoothstep(0.05, 1.0, dn));
+        body = mix(body, uDeep, smoothstep(0.6, 2.0, dn));
+        body = mix(body, uAbyss, smoothstep(1.6, 3.5, dn));
         float blot = noise2(q * 0.42) * 0.6 + noise2(q * 1.1 + 4.0) * 0.4;      // darker drifting blotches
         body *= 1.0 - 0.07 * smoothstep(0.5, 0.58, blot) * smoothstep(0.3, 0.6, depth);
         body += uCell * caustic * uCaustic * 0.3;
@@ -445,43 +432,52 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
         vec3 refl = mix(uSky, texture2D(uMirror, mc.xy / mc.w + N.xz * 0.06).rgb, uOptics * uMirrorOn);
         col = mix(col, refl, fres * uReflect * smoothstep(0.0, 0.15, depth));
 
-        // ---- flecks of foam carried by the current: long white strokes in the stream, short faint ones over the pond
-        vec2 sp = vec2(q.x * 1.6, q.y * 1.15);
-        vec2 sc = floor(sp), sf = fract(sp);
-        float sh = hash2(sc);
-        float taper = sin(sf.y * 3.1416);
-        float stroke = (1.0 - smoothstep(0.0, 0.11 * taper, abs(sf.x - 0.3 - 0.4 * sh))) * step(mix(0.88, 0.52, stream), sh) * taper;
-        float white = stroke * mix(0.4, 1.1, stream) * uFleck * smoothstep(0.08, 0.2, depth);
+        // Short curved brush strokes, sparse over open water, carried downstream.
+        vec2 drift = q + (vec2(noise2(q * 0.65 + 2.0), noise2(q * 0.65 + 8.0)) - 0.5) * 0.9;
+        float trailNoise = noise2(vec2(drift.x * 2.1, drift.y * 5.0));
+        float wavelet = smoothstep(0.75, 0.88, trailNoise)
+          * smoothstep(0.48, 0.72, noise2(drift * 1.3 + 17.0));
+        float surfaceBand = 1.0 - smoothstep(0.018, 0.065, abs(noise2(drift * vec2(3.3, 4.5)) - 0.54));
+        surfaceBand *= smoothstep(0.52, 0.76, noise2(drift * 1.9 + 31.0));
+        col = mix(col, uSky, surfaceBand * 0.13 * smoothstep(0.08, 0.25, depth));
+        float white = wavelet * uFleck * mix(0.32, 0.65, stream) * smoothstep(0.12, 0.3, depth);
 
-        // ---- breaking front + persistent backwash froth; small irregular holes, no fixed white border.
-        float wob = (noise2(xz * 1.7) - 0.5) * 0.06;
-        float shallow = (1.0 - smoothstep(0.55, 1.25, restDepth)) * smoothstep(-0.01, 0.035, depth);
-        if (shallow > 0.001) {
-          vec2 fw = xz + (vec2(noise2(xz * 1.1 + 3.0), noise2(xz * 1.1 + 8.0)) - 0.5) * 0.28;
-          fw += T * t * 0.035 + normalize(vec2(ground - gx, ground - gz) + vec2(0.0001)) * sin(t * 0.65) * 0.06;
-          float lace = foamCells(fw * 7.5);
-          float fine = noise2(fw * 23.0 + 2.0);
+        // Thin, broken contact ribbons and a second swash line: turquoise stays visible between them.
+        float shoreMask = (1.0 - smoothstep(0.22, 0.42, restDepth)) * smoothstep(-0.012, 0.022, depth);
+        if (shoreMask > 0.001) {
+          vec2 fw = xz - T * t * 0.045;
+          float broad = noise2(fw * 1.7 + vec2(t * 0.04, 2.0));
+          float detail = noise2(fw * 6.0 + vec2(7.0, -t * 0.055));
+          float broken = smoothstep(0.27, 0.46, broad * 0.72 + detail * 0.28);
+          float wob = (broad - 0.5) * 0.024 + (detail - 0.5) * 0.008;
+          float surge = 0.5 + 0.5 * sin(t * 1.3 + noise2(xz * 0.25) * 2.0);
+          float edgeDepth = restDepth + wob;
+          float aa = max(fwidth(edgeDepth), 0.0015);
+          float contactCenter = 0.018 + 0.012 * surge;
+          float contact = 1.0 - smoothstep(0.007, 0.007 + aa * 1.5, abs(edgeDepth - contactCenter));
+          float pulseCenter = 0.055 + 0.1 * (1.0 - surge);
+          float pulse = 1.0 - smoothstep(0.007, 0.018 + aa, abs(edgeDepth - pulseCenter));
+          pulse *= smoothstep(0.22, 0.65, surge) * uShore;
           vec2 uv = (xz - uSimRect.xy) / uSimRect.z;
           float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
           float memory = texture2D(uSim, clamp(uv, 0.0, 1.0)).b * inside * uSimRect.w;
-          float front = pow(max(0.0, sin(shorePhase(xz, restDepth + wob, t))), 16.0);
-          float breaker = front * (1.0 - smoothstep(0.35, 0.8, restDepth)) * shoreGroup(xz, t) * uShore * mix(1.0, 0.2, stream);
-          float bubbles = (1.0 - smoothstep(0.025, 0.14, lace)) * (0.7 + fine * 0.3);
-          float remnants = smoothstep(0.10, 0.75, memory) * mix(bubbles, 1.0, memory * 0.55);
-          float lip = (1.0 - smoothstep(0.015, 0.055, depth + wob)) * (0.15 + 0.6 * front);
-          white = max(white, clamp((breaker * mix(bubbles, 1.0, 0.6) + remnants * 0.8 + lip * 0.35) * shallow * uFoamAmt, 0.0, 0.96));
+          // Memory modulates sparse soft flecks, never a connected polygon network.
+          float softFroth = smoothstep(0.6, 0.8, detail * 0.6 + broad * 0.4)
+            * smoothstep(0.12, 0.65, memory) * (1.0 - smoothstep(0.07, 0.22, restDepth));
+          white = max(white, min(0.88, (contact * 0.85 + pulse * 0.58 + softFroth * 0.35)
+            * broken * shoreMask * uFoamAmt));
         }
-        // a simulated wave's crest catches a soft light (wide and faint: the ring shows mostly by how it bends the view)
-        white = max(white, smoothstep(0.004, 0.02, s0) * 0.28 * smoothstep(0.02, 0.1, depth));
+        // Touch ripples remain primarily refraction, with only a faint highlight at the crest.
+        white = max(white, smoothstep(0.012, 0.045, s0) * 0.1 * smoothstep(0.04, 0.15, depth));
 
-        // ---- glints: small four-point sparks that wink
-        vec2 gp = q * 1.7;
+        // Rounded sun glints, not large four-point stars or long white scratches.
+        vec2 gp = drift * 3.2;
         vec2 gi = floor(gp), gf = fract(gp) - 0.5;
         float gh = hash2(gi);
         vec2 go = gf - (hash22(gi + 5.0) - 0.5) * 0.6;
-        float wink = pow(max(0.0, sin(uTime * 1.7 + gh * 60.0)), 10.0);
-        float star = max(1.0 - smoothstep(0.0, 0.07, abs(go.x)) - abs(go.y) * 6.5, 1.0 - smoothstep(0.0, 0.07, abs(go.y)) - abs(go.x) * 6.5);
-        white = max(white, clamp(star, 0.0, 1.0) * wink * step(0.7, gh) * smoothstep(0.15, 0.4, depth) * uGlint);
+        float wink = pow(max(0.0, sin(uTime * 1.3 + gh * 60.0)), 8.0);
+        float sparkle = exp(-dot(go * vec2(14.0, 24.0), go * vec2(14.0, 24.0)));
+        white = max(white, sparkle * wink * step(0.82, gh) * smoothstep(0.15, 0.4, depth) * uGlint);
 
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
@@ -513,9 +509,9 @@ export function createLilyPads({ pads = [], seed = 1, sim = null } = {}) {
     for (let i = 0; i <= SEG; i++) {
       const a = rot + i / SEG * Math.PI * 2;
       push(px + Math.cos(a) * r * 1.02, level + 0.014, pz + Math.sin(a) * r * 1.02, foam);
-      push(px + Math.cos(a) * r * 1.16, level + 0.014, pz + Math.sin(a) * r * 1.16, foam);
+      push(px + Math.cos(a) * r * (1.065 + 0.015 * Math.sin(a * 3.0 + phase)), level + 0.014, pz + Math.sin(a) * r * (1.065 + 0.015 * Math.sin(a * 3.0 + phase)), foam);
     }
-    for (let i = 0; i < SEG; i++) { const a = f0 + i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    for (let i = 0; i < SEG; i++) { if (Math.sin(i * 0.85 + phase) < 0.25) continue; const a = f0 + i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
     // the leaf: a fan with alternating light and dark wedges (veins), one wedge missing
     const c = push(px, level + 0.032, pz, base.map(v => v * 1.08));
     let prev = -1;

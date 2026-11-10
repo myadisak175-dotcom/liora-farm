@@ -29,7 +29,7 @@ const CONTROLS = [
   ['foam', 'ฟองริมฝั่ง', 0, 2, 0.05],
   ['glint', 'ประกายระยิบ', 0, 2, 0.05],
 ];
-const KEY = 'meadow.water.tune.v1';
+const KEY = 'meadow.water.tune.v2';
 
 export function createWaterTuner({ tune, button, panel, optics = null }) {
   // mirror quality: the one setting that costs real speed
