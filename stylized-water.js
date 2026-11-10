@@ -26,8 +26,8 @@ const { NOISE, rgb, mulberry32, shared } = _internal;
 export const WATER_LOOK = {
   shallow: '#60d7c9',   // turquoise
   mid: '#26abc7',       // bright blue
-  deep: '#2084b3',
-  abyss: '#246b9c',
+  deep: '#1b6fa8',
+  abyss: '#1a5588',
   foam: '#f6fcff',
   cell: '#b4f3ea',      // light cells in the shallows
   sky: '#cfeaf7',       // what the surface mirrors at low angles
@@ -485,13 +485,19 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
 
         // ---- the water's own colour, thicker with depth (soft painted bands)
         float dn = depth + (noise2(xz * 0.55) - 0.5) * 0.22 + (noise2(xz * 1.9) - 0.5) * 0.07;
-        vec3 body = mix(uShallow, uMid, smoothstep(0.05, 1.0, dn));
-        body = mix(body, uDeep, smoothstep(0.6, 2.0, dn));
-        body = mix(body, uAbyss, smoothstep(1.6, 3.5, dn));
+        // Depth ladder: emerald at the very edge, turquoise, then a clearly darker blue towards the middle.
+        vec3 body = mix(vec3(0.40, 0.86, 0.62), uShallow, smoothstep(0.0, 0.3, dn));
+        body = mix(body, uMid, smoothstep(0.1, 0.9, dn));
+        body = mix(body, uDeep, smoothstep(0.5, 1.7, dn));
+        body = mix(body, uAbyss, smoothstep(1.2, 3.0, dn));
         body += uCell * caustic * uCaustic * 0.3;
         vec3 col = mix(under, body, mix(0.16, 0.95, smoothstep(0.0, uClear, depth)));
         // faces of the waves turned to the sun are a little lighter, the others a little darker: soft, no outlines
         col *= 1.0 + clamp(dot(sl, -normalize(uSun.xz)) * 2.2 + vLift * 3.0, -0.13, 0.16);
+        // Sunlight glowing through the thin water at the edges, strongest when looking towards the sun.
+        float throughSun = pow(max(dot(-V, normalize(uSun)), 0.0), 2.0);
+        float thin = 1.0 - smoothstep(0.05, 0.85, dn);
+        col += vec3(0.50, 0.92, 0.52) * thin * (0.08 + 0.20 * throughSun) * smoothstep(0.0, 0.05, depth);
 
         // ---- the scene mirrored on the surface, stronger at low angles, broken up by the waves
         float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
