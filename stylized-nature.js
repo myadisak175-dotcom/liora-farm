@@ -339,13 +339,7 @@ function leafMaterial(style) {
         mv.xy += off;                                   // camera-facing card
         vHaze = hazeAt(mv.xyz);
         gl_Position = projectionMatrix * mv;
-        // every card leans a little differently in depth (depth only, the picture does not move): where two cards
-        // cross, the boundary now slides across them as the camera moves, instead of one whole card popping in front
-        float ta = iParam.z * 61.0 + iParam.y * 17.0;
-        vec4 mz = mv;
-        mz.z += dot(off, vec2(cos(ta), sin(ta))) * 0.6;
-        vec4 pz = projectionMatrix * mz;
-        gl_Position.z = pz.z / pz.w * gl_Position.w;
+        // Keep the card's actual depth so leaves cannot cut through nearby wood as the view rotates.
         vG = off.y / (iCard.y * sc * 0.8) + 0.42;       // 0 = bottom of patch, 1 = top
         vUv = uv * 0.5 + vec2(mod(iParam.w, 2.0), floor(iParam.w / 2.0)) * 0.5;
         vTop = iTop;
@@ -375,19 +369,16 @@ function coreMaterial(pal) {
   const key = 'core_' + pal;
   if (cache[key]) return cache[key];
   return (cache[key] = new THREE.ShaderMaterial({
-    uniforms: { ...shared, uA: { value: rgb(PALETTES[pal].top[1]) }, uB: { value: rgb(PALETTES[pal].top[0]) }, uPush: { value: 0.45 } },
+    uniforms: { ...shared, uA: { value: rgb(PALETTES[pal].top[1]) }, uB: { value: rgb(PALETTES[pal].top[0]) } },
     vertexShader: /* glsl */`
       ${VCOMMON}
       attribute float aH;
       attribute vec4 aBase;     // plant foot + scale (batched forests); (0,0,0,1) for a single plant
-      uniform float uPush;
       varying float vH;
       void main() {
         float ph = objPhase() + aBase.x * 0.37 + aBase.z * 0.23;
         vec3 p = position + windOffset((position - aBase.xyz) / aBase.w, ph) * aBase.w;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        float len = length(mv.xyz);
-        mv.xyz *= (len + uPush * objScale() * aBase.w) / len;   // sits just behind the leaf cards
         vH = aH;
         vHaze = hazeAt(mv.xyz);
         gl_Position = projectionMatrix * mv;
@@ -412,13 +403,9 @@ function barkMaterial(spec) {
       uMarkCol: { value: rgb(spec.markCol || '#2e2a26') },
       uMarks: { value: spec.marks ? 1 : 0 },
       uShadeY: { value: spec.shadeY ?? 99 },
-      uFront: { value: spec.push ? spec.push[2] : 0 },
-      uPushLo: { value: spec.push ? spec.push[0] : 0 },
-      uPushHi: { value: spec.push ? spec.push[1] : 1 },
     },
     vertexShader: /* glsl */`
       ${VCOMMON}
-      uniform float uFront, uPushLo, uPushHi;
       attribute vec4 aBase;     // tree foot + scale (batched forests); (0,0,0,1) for a single tree
       attribute vec3 aCtr;      // centre-line the paint strokes are measured from (the trunk's, then each limb's own)
       attribute float aJoin;    // 0..1 how much this spot is still the trunk's wood (the foot of a limb)
@@ -443,13 +430,7 @@ function barkMaterial(spec) {
         vCrev = aCrev;
         vec4 wp = modelMatrix * vec4(p, 1.0);
         vec4 mv = viewMatrix * wp;
-        // illustration trick: the fork under the crown is drawn over the dark underside
-        // leaves (side views only, never from above)
-        float dirY = normalize(wp.xyz - cameraPosition).y;
-        float band = smoothstep(uPushLo - 0.8, uPushLo - 0.3, local.y) * (1.0 - smoothstep(uPushLo, uPushHi, local.y));
-        float push = uFront * objScale() * aBase.w * band * smoothstep(-0.5, -0.2, dirY);
-        float len = length(mv.xyz);
-        mv.xyz *= max(len - push, 0.1) / len;
+        // Wood writes its real depth, matching the closed geometry from every viewing direction.
         vHaze = hazeAt(mv.xyz);
         gl_Position = projectionMatrix * mv;
       }`,
@@ -977,7 +958,7 @@ const TREE_TYPES = {
       { c: [0, 4.95, 0], r: [2.75, 1.66, 2.6], clumpR: 1.2, n: 30, openBelow: -0.86, coreBottom: 0.75, taper: 0.4, taperLow: 0.3, egg: -0.08 },
       { c: [0.18, 8.42, 0], r: [2.15, 1.55, 2.0], clumpR: 0.88, n: 32, bright: 0.12, openBelow: -0.8, taper: 0.42, taperLow: 0.08, egg: 0.16 },
     ],
-    push: [3.5, 4.2, 2.6], shadeY: 3.3,
+    shadeY: 3.3,
   },
   // big, wide, irregular single crown on a stout trunk
   oak: {
@@ -996,7 +977,7 @@ const TREE_TYPES = {
       { c: [2.2, 4.9, -0.7], r: [1.45, 1.1, 1.45], clumpR: 0.9, n: 14, openBelow: -0.7, taper: 0.3, taperLow: 0.2 },
       { c: [0.4, 6.75, 0.2], r: [1.9, 1.15, 1.8], clumpR: 1.0, n: 16, bright: 0.05, openBelow: -0.6, taper: 0.35 },
     ],
-    push: [3.5, 4.2, 2.8], shadeY: 3.2,
+    shadeY: 3.2,
   },
   // stacked skirts of needle tufts
   pine: {
@@ -1047,7 +1028,7 @@ const TREE_TYPES = {
     },
     branches: [{ t: [0.55, 0.66], n: 3, rise: [0.6, 0.9], out: [0.5, 0.8], r: 0.035 }],
     tiers: [{ c: [0.05, 3.4, 0], r: [1.35, 1.05, 1.25], clumpR: 0.62, n: 18, taper: 0.3, taperLow: 0.25, openBelow: -0.8 }],
-    push: [2.5, 2.9, 1.4], shadeY: 2.4,
+    shadeY: 2.4,
   },
 };
 export const TREE_TYPE_NAMES = Object.keys(TREE_TYPES);
@@ -1459,4 +1440,5 @@ export function createAlphaFix() {
 // shared pieces for sibling modules (stylized-terrain.js)
 export const _internal = { NOISE, VCOMMON, HAZEF, rgb, fbm3, mulberry32, range, shared, canvasTex };
 export { rockMaterial };
+
 

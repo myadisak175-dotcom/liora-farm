@@ -157,11 +157,13 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
   const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 };
   const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
   let ps = seed * 100;
+  const cameraTrunks = [];
   const tree = (type, x, z, scale = 1, detail = 0.8, bush = false) => {
     const y = H(x, z);
     plants.push({ kind: 'tree', type, seed: ++ps, detail, x, y, z, rotY: rng() * 6.28, scale });
     placed.push([x, z, CROWN[type] * scale * 0.42]);
     colliders.push([x, z, TRUNK[type] * scale + 0.22]);
+    cameraTrunks.push([x, z, TRUNK[type] * scale + 0.12, y, y + CROWN_Y[type] * scale]);
     crowns.push([x, y + CROWN_Y[type] * scale, z, CROWN_R[type] * scale]);
     shade.push([x, z, CROWN[type] * scale * 1.05, 1]); bare.push([x, z, TRUNK[type] * scale * 1.5]);
     if (bush) {
@@ -493,7 +495,7 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; if (Math.hypot(sp[0], sp[1]) < FR * 0.85) waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   group.userData = { kind: 'hills', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   return {
-    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, spawn: M.spawn, radius: M.radius,
+    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, cameraTrunks, spawn: M.spawn, radius: M.radius,
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
     ripple, sim, optics, waterLevelAt: (x, z) => gridAt(wLevel, x, z),
     // things that can be seen under the water go on their own layer, so the see-through picture is cheap to draw
@@ -535,4 +537,5 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
     },
   };
 }
+
 

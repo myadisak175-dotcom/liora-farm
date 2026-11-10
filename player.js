@@ -9,6 +9,35 @@
 
 import * as THREE from 'three';
 
+// Clip the shoulder-to-camera segment against padded, finite trunk cylinders.
+// Used again after camera smoothing, whose chord can otherwise enter a trunk.
+export function cameraTrunkFraction(from, to, trunks, padding = 0.3) {
+  const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+  const a = dx * dx + dz * dz;
+  let fraction = 1;
+  for (const [cx, cz, radius, bottom, top] of trunks || []) {
+    const ox = from.x - cx, oz = from.z - cz, r = radius + padding;
+    const b = ox * dx + oz * dz, c = ox * ox + oz * oz - r * r;
+    let enter = 0, exit = fraction;
+    if (a < 1e-10) { if (c > 0) continue; }
+    else {
+      const disc = b * b - a * c;
+      if (disc < 0) continue;
+      const root = Math.sqrt(disc);
+      enter = Math.max(enter, (-b - root) / a);
+      exit = Math.min(exit, (-b + root) / a);
+    }
+    if (Math.abs(dy) < 1e-10) { if (from.y < bottom - padding || from.y > top + padding) continue; }
+    else {
+      const lo = (bottom - padding - from.y) / dy, hi = (top + padding - from.y) / dy;
+      enter = Math.max(enter, Math.min(lo, hi));
+      exit = Math.min(exit, Math.max(lo, hi));
+    }
+    if (enter <= exit && exit >= 0 && enter <= fraction) fraction = Math.max(0, enter - 0.001);
+  }
+  return fraction;
+}
+
 export function createPlayer({ character, level, camera, dom, ui = null, onTap = null }) {
   const pos = new THREE.Vector3(level.spawn.x, 0, level.spawn.z);
   pos.y = level.heightAt(pos.x, pos.z);
@@ -212,8 +241,10 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       camPos.set(look.x + dx * camReach, look.y + dy * camReach + 0.25, look.z + dz * camReach);
       const floor = level.heightAt(camPos.x, camPos.z) + 0.45;
       if (camPos.y < floor) camPos.y = floor;
+      camPos.lerpVectors(look, camPos, cameraTrunkFraction(look, camPos, level.cameraTrunks));
       if (!camReady) { camera.position.copy(camPos); camTarget.copy(look); camReady = true; }
       camera.position.lerp(camPos, Math.min(1, dt * 14));
+      camera.position.lerpVectors(look, camera.position, cameraTrunkFraction(look, camera.position, level.cameraTrunks));
       camTarget.lerp(look, Math.min(1, dt * 16));
       camera.lookAt(camTarget);
       player.lookDir.set(-Math.sin(camYaw), 0, -Math.cos(camYaw));
@@ -221,3 +252,4 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   };
   return player;
 }
+
