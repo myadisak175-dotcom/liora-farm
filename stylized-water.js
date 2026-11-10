@@ -480,7 +480,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       uniform vec4 uHeightRect;
       uniform float uHeightStep;
       uniform float uTime, uFadeA, uFadeB, uSimPx, uOptics, uMirrorOn;
-      uniform float uCaustic, uCausticScale, uShimmer, uSpeed, uRefract, uReflect, uClear, uFoamAmt, uGlint, uFleck, uShore;
+      uniform float uCaustic, uCausticScale, uShimmer, uSwell, uSpeed, uRefract, uReflect, uClear, uFoamAmt, uGlint, uFleck, uShore;
       uniform vec3 uShallow, uMid, uDeep, uAbyss, uFoam, uCell, uSky, uSun, uFar, uHaze;
       varying vec3 vWP;
       varying vec3 vFlow;
@@ -526,7 +526,10 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float s0 = simAt(xz);
         float e = uSimPx * 1.5;
         vec2 simSl = vec2(simAt(xz + vec2(e, 0.0)) - simAt(xz - vec2(e, 0.0)), simAt(xz + vec2(0.0, e)) - simAt(xz - vec2(0.0, e))) / (2.0 * e);
-        vec2 ws = waveSlope(vec2(vFlow.y, vFlow.x), t) * vCalm;
+        // how calm the water is here is worked out per pixel from the depth, not taken from the vertices: blended between the
+        // corners of the mesh triangles it left a straight crease along every triangle edge, which the mirror showed as long diagonal lines
+        float calm = mix(1.0, 0.4, stream) * smoothstep(0.02, 0.55, restDepth) * uSwell;
+        vec2 ws = waveSlope(vec2(vFlow.y, vFlow.x), t) * calm;
         vec2 sl = A * ws.x + T * (ws.y * squeeze) + simSl;
         // Refract and reflect the same incoming swell that displaces the geometry.
         // The bed's slope, measured so that it changes smoothly across the whole river. The height texture is piecewise linear
