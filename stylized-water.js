@@ -522,7 +522,13 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
           float edgeDepth = restDepth + wob;
           float aa = max(fwidth(edgeDepth), 0.0015);
           float contactCenter = 0.018 + 0.012 * surge;
-          float contact = 1.0 - smoothstep(0.005, 0.009 + aa * 1.5, abs(edgeDepth - contactCenter));
+          // The wave tip is a soft, uneven lip: its width changes along the shore and it breaks into pieces,
+          // instead of a hairline at one fixed depth.
+          float lipW = 0.016 + 0.022 * broad + 0.010 * surge;
+          float contact = 1.0 - smoothstep(0.0, lipW + aa * 1.5, abs(edgeDepth - contactCenter - 0.01));
+          contact *= smoothstep(0.34, 0.62, broad * 0.6 + detail * 0.4 + 0.12 * surge);
+          // a faint wet wash that fades out behind the tip, so the edge dissolves rather than ending in a line
+          float wash = (1.0 - smoothstep(0.02, 0.11, edgeDepth)) * smoothstep(-0.004, 0.012, edgeDepth);
           float pulseCenter = 0.04 + 0.13 * (1.0 - surge);
           float pulse = 1.0 - smoothstep(0.016, 0.055 + aa, abs(edgeDepth - pulseCenter));
           pulse *= smoothstep(0.2, 0.6, surge) * uShore;
@@ -532,7 +538,8 @@ export function waterMaterial({ field, sim = null, optics = null, far = '#cde6f2
           float shoreBrush = smoothstep(0.08, 0.65, paintedFoam(shoreUV));
           shoreBrush = mix(broken, shoreBrush, uFoamMapOn);
           float foam = contact * (0.45 + 0.55 * shoreBrush) * (0.5 + 0.5 * broken)
-                     + pulse * shoreBrush * 0.25 * (1.0 - uSimRect.w);
+                     + pulse * shoreBrush * 0.25 * (1.0 - uSimRect.w)
+                     + wash * (0.06 + 0.10 * broken) * (0.4 + 0.6 * surge);
           white = max(white, min(0.9, foam * shoreMask * uFoamAmt));
         }
         vec2 foamStateUV = (xz - uSimRect.xy) / uSimRect.z;
