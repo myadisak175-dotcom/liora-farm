@@ -18,3 +18,7 @@ Credits retained from the supplied project:
 - Grass approach inspired by Cortiz (MIT).
 
 The previous game remains available in Git history before this replacement.
+
+## Painted foam
+
+`assets/water/foam-brush-v1.png` is an original AI-generated grayscale brush mask created for this project. The shader samples the artwork in flowing coordinates, limits swash foam to shallow edges, and uses the wave simulation for short-lived contact foam. No Unreal or Blender package assets are included.

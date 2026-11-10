@@ -272,6 +272,8 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   group.add(terrain);
 
   // ------------------------------------------------------------------ water: a ribbon along the stream, wide over the pond
+  await onStep('วาดริ้วฟองน้ำ');
+  const foamTexture = await W.loadFoamTexture();
   await onStep('เติมน้ำ');
   let water, sim, optics, pads3d = null;
   const flowRows = [];            // [x, z, downstream x, downstream z, F] for every row of the water ribbon
@@ -304,7 +306,7 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
     // the wave simulation covers the pond and the first stretch of the outlet
     sim = W.createWaterSim({ rect: [6, -27, 56], size: 512, field, level: -0.6, mask: (x, z) => waterDepthAt(x, z) > 0.03 });
     optics = W.createWaterOptics({ level: -0.6 });
-    water = new THREE.Mesh(g, W.waterMaterial({ field, sim, optics, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
+    water = new THREE.Mesh(g, W.waterMaterial({ field, sim, optics, foamTexture, far, fadeA: FR * 0.8, fadeB: FR * 0.985 }));
     water.name = 'water';
     water.renderOrder = 1;
     water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
