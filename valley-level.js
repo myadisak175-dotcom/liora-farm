@@ -229,7 +229,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     upperWater.userData = { kind: 'water', dispose() { ug.dispose(); upperWater.material.dispose(); } };
     group.add(upperWater);
     // the waterfall, in the same palette
-    waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6 });
+    waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6, optics, foamTexture });
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
   }
@@ -287,9 +287,10 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
   const hidden = [water, grass];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
-  let frameNo = 0, nextSplash = 0;
+  let frameNo = 0, nextSplash = 0, lastRenderer = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
+  waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
@@ -298,6 +299,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     ripple, sim, optics,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
+      lastRenderer = renderer;
       sim.step(renderer, dt);
       if (!scene || !camera) return;
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
@@ -320,7 +322,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     follow(pos, lookDir) {
       grass.userData.follow(pos, lookDir);
-      waterfall.update();
+      waterfall.update(lastRenderer);
       // the falls keep the plunge pool restless: rings run out from where the sheet lands
       const now = N._internal.shared.uTime.value;
       if (now > nextSplash) {
