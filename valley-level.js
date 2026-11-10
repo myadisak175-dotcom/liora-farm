@@ -1,0 +1,278 @@
+// valley-level.js
+// The waterfall valley as a walkable map: a river runs down a cliff-walled valley from a waterfall at its head.
+// The land itself (cliffs, sand banks, waterfall, upper river, bridge) comes from stylized-terrain.js; this file
+// dresses it and plugs in the game's systems: the clear water, the fluffy grass, the forest batches.
+//
+//   const level = await buildValleyLevel({ far, deer, onStep });      // same result object as the other maps
+//   level.confine(p)   keeps a walker on the valley floor (the cliffs are walls)
+
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import * as T from './stylized-terrain.js';
+import * as A from './stylized-animals.js';
+import * as G from './stylized-grassfield.js';
+import * as W from './stylized-water.js';
+
+const { mulberry32 } = N._internal;
+const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
+
+export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 200000, onStep = async () => {} } = {}) {
+  const group = new THREE.Group();
+  group.name = 'valleyLevel';
+  const rng = mulberry32(seed * 977 + 3);
+  const R = (a, b) => a + rng() * (b - a);
+
+  // ------------------------------------------------------------------ the land
+  await onStep('ปั้นหุบเขาและหน้าผา');
+  const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true });
+  group.add(V.group);
+  const terrain = V.group.children.find(o => o.name !== 'water' && o.isMesh);
+  const oldRiver = V.group.children.find(o => o.name === 'water');       // the lower river: replaced by the clear water below
+  if (oldRiver) oldRiver.visible = false;
+  const B = V.bounds, CX = (B.x0 + B.x1) / 2, CZ = (B.z0 + B.z1) / 2, FR = Math.max(B.x1 - B.x0, B.z1 - B.z0) / 2 + 10;
+  const rx = V.riverX, rw = V.riverHalfWidth, fall = V.waterfall, WL = V.levels.water;
+  const HV = V.heightAt;
+  const lower = (x, z) => V.waterLevelAt(x, z) === WL;                   // not up on the plateau behind the falls
+  const H = V.surfaceAt;                                                  // ground, or the bridge deck
+  const waterDepthAt = (x, z) => (!lower(x, z) || H(x, z) > HV(x, z) + 0.01) ? 0 : Math.max(0, WL - HV(x, z));
+  await onStep('วัดความสูงพื้น');
+  const field = G.createHeightField({ radius: FR, center: [CX, CZ], cells: 340, heightFn: HV });
+  const Hf = field.heightAt;                                             // cheap copy of the height, for painting
+  const slopeF = (x, z) => { const e = 0.6, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e); return 1 - 1 / Math.sqrt(1 + hx * hx + hz * hz); };
+
+  // where a walker may be: the valley floor between the two cliff feet, below the head wall, short of the map's end
+  const Z_HEAD = fall.z + 2.5, Z_END = B.z1 - 7;
+  const confine = p => {
+    p.z = Math.min(Z_END, Math.max(Z_HEAD, p.z));
+    for (let i = 0; i < 2; i++) {
+      const cx = rx(p.z), lim = V.cliffLine(p.x, p.z) - 1.0, dx = p.x - cx;
+      if (Math.abs(dx) > lim) p.x = cx + Math.sign(dx) * lim;
+    }
+  };
+  const onFloor = (x, z, pad = 0) => z > Z_HEAD + pad && z < B.z1 - 2 && Math.abs(x - rx(z)) < V.cliffLine(x, z) - 1.0 - pad;
+  const side = V.bridge ? Math.sign(V.bridge.ends[1][0] - V.bridge.x) || 1 : 1;
+  const spawn = { x: rx(44) + side * 8, z: 44, yaw: Math.PI };            // at the valley mouth, looking up at the falls
+
+  // ------------------------------------------------------------------ plants
+  await onStep('ปลูกป่าบนผาและตีนผา');
+  const placed = [], plants = [], colliders = [], crowns = [], shade = [], bare = [], press = [];
+  const CROWN_Y = { broadleaf: 5.7, oak: 5.2, pine: 5.6, birch: 6.6, sapling: 3.4 }, CROWN_R = { broadleaf: 2.9, oak: 3.5, pine: 2.3, birch: 2.0, sapling: 1.3 };
+  const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 };
+  const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
+  const clear = (x, z, r) => placed.every(p => Math.hypot(p[0] - x, p[1] - z) > p[2] + r);
+  let ps = seed * 100;
+  const shrub = (x, z, scale = 1) => {
+    if (HV(x, z) < WL + 0.6) return;
+    plants.push({ kind: 'bush', type: rng() < 0.35 ? 'flowering' : 'round', seed: ++ps, x, y: HV(x, z), z, rotY: rng() * 6.28, scale });
+    colliders.push([x, z, 0.75 * scale]); shade.push([x, z, 1.7 * scale, 0.7]); placed.push([x, z, 1.0 * scale]);
+  };
+  const tree = (type, x, z, scale = 1, detail = 0.8, bush = false) => {
+    const y = HV(x, z);
+    plants.push({ kind: 'tree', type, seed: ++ps, detail, x, y, z, rotY: rng() * 6.28, scale });
+    placed.push([x, z, CROWN[type] * scale * 0.42]);
+    colliders.push([x, z, TRUNK[type] * scale + 0.22]);
+    crowns.push([x, y + CROWN_Y[type] * scale, z, CROWN_R[type] * scale]);
+    shade.push([x, z, CROWN[type] * scale * 1.05, 1]); bare.push([x, z, TRUNK[type] * scale * 1.5]);
+    if (bush) { const a = rng() * 6.28, d = (TRUNK[type] + 1.1) * scale; shrub(x + Math.cos(a) * d, z + Math.sin(a) * d, R(0.75, 1.05)); }
+  };
+  placed.push([spawn.x, spawn.z, 5]);
+  if (V.bridge) for (const e of V.bridge.ends) placed.push([e[0], e[1], 4.5]);
+  // dense forest on the heights (seen from below, so light on leaf cards), bushes only at tree feet
+  for (let i = 0; i < 2600; i++) {
+    const x = R(B.x0 + 2, B.x1 - 2), z = R(B.z0 + 2, B.z1 - 2);
+    const kind = V.kindAt(x, z);
+    if (kind === 'plateau') {
+      if (Math.abs(x - V.plateauRiverX(z)) < 5 && !lower(x, z)) continue;         // keep the upper river open
+      const pick = rng(), type = pick < 0.4 ? 'pine' : pick < 0.75 ? 'oak' : 'broadleaf', sc = R(1.0, 1.55);
+      if (clear(x, z, CROWN[type] * sc * 0.36)) tree(type, x, z, sc, type === 'pine' ? 0.22 : 0.28, rng() < 0.12);
+    } else if (kind === 'floor' && onFloor(x, z, 1.5)) {
+      const adx = Math.abs(x - rx(z)), foot = V.cliffLine(x, z) - adx;                // metres to the cliff foot
+      if (rng() > (foot < 7 ? 0.75 : 0.1)) continue;
+      const pick = rng(), type = pick < 0.4 ? 'broadleaf' : pick < 0.65 ? 'oak' : pick < 0.85 ? 'birch' : 'sapling', sc = R(0.85, 1.2);
+      if (clear(x, z, CROWN[type] * sc * 0.55)) tree(type, x, z, sc, 0.85, rng() < 0.6);
+    }
+  }
+
+  // ------------------------------------------------------------------ rocks
+  await onStep('วางหินริมน้ำ');
+  const rocks = new THREE.Group();
+  rocks.name = 'rocks';
+  let rs = seed * 31;
+  const rock = (type, x, z, scale = 1, sink = 0, solid = null) => {
+    const m = N.createRock({ type, seed: ++rs });
+    m.position.set(x, HV(x, z) - sink, z); m.rotation.y = rng() * 6.28; m.scale.setScalar(scale);
+    rocks.add(m);
+    const r = solid ?? ({ boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8, river: 0.7, pebbles: 0 }[type] * scale);
+    if (r > 0) { colliders.push([x, z, r]); press.push([x, z, r * 1.6]); shade.push([x, z, r * 2.0, 0.55]); }
+    placed.push([x, z, Math.max(r, 0.6)]);
+  };
+  for (let z = Z_HEAD + 6; z < B.z1 - 4; z += R(5, 9)) {                    // water-worn stones along both banks
+    for (const s of [-1, 1]) {
+      if (rng() < 0.35) continue;
+      const x = rx(z) + s * (rw(z) + R(-0.4, 1.4)), sc = R(0.7, 1.35);
+      if (clear(x, z, 0.7 * sc + 0.5)) rock('river', x, z, sc, 0.12);
+      if (rng() < 0.5) rock('pebbles', rx(z) + s * (rw(z) + R(1.5, 3)), z + R(-2, 2), R(0.9, 1.3), 0, 0);
+    }
+  }
+  for (const [dx, dz, sc] of [[-7.5, 5, 1.7], [7, 4.5, 1.5], [-9.5, 9, 1.1], [9.5, 8.5, 1.2]]) {      // boulders flanking the plunge pool
+    const x = fall.x + dx, z = fall.z + dz;
+    if (clear(x, z, sc)) rock('boulder', x, z, sc, 0.3);
+  }
+  for (let i = 0; i < 60; i++) {                                           // scree and boulders at the cliff feet
+    const z = R(Z_HEAD + 4, B.z1 - 5), s = rng() < 0.5 ? -1 : 1, x0 = rx(z) + s * 12;
+    const x = rx(z) + s * (V.cliffLine(x0, z) - R(1.6, 3.2)), sc = R(0.9, 1.6);
+    if (onFloor(x, z, 0.3) && clear(x, z, 1.4 * sc)) rock(rng() < 0.45 ? 'boulder' : rng() < 0.6 ? 'stones' : 'crag', x, z, sc, 0.2);
+  }
+
+  // ------------------------------------------------------------------ ground colour map: where grass grows
+  await onStep('ระบายสีพื้น');
+  const paint = (x, z) => {
+    const h = Hf(x, z), low = lower(x, z);
+    const sand = low ? 1 - ss(0.35, 0.8, h - WL) : 1 - ss(-0.2, 0.25, h - V.levels.plateauWater);
+    const earth = ss(0.14, 0.24, slopeF(x, z));                           // cliffs and steep ledges: rock, no grass
+    return [earth, sand, 0];
+  };
+  const colors = { ...G.GROUND_COLORS, deep: '#7a9b3c', mid: '#86a640', sunny: '#a5c04b', shade: '#6d8d38', lawn: '#93b145' };
+  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: Hf, dirt: 0, shade, bare, press, paint, colors });
+  const fade = { far, fadeA: FR * 0.9, fadeB: FR * 1.2 };
+
+  // ------------------------------------------------------------------ water: the lower river, from under the falls to the valley mouth
+  await onStep('วาดริ้วฟองน้ำ');
+  const foamTexture = await W.loadFoamTexture();
+  await onStep('เติมน้ำ');
+  const stream = [];
+  for (let z = fall.z - 0.6; z <= B.z1; z += 0.5) stream.push([rx(z), z, WL, rw(z), 1.3]);
+  let water, sim, optics;
+  {
+    const ACROSS = 40, pos = [], flow = [], dir = [], idx = [];
+    let F = 0;
+    for (let k = 0; k < stream.length; k++) {
+      const s = stream[k], a = stream[Math.max(0, k - 1)], b = stream[Math.min(stream.length - 1, k + 1)];
+      let tx = b[0] - a[0], tz = b[1] - a[1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+      const half = s[3] + 2.4;
+      const streaminess = 1 - ss(3.6, 6.2, s[3]);            // 1 in the river, 0 over the plunge pool
+      if (k > 0) F += Math.hypot(s[0] - a[0], s[1] - a[1]) * W.FLOW.pond / lerp(W.FLOW.pond, W.FLOW.stream, streaminess);
+      for (let i = 0; i <= ACROSS; i++) {
+        const u = -1 + 2 * i / ACROSS, x = s[0] - tz * u * half, z = s[1] + tx * u * half;
+        pos.push(x, s[2], z); flow.push(F, u * half, streaminess); dir.push(tx, tz);
+      }
+    }
+    const row = ACROSS + 1;
+    for (let k = 0; k < stream.length - 1; k++) for (let i = 0; i < ACROSS; i++) {
+      const a = k * row + i, b = a + row;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 3));
+    g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 2));
+    g.setIndex(idx);
+    // the wave simulation covers the plunge pool and the first reach below it
+    const SR = [fall.x - 24, fall.z - 6, 48];
+    const wetRocks = colliders.filter(([x, z]) => waterDepthAt(x, z) > 0.01);
+    const foamWet = (x, z) => waterDepthAt(x, z) > 0.03 && !wetRocks.some(([cx, cz, r]) => (x - cx) ** 2 + (z - cz) ** 2 < (r * 0.75) ** 2);
+    sim = W.createWaterSim({ rect: SR, size: 512, field, foamTexture, level: WL, mask: foamWet });
+    optics = W.createWaterOptics({ level: WL });
+    water = new THREE.Mesh(g, W.waterMaterial({ field, sim, optics, foamTexture, far, fadeA: FR * 0.9, fadeB: FR * 1.2 }));
+    water.name = 'clearWater';
+    water.renderOrder = 1;
+    water.userData = { kind: 'water', dispose() { g.dispose(); water.material.dispose(); sim.dispose(); optics.dispose(); } };
+    group.add(water);
+  }
+  const ripple = (x, z, strength = 1, radius = 0.26) => sim.impulse(x, z, radius, -0.03 * strength * W.WATER_TUNE.ripple.value);
+
+  // ------------------------------------------------------------------ forest batches
+  await onStep('แตกใบ');
+  const SECT = 4, sectors = Array.from({ length: SECT }, () => []);
+  for (const p of plants) sectors[Math.min(SECT - 1, Math.floor((p.z - B.z0) / (B.z1 - B.z0) * SECT))].push(p);
+  let cards = 0, draws = 0;
+  for (const list of sectors) {
+    if (!list.length) continue;
+    const f = N.createForest(list);
+    const box = new THREE.Box3();
+    for (const p of list) { box.expandByPoint(new THREE.Vector3(p.x - 7, p.y - 1, p.z - 7)); box.expandByPoint(new THREE.Vector3(p.x + 7, p.y + 17, p.z + 7)); }
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    f.children.forEach(m => { m.geometry.boundingSphere = sphere.clone(); m.frustumCulled = true; });
+    cards += f.userData.cards; draws += f.userData.drawCalls;
+    group.add(f);
+    await onStep('แตกใบ');
+  }
+  group.add(rocks);
+
+  // ------------------------------------------------------------------ flowers on the valley floor
+  await onStep('โปรยดอกไม้');
+  const PALS = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee'], ['#f6f2e6', '#f7d84a'], ['#93b8ee', '#f6f2e6']];
+  let fs = seed * 53, fi = 0;
+  for (let i = 0; i < 70 && fi < 26; i++) {
+    const z = R(Z_HEAD + 8, B.z1 - 6), x = rx(z) + (rng() < 0.5 ? -1 : 1) * R(rw(z) + 5, 17), rad = R(1.2, 2.8);
+    if (!onFloor(x, z, rad + 1) || map.grassAt(x, z) < 0.5 || !clear(x, z, rad)) continue;
+    group.add(N.createFlowers({ count: Math.round(R(40, 100)), radius: rad, seed: ++fs, heightAt: HV, center: [x, z], colors: PALS[fi++ % PALS.length] }));
+  }
+
+  // ------------------------------------------------------------------ fluffy grass that follows the player
+  await onStep('ปลูกหญ้า');
+  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, ...fade });
+  group.add(grass);
+
+  // ------------------------------------------------------------------ deer grazing across the river from the spawn
+  const animals = [];
+  if (deer) {
+    try {
+      const asset = await A.loadAnimal(deer, { height: 1.9 });
+      for (const [z, off, rot, s] of [[8, 9, 2.2, 1], [13, 11.5, 4.0, 0.92], [4, 12, 0.7, 0.86]]) {
+        const x = rx(z) - side * (rw(z) + off);
+        if (!onFloor(x, z, 1) || !clear(x, z, 1)) continue;
+        const d = A.createAnimal(asset, { action: 'idle' });
+        d.object.position.set(x, HV(x, z), z); d.object.rotation.y = rot; d.object.scale.setScalar(s);
+        group.add(d.object); animals.push(d); colliders.push([x, z, 0.8]);
+      }
+    } catch (e) { console.warn('deer', e); }
+  }
+
+  terrain.layers.enable(W.UNDERWATER);
+  rocks.traverse(o => o.layers.enable(W.UNDERWATER));
+  const hidden = [water, grass];
+  const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
+  let frameNo = 0, nextSplash = 0;
+  const waterSpheres = [];
+  for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
+  group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
+  console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
+  return {
+    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, spawn, radius: 1e4, confine,
+    stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
+    ripple, sim, optics,
+    addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
+    update(renderer, dt, scene = null, camera = null) {
+      sim.step(renderer, dt);
+      if (!scene || !camera) return;
+      frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      camWorld.setFromMatrixPosition(camera.matrixWorld);
+      let near = Infinity;
+      for (const sp of waterSpheres) if (frustum.intersectsSphere(sp)) near = Math.min(near, camWorld.distanceTo(sp.center) - sp.radius);
+      frameNo++;
+      const q = optics.quality;
+      const doThrough = near < 42, doMirror = q > 0 && near < 65 && frameNo % (q === 2 ? 2 : 4) === 0;
+      if (doThrough || doMirror) optics.render(renderer, scene, camera, hidden, doThrough, doMirror);
+    },
+    tapWater(origin, dir) {
+      for (let t = 1; t < 70; t += 0.25) {
+        const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
+        const ground = HV(x, z), depth = waterDepthAt(x, z);
+        if (depth > 0.03 && y <= ground + depth) { ripple(x, z, 2.4, 0.36); return true; }
+        if (y <= ground) return false;
+      }
+      return false;
+    },
+    follow(pos, lookDir) {
+      grass.userData.follow(pos, lookDir);
+      // the falls keep the plunge pool restless: rings run out from where the sheet lands
+      const now = N._internal.shared.uTime.value;
+      if (now > nextSplash) {
+        ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4);
+        nextSplash = now + 0.16;
+      }
+    },
+  };
+}

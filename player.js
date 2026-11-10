@@ -90,6 +90,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
     }
     const rr = Math.hypot(p.x, p.z);
     if (rr > level.radius) { p.x *= level.radius / rr; p.z *= level.radius / rr; }
+    if (level.confine) level.confine(p);            // maps with walls of their own (cliffs) say where a walker may be
   }
 
   const player = {
