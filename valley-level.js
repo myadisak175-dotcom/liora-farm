@@ -20,6 +20,7 @@ import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 import { loadProp, propMaterial } from './stylized-props.js';
+import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
@@ -473,12 +474,20 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     for (const c of g.userData.circles) colliders.push(c);
     builds.push(g);
   }
+  const woodProps = await loadLegacyWoodProps();
+  let propSeed = builds.length + 31;
   for (const [kind, x, z, yaw] of VILLAGE.props) {                         // the small things
-    const g = BD.propGeometry(kind, { seed: builds.length + 31 }), r = g.userData.solid;
-    builds.push(BD.place(g, x, HV(x, z) - 0.03, z, yaw));
+    const seed = propSeed++;
+    let r = 0.7;
+    if (!woodProps.place(kind, x, z, yaw, HV, seed)) {
+      const g = BD.propGeometry(kind, { seed });
+      r = g.userData.solid;
+      builds.push(BD.place(g, x, HV(x, z) - 0.03, z, yaw));
+    }
     if (r > 0.3) { colliders.push([x, z, r * 0.8]); press.push([x, z, r * 1.5]); castBall(x, z, 0.5, r * 0.9, 0.75); }
     else colliders.push([x, z, 0.22]);
   }
+  group.add(woodProps.finish());
   {                                                                        // a rail along the brink where the meadow looks down the falls
     const brink = (x0, x1) => { const pts = []; for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / Math.max(1, Math.round((x1 - x0) / 1.7))) pts.push([x, V.headZ(x) - 1.75]); return pts; };
     for (const [x0, x1] of [[0.6, 14.2], [-15.3, -10.6], [-26.3, -22.9]]) {

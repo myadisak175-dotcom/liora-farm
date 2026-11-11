@@ -21,11 +21,14 @@ const { shared } = _internal;
 const SUN = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();   // same sun as the trees and rocks
 
 let material = null;
+const texturedMaterials = new WeakMap();
 // one material for every prop: the colours ride on the vertices
-export function propMaterial() {
-  if (material) return material;
-  material = new THREE.ShaderMaterial({
+export function propMaterial(map = null) {
+  if (map ? texturedMaterials.has(map) : material) return map ? texturedMaterials.get(map) : material;
+  const result = new THREE.ShaderMaterial({
+    defines: map ? { PROP_MAP: 1 } : {},
     uniforms: {
+      uMap: { value: map },
       uLight: { value: SUN },
       uLit: { value: new THREE.Vector3(1.08, 1.03, 0.93) },      // warm sunlit band
       uMid: { value: new THREE.Vector3(0.9, 0.85, 0.82) },
@@ -38,7 +41,13 @@ export function propMaterial() {
       varying vec3 vCol;
       varying vec3 vWN;
       varying float vHaze;
+      #ifdef PROP_MAP
+        varying vec2 vPropUv;
+      #endif
       void main() {
+        #ifdef PROP_MAP
+          vPropUv = uv;
+        #endif
         vCol = color;
         vWN = normalize(mat3(modelMatrix) * normal);
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -50,15 +59,27 @@ export function propMaterial() {
       varying vec3 vCol;
       varying vec3 vWN;
       varying float vHaze;
+      #ifdef PROP_MAP
+        uniform sampler2D uMap;
+        varying vec2 vPropUv;
+      #endif
       void main() {
+        vec3 base = vCol;
+        #ifdef PROP_MAP
+          // GLTF colour maps decode to linear on the GPU; the kit shades display colours.
+          vec3 texel = texture2D(uMap, vPropUv).rgb;
+          base *= mix(texel * 12.92, 1.055 * pow(texel, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), texel));
+        #endif
         vec3 n = normalize(vWN) * (gl_FrontFacing ? 1.0 : -1.0);      // thin parts (sails, boards) are seen from both sides
         float d = dot(n, uLight) * 0.5 + 0.5;
         vec3 light = d > 0.66 ? uLit : (d > 0.42 ? uMid : uShade);
-        gl_FragColor = vec4(mix(clamp(vCol * light, 0.0, 1.0), uHaze, vHaze), 1.0);
+        gl_FragColor = vec4(mix(clamp(base * light, 0.0, 1.0), uHaze, vHaze), 1.0);
       }`,
     side: THREE.DoubleSide,
   });
-  return material;
+  if (map) texturedMaterials.set(map, result);
+  else material = result;
+  return result;
 }
 
 // source: a URL or an ArrayBuffer of a .glb.  height: metres from the ground to the highest point.  yaw: turn about the vertical
