@@ -16,23 +16,30 @@ export async function createForestForage({ level, onStep = async () => {} }) {
   };
   const open = (x,z,r) => dry(x,z) && !level.colliders.some(([cx,cz,cr])=>Math.hypot(cx-x,cz-z)<cr+r);
   const bushSites = [];
-  for (const [dx,dz] of [[3,-4],[-4,-5],[5,-10],[-6,-13],[9,-6],[-9,-4],[4,5],[-4,6],[12,2],[-12,2]]) {
+  const candidates=[[0,-3.2],[2.7,-2.7],[-2.7,-2.7],[3,-4],[-4,-5],[5,-10],[-6,-13],[9,-6],[-9,-4],[4,5],[-4,6],[12,2],[-12,2]];
+  // Search more than a handful of fixed points: a map's rocks/river can occupy all of them.
+  for(const r of [3.5,5,7,10,14]) for(let k=0;k<16;k++) {
+    const a=(s.yaw||0)+k*Math.PI/8;candidates.push([Math.sin(a)*r,Math.cos(a)*r]);
+  }
+  for (const [dx,dz] of candidates) {
     const x=s.x+dx,z=s.z+dz;
     if(open(x,z,1.25) && bushSites.every(p=>Math.hypot(p.x-x,p.z-z)>4)) bushSites.push({x,z,y:level.heightAt(x,z)});
     if(bushSites.length===4) break;
   }
   if (!bushSites.length) console.warn('No dry, open blueberry site near spawn');
-  const plants=bushSites.map((p,i)=>({kind:'bush',type:'round',seed:781+i,x:p.x,y:p.y,z:p.z,scale:.64,rotY:i*1.7}));
+  const plants=bushSites.map((p,i)=>({kind:'bush',type:'round',seed:781+i,x:p.x,y:p.y,z:p.z,scale:.5,rotY:i*1.7}));
   if(plants.length) group.add(N.createForest(plants));
   const branchGeo=new THREE.CylinderGeometry(.012,.023,1,5), branchMat=new THREE.MeshBasicMaterial({color:'#795239'});
   bushSites.forEach((p,i)=>{
     // Both bunches are attached to visible outer branches, not resting on the ground.
     for(let j=0;j<2;j++) {
-      const a=i*1.7+j*2.7+.5, end=new THREE.Vector3(p.x+Math.sin(a)*.84,p.y+.63+j*.18,p.z+Math.cos(a)*.84);
+      // A .5-scale shrub's core radius is about .65m, with leaf cards reaching ~1m.
+      // Keep the whole bunch beyond that envelope and well above the tall grass.
+      const a=i*1.7+j*2.7+.5, end=new THREE.Vector3(p.x+Math.sin(a)*1.38,p.y+1.12+j*.15,p.z+Math.cos(a)*1.38);
       const start=new THREE.Vector3(p.x,p.y+.15,p.z), v=end.clone().sub(start);
       const branch=new THREE.Mesh(branchGeo,branchMat); branch.position.copy(start).addScaledVector(v,.5);
       branch.scale.y=v.length(); branch.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.normalize()); group.add(branch);
-      items.push({id:`b${i}-${j}`,kind:'blueberry',x:end.x,z:end.z,y:end.y-.12,scale:.115,yaw:a});
+      items.push({id:`b${i}-${j}`,kind:'blueberry',x:end.x,z:end.z,y:end.y-.08,scale:.18,yaw:a});
     }
     // Berry shrubs block walking, just like the other shrubs on the map.
     level.colliders.push([p.x,p.z,.55]);
@@ -107,7 +114,17 @@ export async function createForestForage({ level, onStep = async () => {} }) {
     group,items,bushSites,stats:{mushrooms:items.filter(p=>p.kind==='mushroom').length,blueberryBunches:items.filter(p=>p.kind==='blueberry').length,bushes:bushSites.length},
     pick,
     update(dt,position){lastPosition=position;timer+=dt;if(timer<.12)return;timer=0;nearest=find(position);button.hidden=!nearest;if(nearest)button.textContent=nearest.kind==='mushroom'?'🍄 เก็บเห็ด':'🫐 เก็บบลูเบอร์รี';},
-    visit(player){const p=bushSites[0]||items[0];if(!p)return;for(const a of [0,1.5,3,4.5]){const x=p.x+Math.sin(a)*2.2,z=p.z+Math.cos(a)*2.2;if(open(x,z,.6)){player.teleport(x,z,Math.atan2(p.x-x,p.z-z));player.setView(Math.atan2(p.x-x,p.z-z)-Math.PI,.3,4.1);break;}}},
+    visit(player){
+      // Face a visible bunch directly, rather than the opaque middle of its bush.
+      const item=items.find(p=>p.kind==='blueberry'&&!picked.has(p.id))||items.find(p=>!picked.has(p.id));
+      if(!item)return;
+      for(const delta of [0,.5,-.5,1,-1,Math.PI]){
+        const a=item.yaw+delta,x=item.x+Math.sin(a)*1.8,z=item.z+Math.cos(a)*1.8;
+        if(open(x,z,.6)){
+          const yaw=Math.atan2(item.x-x,item.z-z);player.teleport(x,z,yaw);player.setView(yaw-Math.PI,.2,3.1);break;
+        }
+      }
+    },
     dispose(){inventory.remove();button.remove();style.remove();group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});branchGeo.dispose();branchMat.dispose();}
   };
 }
