@@ -78,10 +78,10 @@
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=wake3",
-  "./valley-level.js": "./valley-level.js?v=wake3",
+  "./valley-level.js": "./valley-level.js?v=wake3shadow2",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall9",
   "./player.js": "./player.js?v=shadow1",
-  "./character-shadow.js": "./character-shadow.js?v=shadow1"
+  "./character-shadow.js": "./character-shadow.js?v=shadow2"
 } }
 </script>
 </head>
@@ -215,7 +215,9 @@ level.addUnderwater(player.object);
 const charShadow = createCharacterShadow({ character: vivi, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
 level.addUnderwater(charShadow.object);                // on the river bed too, seen through the water
-if (level.useRealShadow) level.useRealShadow(true);
+const shadowOnGrass = !!(level.grass && charShadow.receive(level.grass.material));   // and across the tops of the grass
+if (!shadowOnGrass) console.warn('[shadow] the grass could not take her shadow; the soft patch stands in there');
+if (level.useRealShadow) level.useRealShadow(true, shadowOnGrass);
 const NOON = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();
 fit();
 

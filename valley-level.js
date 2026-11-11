@@ -355,6 +355,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // the sun the shadows on the ground are drawn for right now (it trails the real sun by a few seconds), and how strongly it casts
   const cast = { dir: castSun.clone(), k: 1 };
   let realShadow = false;                    // true: the walker's real outline is drawn on the ground (character-shadow.js)
+  let realOnGrass = false;                   // true: and on the grass blades too, so the soft patch is not needed anywhere
   const aimWalkerShadow = () => { cast.dir.copy(castSun); walkerShadow.rotation.y = Math.atan2(-SU[1], SU[0]); walkerShadow.scale.set(1.35 + 0.55 / LY, 1, 0.8); };
   walkerShadow.name = 'walkerShadow'; walkerShadow.renderOrder = 3; walkerShadow.visible = false;
   aimWalkerShadow();                                                                       // long side along the shadow direction
@@ -391,7 +392,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     // where the sun is (a direction) and how strongly it casts (0 at night); the shadows follow in the background
     setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); },
     get sunCast() { return cast; },
-    useRealShadow(on) { realShadow = !!on; },
+    useRealShadow(on, onGrass = false) { realShadow = !!on; realOnGrass = realShadow && !!onGrass; },
     tapWater(origin, dir) {
       for (let t = 1; t < 70; t += 0.25) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
@@ -406,9 +407,10 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z));
       sim.focus(pos.x, pos.z);
       const wy = HV(pos.x, pos.z), dry = waterDepthAt(pos.x, pos.z) < 0.05;
-      // with the real shadow on the ground, the soft patch is only a stand-in over grass: the blades cover the ground there
+      // with the real shadow on the ground only, the soft patch is a stand-in over grass (the blades cover the ground there);
+      // with the real shadow on the blades as well, it is not needed at all
       const run = Math.min(SLEN, 2.5) * 0.8, px = pos.x + SU[0] * run, pz = pos.z + SU[1] * run;
-      const lawn = realShadow ? Math.min(1, Math.max(0, (map.grassAt(px, pz) - 0.1) / 0.4)) : 1;
+      const lawn = realOnGrass ? 0 : realShadow ? Math.min(1, Math.max(0, (map.grassAt(px, pz) - 0.1) / 0.4)) : 1;
       walkerShadow.material.opacity = cast.k * lawn;
       walkerShadow.visible = dry && cast.k * lawn > 0.02;
       if (walkerShadow.visible) walkerShadow.position.set(px, wy + 0.3, pz);

@@ -1,23 +1,64 @@
 // character-shadow.js
-// The walker's own shadow on the ground: her real outline, thrown along the sun's direction, moving as she moves.
+// The walker's own shadow: her real outline, thrown along the sun's direction, moving as she moves.
 //
-// One job, two small parts:
+// One job, three small parts:
 //   picture : the character seen from the sun (a small camera with no perspective), drawn each frame into a little picture.
 //             Only its coverage is kept: where she is in the way of the light.
 //   ground  : a patch of ground-hugging mesh around her feet and along the shadow. It carries no picture coordinates of its
 //             own: every pixel of it asks "seen from the sun, is she in front of me?" and darkens the ground if so. That is
 //             what makes the outline land correctly on slopes, bumps and the river bed, and stretch when the sun is low.
+//   grass   : receive(material) teaches a grass shader to ask the same question for every blade, at the blade's own height,
+//             so the outline lies across the tops of the grass instead of hiding under it.
 // The shadow multiplies what is under it by the same cool tint as the trees' shadows, with a soft edge that widens away
-// from her feet. Ground only: grass blades standing above the ground cover it, as they cover the ground itself.
+// from her feet.
 //
 // Where a tree's shadow already lies there is no sunlight left to block, so hers fades out inside it (shade, optional).
 //
 //   const shadow = createCharacterShadow({ character, heightAt: level.heightAt });   // character: { object, height }
 //   scene.add(shadow.object);
+//   shadow.receive(level.grass.material);                                            // once: the grass takes it too
 //   shadow.update(renderer, player.position, sunDirection, strength);                // every frame, before the scene is drawn
 import * as THREE from 'three';
 
 const MIN_SUN = 0.3;        // a sun on the horizon would throw endless shadows (the same floor the trees' shadows use)
+
+// how much of her shadow lies on the point w. pic: w seen from the sun (0..1). ahead: how far w lies toward the sun from her
+// (nothing between her and the sun can be in her shadow; the picture alone cannot tell, it has no depth)
+const SHADOW_GLSL = /* glsl */`
+uniform sampler2D uChPic, uChShade;
+uniform float uChTexel, uChK;
+uniform vec3 uChTint, uChFeet, uChSun, uChShadeRect;
+float chShadow(vec2 pic, vec3 w, float ahead) {
+  if (uChK <= 0.0) return 0.0;
+  // outside the picture, or within its last few pixels: no shadow, and no hard cut where the picture ends
+  vec2 edge = min(pic, 1.0 - pic);
+  float inPic = smoothstep(0.0, 0.04, min(edge.x, edge.y));
+  if (inPic <= 0.0) return 0.0;
+  // the edge is crisp at her feet and softens the further the shadow has travelled
+  float r = uChTexel * (1.3 + 4.0 * clamp(length(w - uChFeet) / 3.5, 0.0, 1.0));
+  float a = texture2D(uChPic, pic).a * 4.0;
+  a += (texture2D(uChPic, pic + vec2(r, 0.0)).a + texture2D(uChPic, pic - vec2(r, 0.0)).a
+      + texture2D(uChPic, pic + vec2(0.0, r)).a + texture2D(uChPic, pic - vec2(0.0, r)).a) * 2.0;
+  a += texture2D(uChPic, pic + vec2(r, r)).a + texture2D(uChPic, pic - vec2(r, r)).a
+     + texture2D(uChPic, pic + vec2(r, -r)).a + texture2D(uChPic, pic - vec2(r, -r)).a;
+  a *= 0.0625;
+  a *= 1.0 - smoothstep(0.35, 0.9, ahead);
+  // ground that is already in a tree's shadow gets no darker for her standing there
+  a *= 1.0 - texture2D(uChShade, (w.xz - uChShadeRect.xy) * uChShadeRect.z + 0.5).r;
+  return a * inPic * uChK;
+}
+`;
+
+// the text between the bracket at `open` and its partner
+function inside(src, open) {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '(') depth++;
+    else if (src[i] === ')' && --depth === 0) return src.slice(open + 1, i);
+  }
+  return null;
+}
+const beforeEnd = (src, code) => { const i = src.lastIndexOf('}'); return src.slice(0, i) + code + src.slice(i); };   // main() is the last thing in the shader
 
 export function createCharacterShadow({
   character, heightAt,
@@ -49,48 +90,33 @@ export function createCharacterShadow({
   geo.setAttribute('position', aPos);
   geo.setIndex(idx);
   const noShade = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); noShade.needsUpdate = true;
+  // shared by the ground patch and every material that receives the shadow: one update reaches them all
   const uniforms = {
-    uPic: { value: target.texture }, uPicMatrix: { value: new THREE.Matrix4() }, uTexel: { value: 1 / size },
-    uTint: { value: new THREE.Vector3(...tint) }, uK: { value: 1 },
-    uFeet: { value: new THREE.Vector3() }, uSun: { value: new THREE.Vector3(0, 1, 0) },
-    uShade: { value: shade ? shade.texture : noShade }, uShadeRect: { value: shade ? shade.rect : new THREE.Vector3(0, 0, 0) },
+    uChPic: { value: target.texture }, uChPicMatrix: { value: new THREE.Matrix4() }, uChTexel: { value: 1 / size },
+    uChTint: { value: new THREE.Vector3(...tint) }, uChK: { value: 0 },
+    uChFeet: { value: new THREE.Vector3() }, uChSun: { value: new THREE.Vector3(0, 1, 0) },
+    uChSunXZ: { value: new THREE.Vector2(0, 0) },                        // the sun's direction along the ground, length 1 (0 straight overhead)
+    uChShade: { value: shade ? shade.texture : noShade }, uChShadeRect: { value: shade ? shade.rect : new THREE.Vector3(0, 0, 0) },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
     vertexShader: /* glsl */`
-      uniform mat4 uPicMatrix;
+      uniform mat4 uChPicMatrix;
       varying vec3 vW;
       varying vec2 vPic;
       void main() {
         vW = position;                                                   // the patch is laid out in world coordinates
-        vPic = (uPicMatrix * vec4(position, 1.0)).xy;                    // where this point is in the sun's picture
+        vPic = (uChPicMatrix * vec4(position, 1.0)).xy;                  // where this point is in the sun's picture
         gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D uPic, uShade;
-      uniform float uTexel, uK;
-      uniform vec3 uTint, uFeet, uSun, uShadeRect;
+      ${SHADOW_GLSL}
       varying vec3 vW;
       varying vec2 vPic;
       void main() {
-        // outside the picture, or within its last few pixels: no shadow, and no hard cut where the picture ends
-        vec2 edge = min(vPic, 1.0 - vPic);
-        float inPic = smoothstep(0.0, 0.04, min(edge.x, edge.y));
-        if (inPic <= 0.0) discard;
-        // the edge is crisp at her feet and softens the further the shadow has travelled
-        float r = uTexel * (1.3 + 4.0 * clamp(length(vW - uFeet) / 3.5, 0.0, 1.0));
-        float a = texture2D(uPic, vPic).a * 4.0;
-        a += (texture2D(uPic, vPic + vec2(r, 0.0)).a + texture2D(uPic, vPic - vec2(r, 0.0)).a
-            + texture2D(uPic, vPic + vec2(0.0, r)).a + texture2D(uPic, vPic - vec2(0.0, r)).a) * 2.0;
-        a += texture2D(uPic, vPic + vec2(r, r)).a + texture2D(uPic, vPic - vec2(r, r)).a
-           + texture2D(uPic, vPic + vec2(r, -r)).a + texture2D(uPic, vPic - vec2(r, -r)).a;
-        a *= 0.0625;
-        // ground that lies between her and the sun cannot be in her shadow
-        a *= 1.0 - smoothstep(0.35, 0.9, dot(vW - uFeet, uSun));
-        // nor can ground that is already in a tree's shadow get any darker for her standing there
-        a *= 1.0 - texture2D(uShade, (vW.xz - uShadeRect.xy) * uShadeRect.z + 0.5).r;
-        a *= inPic * uK;
-        gl_FragColor = vec4(mix(vec3(1.0), uTint, a), 1.0);              // multiplied onto what is under it
+        float a = chShadow(vPic, vW, dot(vW - uChFeet, uChSun));        // ground between her and the sun: no shadow
+        if (a <= 0.0) discard;
+        gl_FragColor = vec4(mix(vec3(1.0), uChTint, a), 1.0);            // multiplied onto what is under it
       }`,
     transparent: true, depthWrite: false,
     blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
@@ -104,6 +130,32 @@ export function createCharacterShadow({
   mesh.matrixAutoUpdate = false;
   mesh.renderOrder = 2;
   mesh.visible = false;
+
+  // a shader whose vertex stage places points with "viewMatrix * vec4(<world position>)" can take the shadow.
+  // Its colour is darkened before any haze laid over it, like the cloud shadows do.
+  function receive(m) {
+    if (!m || !m.isShaderMaterial || m.userData.charShadow) return !!(m && m.userData.charShadow);
+    let vs = m.vertexShader, fs = m.fragmentShader;
+    const at = vs.indexOf('viewMatrix * vec4(');
+    if (at < 0) return false;
+    const arg = inside(vs, at + 'viewMatrix * vec4'.length);
+    const end = vs.indexOf(';', at);
+    if (!arg || end < 0) return false;
+    vs = vs.slice(0, end + 1) + ` { vec4 chW = vec4(${arg}); vChW = chW.xyz; vChPic = (uChPicMatrix * chW).xy; }` + vs.slice(end + 1);
+    vs = 'uniform mat4 uChPicMatrix;\nvarying vec3 vChW;\nvarying vec2 vChPic;\n' + vs;
+    // a blade is only in her shadow on her side away from the sun; along the ground, not up its own height
+    const dark = 'mix(vec3(1.0), uChTint, chShadow(vChPic, vChW, dot(vChW.xz - uChFeet.xz, uChSunXZ)))';
+    const hazed = fs.includes('uniform vec3 uFar, uHaze;') || /uniform vec3[^;]*\buHaze\b/.test(fs);
+    fs = beforeEnd(fs, hazed && fs.includes('vHaze')
+      ? `\n  { vec3 chH = uHaze * vHaze; gl_FragColor.rgb = (gl_FragColor.rgb - chH) * ${dark} + chH; }\n`
+      : `\n  gl_FragColor.rgb *= ${dark};\n`);
+    m.vertexShader = vs;
+    m.fragmentShader = 'uniform vec2 uChSunXZ;\nvarying vec3 vChW;\nvarying vec2 vChPic;\n' + SHADOW_GLSL + fs;
+    Object.assign(m.uniforms, uniforms);
+    m.userData.charShadow = true;
+    m.needsUpdate = true;
+    return true;
+  }
 
   const sun = new THREE.Vector3(), centre = new THREE.Vector3(), up = new THREE.Vector3(), clear = new THREE.Color();
   const laid = { x: NaN, z: NaN, sx: NaN, sz: NaN, len: NaN };
@@ -129,9 +181,10 @@ export function createCharacterShadow({
 
   return {
     object: mesh,
+    receive,
     // feet: where she stands.  dir: a vector pointing at the sun.  k: how strongly the sun casts, 0 (night) .. 1
     update(renderer, feet, dir, k = 1) {
-      if (!(k > 0.02) || !(dir.y > 0.01)) { mesh.visible = false; return; }
+      if (!(k > 0.02) || !(dir.y > 0.01)) { mesh.visible = false; uniforms.uChK.value = 0; return; }
       // the sun as the shadows see it: never lower than the floor
       const dxz = Math.hypot(dir.x, dir.z), ly = Math.max(MIN_SUN, dir.y / Math.hypot(dxz, dir.y));
       const flat = Math.sqrt(1 - ly * ly);
@@ -146,7 +199,7 @@ export function createCharacterShadow({
       eye.up.copy(up);
       eye.lookAt(centre);
       eye.updateMatrixWorld();
-      uniforms.uPicMatrix.value.copy(BIAS).multiply(eye.projectionMatrix).multiply(eye.matrixWorldInverse);
+      uniforms.uChPicMatrix.value.copy(BIAS).multiply(eye.projectionMatrix).multiply(eye.matrixWorldInverse);
       const was = renderer.getRenderTarget(), wasAlpha = renderer.getClearAlpha(), wasAuto = renderer.autoClear;
       renderer.getClearColor(clear);
       body.updateWorldMatrix(true, false);
@@ -158,11 +211,12 @@ export function createCharacterShadow({
       renderer.setClearColor(clear, wasAlpha);
       renderer.autoClear = wasAuto;
 
-      // ---- the ground under it
+      // ---- the ground under it, and whatever grass took it
       lay(feet, sx, sz, H * flat / ly);
-      uniforms.uFeet.value.copy(feet);
-      uniforms.uSun.value.copy(sun);
-      uniforms.uK.value = Math.min(1, k) * 0.85;
+      uniforms.uChFeet.value.copy(feet);
+      uniforms.uChSun.value.copy(sun);
+      uniforms.uChSunXZ.value.set(-sx, -sz).multiplyScalar(dxz > 1e-5 ? 1 : 0);
+      uniforms.uChK.value = Math.min(1, k) * 0.85;
       mesh.visible = true;
     },
     dispose() { target.dispose(); geo.dispose(); mat.dispose(); noShade.dispose(); },
