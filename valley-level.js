@@ -915,7 +915,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     upperWater.userData = { kind: 'water', dispose() { upMat.dispose(); } };
     group.add(upperWater);
     for (const st of V.steps) {
-      const c = createWaterfall({ x: PX(st.z), z: st.z - 0.95, top: V.plateauWaterAt(st.z - 1), bottom: V.plateauWaterAt(st.z + 1) - 0.2, width: 3.9, forward: 1.5, scale: 0.4, foamTexture, cells: animeCells });
+      // as wide as the water that reaches the brink (the stream's channel plus its shallow edges), so none of it stops short in the
+      // air beside the fall; thrown out a little further, so the sheet clears the face of the riser instead of running into it
+      const c = createWaterfall({ x: PX(st.z), z: st.z - 0.95, top: V.plateauWaterAt(st.z - 1), bottom: V.plateauWaterAt(st.z + 1) - 0.2, width: 2 * (PW + 1.3), forward: 2.1, scale: 0.4, foamTexture, cells: animeCells });
       c.group.userData = { kind: 'waterfall', dispose: c.dispose };
       group.add(c.group);
       cascades.push(c);
