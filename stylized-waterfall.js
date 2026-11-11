@@ -487,3 +487,6 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
     },
   };
 }
+
+// the falling water's own parts, for sibling modules that shape their falls differently (abyss-scene.js)
+export const _fall = { commonUniforms, fallMaterial, mistTexture };

@@ -18,6 +18,13 @@
                            rise   (x, z) => metres added to the land (hills round the terraces); the upper river keeps its bed, so it runs in a gorge there
                            ramps  [[[x, z], ...], ...] paths cut from one terrace to the next: V.ramps[i] = { at(x, z), half }
                            V.plateauWaterAt(z) is the upper river's level there
+     createValley({ climbs: [{ side, z0, z1 }] })   more paths like climb, each cut into a cliff face from z0 (on the floor)
+                           to z1 (on the top); z1 may lie downstream of z0. V.climbs[i] is shaped like V.climb
+     createValley({ reshape, widen, waterAt, trails })   hooks for a level that bends the land further (the abyss):
+                           reshape(x, z, h) => h   the land as grown, changed (after everything above, before the paths are cut)
+                           widen(z) => metres      added to the river's half width there
+                           waterAt(x, z) => level | null   the water level there, where it is not the river's (null: as usual)
+                           trails  [[[x, z], ...], ...]   ways drawn as dirt paths on the ground (not cut into it)
      V.bankRoute(side)     [[x, z], ...] a walk along one sandy bank
      V.slopeAt(x, z)       0 = flat .. 1 = vertical
      V.riverX(z), V.riverHalfWidth(z), V.cliffLine(x, z), V.pathDist(x, z)
@@ -69,6 +76,8 @@ function terrainMaterial(far, half, zc) {
       // the trodden ways of a village (see WAYS in the fragment shader): a picture of how far each spot is from the nearest way
       uWays: { value: BLANK_WAYS }, uWaysRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uWaysOn: { value: 0 },
       uFar: { value: rgb(far) }, uHalf: { value: new THREE.Vector2(half[0], half[1]) }, uZc: { value: zc },
+      // DEEP: land far below the rim of a pit fades into its mist and then into the dark (uDeepOn = 0: no pit on this map)
+      uDeepOn: { value: 0 }, uDeepMist: { value: rgb('#a9c8d6') }, uDeepBlue: { value: rgb('#2c4a68') }, uDeepVoid: { value: rgb('#0f1b2c') },
       ...HAZE_U(),
     },
     vertexShader: /* glsl */`
@@ -92,7 +101,8 @@ function terrainMaterial(far, half, zc) {
     fragmentShader: /* glsl */`
       ${NOISE}
       ${HAZEF}
-      uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar;
+      uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar, uDeepMist, uDeepBlue, uDeepVoid;
+      uniform float uDeepOn;
       uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
       uniform vec4 uWaysRect;       // centre x, centre z, 1 / width, 1 / depth of the ground the picture covers
       uniform float uWaysOn;
@@ -164,6 +174,13 @@ function terrainMaterial(far, half, zc) {
           }
         }
         col = mix(col, uHaze, vHaze);
+        // DEEP: down a pit the walls go pale into the mist that hangs in it, then blue, then dark: no floor is ever seen
+        if (uDeepOn > 0.5 && vWP.y < -4.0) {
+          float y = vWP.y + (noise2(vWP.xz * 0.12 + vWP.y * 0.05) - 0.5) * 6.0;
+          col = mix(col, uDeepMist, smoothstep(-6.0, -42.0, y) * 0.55);
+          col = mix(col, uDeepBlue, smoothstep(-34.0, -92.0, y));
+          col = mix(col, uDeepVoid, smoothstep(-85.0, -190.0, y));
+        }
         vec2 q = abs(vec2(vWP.x, vWP.z - uZc)) / uHalf;
         col = mix(col, uFar, smoothstep(0.8, 0.99, max(q.x, q.y)));
         gl_FragColor = vec4(col, 1.0);
@@ -382,7 +399,8 @@ function waterRibbon({ z0, z1, cx, hw, level, H, step = 0.55, across = 18, extra
 // --------------------------------------------------------------------------
 // the valley
 // --------------------------------------------------------------------------
-export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20, res = 0.55, far = '#eef5e4', path = true, bridge: withBridge = true, skirt = false, climb = null, tiers = null } = {}) {
+export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20, res = 0.55, far = '#eef5e4', path = true, bridge: withBridge = true, skirt = false, climb = null, climbs = [], tiers = null,
+  reshape = null, widen = null, waterAt = null, trails = [] } = {}) {
   const S = seed;
   const X0 = -width / 2, X1 = width / 2, Z0 = zCenter - depth / 2, Z1 = zCenter + depth / 2;
 
@@ -391,7 +409,8 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   const lipX = rx(-46);
   const headZ = x => -47 + 2.5 * Math.sin(x * 0.13 + S) + (fbm3(x * 0.08, 3.3, 0.5, S + 21, 2) - 0.5) * 4;
   const zLip = headZ(lipX);                                                     // waterfall lip (cliff foot)
-  const rw = z => 2.9 + 0.5 * Math.sin(z * 0.09 + 0.4) + 3.2 * ss(zLip + 13, zLip + 3, z);    // + pool under the falls
+  const rw0 = z => 2.9 + 0.5 * Math.sin(z * 0.09 + 0.4) + 3.2 * ss(zLip + 13, zLip + 3, z);    // + pool under the falls
+  const rw = widen ? z => rw0(z) + widen(z) : rw0;
   const vw = z => 18 + 4 * Math.sin(z * 0.06 + 1.3 + S) + 2 * Math.sin(z * 0.15);
   const cliffLine = (x, z) => vw(z) + (fbm3(x * 0.11, 5.1, z * 0.11, S + 3, 3) - 0.5) * 4.5;   // distance from river to cliff foot
   const px = z => lipX + 3 * Math.sin((z - zLip) * 0.08) * ss(zLip, zLip - 12, z);           // plateau river centre
@@ -413,7 +432,8 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
 
   // ---- height (the land as it grew; H below is this with the climbing path cut into it)
   const plateauT = (x, z) => { const zh = headZ(x); return ss(zh, zh - 1.4, z); };
-  const Hn = (x, z) => {
+  // (built twice: as the level asks for it, and as it was before the level's own hooks bent it: see legacyKindAt below)
+  const HnOf = (rw, reshape) => (x, z) => {
     const cx = rx(z), adx = Math.abs(x - cx), w = rw(z);
     let h = 0.85 + (fbm3(x * 0.07, 0.2, z * 0.07, S, 3) - 0.5) * 1.3;
     const e = cliffLine(x, z);
@@ -449,9 +469,10 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
       plat = lerp(plat, PL + up - 1.0, ss(pw + 1.2, pw - 0.3, padx));
       h = lerp(h, Math.max(h, plat), th);
     }
-    return h;
+    return reshape ? reshape(x, z, h) : h;
   };
-  const waterLevelAt = (x, z) => (plateauT(x, z) > 0.5 ? plateauWaterAt(z) : WL);
+  const Hn = HnOf(rw, reshape), Hn0 = HnOf(rw0, null);
+  const waterLevelAt = (x, z) => { const w = waterAt ? waterAt(x, z) : null; return w !== null ? w : (plateauT(x, z) > 0.5 ? plateauWaterAt(z) : WL); };
 
   // ---- climbing path: a shelf cut into the cliff shoulder, rising at a steady grade from the valley floor to the plateau
   // rim beside the falls. Its line is found on the land itself: at each step it sits where the cliff face reaches the
@@ -480,16 +501,16 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     const cut = (x, z, h) => { const { d, y } = at(x, z); return d < HALF + EDGE ? lerp(h, y, 1 - ss(HALF, HALF + EDGE, d)) : h; };
     return { at, cut, half: HALF, segs: cs };
   }
-  let Cl = null;
-  if (climb) {
-    const side = climb.side || 1, zA = climb.z0 ?? 12, zB = climb.z1 ?? zLip + 7, STEP = 0.5;
+  // a path along one cliff face: from z0 on the valley floor to z1 on the top (either way along the valley)
+  const makeClimb = cfg => {
+    const side = cfg.side || 1, zA = cfg.z0 ?? 12, zB = cfg.z1 ?? zLip + 7, STEP = 0.5 * Math.sign(zB - zA || -1);
     const top = PLAT + 0.6;
     const faceX = (z, y) => {                                           // the first point out from the valley where the land reaches y
       const c = rx(z), s0 = cliffLine(c + side * 15, z) - 4;
       for (let s = s0; s < 60; s += 0.2) if (Hn(c + side * s, z) >= y) return c + side * s;
       return c + side * 60;
     };
-    const zs = []; for (let z = zA; z >= zB; z -= STEP) zs.push(z);
+    const zs = []; for (let z = zA; STEP < 0 ? z >= zB : z <= zB; z += STEP) zs.push(z);
     const y0 = Hn(rx(zA) + side * (cliffLine(rx(zA) + side * 15, zA) - 1.5), zA);
     let ys = zs.map((z, i) => y0 + (top - y0) * i / (zs.length - 1)), xs = null;
     const smooth = (a, n) => a.map((_, i) => { let t = 0, w = 0; for (let k = -n; k <= n; k++) { const j = Math.min(a.length - 1, Math.max(0, i + k)); t += a[j]; w++; } return t / w; });
@@ -504,8 +525,10 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     }
     const cs = [];
     for (let i = 0; i < zs.length - 1; i++) cs.push([xs[i], zs[i], ys[i], xs[i + 1], zs[i + 1], ys[i + 1]]);
-    Cl = { ...makeCut(cs, climb.half ?? 1.35, climb.edge ?? 1.5), side, bottom: [xs[0], zs[0]], top: [xs[xs.length - 1], zs[zs.length - 1]], y0, y1: top };
-  }
+    return { ...makeCut(cs, cfg.half ?? 1.35, cfg.edge ?? 1.5), side, bottom: [xs[0], zs[0]], top: [xs[xs.length - 1], zs[zs.length - 1]], y0, y1: top };
+  };
+  const Cl = climb ? makeClimb(climb) : null;
+  const Cls = climbs.map(makeClimb);
   // ramps between terraces: each a line of points, rising evenly from the land's height at its first point to that at its last
   const ramps = [];
   if (tiers && tiers.ramps) for (const line of tiers.ramps) {
@@ -515,8 +538,10 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     for (let i = 0; i < pts.length - 1; i++) cs.push([pts[i].x, pts[i].z, lerp(ya, yb, i / (pts.length - 1)), pts[i + 1].x, pts[i + 1].z, lerp(ya, yb, (i + 1) / (pts.length - 1))]);
     ramps.push(makeCut(cs, 1.6, 1.8));
   }
-  const cuts = [...(Cl ? [Cl] : []), ...ramps];
+  const cuts = [...(Cl ? [Cl] : []), ...Cls, ...ramps];
   const H = cuts.length ? (x, z) => { let h = Hn(x, z); for (const c of cuts) h = c.cut(x, z, h); return h; } : Hn;
+  const cuts0 = [...(Cl ? [Cl] : []), ...ramps];
+  const H0 = (x, z) => { let h = Hn0(x, z); for (const c of cuts0) h = c.cut(x, z, h); return h; };
 
   // ---- bridge across the river
   const zb = 4;
@@ -543,30 +568,39 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     pts.forEach(q => route.push([q.x, q.z]));
   }
   if (!path) segs.length = 0;            // no dirt path drawn (route below follows the bank instead)
-  for (const cu of cuts) for (const c of cu.segs) segs.push([c[0], c[1], c[3], c[4]]);      // the climbing path and the ramps are drawn as dirt paths too
-  const CELL = 4, grid = new Map();
-  const key = (i, j) => i * 10007 + j;
-  segs.forEach((sg, n) => {
-    const i0 = Math.floor(Math.min(sg[0], sg[2]) / CELL) - 1, i1 = Math.floor(Math.max(sg[0], sg[2]) / CELL) + 1;
-    const j0 = Math.floor(Math.min(sg[1], sg[3]) / CELL) - 1, j1 = Math.floor(Math.max(sg[1], sg[3]) / CELL) + 1;
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-      const kk = key(i, j);
-      if (!grid.has(kk)) grid.set(kk, []);
-      grid.get(kk).push(n);
-    }
-  });
-  const pathDist = (x, z) => {
-    const list = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
-    if (!list) return 99;
-    let best = 99;
-    for (const n of list) {
-      const [ax, az, bx, bz] = segs[n];
-      const dx = bx - ax, dz = bz - az;
-      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
-      best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
-    }
-    return best;
+  for (const cu of cuts0) for (const c of cu.segs) segs.push([c[0], c[1], c[3], c[4]]);     // the climbing path and the ramps are drawn as dirt paths too
+  const segs0Count = segs.length;
+  for (const cu of Cls) for (const c of cu.segs) segs.push([c[0], c[1], c[3], c[4]]);
+  for (const t of trails) for (let i = 0; i < t.length - 1; i++) segs.push([t[i][0], t[i][1], t[i + 1][0], t[i + 1][1]]);
+  // metres to the nearest dirt path, for a list of segments
+  const makePathDist = segs => {
+    const CELL = 4, grid = new Map();
+    const key = (i, j) => i * 10007 + j;
+    segs.forEach((sg, n) => {
+      const i0 = Math.floor(Math.min(sg[0], sg[2]) / CELL) - 1, i1 = Math.floor(Math.max(sg[0], sg[2]) / CELL) + 1;
+      const j0 = Math.floor(Math.min(sg[1], sg[3]) / CELL) - 1, j1 = Math.floor(Math.max(sg[1], sg[3]) / CELL) + 1;
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const kk = key(i, j);
+        if (!grid.has(kk)) grid.set(kk, []);
+        grid.get(kk).push(n);
+      }
+    });
+    return (x, z) => {
+      const list = grid.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+      if (!list) return 99;
+      let best = 99;
+      for (const n of list) {
+        const [ax, az, bx, bz] = segs[n];
+        const dx = bx - ax, dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+        best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
+      }
+      return best;
+    };
   };
+  const pathDist = makePathDist(segs);
+  const segs0 = segs.slice(0, segs0Count);
+  const pathDist0 = makePathDist(segs0);
 
   // ---- terrain mesh
   const segX = Math.round(width / res), segZ = Math.round(depth / res);
@@ -684,6 +718,23 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     if (h > 5) return 'plateau';
     return 'floor';
   };
+  // the same, for the land as it was before the level's hooks (reshape, widen, waterAt, trails, climbs) bent it. A level that
+  // scatters things with dice asks this, so that every throw of the dice falls as it always did and nothing placed by hand
+  // in the scene editor loses its place (it is known by where the dice put it); what now lands somewhere wrong is left out.
+  const slopeAt0 = (x, z) => {
+    const e = 0.45;
+    const hx = (H0(x + e, z) - H0(x - e, z)) / (2 * e), hz = (H0(x, z + e) - H0(x, z - e)) / (2 * e);
+    return 1 - 1 / Math.sqrt(1 + hx * hx + hz * hz);
+  };
+  const legacyKindAt = (x, z) => {
+    const h = H0(x, z), wl = plateauT(x, z) > 0.5 ? plateauWaterAt(z) : WL;
+    if (h < wl + 0.05 && (Math.abs(x - rx(z)) < rw0(z) + 1.5 || Math.abs(x - px(z)) < pw + 1.5)) return 'water';
+    if (h - wl < 0.55) return 'bank';
+    if (pathDist0(x, z) < 1.6) return 'path';
+    if (slopeAt0(x, z) > 0.25) return 'cliff';
+    if (h > 5) return 'plateau';
+    return 'floor';
+  };
   // a walk along one bank (on the sand), from near the falls down the valley
   const bankRoute = (side = 1, z0 = zLip + 9, z1 = Z1 - 8, off = 1.7) => {
     const pts = [];
@@ -696,10 +747,11 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   };
   return {
     group, heightAt: H, surfaceAt, route: path ? route : bankRoute(1), bankRoute, waterLevelAt, kindAt, slopeAt, pathDist,
-    riverX: rx, riverHalfWidth: rw, cliffLine, plateauRiverX: px,
+    riverX: rx, riverHalfWidth: rw, cliffLine, plateauRiverX: px, legacyKindAt, legacyHeightAt: H0, legacyRiverHalfWidth: rw0,
     plateauRiverHalfWidth: pw, headZ, naturalHeightAt: Hn, plateauWaterAt, steps: STEPS,
     ramps: ramps.map(r => ({ at: r.at, half: r.half, line: r.segs.map(c => [c[0], c[1], c[2]]) })),
     climb: Cl ? { at: Cl.at, half: Cl.half, top: Cl.top, bottom: Cl.bottom, y0: Cl.y0, y1: Cl.y1, side: Cl.side, line: Cl.segs.map(c => [c[0], c[1], c[2]]) } : null,
+    climbs: Cls.map(c => ({ at: c.at, half: c.half, top: c.top, bottom: c.bottom, y0: c.y0, y1: c.y1, side: c.side, line: c.segs.map(q => [q[0], q[1], q[2]]) })),
     bridge: bridge ? { x: bc.x, z: bc.y, length: bLen, ends: [[E0.x, E0.y], [E1.x, E1.y]] } : null,
     waterfall: { x: lipX, z: zLip, top: fallTop },
     bounds: { x0: X0, x1: X1, z0: Z0, z1: Z1 },
