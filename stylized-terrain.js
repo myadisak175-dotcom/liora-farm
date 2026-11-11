@@ -9,6 +9,8 @@
      V.kindAt(x, z)        'water' | 'bank' (sand beach) | 'path' | 'cliff' | 'plateau' | 'floor'
      createValley({ path: false, bridge: false })   leave out the dirt path / the bridge
      createValley({ skirt: true })   land continues past the map edge to the far hills (use with haze)
+     createValley({ climb: { side: 1 } })   a path cut into the cliff shoulder on that side (+1 = +x), from the valley
+                           floor near the bridge up to the plateau rim beside the falls: V.climb = { at(x, z), top, bottom }
      V.bankRoute(side)     [[x, z], ...] a walk along one sandy bank
      V.slopeAt(x, z)       0 = flat .. 1 = vertical
      V.riverX(z), V.riverHalfWidth(z), V.cliffLine(x, z), V.pathDist(x, z)
@@ -326,7 +328,7 @@ function waterRibbon({ z0, z1, cx, hw, level, H, step = 0.55, across = 18, extra
 // --------------------------------------------------------------------------
 // the valley
 // --------------------------------------------------------------------------
-export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20, res = 0.55, far = '#eef5e4', path = true, bridge: withBridge = true, skirt = false } = {}) {
+export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20, res = 0.55, far = '#eef5e4', path = true, bridge: withBridge = true, skirt = false, climb = null } = {}) {
   const S = seed;
   const X0 = -width / 2, X1 = width / 2, Z0 = zCenter - depth / 2, Z1 = zCenter + depth / 2;
 
@@ -342,9 +344,9 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   const pw = 2.3;
   const PLAT = 14.5, PL = PLAT - 0.65, WL = 0;
 
-  // ---- height
+  // ---- height (the land as it grew; H below is this with the climbing path cut into it)
   const plateauT = (x, z) => { const zh = headZ(x); return ss(zh, zh - 1.4, z); };
-  const H = (x, z) => {
+  const Hn = (x, z) => {
     const cx = rx(z), adx = Math.abs(x - cx), w = rw(z);
     let h = 0.85 + (fbm3(x * 0.07, 0.2, z * 0.07, S, 3) - 0.5) * 1.3;
     const e = cliffLine(x, z);
@@ -379,6 +381,59 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   };
   const waterLevelAt = (x, z) => (plateauT(x, z) > 0.5 ? PL : WL);
 
+  // ---- climbing path: a shelf cut into the cliff shoulder, rising at a steady grade from the valley floor to the plateau
+  // rim beside the falls. Its line is found on the land itself: at each step it sits where the cliff face reaches the
+  // height the path has climbed to by then, so it hugs the face, crosses the ledge between the two tiers and comes out
+  // on top. Where it runs, the ground is set to the path's own height: cut into the face above, built up below.
+  let Cl = null;
+  if (climb) {
+    const side = climb.side || 1, zA = climb.z0 ?? 12, zB = climb.z1 ?? zLip + 7, STEP = 0.5;
+    const top = PLAT + 0.6;
+    const faceX = (z, y) => {                                           // the first point out from the valley where the land reaches y
+      const c = rx(z), s0 = cliffLine(c + side * 15, z) - 4;
+      for (let s = s0; s < 60; s += 0.2) if (Hn(c + side * s, z) >= y) return c + side * s;
+      return c + side * 60;
+    };
+    const zs = []; for (let z = zA; z >= zB; z -= STEP) zs.push(z);
+    const y0 = Hn(rx(zA) + side * (cliffLine(rx(zA) + side * 15, zA) - 1.5), zA);
+    let ys = zs.map((z, i) => y0 + (top - y0) * i / (zs.length - 1)), xs = null;
+    const smooth = (a, n) => a.map((_, i) => { let t = 0, w = 0; for (let k = -n; k <= n; k++) { const j = Math.min(a.length - 1, Math.max(0, i + k)); t += a[j]; w++; } return t / w; });
+    for (let pass = 0; pass < 3; pass++) {
+      xs = smooth(smooth(zs.map((z, i) => faceX(z, ys[i])), 6), 6);
+      // smoothing must not pull the line off the face out over the ledge (that would build a causeway, not cut a shelf)
+      xs = smooth(xs.map((x, i) => { const f = faceX(zs[i], ys[i] - 0.4); return side > 0 ? Math.max(x, f) : Math.min(x, f); }), 2);
+      // the grade is steady along the ground actually walked, not along z
+      const len = [0]; for (let i = 1; i < zs.length; i++) len.push(len[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
+      const L = len[len.length - 1];
+      ys = len.map(l => y0 + (top - y0) * l / L);
+    }
+    // the first stretch runs in from the floor, the last runs out onto the plateau, both level with the land there
+    const cs = [];
+    for (let i = 0; i < zs.length - 1; i++) cs.push([xs[i], zs[i], ys[i], xs[i + 1], zs[i + 1], ys[i + 1]]);
+    const CG = 4, cg = new Map(), ck = (i, j) => i * 10007 + j;
+    cs.forEach((sg, n) => {
+      const i0 = Math.floor((Math.min(sg[0], sg[3]) - 3) / CG), i1 = Math.floor((Math.max(sg[0], sg[3]) + 3) / CG);
+      const j0 = Math.floor((Math.min(sg[1], sg[4]) - 3) / CG), j1 = Math.floor((Math.max(sg[1], sg[4]) + 3) / CG);
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const k = ck(i, j); if (!cg.has(k)) cg.set(k, []); cg.get(k).push(n); }
+    });
+    // distance to the path line, and the path's height at the nearest point
+    const at = (x, z) => {
+      const list = cg.get(ck(Math.floor(x / CG), Math.floor(z / CG)));
+      let d = 99, y = 0;
+      if (list) for (const n of list) {
+        const [ax, az, ay, bx, bz, by] = cs[n], dx = bx - ax, dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+        const dd = Math.hypot(x - ax - dx * t, z - az - dz * t);
+        if (dd < d) { d = dd; y = ay + (by - ay) * t; }
+      }
+      return { d, y };
+    };
+    const HALF = climb.half ?? 1.35, EDGE = climb.edge ?? 1.5;
+    Cl = { at, half: HALF, side, segs: cs, bottom: [xs[0], zs[0]], top: [xs[xs.length - 1], zs[zs.length - 1]], y0, y1: top };
+    Cl.cut = (x, z, h) => { const { d, y } = at(x, z); return d < HALF + EDGE ? lerp(h, y, 1 - ss(HALF, HALF + EDGE, d)) : h; };
+  }
+  const H = Cl ? (x, z) => Cl.cut(x, z, Hn(x, z)) : Hn;
+
   // ---- bridge across the river
   const zb = 4;
   const k = (rx(zb + 0.5) - rx(zb - 0.5));                                      // dx/dz of the river
@@ -404,6 +459,7 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     pts.forEach(q => route.push([q.x, q.z]));
   }
   if (!path) segs.length = 0;            // no dirt path drawn (route below follows the bank instead)
+  if (Cl) for (const c of Cl.segs) segs.push([c[0], c[1], c[3], c[4]]);      // the climbing path is drawn as a dirt path too
   const CELL = 4, grid = new Map();
   const key = (i, j) => i * 10007 + j;
   segs.forEach((sg, n) => {
@@ -557,6 +613,8 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   return {
     group, heightAt: H, surfaceAt, route: path ? route : bankRoute(1), bankRoute, waterLevelAt, kindAt, slopeAt, pathDist,
     riverX: rx, riverHalfWidth: rw, cliffLine, plateauRiverX: px,
+    plateauRiverHalfWidth: pw, headZ, naturalHeightAt: Hn,
+    climb: Cl ? { at: Cl.at, half: Cl.half, top: Cl.top, bottom: Cl.bottom, y0: Cl.y0, y1: Cl.y1, side: Cl.side, line: Cl.segs.map(c => [c[0], c[1], c[2]]) } : null,
     bridge: bridge ? { x: bc.x, z: bc.y, length: bLen, ends: [[E0.x, E0.y], [E1.x, E1.y]] } : null,
     waterfall: { x: lipX, z: zLip, top: fallTop },
     bounds: { x0: X0, x1: X1, z0: Z0, z1: Z1 },

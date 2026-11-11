@@ -63,7 +63,7 @@
   "./water-droplets.js": "./water-droplets.js?v=crown5",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=berrysurface1",
-  "./stylized-terrain.js": "./stylized-terrain.js?v=foamphysics1",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=climb1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
@@ -78,9 +78,10 @@
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=wake3",
-  "./valley-level.js": "./valley-level.js?v=wake3shadow2w",
+  "./valley-level.js": "./valley-level.js?v=mill1",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall9puff1tune1w",
   "./player.js": "./player.js?v=shadow1",
+  "./stylized-props.js": "./stylized-props.js?v=mill1",
   "./character-shadow.js": "./character-shadow.js?v=shadow2"
 } }
 </script>
@@ -264,6 +265,8 @@ splashTest.onclick = () => {
   level.ripple(splashTarget.x, splashTarget.z, 2.4, 0.36);
 };
 if (Q.get('view') === 'water') visitWater();
+// ?view=climb (the foot of the cliff path) or ?view=mill (the meadow by the windmill): start there
+if (level.views && level.views[Q.get('view')]) { const v = level.views[Q.get('view')]; player.teleport(v.x, v.z, v.yaw); }
 
 // ---- grass look: painterly dabs or smooth blades, to compare on the device
 const styleBtn = document.getElementById('style');

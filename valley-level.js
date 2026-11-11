@@ -2,9 +2,11 @@
 // The waterfall valley as a walkable map: a river runs down a cliff-walled valley from a waterfall at its head.
 // The land itself (cliffs, sand banks, waterfall, upper river, bridge) comes from stylized-terrain.js; this file
 // dresses it and plugs in the game's systems: the clear water, the fluffy grass, the forest batches.
+// A path cut into the east cliff's shoulder climbs from near the bridge to a small meadow on the plateau beside the falls,
+// where a windmill stands looking down the valley.
 //
 //   const level = await buildValleyLevel({ far, deer, onStep });      // same result object as the other maps
-//   level.confine(p)   keeps a walker on the valley floor (the cliffs are walls)
+//   level.confine(p)   keeps a walker where she can walk: the valley floor, the cliff path, the meadow (the cliffs are walls)
 
 import * as THREE from 'three';
 import * as N from './stylized-nature.js';
@@ -15,12 +17,13 @@ import * as W from './stylized-water.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
+import { loadProp } from './stylized-props.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 150000, sun = [-0.4, 0.9, 0.5], onStep = async () => {} } = {}) {
+export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null, grassCount = 150000, sun = [-0.4, 0.9, 0.5], windmill = './assets/models/windmill.glb', onStep = async () => {} } = {}) {
   const group = new THREE.Group();
   group.name = 'valleyLevel';
   const rng = mulberry32(seed * 977 + 3);
@@ -28,7 +31,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
 
   // ------------------------------------------------------------------ the land
   await onStep('ปั้นหุบเขาและหน้าผา');
-  const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true });
+  const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true, climb: { side: 1 } });      // the cliff path is on the +x side
   group.add(V.group);
   const terrain = V.group.children.find(o => o.name !== 'water' && o.isMesh);
   // the valley's own water (flat-colour river, upper river, waterfall, foam clumps) is replaced by the clear water below
@@ -49,6 +52,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const rx = V.riverX, rw = V.riverHalfWidth, fall = V.waterfall, WL = V.levels.water;
   const HV = V.heightAt;
   const lower = (x, z) => V.waterLevelAt(x, z) === WL;                   // not up on the plateau behind the falls
+  const MILL_YAW = -1.54;                                                  // turns the windmill so its sails face down the valley, toward the falls
   const H = V.surfaceAt;                                                  // ground, or the bridge deck
   const waterDepthAt = (x, z) => (!lower(x, z) || H(x, z) > HV(x, z) + 0.01) ? 0 : Math.max(0, WL - HV(x, z));
   await onStep('วัดความสูงพื้น');
@@ -56,14 +60,54 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const Hf = field.heightAt;                                             // cheap copy of the height, for painting
   const slopeF = (x, z) => { const e = 0.6, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e); return 1 - 1 / Math.sqrt(1 + hx * hx + hz * hz); };
 
-  // where a walker may be: the valley floor between the two cliff feet, below the head wall, short of the map's end
+  // where a walker may be: the valley floor between the two cliff feet, below the head wall, short of the map's end;
+  // the path cut into the cliff; and the meadow on the plateau where the path comes out, round the windmill
   const Z_HEAD = fall.z + 2.5, Z_END = B.z1 - 7;
+  const CL = V.climb, PW = V.plateauRiverHalfWidth, PLW = V.levels.plateauWater;
+  const MILL = [13, -55];                                                  // the windmill: back from the lip, east of the upper river
+  const MEADOW_R = 13;                                                     // the meadow: this far either side of the line from the path's top to the mill
+  const meadowDist = (x, z) => {                                           // metres from the meadow's middle line
+    const [ax, az] = CL.top, dx = MILL[0] - ax, dz = MILL[1] - az;
+    const t = Math.max(0, Math.min(1.25, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(x - ax - dx * t, z - az - dz * t);
+  };
+  const onMeadow = (x, z, pad = 0) => meadowDist(x, z) < MEADOW_R - pad && HV(x, z) > PLW + 0.6 && V.slopeAt(x, z) < 0.3 && Math.abs(x - V.plateauRiverX(z)) > PW + 1.8 + pad;
+  const onPath = (x, z) => CL.at(x, z).d < CL.half - 0.15;
+  // the floor stops short of the cliff foot under a raised stretch of the path, so stepping off the shelf never drops her down to it
+  const underPath = (x, z) => { const c = CL.at(x, z); return c.d < CL.half + 1.6 && c.y - HV(x, z) > 0.5; };
+  const floorOK = (x, z) => z > Z_HEAD && z < Z_END && Math.abs(x - rx(z)) < V.cliffLine(x, z) - 1.0;
+  const walkable = (x, z) => onPath(x, z) || ((floorOK(x, z) || onMeadow(x, z)) && !underPath(x, z));
   const confine = p => {
-    p.z = Math.min(Z_END, Math.max(Z_HEAD, p.z));
-    for (let i = 0; i < 2; i++) {
-      const cx = rx(p.z), lim = V.cliffLine(p.x, p.z) - 1.0, dx = p.x - cx;
-      if (Math.abs(dx) > lim) p.x = cx + Math.sign(dx) * lim;
+    if (walkable(p.x, p.z)) return;
+    // the nearest place she may stand: back onto the floor, onto the path's line, or back toward the middle of the meadow
+    const cands = [];
+    const f = { x: p.x, z: Math.min(Z_END - 0.02, Math.max(Z_HEAD + 0.02, p.z)) };
+    for (let i = 0; i < 3; i++) { const cx = rx(f.z), lim = V.cliffLine(f.x, f.z) - 1.05, dx = f.x - cx; if (Math.abs(dx) > lim) f.x = cx + Math.sign(dx) * lim; }
+    cands.push(f);
+    for (const o of [p, f]) {                                              // from where she is, or from the cliff foot under the path:
+      const c = CL.at(o.x, o.z);                                           // step back toward the path's line until on it
+      if (c.d >= 4) continue;
+      for (let k = 1; k <= 8; k++) {
+        const e = 0.05 * k, q = { x: o.x, z: o.z };
+        const gx = CL.at(o.x + e, o.z).d - CL.at(o.x - e, o.z).d, gz = CL.at(o.x, o.z + e).d - CL.at(o.x, o.z - e).d, gl = Math.hypot(gx, gz) || 1;
+        const back = c.d - (CL.half - 0.2);
+        q.x -= gx / gl * back; q.z -= gz / gl * back;
+        if (onPath(q.x, q.z)) { cands.push(q); break; }
+      }
     }
+    if (meadowDist(p.x, p.z) < MEADOW_R + 4) {
+      const [mx, mz] = MILL, [tx, tz] = CL.top;
+      for (const [ox, oz] of [[mx, mz], [tx, tz], [(mx + tx) / 2, (mz + tz) / 2]]) {
+        let lo = 0, hi = 1;                                                // binary search along the line back toward the meadow
+        if (!onMeadow(ox, oz)) continue;
+        for (let k = 0; k < 10; k++) { const m = (lo + hi) / 2; if (onMeadow(p.x + (ox - p.x) * m, p.z + (oz - p.z) * m)) hi = m; else lo = m; }
+        cands.push({ x: p.x + (ox - p.x) * hi, z: p.z + (oz - p.z) * hi });
+      }
+    }
+    let best = null, bd = Infinity;
+    for (const q of cands) { if (!walkable(q.x, q.z)) continue; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < bd) { bd = d; best = q; } }
+    if (!best) best = f;
+    p.x = best.x; p.z = best.z;
   };
   const onFloor = (x, z, pad = 0) => z > Z_HEAD + pad && z < B.z1 - 2 && Math.abs(x - rx(z)) < V.cliffLine(x, z) - 1.0 - pad;
   const side = V.bridge ? Math.sign(V.bridge.ends[1][0] - V.bridge.x) || 1 : 1;
@@ -112,12 +156,15 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   };
   placed.push([spawn.x, spawn.z, 5]);
   if (V.bridge) for (const e of V.bridge.ends) placed.push([e[0], e[1], 4.5]);
+  for (let i = 0; i < CL.line.length; i += 3) placed.push([CL.line[i][0], CL.line[i][1], CL.half + 0.6]);     // the cliff path stays clear
+  placed.push([MILL[0], MILL[1], 9]);                                      // room round the windmill
   // dense forest on the heights (seen from below, so light on leaf cards), bushes only at tree feet
   for (let i = 0; i < 2600; i++) {
     const x = R(B.x0 + 2, B.x1 - 2), z = R(B.z0 + 2, B.z1 - 2);
     const kind = V.kindAt(x, z);
     if (kind === 'plateau') {
       if (Math.abs(x - V.plateauRiverX(z)) < 5 && !lower(x, z)) continue;         // keep the upper river open
+      if (meadowDist(x, z) < MEADOW_R + 1 && rng() > 0.05) continue;                // the meadow: open grass, a lone tree here and there
       const pick = rng(), type = pick < 0.4 ? 'pine' : pick < 0.75 ? 'oak' : 'broadleaf', sc = R(1.0, 1.55);
       if (clear(x, z, CROWN[type] * sc * 0.36)) tree(type, x, z, sc, type === 'pine' ? 0.22 : 0.28, rng() < 0.12);
     } else if (kind === 'floor' && onFloor(x, z, 1.5)) {
@@ -126,6 +173,24 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       const pick = rng(), type = pick < 0.4 ? 'broadleaf' : pick < 0.65 ? 'oak' : pick < 0.85 ? 'birch' : 'sapling', sc = R(0.85, 1.2);
       if (clear(x, z, CROWN[type] * sc * 0.55)) tree(type, x, z, sc, 0.85, rng() < 0.6);
     }
+  }
+
+  // ------------------------------------------------------------------ the windmill on the meadow
+  let mill = null;
+  if (windmill) {
+    await onStep('สร้างกังหันลม');
+    try {
+      mill = await loadProp(windmill, { height: 11.5, yaw: MILL_YAW, spin: { part: /^polySurface142_/, speed: 0.12 } });      // the sails turn slowly
+      const my = HV(MILL[0], MILL[1]) - 0.2;
+      mill.object.position.set(MILL[0], my, MILL[1]);
+      mill.object.name = 'windmill';
+      group.add(mill.object);
+      // its base: solid to walk into, bare ground under it, a short shadow all round, and tall shadows for the tower and its cap
+      for (const [x, z] of mill.footprint(1)) { colliders.push([x, z, 0.62]); bare.push([x, z, 0.85]); castBall(x, z, 1.6, 0.85, 0.7); }
+      castStick(MILL[0], MILL[1], 7.5, 1.6);
+      castBall(MILL[0], MILL[1], 8.2, 2.4, 0.85);
+      for (const [dx, dz] of [[5, 4], [-4.5, 5.5], [6, -2]]) shrub(MILL[0] + dx, MILL[1] + dz, R(0.8, 1.05));
+    } catch (e) { console.warn('windmill', e); mill = null; }
   }
 
   // ------------------------------------------------------------------ rocks
@@ -164,7 +229,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const paint = (x, z) => {
     const h = Hf(x, z), low = lower(x, z);
     const sand = low ? 1 - ss(0.35, 0.8, h - WL) : 1 - ss(-0.2, 0.25, h - V.levels.plateauWater);
-    const earth = ss(0.14, 0.24, slopeF(x, z));                           // cliffs and steep ledges: rock, no grass
+    const earth = Math.max(ss(0.14, 0.24, slopeF(x, z)), 1 - ss(0.55, 1.3, CL.at(x, z).d));      // cliffs and steep ledges: rock; the cliff path: trodden earth
     return [earth, sand, 0];
   };
   const colors = { ...G.GROUND_COLORS, deep: '#7a9b3c', mid: '#86a640', sunny: '#a5c04b', shade: '#6d8d38', lawn: '#93b145' };
@@ -363,12 +428,15 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
-    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, confine,
+    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, confine, walkable,
+    // places worth a look: the foot of the cliff path, and the meadow by the windmill (x, z, the way to face)
+    views: { climb: { x: CL.bottom[0] - 2.5, z: CL.bottom[1] + 2, yaw: Math.PI }, mill: { x: MILL[0] + 6, z: MILL[1] + 9, yaw: Math.atan2(-6, -9) } },
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
     ripple, sim, optics, waterLevelAt: (x, z) => WL,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
+      if (mill) mill.update(dt);
       sim.step(renderer, dt);
       droplets.update(renderer);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
