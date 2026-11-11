@@ -323,7 +323,9 @@ export const FALL_TUNE = {
   fallWaveRate: { value: 1 },       // how often a heave comes
 };
 
-export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, tune = FALL_TUNE, white = '#ffffff', shade = '#d3edf8' } = {}) {
+// yaw: for a fall that does not face +z, the turn about the vertical that points +z (out over the pool) the way it does face
+export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, tune = FALL_TUNE, white = '#ffffff', shade = '#d3edf8', yaw = 0 } = {}) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
   const n = count || Math.max(20, Math.round(width * 7));                  // the most there can be; puffAmount picks how many are out
   const quad = new THREE.PlaneGeometry(2, 2);
   const geo = new THREE.InstancedBufferGeometry();
@@ -335,7 +337,8 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
   for (let i = 0; i < n; i++) {
     const u = (i + 0.5 + (Math.random() - 0.5) * 0.9) / n - 0.5;                                // across the sheet
     const ends = 1 - 0.4 * (2 * u) * (2 * u);                                                     // smaller toward the ends
-    base.set([x + u * width, y, z + (Math.random() - 0.5) * 0.35, (0.7 + 0.6 * Math.random()) * ends], i * 4);
+    const lu = u * width, lz = (Math.random() - 0.5) * 0.35;
+    base.set([x + lu * cy + lz * sy, y, z - lu * sy + lz * cy, (0.7 + 0.6 * Math.random()) * ends], i * 4);
     // phase, life (a share of puffLife), shape, how high it rises
     seed.set([Math.random(), 0.73 + 0.54 * Math.random(), Math.floor(Math.random() * 100), 0.25 + 0.45 * Math.random()], i * 4);
     // where it drifts in its life: out over the pool, and apart sideways (the ones at the ends fan out further); its place in the order
@@ -345,14 +348,15 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
   geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
   geo.setAttribute('aDrift', new THREE.InstancedBufferAttribute(drift, 4));
   geo.instanceCount = n;
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z + 1.2), width + 6);
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x + 1.2 * sy, y + 1, z + 1.2 * cy), width + 6);
   const rgb = h => new THREE.Color(h);
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) },
+    uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) }, uTurn: { value: new THREE.Vector2(cy, sy) },
       ...Object.fromEntries(Object.entries(tune).filter(([k]) => k.startsWith('puff'))) },
     vertexShader: /* glsl */`
       attribute vec4 aBase, aSeed, aDrift;
       uniform float uTime, puffAmount, puffSize, puffGrow, puffSpread, puffRise, puffLife, puffFade;
+      uniform vec2 uTurn;                // cos, sin of the fall's yaw: which way "out over the pool" is
       varying vec2 vP;
       varying vec3 vK;
       void main() {
@@ -363,7 +367,8 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
         float go = 1.0 - pow(1.0 - k, 2.2);                                // quick off the foot of the falls, slowing out on the pool
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         // it sits on the water (the card's lower edge is under the surface), drifts out and apart, and lifts a little as it goes
-        vec3 c = vec3(aBase.x + aDrift.y * go * puffSpread, aBase.y + s * 0.42 + aSeed.w * go * puffRise, aBase.z + aDrift.x * go * puffSpread);
+        vec2 dl = vec2(aDrift.y, aDrift.x) * go * puffSpread;                 // (across, out) in the fall's own frame
+        vec3 c = vec3(aBase.x + dl.x * uTurn.x + dl.y * uTurn.y, aBase.y + s * 0.42 + aSeed.w * go * puffRise, aBase.z - dl.x * uTurn.y + dl.y * uTurn.x);
         vec3 p = c + (right * position.x + vec3(0.0, 1.0, 0.0) * position.y) * s * 1.3;      // the card is bigger than the cloud drawn on it, so no lobe is ever cut off by its edge
         vP = position.xy * 1.3; vK = vec3(k, smoothstep(puffFade, 1.0, k), aSeed.z);
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);

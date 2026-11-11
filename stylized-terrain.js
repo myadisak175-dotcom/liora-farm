@@ -178,8 +178,8 @@ function terrainMaterial(far, half, zc) {
         if (uDeepOn > 0.5 && vWP.y < -4.0) {
           float y = vWP.y + (noise2(vWP.xz * 0.12 + vWP.y * 0.05) - 0.5) * 6.0;
           col = mix(col, uDeepMist, smoothstep(-6.0, -42.0, y) * 0.55);
-          col = mix(col, uDeepBlue, smoothstep(-34.0, -92.0, y));
-          col = mix(col, uDeepVoid, smoothstep(-85.0, -190.0, y));
+          col = mix(col, uDeepBlue, smoothstep(-26.0, -80.0, y));
+          col = mix(col, uDeepVoid, smoothstep(-72.0, -170.0, y));
         }
         vec2 q = abs(vec2(vWP.x, vWP.z - uZc)) / uHalf;
         col = mix(col, uFar, smoothstep(0.8, 0.99, max(q.x, q.y)));

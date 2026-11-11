@@ -29,8 +29,9 @@ const D = Math.PI / 180;
 export const ABYSS = {
   x: -5, z: 106, r: 40,                 // the centre and the brink's radius
   rimH: 15,                             // the plateau round it is levelled to this
-  // the river's falls over the brink, west to east: angle, width of the water
-  lips: [{ a: -112, w: 4.2 }, { a: -100.5, w: 5.0 }, { a: -89, w: 5.4 }, { a: -77.5, w: 4.2 }],
+  // the river's falls over the brink, west to east: angle, width of the water, and the ledges (by number) it lands on in a
+  // pool and spills on from before the last long drop (none: one sheer drop into the clouds)
+  lips: [{ a: -112, w: 4.2, pools: [0] }, { a: -100.5, w: 5.0, pools: [] }, { a: -89, w: 5.4, pools: [0, 1] }, { a: -77.5, w: 4.2, pools: [1] }],
   // rock islands in the river where it spreads out: x, z, radius, height above the bed, what grows on top
   // (the five along the brink stand between the falls, half cut away by the pit)
   islands: [
@@ -40,12 +41,15 @@ export const ABYSS = {
     { x: -15, z: 58.5, r: 3.4, h: 2.2, grow: 'birch' }, { x: -1, z: 56.5, r: 2.4, h: 1.4, grow: 'bush' },
     { x: -9, z: 62, r: 3.6, h: 0.25 }, { x: 5.5, z: 61.5, r: 2.8, h: 0.2 }, { x: -19.5, z: 64, r: 2.0, h: 0.35 },   // low sandbars
   ],
-  // brooks that run in across the plateau from the map's edge and fall in from the rim: their lines, half width
+  // brooks that run in across the plateau from the map's edge and fall in from the rim: their lines, half width, pools as
+  // above; split: the water spills from its pool either side of a rock, as two falls
   brooks: [
-    { pts: [[67, 87], [57, 90.5], [47, 94.5], [37, 96.6], [29, 97.6]], half: 1.8 },           // from the east
-    { pts: [[-67, 109.5], [-58, 104.8], [-50, 102], [-42, 100.7], [-35, 100.6]], half: 1.9 },  // from the west
-    { pts: [[26, 173], [22.5, 161], [18, 150], [13.5, 141.5], [10.5, 136]], half: 1.6 },       // from the south
+    { pts: [[67, 87], [57, 90.5], [47, 94.5], [37, 96.6], [29, 97.6]], half: 1.8, pools: [0], split: true },     // from the east
+    { pts: [[-67, 109.5], [-58, 104.8], [-50, 102], [-42, 100.7], [-35, 100.6]], half: 1.9, pools: [0, 1] },     // from the west
+    { pts: [[26, 173], [22.5, 161], [18, 150], [13.5, 141.5], [10.5, 136]], half: 1.6, pools: [] },              // from the south
   ],
+  // ribs of rock that run down the walls (angles): they break the ledges into lengths, so the pit does not read as rings
+  ribs: [-40, -24, 12, 36, 50, 76, 114, 142, 160, 206, 224],
   spur: { a: 95, out: 3, in: 6, half: 2.7 },          // the lookout: a tongue of rock out over the pit, facing the river's falls
   walk: { from: -62, to: 238, off: 4.6 },             // the trodden way round the rim: from the top of the climb, round by the south
   // a rope bridge across the pit's north end, just past the brink the river falls over: from the clifftop by the top of the
@@ -99,27 +103,31 @@ const crossing = (pts, rad) => {
 };
 
 // ---- the falls and the brink. Where water goes over, the brink is a smooth arc; elsewhere it wanders a couple of metres.
-const lipFalls = ABYSS.lips.map(l => ({ a: l.a * D, width: l.w, kind: 'lip', top: -0.02 }));
-const brookFalls = brooks.map(b => {
+const lipFalls = ABYSS.lips.map(l => ({ a: l.a * D, width: l.w, kind: 'lip', top: -0.02, pools: l.pools || [] }));
+const brookFalls = brooks.map((b, n) => {
   const i = crossing(b.pts, () => R0);
-  const [x, z] = b.pts[i];
-  return { a: Math.atan2(z - Z, x - X), width: b.half * 2 + 0.6, kind: 'brook', top: b.level - 0.02 };
+  const [x, z] = b.pts[i], B = ABYSS.brooks[n];
+  return { a: Math.atan2(z - Z, x - X), width: b.half * 2 + 0.6, kind: 'brook', top: b.level - 0.02, pools: B.pools || [], split: !!B.split };
 });
 const FALLS = [...lipFalls, ...brookFalls];
-const chuteAt = a => {                              // 0..1: how much the wall below is a sheer chute (under a fall)
-  let c = 0;
+const chuteOf = a => {                              // the fall whose chute this is, and how much (0..1) the wall is that chute here
+  let c = 0, which = null;
   for (const f of FALLS) {
-    const half = (f.width / 2 + 1.2) / R0, d = Math.abs(angDiff(a, f.a));
-    c = Math.max(c, ss(half + 3.5 * D, half, d));
+    const half = (f.width / 2 + 1.2) / R0, d = Math.abs(angDiff(a, f.a)), k = ss(half + 3.5 * D, half, d);
+    if (k > c) { c = k; which = f; }
   }
-  return c;
+  return { c, f: which };
 };
+const chuteAt = a => chuteOf(a).c;
 const smoothAt = a => {                              // 0..1: how much the brink keeps to a true arc here (at the falls)
   let c = 0;
   for (const f of FALLS) c = Math.max(c, ss((f.width / 2 + 4) / R0 + 6 * D, (f.width / 2) / R0, Math.abs(angDiff(a, f.a))));
   return c;
 };
-export const rimR = a => R0 + (ring(a, 1.7, 0, 91) - 0.5) * 5.5 * (1 - smoothAt(a));
+// the brink wanders a couple of metres, and round the south half it swings in and out in broad bays and points as well
+// (not at the north end, where the river comes in and the rope bridge is slung)
+const northEnd = a => { const d = Math.abs(angDiff(a, -90 * D)); return ss(62 * D, 42 * D, d); };
+export const rimR = a => { const k = 1 - smoothAt(a); return R0 + ((ring(a, 1.7, 0, 91) - 0.5) * 5.5 + (ring(a, 0.75, 4, 97) - 0.5) * 20 * (1 - northEnd(a))) * k; };
 for (const f of FALLS) { [f.x, f.z] = polar(f.a, rimR(f.a)); }
 
 // ---- the islands (some given by angle and distance out from the brink)
@@ -151,26 +159,71 @@ const spurDist = (x, z) => {
 const LEDGES = ABYSS.ledges;
 // each ledge wanders in and out (broad swings and smaller bites), so in places one runs wide and in others it is nearly
 // gone and two drops run together into one tall wall; its height wanders too
-const ledgeStart = (k, a) => LEDGES[k].u + (k ? (ring(a, 2.3, k, 133) - 0.5) * 6.5 + (ring(a, 7.5, k + 3, 137) - 0.5) * 2.2 : 0);
+// In places a ledge gives out altogether (its wall runs straight on into the one below, one tall face), and where it is there
+// it is as wide as it likes.
+const ledgeY = (k, a) => LEDGES[k].y + (ring(a, 3.1, k + 7, 151) - 0.5) * 5 + (ring(a, 9, k + 9, 157) - 0.5) * 1.6;
+const ledgeStart = (k, a) => {
+  if (!k) return 0;
+  const own = LEDGES[k].u + (ring(a, 2.3, k, 133) - 0.5) * 6.5 + (ring(a, 7.5, k + 3, 137) - 0.5) * 2.2;
+  const prev = ledgeStart(k - 1, a) + (k > 1 ? 1.2 : 0.9) + 0.25;
+  return lerp(prev, Math.max(prev, own), ss(0.36, 0.5, ring(a, 3.6, k + 20, 141)));         // gone: straight on down from the one above
+};
+const funnelAt = a => 18.5 + (ring(a, 2.0, 11, 171) - 0.5) * 3;
 const pitProfile = (u, a, top) => {
   let p = top;
   for (let k = 0; k < LEDGES.length; k++) {
     const s0 = ledgeStart(k, a), s1 = s0 + (k ? 1.2 : 0.9);
-    const y = LEDGES[k].y + (ring(a, 3.1, k + 7, 151) - 0.5) * 5 + (ring(a, 9, k + 9, 157) - 0.5) * 1.6 - 0.12 * Math.max(0, u - s1);      // ledges lean in a little
+    const y = ledgeY(k, a) - 0.12 * Math.max(0, u - s1);      // ledges lean in a little
     p = lerp(p, Math.min(p, y), ss(s0, s1, u));
   }
-  const fu = 18.5 + (ring(a, 2.0, 11, 171) - 0.5) * 3;
+  const fu = funnelAt(a);
   p = lerp(p, -80, ss(fu, fu + 7, u));                 // the funnel ...
   p = lerp(p, -235, ss(fu + 7, fu + 13, u));          // ... and the eye of the abyss
-  // under a fall: a sheer chute instead of ledges
-  const c = chuteAt(a);
+  // under a fall: its own chute, stepping down from pool to pool (each a basin a little below the ledge it lies in), then sheer
+  const { c, f } = chuteOf(a);
   if (c > 0) {
-    let q = lerp(top, -68, ss(0, 0.8, u));
+    let q = top;
+    for (const st of f.steps) q = lerp(q, st.y - 0.9, ss(st.u0, st.u0 + 0.8, u));
+    q = lerp(q, -68, ss(f.sheerU, f.sheerU + 0.8, u));
     q = Math.min(q, lerp(-68, -235, ss(fu + 4, fu + 13, u)));
     p = lerp(p, q, c);
+    // each pool lies in a shelf of rock a little above its water, a few metres either side of it and on past its lip, so it
+    // sits in the wall like a basin and never sticks out like a tray (the water itself runs in a slot down the middle)
+    if (f.steps.length) {
+      const off = Math.abs(angDiff(a, f.a)) * (R0 - u), core = f.width / 2 + 0.45;
+      const side = ss(core + 3.6, core + 2.2, off) * (1 - ss(core + 0.3, core - 0.3, off));
+      if (side > 0) for (const st of f.steps) {
+        const along = ss(st.u0 + 0.1, st.u0 + 0.7, u) * ss(st.u1 + 1.4, st.u1 + 0.5, u);
+        if (along > 0) p = Math.max(p, lerp(p, st.y + 0.35, side * along));
+      }
+    }
   }
   return p;
 };
+
+// ---- each fall's way down: a pool on each ledge it lands on (water a little below the ledge round it, so it never spills
+// over the sides), the sheets between them, and the last long drop into the clouds. u: metres in from the brink.
+const POOL = 4.4;
+for (const f of FALLS) {
+  f.steps = []; f.sheets = []; f.landings = [];
+  let u = 0, level = f.top;
+  for (const k of f.pools) {
+    const y = ledgeY(k, f.a) - 0.7;
+    f.sheets.push({ u, top: level, bottom: y - 0.3, forward: 1.6, width: f.width, off: 0 });
+    f.landings.push({ u: u + 2.0, y, width: f.width });
+    f.steps.push({ u0: u, u1: u + 0.8 + POOL, y });
+    u += 0.8 + POOL; level = y;
+  }
+  f.sheerU = u;
+  if (f.split && f.steps.length) {                    // a rock in the middle of the last pool's lip: two falls, one either side
+    for (const s of [-1, 1]) f.sheets.push({ u, top: level, bottom: -52, forward: 3.6, width: f.width * 0.42, off: s * f.width * 0.33 });
+    f.rock = { u: u - 0.2, y: level };
+  } else f.sheets.push({ u, top: level, bottom: -52, forward: 4.2, width: f.width, off: 0 });
+}
+
+// ---- ribs of rock down the walls (not under the falls, the lookout or at the river's end)
+const RIBS = ABYSS.ribs.map(deg => deg * D).filter(a => chuteAt(a) < 0.01 && chuteAt(a + 5 * D) < 0.01 && chuteAt(a - 5 * D) < 0.01
+  && Math.abs(angDiff(a, ABYSS.spur.a * D)) > 14 * D && northEnd(a) < 0.5).map((a, i) => ({ a, w: 1.5 + ring(a, 5, 31, 181) * 1.6, slope: 2.2 + ring(a, 4, 33, 183) * 1.4, len: 12 + i % 3 * 3 }));
 
 // ---- the rim walk: arcs round the brink, broken where a brook crosses (a bridge goes there)
 const walkR = a => rimR(a) + ABYSS.walk.off;
@@ -178,9 +231,11 @@ const bridges = [];
 for (const b of brooks) {
   const i = crossing(b.pts, ([x, z]) => walkR(Math.atan2(z - Z, x - X)));
   const [x, z] = b.pts[i], p = b.pts[Math.max(0, i - 2)], q = b.pts[Math.min(b.pts.length - 1, i + 2)];
-  const flow = Math.atan2(q[1] - p[1], q[0] - p[0]);
-  // the deck runs across the flow; its yaw is the turn that lays a bridge built along x across the brook
-  bridges.push({ x, z, yaw: -(flow + Math.PI / 2), len: b.half * 2 + 5.2, a: Math.atan2(z - Z, x - X), brook: b });
+  const flow = Math.atan2(q[1] - p[1], q[0] - p[0]), a = Math.atan2(z - Z, x - X), along = a + Math.PI / 2;      // the walk's way here
+  // the deck runs along the walk (so the walk leads straight onto it), as long as the brook is wide that way; its yaw is the
+  // turn that lays a bridge built along x that way
+  const cross = Math.max(0.5, Math.abs(Math.sin(along - flow)));
+  bridges.push({ x, z, yaw: -along, len: b.half * 2 / cross + 5.2, a, brook: b });
 }
 const trails = [];
 {
@@ -246,8 +301,16 @@ function reshape(x, z, h) {
     h = Math.max(h, lerp(h, top, ss(i.r, i.r - steep, dd)));
   }
   // the pit
-  const u = rimR(a) - d;
+  const R = rimR(a), u = R - d;
   if (u > -0.5) h = Math.min(h, pitProfile(Math.max(0, u), a, h));
+  // ribs of rock running down the walls from just below the brink
+  if (u > 0.3) for (const r of RIBS) {
+    const off = Math.abs(angDiff(a, r.a)) * d;
+    if (off > r.w + 1.5 || u > r.len + 2) continue;
+    const top = RIM - 2.5 - (u - 0.3) * r.slope + (fbm3(x * 0.4, 9.9, z * 0.4, 83, 2) - 0.5) * 2.4;
+    const w = r.w * (1 - 0.5 * u / r.len) + 0.3;
+    h = Math.max(h, lerp(h, top, ss(w + 1.2, w - 0.4, off) * ss(r.len + 2, r.len - 2, u)));
+  }
   // the lookout: a tongue of rock out over the pit, level with the rim, and under its tip a rib of rock that runs on down
   // into the pit, narrowing, so it reads as a spur of the wall and not a pillar standing on nothing
   const sd = spurDist(x, z);
@@ -282,7 +345,7 @@ const ledge = k => { const L = LEDGES[k]; return { y: L.y, u0: L.u, u1: k + 1 < 
 
 export const AB = {
   reshape, widen, waterAt, trails, rimR, rimDist, inPit, onRim, onSpur, islandAt, brookDist, spurDist,
-  falls: FALLS, brooks, bridges, islands, ledge, chuteAt, polar, span, spanDist,
+  falls: FALLS, brooks, bridges, islands, ledge, chuteAt, polar, span, spanDist, ribs: RIBS, ledgeStart, ledgeY,
   spur: { a: spA, base: spurA, tip: spurB, half: SP.half },
   walkR,
 };

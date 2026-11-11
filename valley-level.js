@@ -28,7 +28,7 @@ import * as BD from './stylized-buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
-import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
+import { createAbyssFalls, createAbyssClouds, createAbyssCaves } from './abyss-scene.js';
 
 // ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
 // what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so
@@ -695,6 +695,26 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     const a = arng() * 6.28, d = isl.r + AR(0.2, 0.9);
     arock(arng() < 0.6 ? 'river' : 'boulder', isl.x + Math.cos(a) * d, isl.z + Math.sin(a) * d, AR(0.6, 1.0), 0.3, false);
   }
+  // a fall's way into the pit, as a point u metres in from where it goes over
+  const inward = (f, u) => { const dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz); return [f.x + dx / l * u, f.z + dz / l * u]; };
+  const freeRock = (type, x, y, z, scale, ry = arng() * 6.28) => {                              // a rock set by hand, not on the ground
+    const m = N.createRock({ type, seed: ++ars });
+    m.position.set(x, y, z); m.rotation.y = ry; m.scale.setScalar(scale); m.updateMatrix();
+    abyssRocks.push(m);
+  };
+  for (const f of AB.falls) if (f.rock) { const [x, z] = inward(f, f.rock.u); freeRock('crag', x, f.rock.y - 0.9, z, 1.25); }   // the rock that splits a fall
+  for (const f of AB.falls) for (const st of f.steps) for (const s of [-1, 1]) {                // stones at the corners of each pool's lip
+    const [cx, cz] = inward(f, st.u1 - 0.3), dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz), side = f.width / 2 + 0.5 + AR(0, 0.4);
+    freeRock(arng() < 0.5 ? 'boulder' : 'stones', cx - dz / l * side * s, st.y - 0.25, cz + dx / l * side * s, AR(0.8, 1.15));
+  }
+  // slabs of rock jutting out over the brink, each on a crag (outside the rail: no one stands on them)
+  for (const deg of [-22, 24, 54, 128, 172, 214]) {
+    const a = deg * Math.PI / 180;
+    if (AB.chuteAt(a) > 0.01 || AB.spurDist(...AB.polar(a, AB.rimR(a))) < 9 || AB.brookDist(...AB.polar(a, AB.rimR(a))).d < 4) continue;
+    const [x, z] = AB.polar(a, AB.rimR(a) - 0.6), [x2, z2] = AB.polar(a, AB.rimR(a) - 0.1);
+    freeRock('slab', x, RIM - 0.85, z, AR(2.2, 3.0), -a + AR(-0.4, 0.4));
+    freeRock('crag', x2, RIM - 4.2, z2, AR(1.6, 2.1));
+  }
   for (const f of AB.falls) if (f.kind === 'brook') for (const s of [-1, 1]) {                  // boulders flanking where each brook goes over
     const t = f.a + s * (f.width / 2 + 1.6) / ABYSS.r, x = ABYSS.x + Math.cos(t) * (AB.rimR(t) + 1.6), z = ABYSS.z + Math.sin(t) * (AB.rimR(t) + 1.6);
     arock('boulder', x, z, AR(1.0, 1.4), 0.3);
@@ -949,6 +969,15 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6, optics, foamTexture, cells: animeCells, surfaceChurn: W.WATER_CHURN });
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
+    // the pools the falls in the abyss land in on their way down
+    for (const f of AB.falls) for (const st of f.steps) {
+      const rows = [], dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz);
+      for (let u = st.u0 + 0.75; u <= st.u1 + 0.01; u += 0.5) rows.push([f.x + dx / l * u, f.z + dz / l * u, st.y, f.width / 2 + 0.2]);
+      const pg = flowRibbon(rows, 10, 1.0), m = new THREE.Mesh(pg, upMat);
+      m.renderOrder = 1;
+      m.userData = { kind: 'water', dispose() { pg.dispose(); } };
+      upperWater.add(m);
+    }
     // the brooks on the plateau round the abyss: the same clear water as the upper river, running to the brink
     for (const b of AB.brooks) {
       const rows = [];
@@ -967,6 +996,31 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const abyssFalls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], optics: null, foamTexture });
   abyssFalls.group.userData = { kind: 'waterfall', dispose: abyssFalls.dispose };
   group.add(abyssFalls.group);
+  // dark cave mouths at the foot of the walls between the ledges, as though the ledges led somewhere
+  const caveSpots = [];
+  for (const [deg, pick] of [[-46, 0], [6, 1], [30, 0], [68, 1], [108, 0], [150, 1], [194, 0], [232, 1]]) {
+    const a = deg * Math.PI / 180, R = AB.rimR(a);
+    if (AB.chuteAt(a) > 0.01 || Math.abs(AB.spurDist(...AB.polar(a, R)) ) < 6) continue;
+    const at = u => AB.polar(a, R - u), hAt = u => HV(...at(u));
+    const walls = [];                                       // each drop: where it starts and where its foot is
+    for (let u = 0.6; u < 17; u += 0.2) {
+      if (hAt(u) - hAt(u + 1.4) > 7) {
+        const top = hAt(u - 0.2), low = hAt(u + 1.4) + 0.8; let foot = u;
+        while (foot < u + 3 && hAt(foot) > low) foot += 0.1;
+        walls.push({ u, top, foot, y: hAt(foot + 0.4) });
+        u = foot + 1;
+      }
+    }
+    const w = walls[Math.min(walls.length - 1, pick)];       // at the foot of the first or the second drop below the brink
+    if (!w || w.top - w.y < 7) continue;
+    // stood against the face: find where the face is at the mouth's foot and at its top, and lean the card the same way
+    const hgt = Math.min(6.5, (w.top - w.y) * 0.6), faceAt = y => { let u = w.u - 0.2; while (u < w.foot + 1 && hAt(u) > y) u += 0.05; return u; };
+    const y0 = w.y + 0.3, y1 = w.y + hgt, u0 = faceAt(y0), u1 = faceAt(y1), [x, z] = at(u0 + 0.45);
+    caveSpots.push({ x, y: w.y - 0.2, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z), lean: Math.atan2(u0 - u1, y1 - y0), w: hgt * AR(1.1, 1.4), h: hgt + 0.2 });
+  }
+  const abyssCaves = createAbyssCaves({ spots: caveSpots });
+  abyssCaves.group.userData = { dispose: abyssCaves.dispose };
+  group.add(abyssCaves.group);
   const abyssClouds = createAbyssClouds({ centre: [ABYSS.x, ABYSS.z], rimR: AB.rimR, ledges: [0, 1, 2, 3].map(AB.ledge), falls: AB.falls });
   abyssClouds.group.userData = { dispose: abyssClouds.dispose };
   group.add(abyssClouds.group);
