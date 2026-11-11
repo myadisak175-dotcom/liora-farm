@@ -190,7 +190,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // round the abyss: the walk along the rim (inside the rail, short of the forest), the lookout, the brooks' bridges
   const steepAt = (x, z) => { const e = 0.5, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e); return hx * hx + hz * hz; };
   const onAbyssRim = (x, z) => AB.onSpur(x, z) || (AB.onRim(x, z) && Hf(x, z) > ABYSS.rimH - 2.5 && steepAt(x, z) < 0.36);
-  const walkable = (x, z) => onPath(x, z) || pathShoulder(x, z) || ((floorOK(x, z) || onPlateau(x, z) || onAbyssRim(x, z) || (deckAt(x, z) && !upTop(x, z))) && !underPath(x, z));
+  const walkable = (x, z) => onPath(x, z) || pathShoulder(x, z) || (!upTop(x, z) && !!deckAt(x, z)) || ((floorOK(x, z) || onPlateau(x, z) || onAbyssRim(x, z)) && !underPath(x, z));
   const confine = p => {
     if (walkable(p.x, p.z)) return;
     // the nearest place she may stand: a step back the way she came (a small ring round her), or back onto the floor or the path's line
@@ -1092,7 +1092,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
         return [k, { x, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z) }];
       })),
       start: { x: spawn.x, z: spawn.z, yaw: spawn.yaw },
-      bridge: { x: AB.span.mid[0], z: AB.span.mid[1], yaw: Math.PI },          // the middle of the rope bridge, facing the river's falls
+      bridge: { x: AB.span.mid[0], z: AB.span.mid[1], yaw: 0 },              // the middle of the rope bridge, looking out over the pit
       falls: { x: fall.x + 5, z: fall.z + 13, yaw: Math.atan2(-5, -13) },
     },
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },

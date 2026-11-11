@@ -48,7 +48,9 @@ export const ABYSS = {
   ],
   spur: { a: 95, out: 3, in: 6, half: 2.7 },          // the lookout: a tongue of rock out over the pit, facing the river's falls
   walk: { from: -62, to: 238, off: 4.6 },             // the trodden way round the rim: from the top of the climb, round by the south
-  span: { from: -32, to: 212, out: 2.6, sag: 4.5 },   // a rope bridge across the pit, from the east rim to the west, in front of the river's falls
+  // a rope bridge across the pit's north end, just past the brink the river falls over: from the clifftop by the top of the
+  // path up (east) to the far end of the rim walk (west), each end a step back from where the cliff drops away
+  span: { a: [14.9, 67.8], b: [-29.8, 68.6], sag: 3.2 },
   climb: { side: 1, z0: 26, z1: 66 },                 // the way up from the valley floor: cut into the east cliff, coming out by the rim
   // the ledges the walls step down in: how deep, and how far in from the brink each one starts
   ledges: [{ y: -9, u: 0 }, { y: -21, u: 5.2 }, { y: -34, u: 10.2 }, { y: -48, u: 14.4 }],
@@ -196,7 +198,7 @@ const trails = [];
 // ---- the rope bridge across the pit: from just outside the brink on one side to the other, straight across
 const SPN = ABYSS.span;
 const span = (() => {
-  const aA = SPN.from * D, aB = SPN.to * D, a = polar(aA, rimR(aA) + SPN.out), b = polar(aB, rimR(aB) + SPN.out);
+  const { a, b } = SPN;
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   return { a, b, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len, yaw: -Math.atan2(b[1] - a[1], b[0] - a[0]), sag: SPN.sag };
 })();
