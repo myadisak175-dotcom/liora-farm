@@ -1,8 +1,9 @@
 // water-tuner.js
-// Which sliders the water gets (WATER_TUNE in stylized-water.js), plus the mirror-quality switch.
+// Which sliders the water gets (WATER_TUNE in stylized-water.js, and BILLOW_TUNE in stylized-waterfall.js for the foam
+// puffs at the foot of the falls), plus the mirror-quality switch.
 // The panel itself lives in tuner-panel.js.
 //
-//   createWaterTuner({ tune: WATER_TUNE, optics: level.optics, button: document.getElementById('tune'), panel: document.getElementById('tuner') });
+//   createWaterTuner({ tune: { ...WATER_TUNE, ...BILLOW_TUNE }, optics: level.optics, button: document.getElementById('tune'), panel: document.getElementById('tuner') });
 import { createTunerPanel } from './tuner-panel.js';
 
 const CONTROLS = [
@@ -37,6 +38,16 @@ const CONTROLS = [
   ['foam', 'ฟองริมฝั่ง', 0, 2, 0.05],
   ['lace', 'ลายฟองลอยบนผิวน้ำ', 0, 2.5, 0.05],
   ['glint', 'ประกายระยิบ', 0, 2, 0.05],
+  ['ฟองตีนน้ำตก (ก้อนเมฆสีขาวตรงที่น้ำตกลงน้ำ)'],
+  ['puffAmount', 'จำนวนก้อน', 0.05, 1, 0.05],
+  ['puffSize', 'ขนาดก้อนตอนเกิด', 0.2, 1.6, 0.05],
+  ['puffGrow', 'ขยายตัวตอนลอยออก (0 = ไม่ขยาย)', 0, 3, 0.05],
+  ['puffSpread', 'ลอยออกไปไกล / กระจายแค่ไหน', 0, 3, 0.05],
+  ['puffRise', 'ลอยสูงขึ้นแค่ไหน', 0, 3, 0.05],
+  ['puffLife', 'อายุแต่ละก้อน (วินาที)', 1.5, 10, 0.1],
+  ['puffFade', 'เริ่มจางเมื่อไหร่ (0 = จางตั้งแต่เกิด)', 0, 0.9, 0.05],
+  ['puffSoft', 'ขอบนุ่มตอนจาง', 0, 0.8, 0.02],
+  ['puffOpacity', 'ความทึบ', 0.1, 1, 0.05],
 ];
 const KEY = 'meadow.water.tune.v2';
 

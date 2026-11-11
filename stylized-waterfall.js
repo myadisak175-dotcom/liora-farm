@@ -306,51 +306,66 @@ function mistTexture() {
 // on it: a handful of round lobes joined into one shape, flat white where the light falls and pale blue in the folds.
 // As a puff fades its outline goes soft and its lobes drift apart, so it thins out like a cloud instead of popping.
 //   const billows = createBillows({ x, z, y, width });      // the line where the water lands, and the water's level
-export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, size = 0.7, time = shared.uTime, white = '#ffffff', shade = '#d3edf8' } = {}) {
-  const n = count || Math.max(12, Math.round(width * 4.2));
+// BILLOW_TUNE: the knobs the water tuner shows (the "ฟองตีนน้ำตก" sliders); every billow reads them live.
+export const BILLOW_TUNE = {
+  puffAmount: { value: 0.6 },       // how many of the puffs are out (0..1 of the most there can be)
+  puffSize: { value: 0.7 },         // metres, roughly, when a puff has just popped up
+  puffGrow: { value: 1.2 },         // how much bigger it gets by the time it has faded (0 = stays the same)
+  puffSpread: { value: 1 },         // how far out over the pool and apart they drift
+  puffRise: { value: 1 },           // how high they lift as they go
+  puffLife: { value: 4.4 },         // seconds from popping up to gone, on average
+  puffFade: { value: 0.3 },         // how far through its life a puff starts to fade (0 = from the start)
+  puffSoft: { value: 0.32 },        // how soft the outline goes as it fades
+  puffOpacity: { value: 1 },        // how solid they are
+};
+
+export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, tune = BILLOW_TUNE, white = '#ffffff', shade = '#d3edf8' } = {}) {
+  const n = count || Math.max(20, Math.round(width * 7));                  // the most there can be; puffAmount picks how many are out
   const quad = new THREE.PlaneGeometry(2, 2);
   const geo = new THREE.InstancedBufferGeometry();
   geo.index = quad.index;
   geo.setAttribute('position', quad.attributes.position);
-  const base = new Float32Array(n * 4), seed = new Float32Array(n * 4), drift = new Float32Array(n * 2);
+  const base = new Float32Array(n * 4), seed = new Float32Array(n * 4), drift = new Float32Array(n * 4);
+  // which puffs stay out when there are fewer: a shuffled order, so the thinned-out ones are spread along the whole foot
+  const order = Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
   for (let i = 0; i < n; i++) {
     const u = (i + 0.5 + (Math.random() - 0.5) * 0.9) / n - 0.5;                                // across the sheet
     const ends = 1 - 0.4 * (2 * u) * (2 * u);                                                     // smaller toward the ends
-    base.set([x + u * width, y, z + (Math.random() - 0.5) * 0.35, size * (0.7 + 0.6 * Math.random()) * ends], i * 4);
-    // phase, 1 / life, shape, how high it rises
-    seed.set([Math.random(), 1 / (3.2 + 2.4 * Math.random()), Math.floor(Math.random() * 100), 0.25 + 0.45 * Math.random()], i * 4);
-    // where it drifts in its life: out over the pool, and apart sideways (the ones at the ends fan out further)
-    drift.set([1.1 + 1.6 * Math.random(), (u * 1.3 + (Math.random() - 0.5) * 0.5) * 1.2], i * 2);
+    base.set([x + u * width, y, z + (Math.random() - 0.5) * 0.35, (0.7 + 0.6 * Math.random()) * ends], i * 4);
+    // phase, life (a share of puffLife), shape, how high it rises
+    seed.set([Math.random(), 0.73 + 0.54 * Math.random(), Math.floor(Math.random() * 100), 0.25 + 0.45 * Math.random()], i * 4);
+    // where it drifts in its life: out over the pool, and apart sideways (the ones at the ends fan out further); its place in the order
+    drift.set([1.1 + 1.6 * Math.random(), (u * 1.3 + (Math.random() - 0.5) * 0.5) * 1.2, (order[i] + 0.5) / n, 0], i * 4);
   }
   geo.setAttribute('aBase', new THREE.InstancedBufferAttribute(base, 4));
   geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
-  geo.setAttribute('aDrift', new THREE.InstancedBufferAttribute(drift, 2));
+  geo.setAttribute('aDrift', new THREE.InstancedBufferAttribute(drift, 4));
   geo.instanceCount = n;
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z + 1.2), width + 4);
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z + 1.2), width + 6);
   const rgb = h => new THREE.Color(h);
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) } },
+    uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) }, ...tune },
     vertexShader: /* glsl */`
-      attribute vec4 aBase, aSeed;
-      attribute vec2 aDrift;
-      uniform float uTime;
+      attribute vec4 aBase, aSeed, aDrift;
+      uniform float uTime, puffAmount, puffSize, puffGrow, puffSpread, puffRise, puffLife, puffFade;
       varying vec2 vP;
       varying vec3 vK;
       void main() {
-        float k = fract(uTime * aSeed.y + aSeed.x);                        // 0 rising out of the water .. 1 faded away
+        if (aDrift.z > puffAmount) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }       // not out right now: off screen
+        float k = fract(uTime / max(puffLife * aSeed.y, 0.2) + aSeed.x);   // 0 rising out of the water .. 1 faded away
         float grow = 1.0 - pow(1.0 - min(k / 0.22, 1.0), 2.0);             // pops up out of the foam ...
-        float s = aBase.w * (0.3 + 0.7 * grow) * (1.0 + 1.2 * k);          // ... and keeps spreading as it drifts, like a cloud
+        float s = puffSize * aBase.w * (0.3 + 0.7 * grow) * (1.0 + puffGrow * k);     // ... and keeps spreading as it drifts, like a cloud
         float go = 1.0 - pow(1.0 - k, 2.2);                                // quick off the foot of the falls, slowing out on the pool
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         // it sits on the water (the card's lower edge is under the surface), drifts out and apart, and lifts a little as it goes
-        vec3 c = vec3(aBase.x + aDrift.y * go, aBase.y + s * 0.42 + aSeed.w * go, aBase.z + aDrift.x * go);
+        vec3 c = vec3(aBase.x + aDrift.y * go * puffSpread, aBase.y + s * 0.42 + aSeed.w * go * puffRise, aBase.z + aDrift.x * go * puffSpread);
         vec3 p = c + (right * position.x + vec3(0.0, 1.0, 0.0) * position.y) * s * 1.3;      // the card is bigger than the cloud drawn on it, so no lobe is ever cut off by its edge
-        vP = position.xy * 1.3; vK = vec3(k, smoothstep(0.3, 1.0, k), aSeed.z);
+        vP = position.xy * 1.3; vK = vec3(k, smoothstep(puffFade, 1.0, k), aSeed.z);
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: /* glsl */`
       uniform vec3 uWhite, uShade;
-      uniform float uTime;
+      uniform float uTime, puffSoft, puffOpacity;
       varying vec2 vP;
       varying vec3 vK;
       float h1(float n) { return fract(sin(n * 127.1 + 3.7) * 43758.5453); }
@@ -372,10 +387,10 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, siz
         d = min(d, lobe(p, vec2(0.24, 0.24), 0.34, 4.0));
         d = min(d, lobe(p, vec2(0.02, 0.48), 0.27, 5.0));
         float fade = vK.y;
-        float soft = 0.03 + 0.32 * fade;                                                      // crisp while it boils, soft as it thins out
+        float soft = 0.03 + puffSoft * fade;                                                  // crisp while it boils, soft as it thins out
         float a = (1.0 - smoothstep(-soft, 0.0, d.x)) * smoothstep(-0.66, -0.6, p.y);         // cut flat where it meets the water
-        a *= (1.0 - fade * fade) * (1.0 - fade) * 0.5 + (1.0 - fade) * 0.5;
-        a *= smoothstep(0.0, 0.06, vK.x);                // fades the whole way out, no pop at either end
+        a *= (1.0 - fade * fade) * (1.0 - fade) * 0.5 + (1.0 - fade) * 0.5;                   // fades the whole way out, no pop at either end
+        a *= smoothstep(0.0, 0.06, vK.x) * puffOpacity;
         if (a < 0.01) discard;
         vec3 col = mix(uWhite, uShade, smoothstep(-0.03, 0.0, d.y) * smoothstep(-0.5, -0.25, p.y));      // flat white in the light, pale blue in the folds; all white where it stands in the foam
         gl_FragColor = vec4(col, a);
