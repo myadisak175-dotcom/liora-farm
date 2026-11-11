@@ -939,7 +939,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   }
   // the falls going over the brink of the abyss, and the clouds hanging in it
   await onStep('ม่านน้ำตกลงห้วงลึก');
-  const abyssFalls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], optics, foamTexture });
+  // (without the see-through picture: it would mean drawing the whole scene a second time every frame anywhere near the
+  // abyss, for a bend in the cliff behind a sheet that is mostly white water anyway)
+  const abyssFalls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], optics: null, foamTexture });
   abyssFalls.group.userData = { kind: 'waterfall', dispose: abyssFalls.dispose };
   group.add(abyssFalls.group);
   const abyssClouds = createAbyssClouds({ centre: [ABYSS.x, ABYSS.z], rimR: AB.rimR, ledges: [0, 1, 2, 3].map(AB.ledge), falls: AB.falls });
@@ -1029,7 +1031,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
-  for (const f of AB.falls) waterSpheres.push(new THREE.Sphere(new THREE.Vector3(f.x, f.top - 6, f.z), 10));
   // the walker's own shadow: a soft dark patch thrown along the sun's direction (the baked ones above cannot move)
   const blob = (() => {
     const c = document.createElement('canvas'); c.width = c.height = 64;
