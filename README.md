@@ -66,3 +66,13 @@ Round the village the land stands up as hills (`tiers.rise`, `villageHills` in `
 
 The trodden ways between the houses (`VILLAGE.paths`, the ramps and the yards) are drawn by the ground itself. `valley-level.js` bakes a small picture of how far every spot is from the nearest way and how paved it is; the terrain shader (`WAYS` in `stylized-terrain.js`) reads it and lays down, from the grass inwards: a verge of short yellowed grass, a rim of darker damp earth, the trodden earth, and pale worn patches down the middle. The edge wanders and is ragged. Pebbles lie thick along the edges and thin in the middle. Yards marked as paved in `VILLAGE.yards` (round the well, before the keep's door) are laid with cobbles that thin out into single stones at the yard's edge. The grass map agrees with it: no blades on the earth, sparse yellowed ones at its edge, and on the verge they stand about half as tall. Long ways are worn broad, spurs to a door narrow.
 
+## The scene editor
+
+`🛠 แก้ฉาก` (or `?edit`) opens an editor that looks straight down on the valley (`scene-editor.js`), made for a phone: drag the land to move, pinch to zoom, tap to pick, drag what is picked.
+
+- **ทางเดิน (ways)**: drag a point of a way, tap a line to add a point, draw a new way point by point, make a way broad or narrow, delete a point or a whole way; add, move, size, pave or delete a yard. The ground redraws while you drag. Ways can be drawn inside the dashed frame (the village); the ramps between terraces are part of the land and are only shown.
+- **พืชและหิน (plants and rocks)**: every tree, bush, rock and flower bed the level put down has a dot. Tap one to pick it, then delete it, drag it somewhere else, or put it back; add new trees, bushes, rocks and flower beds. These are built with the level, so they change when the edits are saved.
+- **💾 บันทึก** keeps the edits in the browser (`localStorage`, key `liora.valley.edits.v1`) and loads the scene again with them, back in the editor at the same spot. `⋯` shows the edits as text: copy it to make them permanent (it goes into `valley-edits.js`), paste one back, or clear everything. `?edits=off` loads the valley without any edits.
+
+The edits are a small list laid over what `valley-level.js` generates, and never change what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so everything else stays exactly where it was. A thing is known by its kind and where it was first put; if the level later stops generating it, its edit is simply ignored.
+

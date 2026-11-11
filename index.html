@@ -78,7 +78,9 @@
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=wake3",
-  "./valley-level.js": "./valley-level.js?v=ways1",
+  "./valley-level.js": "./valley-level.js?v=edit1",
+  "./valley-edits.js": "./valley-edits.js?v=1",
+  "./scene-editor.js": "./scene-editor.js?v=1",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=cascade1",
   "./player.js": "./player.js?v=shadow1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=village2",
@@ -151,6 +153,7 @@ import { createTimeOfDay } from './time-of-day.js';
 import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
 import DEER_GLB from './deer-glb.js';
 import { createForestForage } from './forest-forage.js?v=4';
+import { createSceneEditor } from './scene-editor.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -327,6 +330,16 @@ function tune(dt) {
   fpsEl.textContent = Math.round(fps) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
 }
 
+// ---- the scene editor: fix the ways and the plants by hand (only where the level can be edited)
+const sceneEditor = createSceneEditor({ level, camera });
+if (sceneEditor) {
+  const editBtn = document.createElement('button'); editBtn.id = 'editBtn'; editBtn.textContent = '🛠 แก้ฉาก';
+  editBtn.onpointerdown = e => e.stopPropagation(); editBtn.onclick = () => sceneEditor.open();
+  document.body.append(editBtn);
+  if (sceneEditor.resume) sceneEditor.open(sceneEditor.resume);                // back from "save": the same place in the editor
+  else if (Q.has('edit')) sceneEditor.open({ x: 0, z: -62, h: 60, mode: 'ways' });
+}
+
 const clock = new THREE.Clock();
 let moved = false;
 const frame = (dt = clock.getDelta()) => {
@@ -334,6 +347,7 @@ const frame = (dt = clock.getDelta()) => {
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   if (forage) forage.update(dt, player.position);
   level.follow(player.position, player.lookDir);
   {
@@ -365,7 +379,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow };
+window.__game = { sceneEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow };
 </script>
 </body>
 </html>

@@ -22,6 +22,25 @@ import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import * as BD from './stylized-buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { VALLEY_EDITS } from './valley-edits.js';
+
+// ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
+// what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so
+// everything else stays exactly where it was. A thing is known by what it is and where it was first put (to the decimetre).
+export const VALLEY_EDIT_KEY = 'liora.valley.edits.v1';
+function loadEdits() {
+  let e = null;
+  try {
+    if (new URLSearchParams(location.search).get('edits') === 'off') return { paths: null, yards: null, removed: new Set(), moved: new Map(), added: [] };
+    const saved = localStorage.getItem(VALLEY_EDIT_KEY);
+    if (saved) e = JSON.parse(saved);
+  } catch (err) { e = null; }
+  e = e || VALLEY_EDITS || {};
+  return {
+    paths: Array.isArray(e.paths) ? e.paths : null, yards: Array.isArray(e.yards) ? e.yards : null,
+    removed: new Set(e.removed || []), moved: new Map(Object.entries(e.moved || {})), added: Array.isArray(e.added) ? e.added : [],
+  };
+}
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -217,22 +236,44 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
   const clear = (x, z, r) => placed.every(p => Math.hypot(p[0] - x, p[1] - z) > p[2] + r);
   let ps = seed * 100;
+  // ---- hand edits: every plant, rock and flower bed is listed here as it is generated (for the editor to show), and placeOf says
+  // where it really goes: where it was generated, where it was moved to by hand, or nowhere (taken out)
+  const EDITS = loadEdits(), editItems = [];
+  const editKey = (kind, x, z) => kind + ':' + Math.round(x * 10) + ':' + Math.round(z * 10);
+  const placeOf = (kind, type, x, z, r) => {
+    const key = editKey(kind, x, z);
+    editItems.push({ key, kind, type, x, z, r });
+    if (EDITS.removed.has(key)) return null;
+    const m = EDITS.moved.get(key);
+    return m ? [m[0], m[1]] : [x, z];
+  };
+  const putShrub = (type, sd, x, z, rot, scale) => {
+    plants.push({ kind: 'bush', type, seed: sd, x, y: HV(x, z), z, rotY: rot, scale });
+    colliders.push([x, z, 0.75 * scale]); shade.push([x, z, 1.7 * scale, 0.45]); castBall(x, z, 0.55 * scale, 0.95 * scale, 0.8, 0.2);
+  };
   const shrub = (x, z, scale = 1) => {
     if (HV(x, z) < WL + 0.6) return;
-    plants.push({ kind: 'bush', type: rng() < 0.35 ? 'flowering' : 'round', seed: ++ps, x, y: HV(x, z), z, rotY: rng() * 6.28, scale });
-    colliders.push([x, z, 0.75 * scale]); shade.push([x, z, 1.7 * scale, 0.45]); placed.push([x, z, 1.0 * scale]); castBall(x, z, 0.55 * scale, 0.95 * scale, 0.8, 0.2);
+    const type = rng() < 0.35 ? 'flowering' : 'round', sd = ++ps, rot = rng() * 6.28;
+    placed.push([x, z, 1.0 * scale]);
+    const at = placeOf('bush', type, x, z, 0.9 * scale);
+    if (at) putShrub(type, sd, at[0], at[1], rot, scale);
   };
   const cameraTrunks = [];
-  const tree = (type, x, z, scale = 1, detail = 0.8, bush = false) => {
+  const putTree = (type, sd, x, z, rot, scale, detail) => {
     const y = HV(x, z);
-    plants.push({ kind: 'tree', type, seed: ++ps, detail, x, y, z, rotY: rng() * 6.28, scale });
-    placed.push([x, z, CROWN[type] * scale * 0.42]);
+    plants.push({ kind: 'tree', type, seed: sd, detail, x, y, z, rotY: rot, scale });
     colliders.push([x, z, TRUNK[type] * scale + 0.22]);
     cameraTrunks.push([x, z, TRUNK[type] * scale + 0.12, y, y + CROWN_Y[type] * scale]);
     crowns.push([x, y + CROWN_Y[type] * scale, z, CROWN_R[type] * scale]);
     shade.push([x, z, CROWN[type] * scale * 1.05, 0.4]); bare.push([x, z, TRUNK[type] * scale * 1.5]);
     castBall(x, z, CROWN_Y[type] * scale, CROWN_R[type] * scale, 0.88, 0.3);
     castStick(x, z, CROWN_Y[type] * scale * 0.85, Math.max(0.22, TRUNK[type] * scale * 0.7));
+  };
+  const tree = (type, x, z, scale = 1, detail = 0.8, bush = false) => {
+    const sd = ++ps, rot = rng() * 6.28;
+    placed.push([x, z, CROWN[type] * scale * 0.42]);
+    const at = placeOf('tree', type, x, z, CROWN_R[type] * scale);
+    if (at) putTree(type, sd, at[0], at[1], rot, scale, detail);
     if (bush) { const a = rng() * 6.28, d = (TRUNK[type] + 1.1) * scale; shrub(x + Math.cos(a) * d, z + Math.sin(a) * d, R(0.75, 1.05)); }
   };
   placed.push([spawn.x, spawn.z, 5]);
@@ -246,40 +287,52 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   { const q = VILLAGE.pasture; placed.push([(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2, 9]); }
   const vsegs = [];                                                        // the village's ways, as segments
   for (const line of [...VILLAGE.paths, ...V.ramps.map(r => r.line)]) for (let i = 0; i < line.length - 1; i++) vsegs.push([line[i][0], line[i][1], line[i + 1][0], line[i + 1][1]]);
-  // how wide each way is worn: the long ways between places are broad, the short spurs to a door narrow, the ramps broadest
-  const wsegs = [];
-  for (const line of VILLAGE.paths) for (let i = 0; i < line.length - 1; i++) wsegs.push([line[i][0], line[i][1], line[i + 1][0], line[i + 1][1], line.length >= 3 ? 0.9 : 0.6]);
-  for (const r of V.ramps) for (let i = 0; i < r.line.length - 1; i++) wsegs.push([r.line[i][0], r.line[i][1], r.line[i + 1][0], r.line[i + 1][1], 1.0]);
+  // the ways as they are drawn: the village's own, or the ones edited by hand. A way is { pts: [[x, z], ...], wide }: the long
+  // ways between places are worn broad, the short spurs to a door narrow; the ramps are broadest. A yard is { x, z, r, paved }.
+  const DEF_PATHS = VILLAGE.paths.map(pts => ({ pts, wide: pts.length >= 3 }));
+  const DEF_YARDS = VILLAGE.yards.map(([x, z, r, paved]) => ({ x, z, r, paved: !!paved }));
+  const WAYS_BOX = { x0: -46, x1: 46, z0: -92, z1: -40 };                    // the ground the ways are drawn on (and may be edited on)
   // metres to the nearest way, measured so that every way's edge is 0.7 away whatever its width (0 = well inside one)
-  const wayDist = (x, z) => {
-    if (z > -40 || Math.abs(x) > 46) return 99;
-    let best = 99;
-    for (const [ax, az, bx, bz, half] of wsegs) {
-      const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
-      best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t) - half + 0.7);
-    }
-    for (const [yx, yz, yr] of VILLAGE.yards) best = Math.min(best, Math.hypot(x - yx, z - yz) - yr + 0.6);
-    return Math.max(0, best);
+  const makeWayDist = (paths, yards) => {
+    const segs = [];
+    for (const w of paths) for (let i = 0; i < w.pts.length - 1; i++) segs.push([w.pts[i][0], w.pts[i][1], w.pts[i + 1][0], w.pts[i + 1][1], w.wide ? 0.9 : 0.6]);
+    for (const r of V.ramps) for (let i = 0; i < r.line.length - 1; i++) segs.push([r.line[i][0], r.line[i][1], r.line[i + 1][0], r.line[i + 1][1], 1.0]);
+    return (x, z) => {
+      if (z > WAYS_BOX.z1 || z < WAYS_BOX.z0 - 4 || Math.abs(x) > WAYS_BOX.x1) return 99;
+      let best = 99;
+      for (const [ax, az, bx, bz, half] of segs) {
+        const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+        best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t) - half + 0.7);
+      }
+      for (const y of yards) best = Math.min(best, Math.hypot(x - y.x, z - y.z) - y.r + 0.6);
+      return Math.max(0, best);
+    };
   };
   // how paved a spot is: the yards marked as paved are laid with cobbles, thinning out toward their edge
-  const pavedAt = (x, z) => {
+  const makePaved = yards => (x, z) => {
     let g = 0;
-    for (const [yx, yz, yr, paved] of VILLAGE.yards) if (paved) g = Math.max(g, 1 - ss(yr - 1.6, yr + 0.3, Math.hypot(x - yx, z - yz)));
+    for (const y of yards) if (y.paved) g = Math.max(g, 1 - ss(y.r - 1.6, y.r + 0.3, Math.hypot(x - y.x, z - y.z)));
     return g;
   };
-  // the picture of the ways that the ground is drawn from (stylized-terrain.js, WAYS): a quarter of a metre to the texel
-  {
-    const X0 = -46, X1 = 46, Z0 = -92, Z1 = -40, wN = 368, hN = 208, px = new Uint8Array(wN * hN * 4);
+  const wayDist0 = makeWayDist(DEF_PATHS, DEF_YARDS);                        // as generated: what the rocks and trees keep clear of
+  let wayDist = makeWayDist(EDITS.paths || DEF_PATHS, EDITS.yards || DEF_YARDS);      // as drawn
+  // the picture of the ways that the ground is drawn from (stylized-terrain.js, WAYS): a quarter of a metre to the texel.
+  // drawWays paints it again from any set of ways (the editor calls it while a way is being dragged about).
+  const waysN = [368, 208], waysPx = new Uint8Array(waysN[0] * waysN[1] * 4), waysTex = new THREE.DataTexture(waysPx, waysN[0], waysN[1], THREE.RGBAFormat);
+  waysTex.magFilter = waysTex.minFilter = THREE.LinearFilter;
+  const drawWays = (paths, yards) => {
+    const dist = makeWayDist(paths, yards), paved = makePaved(yards), { x0, x1, z0, z1 } = WAYS_BOX, [wN, hN] = waysN;
     for (let jz = 0; jz < hN; jz++) for (let ix = 0; ix < wN; ix++) {
-      const x = X0 + (ix + 0.5) / wN * (X1 - X0), z = Z0 + (jz + 0.5) / hN * (Z1 - Z0), o = (jz * wN + ix) * 4;
-      px[o] = Math.round(255 * Math.min(1, wayDist(x, z) / 4)); px[o + 1] = Math.round(255 * pavedAt(x, z)); px[o + 3] = 255;
+      const x = x0 + (ix + 0.5) / wN * (x1 - x0), z = z0 + (jz + 0.5) / hN * (z1 - z0), o = (jz * wN + ix) * 4;
+      waysPx[o] = Math.round(255 * Math.min(1, dist(x, z) / 4)); waysPx[o + 1] = Math.round(255 * paved(x, z)); waysPx[o + 3] = 255;
     }
-    const tex = new THREE.DataTexture(px, wN, hN, THREE.RGBAFormat);
-    tex.magFilter = tex.minFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-    const u = terrain.material.uniforms;
-    if (u && u.uWays) { u.uWays.value = tex; u.uWaysRect.value.set((X0 + X1) / 2, (Z0 + Z1) / 2, 1 / (X1 - X0), 1 / (Z1 - Z0)); u.uWaysOn.value = 1; }
-    terrain.userData.disposeWays = () => tex.dispose();
+    waysTex.needsUpdate = true;
+  };
+  drawWays(EDITS.paths || DEF_PATHS, EDITS.yards || DEF_YARDS);
+  {
+    const u = terrain.material.uniforms, { x0, x1, z0, z1 } = WAYS_BOX;
+    if (u && u.uWays) { u.uWays.value = waysTex; u.uWaysRect.value.set((x0 + x1) / 2, (z0 + z1) / 2, 1 / (x1 - x0), 1 / (z1 - z0)); u.uWaysOn.value = 1; }
+    terrain.userData.disposeWays = () => waysTex.dispose();
   }
   for (const p of VILLAGE.props) placed.push([p[1], p[2], 1.4]);
   for (const [ax, az, bx, bz] of vsegs) { const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 2.5); for (let i = 0; i <= n; i++) placed.push([ax + (bx - ax) * i / n, az + (bz - az) * i / n, 2.2]); }
@@ -418,13 +471,18 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const rocks = new THREE.Group();
   rocks.name = 'rocks';
   let rs = seed * 31;
-  const rock = (type, x, z, scale = 1, sink = 0, solid = null) => {
-    const m = N.createRock({ type, seed: ++rs });
-    m.position.set(x, HV(x, z) - sink, z); m.rotation.y = rng() * 6.28; m.scale.setScalar(scale);
+  const ROCK_R = { boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8, river: 0.7, pebbles: 0 };
+  const putRock = (type, sd, x, z, rot, scale, sink, r) => {
+    const m = N.createRock({ type, seed: sd });
+    m.position.set(x, HV(x, z) - sink, z); m.rotation.y = rot; m.scale.setScalar(scale);
     rocks.add(m);
-    const r = solid ?? ({ boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8, river: 0.7, pebbles: 0 }[type] * scale);
     if (r > 0) { colliders.push([x, z, r]); press.push([x, z, r * 1.6]); shade.push([x, z, r * 2.0, 0.3]); castBall(x, z, r * 0.5, r * 0.95, 0.85); }
+  };
+  const rock = (type, x, z, scale = 1, sink = 0, solid = null) => {
+    const sd = ++rs, rot = rng() * 6.28, r = solid ?? (ROCK_R[type] * scale);
     placed.push([x, z, Math.max(r, 0.6)]);
+    const at = placeOf('rock', type, x, z, Math.max(r, 0.5));
+    if (at) putRock(type, sd, at[0], at[1], rot, scale, sink, r);
   };
   for (let z = Z_HEAD + 6; z < B.z1 - 4; z += R(5, 9)) {                    // water-worn stones along both banks
     for (const s of [-1, 1]) {
@@ -447,14 +505,17 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // brink by the falls. Many small rocks, so they are baked into one mesh for each kind of stone instead of one mesh apiece.
   const vrocks = [];
   const vrock = (type, x, z, scale, sink = 0.25) => {
-    if (wayDist(x, z) < 2.6 + scale * 0.6 || inStream(x, z) || !clear(x, z, scale)) return;
-    const m = N.createRock({ type, seed: ++rs });
-    m.position.set(x, HV(x, z) - sink * scale, z); m.rotation.y = rng() * 6.28; m.scale.setScalar(scale);
+    if (wayDist0(x, z) < 2.6 + scale * 0.6 || inStream(x, z) || !clear(x, z, scale)) return;
+    const sd = ++rs, rot = rng() * 6.28, r = ({ boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8 }[type] || 0.8) * scale;
+    placed.push([x, z, r]);
+    const at = placeOf('rock', type, x, z, r);
+    if (!at) return;
+    [x, z] = at;
+    const m = N.createRock({ type, seed: sd });
+    m.position.set(x, HV(x, z) - sink * scale, z); m.rotation.y = rot; m.scale.setScalar(scale);
     m.updateMatrix();
     vrocks.push(m);
-    const r = ({ boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8 }[type] || 0.8) * scale;
     colliders.push([x, z, r * 0.85]); press.push([x, z, r * 1.6]); shade.push([x, z, r * 2.0, 0.3]); castBall(x, z, r * 0.5, r * 0.95, 0.85);
-    placed.push([x, z, r]);
   };
   for (const st of VILLAGE.steps) {
     for (let x = -42; x <= 41; x += R(2.4, 4.4)) {                         // along the foot of the riser
@@ -499,6 +560,14 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       mesh.userData.dispose = () => mesh.geometry.dispose();
       group.add(mesh);
     }
+  }
+
+  // things added by hand in the editor (their turn and tilt come from where they stand, not from the dice)
+  for (const a of EDITS.added) {
+    const rot = (Math.abs(Math.sin(a.x * 12.9898 + a.z * 78.233) * 43758.5453) % 1) * 6.28, sc = a.scale || 1;
+    if (a.kind === 'tree' && CROWN[a.type]) putTree(a.type, ++ps, a.x, a.z, rot, sc, 0.7);
+    else if (a.kind === 'bush') putShrub(a.type === 'flowering' ? 'flowering' : 'round', ++ps, a.x, a.z, rot, sc);
+    else if (a.kind === 'rock' && ROCK_R[a.type] !== undefined) putRock(a.type, ++rs, a.x, a.z, rot, sc, 0.2, ROCK_R[a.type] * sc);
   }
 
   // ------------------------------------------------------------------ ground colour map: where grass grows
@@ -659,6 +728,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   for (const list of sectors) {
     if (!list.length) continue;
     const f = N.createForest(list);
+    f.userData.forest = true;
     const box = new THREE.Box3();
     for (const p of list) { box.expandByPoint(new THREE.Vector3(p.x - 7, p.y - 1, p.z - 7)); box.expandByPoint(new THREE.Vector3(p.x + 7, p.y + 17, p.z + 7)); }
     const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -676,9 +746,14 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   for (let i = 0; i < 70 && fi < 26; i++) {
     const z = R(Z_HEAD + 8, B.z1 - 6), x = rx(z) + (rng() < 0.5 ? -1 : 1) * R(rw(z) + 5, 17), rad = R(1.2, 2.8);
     if (!onFloor(x, z, rad + 1) || map.grassAt(x, z) < 0.5 || !clear(x, z, rad)) continue;
-    group.add(N.createFlowers({ count: Math.round(R(40, 100)), radius: rad, seed: ++fs, heightAt: HV, center: [x, z], colors: PALS[fi++ % PALS.length] }));
+    const count = Math.round(R(40, 100)), sd = ++fs, colors = PALS[fi++ % PALS.length], at = placeOf('flower', 'bed', x, z, rad);
+    if (at) group.add(N.createFlowers({ count, radius: rad, seed: sd, heightAt: HV, center: at, colors }));
   }
-  for (const [x, z, rad] of VILLAGE.flowers) group.add(N.createFlowers({ count: Math.round(45 * rad), radius: rad, seed: ++fs, heightAt: HV, center: [x, z], colors: PALS[fi++ % PALS.length] }));      // flower beds in the village
+  for (const [x, z, rad] of VILLAGE.flowers) {                              // flower beds in the village
+    const sd = ++fs, colors = PALS[fi++ % PALS.length], at = placeOf('flower', 'bed', x, z, rad);
+    if (at) group.add(N.createFlowers({ count: Math.round(45 * rad), radius: rad, seed: sd, heightAt: HV, center: at, colors }));
+  }
+  for (const a of EDITS.added) if (a.kind === 'flower') group.add(N.createFlowers({ count: 90, radius: 1.8, seed: ++fs, heightAt: HV, center: [a.x, a.z], colors: PALS[(a.type | 0) % PALS.length] }));
 
   // ------------------------------------------------------------------ fluffy grass that follows the player
   await onStep('ปลูกหญ้า');
@@ -739,6 +814,16 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
     ripple, sim, optics, waterLevelAt: (x, z) => WL,
+    // what the scene editor (scene-editor.js) works with
+    editor: {
+      key: VALLEY_EDIT_KEY, box: WAYS_BOX, heightAt: HV, items: editItems, ramps: V.ramps.map(r => r.line.map(c => [c[0], c[1]])),
+      paths: () => JSON.parse(JSON.stringify(EDITS.paths || DEF_PATHS)), yards: () => JSON.parse(JSON.stringify(EDITS.yards || DEF_YARDS)),
+      defaults: { paths: () => JSON.parse(JSON.stringify(DEF_PATHS)), yards: () => JSON.parse(JSON.stringify(DEF_YARDS)) },
+      removed: [...EDITS.removed], moved: Object.fromEntries(EDITS.moved), added: JSON.parse(JSON.stringify(EDITS.added)),
+      drawWays,
+      // while editing: the grass is put away (the ground shows), and the trees too when it is the ways being worked on
+      show({ grass: g = true, trees = true } = {}) { grass.visible = g; group.traverse(o => { if (o.userData.forest) o.visible = trees; }); },
+    },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
