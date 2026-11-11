@@ -29,21 +29,36 @@ export async function createForestForage({ level, onStep = async () => {} }) {
   if (!bushSites.length) console.warn('No dry, open blueberry site near spawn');
   const plants=bushSites.map((p,i)=>({kind:'bush',type:'round',seed:781+i,x:p.x,y:p.y,z:p.z,scale:.5,rotY:i*1.7}));
   if(plants.length) group.add(N.createForest(plants));
-  const branchGeo=new THREE.CylinderGeometry(.012,.023,1,5), branchMat=new THREE.MeshBasicMaterial({color:'#795239'});
   bushSites.forEach((p,i)=>{
-    // Both bunches are attached to visible outer branches, not resting on the ground.
+    // Fallen bunches sit beside the bush, outside its leaves and at the local ground height.
     for(let j=0;j<2;j++) {
-      // A .5-scale shrub's core radius is about .65m, with leaf cards reaching ~1m.
-      // Keep the whole bunch beyond that envelope and well above the tall grass.
-      const a=i*1.7+j*2.7+.5, end=new THREE.Vector3(p.x+Math.sin(a)*1.38,p.y+1.12+j*.15,p.z+Math.cos(a)*1.38);
-      const start=new THREE.Vector3(p.x,p.y+.15,p.z), v=end.clone().sub(start);
-      const branch=new THREE.Mesh(branchGeo,branchMat); branch.position.copy(start).addScaledVector(v,.5);
-      branch.scale.y=v.length(); branch.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.normalize()); group.add(branch);
-      items.push({id:`b${i}-${j}`,kind:'blueberry',x:end.x,z:end.z,y:end.y-.08,scale:.18,yaw:a});
+      const a=i*1.7+j*2.7+.5;
+      let spot=null;
+      for(const delta of [0,.4,-.4,.8,-.8]) {
+        const angle=a+delta, x=p.x+Math.sin(angle)*1.7,z=p.z+Math.cos(angle)*1.7;
+        if(open(x,z,.3)){spot={x,z,y:level.heightAt(x,z)+.015};break;}
+      }
+      if(spot) items.push({id:`b${i}-${j}`,kind:'blueberry',...spot,scale:.18,yaw:a});
     }
-    // Berry shrubs block walking, just like the other shrubs on the map.
     level.colliders.push([p.x,p.z,.55]);
   });
+  // Small, feathered short-grass pockets keep the fallen fruit readable on every map.
+  // RGB ground paint and all grass outside these pockets remain intact.
+  const ground=level.map;
+  if(ground?.data && ground.texture && ground.size && ground.radius) {
+    const {data,size,radius,center}=ground, span=radius*2, step=span/size;
+    const cx=center[0],cz=center[1];
+    for(const item of items.filter(p=>p.kind==='blueberry')){
+      const r=.72, ix=Math.floor((item.x-cx+radius)/span*size),iz=Math.floor((item.z-cz+radius)/span*size),n=Math.ceil(r/step);
+      for(let z=Math.max(0,iz-n);z<=Math.min(size-1,iz+n);z++) for(let x=Math.max(0,ix-n);x<=Math.min(size-1,ix+n);x++){
+        const wx=cx-radius+(x+.5)*step,wz=cz-radius+(z+.5)*step,d=Math.hypot(wx-item.x,wz-item.z)/r;
+        if(d>=1)continue;
+        const t=Math.max(0,Math.min(1,(d-.5)/.5)),alpha=Math.round(255*(.08+.92*t*t*(3-2*t)));
+        const offset=(z*size+x)*4+3;data[offset]=Math.min(data[offset],alpha);
+      }
+    }
+    ground.texture.needsUpdate=true;
+  }
   // Prefer genuine tree feet on accessible ground, ordered from the player's start.
   const trunks=[...(level.cameraTrunks||[])].sort((a,b)=>Math.hypot(a[0]-s.x,a[1]-s.z)-Math.hypot(b[0]-s.x,b[1]-s.z));
   for(const [x,z,r] of trunks) {
@@ -115,7 +130,7 @@ export async function createForestForage({ level, onStep = async () => {} }) {
     pick,
     update(dt,position){lastPosition=position;timer+=dt;if(timer<.12)return;timer=0;nearest=find(position);button.hidden=!nearest;if(nearest)button.textContent=nearest.kind==='mushroom'?'🍄 เก็บเห็ด':'🫐 เก็บบลูเบอร์รี';},
     visit(player){
-      // Face a visible bunch directly, rather than the opaque middle of its bush.
+      // Face the fallen bunch directly so it appears in front of the player.
       const item=items.find(p=>p.kind==='blueberry'&&!picked.has(p.id))||items.find(p=>!picked.has(p.id));
       if(!item)return;
       for(const delta of [0,.5,-.5,1,-1,Math.PI]){
@@ -125,6 +140,6 @@ export async function createForestForage({ level, onStep = async () => {} }) {
         }
       }
     },
-    dispose(){inventory.remove();button.remove();style.remove();group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});branchGeo.dispose();branchMat.dispose();}
+    dispose(){inventory.remove();button.remove();style.remove();group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});}
   };
 }
