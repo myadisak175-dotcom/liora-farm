@@ -14,6 +14,8 @@
    stoneBridgeGeometry  a humpbacked stone bridge along x; stoneBridgeDeck(u, opts) is the height of its deck above its base
    wellGeometry       a round stone well under a little roof
    fenceGeometry      posts and two rails along a line of points on the ground (world space)
+   propGeometry       small things that make a village look lived in: 'stall', 'table', 'bench', 'barrels', 'crates', 'hay',
+                      'signpost', 'lamp', 'cart', 'woodpile', 'sheep'  (g.userData.solid = how wide it is to walk into, 0 = not at all)
    rectCircles        circles along the walls of a turned rectangle, for colliders
 
    No shaders here: one job, the shapes.
@@ -26,6 +28,8 @@ export const BUILD_COLORS = {
   stone: '#dccdb0', stoneDark: '#b3a58e', plaster: '#f2e8cf', timber: '#8c5b38', timberDark: '#5e4030',
   roof: '#c8603a', roofDark: '#a44a30', door: '#7a4a2c', glass: '#4f6a86', water: '#3f86a6', flag: '#c9483a',
   shutters: ['#5f8f6a', '#4f7f96', '#b0563c', '#8a6a3a'],
+  hay: '#dcb95c', cloth: ['#c9483a', '#f2e8cf', '#4f7f96', '#e0a43c'], lantern: '#f6d875', wool: '#f3eddd', woolDark: '#4a4038',
+  goods: ['#d8843a', '#7fa64a', '#c9483a', '#e6c95a', '#8e5aa0'],
 };
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
@@ -283,4 +287,67 @@ export function rectCircles(x, z, w, d, yaw = 0, r = 0.55) {
   for (let i = 0; i <= nx; i++) { const lx = -hw + 2 * hw * i / nx; put(lx, -hd); put(lx, hd); }
   for (let j = 1; j < nz; j++) { const lz = -hd + 2 * hd * j / nz; put(-hw, lz); put(hw, lz); }
   return out;
+}
+
+// small things for a lived-in village, each standing on y = 0 round its own middle, its front toward +z
+export function propGeometry(kind, { seed = 1, colors = BUILD_COLORS } = {}) {
+  const K = kit(seed), C = colors, r = K.rng, pick = a => a[Math.floor(r() * a.length)];
+  const lying = (cx, y, cz, rad, len, col, alongX = true, seg = 8) => K.cyl(cx, y - len / 2, cz, rad, rad, len, seg, col, alongX ? { rz: Math.PI / 2 } : { rx: Math.PI / 2 });      // a cylinder on its side, its middle at height y
+  let solid = 0;
+  if (kind === 'stall') {                                                  // a market stall under a striped awning
+    const a = pick(C.cloth), b = C.cloth[1] === a ? C.cloth[0] : C.cloth[1];
+    for (const sx of [-1, 1]) { K.box(sx * 1.15, 0, 0.55, 0.1, 1.9, 0.1, C.timber); K.box(sx * 1.15, 0, -0.55, 0.1, 2.4, 0.1, C.timber); }
+    K.box(0, 0, 0.2, 2.4, 0.85, 0.8, C.timber);
+    K.box(0, 0.85, 0.2, 2.56, 0.07, 0.92, C.timberDark);
+    for (let i = 0; i < 6; i++) K.box(-1.05 + i * 0.42, 2.08, 0.05, 0.42, 0.05, 1.75, i % 2 ? a : b, { rx: 0.3, vary: 0.02 });
+    for (let i = 0; i < 6; i++) K.box(-0.95 + i * 0.38 + (r() - 0.5) * 0.08, 0.92, 0.1 + (r() - 0.5) * 0.3, 0.26, 0.2 + r() * 0.12, 0.26, pick(C.goods), { ry: r(), vary: 0.04 });
+    solid = 1.2;
+  } else if (kind === 'table') {                                           // a trestle table with a bench on each side
+    K.box(0, 0.72, 0, 1.9, 0.08, 0.8, C.timber);
+    for (const sx of [-1, 1]) K.box(sx * 0.75, 0, 0, 0.1, 0.72, 0.7, C.timberDark);
+    for (const sz of [-1, 1]) { K.box(0, 0.42, sz * 0.78, 1.8, 0.07, 0.3, C.timber); for (const sx of [-1, 1]) K.box(sx * 0.7, 0, sz * 0.78, 0.08, 0.42, 0.26, C.timberDark); }
+    solid = 1.0;
+  } else if (kind === 'bench') {
+    K.box(0, 0.42, 0, 1.6, 0.07, 0.42, C.timber); K.box(0, 0.5, -0.2, 1.6, 0.5, 0.06, C.timber);
+    for (const sx of [-1, 1]) K.box(sx * 0.65, 0, 0, 0.08, 0.42, 0.4, C.timberDark);
+    solid = 0.6;
+  } else if (kind === 'barrels') {
+    for (const [x, z, h] of [[0, 0, 0.9], [0.72, 0.1, 0.8], [0.3, 0.62, 0.72]].slice(0, 2 + Math.floor(r() * 2))) {
+      K.cyl(x, 0, z, 0.3, 0.3, h, 8, C.timber); K.cyl(x, h * 0.5 - 0.2, z, 0.35, 0.35, 0.4, 8, C.timber, { vary: 0.08 });
+      for (const t of [0.18, 0.8]) K.cyl(x, h * t, z, 0.36, 0.36, 0.06, 8, C.timberDark);
+    }
+    solid = 0.7;
+  } else if (kind === 'crates') {
+    K.box(0, 0, 0, 0.75, 0.6, 0.75, C.timber, { ry: 0.2 }); K.box(0.85, 0, 0.15, 0.6, 0.5, 0.6, C.timber, { ry: -0.3, vary: 0.1 });
+    K.box(0.15, 0.6, 0.05, 0.55, 0.45, 0.55, C.timber, { ry: 0.7, vary: 0.1 });
+    solid = 0.7;
+  } else if (kind === 'hay') {
+    lying(0, 0.5, 0, 0.5, 0.95, C.hay, true, 10); if (r() < 0.7) lying(0.2, 0.5, 1.05, 0.5, 0.95, C.hay, false, 10); if (r() < 0.4) lying(0.15, 1.36, 0.45, 0.48, 0.9, C.hay, true, 10);
+    solid = 0.8;
+  } else if (kind === 'signpost') {
+    K.box(0, 0, 0, 0.12, 2.3, 0.12, C.timberDark);
+    K.box(0.32, 1.85, 0, 0.9, 0.24, 0.05, C.timber, { ry: 0.15 }); K.box(-0.28, 1.5, 0, 0.8, 0.22, 0.05, C.timber, { ry: -0.6 });
+    solid = 0.2;
+  } else if (kind === 'lamp') {
+    K.box(0, 0, 0, 0.11, 2.6, 0.11, C.timberDark); K.box(0.24, 2.5, 0, 0.55, 0.07, 0.07, C.timberDark);
+    K.box(0.46, 2.12, 0, 0.24, 0.32, 0.24, C.lantern, { vary: 0 }); K.box(0.46, 2.44, 0, 0.3, 0.06, 0.3, C.timberDark);
+    solid = 0.2;
+  } else if (kind === 'cart') {
+    K.box(0, 0.55, 0, 1.9, 0.12, 1.0, C.timber);
+    for (const sz of [-1, 1]) { K.box(0, 0.67, sz * 0.5, 1.9, 0.36, 0.06, C.timber); lying(0, 0.5, sz * 0.63, 0.5, 0.08, C.timberDark, false, 10); K.box(1.6, 0.42, sz * 0.36, 1.5, 0.07, 0.07, C.timber, { rz: -0.22 }); }
+    K.box(-0.95, 0.67, 0, 0.06, 0.36, 1.0, C.timber);
+    K.box(-0.1, 0.67, 0, 1.5, 0.42, 0.85, C.hay, { vary: 0.03 });
+    solid = 1.1;
+  } else if (kind === 'woodpile') {
+    for (const [z, y] of [[-0.34, 0.16], [0, 0.16], [0.34, 0.16], [-0.17, 0.45], [0.17, 0.45], [0, 0.74]]) lying((r() - 0.5) * 0.1, y, z, 0.16, 1.0, r() < 0.5 ? C.timber : C.timberDark, true, 6);
+    solid = 0.6;
+  } else if (kind === 'sheep') {
+    lying(0, 0.58, 0, 0.32, 0.82, C.wool, true, 8); K.box(-0.05, 0.78, 0, 0.6, 0.2, 0.5, C.wool, { vary: 0.02 });
+    K.box(0.52, 0.6 + (r() < 0.4 ? -0.28 : 0), 0, 0.26, 0.26, 0.22, C.woolDark);          // some have their heads down, grazing
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.box(sx * 0.26, 0, sz * 0.14, 0.08, 0.36, 0.08, C.woolDark);
+    solid = 0.5;
+  }
+  const g = K.done();
+  g.userData = { solid };
+  return g;
 }

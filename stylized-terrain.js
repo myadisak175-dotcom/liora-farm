@@ -15,6 +15,7 @@
                            steps  [{ z, rise }] going upstream: the land and the upper river step up by rise at z (a cascade)
                            flat   (x, z) => 0..1 where the terraces are levelled for building
                            mounds [{ x, z, r, top, h }] knolls: h high, flat within top of the middle, down to nothing at r
+                           rise   (x, z) => metres added to the land (hills round the terraces); the upper river keeps its bed, so it runs in a gorge there
                            ramps  [[[x, z], ...], ...] paths cut from one terrace to the next: V.ramps[i] = { at(x, z), half }
                            V.plateauWaterAt(z) is the upper river's level there
      V.bankRoute(side)     [[x, z], ...] a walk along one sandy bank
@@ -397,6 +398,7 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
       let plat = PLAT + up + ((fbm3(x * 0.05, 9.1, z * 0.05, S + 11, 2) - 0.5) * 2.5 + ss(zh - 6, zh - 40, z) * 5) * (1 - flatNear) * (1 - 0.86 * level);
       plat = lerp(plat, PLAT + up + 0.15, flatNear);
       if (tiers && tiers.mounds) for (const m of tiers.mounds) plat += m.h * ss(m.r, m.top, Math.hypot(x - m.x, z - m.z));
+      if (tiers && tiers.rise) plat += tiers.rise(x, z, zh) * ss(pw + 1.5, pw + 7, padx);
       plat = lerp(plat, PL + up - 1.0, ss(pw + 1.2, pw - 0.3, padx));
       h = lerp(h, Math.max(h, plat), th);
     }
