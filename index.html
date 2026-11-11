@@ -78,9 +78,10 @@
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=orbitwood1",
-  "./valley-level.js": "./valley-level.js?v=orbitwood1",
+  "./valley-level.js": "./valley-level.js?v=shadow1",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall7",
-  "./player.js": "./player.js?v=orbitwood1"
+  "./player.js": "./player.js?v=shadow1",
+  "./character-shadow.js": "./character-shadow.js?v=shadow1"
 } }
 </script>
 </head>
@@ -138,6 +139,7 @@ import { buildHillsLevel } from './hills-level.js';
 import { buildValleyLevel } from './valley-level.js';
 import { loadCharacter } from './stylized-character.js';
 import { createPlayer } from './player.js';
+import { createCharacterShadow } from './character-shadow.js';
 import { WATER_TUNE } from './stylized-water.js';
 import { createWaterTuner } from './water-tuner.js';
 import { createSkyTuner } from './sky-tuner.js';
@@ -201,6 +203,12 @@ if (Q.get('view') === 'water' && Q.get('map')) { level.spawn = { x: 17.5, z: -1,
 const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
 level.addUnderwater(player.object);
+// her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
+const charShadow = createCharacterShadow({ character: vivi, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
+scene.add(charShadow.object);
+level.addUnderwater(charShadow.object);                // on the river bed too, seen through the water
+if (level.useRealShadow) level.useRealShadow(true);
+const NOON = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();
 fit();
 
 // Find a collision-free shallow bank on whichever map is active.
@@ -312,6 +320,12 @@ const frame = (dt = clock.getDelta()) => {
   A.updateAnimals(dt);
   player.update(dt);
   level.follow(player.position, player.lookDir);
+  {
+    // the level knows the sun its own shadows are drawn for; a map without them goes by the sky
+    const cast = level.sunCast, dir = cast ? cast.dir : (sky.userData.sun || NOON), k = cast ? cast.k : (tod ? tod.daylight : 1);
+    charShadow.update(renderer, player.position, dir, k);
+    player.blob.material.opacity = 1 - 0.65 * Math.min(1, Math.max(0, k));      // by day only a faint touch of dark where her feet meet the ground
+  }
   if (sky.userData.update) sky.userData.update(renderer, dt);
   if (tod) tod.update(dt);
   if (shadows) shadows.update();
@@ -331,7 +345,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { visitWater, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod };
+window.__game = { visitWater, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow };
 </script>
 </body>
 </html>
