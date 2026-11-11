@@ -78,7 +78,8 @@
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=wake3",
-  "./valley-level.js": "./valley-level.js?v=abyss1",
+  "./valley-level.js": "./valley-level.js?v=abyss2",
+  "./teleport-menu.js": "./teleport-menu.js?v=1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=abyss1",
@@ -157,6 +158,7 @@ import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
 import DEER_GLB from './deer-glb.js';
 import { createForestForage } from './forest-forage.js?v=4';
 import { createSceneEditor } from './scene-editor.js';
+import { createTeleportMenu } from './teleport-menu.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -343,6 +345,8 @@ if (sceneEditor) {
   if (sceneEditor.resume) sceneEditor.open(sceneEditor.resume);                // back from "save": the same place in the editor
   else if (Q.has('edit')) sceneEditor.open({ x: 0, z: -62, h: 60, mode: 'ways', view: 'top' });
 }
+// ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
+const teleportMenu = createTeleportMenu({ level, player, top: sceneEditor ? 206 : 164 });
 
 const clock = new THREE.Clock();
 let moved = false;

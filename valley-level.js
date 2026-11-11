@@ -1060,6 +1060,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       abyss: (() => { const t = AB.spur.tip, b = AB.spur.base, k = 0.55; return { x: b[0] + (t[0] - b[0]) * k, z: b[1] + (t[1] - b[1]) * k, yaw: Math.atan2(t[0] - b[0], t[1] - b[1]) }; })(),
       brink: { x: 5, z: 60.5, yaw: -0.35 },
       rim: { x: CL2.bottom[0] - 2.5, z: CL2.bottom[1] - 2, yaw: 0 },
+      // on the walk round the rim, facing across the pit: east, west, and at the top of the path up (north-east)
+      ...Object.fromEntries([['abyssEast', -35], ['abyssWest', 160], ['abyssNorth', -58]].map(([k, deg]) => {
+        const a = deg * Math.PI / 180, r = AB.walkR(a), x = ABYSS.x + Math.cos(a) * r, z = ABYSS.z + Math.sin(a) * r;
+        return [k, { x, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z) }];
+      })),
+      start: { x: spawn.x, z: spawn.z, yaw: spawn.yaw },
+      falls: { x: fall.x + 5, z: fall.z + 13, yaw: Math.atan2(-5, -13) },
     },
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
     ripple, sim, optics, waterLevelAt: (x, z) => WL,
