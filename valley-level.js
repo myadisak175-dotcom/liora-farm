@@ -14,7 +14,7 @@ import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
-import { createWaterfall } from './stylized-waterfall.js';
+import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -336,7 +336,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
   const hidden = [water, grass, droplets.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
-  let frameNo = 0, nextSplash = 0, lastRenderer = null;
+  let frameNo = 0, nextSplash = 0, nextHeave = 0, lastRenderer = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
@@ -415,11 +415,24 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       walkerShadow.visible = dry && cast.k * lawn > 0.02;
       if (walkerShadow.visible) walkerShadow.position.set(px, wy + 0.3, pz);
       waterfall.update(lastRenderer);
-      // the falls keep the plunge pool restless: rings run out from where the sheet lands
-      const now = N._internal.shared.uTime.value;
-      if (now > nextSplash) {
-        ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4, 'plain');
+      // the falls keep the plunge pool restless: small pokes all along where the sheet lands, and every so often a heave,
+      // where the water wells up for a moment and a broad wave rolls out across the pool (FALL_TUNE.fallWave*)
+      const now = N._internal.shared.uTime.value, heave = FALL_TUNE.fallWaves.value;
+      if (heave > 0 && now > nextSplash) {
+        ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6 * Math.min(1, heave), 0.4, 'plain');
         nextSplash = now + 0.16;
+      }
+      if (heave > 0 && now > nextHeave) {
+        const r = 1.05 * FALL_TUNE.fallWaveSize.value, off = (Math.random() - 0.5) * 0.8;
+        // the water wells up where it lands, with a shallow trough round it holding the same amount of water: the heave sends
+        // waves out without piling the pool up into a standing mound at the foot of the falls
+        const k = W.WATER_TUNE.ripple.value * 0.1 * heave;
+        for (let i = -1; i <= 1; i++) {
+          const hx = fall.x + i * 1.35 + off, hz = fall.z + 1.9 + Math.random() * 0.3;
+          sim.impulse(hx, hz, r, k);
+          sim.impulse(hx, hz, r * 1.6, -k / 2.56);
+        }
+        nextHeave = now + (0.6 + Math.random() * 0.5) / Math.max(0.1, FALL_TUNE.fallWaveRate.value);
       }
     },
   };

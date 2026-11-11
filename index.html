@@ -71,15 +71,15 @@
   "./stylized-character.js": "./stylized-character.js?v=foamphysics1",
   "./meadow-level.js": "./meadow-level.js?v=wake3",
   "./stylized-water.js": "./stylized-water.js?v=wake3",
-  "./water-tuner.js": "./water-tuner.js?v=cone2puff1",
+  "./water-tuner.js": "./water-tuner.js?v=cone2puff1w",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
   "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
   "./time-of-day.js": "./time-of-day.js?v=tod3",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=cliffs1",
   "./hills-level.js": "./hills-level.js?v=wake3",
-  "./valley-level.js": "./valley-level.js?v=wake3shadow2",
-  "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall9puff1tune1",
+  "./valley-level.js": "./valley-level.js?v=wake3shadow2w",
+  "./stylized-waterfall.js": "./stylized-waterfall.js?v=fall9puff1tune1w",
   "./player.js": "./player.js?v=shadow1",
   "./character-shadow.js": "./character-shadow.js?v=shadow2"
 } }
@@ -142,7 +142,7 @@ import { createPlayer } from './player.js';
 import { createCharacterShadow } from './character-shadow.js';
 import { WATER_TUNE } from './stylized-water.js';
 import { createWaterTuner } from './water-tuner.js';
-import { BILLOW_TUNE } from './stylized-waterfall.js';
+import { FALL_TUNE } from './stylized-waterfall.js';
 import { createSkyTuner } from './sky-tuner.js';
 import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
@@ -272,7 +272,7 @@ styleBtn.onclick = () => setStyle(!level.grass.userData.painterly);
 setStyle(Q.get('paint') !== '0');
 
 const tunerPanel = document.getElementById('tuner');
-createWaterTuner({ tune: { ...WATER_TUNE, ...BILLOW_TUNE }, optics: level.optics, button: document.getElementById('tune'), panel: tunerPanel });
+createWaterTuner({ tune: { ...WATER_TUNE, ...FALL_TUNE }, optics: level.optics, button: document.getElementById('tune'), panel: tunerPanel });
 if (fastMode) level.optics.setQuality(1);
 // cloud shadows: only with the volumetric sky (they ride on its wind), and only once everything is in the scene
 const shadows = sky.userData.tune ? createCloudShadows({ sky }) : null;

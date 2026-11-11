@@ -306,8 +306,9 @@ function mistTexture() {
 // on it: a handful of round lobes joined into one shape, flat white where the light falls and pale blue in the folds.
 // As a puff fades its outline goes soft and its lobes drift apart, so it thins out like a cloud instead of popping.
 //   const billows = createBillows({ x, z, y, width });      // the line where the water lands, and the water's level
-// BILLOW_TUNE: the knobs the water tuner shows (the "ฟองตีนน้ำตก" sliders); every billow reads them live.
-export const BILLOW_TUNE = {
+// FALL_TUNE: the knobs for the foot of the falls that the water tuner shows (the "ฟองตีนน้ำตก" and "คลื่นจากน้ำตก" sliders).
+// The billows read theirs live; the waves are poked into the pool's wave simulation by the level, which reads fallWave*.
+export const FALL_TUNE = {
   puffAmount: { value: 0.6 },       // how many of the puffs are out (0..1 of the most there can be)
   puffSize: { value: 0.7 },         // metres, roughly, when a puff has just popped up
   puffGrow: { value: 1.2 },         // how much bigger it gets by the time it has faded (0 = stays the same)
@@ -317,9 +318,12 @@ export const BILLOW_TUNE = {
   puffFade: { value: 0.3 },         // how far through its life a puff starts to fade (0 = from the start)
   puffSoft: { value: 0.32 },        // how soft the outline goes as it fades
   puffOpacity: { value: 1 },        // how solid they are
+  fallWaves: { value: 1 },          // how hard the falling water heaves the pool into waves (0 = calm)
+  fallWaveSize: { value: 1 },       // how broad each heave is (bigger = longer, slower-looking waves)
+  fallWaveRate: { value: 1 },       // how often a heave comes
 };
 
-export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, tune = BILLOW_TUNE, white = '#ffffff', shade = '#d3edf8' } = {}) {
+export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, tune = FALL_TUNE, white = '#ffffff', shade = '#d3edf8' } = {}) {
   const n = count || Math.max(20, Math.round(width * 7));                  // the most there can be; puffAmount picks how many are out
   const quad = new THREE.PlaneGeometry(2, 2);
   const geo = new THREE.InstancedBufferGeometry();
@@ -344,7 +348,8 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z + 1.2), width + 6);
   const rgb = h => new THREE.Color(h);
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) }, ...tune },
+    uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) },
+      ...Object.fromEntries(Object.entries(tune).filter(([k]) => k.startsWith('puff'))) },
     vertexShader: /* glsl */`
       attribute vec4 aBase, aSeed, aDrift;
       uniform float uTime, puffAmount, puffSize, puffGrow, puffSpread, puffRise, puffLife, puffFade;
