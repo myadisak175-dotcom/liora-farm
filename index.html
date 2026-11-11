@@ -147,6 +147,7 @@ import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
 import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
 import DEER_GLB from './deer-glb.js';
+import { createForestForage } from './forest-forage.js?v=1';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -192,6 +193,8 @@ scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.create
 const buildLevel = { meadow: buildMeadowLevel, hills: buildHillsLevel }[Q.get('map')] || buildValleyLevel;      // ?map=hills or ?map=meadow for the other maps
 const level = await buildLevel({ far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000, sun: sky.userData.sun ? sky.userData.sun.toArray() : undefined });
 scene.add(level.group);
+let forage = null;
+try { forage = await createForestForage({ level, onStep }); } catch (e) { console.error('Forest forage failed to load', e); }
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
 const ray = new THREE.Raycaster();
@@ -202,6 +205,11 @@ const onTap = (cx, cy) => {                          // tap the water: a stone's
 if (Q.get('view') === 'water' && Q.get('map')) { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }
 const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
+if (forage) {
+  const visit = document.createElement('button'); visit.id = 'forage-view'; visit.textContent = '🌿 ไปดูของป่า';
+  visit.onpointerdown = e => e.stopPropagation(); visit.onclick = () => forage.visit(player); document.body.append(visit);
+  if (Q.has('forage')) forage.visit(player);
+}
 level.addUnderwater(player.object);
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: vivi, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
@@ -319,6 +327,7 @@ const frame = (dt = clock.getDelta()) => {
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  if (forage) forage.update(dt, player.position);
   level.follow(player.position, player.lookDir);
   {
     // the level knows the sun its own shadows are drawn for; a map without them goes by the sky
@@ -349,11 +358,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { visitWater, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow };
+window.__game = { visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow };
 </script>
 </body>
 </html>
-
-
-
-
