@@ -199,12 +199,14 @@ function animeChurnMaterial(common, radius, cells) {
         float r = length(e);
         if (r > 1.0) discard;
         float ang = atan(e.y, e.x) / 6.2831853 + 0.5;
-        // two sheets sliding outwards at different speeds, so the gaps open, drift apart and close over one another
-        vec2 c1 = texture2D(uCells, vec2(ang * 4.0, r * 0.9 - uTime * 0.13)).rg;
-        vec2 c2 = texture2D(uCells, vec2(ang * 3.0 + 0.37, r * 0.6 - uTime * 0.075 + 0.5)).rg;
-        float gap = 0.07 + 0.42 * smoothstep(0.1, 0.95, r);
-        float foam = smoothstep(gap - 0.03, gap + 0.03, c1.r);
-        foam = max(foam, smoothstep(gap + 0.1, gap + 0.16, c2.r) * (1.0 - smoothstep(0.35, 0.8, r)));
+        // one sheet of foam running outwards: quick where the water lands and slowing as it spreads, its cells swaying instead
+        // of sliding as a rigid plate, with slow swells of thicker foam rolling out through it. Soft edges, nothing that pops.
+        float rr = pow(r, 0.72);
+        vec2 sway = vec2(sin(ang * 12.566 + uTime * 0.5 + r * 5.0), sin(ang * 18.85 - uTime * 0.37 + r * 7.0)) * 0.012;
+        vec2 c1 = texture2D(uCells, vec2(ang * 4.0, rr - uTime * 0.105) + sway).rg;
+        float swell = sin(rr * 15.0 - uTime * 2.2) * (1.0 - r);
+        float gap = 0.05 + 0.44 * smoothstep(0.16, 0.95, r) - 0.05 * swell;
+        float foam = smoothstep(gap - 0.05, gap + 0.05, c1.r);
         foam = max(foam, 1.0 - smoothstep(0.12, 0.22, r + (c1.g - 0.3) * 0.12));        // solid boil right under the fall
         foam *= 1.0 - smoothstep(0.8, 1.0, r + (c1.g - 0.3) * 0.35);                     // a ragged rim
         float pale = (1.0 - smoothstep(0.25, 0.75, r)) * 0.5;                            // paler water under the foam
@@ -297,7 +299,7 @@ function mistTexture() {
   return tex;
 }
 
-export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, sun = [-0.4, 0.9, 0.5] } = {}) {
+export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5] } = {}) {
   const group = new THREE.Group();
   group.name = 'waterfallClear';
   const common = commonUniforms({ optics, foamTexture, sun });
@@ -314,6 +316,9 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   churnGeo.scale(1, 1, 0.75);
   const churn = add(new THREE.Mesh(churnGeo, cells ? animeChurnMaterial(common, R, cells) : churnMaterial(common, R)), 4);
   churn.position.set(x, bottom + 0.27, footZ);
+  // surfaceChurn (WATER_CHURN of stylized-water.js): the water surface draws the churn itself, riding its own waves; the flat
+  // sheet here would be cut through by every wave that rises above it, so it stays hidden
+  if (surfaceChurn && cells) { surfaceChurn.value.set(x, footZ, R, 1); churn.visible = false; }
   // spray
   const N = 220, pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {

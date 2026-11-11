@@ -393,11 +393,11 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
       sim.impulse(x, z, radius, 0.012 * strength * k * W.WATER_TUNE.splashBump.value, Math.min(1, 0.4 * strength) * foam);
       if (drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, strength / 2.4 * drop, Math.round(14 * Math.min(1.5, drop)));
     } else {
-      // a footstep presses harder than a plain dip: one clear ring of waves and one ring of anime foam for every foot that lands
-      // (only a faint wisp of simulated foam under it, so the lace of the ring stays readable)
+      // a footstep: one clear ring of waves, and a puff of foam into her wake where the foot came down (the wake itself is laid
+      // down by WATER_WAKE.track in follow); only a faint wisp of simulated foam, so the lace of the wake stays readable
       const st = mode === 'step';
-      if (st && sim.inside(x, z)) W.WATER_RINGS.add(x, z, Math.min(1, 0.7 * strength));
-      sim.impulse(x, z, radius, (st ? -0.042 : -0.03) * strength * k, -Math.min(st ? 0.35 : 0.55, (st ? 0.4 : 0.75) * strength) * foam);
+      if (st) W.WATER_WAKE.add(x, z, Math.min(1.3, 0.9 * strength));
+      sim.impulse(x, z, radius, (st ? -0.042 : -0.03) * strength * k, -Math.min(st ? 0.15 : 0.55, (st ? 0.18 : 0.75) * strength) * foam);
       if (mode === 'step' && drop > 0 && sim.inside(x, z)) droplets.emit(x, gridAt(wLevel, x, z), z, 0.16 * drop * strength, strength > 1.2 ? 3 : 2);
     }
   };
@@ -527,6 +527,7 @@ export async function buildHillsLevel({ seed = 4, far = '#cde6f2', deer = null, 
     },
     follow(pos, lookDir) {
       grass.userData.follow(pos, lookDir);
+      W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z));
       // now and then something stirs in the pond
       const now = N._internal.shared.uTime.value;
       if (pondSpots.length && now > nextStir) {

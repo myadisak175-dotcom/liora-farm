@@ -459,6 +459,91 @@ const RING_GLSL = /* glsl */`
     return r * min(uStepRing, 1.5);
   }`;
 
+// FOAM WAKE. Wading leaves a trail of the same foam as the foot of the waterfall: a sheet of white with round gaps, thick round
+// the legs, the gaps widening behind her until the sheet tears into threads and flecks and is gone. Nothing pops in or out: the
+// trail is one smooth field (a puff laid down every third of a metre, each spreading and fading, plus one that stays under her),
+// and the foam is cut out of that field with cells pinned to the water, so it dissolves in place while she walks on.
+//   WATER_WAKE.track(x, z, depth)      // once a frame, with where she stands and how deep the water is there
+//   WATER_WAKE.add(x, z, size)         // an extra puff, e.g. where a foot comes down
+const WAKE_SLOTS = 16, WAKE_LIFE = 1.9;
+export const WATER_WAKE = {
+  uniforms: Array.from({ length: WAKE_SLOTS }, () => ({ value: new THREE.Vector4(0, 0, -100, 1) })),
+  head: { value: new THREE.Vector4(0, 0, 0, 0.3) },      // x, z, strength 0..1, radius
+  on: { value: 0 },
+  next: 0, last: null, run: 0, lastAdd: -100,
+  add(x, z, size = 1) {
+    this.uniforms[this.next].value.set(x, z, shared.uTime.value, size);
+    this.next = (this.next + 1) % WAKE_SLOTS;
+    this.lastAdd = shared.uTime.value;
+    this.on.value = 1;
+  },
+  track(x, z, depth) {
+    const now = shared.uTime.value, L = this.last;
+    this.last = { x, z, t: now };
+    const h = this.head.value;
+    if (L && now > L.t) {
+      const dt = now - L.t, moved = Math.hypot(x - L.x, z - L.z);
+      const speed = moved < 2 ? moved / dt : 0;                          // a jump across the map is not a stride
+      const wading = depth > 0.04;
+      const pace = Math.min(1, Math.max(0, (speed - 1.45) / 1.85));
+      h.z += ((wading ? Math.min(1, speed / 1.3) : 0) - h.z) * Math.min(1, dt * 7);       // eases in and out with her speed
+      h.w = 0.22 + 0.1 * pace;
+      if (wading && speed > 0.3) {
+        this.run += moved;
+        if (this.run >= 0.3 + 0.1 * pace) { this.run = 0; this.add(x, z, 1 + 0.25 * pace); }
+      }
+    }
+    h.x = x; h.y = z;
+    this.on.value = h.z > 0.01 || now - this.lastAdd < WAKE_LIFE ? 1 : 0;
+  },
+};
+const WAKE_GLSL = /* glsl */`
+  uniform vec4 ${Array.from({ length: WAKE_SLOTS }, (_, i) => 'uWk' + i).join(', ')};
+  uniform vec4 uWakeHead;
+  uniform float uWakeOn;
+  // (no early returns and nothing that can leave the range of pow or exp: some phones work every branch out and then choose)
+  float wakePuff(vec4 g, vec2 xz) {
+    float age = clamp(uTime - g.z, 0.0, ${WAKE_LIFE.toFixed(2)});
+    float left = 1.0 - age / ${WAKE_LIFE.toFixed(2)}, R = g.w * (0.19 + 0.2 * age);        // spreads as it ages
+    vec2 d = clamp(xz - g.xy, -20.0, 20.0);
+    return smoothstep(0.0, 0.14, age) * left * mix(1.0, left, 0.4) * exp(-min(dot(d, d) / (R * R), 30.0));
+  }
+  // how much foam the wake has left here, 0..1
+  float wakeField(vec2 xz) {
+    vec2 d = clamp(xz - uWakeHead.xy, -20.0, 20.0);
+    float f = 1.4 * uWakeHead.z * exp(-min(dot(d, d) / (uWakeHead.w * uWakeHead.w), 30.0));
+    f += ${Array.from({ length: WAKE_SLOTS }, (_, i) => `wakePuff(uWk${i}, xz)`).join(' + ')};
+    return clamp(f * 0.55, 0.0, 1.0) * step(max(abs(d.x), abs(d.y)), 9.0);        // the whole trail is within a few metres of her
+  }`;
+
+// THE WATERFALL'S CHURN, drawn on the water itself. A sheet of white foam pushed outwards from where the falls land, with round
+// gaps that widen as it travels until it tears into threads and flecks. It is part of the surface (not a flat sheet laid over
+// it), so it rides every wave and ring and can never be cut through by them.
+//   WATER_CHURN.value.set(x, z, radius, 1)      // where the water lands; 0 in the last place = no churn
+export const WATER_CHURN = { value: new THREE.Vector4(0, 0, 1, 0) };
+const CHURN_GLSL = /* glsl */`
+  uniform vec4 uChurn;
+  // x: white foam, y: paler water under it
+  vec2 churnFoam(vec2 xz) {
+    vec2 e = clamp((xz - uChurn.xy) / uChurn.z, -2.0, 2.0);
+    e.y /= 0.75;                                              // the churn is an ellipse: measure it as a circle
+    float r = length(e);
+    float inside = step(r, 1.0) * uChurn.w;
+    float ang = atan(e.y, e.x + 1e-5) / 6.2831853 + 0.5;
+    // one sheet running outwards: quick where the water lands and slowing as it spreads, its cells swaying instead of sliding
+    // as a rigid plate, with slow swells of thicker foam rolling out through it. Soft edges, nothing that pops.
+    float rr = pow(min(r, 1.0), 0.72);
+    vec2 sway = vec2(sin(ang * 12.566 + uTime * 0.5 + r * 5.0), sin(ang * 18.85 - uTime * 0.37 + r * 7.0)) * 0.012;
+    vec2 c1 = texture2D(uAnimeCells, vec2(ang * 4.0, rr - uTime * 0.105) + sway).rg;
+    float swell = sin(rr * 15.0 - uTime * 2.2) * (1.0 - min(r, 1.0));
+    float gap = 0.05 + 0.44 * smoothstep(0.16, 0.95, r) - 0.05 * swell;
+    float foam = smoothstep(gap - 0.05, gap + 0.05, c1.r);
+    foam = max(foam, 1.0 - smoothstep(0.12, 0.22, r + (c1.g - 0.3) * 0.12));        // solid boil right under the fall
+    foam *= 1.0 - smoothstep(0.8, 1.0, r + (c1.g - 0.3) * 0.35);                     // a ragged rim
+    float pale = (1.0 - smoothstep(0.25, 0.75, r)) * 0.5;
+    return vec2(foam, pale) * inside;
+  }`;
+
 // ==========================================================================
 // WATER SURFACE
 // ==========================================================================
@@ -475,6 +560,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
     uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uLace: WATER_TUNE.lace, uRing: WATER_TUNE.ring,
     uStepRing: WATER_TUNE.stepRing, ...Object.fromEntries(WATER_RINGS.uniforms.map((u, i) => ['uRg' + i, u])),
+    uChurn: WATER_CHURN, uWakeHead: WATER_WAKE.head, uWakeOn: WATER_WAKE.on, ...Object.fromEntries(WATER_WAKE.uniforms.map((u, i) => ['uWk' + i, u])),
     uFoamMap: { value: foamMap },
     uFoamMapOn: { value: foamTexture ? 1 : 0 },
     uFoam: { value: rgb(L.foam) }, uCell: { value: rgb(L.cell) }, uSky: { value: rgb(L.sky) },
@@ -537,6 +623,8 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       varying float vCalm;
 
       ${RING_GLSL}
+      ${WAKE_GLSL}
+      ${CHURN_GLSL}
       vec2 hash22(vec2 p) { return vec2(hash2(p), hash2(p + 37.31)); }
       float paintedFoam(vec2 uv) {
         vec2 a = fract(uv), b = fract(uv + vec2(0.47, 0.53));
@@ -766,6 +854,24 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         vec2 rings = foamRings(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth);
         col = mix(col, uCell, clamp(rings.y * 0.6, 0.0, 0.8));
         white = max(white, rings.x * 0.95);
+        if (uChurn.w > 0.5) {
+          vec2 churn = churnFoam(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth);
+          col = mix(col, mix(uShallow * 1.2, uFoam, 0.6), churn.y);
+          white = max(white, churn.x * 0.96);
+        }
+        // the foam wake of someone wading: cells pinned to the water, their gaps widening as the wake's foam runs out
+        if (uWakeOn > 0.5) {
+          float wk = wakeField(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth) * min(uStepRing, 1.5);
+          if (wk > 0.01) {
+            // cells of two sizes, bent out of their grid and swaying slowly, with the gaps wider in some patches than in others:
+            // holes of every size and ragged threads between them, not a row of dots
+            vec2 wxz = xz + (vec2(noise2(xz * 0.9 + t * 0.05), noise2(xz * 0.9 + 9.0 - t * 0.05)) - 0.5) * 0.5;
+            float wc = min(texture2D(uAnimeCells, wxz * 0.45).r, texture2D(uAnimeCells, wxz * 0.95 + vec2(0.37, 0.11)).r * 1.25);
+            float wgap = mix(0.58, 0.07, smoothstep(0.0, 0.9, wk)) + (noise2(xz * 1.1 + 3.0) - 0.5) * 0.25;
+            col = mix(col, uCell, 0.3 * smoothstep(0.05, 0.6, wk));
+            white = max(white, smoothstep(wgap - 0.04, wgap + 0.04, wc) * smoothstep(0.02, 0.12, wk) * 0.93);
+          }
+        }
         if (uToon > 0.5) {
           white = max(white, smoothstep(0.035, 0.04, s0) * min(uRing, 1.0) * 0.9 * smoothstep(0.0, 0.06, depth));
           white = smoothstep(0.28, 0.4, white);          // foam has a drawn edge: white or not
