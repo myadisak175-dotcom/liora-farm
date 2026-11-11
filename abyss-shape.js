@@ -16,6 +16,7 @@
 //   AB.brooks          the brooks with their lines smoothed: { pts: [[x, z], ...], half, level }
 //   AB.bridges         where the rim walk crosses a brook: { x, z, yaw (the way the deck runs), len }
 //   AB.ledge(k)        the k-th ledge down: { y, u0, u1 } (u: metres in from the brink)
+//   AB.span            the rope bridge across the pit: { a, b, mid: [x, z], len, yaw, sag }; AB.spanDist(x, z) metres from its line
 import { _internal } from './stylized-nature.js';
 
 const { fbm3 } = _internal;
@@ -47,6 +48,7 @@ export const ABYSS = {
   ],
   spur: { a: 95, out: 3, in: 6, half: 2.7 },          // the lookout: a tongue of rock out over the pit, facing the river's falls
   walk: { from: -62, to: 238, off: 4.6 },             // the trodden way round the rim: from the top of the climb, round by the south
+  span: { from: -32, to: 212, out: 2.6, sag: 4.5 },   // a rope bridge across the pit, from the east rim to the west, in front of the river's falls
   climb: { side: 1, z0: 26, z1: 66 },                 // the way up from the valley floor: cut into the east cliff, coming out by the rim
   // the ledges the walls step down in: how deep, and how far in from the brink each one starts
   ledges: [{ y: -9, u: 0 }, { y: -21, u: 5.2 }, { y: -34, u: 10.2 }, { y: -48, u: 14.4 }],
@@ -191,6 +193,20 @@ const trails = [];
   trails.push([polar(spA, walkR(spA)), polar(spA, rimR(spA) - SP.in + 1.2)]);
 }
 
+// ---- the rope bridge across the pit: from just outside the brink on one side to the other, straight across
+const SPN = ABYSS.span;
+const span = (() => {
+  const aA = SPN.from * D, aB = SPN.to * D, a = polar(aA, rimR(aA) + SPN.out), b = polar(aB, rimR(aB) + SPN.out);
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return { a, b, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len, yaw: -Math.atan2(b[1] - a[1], b[0] - a[0]), sag: SPN.sag };
+})();
+const spanDist = (x, z) => {                          // metres from the bridge's line (99 beyond its ends)
+  const [ax, az] = span.a, dx = span.b[0] - ax, dz = span.b[1] - az;
+  const t = ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz);
+  if (t < -0.08 || t > 1.08) return 99;
+  return Math.abs((x - ax) * dz - (z - az) * dx) / span.len;
+};
+
 // ---- how the land bends
 const near = (x, z) => Math.hypot(x - X, z - Z);
 function reshape(x, z, h) {
@@ -264,7 +280,7 @@ const ledge = k => { const L = LEDGES[k]; return { y: L.y, u0: L.u, u1: k + 1 < 
 
 export const AB = {
   reshape, widen, waterAt, trails, rimR, rimDist, inPit, onRim, onSpur, islandAt, brookDist, spurDist,
-  falls: FALLS, brooks, bridges, islands, ledge, chuteAt, polar,
+  falls: FALLS, brooks, bridges, islands, ledge, chuteAt, polar, span, spanDist,
   spur: { a: spA, base: spurA, tip: spurB, half: SP.half },
   walkR,
 };

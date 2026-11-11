@@ -149,7 +149,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const decks = [];
   // (a deck with a yaw runs along (cos yaw, -sin yaw): the way a bridge built along x points once it is turned by that yaw)
   const deckU = (d, x, z) => { const c = Math.cos(d.yaw || 0), s = Math.sin(d.yaw || 0), dx = x - d.x, dz = z - d.z; return [dx * c - dz * s, dx * s + dz * c]; };
-  const deckAt = (x, z) => { for (const d of decks) { const [u, v] = deckU(d, x, z); if (Math.abs(u) < d.len / 2 && Math.abs(v) < d.halfW) return d; } return null; };
+  const deckAt = (x, z) => { for (const d of decks) { const [u, v] = deckU(d, x, z); if (Math.abs(u) < d.len / 2 && Math.abs(v) < (d.halfWAt ? d.halfWAt(u) : d.halfW)) return d; } return null; };
   const H = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckU(d, x, z)[0]) : V.surfaceAt(x, z); };      // ground, or a bridge deck
   const waterDepthAt = (x, z) => (!lower(x, z) || H(x, z) > HV(x, z) + 0.01 || AB.inPit(x, z, 0.2)) ? 0 : Math.max(0, WL - HV(x, z));
   await onStep('วัดความสูงพื้น');
@@ -702,7 +702,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // a rail along the brink (gaps where the brooks go over and where the lookout runs out), and round the lookout
   {
     const railR = a => AB.rimR(a) + 1.0;
-    const gapAt = (x, z) => AB.brookDist(x, z).d < 1.2 || AB.spurDist(x, z) < AB.spur.half + 0.3;
+    const gapAt = (x, z) => AB.brookDist(x, z).d < 1.2 || AB.spurDist(x, z) < AB.spur.half + 0.3 || AB.spanDist(x, z) < 1.7;
     let cur = [];
     const flush = () => {
       if (cur.length > 1) { const g = BD.fenceGeometry({ points: cur, heightAt: HV, closed: false, spacing: 1.7, seed: 41 + abyssBuilt.length }); for (const c of g.userData.circles) colliders.push(c); abyssBuilt.push(g); }
@@ -740,6 +740,29 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     decks.push({ x: br.x, z: br.z, len: br.len, halfW: 0.95, yaw: br.yaw, y: u => by + 0.41 + 0.7 * (1 - Math.pow(2 * u / br.len, 2)) });
     for (let u = -br.len / 2; u <= br.len / 2; u += 1) bare.push([br.x + c * u, br.z - s * u, 1.4]);
     castBall(br.x, br.z, 0.4, br.len / 2.4, 0.65);
+  }
+  // the rope bridge across the pit. It hangs from its two ends and sways a little (more when someone is on it): the whole
+  // bridge turns about the line between its ends, a few centimetres at the middle, too little to matter to where she stands.
+  let span = null;
+  {
+    const S = AB.span, yA = HV(S.a[0], S.a[1]), yB = HV(S.b[0], S.b[1]);
+    const opts = { length: S.len, sag: S.sag, rise: yB - yA };
+    const holder = new THREE.Group(), swing = new THREE.Group();
+    holder.position.set(S.a[0], yA, S.a[1]);
+    holder.rotation.y = S.yaw;
+    const mesh = new THREE.Mesh(BD.ropeBridgeGeometry({ ...opts, seed: 61 }), propMaterial());
+    mesh.name = 'ropeBridge';
+    mesh.userData.dispose = () => mesh.geometry.dispose();
+    swing.add(mesh); holder.add(swing); group.add(holder);
+    const deck = { x: S.mid[0], z: S.mid[1], len: S.len, halfW: 1.4, yaw: S.yaw,
+      halfWAt: u => BD.ropeBridgeHalfWidth(u + S.len / 2, opts) - 0.2, y: u => yA + BD.ropeBridgeDeck(u + S.len / 2, opts) };
+    decks.push(deck);
+    const c = Math.cos(S.yaw), s = Math.sin(S.yaw);
+    for (const [lx, w] of [[-0.45, BD.ropeBridgeHalfWidth(0, opts)], [S.len + 0.45, BD.ropeBridgeHalfWidth(S.len, opts)]]) {
+      for (const sz of [-1, 1]) { const lz = sz * (w + 0.2); colliders.push([S.a[0] + lx * c + lz * s, S.a[1] - lx * s + lz * c, 0.3]); }
+    }
+    for (const [x, z] of [S.a, S.b]) bare.push([x, z, 2.2]);
+    span = { swing, deck, k: 0 };
   }
   if (abyssBuilt.length) {
     const m = new THREE.Mesh(mergeGeometries(abyssBuilt), propMaterial());
@@ -1027,7 +1050,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const hidden = [water, grass, droplets.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let grassDirty = false;
-  let frameNo = 0, nextSplash = 0, nextHeave = 0, lastRenderer = null;
+  let frameNo = 0, nextSplash = 0, nextHeave = 0, lastRenderer = null, walker = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
@@ -1069,6 +1092,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
         return [k, { x, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z) }];
       })),
       start: { x: spawn.x, z: spawn.z, yaw: spawn.yaw },
+      bridge: { x: AB.span.mid[0], z: AB.span.mid[1], yaw: Math.PI },          // the middle of the rope bridge, facing the river's falls
       falls: { x: fall.x + 5, z: fall.z + 13, yaw: Math.atan2(-5, -13) },
     },
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
@@ -1104,7 +1128,12 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
       if (mill) mill.update(dt);
-      if (wheel) wheel.rotation.x -= dt * 0.9;                             // the stream turns the wheel: its lowest paddles go with the water
+      if (wheel) wheel.rotation.x -= dt * 0.9;
+      if (span) {                                                          // the rope bridge sways, more while she is on it
+        span.k += ((walker && deckAt(walker.x, walker.z) === span.deck ? 1 : 0) - span.k) * Math.min(1, dt * 1.5);
+        const t = N._internal.shared.uTime.value;
+        span.swing.rotation.x = 0.0016 * Math.sin(t * 0.7) + span.k * (0.0035 * Math.sin(t * 1.9) + 0.0015 * Math.sin(t * 3.1));
+      }                             // the stream turns the wheel: its lowest paddles go with the water
       sim.step(renderer, dt);
       droplets.update(renderer);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
@@ -1139,6 +1168,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       return false;
     },
     follow(pos, lookDir) {
+      walker = pos;
       grass.userData.follow(pos, lookDir);
       W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z));
       sim.focus(pos.x, pos.z);

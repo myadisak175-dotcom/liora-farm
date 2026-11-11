@@ -14,6 +14,8 @@
    stoneBridgeGeometry  a humpbacked stone bridge along x; stoneBridgeDeck(u, opts) is the height of its deck above its base
    wellGeometry       a round stone well under a little roof
    fenceGeometry      posts and two rails along a line of points on the ground (world space)
+   ropeBridgeGeometry a rope bridge slung along x from 0 to length, sagging between two pairs of posts, with a wider
+                      landing in the middle; ropeBridgeDeck(x, opts) / ropeBridgeHalfWidth(x, opts) for walking on it
    propGeometry       small things that make a village look lived in: 'stall', 'table', 'bench', 'barrels', 'crates', 'hay',
                       'signpost', 'lamp', 'cart', 'woodpile', 'sheep'  (g.userData.solid = how wide it is to walk into, 0 = not at all)
    rectCircles        circles along the walls of a turned rectangle, for colliders
@@ -30,6 +32,7 @@ export const BUILD_COLORS = {
   shutters: ['#5f8f6a', '#4f7f96', '#b0563c', '#8a6a3a'],
   hay: '#dcb95c', cloth: ['#c9483a', '#f2e8cf', '#4f7f96', '#e0a43c'], lantern: '#f6d875', wool: '#f3eddd', woolDark: '#4a4038',
   goods: ['#d8843a', '#7fa64a', '#c9483a', '#e6c95a', '#8e5aa0'],
+  rope: '#c7a26a',
 };
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
@@ -276,6 +279,57 @@ export function fenceGeometry({ points, heightAt, closed = true, gap = null, spa
   }
   const g = K.done();
   g.userData = { circles: out };
+  return g;
+}
+
+// ---- a rope bridge. Local space: the deck runs along x from 0 to length, at y = 0 at x = 0 and y = rise at the far end,
+// sagging by sag in between; z across. The landing in the middle is wider, for standing and looking down.
+export function ropeBridgeDeck(x, { length, sag = 4.5, rise = 0 }) { const t = x / length; return rise * t - sag * 4 * t * (1 - t); }
+export function ropeBridgeHalfWidth(x, { length, width = 1.6, landing = 2.7, landingLen = 4.6 }) {
+  const d = Math.abs(x - length / 2), k = Math.min(1, Math.max(0, (landingLen / 2 + 1.2 - d) / 1.2));
+  return (width + (landing - width) * k * k * (3 - 2 * k)) / 2;
+}
+export function ropeBridgeGeometry({ length, sag = 4.5, rise = 0, width = 1.6, landing = 2.7, landingLen = 4.6, seed = 1, colors = BUILD_COLORS } = {}) {
+  const K = kit(seed), C = colors, r = K.rng, o = { length, sag, rise, width, landing, landingLen };
+  const y = x => ropeBridgeDeck(x, o), hw = x => ropeBridgeHalfWidth(x, o);
+  // a straight piece of rope or timber from a to b ([x, y, z])
+  const rod = (a, b, thick, col) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], h = Math.hypot(dx, dz), len = Math.hypot(h, dy);
+    K.box((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - thick / 2, (a[2] + b[2]) / 2, len + thick * 0.6, thick, thick, col, { rz: Math.atan2(dy, h), ry: -Math.atan2(dz, dx), vary: 0.03 });
+  };
+  // planks, each a little different, laid across
+  for (let x = 0.2; x < length - 0.1; x += 0.42) {
+    const slope = Math.atan((y(x + 0.05) - y(x - 0.05)) / 0.1), w = hw(x) * 2 * (0.94 + 0.1 * r());
+    K.box(x + (r() - 0.5) * 0.04, y(x) - 0.07, (r() - 0.5) * 0.06, 0.34, 0.07, w, C.timber, { rz: slope, ry: (r() - 0.5) * 0.05, vary: 0.1 });
+  }
+  // the ropes: two under the planks' ends, two hand ropes, hangers between them and a slack middle rope
+  const STEP = 1.05;
+  for (let x = 0; x < length - 0.01; x += STEP) {
+    const x1 = Math.min(length, x + STEP), xm = (x + x1) / 2;
+    for (const s of [-1, 1]) {
+      rod([x, y(x) - 0.08, s * (hw(x) - 0.08)], [x1, y(x1) - 0.08, s * (hw(x1) - 0.08)], 0.07, C.rope);
+      rod([x, y(x) + 1.0, s * (hw(x) + 0.02)], [x1, y(x1) + 1.0, s * (hw(x1) + 0.02)], 0.07, C.rope);
+      rod([x, y(x) - 0.06, s * (hw(x) - 0.04)], [x, y(x) + 1.0, s * (hw(x) + 0.02)], 0.04, C.rope);
+      rod([x, y(x) + 0.52, s * hw(x)], [xm, y(xm) + 0.44, s * hw(xm)], 0.035, C.rope);
+      rod([xm, y(xm) + 0.44, s * hw(xm)], [x1, y(x1) + 0.52, s * hw(x1)], 0.035, C.rope);
+    }
+  }
+  // at each end two posts with a crossbar, the ropes tied to them and stays pegged into the ground behind
+  for (const [px, dir, py, ex] of [[-0.45, -1, 0, 0], [length + 0.45, 1, rise, length]]) {
+    const w0 = hw(ex);
+    for (const s of [-1, 1]) {
+      K.box(px, py - 0.8, s * (w0 + 0.2), 0.26, 3.1, 0.26, C.timberDark);
+      K.cyl(px, py + 2.3, s * (w0 + 0.2), 0.16, 0.08, 0.3, 6, C.timberDark);
+      rod([px, py + 2.0, s * (w0 + 0.2)], [px + dir * 2.4, py - 0.1, s * (w0 + 0.7)], 0.08, C.rope);
+      K.box(px + dir * 2.4, py - 0.5, s * (w0 + 0.7), 0.18, 0.7, 0.18, C.timber);
+      rod([px, py + 1.0, s * (w0 + 0.2)], [ex, py + 1.0, s * (w0 + 0.02)], 0.07, C.rope);
+      rod([px, py - 0.08, s * (w0 + 0.2)], [ex, py - 0.08, s * (w0 - 0.08)], 0.07, C.rope);
+    }
+    K.box(px, py + 1.85, 0, 0.2, 0.2, w0 * 2 + 0.9, C.timberDark);
+    for (let k = 0; k < 3; k++) K.box(px + dir * (0.1 + k * 0.4), py - 0.12, 0, 0.36, 0.1, w0 * 2 + 0.1, C.timber, { vary: 0.1 });      // planks laid on the ground before it
+  }
+  const g = K.done();
+  g.userData = { length };
   return g;
 }
 
