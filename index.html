@@ -334,7 +334,11 @@ const frame = (dt = clock.getDelta()) => {
   tune(dt);
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
-const animate = () => frame();
+// No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
+// phone turns into heat, not into anything the eye needs here: frames that come too soon are skipped (?fps=120 keeps them all).
+const frameGap = 1000 / targetFPS - 2;               // ms between frames; the 2 forgives a tick that arrives a hair early
+let lastFrameAt = -1e9;
+const animate = t => { if (t - lastFrameAt < frameGap) return; lastFrameAt = t; frame(); };
 const syncVisibility = () => {
   clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0;
   renderer.setAnimationLoop(!document.hidden && !Q.get('still') ? animate : null);
