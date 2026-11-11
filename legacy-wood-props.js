@@ -1,4 +1,4 @@
-// The original farm's crate and wine barrel, with their original mesh, UVs and painted wood.
+// The original farm's mesh and UVs, repainted with broad, warm wood colours for the cozy village.
 // Bake repeated placements into two meshes so the village stays cheap to draw on phones.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -6,8 +6,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { propMaterial } from './stylized-props.js';
 
 const SOURCES = {
-  crates: new URL('./assets/models/builder/crate.glb', import.meta.url).href,
-  barrels: new URL('./assets/models/builder/wine_barrel.glb', import.meta.url).href,
+  crates: new URL('./assets/models/builder/crate-stylized.glb', import.meta.url).href,
+  barrels: new URL('./assets/models/builder/wine_barrel-stylized.glb', import.meta.url).href,
 };
 
 export async function loadLegacyWoodProps() {
