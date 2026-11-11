@@ -62,8 +62,8 @@ const VILLAGE = {
     [[10.5, -71.8], [19.5, -73.5], [29.5, -75]], [[6, -72.5], [3, -76.8]], [[14.5, -72.6], [14, -77]], [[22.5, -74], [22.5, -76.2]],
     [[1.2, -55], [3.4, -57.7]], [[27.5, -52], [31.7, -53.2]], [[-13.6, -72.6], [-13.4, -76.9]],
   ],
-  // trodden yards: round the well, under the great tree, before the keep's door
-  yards: [[-24.5, -59.8, 3.2], [8.5, -72.6, 3.8], [-27.6, -76.5, 2.2]],
+  // trodden yards: round the well, under the great tree, before the keep's door (x, z, radius, paved with cobbles?)
+  yards: [[-24.5, -59.8, 3.2, true], [8.5, -72.6, 3.8, false], [-27.6, -76.5, 2.2, true]],
   // small things that make it look lived in: kind, x, z, which way it faces
   props: [
     ['stall', 3.6, -69.5, Math.PI], ['stall', -0.6, -69.3, Math.PI], ['table', 6.6, -76.8, 0.3], ['barrels', 5.4, -77.2, 0], ['crates', 10.3, -77.5, 1],
@@ -246,16 +246,41 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   { const q = VILLAGE.pasture; placed.push([(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2, 9]); }
   const vsegs = [];                                                        // the village's ways, as segments
   for (const line of [...VILLAGE.paths, ...V.ramps.map(r => r.line)]) for (let i = 0; i < line.length - 1; i++) vsegs.push([line[i][0], line[i][1], line[i + 1][0], line[i + 1][1]]);
+  // how wide each way is worn: the long ways between places are broad, the short spurs to a door narrow, the ramps broadest
+  const wsegs = [];
+  for (const line of VILLAGE.paths) for (let i = 0; i < line.length - 1; i++) wsegs.push([line[i][0], line[i][1], line[i + 1][0], line[i + 1][1], line.length >= 3 ? 0.9 : 0.6]);
+  for (const r of V.ramps) for (let i = 0; i < r.line.length - 1; i++) wsegs.push([r.line[i][0], r.line[i][1], r.line[i + 1][0], r.line[i + 1][1], 1.0]);
+  // metres to the nearest way, measured so that every way's edge is 0.7 away whatever its width (0 = well inside one)
   const wayDist = (x, z) => {
     if (z > -40 || Math.abs(x) > 46) return 99;
     let best = 99;
-    for (const [ax, az, bx, bz] of vsegs) {
+    for (const [ax, az, bx, bz, half] of wsegs) {
       const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
-      best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t));
+      best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t) - half + 0.7);
     }
-    for (const [yx, yz, yr] of VILLAGE.yards) best = Math.min(best, Math.max(0, Math.hypot(x - yx, z - yz) - yr + 0.6));
-    return best;
+    for (const [yx, yz, yr] of VILLAGE.yards) best = Math.min(best, Math.hypot(x - yx, z - yz) - yr + 0.6);
+    return Math.max(0, best);
   };
+  // how paved a spot is: the yards marked as paved are laid with cobbles, thinning out toward their edge
+  const pavedAt = (x, z) => {
+    let g = 0;
+    for (const [yx, yz, yr, paved] of VILLAGE.yards) if (paved) g = Math.max(g, 1 - ss(yr - 1.6, yr + 0.3, Math.hypot(x - yx, z - yz)));
+    return g;
+  };
+  // the picture of the ways that the ground is drawn from (stylized-terrain.js, WAYS): a quarter of a metre to the texel
+  {
+    const X0 = -46, X1 = 46, Z0 = -92, Z1 = -40, wN = 368, hN = 208, px = new Uint8Array(wN * hN * 4);
+    for (let jz = 0; jz < hN; jz++) for (let ix = 0; ix < wN; ix++) {
+      const x = X0 + (ix + 0.5) / wN * (X1 - X0), z = Z0 + (jz + 0.5) / hN * (Z1 - Z0), o = (jz * wN + ix) * 4;
+      px[o] = Math.round(255 * Math.min(1, wayDist(x, z) / 4)); px[o + 1] = Math.round(255 * pavedAt(x, z)); px[o + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(px, wN, hN, THREE.RGBAFormat);
+    tex.magFilter = tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    const u = terrain.material.uniforms;
+    if (u && u.uWays) { u.uWays.value = tex; u.uWaysRect.value.set((X0 + X1) / 2, (Z0 + Z1) / 2, 1 / (X1 - X0), 1 / (Z1 - Z0)); u.uWaysOn.value = 1; }
+    terrain.userData.disposeWays = () => tex.dispose();
+  }
   for (const p of VILLAGE.props) placed.push([p[1], p[2], 1.4]);
   for (const [ax, az, bx, bz] of vsegs) { const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 2.5); for (let i = 0; i <= n; i++) placed.push([ax + (bx - ax) * i / n, az + (bz - az) * i / n, 2.2]); }
   // dense forest on the heights (seen from below, so light on leaf cards), bushes only at tree feet
@@ -481,8 +506,18 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const paint = (x, z) => {
     const h = Hf(x, z), low = lower(x, z);
     const sand = low ? 1 - ss(0.35, 0.8, h - WL) : 1 - ss(-0.2, 0.25, h - V.plateauWaterAt(z));
-    const earth = Math.max(ss(0.14, 0.24, slopeF(x, z)), 1 - ss(0.55, 1.3, CL.at(x, z).d), 0.9 * (1 - ss(0.6, 1.5, wayDist(x, z))));      // cliffs and steep ledges: rock; the cliff path and the village's ways: trodden earth
-    return [earth, sand, 0];
+    // the village's ways: no grass on the trodden earth; beside it a verge where the grass is worn thin and short. The edge of
+    // each is pushed about by two sizes of noise, so the grass comes into the way in tongues and tufts, not along a ruled line
+    const wd = wayDist(x, z);
+    let trod = 0, verge = 0;
+    if (wd < 4) {
+      const rag = (N._internal.fbm3(x * 0.3, 5.1, z * 0.3, 41, 2) - 0.5) * 0.9 + (N._internal.fbm3(x * 1.1, 8.3, z * 1.1, 43, 2) - 0.5) * 0.5;
+      trod = 1 - ss(0.4, 1.5, wd + rag);              // thinning over a metre: bare, then sparse yellowed blades, then grass
+      verge = 1 - ss(1.0, 2.8, wd + rag * 1.4);
+      trod = Math.max(trod, 0.28 * verge);            // and on the verge the blades stand about half as tall
+    }
+    const earth = Math.max(ss(0.14, 0.24, slopeF(x, z)), 1 - ss(0.55, 1.3, CL.at(x, z).d), trod);      // cliffs and steep ledges: rock; the cliff path and the village's ways: trodden earth
+    return [earth, sand, verge * 0.85];
   };
   const colors = { ...G.GROUND_COLORS, deep: '#7a9b3c', mid: '#86a640', sunny: '#a5c04b', shade: '#6d8d38', lawn: '#93b145' };
   const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: Hf, dirt: 0, shade, cast: sunShadows(new THREE.Vector3(...sun)), bare, press, paint, colors });

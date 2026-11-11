@@ -46,12 +46,18 @@ const TERRAIN_COLORS = {
   rock: ['#e2d6b4', '#c2b38f', '#9a8b6c', '#6b604c'],      // sunlit top .. deep seams
   sand: ['#efe1b6', '#e4cf9a', '#cbb07c'],               // dry light, dry, wet (at the water)
   path: ['#e3cc98', '#c4a76f'],
+  worn: '#eedcae',                                       // the middle of a way, where feet fall most
+  verge: '#a2b24c',                                      // grass beside a way: trodden short, a little yellowed
 };
 const WATER_COLORS = { deep: '#2f86b2', mid: '#41a2c6', shallow: '#69bfd2', edge: '#a3dcd2', line1: '#d9f3f3', line2: '#ffffff', foam: '#f4fbf8' };
 
 // --------------------------------------------------------------------------
 // materials
 // --------------------------------------------------------------------------
+// a one-texel picture that says "no way anywhere near": what the ground reads until a level gives it a real one
+const BLANK_WAYS = new THREE.DataTexture(new Uint8Array([255, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+BLANK_WAYS.needsUpdate = true;
+
 function terrainMaterial(far, half, zc) {
   const C = TERRAIN_COLORS;
   return new THREE.ShaderMaterial({
@@ -59,7 +65,9 @@ function terrainMaterial(far, half, zc) {
       uG0: { value: rgb(C.grass[0]) }, uG1: { value: rgb(C.grass[1]) }, uG2: { value: rgb(C.grass[2]) }, uG3: { value: rgb(C.grass[3]) },
       uR0: { value: rgb(C.rock[0]) }, uR1: { value: rgb(C.rock[1]) }, uR2: { value: rgb(C.rock[2]) }, uR3: { value: rgb(C.rock[3]) },
       uB0: { value: rgb(C.sand[0]) }, uB1: { value: rgb(C.sand[1]) }, uB2: { value: rgb(C.sand[2]) },
-      uP0: { value: rgb(C.path[0]) }, uP1: { value: rgb(C.path[1]) },
+      uP0: { value: rgb(C.path[0]) }, uP1: { value: rgb(C.path[1]) }, uP2: { value: rgb(C.worn) }, uPV: { value: rgb(C.verge) },
+      // the trodden ways of a village (see WAYS in the fragment shader): a picture of how far each spot is from the nearest way
+      uWays: { value: BLANK_WAYS }, uWaysRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uWaysOn: { value: 0 },
       uFar: { value: rgb(far) }, uHalf: { value: new THREE.Vector2(half[0], half[1]) }, uZc: { value: zc },
       ...HAZE_U(),
     },
@@ -84,7 +92,10 @@ function terrainMaterial(far, half, zc) {
     fragmentShader: /* glsl */`
       ${NOISE}
       ${HAZEF}
-      uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uFar;
+      uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar;
+      uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
+      uniform vec4 uWaysRect;       // centre x, centre z, 1 / width, 1 / depth of the ground the picture covers
+      uniform float uWaysOn;
       uniform vec2 uHalf;
       uniform float uZc;
       varying vec3 vWP;
@@ -115,6 +126,42 @@ function terrainMaterial(far, half, zc) {
           if (b < 0.62) col = b < 0.16 ? uB2 : (noise2(vWP.xz * 0.35) > 0.55 ? uB0 : uB1);   // sand beach, wet at the water
           float p = vPath + (j - 0.37) * 0.45;
           if (p > 0.5) col = p > 0.72 ? uP0 : uP1;                          // dirt path, darker rim
+          // WAYS: trodden ways between the houses. From the grass inwards: a verge of short yellowed grass, a rim of darker
+          // damp earth, the trodden earth itself, and pale worn patches down the middle. The edge wanders and is ragged, so no
+          // two metres of it are alike. Pebbles lie thick along the edges and thin in the middle; in the yards the earth is laid
+          // with cobbles, which thin out into single stones where the yard ends.
+          vec2 wuv = (vWP.xz - uWaysRect.xy) * uWaysRect.zw + 0.5;
+          if (uWaysOn > 0.5 && wuv.x > 0.0 && wuv.x < 1.0 && wuv.y > 0.0 && wuv.y < 1.0) {
+            vec4 wy = texture2D(uWays, wuv);
+            float wd = wy.r * 4.0 + (noise2(vWP.xz * 0.33 + 5.0) - 0.5) * 0.7 + (j - 0.37) * 0.5;
+            if (wd < 1.75 && b >= 0.62) col = uPV;
+            if (wd < 1.12) col = uP1;
+            if (wd < 0.86) col = noise2(vWP.xz * 1.15 + 31.0) < 0.2 ? uP1 : uP0;               // small damp patches in it
+            if (wd < 0.5 && noise2(vWP.xz * 0.55 + 11.0) > 0.5) col = uP2;
+            vec2 lightAway = vec2(0.655, -0.756);                                              // the side of a stone turned from the sun
+            if (wd < 1.45) {
+              // pebbles
+              vec2 pc = vWP.xz * 2.6, pi = floor(pc);
+              vec2 pd = fract(pc) - 0.5 - (vec2(hash2(pi + 1.3), hash2(pi + 7.1)) - 0.5) * 0.5;
+              pd.x *= 0.75 + 0.6 * hash2(pi + 9.0);
+              float pr = 0.1 + 0.15 * hash2(pi + 3.7);
+              float many = mix(0.08, 0.4, smoothstep(0.4, 0.95, wd)) * (1.0 - smoothstep(1.15, 1.45, wd));
+              if (hash2(pi) < many && length(pd) < pr) col = dot(pd, lightAway) > 0.3 * pr ? uR2 : (hash2(pi + 5.5) > 0.5 ? uR0 : uR1);
+              // cobbles: courses of rounded slabs, each course shifted half a stone, earth in the joints
+              if (wy.g > 0.02) {
+                vec2 cc = vec2(vWP.x * 0.94 - vWP.z * 0.34, vWP.x * 0.34 + vWP.z * 0.94) * 1.75;      // laid a little askew, not along the map's axes
+                cc.x += 0.5 * mod(floor(cc.y), 2.0);
+                vec2 ci = floor(cc), cf = fract(cc) - 0.5 - (vec2(hash2(ci + 1.0), hash2(ci + 3.0)) - 0.5) * 0.12;      // no two set quite alike
+                vec2 slab = vec2(0.3 + 0.13 * hash2(ci + 2.0), 0.28 + 0.13 * hash2(ci + 6.0));
+                float sd = length(max(abs(cf) - slab + 0.15, 0.0)) - 0.15 + (noise2(vWP.xz * 7.0) - 0.5) * 0.05;       // hand-cut edges
+                if (hash2(ci + 4.0) < wy.g * 1.3 && sd < 0.0) {
+                  float tone = hash2(ci + 8.0);
+                  col = tone > 0.62 ? uR0 : (tone > 0.2 ? uR1 : mix(uR1, uR2, 0.5));
+                  if (sd > -0.06 && dot(cf, lightAway) > 0.0) col = uR2;                       // its shaded edge
+                }
+              }
+            }
+          }
         }
         col = mix(col, uHaze, vHaze);
         vec2 q = abs(vec2(vWP.x, vWP.z - uZc)) / uHalf;
