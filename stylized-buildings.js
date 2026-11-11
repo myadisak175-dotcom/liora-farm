@@ -37,7 +37,7 @@ export const BUILD_COLORS = {
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
 // a little workshop: add pieces, each one flat colour, then merge them into one geometry
-function kit(seed = 1) {
+export function kit(seed = 1) {
   const parts = [], rng = mulberry(seed * 2654435761 % 2147483647);
   const add = (g, col, vary = 0.05) => {
     if (g.index) { const n = g.toNonIndexed(); g.dispose(); g = n; }          // every face its own corners: flat shading

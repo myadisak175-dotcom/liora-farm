@@ -17,6 +17,9 @@
                            mounds [{ x, z, r, top, h }] knolls: h high, flat within top of the middle, down to nothing at r
                            rise   (x, z) => metres added to the land (hills round the terraces); the upper river keeps its bed, so it runs in a gorge there
                            ramps  [[[x, z], ...], ...] paths cut from one terrace to the next: V.ramps[i] = { at(x, z), half }
+                           pads   [{ x, z, hx, hz, skirt, at: [x, z] }] ground levelled for something big: a box (middle x, z, half
+                                  sizes hx, hz) at the height the land has at `at`, a steep bank `skirt` wide round it.
+                                  V.legacyHeightAt / V.legacyKindAt know nothing of them; V.pads has each pad's height y
                            V.plateauWaterAt(z) is the upper river's level there
      createValley({ climbs: [{ side, z0, z1 }] })   more paths like climb, each cut into a cliff face from z0 (on the floor)
                            to z1 (on the top); z1 may lie downstream of z0. V.climbs[i] is shaped like V.climb
@@ -539,9 +542,15 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     ramps.push(makeCut(cs, 1.6, 1.8));
   }
   const cuts = [...(Cl ? [Cl] : []), ...Cls, ...ramps];
-  const H = cuts.length ? (x, z) => { let h = Hn(x, z); for (const c of cuts) h = c.cut(x, z, h); return h; } : Hn;
+  const Hc = cuts.length ? (x, z) => { let h = Hn(x, z); for (const c of cuts) h = c.cut(x, z, h); return h; } : Hn;
   const cuts0 = [...(Cl ? [Cl] : []), ...ramps];
   const H0 = (x, z) => { let h = Hn0(x, z); for (const c of cuts0) h = c.cut(x, z, h); return h; };
+  // pads: ground levelled last of all for something big to stand on (a hall and its yards), whatever lay there before: a box
+  // of even ground at one height, with a short steep bank round it down (or up) to the land as it was. (legacyHeightAt /
+  // legacyKindAt below know nothing of them: a level that places things by the lie of the land can keep its dice.)
+  const PADS = (tiers && tiers.pads ? tiers.pads : []).map(p => ({ ...p, y: p.y ?? Hc(p.at[0], p.at[1]) + (p.lift || 0) }));
+  const padOn = (p, x, z) => { const w = ss(p.skirt, 0, Math.hypot(Math.max(0, Math.abs(x - p.x) - p.hx), Math.max(0, Math.abs(z - p.z) - p.hz))); return w * w; };
+  const H = PADS.length ? (x, z) => { let h = Hc(x, z); for (const p of PADS) { const w = padOn(p, x, z); if (w > 0) h = lerp(h, p.y, w); } return h; } : Hc;
 
   // ---- bridge across the river
   const zb = 4;
@@ -704,12 +713,12 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   group.name = 'valley';
 
   // ---- queries for placing things
-  const slopeAt = (x, z) => {
+  const slopeOf = H => (x, z) => {
     const e = 0.45;
     const hx = (H(x + e, z) - H(x - e, z)) / (2 * e), hz = (H(x, z + e) - H(x, z - e)) / (2 * e);
     return 1 - 1 / Math.sqrt(1 + hx * hx + hz * hz);
   };
-  const kindAt = (x, z) => {
+  const kindOf = (H, slopeAt) => (x, z) => {
     const h = H(x, z), wl = waterLevelAt(x, z);
     if (h < wl + 0.05 && (Math.abs(x - rx(z)) < rw(z) + 1.5 || Math.abs(x - px(z)) < pw + 1.5)) return 'water';
     if (h - wl < 0.55) return 'bank';
@@ -718,6 +727,7 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
     if (h > 5) return 'plateau';
     return 'floor';
   };
+  const slopeAt = slopeOf(H), kindAt = kindOf(H, slopeAt);
   // the same, for the land as it was before the level's hooks (reshape, widen, waterAt, trails, climbs) bent it. A level that
   // scatters things with dice asks this, so that every throw of the dice falls as it always did and nothing placed by hand
   // in the scene editor loses its place (it is known by where the dice put it); what now lands somewhere wrong is left out.
@@ -747,7 +757,7 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
   };
   return {
     group, heightAt: H, surfaceAt, route: path ? route : bankRoute(1), bankRoute, waterLevelAt, kindAt, slopeAt, pathDist,
-    riverX: rx, riverHalfWidth: rw, cliffLine, plateauRiverX: px, legacyKindAt, legacyHeightAt: H0, legacyRiverHalfWidth: rw0,
+    riverX: rx, riverHalfWidth: rw, cliffLine, plateauRiverX: px, legacyKindAt, legacyHeightAt: H0, legacyRiverHalfWidth: rw0, pads: PADS,
     plateauRiverHalfWidth: pw, headZ, naturalHeightAt: Hn, plateauWaterAt, steps: STEPS,
     ramps: ramps.map(r => ({ at: r.at, half: r.half, line: r.segs.map(c => [c[0], c[1], c[2]]) })),
     climb: Cl ? { at: Cl.at, half: Cl.half, top: Cl.top, bottom: Cl.bottom, y0: Cl.y0, y1: Cl.y1, side: Cl.side, line: Cl.segs.map(c => [c[0], c[1], c[2]]) } : null,

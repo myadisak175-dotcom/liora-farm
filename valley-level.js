@@ -4,14 +4,16 @@
 // dresses it and plugs in the game's systems: the clear water, the fluffy grass, the forest batches.
 // A path cut into the east cliff's shoulder climbs from near the bridge to the plateau beside the falls. Up there the land
 // is built up in terraces round the upper river, which comes down them in cascades: a windmill on the meadow by the lip, a
-// stone bridge, a few houses round a well, a water mill, and on the terrace above a great tree, more houses, a pasture and a
-// keep on a knoll. The buildings are stand-ins built in code (stylized-buildings.js) until real models take their place.
+// stone bridge, a few houses round a well, a water mill, and on the terrace above a great tree, more houses, a pasture and
+// the adventurers' guild on its own rock (stylized-guild.js: a hall she can walk into, a duelling ring, a training yard).
+// The buildings are stand-ins built in code (stylized-buildings.js) until real models take their place.
 // Down the valley the river runs out over the brink of the abyss (abyss-shape.js: where it is and how it bends the land;
 // abyss-scene.js: its falls and clouds): it spreads out among rock islands and pours in in four falls, and three brooks drop
 // in from the plateau round it. A second path cut into the east cliff climbs to the walk round the rim and its lookout.
 //
 //   const level = await buildValleyLevel({ far, deer, onStep });      // same result object as the other maps
 //   level.confine(p)   keeps a walker where she can walk: the valley floor, the cliff path, the meadow (the cliffs are walls)
+//   level.guild        the guild (level.guild.storey: -1 out of doors, 0 hall, 1 gallery, 2 attic; level.guild.spots: places for people later)
 
 import * as THREE from 'three';
 import * as N from './stylized-nature.js';
@@ -29,6 +31,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
 import { createAbyssFalls, createAbyssClouds, createAbyssCaves } from './abyss-scene.js';
+import { createGuild, GUILD_SITE } from './stylized-guild.js';
 
 // ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
 // what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so
@@ -55,7 +58,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // ---- the village above the falls: where everything stands (metres; z grows down the valley, so "north" is -z, upstream)
 const VILLAGE = {
   steps: [{ z: -66, rise: 5.5 }, { z: -84, rise: 4.5 }],                  // the terraces: at each z the land and the river step up
-  knoll: { x: -32, z: -76.5, r: 13.5, top: 5.5, h: 3.0 },                 // the keep's knoll, on the upper terrace
+  knoll: { x: -32, z: -76.5, r: 13.5, top: 5.5, h: 3.0 },                 // the knoll the guild stands on (its top levelled out wide: GUILD_SITE.pad)
   // rocky tors standing up out of the terraces (the last one joins the knoll into a ridge behind the keep)
   tors: [{ x: -40.5, z: -66.5, r: 5.5, top: 1.2, h: 4.2 }, { x: 33, z: -65.3, r: 5.2, top: 1.0, h: 3.8 }, { x: -23, z: -81.8, r: 4.4, top: 0.8, h: 3.4 }],
   ramps: [                                                                // ways from one terrace to the next
@@ -76,7 +79,7 @@ const VILLAGE = {
     { x: -14, z: -79.6, yaw: 0, w: 5.6, d: 4.6, floors: 1, seed: 18 },     // upper terrace, west of the river
   ],
   well: [-24.5, -61],
-  keep: { x: -33.5, z: -76.5, yaw: Math.PI / 2 },
+  keep: { x: -33.5, z: -76.5, yaw: Math.PI / 2 },                          // where the keep stood before the guild (the plants still keep their distance from it)
   tree: [10, -74.5],
   pasture: [[29.5, -69.5], [40, -69.5], [40, -80.5], [29.5, -80.5]],
   // trodden ways between things (drawn as bare earth)
@@ -122,7 +125,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // the map runs on past the old valley mouth to take in the abyss (and a stretch of plateau beyond it)
   const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true, climb: { side: 1 },      // the cliff path is on the +x side
     depth: 265, zCenter: 37.5, climbs: [ABYSS.climb], reshape: AB.reshape, widen: AB.widen, waterAt: AB.waterAt, trails: AB.trails,
-    tiers: { steps: VILLAGE.steps, flat: villageLevel, mounds: [VILLAGE.knoll, ...VILLAGE.tors], rise: villageHills, ramps: VILLAGE.ramps } });
+    tiers: { steps: VILLAGE.steps, flat: villageLevel, mounds: [VILLAGE.knoll, ...VILLAGE.tors], rise: villageHills, ramps: VILLAGE.ramps, pads: [GUILD_SITE.pad] } });
   group.add(V.group);
   const terrain = V.group.children.find(o => o.name !== 'water' && o.isMesh);
   if (terrain.material.uniforms.uDeepOn) terrain.material.uniforms.uDeepOn.value = 1;      // the abyss's walls fade into mist and dark
@@ -143,6 +146,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   }
   const rx = V.riverX, rw = V.riverHalfWidth, fall = V.waterfall, WL = V.levels.water;
   const HV = V.heightAt;
+  // The guild (stylized-guild.js) stands on ground levelled for it where the keep's knoll was. Everything that grows or lies
+  // about the valley is still thrown with the same dice as before it was built, on the land as it was (HV0, Hf0,
+  // onPlateau0 below, V.legacyKindAt), and whatever lands on the guild's ground is simply left out: so not a tree moves anywhere else.
+  const HV0 = V.legacyHeightAt, PAD = V.pads[0];
+  const guild = createGuild({ heightAt: HV, padY: PAD.y });
+  const onPad = (x, z) => Math.abs(x - PAD.x) < PAD.hx && Math.abs(z - PAD.z) < PAD.hz;
+  const nearPad = (x, z) => Math.abs(x - PAD.x) < PAD.hx + PAD.skirt + 2 && Math.abs(z - PAD.z) < PAD.hz + PAD.skirt + 2;
   const lower = (x, z) => V.waterLevelAt(x, z) === WL;                   // not up on the plateau behind the falls
   const MILL_YAW = -1.54;                                                  // turns the windmill so its sails face down the valley, toward the falls
   // bridges up on the plateau (both lie along x): where each is, and the height of its deck u metres from its middle
@@ -156,6 +166,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // half-metre cells, on the same grid as before the map grew, so every height read off it in the old valley is as it was
   const field = G.createHeightField({ radius: FR, center: [CX, CZ], cells: Math.round(FR * 4), heightFn: HV });
   const Hf = field.heightAt;                                             // cheap copy of the height, for painting
+  const Hf0 = (x, z) => {                                                  // the same copy as it was before the guild's ground was levelled
+    if (!nearPad(x, z)) return Hf(x, z);
+    const { cells, step, radius, center: [cx, cz] } = field;
+    const fx = Math.min(cells - 1e-4, Math.max(0, (x - cx + radius) / step)), fz = Math.min(cells - 1e-4, Math.max(0, (z - cz + radius) / step));
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, at = (a, b) => Math.fround(HV0(cx - radius + a * step, cz - radius + b * step));
+    return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v;
+  };
   const slopeF = (x, z) => { const e = 0.6, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e); return 1 - 1 / Math.sqrt(1 + hx * hx + hz * hz); };
 
   // where a walker may be: the valley floor between the two cliff feet, below the head wall, short of the map's end;
@@ -171,15 +188,17 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     return Math.hypot(x - ax - dx * t, z - az - dz * t);
   };
   const inVillage = (x, z) => Math.abs(x) < 43 && z > -83.5 && z < V.headZ(x);
-  const upTop = (x, z) => inVillage(x, z) || meadowDist(x, z) < MEADOW_R;
-  const evenGround = (x, z) => {                                           // up on the plateau and not too steep to stand on
+  const upTop = (x, z) => inVillage(x, z) || meadowDist(x, z) < MEADOW_R || onPad(x, z);
+  const evenOn = Hf => (x, z) => {                                         // up on the plateau and not too steep to stand on
     if (Hf(x, z) < PLW + 0.5) return false;
     const e = 0.5, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e);
     return hx * hx + hz * hz < 0.36;                                       // a grade of 0.6
   };
+  const evenGround = evenOn(Hf), evenGround0 = evenOn(Hf0);
   const inStream = (x, z) => Math.abs(x - PX(z)) < PW + 0.9;
   const onRamp = (x, z) => { for (const r of V.ramps) if (r.at(x, z).d < r.half - 0.3) return true; return false; };
   const onPlateau = (x, z) => upTop(x, z) && (deckAt(x, z) ? true : !inStream(x, z) && (evenGround(x, z) || onRamp(x, z)));
+  const onPlateau0 = (x, z) => (inVillage(x, z) || meadowDist(x, z) < MEADOW_R) && (deckAt(x, z) ? true : !inStream(x, z) && (evenGround0(x, z) || onRamp(x, z)));      // as it was (for the dice)
   const onPath = (x, z) => CLS.some(c => c.at(x, z).d < c.half - 0.15);
   // the floor stops short of the cliff foot under a raised stretch of the path, so stepping off the shelf never drops her down to it
   const underPath = (x, z) => CLS.some(cl => { const c = cl.at(x, z); return c.d < cl.half + 1.6 && c.y - HV(x, z) > 0.5; });
@@ -236,11 +255,12 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // V.legacyKindAt, legacyHeightAt, legacyRiverHalfWidth), so every throw falls as it always did and nothing placed or
   // taken out by hand in the scene editor loses its place. What now lands somewhere it cannot be (in the widened river, on
   // the new path, in the pit) is simply not put down. The abyss's own trees and rocks come after, with dice of their own.
-  const OLD_Z1 = 55, HV0 = V.legacyHeightAt, rw0 = V.legacyRiverHalfWidth;
+  const OLD_Z1 = 55, rw0 = V.legacyRiverHalfWidth;                         // (HV0, the land as it lay, is up by the guild's ground)
   const CL2 = V.climbs[0];
   const stillFine = (x, z, r = 0.6) => {                                  // not in the water, the pit, on the new path or a brook
     if (CL2.at(x, z).d < CL2.half + 1.0 + r) return false;
     if (AB.inPit(x, z, 2 + r) || AB.brookDist(x, z).d < 1.5 + r || AB.islandAt(x, z) > 0.2) return false;
+    if (nearPad(x, z)) return true;                                        // the bank round the guild's ground: lower than it was, but still land (the guild clears its own)
     if (HV(x, z) < HV0(x, z) - 0.3 || (lower(x, z) && HV(x, z) < WL + 0.5 && HV0(x, z) >= WL + 0.5)) return false;
     return AB.rimDist(x, z) > 11 || HV(x, z) < 6;
   };
@@ -269,6 +289,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const EDITS = loadEdits(), editItems = [];
   const editKey = (kind, x, z) => kind + ':' + Math.round(x * 10) + ':' + Math.round(z * 10);
   const placeOf = (kind, type, x, z, r) => {
+    if (guild.cleared(x, z)) return null;                                  // the guild's ground: nothing grows or lies there
     const key = editKey(kind, x, z);
     editItems.push({ key, kind, type, x, z, r });
     if (EDITS.removed.has(key)) return null;
@@ -374,6 +395,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       const x = x0 + (ix + 0.5) / wN * (x1 - x0), z = z0 + (jz + 0.5) / hN * (z1 - z0), o = (jz * wN + ix) * 4;
       waysPx[o] = Math.round(255 * Math.min(1, dist(x, z) / 4)); waysPx[o + 1] = Math.round(255 * paved(x, z)); waysPx[o + 3] = 255;
     }
+    const P = GUILD_SITE.pad;                                              // the guild's own ground: its paved court, the earth of its ring and yard
+    const i0 = Math.max(0, Math.floor((P.x - P.hx - 8 - x0) / (x1 - x0) * wN)), i1 = Math.min(wN - 1, Math.ceil((P.x + P.hx + 8 - x0) / (x1 - x0) * wN));
+    const j0 = Math.max(0, Math.floor((P.z - P.hz - 6 - z0) / (z1 - z0) * hN)), j1 = Math.min(hN - 1, Math.ceil((P.z + P.hz + 6 - z0) / (z1 - z0) * hN));
+    for (let jz = j0; jz <= j1; jz++) for (let ix = i0; ix <= i1; ix++) {
+      const g = guild.ground(x0 + (ix + 0.5) / wN * (x1 - x0), z0 + (jz + 0.5) / hN * (z1 - z0)), o = (jz * wN + ix) * 4;
+      if (g) { waysPx[o] = Math.min(waysPx[o], Math.round(255 * Math.min(1, g.d / 4))); waysPx[o + 1] = Math.max(waysPx[o + 1], Math.round(255 * g.paved)); }
+    }
     for (const d of dabs) stampDab(d);
     waysTex.needsUpdate = true;
   };
@@ -457,11 +485,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     builds.push(BD.place(g, hd.x, groundUnder(hd.x, hd.z, w, d, hd.yaw), hd.z, hd.yaw));
     solid(hd.x, hd.z, w, d, hd.yaw, height);
   }
-  {                                                                        // the keep on its knoll
-    const k = VILLAGE.keep, g = BD.towerGeometry({ seed: 21 }), { w, d, height } = g.userData;
-    builds.push(BD.place(g, k.x, HV(k.x, k.z) - 0.15, k.z, k.yaw));
-    solid(k.x, k.z, w, d, k.yaw, height);
-    colliders.push([k.x - 2.75, k.z - 2.75, 1.6]);                         // its corner turret (after the turn it stands on this corner)
+  {                                                                        // the guild, where the keep stood: its hall, ring and yard
+    group.add(guild.group);
+    for (const c of guild.colliders) colliders.push(c);
+    for (const b of guild.bare) bare.push(b);
+    for (const [x, z, h, r] of guild.casts) { castBall(x, z, h * 0.4, r, 0.85); castStick(x, z, h * 0.75, r * 0.65, 0.8); }
   }
   {                                                                        // the well in the lower houses' yard
     const [x, z] = VILLAGE.well;
@@ -504,9 +532,10 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     builds.push(g);
   }
   const woodProps = await loadLegacyWoodProps();
-  let propSeed = builds.length + 31;
+  let propSeed = builds.length + 32;                                       // (numbered as when the keep was one of the things built)
   for (const [kind, x, z, yaw] of VILLAGE.props) {                         // the small things
     const seed = propSeed++;
+    if (guild.cleared(x, z)) continue;                                     // the keep's barrels and lamp made way for the guild
     let r = 0.7;
     if (!woodProps.place(kind, x, z, yaw, HV, seed)) {
       const g = BD.propGeometry(kind, { seed });
@@ -586,7 +615,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     for (let x = -42; x <= 41; x += R(2.4, 4.4)) {                         // along the foot of the riser
       if (Math.abs(x - PX(st.z)) < 4.6) continue;
       let zf = null;
-      for (let z = st.z + 4.5; z > st.z - 4.5; z -= 0.25) if (HV(x, z - 0.7) - HV(x, z) > 0.8) { zf = z; break; }
+      for (let z = st.z + 4.5; z > st.z - 4.5; z -= 0.25) if (HV0(x, z - 0.7) - HV0(x, z) > 0.8) { zf = z; break; }
       if (zf === null) continue;
       const k = rng();
       vrock(k < 0.5 ? 'crag' : k < 0.8 ? 'boulder' : 'stones', x, zf + R(0.1, 0.9), R(0.8, 1.6));
@@ -604,7 +633,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   for (const s of [-1, 1]) vrock('boulder', fall.x + s * 5.6, V.headZ(fall.x + s * 5.6) - 2.6, R(1.2, 1.5), 0.3);      // on the brink, either side of the falls
   for (let i = 0; i < 40; i++) {                                           // a few stones lying about the terraces
     const x = R(-41, 40), z = R(-82, -50);
-    if (!onPlateau(x, z) || deckAt(x, z)) continue;
+    if (!onPlateau0(x, z) || deckAt(x, z)) continue;
     const k = rng();
     vrock(k < 0.4 ? 'stones' : k < 0.7 ? 'slab' : k < 0.9 ? 'boulder' : 'standing', x, z, R(0.6, 1.1), 0.2);
   }
@@ -1131,11 +1160,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
-    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, confine, walkable,
+    group, map, field, grass, terrain, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, walkable, guild,
+    heightAt: (x, z) => guild.heightAt(x, z, H(x, z)),                     // the land, a bridge's deck, or a floor of the guild's hall
+    confine(p) { confine(p); guild.collide(p); },                          // and the hall's walls, rails and furniture
     // places worth a look: the foot of the cliff path, and the meadow by the windmill (x, z, the way to face)
     views: {
       climb: { x: CL.bottom[0] - 2.5, z: CL.bottom[1] + 2, yaw: Math.PI }, mill: { x: MILL[0] + 6, z: MILL[1] + 9, yaw: Math.atan2(-6, -9) },
-      village: { x: 4, z: -55.5, yaw: -Math.PI / 2 }, tree: { x: 11, z: -68.5, yaw: Math.PI }, keep: { x: -15, z: -75.5, yaw: -Math.PI / 2 },
+      village: { x: 4, z: -55.5, yaw: -Math.PI / 2 }, tree: { x: 11, z: -68.5, yaw: Math.PI }, keep: { x: -15, z: -75.5, yaw: -Math.PI / 2 }, guild: GUILD_SITE.view,
       // the abyss: out on the lookout facing the river's falls; at the brink among the falls; at the foot of the path up to its rim
       abyss: (() => { const t = AB.spur.tip, b = AB.spur.base, k = 0.55; return { x: b[0] + (t[0] - b[0]) * k, z: b[1] + (t[1] - b[1]) * k, yaw: Math.atan2(t[0] - b[0], t[1] - b[1]) }; })(),
       brink: { x: 5, z: 60.5, yaw: -0.35 },
@@ -1188,6 +1219,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
         const t = N._internal.shared.uTime.value;
         span.swing.rotation.x = 0.0016 * Math.sin(t * 0.7) + span.k * (0.0035 * Math.sin(t * 1.9) + 0.0015 * Math.sin(t * 3.1));
       }                             // the stream turns the wheel: its lowest paddles go with the water
+      guild.update(dt, camera);                                            // the hall opens up while she is inside it
       sim.step(renderer, dt);
       droplets.update(renderer);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
@@ -1223,6 +1255,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     follow(pos, lookDir) {
       walker = pos;
+      guild.follow(pos);
       grass.userData.follow(pos, lookDir);
       W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z));
       sim.focus(pos.x, pos.z);

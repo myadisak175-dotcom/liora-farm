@@ -83,6 +83,16 @@ Down the valley the river runs out over the brink of an abyss: a round pit 80 m 
 **📍 ไปที่…** (`teleport-menu.js`) opens a list of every place the map offers, by area (the valley, the village, the abyss), and takes her straight there. The same names work as `?view=` (`start`, `falls`, `climb`, `village`, `mill`, `tree`, `keep`, `abyss`, `bridge`, `brink`, `abyssNorth`, `abyssEast`, `abyssWest`, `rim`).
 
 The valley's own trees, rocks and flowers are still thrown with the same dice over the land as it lay before (`V.legacyKindAt`), so everything generated earlier stands where it stood and edits made in the scene editor keep their place; what would now land in the widened river or on the new path is left out. The abyss's forest and rocks have dice of their own.
+## The guild
+
+Where the keep stood, on the rock at the west end of the upper terrace, is the adventurers' guild (`stylized-guild.js`): the place only for now, no people in it yet.
+
+- **The hall** has three storeys and is walked into through its open door with no cut. Ground floor: the reception desk, the quest board, a shop counter in the corner behind the stair, a hearth and tables. First floor: a gallery round an opening that looks down into the hall, books along one wall. Attic: the guild master's room, and a door out to a balcony over the front door.
+- **Out of doors**: stone steps up from the terrace to a paved court, a duelling ring behind the hall (sand inside a kerb of stones, two gates), and a training yard south of the ring (straw dummies, archery butts, weapon racks). The back door of the hall opens onto the yard; a way round the north side leads to the ring.
+- **How she walks in it**: the three floors are fixed heights joined by two straight stairs; she changes storey halfway up a stair. Walls, rails and furniture are line segments and circles marked with the storeys they stand on. `level.guild.storey` is -1 out of doors, 0 / 1 / 2 inside.
+- **How it is seen**: while she is inside, the outside of the hall is thinned away and the rooms are drawn like a doll's house: inner walls are seen from their front only, the things on a wall are put away with it when the camera is behind it, and a floor or ceiling above her is drawn only while the camera is below it. So nothing ever stands between her and the camera.
+- **The ground** is levelled by a `pads` entry in `createValley({ tiers })` (`stylized-terrain.js`). The plants and rocks of the valley are still thrown with the same dice on the land as it was, and whatever fell on the guild's ground is left out, so nothing else in the valley moved.
+- `level.guild.spots` lists places for people and things to do later (reception, board, shop, tables, library, master's room, balcony, ring, yard). `?view=guild` starts at the foot of the steps.
 
 ## The scene editor
 
