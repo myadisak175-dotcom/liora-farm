@@ -409,7 +409,9 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
   return mesh;
 }
 
-export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5] } = {}) {
+// scale: below 1 for a small cascade: less spray and mist, smaller puffs at its foot (those take their size from FALL_TUNE
+// once, when the cascade is made; only the big falls follow the sliders live)
+export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5], scale = 1 } = {}) {
   const group = new THREE.Group();
   group.name = 'waterfallClear';
   const common = commonUniforms({ optics, foamTexture, sun });
@@ -430,9 +432,10 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   // sheet here would be cut through by every wave that rises above it, so it stays hidden
   if (surfaceChurn && cells) { surfaceChurn.value.set(x, footZ, R, 1); churn.visible = false; }
   // billows: soft white mounds boiling up along the line where the water lands
-  add(createBillows({ x, z: footZ - 0.3, y: bottom + 0.25, width }), 6);
+  const small = scale < 1 ? { ...FALL_TUNE, puffSize: { value: FALL_TUNE.puffSize.value * (0.35 + 0.65 * scale) }, puffSpread: { value: FALL_TUNE.puffSpread.value * scale }, puffRise: { value: FALL_TUNE.puffRise.value * scale } } : FALL_TUNE;
+  add(createBillows({ x, z: footZ - 0.3, y: bottom + 0.25, width, tune: small }), 6);
   // spray
-  const N = 220, pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
+  const N = Math.round(220 * scale), pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {
     pos[i * 3] = x + (Math.random() - 0.5) * width * 1.1; pos[i * 3 + 1] = bottom + 0.3; pos[i * 3 + 2] = footZ + (Math.random() - 0.5) * 0.8;
     seed.set([Math.random(), Math.random() * Math.PI * 2, 1.2 + Math.random() * 2.6, 0.08 + Math.random() * 0.14], i * 4);
@@ -443,7 +446,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   sg.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, bottom + 2, footZ), width * 2 + 4);
   const spray = add(new THREE.Points(sg, sprayMaterial(common, { count: N, top })), 5);
   // foam flecks scattering over the pool
-  const FN = 110, fpos = new Float32Array(FN * 3), fseed = new Float32Array(FN * 4);
+  const FN = Math.round(110 * scale), fpos = new Float32Array(FN * 3), fseed = new Float32Array(FN * 4);
   for (let i = 0; i < FN; i++) {
     fpos[i * 3] = x + (Math.random() - 0.5) * width * 0.7; fpos[i * 3 + 1] = bottom + 0.3; fpos[i * 3 + 2] = footZ + (Math.random() - 0.5) * 0.5;
     fseed.set([Math.random(), Math.random() * Math.PI * 2, 0.8 + Math.random() * 1.8, 0.16 + Math.random() * 0.26], i * 4);
@@ -457,10 +460,10 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   // a faint veil of mist drifting up from the pool
   const tex = mistTexture();
   const mists = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < (scale < 1 ? 3 : 6); i++) {
     const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xeef9fb, transparent: true, depthWrite: false, opacity: 0 }));
     m.renderOrder = 6;
-    m.userData = { phase: i / 6, ox: (Math.random() - 0.5) * width * 1.4, oz: (Math.random() - 0.2) * 1.4, s: 4 + Math.random() * 3 };
+    m.userData = { phase: i / (scale < 1 ? 3 : 6), ox: (Math.random() - 0.5) * width * 1.4, oz: (Math.random() - 0.2) * 1.4, s: (4 + Math.random() * 3) * (0.3 + 0.7 * scale) };
     group.add(m);
     mists.push(m);
   }
@@ -472,7 +475,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
       const now = shared.uTime.value;
       for (const m of mists) {
         const k = (now / LIFE + m.userData.phase) % 1;             // 0 born .. 1 gone
-        m.position.set(x + m.userData.ox * (0.7 + k * 0.5), bottom + 0.6 + k * 2.6, footZ + m.userData.oz + k * 0.9);
+        m.position.set(x + m.userData.ox * (0.7 + k * 0.5), bottom + 0.6 + k * 2.6 * (0.4 + 0.6 * scale), footZ + m.userData.oz * (0.4 + 0.6 * scale) + k * 0.9);
         m.scale.setScalar(m.userData.s * (0.7 + k * 0.7));
         m.material.opacity = Math.sin(k * Math.PI) * 0.16;
       }
