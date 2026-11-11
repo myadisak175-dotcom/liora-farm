@@ -1069,11 +1069,11 @@ function bushParts(type, seed, blossom) {
   const sx = range(rng, 0.85, 1.2);
   const tiers = [{ c: [0, 0.72, 0], r: [1.3 * sx, 0.85, 1.2 * sx], clumpR: 0.55, n: 20, openBelow: -0.55, coreBottom: 0.4, taper: 0.25 }];
   if (rng() < 0.6) tiers.push({ c: [range(rng, -1, 1) * 0.9, 0.5, range(rng, -1, 1) * 0.6], r: [0.75, 0.55, 0.7], clumpR: 0.4, n: 10, openBelow: -0.4, coreBottom: 0.4 });
-  const spots = type === 'flowering' ? [] : null;
+  const spots = (type === 'flowering' || type === 'berry') ? [] : null;
   const core = buildCore(tiers);
   const cards = buildCanopy(rng, tiers, 'broad', 1, spots, BUSH_QUANTILES);
   let flowers = null;
-  if (spots) {
+  if (spots && type === 'flowering') {
     const col = rgb(blossom || BLOSSOM_COLORS[Math.floor(rng() * BLOSSOM_COLORS.length)]);
     const cen = rgb('#f0c430');
     const pos = [], par = [], pet = [], cn = [];
@@ -1090,7 +1090,14 @@ function bushParts(type, seed, blossom) {
     }
     flowers = { pos, par, pet, cen: cn };
   }
-  return { core, cards, flowers };
+  return { core, cards, flowers, spots };
+}
+
+// The same canopy surface anchors used for flowering bushes, without a texture or material allocation.
+export function sampleBushSurface({ seed = 3 } = {}) {
+  const { core, spots } = bushParts('berry', seed, null);
+  core.dispose();
+  return spots;
 }
 
 export function createBush({ type = 'round', seed = 3, blossom = null } = {}) {

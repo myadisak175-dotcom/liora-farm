@@ -27,38 +27,21 @@ export async function createForestForage({ level, onStep = async () => {} }) {
     if(bushSites.length===4) break;
   }
   if (!bushSites.length) console.warn('No dry, open blueberry site near spawn');
-  const plants=bushSites.map((p,i)=>({kind:'bush',type:'round',seed:781+i,x:p.x,y:p.y,z:p.z,scale:.5,rotY:i*1.7}));
+  const plants=bushSites.map((p,i)=>({kind:'bush',type:'round',seed:781+i,x:p.x,y:p.y,z:p.z,scale:.7,rotY:i*1.7}));
   if(plants.length) group.add(N.createForest(plants));
   bushSites.forEach((p,i)=>{
-    // Fallen bunches sit beside the bush, outside its leaves and at the local ground height.
-    for(let j=0;j<2;j++) {
-      const a=i*1.7+j*2.7+.5;
-      let spot=null;
-      for(const delta of [0,.4,-.4,.8,-.8]) {
-        const angle=a+delta, x=p.x+Math.sin(angle)*1.7,z=p.z+Math.cos(angle)*1.7;
-        if(open(x,z,.3)){spot={x,z,y:level.heightAt(x,z)+.015};break;}
-      }
-      if(spot) items.push({id:`b${i}-${j}`,kind:'blueberry',...spot,scale:.18,yaw:a});
+    const sites=N.sampleBushSurface({seed:781+i}), rot=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),i*1.7);
+    // Spread eight small clusters over the real leaf-clump surface, just like bush blossoms.
+    // The sample is deterministic and uses precisely the same seed, rotation and scale as the foliage.
+    const count=Math.min(8,sites.length);
+    for(let j=0;j<count;j++){
+      const site=sites[Math.floor(j*sites.length/count)];
+      const normal=site.n.clone().applyQuaternion(rot).normalize();
+      const point=site.p.clone().addScaledVector(site.n,.18).multiplyScalar(.7).applyQuaternion(rot).add(new THREE.Vector3(p.x,p.y,p.z));
+      items.push({id:`berry-surface-${i}-${j}`,kind:'blueberry',x:point.x,y:point.y,z:point.z,scale:.085,yaw:i*1.7,normal:normal.toArray()});
     }
-    level.colliders.push([p.x,p.z,.55]);
+    level.colliders.push([p.x,p.z,.75]);
   });
-  // Small, feathered short-grass pockets keep the fallen fruit readable on every map.
-  // RGB ground paint and all grass outside these pockets remain intact.
-  const ground=level.map;
-  if(ground?.data && ground.texture && ground.size && ground.radius) {
-    const {data,size,radius,center}=ground, span=radius*2, step=span/size;
-    const cx=center[0],cz=center[1];
-    for(const item of items.filter(p=>p.kind==='blueberry')){
-      const r=.72, ix=Math.floor((item.x-cx+radius)/span*size),iz=Math.floor((item.z-cz+radius)/span*size),n=Math.ceil(r/step);
-      for(let z=Math.max(0,iz-n);z<=Math.min(size-1,iz+n);z++) for(let x=Math.max(0,ix-n);x<=Math.min(size-1,ix+n);x++){
-        const wx=cx-radius+(x+.5)*step,wz=cz-radius+(z+.5)*step,d=Math.hypot(wx-item.x,wz-item.z)/r;
-        if(d>=1)continue;
-        const t=Math.max(0,Math.min(1,(d-.5)/.5)),alpha=Math.round(255*(.08+.92*t*t*(3-2*t)));
-        const offset=(z*size+x)*4+3;data[offset]=Math.min(data[offset],alpha);
-      }
-    }
-    ground.texture.needsUpdate=true;
-  }
   // Prefer genuine tree feet on accessible ground, ordered from the player's start.
   const trunks=[...(level.cameraTrunks||[])].sort((a,b)=>Math.hypot(a[0]-s.x,a[1]-s.z)-Math.hypot(b[0]-s.x,b[1]-s.z));
   for(const [x,z,r] of trunks) {
@@ -82,15 +65,18 @@ export async function createForestForage({ level, onStep = async () => {} }) {
   const picked=new Set(saved.picked), banks=[];
   const matrix=new THREE.Matrix4(), q=new THREE.Quaternion(), pos=new THREE.Vector3(), sc=new THREE.Vector3();
   function itemMatrix(item) {
-    q.setFromAxisAngle(new THREE.Vector3(0,1,0),item.yaw);pos.set(item.x,item.y,item.z);
+    if(item.normal) q.setFromUnitVectors(new THREE.Vector3(0,.45,1).normalize(),new THREE.Vector3(...item.normal));
+    else q.setFromAxisAngle(new THREE.Vector3(0,1,0),item.yaw);
+    pos.set(item.x,item.y,item.z);
     sc.setScalar(picked.has(item.id)?0:item.scale);return matrix.compose(pos,q,sc);
   }
   for(const [kind,asset] of [['mushroom',mushroom],['blueberry',berries]]) {
     const list=items.filter(p=>p.kind===kind); if(!list.length) continue;
     asset.scene.updateMatrixWorld(true);
+    const center=kind==='blueberry'?new THREE.Box3().setFromObject(asset.scene).getCenter(new THREE.Vector3()):new THREE.Vector3();
     asset.scene.traverse(o=>{
       if(!o.isMesh) return;
-      const geo=o.geometry.clone().applyMatrix4(o.matrixWorld);
+      const geo=o.geometry.clone().applyMatrix4(o.matrixWorld).translate(-center.x,-center.y,-center.z);
       const mesh=new THREE.InstancedMesh(geo,o.material,list.length);mesh.name=`${kind}-instances`;
       list.forEach((p,i)=>mesh.setMatrixAt(i,itemMatrix(p))); mesh.instanceMatrix.needsUpdate=true;
       mesh.computeBoundingSphere();group.add(mesh);banks.push({mesh,list});
@@ -130,11 +116,12 @@ export async function createForestForage({ level, onStep = async () => {} }) {
     pick,
     update(dt,position){lastPosition=position;timer+=dt;if(timer<.12)return;timer=0;nearest=find(position);button.hidden=!nearest;if(nearest)button.textContent=nearest.kind==='mushroom'?'🍄 เก็บเห็ด':'🫐 เก็บบลูเบอร์รี';},
     visit(player){
-      // Face the fallen bunch directly so it appears in front of the player.
+      // Face a ripe cluster on the bush, including those on its upper leaf clumps.
       const item=items.find(p=>p.kind==='blueberry'&&!picked.has(p.id))||items.find(p=>!picked.has(p.id));
       if(!item)return;
       for(const delta of [0,.5,-.5,1,-1,Math.PI]){
-        const a=item.yaw+delta,x=item.x+Math.sin(a)*1.8,z=item.z+Math.cos(a)*1.8;
+        const facing=item.normal?Math.atan2(item.normal[0],item.normal[2]):item.yaw;
+        const a=facing+delta,x=item.x+Math.sin(a)*2.0,z=item.z+Math.cos(a)*2.0;
         if(open(x,z,.6)){
           const yaw=Math.atan2(item.x-x,item.z-z);player.teleport(x,z,yaw);player.setView(yaw-Math.PI,.2,3.1);break;
         }
