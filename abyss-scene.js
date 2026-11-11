@@ -4,8 +4,7 @@
    One job: draw them. Where the abyss is and where its falls are comes from abyss-shape.js.
      const falls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], foamTexture });
      const clouds = createAbyssClouds({ centre: [ABYSS.x, ABYSS.z], rimR: AB.rimR, ledges, falls: AB.falls });
-     const caves = createAbyssCaves({ spots });  // spots: [{ x, y, z, yaw, lean, w, h }] on the walls
-     scene.add(falls.group, clouds.group, caves.group)      all driven by the shared clock: nothing to call each frame
+     scene.add(falls.group, clouds.group)      both driven by the shared clock: nothing to call each frame
 
    A fall here is the same water as the valley's waterfall (stylized-waterfall.js: its material, its painted foam streaks).
    Some go down in steps: a short sheet into a pool on a ledge, where white spray boils up (the billows of the valley's falls),
@@ -80,58 +79,6 @@ export function createAbyssFalls({ falls, centre, optics = null, foamTexture = n
 // the spray in the pools: the valley's billows, a little smaller and quicker (set once, not live from the tuner)
 const SPRAY = Object.fromEntries(Object.entries(FALL_TUNE).map(([k, v]) => [k, { value: v.value }]));
 SPRAY.puffSize.value *= 0.8; SPRAY.puffLife.value *= 0.85; SPRAY.puffAmount.value = 0.75;
-
-// ---------------------------------------------------------------- caves
-// dark mouths in the walls: an arch with a ragged edge, the dark going deeper toward its middle and a pale lip of lit rock
-// along its top. Flat cards stood against the wall (the land here is one height per spot, so it cannot hollow itself out).
-function caveMaterial() {
-  return new THREE.ShaderMaterial({
-    uniforms: { uIn: { value: new THREE.Color('#142233') }, uMid: { value: new THREE.Color('#2c3d52') }, uLip: { value: new THREE.Color('#8d96a0') },
-      uMist: { value: new THREE.Color('#a9c8d6') }, uSeed: { value: 0 } },
-    vertexShader: /* glsl */`
-      varying vec2 vUv;
-      varying float vY;
-      void main() { vUv = uv; vY = (modelMatrix * vec4(position, 1.0)).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: /* glsl */`
-      ${NOISE}
-      uniform vec3 uIn, uMid, uLip, uMist;
-      uniform float uSeed;
-      varying vec2 vUv;
-      varying float vY;
-      void main() {
-        vec2 p = vec2(vUv.x * 2.0 - 1.0, vUv.y);                    // x -1..1, y 0 (foot) .. 1 (top)
-        float ang = atan(p.x, p.y - 0.42);
-        float rag = (noise2(vec2(ang * 2.2 + uSeed, uSeed * 1.7)) - 0.5) * 0.16 + (noise2(vec2(ang * 5.0 - uSeed, 3.0)) - 0.5) * 0.04;
-        float e = p.y < 0.42 ? abs(p.x) : length(vec2(p.x, (p.y - 0.42) / 0.58));     // the arch: 0 in the middle .. 1 at its edge
-        e += rag;
-        if (e > 0.94 || p.y < 0.02 + (noise2(vec2(p.x * 4.0 + uSeed, 7.0)) - 0.5) * 0.06) discard;
-        vec3 col = mix(uIn, uMid, smoothstep(0.35, 0.85, e));
-        if (e > 0.8 && p.y > 0.55) col = uLip;                     // the lit lip over the mouth
-        col = mix(col, uMist, smoothstep(-6.0, -42.0, vY) * 0.45);   // as far down in the mist as the wall round it
-        gl_FragColor = vec4(col, 1.0);
-      }`,
-    side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
-  });
-}
-export function createAbyssCaves({ spots }) {
-  const group = new THREE.Group();
-  group.name = 'abyssCaves';
-  const geo = new THREE.PlaneGeometry(1, 1);
-  geo.translate(0, 0.5, 0);
-  const mats = [];
-  spots.forEach((c, i) => {
-    const m = caveMaterial();
-    m.uniforms.uSeed.value = i * 3.7 + 1.3;
-    mats.push(m);
-    const mesh = new THREE.Mesh(geo, m);
-    mesh.position.set(c.x, c.y, c.z);
-    mesh.rotation.set(0, c.yaw, 0);
-    mesh.rotateX(-c.lean);                    // lean back with the face of the wall
-    mesh.scale.set(c.w, c.h, 1);
-    group.add(mesh);
-  });
-  return { group, dispose() { geo.dispose(); mats.forEach(m => m.dispose()); } };
-}
 
 // ---------------------------------------------------------------- the clouds
 // one card per puff, always turned full to the camera (they are seen from above as much as from the side). Each card has a

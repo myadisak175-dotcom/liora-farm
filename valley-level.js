@@ -30,7 +30,7 @@ import * as BD from './stylized-buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
-import { createAbyssFalls, createAbyssClouds, createAbyssCaves } from './abyss-scene.js';
+import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
 import { createGuild, GUILD_SITE } from './stylized-guild.js';
 
 // ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
@@ -1025,31 +1025,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const abyssFalls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], optics: null, foamTexture });
   abyssFalls.group.userData = { kind: 'waterfall', dispose: abyssFalls.dispose };
   group.add(abyssFalls.group);
-  // dark cave mouths at the foot of the walls between the ledges, as though the ledges led somewhere
-  const caveSpots = [];
-  for (const [deg, pick] of [[-46, 0], [6, 1], [30, 0], [68, 1], [108, 0], [150, 1], [194, 0], [232, 1]]) {
-    const a = deg * Math.PI / 180, R = AB.rimR(a);
-    if (AB.chuteAt(a) > 0.01 || Math.abs(AB.spurDist(...AB.polar(a, R)) ) < 6) continue;
-    const at = u => AB.polar(a, R - u), hAt = u => HV(...at(u));
-    const walls = [];                                       // each drop: where it starts and where its foot is
-    for (let u = 0.6; u < 17; u += 0.2) {
-      if (hAt(u) - hAt(u + 1.4) > 7) {
-        const top = hAt(u - 0.2), low = hAt(u + 1.4) + 0.8; let foot = u;
-        while (foot < u + 3 && hAt(foot) > low) foot += 0.1;
-        walls.push({ u, top, foot, y: hAt(foot + 0.4) });
-        u = foot + 1;
-      }
-    }
-    const w = walls[Math.min(walls.length - 1, pick)];       // at the foot of the first or the second drop below the brink
-    if (!w || w.top - w.y < 7) continue;
-    // stood against the face: find where the face is at the mouth's foot and at its top, and lean the card the same way
-    const hgt = Math.min(6.5, (w.top - w.y) * 0.6), faceAt = y => { let u = w.u - 0.2; while (u < w.foot + 1 && hAt(u) > y) u += 0.05; return u; };
-    const y0 = w.y + 0.3, y1 = w.y + hgt, u0 = faceAt(y0), u1 = faceAt(y1), [x, z] = at(u0 + 0.45);
-    caveSpots.push({ x, y: w.y - 0.2, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z), lean: Math.atan2(u0 - u1, y1 - y0), w: hgt * AR(1.1, 1.4), h: hgt + 0.2 });
-  }
-  const abyssCaves = createAbyssCaves({ spots: caveSpots });
-  abyssCaves.group.userData = { dispose: abyssCaves.dispose };
-  group.add(abyssCaves.group);
   const abyssClouds = createAbyssClouds({ centre: [ABYSS.x, ABYSS.z], rimR: AB.rimR, ledges: [0, 1, 2, 3].map(AB.ledge), falls: AB.falls });
   abyssClouds.group.userData = { dispose: abyssClouds.dispose };
   group.add(abyssClouds.group);
