@@ -516,32 +516,41 @@ const WAKE_GLSL = /* glsl */`
     return clamp(f * 0.55, 0.0, 1.0) * step(max(abs(d.x), abs(d.y)), 9.0);        // the whole trail is within a few metres of her
   }`;
 
-// THE WATERFALL'S CHURN, drawn on the water itself. A sheet of white foam pushed outwards from where the falls land, with round
-// gaps that widen as it travels until it tears into threads and flecks. It is part of the surface (not a flat sheet laid over
-// it), so it rides every wave and ring and can never be cut through by them.
+// THE WATERFALL'S CHURN, drawn on the water itself. A sheet of white foam carried outwards from where the falls land, with
+// gaps of every size that widen as it travels until it tears into threads and flecks. It is part of the surface (not a flat
+// sheet laid over it), so it rides every wave and ring and can never be cut through by them.
+// What keeps it from looking like one pattern turning round: the cells are laid out in metres on the water (not round the
+// fall like spokes), in two sizes, bent by a slow wobble; they are carried outwards by the flow itself (quick near the fall,
+// slower as it spreads); and the foam is thick in some patches and thin in others, the patches drifting too.
 //   WATER_CHURN.value.set(x, z, radius, 1)      // where the water lands; 0 in the last place = no churn
 export const WATER_CHURN = { value: new THREE.Vector4(0, 0, 1, 0) };
 const CHURN_GLSL = /* glsl */`
   uniform vec4 uChurn;
+  float churnCells(vec2 q) { return min(texture2D(uAnimeCells, q * 0.085).r, texture2D(uAnimeCells, q * 0.17 + vec2(0.37, 0.11)).r * 1.25); }
   // x: white foam, y: paler water under it
   vec2 churnFoam(vec2 xz) {
-    vec2 e = clamp((xz - uChurn.xy) / uChurn.z, -2.0, 2.0);
+    vec2 p = clamp(xz - uChurn.xy, -40.0, 40.0);
+    vec2 e = p / uChurn.z;
     e.y /= 0.75;                                              // the churn is an ellipse: measure it as a circle
     float r = length(e);
-    float inside = step(r, 1.0) * uChurn.w;
-    float ang = atan(e.y, e.x + 1e-5) / 6.2831853 + 0.5;
-    // one sheet running outwards: quick where the water lands and slowing as it spreads, its cells swaying instead of sliding
-    // as a rigid plate, with slow swells of thicker foam rolling out through it. Soft edges, nothing that pops.
-    float rr = pow(min(r, 1.0), 0.72);
-    vec2 sway = vec2(sin(ang * 12.566 + uTime * 0.5 + r * 5.0), sin(ang * 18.85 - uTime * 0.37 + r * 7.0)) * 0.012;
-    vec2 c1 = texture2D(uAnimeCells, vec2(ang * 4.0, rr - uTime * 0.105) + sway).rg;
-    float swell = sin(rr * 15.0 - uTime * 2.2) * (1.0 - min(r, 1.0));
-    float gap = 0.05 + 0.44 * smoothstep(0.16, 0.95, r) - 0.05 * swell;
-    float foam = smoothstep(gap - 0.05, gap + 0.05, c1.r);
-    foam = max(foam, 1.0 - smoothstep(0.12, 0.22, r + (c1.g - 0.3) * 0.12));        // solid boil right under the fall
-    foam *= 1.0 - smoothstep(0.8, 1.0, r + (c1.g - 0.3) * 0.35);                     // a ragged rim
-    float pale = (1.0 - smoothstep(0.25, 0.75, r)) * 0.5;
-    return vec2(foam, pale) * inside;
+    vec2 res = vec2(0.0);
+    if (r < 1.0) {
+      vec2 dir = e / max(r, 0.001);
+      float sp = mix(1.6, 0.35, smoothstep(0.0, 1.0, r));     // metres a second, outwards
+      // carried by the flow without end: two copies half a cycle apart; their cells are blended before the foam is cut out
+      // of them, so one shape turns into the next instead of fading over it
+      float f1 = fract(uTime * 0.25), f2 = fract(uTime * 0.25 + 0.5), w1 = 1.0 - abs(2.0 * f1 - 1.0);
+      vec2 warp = (vec2(noise2(p * 0.35 + uTime * 0.04), noise2(p * 0.35 + 7.0 - uTime * 0.04)) - 0.5) * 0.9;
+      float c = mix(churnCells(p - dir * sp * (f2 - 0.5) * 4.0 + warp + 3.7), churnCells(p - dir * sp * (f1 - 0.5) * 4.0 + warp), w1);
+      c = 0.3 + (c - 0.3) / sqrt(w1 * w1 + (1.0 - w1) * (1.0 - w1));          // a blend is blander than either: put the contrast back
+      float swell = sin(pow(r, 0.72) * 15.0 - uTime * 2.2) * (1.0 - r);        // slow swells of thicker foam rolling out
+      float gap = 0.02 + 0.4 * smoothstep(0.25, 1.0, r) + (noise2(p * 0.22 + vec2(0.0, -uTime * 0.05)) - 0.5) * 0.14 - 0.04 * swell;
+      float foam = smoothstep(gap - 0.05, gap + 0.05, c);
+      foam = max(foam, 1.0 - smoothstep(0.16, 0.3, r + (noise2(p * 0.6 + 1.0) - 0.5) * 0.14));          // solid boil right under the fall
+      foam *= 1.0 - smoothstep(0.75, 1.0, r + (noise2(p * 0.5 + 2.0 + uTime * 0.03) - 0.5) * 0.45);   // a ragged, wandering rim
+      res = vec2(foam, (1.0 - smoothstep(0.25, 0.75, r)) * 0.5) * uChurn.w;
+    }
+    return res;
   }`;
 
 // ==========================================================================
@@ -624,7 +633,6 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
 
       ${RING_GLSL}
       ${WAKE_GLSL}
-      ${CHURN_GLSL}
       vec2 hash22(vec2 p) { return vec2(hash2(p), hash2(p + 37.31)); }
       float paintedFoam(vec2 uv) {
         vec2 a = fract(uv), b = fract(uv + vec2(0.47, 0.53));
@@ -643,6 +651,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       // a bright wandering line wherever the noise crosses its middle value: two of these, crossed, look like the net
       // of sunlight on a shallow bottom, and cost a fraction of a proper cell pattern
       float ridge(vec2 p) { return 1.0 - abs(noise2(p) * 2.0 - 1.0); }
+      ${CHURN_GLSL}
       // the drawn pattern of the anime surface: edges of cells, bent by a slow wobble and broken into curling strokes
       float surfLines(vec2 u, float tt) {
         vec2 w = u + (vec2(noise2(u * 0.45 + tt * 0.03), noise2(u * 0.45 + 7.0 - tt * 0.03)) - 0.5) * 1.3

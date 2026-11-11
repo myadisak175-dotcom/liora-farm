@@ -190,6 +190,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const droplets = createWaterDroplets({ time: N._internal.shared.uTime });
   droplets.points.userData.dispose = droplets.dispose;
   group.add(droplets.points);
+  // the waterfall throws up crowns and cones of water of its own, all along the line where it lands (its own pool of them, so
+  // it never takes one away from a splash or a footstep)
+  const fallDrops = createWaterDroplets({ time: N._internal.shared.uTime, capacity: 120, solid: 0.75 });      // not clear: churned water, so the crowns read against the white foam
+  fallDrops.points.userData.dispose = fallDrops.dispose;
+  group.add(fallDrops.points);
   let water, sim, optics, upperWater, waterfall;
   // a ribbon of water along a list of [x, z, level, half width] rows, carrying the flow coordinates the water shader needs
   const flowRibbon = (rows, across, extra) => {
@@ -334,9 +339,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
 
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
-  const hidden = [water, grass, droplets.points];
+  const hidden = [water, grass, droplets.points, fallDrops.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
-  let frameNo = 0, nextSplash = 0, lastRenderer = null;
+  let frameNo = 0, nextSplash = 0, nextCrown = 0, lastRenderer = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
@@ -370,6 +375,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       lastRenderer = renderer;
       sim.step(renderer, dt);
       droplets.update(renderer);
+      fallDrops.update(renderer);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
       const nowT = N._internal.shared.uTime.value;
       if (castBusy) {
@@ -418,6 +424,13 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       if (now > nextSplash) {
         ripple(fall.x + (Math.random() - 0.5) * 3.2, fall.z + 1.7 + Math.random() * 0.8, 1.6, 0.4, 'plain');
         nextSplash = now + 0.16;
+      }
+      // and crowns of water with a cone rising out of each, one after another along the foot of the falls: big ones in the
+      // middle of the sheet, smaller ones toward its ends
+      if (W.WATER_CHURN.value.w > 0.5 && now > nextCrown && W.WATER_TUNE.drops.value > 0) {
+        const c = W.WATER_CHURN.value, u = Math.random() * 2 - 1;
+        fallDrops.emit(c.x + u * 2.1, WL, c.y + 0.1 + Math.random() * 0.9, (0.8 + 1.1 * Math.random()) * (1 - 0.45 * u * u), 6);
+        nextCrown = now + 0.1 + Math.random() * 0.12;
       }
     },
   };

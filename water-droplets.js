@@ -32,7 +32,7 @@ const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h
 // how a piece of thrown water is lit: clear body, sky on the rim, a glint of sun, white where it is foam
 const WATER_GLSL = /* glsl */`
   uniform vec3 uShallow, uMid, uSky, uWhite, uSun;
-  uniform float uToon;
+  uniform float uToon, uSolid;
   float hash1(float n) { return fract(sin(n * 127.1 + 3.7) * 43758.5453); }
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   // value noise that joins up round the ring (period px along x)
@@ -45,6 +45,7 @@ const WATER_GLSL = /* glsl */`
   // shine: strength of the window of light
   vec4 thrownWater(vec3 N, vec3 V, float thick, float white, float see, float shine, bool far) {
     if (dot(N, V) < 0.0) N = -N;                                    // a sheet has two faces: light the one we look at
+    see *= 1.0 - uSolid;                                            // churned water (the foot of a waterfall) is not clear
     float facing = dot(N, V), rimLight = pow(1.0 - facing, 2.5);
     vec3 body = mix(uShallow, uMid, thick);
     body *= 0.9 + 0.22 * max(dot(N, uSun), 0.0);
@@ -64,9 +65,10 @@ const WATER_GLSL = /* glsl */`
     return vec4(col, alpha);
   }`;
 
-export function createWaterDroplets({ time, capacity = 160, look = WATER_LOOK, sun = [-0.4, 0.9, 0.5] } = {}) {
+// solid: 0 = clear water (a splash in the river) .. 1 = opaque (the churned water a waterfall throws up)
+export function createWaterDroplets({ time, capacity = 160, look = WATER_LOOK, solid = 0, sun = [-0.4, 0.9, 0.5] } = {}) {
   const waterUniforms = () => ({
-    uTime: time, uToon: WATER_TUNE.anime,
+    uTime: time, uToon: WATER_TUNE.anime, uSolid: { value: solid },
     uShallow: { value: rgb(look.shallow) }, uMid: { value: rgb(look.mid) }, uSky: { value: rgb(look.sky) }, uWhite: { value: rgb(look.foam) },
     uSun: { value: new THREE.Vector3(...sun).normalize() },
   });
