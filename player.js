@@ -51,7 +51,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   const shadow = (() => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;
     const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gr.addColorStop(0, 'rgba(38,66,30,0.5)'); gr.addColorStop(0.55, 'rgba(38,66,30,0.28)'); gr.addColorStop(1, 'rgba(38,66,30,0)');
+    gr.addColorStop(0, 'rgba(0,0,0,0.4)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.2)'); gr.addColorStop(1, 'rgba(0,0,0,0)');      // black: it can only darken, never glow on dark ground
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
     m.rotation.x = -Math.PI / 2;
@@ -127,7 +127,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   }
 
   const player = {
-    object: root, position: pos, character,
+    object: root, position: pos, character, blob: shadow,
     get heading() { return heading; }, get camYaw() { return camYaw; }, get speed() { return speed; },
     lookDir: new THREE.Vector3(0, 0, -1),
     teleport(x, z, yaw = heading) { pos.set(x, level.heightAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; },
