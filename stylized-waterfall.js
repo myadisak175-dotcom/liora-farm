@@ -300,49 +300,52 @@ function mistTexture() {
 }
 
 // ---------------------------------------------------------------- billows: the foot of a cartoon waterfall
-// Where the water lands it does not throw up crowns (that is a stone dropped in a pond): it boils up into soft white mounds,
-// like small clouds, that swell, lean out over the pool, and melt away while new ones rise behind them. Each billow is one
-// upright card that always faces the camera, with a cloud drawn on it: a handful of round lobes joined into one shape, flat
-// white where the light falls and pale blue in the folds between the lobes.
+// Where the water lands it does not throw up crowns (that is a stone dropped in a pond): it boils up into small soft white
+// puffs, like little clouds, that rise out of the water, drift out over the pool spreading apart and growing as they go, and
+// fade away while new ones rise behind them. Each puff is one upright card that always faces the camera, with a cloud drawn
+// on it: a handful of round lobes joined into one shape, flat white where the light falls and pale blue in the folds.
+// As a puff fades its outline goes soft and its lobes drift apart, so it thins out like a cloud instead of popping.
 //   const billows = createBillows({ x, z, y, width });      // the line where the water lands, and the water's level
-export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, white = '#ffffff', shade = '#d3edf8' } = {}) {
-  const n = count || Math.max(7, Math.round(width * 2.6));
+export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, size = 0.7, time = shared.uTime, white = '#ffffff', shade = '#d3edf8' } = {}) {
+  const n = count || Math.max(12, Math.round(width * 4.2));
   const quad = new THREE.PlaneGeometry(2, 2);
   const geo = new THREE.InstancedBufferGeometry();
   geo.index = quad.index;
   geo.setAttribute('position', quad.attributes.position);
-  const base = new Float32Array(n * 4), seed = new Float32Array(n * 4);
-  // two ranks: a back one close under the sheet (bigger, slower), a front one a little way out (smaller, quicker), drawn back first
-  const back = Math.round(n * 0.45);
+  const base = new Float32Array(n * 4), seed = new Float32Array(n * 4), drift = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) {
-    const rear = i < back, m = rear ? back : n - back, j = rear ? i : i - back;
-    const u = (j + 0.5 + (Math.random() - 0.5) * 0.7) / m - 0.5;                          // across the sheet
-    const size = (rear ? 1.5 : 1.15) * (0.8 + 0.45 * Math.random()) * (1 - 0.35 * Math.abs(u) * 2 * Math.abs(u) * 2);      // smaller toward the ends
-    base.set([x + u * width * 1.02, y, z + (rear ? -0.15 : 0.55) + (Math.random() - 0.5) * 0.3, size], i * 4);
-    seed.set([Math.random(), 1 / (2.6 + 2.2 * Math.random() + (rear ? 0.8 : 0)), Math.floor(Math.random() * 100), rear ? 0.25 : 0.7], i * 4);     // phase, 1 / life, shape, drift out
+    const u = (i + 0.5 + (Math.random() - 0.5) * 0.9) / n - 0.5;                                // across the sheet
+    const ends = 1 - 0.4 * (2 * u) * (2 * u);                                                     // smaller toward the ends
+    base.set([x + u * width, y, z + (Math.random() - 0.5) * 0.35, size * (0.7 + 0.6 * Math.random()) * ends], i * 4);
+    // phase, 1 / life, shape, how high it rises
+    seed.set([Math.random(), 1 / (3.2 + 2.4 * Math.random()), Math.floor(Math.random() * 100), 0.25 + 0.45 * Math.random()], i * 4);
+    // where it drifts in its life: out over the pool, and apart sideways (the ones at the ends fan out further)
+    drift.set([1.1 + 1.6 * Math.random(), (u * 1.3 + (Math.random() - 0.5) * 0.5) * 1.2], i * 2);
   }
   geo.setAttribute('aBase', new THREE.InstancedBufferAttribute(base, 4));
   geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
+  geo.setAttribute('aDrift', new THREE.InstancedBufferAttribute(drift, 2));
   geo.instanceCount = n;
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z), width + 4);
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z + 1.2), width + 4);
   const rgb = h => new THREE.Color(h);
   const mat = new THREE.ShaderMaterial({
     uniforms: { uTime: time, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) } },
     vertexShader: /* glsl */`
       attribute vec4 aBase, aSeed;
+      attribute vec2 aDrift;
       uniform float uTime;
       varying vec2 vP;
       varying vec3 vK;
       void main() {
-        float k = fract(uTime * aSeed.y + aSeed.x);                        // 0 rising out of the water .. 1 melted away
-        float grow = 1.0 - pow(1.0 - min(k / 0.3, 1.0), 2.5);              // swells up fast, then holds
-        float melt = smoothstep(0.62, 1.0, k);
-        float s = aBase.w * (0.25 + 0.75 * grow) * (1.0 + 0.12 * k);
+        float k = fract(uTime * aSeed.y + aSeed.x);                        // 0 rising out of the water .. 1 faded away
+        float grow = 1.0 - pow(1.0 - min(k / 0.22, 1.0), 2.0);             // pops up out of the foam ...
+        float s = aBase.w * (0.3 + 0.7 * grow) * (1.0 + 1.2 * k);          // ... and keeps spreading as it drifts, like a cloud
+        float go = 1.0 - pow(1.0 - k, 2.2);                                // quick off the foot of the falls, slowing out on the pool
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-        // it sits on the water (the card's lower edge is under the surface), leans out over the pool and lifts a little as it goes
-        vec3 c = vec3(aBase.x, aBase.y + s * 0.42 + aBase.w * 0.25 * k * k, aBase.z + aSeed.w * k);
-        vec3 p = c + (right * position.x + vec3(0.0, 1.0, 0.0) * position.y) * s * 1.2;      // the card is a fifth bigger than the cloud drawn on it, so no lobe is ever cut off by its edge
-        vP = position.xy * 1.2; vK = vec3(k, melt, aSeed.z);
+        // it sits on the water (the card's lower edge is under the surface), drifts out and apart, and lifts a little as it goes
+        vec3 c = vec3(aBase.x + aDrift.y * go, aBase.y + s * 0.42 + aSeed.w * go, aBase.z + aDrift.x * go);
+        vec3 p = c + (right * position.x + vec3(0.0, 1.0, 0.0) * position.y) * s * 1.3;      // the card is bigger than the cloud drawn on it, so no lobe is ever cut off by its edge
+        vP = position.xy * 1.3; vK = vec3(k, smoothstep(0.3, 1.0, k), aSeed.z);
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: /* glsl */`
@@ -354,8 +357,10 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
       // one lobe: x = distance to its edge, y = distance to the edge of its lit part (the same circle pushed toward the light)
       vec2 lobe(vec2 p, vec2 c, float r, float i) {
         float sd = floor(vK.z + 0.5) + i * 7.0;                // a whole number: what reaches here has been interpolated, and the hash cannot bear the least wobble
-        c += (vec2(h1(sd), h1(sd + 1.0)) - 0.5) * 0.14 + vec2(sin(uTime * 1.3 + sd), cos(uTime * 1.1 + sd * 1.7)) * 0.025;      // each one its own, and never quite still
-        r *= (0.85 + 0.3 * h1(sd + 2.0)) * (1.0 - 0.8 * vK.y * (0.6 + 0.4 * h1(sd + 3.0)));                                  // melting: the lobes shrink apart
+        vec2 j = vec2(h1(sd), h1(sd + 1.0)) - 0.5;
+        c += j * 0.14 + vec2(sin(uTime * 1.3 + sd), cos(uTime * 1.1 + sd * 1.7)) * 0.025;     // each one its own, and never quite still
+        c += j * 0.5 * vK.y;                                                                  // fading: the lobes drift apart
+        r *= (0.85 + 0.3 * h1(sd + 2.0)) * (1.0 - 0.3 * vK.y * (0.6 + 0.4 * h1(sd + 3.0)));
         return vec2(length(p - c) - r, length(p - c - vec2(0.04, 0.07)) - r * 0.86);
       }
       void main() {
@@ -366,10 +371,14 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
         d = min(d, lobe(p, vec2(-0.22, 0.2), 0.36, 3.0));
         d = min(d, lobe(p, vec2(0.24, 0.24), 0.34, 4.0));
         d = min(d, lobe(p, vec2(0.02, 0.48), 0.27, 5.0));
-        float a = (1.0 - smoothstep(-0.03, 0.0, d.x)) * smoothstep(-0.66, -0.6, p.y);      // cut flat where it meets the water
+        float fade = vK.y;
+        float soft = 0.03 + 0.32 * fade;                                                      // crisp while it boils, soft as it thins out
+        float a = (1.0 - smoothstep(-soft, 0.0, d.x)) * smoothstep(-0.66, -0.6, p.y);         // cut flat where it meets the water
+        a *= (1.0 - fade * fade) * (1.0 - fade) * 0.5 + (1.0 - fade) * 0.5;
+        a *= smoothstep(0.0, 0.06, vK.x);                // fades the whole way out, no pop at either end
         if (a < 0.01) discard;
         vec3 col = mix(uWhite, uShade, smoothstep(-0.03, 0.0, d.y) * smoothstep(-0.5, -0.25, p.y));      // flat white in the light, pale blue in the folds; all white where it stands in the foam
-        gl_FragColor = vec4(col, a * (1.0 - smoothstep(0.9, 1.0, vK.x)));
+        gl_FragColor = vec4(col, a);
       }`,
     transparent: true, depthWrite: false,
   });
