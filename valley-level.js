@@ -31,13 +31,13 @@ export const VALLEY_EDIT_KEY = 'liora.valley.edits.v1';
 function loadEdits() {
   let e = null;
   try {
-    if (new URLSearchParams(location.search).get('edits') === 'off') return { paths: null, yards: null, removed: new Set(), moved: new Map(), added: [] };
+    if (new URLSearchParams(location.search).get('edits') === 'off') return { paths: null, yards: null, dabs: [], removed: new Set(), moved: new Map(), added: [] };
     const saved = localStorage.getItem(VALLEY_EDIT_KEY);
     if (saved) e = JSON.parse(saved);
   } catch (err) { e = null; }
   e = e || VALLEY_EDITS || {};
   return {
-    paths: Array.isArray(e.paths) ? e.paths : null, yards: Array.isArray(e.yards) ? e.yards : null,
+    paths: Array.isArray(e.paths) ? e.paths : null, yards: Array.isArray(e.yards) ? e.yards : null, dabs: Array.isArray(e.dabs) ? e.dabs : [],
     removed: new Set(e.removed || []), moved: new Map(Object.entries(e.moved || {})), added: Array.isArray(e.added) ? e.added : [],
   };
 }
@@ -315,20 +315,47 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     return g;
   };
   const wayDist0 = makeWayDist(DEF_PATHS, DEF_YARDS);                        // as generated: what the rocks and trees keep clear of
-  let wayDist = makeWayDist(EDITS.paths || DEF_PATHS, EDITS.yards || DEF_YARDS);      // as drawn
+  let wayDist = null;                                                        // as drawn: set below, once the picture of the ways is made
   // the picture of the ways that the ground is drawn from (stylized-terrain.js, WAYS): a quarter of a metre to the texel.
   // drawWays paints it again from any set of ways (the editor calls it while a way is being dragged about).
   const waysN = [368, 208], waysPx = new Uint8Array(waysN[0] * waysN[1] * 4), waysTex = new THREE.DataTexture(waysPx, waysN[0], waysN[1], THREE.RGBAFormat);
   waysTex.magFilter = waysTex.minFilter = THREE.LinearFilter;
-  const drawWays = (paths, yards) => {
+  // A dab of the brush, [x, z, radius, what]: 0 = trodden earth, 1 = cobbles (laid on earth), 2 = grass (takes a way away).
+  // It is stamped straight into the picture, over whatever is there, so painting shows at once and later dabs win.
+  const stampDab = ([bx, bz, br, what]) => {
+    const { x0, x1, z0, z1 } = WAYS_BOX, [wN, hN] = waysN, reach = br + 3.4;
+    const i0 = Math.max(0, Math.floor((bx - reach - x0) / (x1 - x0) * wN)), i1 = Math.min(wN - 1, Math.ceil((bx + reach - x0) / (x1 - x0) * wN));
+    const j0 = Math.max(0, Math.floor((bz - reach - z0) / (z1 - z0) * hN)), j1 = Math.min(hN - 1, Math.ceil((bz + reach - z0) / (z1 - z0) * hN));
+    for (let jz = j0; jz <= j1; jz++) for (let ix = i0; ix <= i1; ix++) {
+      const x = x0 + (ix + 0.5) / wN * (x1 - x0), z = z0 + (jz + 0.5) / hN * (z1 - z0), o = (jz * wN + ix) * 4, d = Math.hypot(x - bx, z - bz);
+      if (what === 2) {
+        waysPx[o] = Math.max(waysPx[o], Math.round(255 * 2.6 / 4 * (1 - ss(br - 0.5, br + 0.9, d))));
+        waysPx[o + 1] = Math.min(waysPx[o + 1], Math.round(255 * ss(br - 0.5, br + 0.6, d)));
+      } else {
+        waysPx[o] = Math.min(waysPx[o], Math.round(255 * Math.min(1, Math.max(0, d - br + 0.7) / 4)));
+        if (what === 1) waysPx[o + 1] = Math.max(waysPx[o + 1], Math.round(255 * (1 - ss(br - 0.9, br + 0.3, d))));
+      }
+    }
+    waysTex.needsUpdate = true;
+  };
+  const drawWays = (paths, yards, dabs = []) => {
     const dist = makeWayDist(paths, yards), paved = makePaved(yards), { x0, x1, z0, z1 } = WAYS_BOX, [wN, hN] = waysN;
     for (let jz = 0; jz < hN; jz++) for (let ix = 0; ix < wN; ix++) {
       const x = x0 + (ix + 0.5) / wN * (x1 - x0), z = z0 + (jz + 0.5) / hN * (z1 - z0), o = (jz * wN + ix) * 4;
       waysPx[o] = Math.round(255 * Math.min(1, dist(x, z) / 4)); waysPx[o + 1] = Math.round(255 * paved(x, z)); waysPx[o + 3] = 255;
     }
+    for (const d of dabs) stampDab(d);
     waysTex.needsUpdate = true;
   };
-  drawWays(EDITS.paths || DEF_PATHS, EDITS.yards || DEF_YARDS);
+  drawWays(EDITS.paths || DEF_PATHS, EDITS.yards || DEF_YARDS, EDITS.dabs);
+  // metres to the nearest way as it is drawn (ways, yards and brush work together): read back from the picture
+  wayDist = (x, z) => {
+    const { x0, x1, z0, z1 } = WAYS_BOX, [wN, hN] = waysN;
+    const fx = (x - x0) / (x1 - x0) * wN - 0.5, fz = (z - z0) / (z1 - z0) * hN - 0.5;
+    if (fx < 0 || fz < 0 || fx > wN - 1 || fz > hN - 1) return 99;
+    const i = Math.min(wN - 2, Math.floor(fx)), j = Math.min(hN - 2, Math.floor(fz)), u = fx - i, v = fz - j, at = (a, b) => waysPx[(b * wN + a) * 4];
+    return ((at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v) / 255 * 4;
+  };
   {
     const u = terrain.material.uniforms, { x0, x1, z0, z1 } = WAYS_BOX;
     if (u && u.uWays) { u.uWays.value = waysTex; u.uWaysRect.value.set((x0 + x1) / 2, (z0 + z1) / 2, 1 / (x1 - x0), 1 / (z1 - z0)); u.uWaysOn.value = 1; }
@@ -779,6 +806,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
   const hidden = [water, grass, droplets.points];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
+  let grassDirty = false;
   let frameNo = 0, nextSplash = 0, nextHeave = 0, lastRenderer = null;
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
@@ -819,8 +847,25 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       key: VALLEY_EDIT_KEY, box: WAYS_BOX, heightAt: HV, items: editItems, ramps: V.ramps.map(r => r.line.map(c => [c[0], c[1]])),
       paths: () => JSON.parse(JSON.stringify(EDITS.paths || DEF_PATHS)), yards: () => JSON.parse(JSON.stringify(EDITS.yards || DEF_YARDS)),
       defaults: { paths: () => JSON.parse(JSON.stringify(DEF_PATHS)), yards: () => JSON.parse(JSON.stringify(DEF_YARDS)) },
-      removed: [...EDITS.removed], moved: Object.fromEntries(EDITS.moved), added: JSON.parse(JSON.stringify(EDITS.added)),
+      removed: [...EDITS.removed], moved: Object.fromEntries(EDITS.moved), added: JSON.parse(JSON.stringify(EDITS.added)), dabs: EDITS.dabs.map(d => [...d]),
       drawWays,
+      // one dab of the brush, shown at once: the ground is repainted, and the grass there is laid low or let back up (the grass
+      // itself, its colour and the shade on it are made again in full when the scene loads with the edits saved)
+      stamp(x, z, r, what) {
+        stampDab([x, z, r, what]);
+        const { data, size, radius, center } = map, span = radius * 2, reach = r + 1.2;
+        const i0 = Math.max(0, Math.floor((x - reach - center[0] + radius) / span * size)), i1 = Math.min(size - 1, Math.ceil((x + reach - center[0] + radius) / span * size));
+        const j0 = Math.max(0, Math.floor((z - reach - center[1] + radius) / span * size)), j1 = Math.min(size - 1, Math.ceil((z + reach - center[1] + radius) / span * size));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const px = center[0] - radius + (i + 0.5) / size * span, pz = center[1] - radius + (j + 0.5) / size * span, o = (j * size + i) * 4 + 3;
+          const f = 1 - ss(r - 0.2, r + 1.0, Math.hypot(px - x, pz - z));
+          data[o] = what === 2 ? Math.max(data[o], Math.round(230 * f)) : Math.min(data[o], Math.round(255 * (1 - f)));
+        }
+        grassDirty = true;
+      },
+      // the grass picture is big: it is sent to the graphics card a few times a second at most, not once a dab
+      flush() { if (grassDirty) { grassDirty = false; map.texture.needsUpdate = true; } },
+      walkable,
       // while editing: the grass is put away (the ground shows), and the trees too when it is the ways being worked on
       show({ grass: g = true, trees = true } = {}) { grass.visible = g; group.traverse(o => { if (o.userData.forest) o.visible = trees; }); },
     },

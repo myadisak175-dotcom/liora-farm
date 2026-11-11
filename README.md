@@ -68,11 +68,15 @@ The trodden ways between the houses (`VILLAGE.paths`, the ramps and the yards) a
 
 ## The scene editor
 
-`🛠 แก้ฉาก` (or `?edit`) opens an editor that looks straight down on the valley (`scene-editor.js`), made for a phone: drag the land to move, pinch to zoom, tap to pick, drag what is picked.
+`🛠 แก้ฉาก` opens an editor made for a phone (`scene-editor.js`). It has two views:
 
-- **ทางเดิน (ways)**: drag a point of a way, tap a line to add a point, draw a new way point by point, make a way broad or narrow, delete a point or a whole way; add, move, size, pave or delete a yard. The ground redraws while you drag. Ways can be drawn inside the dashed frame (the village); the ramps between terraces are part of the land and are only shown.
-- **พืชและหิน (plants and rocks)**: every tree, bush, rock and flower bed the level put down has a dot. Tap one to pick it, then delete it, drag it somewhere else, or put it back; add new trees, bushes, rocks and flower beds. These are built with the level, so they change when the edits are saved.
-- **💾 บันทึก** keeps the edits in the browser (`localStorage`, key `liora.valley.edits.v1`) and loads the scene again with them, back in the editor at the same spot. `⋯` shows the edits as text: copy it to make them permanent (it goes into `valley-edits.js`), paste one back, or clear everything. `?edits=off` loads the valley without any edits.
+- **🚶 เดินแก้ (walk)**: the game as it is played. Walk to the spot and fix it there.
+  - **🖌 ระบาย**: a brush for the ground: ดิน (trodden earth), หินปู (cobbles), หญ้า (grass: takes a way away), in three sizes. Tap the ground to lay a dab, or turn on **👣 ตามเท้า** and walk the way you want: the brush follows her feet. The ground changes at once and the grass there lies down. `↶ ย้อน` takes back the last stroke.
+  - **＋ วาง**: pick a tree, bush, rock or flower bed and tap where it should go. **🗑 ลบ**: tap the dot on a thing to take it out (again to put it back). **✋ ย้าย**: tap a thing, then tap where it should stand.
+- **🗺 มุมบน (top)** (`?edit`): straight down, north up. Drag to move, pinch to zoom. The same brush (drag a finger; two fingers move the view), every plant and rock as a dot to pick, drag or delete, and **เส้นทาง**: the village's ways as lines whose points can be dragged, added (tap a line) and removed, new ways drawn point by point, broad or narrow; yards added, moved, sized, paved.
 
-The edits are a small list laid over what `valley-level.js` generates, and never change what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so everything else stays exactly where it was. A thing is known by its kind and where it was first put; if the level later stops generating it, its edit is simply ignored.
+The ground (ways, yards, brush work) can be edited inside the village (the dashed frame in the top view) and shows as it is edited. Plants and rocks are built with the level: until the edits are saved, a mark shows what will happen (a red cross = taken out, a dashed line = moved, a plus = new).
 
+**💾 บันทึก** keeps the edits in the browser (`localStorage`, key `liora.valley.edits.v1`) and loads the scene again with them, back in the editor at the same spot. `⋯` shows the edits as text: copy it to make them permanent (it goes into `valley-edits.js`), paste one back, or clear everything. `?edits=off` loads the valley without any edits.
+
+The edits are a small list laid over what `valley-level.js` generates, and never change what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so everything else stays exactly where it was. A thing is known by its kind and where it was first put; if the level later stops generating it, its edit is simply ignored. Brush work is a list of dabs `[x, z, radius, what]` stamped over the picture of the ways, in order.
