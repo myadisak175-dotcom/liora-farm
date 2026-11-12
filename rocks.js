@@ -17,10 +17,10 @@
         rockBlock(opts), createRockBlocks(list, { material }), rockBlockMaterial(), faceBlocks(opts)
    4. ROCK LAND     (abyss depths)   — paint for the land behind the blocks: plain deep stone, so gaps read as cracks
         rockLandMaterial({ far })
-   5. ROCK PROPS    (catalog only, for now: rock-catalog.html) — loose rocks in a hand-painted stylized look: big flat
-                    chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale rim on the
-                    edges, moss on what faces the sky
-        PROP_ROCK_TYPES, createPropRock({ type, seed }), propRockMaterial({ moss })
+   5. ROCK PROPS    (catalog only, for now: rock-catalog.html) — loose rocks and cliff pieces in a hand-painted stylized
+                    look: big flat chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale
+                    rim on the edges, moss on what faces the sky. Big shapes are assembled from pieces sunk into each other.
+        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed }), propRockMaterial({ moss })
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -555,18 +555,19 @@ export function rockLandMaterial({ far = '#cde6f2' } = {}) {
 // creases between them are rounded off a little (soft edges), and the paint goes by the faces: warm and light where the sun
 // is, cool blue-grey away from it, a pale rim along the edges, darker in the creases and at the foot, moss on the tops.
 export const PROP_ROCK_TYPES = [
-  { key: 'boulder', name: 'ก้อนใหญ่' }, { key: 'stone', name: 'ก้อนกลาง' }, { key: 'pillar', name: 'เสาหินตั้ง' },
-  { key: 'ledge', name: 'แผ่นหินซ้อนชั้น' }, { key: 'overhang', name: 'ผาหินยื่น' }, { key: 'pebbles', name: 'หินกรวด' },
-  { key: 'paving', name: 'หินปูทาง' },
+  { key: 'boulder', name: 'ก้อนใหญ่', group: 'rock' }, { key: 'stone', name: 'ก้อนกลาง', group: 'rock' }, { key: 'pillar', name: 'เสาหินตั้ง', group: 'rock' },
+  { key: 'ledge', name: 'แผ่นหินซ้อนชั้น', group: 'rock' }, { key: 'pebbles', name: 'หินกรวด', group: 'rock' }, { key: 'paving', name: 'หินปูทาง', group: 'rock' },
+  { key: 'wall', name: 'ผาตรง', group: 'cliff' }, { key: 'corner', name: 'ผามุม', group: 'cliff' }, { key: 'overhang', name: 'ผายื่น', group: 'cliff' },
+  { key: 'steps', name: 'ผาขั้นบันได', group: 'cliff' }, { key: 'spire', name: 'ยอดผา', group: 'cliff' }, { key: 'range', name: 'ผาประกอบ (ตัวอย่าง)', group: 'cliff' },
 ];
-const PROP_TONES = { lit: '#e2dccb', mid: '#b3b2a9', shade: '#808c98', deep: '#5c6877', rim: '#f7f4ea', sky: '#b9d3ea',
+const PROP_TONES = { lit: '#cec7b4', mid: '#9e9d95', shade: '#717d8a', deep: '#4f5a69', rim: '#e9e3d2', sky: '#b9d3ea',
   moss: ['#9cba45', '#6f9a3a', '#4b7a31'] };
 const PROP_SUN = new THREE.Vector3(-0.62, 0.62, 0.48).normalize();        // painted with a lowish sun, so the sides read light and dark
 
 // one chiselled piece (detail: how finely the ball is cut before the planes slice it; edges per side of each of its 20 faces). size: half widths [x, y, z]; cuts: how many planes slice it; up: share of the cuts that make tops;
 // planes: extra cuts [nx, ny, nz, keep] (keep: how far out the plane stands, of the piece's reach that way); round: how soft
-// the edges are; lean, taper: for pillars. The piece stands on y = 0 with a little of it under the ground.
-function chiselPiece({ seed = 1, size = [1, 1, 1], cuts = 20, up = 0.3, deep = [0.58, 0.82], planes = [], chips = null, detail = 14, round = 2, blob = 0.1, box = 0.55, lean = 0, taper = 0, sink = 0.08 } = {}) {
+// the edges are; lean, taper: for pillars; warp(x, y, z, h): bends the shape before it is cut (h: 0 at its foot, 1 at its top). The piece stands on y = 0 with a little of it under the ground.
+function chiselPiece({ seed = 1, size = [1, 1, 1], cuts = 20, up = 0.3, deep = [0.58, 0.82], planes = [], chips = null, detail = 14, round = 2, blob = 0.1, box = 0.55, lean = 0, taper = 0, sink = 0.08, warp = null } = {}) {
   const rng = mulberry32(seed * 977 + 13), R = (a, b) => a + rng() * (b - a);
   let g = new THREE.IcosahedronGeometry(1, detail);
   g.deleteAttribute('normal'); g.deleteAttribute('uv');
@@ -579,6 +580,7 @@ function chiselPiece({ seed = 1, size = [1, 1, 1], cuts = 20, up = 0.3, deep = [
     const r = 1 + (fbm3(x * 0.9 + seed * 1.7, y * 0.9, z * 0.9, seed, 2) - 0.5) * 2 * blob;
     const t = 1 - taper * (y + 1) / 2;
     P[i * 3] = x * r * sx * t + (y + 1) * lean * sy; P[i * 3 + 1] = y * r * sy; P[i * 3 + 2] = z * r * sz * t;
+    if (warp) { const q = warp(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], (y + 1) / 2); P[i * 3] = q[0]; P[i * 3 + 1] = q[1]; P[i * 3 + 2] = q[2]; }
   }
   // the cuts: each plane takes off whatever stands out past it, leaving a flat face
   const list = planes.map(([x, y, z, k]) => [new THREE.Vector3(x, y, z).normalize(), k]);
@@ -662,11 +664,6 @@ const PROP_BUILD = {
     }
     return out;
   },
-  overhang: (rng, seed) => [                                               // a big slab tipped up over a mass of rock, jutting out
-    chiselPiece({ seed, size: [2.0, 1.4, 1.9], cuts: 20, up: 0.25 }),
-    place(chiselPiece({ seed: seed + 3, size: [3.2, 0.62, 1.75], cuts: 16, up: 0.15, planes: [[0, 1, 0, 0.85]], sink: 0, blob: 0.1 }), { x: 1.6, y: 1.55, z: 0.1, rz: 0.2, ry: (rng() - 0.5) * 0.3 }),
-    place(chiselPiece({ seed: seed + 7, size: [0.8, 0.55, 0.7], cuts: 10, detail: 8 }), { x: 3.3, z: -0.6, ry: rng() * 6 }),
-  ],
   pebbles: (rng, seed) => {
     const out = [];
     for (let i = 0; i < 12 + Math.floor(rng() * 5); i++) {
@@ -685,7 +682,56 @@ const PROP_BUILD = {
     return out;
   },
 };
-const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, overhang: 1, pebbles: 0, paving: 0.35 };
+// ---- cliff pieces: big, so cut from a finer ball; each shows its face to +z (the side it is looked at from) and is made to
+// be set in a row with its neighbours sunk into it
+const cliffBlock = (seed, size, o = {}) => chiselPiece({ seed, size, cuts: 24, up: 0.22, deep: [0.78, 0.93], detail: 20, box: 0.7, blob: 0.08, sink: 0.05, ...o });
+const topOf = g => { g.computeBoundingBox(); return g.boundingBox.max.y; };      // pieces are stacked by where the one below really ends
+Object.assign(PROP_BUILD, {
+  wall: (rng, seed) => {                                                   // a stretch of cliff: a tall block, a lower one stepping out at its foot, a cap
+    const h = 2.8 + rng() * 0.6, main = cliffBlock(seed, [3.3, h, 1.3]), cap = cliffBlock(seed + 5, [1.7, 0.75, 1.0], { detail: 12 });
+    return [main,
+      place(cliffBlock(seed + 3, [2.4, 1.3, 1.0], { detail: 14 }), { x: (rng() - 0.5) * 2.2, z: 1.0, ry: (rng() - 0.5) * 0.4 }),
+      place(cap, { x: (rng() - 0.5) * 2.4, y: topOf(main) - topOf(cap) * 0.55, z: -0.35, ry: (rng() - 0.5) * 0.5 })];
+  },
+  corner: (rng, seed) => {                                                 // two stretches meeting at a right angle, a block filling the corner
+    const h = 2.9 + rng() * 0.4;
+    return [place(cliffBlock(seed, [2.8, h, 1.2]), { x: 1.9 }),
+      place(cliffBlock(seed + 2, [2.8, h * 0.92, 1.2]), { x: -1.0, z: -2.7, ry: Math.PI / 2 }),
+      place(cliffBlock(seed + 4, [1.5, h * 1.08, 1.5], { detail: 14 }), { x: -0.6, z: -0.4, ry: 0.7 })];
+  },
+  overhang: (rng, seed) => {                                               // one piece: its foot sunk in the ground, its top leaning out over a hollow
+    const out = 2.6 + rng() * 0.6;
+    return [cliffBlock(seed, [2.6, 2.6, 1.7], { up: 0.15, sink: 0.03,
+      warp: (x, y, z, h) => [x, y, z + out * h * h * h - (z > 0 ? z * 0.7 * Math.sin(Math.PI * Math.min(1, h * 1.4)) : 0)] }),
+    place(cliffBlock(seed + 6, [1.1, 0.7, 0.9], { detail: 10 }), { x: 1.9, z: 1.3, ry: rng() * 6 })];      // a block fallen from it
+  },
+  steps: (rng, seed) => {                                                  // three tiers, each set back and higher, sunk into the one below
+    const out = []; let y = 0, z = 0;
+    for (let i = 0; i < 3; i++) {
+      const g = cliffBlock(seed + i * 7, [3.2 - i * 0.5, 1.1 + rng() * 0.3, 1.5], { detail: 16 }), top = topOf(g);
+      out.push(place(g, { x: (rng() - 0.5) * 0.8, y, z, ry: (rng() - 0.5) * 0.25 }));
+      y += top * 0.72; z -= 1.3;
+    }
+    return out;
+  },
+  spire: (rng, seed) => [cliffBlock(seed, [1.5, 4.4 + rng(), 1.3], { up: 0.12, taper: 0.35, lean: (rng() - 0.5) * 0.1 }),
+    place(cliffBlock(seed + 2, [1.3, 1.4, 1.1], { detail: 12 }), { x: 1.2, z: 0.6, ry: rng() * 6 })],
+  range: (rng, seed) => {                                                  // what the pieces make together: a stretch of cliff with a corner and a lean
+    const parts = [], add = (type, s, o, k = 1) => { for (const g of PROP_BUILD[type](mulberry32(s * 31), s)) { g.scale(k, k, k); parts.push(place(g, o)); } };
+    add('wall', seed, { x: -7.5, ry: 0.08 }, 1.5);
+    add('wall', seed + 11, { x: 0.3, z: 0.6, ry: -0.1 }, 1.75);
+    add('spire', seed + 13, { x: -3.6, z: -1.6, ry: 0.4 }, 1.6);
+    add('overhang', seed + 23, { x: 8.2, z: 0.8, ry: -0.25 }, 1.4);
+    add('corner', seed + 37, { x: -14.5, z: -1.5, ry: 0.2 }, 1.35);
+    add('stone', seed + 41, { x: -3.0, z: 4.6 }, 1.6);
+    add('boulder', seed + 43, { x: 3.8, z: 4.4, ry: 0.6 }, 0.9);
+    add('stone', seed + 47, { x: 12, z: 4.2, ry: 1.2 }, 1.2);
+    add('pebbles', seed + 53, { x: -8.5, z: 5.2 }, 1.2);
+    return parts;
+  },
+});
+const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, wall: 1, corner: 1, overhang: 1, steps: 1, spire: 0.8, range: 1 };
+
 
 export function createPropRock({ type = 'boulder', seed = 1 } = {}) {
   const rng = mulberry32(seed * 7919 + type.length * 31);

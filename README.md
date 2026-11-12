@@ -126,6 +126,11 @@ The ground (ways, yards, brush work) can be edited inside the village (the dashe
 
 The edits are a small list laid over what `valley-level.js` generates, and never change what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so everything else stays exactly where it was. A thing is known by its kind and where it was first put; if the level later stops generating it, its edit is simply ignored. Brush work is a list of dabs `[x, z, radius, what]` stamped over the picture of the ways, in order.
 
-## Stylized prop rocks (catalog)
+## Stylized prop rocks and cliffs (catalog)
 
-`rock-catalog.html` shows a new set of loose rocks made in the look of a hand-made stylized kit (`rocks.js`, section 5: `createPropRock({ type, seed })`). Each is a rough block cut by many flat planes (big faces, then small chips off the edges), with the creases softened a little; the paint goes by the faces: warm and light towards the sun, cool blue-grey away from it, a pale rim on the edges, darker in the creases and at the foot, moss on the tops. Seven kinds: ก้อนใหญ่, ก้อนกลาง, เสาหินตั้ง, แผ่นหินซ้อนชั้น, ผาหินยื่น, หินกรวด, หินปูทาง. ◀ ▶ go through them, 🎲 rolls new shapes, 🪨 shows them all in a row (`?type=pillar`, `?all=1`, `?seed=4`). Nothing in the game uses them yet.
+`rock-catalog.html` shows a new set of rocks and cliff pieces made in the look of a hand-made stylized kit (`rocks.js`, section 5: `createPropRock({ type, seed })`). Each piece is a rough block cut by many flat planes (big faces, then small chips off the edges), with the creases softened a little; the paint goes by the faces: warm and light towards the sun, cool blue-grey away from it, a pale rim on the edges, darker in the creases and at the foot, moss on the tops. Big shapes are assembled from pieces sunk into each other, the way such kits are used.
+
+- **Rocks:** ก้อนใหญ่, ก้อนกลาง, เสาหินตั้ง, แผ่นหินซ้อนชั้น, หินกรวด, หินปูทาง.
+- **Cliffs:** ผาตรง, ผามุม, ผายื่น (one piece bent before it is cut: foot in the ground, top leaning out over a hollow), ผาขั้นบันได, ยอดผา, and ผาประกอบ, an example of what the pieces make together.
+
+⛰/🪨 switches between the two sets, ◀ ▶ go through a set, 🎲 rolls new shapes, ดูทั้งชุด shows the set in a row (`?type=wall`, `?all=1`, `?seed=4`). Nothing in the game uses them yet.
