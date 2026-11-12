@@ -24,7 +24,7 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "./rocks.js": "./rocks.js?v=fit1"
+  "./rocks.js": "./rocks.js?v=bluff1"
 } }
 </script>
 </head>
@@ -70,10 +70,11 @@ for (const [x, z, type, s] of [[-14, -16, 'broadleaf', 3], [10, -19, 'pine', 5],
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 400);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 1.5; controls.maxDistance = 40;
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 1.5; controls.maxDistance = 60;
 
 const SIZE = { boulder: 4.5, stone: 2.2, pillar: 6.5, ledge: 5.5, pebbles: 3, paving: 4.2, flagstone: 2,
-  cliffFace: 17, cliffTall: 17, buttress: 16, cliffTop: 9, slopeRock: 11, footRock: 6.5, cluster: 5, rubble: 3.6, range: 36 };
+  cliffFace: 17, cliffTall: 17, buttress: 16, cliffTop: 9, slopeRock: 11, footRock: 6.5, cluster: 5, rubble: 3.6, range: 36,
+  bluffTall: 30, bluffWide: 30, bluffSplit: 30, bluffLow: 19, bluffLowSplit: 17 };
 const CAM = { buttress: [0.75, 0.3, 0.65], slopeRock: [0.2, 0.3, 0.95], range: [0.1, 0.16, 0.62] };     // from where each is best seen (default: front and a little to the side)
 let index = Math.max(0, PROP_ROCK_TYPES.findIndex(t => t.key === Q.get('type')));
 let seed = +Q.get('seed') || 1, showAll = Q.has('all');
