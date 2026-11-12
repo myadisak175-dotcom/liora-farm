@@ -72,12 +72,12 @@
   "./blockout-level.js": "./blockout-level.js?v=3",
   "./pit-level.js": "./pit-level.js?v=3",
   "./village-level.js": "./village-level.js?v=1",
-  "./hill-village-level.js": "./hill-village-level.js?v=2",
+  "./hill-village-level.js": "./hill-village-level.js?v=3",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
   "./rock-editor.js": "./rock-editor.js?v=3",
   "./rocks-layout.js": "./rocks-layout.js?v=2",
-  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
@@ -226,7 +226,7 @@ const skyW = +Q.get('sky') || (fastMode ? 1024 : IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
 scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
-const buildLevel = { meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel, rocks: buildRocksLevel, blockout: buildBlockoutLevel, pit: buildPitLevel, village: buildVillageLevel, hillvillage: buildHillVillageLevel }[Q.get('map')] || buildValleyLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone); ?map=rocks: the rock test map; ?map=village: the terraced village island; ?map=hillvillage: the hill village on a heightmap, its houses from the building kit (&look=flat: in flat colours)
+const buildLevel = { meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel, rocks: buildRocksLevel, blockout: buildBlockoutLevel, pit: buildPitLevel, village: buildVillageLevel, hillvillage: buildHillVillageLevel }[Q.get('map')] || buildValleyLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone); ?map=rocks: the rock test map; ?map=village: the terraced village island; ?map=hillvillage: the hill village on a heightmap, its houses from the building kit (&look=flat: in flat colours; &cliff=strata: its cliffs in the valley's strata, not painted)
 const level = await buildLevel({ layer: +Q.get('layer') || 1, far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000, sun: sky.userData.sun ? sky.userData.sun.toArray() : undefined });
 scene.add(level.group);
 let forage = null;
