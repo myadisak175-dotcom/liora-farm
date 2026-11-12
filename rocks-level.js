@@ -140,7 +140,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   for (const st of paths.stones()) put(st.type, 1 + st.seed % 4, st.x, st.z, { ry: st.ry, s: st.s, sink: st.sink });      // flat stones set into the paths, pebbles by them (four shapes of each)
 
   // ---- the cliff, dressed with the kit. Along its line, wherever the land's own face is high: a big piece (faces, tall
-  // columns, ribs in turn), sunk into the ground and into the face, as tall as the face there, overlapping the one before; here
+  // columns, ribs in turn), sunk into the ground and into the face, as tall as the face there, only just overlapping the one before; here
   // and there a top slab on the edge above. Where the face runs out into the ramp: wedges, then fallen rocks. At the foot, on
   // the joins between the big pieces: rubble, fallen blocks, huddles of rock. Nothing where the water comes over.
   {
@@ -166,14 +166,14 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       const ox = xc - p.nx * back - p.nz * mid, oz = p.cz - p.nz * back + p.nx * mid;      // (the piece's own x runs along the face)
       if (big || clear(ox + p.nx * 2, oz + p.nz * 2, 0.5)) {
         put(type, sd, ox, oz, { ry: Math.atan2(p.nx, p.nz) * DEG + R(-9, 9), s, y: Math.min(p.low, H(ox + p.nx * 2, oz + p.nz * 2)) - sink });
-        if (big && rng() < 0.5 && Math.abs(xc - C.falls) > 6) {             // a top slab on the plateau's edge above
+        if (big && rng() < 0.3 && Math.abs(xc - C.falls) > 6) {             // a top slab on the plateau's edge above
           const tx = xc - p.nx * 2.8 + R(-1, 1), tz = p.cz - p.nz * 2.8;
           put('cliffTop', 1 + Math.floor(rng() * 3), tx, tz, { ry: Math.atan2(p.nx, p.nz) * DEG + R(-25, 25), s: R(0.42, 0.62), y: H(tx, tz) - R(0.25, 0.4) });
         }
       }
-      x = xc + w * (big ? 0.27 : 0.45);
+      x = xc + w * (big ? 0.48 : 0.5);                                      // the next one only just overlaps this one: each piece reads as one rock
       if (fh > 2.0) joins.push(x);
-      if (big && Math.abs(x - C.falls) > GAP + 1.5) {                       // behind the join to the next piece: another, set deeper into the face, so the gap shows rock
+      if (big && rng() < 0.4 && Math.abs(x - C.falls) > GAP + 1.5) {         // behind some of the joins: another, set deeper into the face (elsewhere the land's own face shows, as a crack)
         const q = probe(x), t2 = n % 2 ? 'cliffFace' : 'cliffTall', sd2 = 1 + Math.floor(rng() * 3), b2 = RK.propRockGeometry(t2, sd2).boundingBox;
         const s2 = Math.min(1.6, Math.max(0.5, (q.top - q.low + 1.2 + R(0.2, 0.9)) / b2.max.y)), back2 = R(1.5, 2.0), mid2 = (b2.max.x + b2.min.x) / 2 * s2;
         put(t2, sd2, x - q.nx * back2 - q.nz * mid2, q.cz - q.nz * back2 + q.nx * mid2, { ry: Math.atan2(q.nx, q.nz) * DEG + R(-12, 12), s: s2, y: q.low - 1.2 });
@@ -182,13 +182,13 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     for (const jx of joins) {
       const cz = cliffZ(jx), [nx, nz] = normalAt(jx), at = (out, side) => [jx + nx * out + nz * side, cz + nz * out - nx * side];
       const a = at(R(1.7, 2.5), R(-1, 1));
-      if (clear(a[0], a[1], 0.3)) put('rubble', 1 + Math.floor(rng() * 3), a[0], a[1], { ry: R(0, 360), s: R(1.1, 1.7), sink: 0.03 });
+      if (rng() < 0.55 && clear(a[0], a[1], 0.3)) put('rubble', 1 + Math.floor(rng() * 3), a[0], a[1], { ry: R(0, 360), s: R(1.1, 1.7), sink: 0.03 });
       const b = at(R(2.6, 3.6), R(-1.5, 1.5));
-      if (rng() < 0.6 && clear(b[0], b[1], 1.2)) put('footRock', 1 + Math.floor(rng() * 3), b[0], b[1], { ry: R(0, 360), rz: R(-8, 8), s: R(0.75, 1.35), sink: R(0.25, 0.45) });
+      if (rng() < 0.3 && clear(b[0], b[1], 1.2)) put('footRock', 1 + Math.floor(rng() * 3), b[0], b[1], { ry: R(0, 360), rz: R(-8, 8), s: R(0.75, 1.35), sink: R(0.25, 0.45) });
       const c = at(R(3.8, 5.4), R(-2.5, 2.5));
-      if (rng() < 0.35 && clear(c[0], c[1], 1.2)) put('cluster', 1 + Math.floor(rng() * 3), c[0], c[1], { ry: R(0, 360), s: R(0.8, 1.25), sink: 0.12 });
+      if (rng() < 0.15 && clear(c[0], c[1], 1.2)) put('cluster', 1 + Math.floor(rng() * 3), c[0], c[1], { ry: R(0, 360), s: R(0.8, 1.25), sink: 0.12 });
       const d = at(R(3.2, 6), R(-3, 3));
-      if (rng() < 0.5 && clear(d[0], d[1], 0.3)) put('rubble', 1 + Math.floor(rng() * 3), d[0], d[1], { ry: R(0, 360), s: R(0.8, 1.3), sink: 0.03 });
+      if (rng() < 0.25 && clear(d[0], d[1], 0.3)) put('rubble', 1 + Math.floor(rng() * 3), d[0], d[1], { ry: R(0, 360), s: R(0.8, 1.3), sink: 0.03 });
     }
     // on the brink either side of the falls, and in the pool beside where they land
     for (const sgn of [-1, 1]) {

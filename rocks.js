@@ -913,7 +913,7 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}
         float groundY = onG ? texture2D(uGH, guv).r : 0.0;
         float hg = uWorld > 0.0 ? clamp((vWP.y - groundY) / uWorld, 0.0, 1.0) : vHgt;     // how high up: on its own foot, or above the ground
         // the light, painted in a few soft steps; the brush wobbles a little
-        float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.07 + (vFacet - 0.5) * 0.3;   // each face its own tone
+        float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.03 + (vFacet - 0.5) * 0.3;   // each face its own tone
         vec3 col = mix(uDeep, uShade, smoothstep(0.28, 0.38, t));
         col = mix(col, uMid, smoothstep(0.5, 0.6, t));
         col = mix(col, uLit, smoothstep(0.7, 0.78, t));
@@ -922,16 +922,8 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}
         float edge = clamp(-vCurv * 5.0 - 0.08, 0.0, 1.0), crease = clamp(vCurv * 5.0 - 0.05, 0.0, 1.0);
         col = mix(col, uRim, edge * mix(0.25, 0.65, smoothstep(0.35, 0.75, t)));
         col *= 1.0 - crease * 0.38;
-        col *= 0.93 + 0.14 * noise2(vWP.xz * 0.45 + vWP.y * 0.3);                       // broad changes of tone across the rock
-        // flat dabs of paint over the faces (lighter and darker patches with clean edges, the way the game's ground is painted)
-        vec2 dq = vWP.xz + vWP.y * vec2(0.63, 0.41);
-        float dabs = noise2(dq * 0.9) * 0.6 + noise2(dq * 2.7 + 5.0) * 0.4;
-        col *= dabs > 0.6 ? 1.07 : (dabs < 0.4 ? 0.92 : 1.0);
+        col *= 0.96 + 0.08 * noise2(vWP.xz * 0.3 + vWP.y * 0.2);                        // a broad, soft change of tone across the rock; no other pattern: a face is one flat colour
         col *= mix(0.8, 1.06, vHgt);                                                   // each piece a little darker at its foot, lighter at its head
-        float bed = noise2(vec2(vWP.y * 1.7 + noise2(vWP.xz * 0.22) * 2.2, 3.7));       // faint beds of rock, lying nearly level
-        col *= 1.0 - (1.0 - abs(n.y)) * 0.09 * step(0.56, bed);
-        float side = 1.0 - abs(n.y);                                                      // faint weathering streaks down the sides
-        col *= 1.0 - side * 0.1 * smoothstep(0.55, 0.85, noise2(vec2((vWP.x + vWP.z) * 2.6, vWP.y * 0.35)));
         col *= mix(0.6, 1.0, smoothstep(0.0, 0.3, hg));                                 // dark where it meets the ground
         if (uMoss > 0.0) {
           float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - hg) * uMossLow - (1.0 - uMoss) * 0.3 - 0.03;
