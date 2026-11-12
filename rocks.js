@@ -30,6 +30,9 @@
    7. GROUND + WATER (rock-builder.html, rocks-level.js) — what the rocks know of the world round them: the ground's height
                     and colour, drawn once from straight above (like Unreal's runtime virtual texture), and the water's level
         bakeGroundForRocks(renderer, grounds, { center, size, res }), GROUND_BLEND (its settings), setRockWater({ texture, ... })
+   8. THE LAND'S OWN FACE, AS ROCK (rocks-level.js) — a skin of rock over the land where it stands steep along a cliff's line:
+                    what shows between the kit's pieces is rock too
+        createCliffSkin({ points, heightAt, ... })
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -965,6 +968,124 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}
         gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
       }`,
   }));
+}
+
+// ==================================================================================================== 8. THE LAND'S OWN FACE, AS ROCK
+// A cliff is the land's step with the kit's pieces standing against it; between the pieces the land's own face shows. This
+// makes that face rock too: a skin laid over the land wherever it stands steep along a line, cut into blocks that stand out of
+// it by different amounts and tip a little each their own way (flat faces, like the kit's), with grooves between them, a foot
+// that goes into the ground and tops that reach back onto the land above (where the moss grows). Painted as the kit is.
+//
+//   points     the middle of the face, closely spaced along it: [[x, z, nx, nz], ...]   (n: level, out of the face, towards the low ground)
+//   heightAt   the land
+//   reach      how far either side of the line to look for the face (m); rows: how many points up the face
+//   block      the size of a block along the face and up it (m); depth: how far the blocks stand out of the land, least and most (m)
+//   minHeight  no skin where the face is lower than this (a ramp, a bank)
+//   quiet      (x, z) -> 0..1: how much the blocks stand out there (near a waterfall: hardly)
+export function createCliffSkin({ points, heightAt, seed = 1, reach = 4, rows = 26, block = [2.0, 2.4], depth = [0.22, 1.0], minHeight = 1.6, quiet = null } = {}) {
+  const H = heightAt, DS = 0.06, NS = Math.round(reach * 2 / DS), hs = new Float32Array(NS + 1);
+  // each column: where the land stands steep across the line (from d = a on the high side to d = b on the low side)
+  const cols = [];
+  let u = 0;
+  points.forEach(([x, z, nx, nz], i) => {
+    if (i) u += Math.hypot(x - points[i - 1][0], z - points[i - 1][1]);
+    for (let k = 0; k <= NS; k++) { const d = -reach + k * DS; hs[k] = H(x + nx * d, z + nz * d); }
+    let km = 1, sm = 0;
+    for (let k = 1; k < NS; k++) { const sl = (hs[k - 1] - hs[k + 1]) / (2 * DS); if (sl > sm) { sm = sl; km = k; } }
+    let a = km, b = km;
+    while (a > 0 && (hs[a - 1] - hs[a]) / DS > 0.45) a--;
+    while (b < NS && (hs[b] - hs[b + 1]) / DS > 0.45) b++;
+    const top = hs[a], low = hs[b];
+    if (sm < 0.9 || top - low < minHeight) { cols.push(null); return; }
+    const ds = new Float32Array(rows + 1);                                    // d of each height up the face (the foot first)
+    let k = b;
+    for (let j = 0; j <= rows; j++) {
+      const y = low + (top - low) * j / rows;
+      while (k > a && hs[k - 1] < y) k--;
+      const h0 = hs[k], h1 = hs[Math.max(a, k - 1)], t = h1 > h0 ? Math.min(1, Math.max(0, (y - h0) / (h1 - h0))) : 0;
+      ds[j] = -reach + (k - t) * DS;
+    }
+    cols.push({ x, z, nx, nz, u, top, low, ds, da: -reach + a * DS });
+  });
+  // runs of columns that have a face; a run's ends go back into the land
+  const pos = [], hgt = [], facet = [], idx = [], NR = rows + 3;            // rows of points: one under the ground, the face, one back on the land above
+  const [bw, bh] = block;
+  const cell = (cu, cy, k) => hash(cu * 1.31 + k * 7.7, cy * 2.17 + seed * 0.37, k + seed);
+  // how far the rock stands out of the land here, and the tone of its block. Each block: a flat face that tips a little its own
+  // way, with sides that fall away from it; the rock is whichever block stands out furthest (so blocks meet in grooves, and the
+  // surface has no steps in it)
+  const stand = (uu, y) => {
+    const gu = uu / bw, gy = y / bh + 100, iu = Math.floor(gu), iy = Math.floor(gy);
+    let best = -9, tone = 0.5;
+    for (let cy = iy - 1; cy <= iy + 1; cy++) for (let cu = iu - 1; cu <= iu + 1; cu++) {
+      const qu = cu + 0.5 + (cell(cu, cy, 1) - 0.5) * 0.7 + (cy & 1) * 0.5, qy = cy + 0.5 + (cell(cu, cy, 2) - 0.5) * 0.6;
+      const du = gu - qu, dy = gy - qy, dd = Math.max(Math.abs(du) * 1.05, Math.abs(dy), (Math.abs(du) + Math.abs(dy)) * 0.72);      // (blocks with corners taken off)
+      const v = depth[0] + (depth[1] - depth[0]) * cell(cu, cy, 3) ** 1.3 + (cell(cu, cy, 4) - 0.5) * 0.5 * du * bw + (cell(cu, cy, 5) - 0.5) * 0.35 * dy * bh - Math.max(0, dd - 0.36) * 2.6;
+      if (v > best) { best = v; tone = cell(cu, cy, 6); }
+    }
+    return [Math.max(0.04, best), tone];
+  };
+  let run = 0, vcount = 0, prev = -1;
+  const runs = [];
+  for (let i = 0; i <= cols.length; i++) {
+    if (i < cols.length && cols[i]) { if (!run) runs.push([i, i]); runs[runs.length - 1][1] = i; run = 1; } else run = 0;
+  }
+  for (const [i0, i1] of runs) {
+    if (i1 - i0 < 4) continue;
+    prev = -1;
+    for (let i = i0; i <= i1; i++) {
+      const c = cols[i], end = Math.min(1, (c.u - cols[i0].u) / 1.6, (cols[i1].u - c.u) / 1.6), ef = end * end * (3 - 2 * end);
+      const q = quiet ? quiet(c.x, c.z) : 1, base = vcount;
+      for (let r = 0; r < NR; r++) {
+        const j = Math.min(rows, Math.max(0, r - 1)), y = c.low + (c.top - c.low) * j / rows;
+        let d = c.ds[j], yy = y, tone = 0.5, out;
+        if (r === NR - 1) { d = c.da - 0.45; yy = H(c.x + c.nx * d, c.z + c.nz * d) - 0.07; out = 0; }      // back on the land above, just under it
+        else {
+          const [st, tn] = stand(c.u, y);
+          tone = tn;
+          out = -0.15 + (0.15 + st * (0.3 + 0.7 * q) + (fbm3(c.u * 0.9, y * 0.9, seed + 3.1, seed, 2) - 0.5) * 0.12) * ef;
+          if (r === 0) yy = y - 0.8;                                         // the foot goes into the ground
+        }
+        pos.push(c.x + c.nx * (d + out), yy, c.z + c.nz * (d + out));
+        hgt.push(j / rows); facet.push(tone);
+        vcount++;
+      }
+      if (prev >= 0) for (let r = 0; r < NR - 1; r++) { const a = prev + r, b = base + r; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+      prev = base;
+    }
+  }
+  const g = new THREE.BufferGeometry(), P = new Float32Array(pos), n = P.length / 3;
+  if (n && idx.length) {                                                     // faces look out of the land
+    const c = cols.find(Boolean), a = idx[0] * 3, b = idx[1] * 3, d = idx[2] * 3;
+    const e1 = [P[b] - P[a], P[b + 1] - P[a + 1], P[b + 2] - P[a + 2]], e2 = [P[d] - P[a], P[d + 1] - P[a + 1], P[d + 2] - P[a + 2]];
+    if ((e1[1] * e2[2] - e1[2] * e2[1]) * c.nx + (e1[0] * e2[1] - e1[1] * e2[0]) * c.nz < 0) for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  g.setIndex(idx);
+  const nb = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i < idx.length; i += 3) { const a = idx[i], b = idx[i + 1], c = idx[i + 2]; nb[a].add(b).add(c); nb[b].add(a).add(c); nb[c].add(a).add(b); }
+  const NB = nb.map(q => [...q]);
+  {                                                                          // soften the creases a little (as the kit's pieces are)
+    const tmp = new Float32Array(n * 3);
+    for (const f of [0.5, -0.53]) {
+      for (let i = 0; i < n; i++) {
+        let x = 0, y = 0, z = 0; const q = NB[i];
+        for (const j of q) { x += P[j * 3]; y += P[j * 3 + 1]; z += P[j * 3 + 2]; }
+        const k = q.length < 6 ? 0 : f / q.length;                           // (the skin's own edges stay where they are)
+        tmp[i * 3] = P[i * 3] + (x - P[i * 3] * q.length) * k; tmp[i * 3 + 1] = P[i * 3 + 1] + (y - P[i * 3 + 1] * q.length) * k; tmp[i * 3 + 2] = P[i * 3 + 2] + (z - P[i * 3 + 2] * q.length) * k;
+      }
+      P.set(tmp);
+    }
+  }
+  g.computeVertexNormals();
+  g.setAttribute('aCurv', new THREE.BufferAttribute(bendOf(P, g.attributes.normal.array, NB).map(v => v * 0.8 + 0.012), 1));      // (a touch darker than the kit's pieces: it lies behind them)
+  g.setAttribute('aHgt', new THREE.BufferAttribute(new Float32Array(hgt), 1));
+  g.setAttribute('aFacet', new THREE.BufferAttribute(new Float32Array(facet), 1));
+  g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, propRockMaterial({ moss: 1, world: false, mossLow: 0.9 }));
+  mesh.name = 'cliffSkin';
+  mesh.userData = { kind: 'cliffSkin', triangles: idx.length / 3, dispose: () => g.dispose() };
+  return mesh;
 }
 
 // ==================================================================================================== 7. GROUND BLEND
