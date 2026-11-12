@@ -43,7 +43,7 @@ import { _internal, createCardCluster } from './stylized-nature.js';
 const { NOISE, HAZEF, rgb, fbm3, mulberry32, range, shared } = _internal;
 const HAZE_U = () => ({ uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax });
 // A cliff face: horizontal rock strata, lit faces lighter, dark seams between layers. strataSt says which layer a spot is in
-// (2.6 per layer); land that is carved into blocks (valley-cliffs.js) brings its own, so its ledges and the seams agree.
+// (2.6 per layer); land that is carved into blocks (rocks.js, carved faces) brings its own, so its ledges and the seams agree.
 // Needs NOISE before it.
 const STRATA = /* glsl */`
   float strataSt(vec3 wp) {
@@ -100,7 +100,7 @@ function terrainMaterial(far, half, zc) {
       uWays: { value: BLANK_WAYS }, uWaysRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uWaysOn: { value: 0 },
       uFar: { value: rgb(far) }, uHalf: { value: new THREE.Vector2(half[0], half[1]) }, uZc: { value: zc },
       // DEEP: land far below the rim of a pit fades into its mist and then into the dark (uDeepOn = 0: no pit on this map)
-      uRockOn: { value: 0 },      // 1 once valley-cliffs.js has carved the land and given it aRock
+      uRockOn: { value: 0 },      // 1 once rocks.js (carved faces) has carved the land and given it aRock
       uDeepOn: { value: 0 }, uDeepMist: { value: rgb('#a9c8d6') }, uDeepBlue: { value: rgb('#2c4a68') }, uDeepVoid: { value: rgb('#0f1b2c') },
       ...HAZE_U(),
     },
@@ -108,7 +108,7 @@ function terrainMaterial(far, half, zc) {
       ${HAZEV}
       attribute float aBank;   // height above the local water level
       attribute float aPath;   // 1 on the dirt path
-      attribute vec4 aRock;    // carved rock (valley-cliffs.js): how much, the block's own shade, its layer (st); read when uRockOn
+      attribute vec4 aRock;    // carved rock (rocks.js, carved faces): how much, the block's own shade, its layer (st); read when uRockOn
       varying vec4 vRock;
       varying vec3 vWP;
       varying vec3 vN;

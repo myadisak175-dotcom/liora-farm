@@ -23,8 +23,8 @@ import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall } from './stylized-waterfall.js';
 import { _abyss } from './abyss-scene.js';
 import * as DP from './abyss-depths.js';
-import { rockLandMaterial } from './stylized-rockface.js';
-import * as RB from './rock-blocks.js';
+import { rockLandMaterial } from './rocks.js';
+import * as RB from './rocks.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -90,7 +90,7 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
   terrain.name = 'depthsLand';
   terrain.userData.dispose = () => { terrain.geometry.dispose(); landMat.dispose(); };
   group.add(terrain);
-  // the rock faces: built of broken blocks stood in front of the land's walls (rock-blocks.js); ?rock=old: the walls bare
+  // the rock faces: built of broken blocks stood in front of the land's walls (rocks.js); ?rock=old: the walls bare
   if (new URLSearchParams(location.search).get('rock') !== 'old') {
     const nearWarp = (x, z) => stones.every(st => Math.hypot(x - st.x, z - st.z) > 4);
     const { list, colliders: bc } = RB.faceBlocks({ x0, z0, nx: L.nx, nz: L.nz, step: 0.5, h: L.h, seed: seed + k * 7, keep: nearWarp });

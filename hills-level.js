@@ -14,7 +14,7 @@ import * as N from './stylized-nature.js';
 import * as T from './stylized-terrain.js';
 import * as A from './stylized-animals.js';
 import * as G from './stylized-grassfield.js';
-import * as Cliffs from './stylized-cliffs.js';
+import * as Cliffs from './rocks.js';
 import * as W from './stylized-water.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
