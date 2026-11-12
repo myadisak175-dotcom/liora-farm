@@ -408,7 +408,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     'rk-clearing': { x: 0, z: 13, yaw: Math.PI }, 'rk-cliff': { x: -4, z: -8.5, yaw: Math.PI + 0.2 }, 'rk-falls': { x: 19.5, z: -15.5, yaw: 2.5 },
     'rk-top': { x: 21.5, z: -29.5, yaw: 0.5 }, 'rk-pond': { x: 11, z: 3, yaw: Math.PI / 2 }, 'rk-stream': { x: 26.5, z: 26.8, yaw: 2.1 }, 'rk-path': { x: 3.5, z: 19, yaw: Math.PI + 0.3 },
   };
-  console.info('[rocks] rocks', rockList.length, 'in', rocks.userData.shapes, 'shapes,', Math.round(rocks.userData.triangles / 1000) + 'k triangles; from the builder', fromBuilder, '; solid cells', solid.size, 'shadow casters', casters.length);
+  console.info('[rocks] rocks', rockList.length, 'in', rocks.userData.shapes, 'shapes,', Math.round(rocks.userData.triangles / 1000) + 'k triangles in full; from the builder', fromBuilder, '; solid cells', solid.size, 'shadow casters', casters.length);
   group.userData = { kind: 'rocksTest', dispose() {
     group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); });
     waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); levelTex.dispose(); RK.setRockWater({}); W.WATER_CHURN.value.w = 0;
@@ -455,6 +455,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
       if (!scene || !camera) return;
+      rocks.userData.update(camera);                                       // each rock drawn as finely as its distance calls for (LOD)
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       camWorld.setFromMatrixPosition(camera.matrixWorld);
       let near = Infinity;

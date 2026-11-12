@@ -584,8 +584,10 @@ export function setRockSun(dir) {
 // one chiselled piece (detail: how finely the ball is cut before the planes slice it; edges per side of each of its 20 faces). size: half widths [x, y, z]; cuts: how many planes slice it; up: share of the cuts that make tops;
 // planes: extra cuts [nx, ny, nz, keep] (keep: how far out the plane stands, of the piece's reach that way); round: how soft
 // the edges are; lean, taper: for pillars; warp(x, y, z, h): bends the shape before it is cut (h: 0 at its foot, 1 at its top). The piece stands on y = 0 with a little of it under the ground.
+let LOD_K = 1;                                                              // how finely pieces are cut while a coarser version (LOD) is made: 1 = in full
 function chiselPiece({ seed = 1, size = [1, 1, 1], cuts = 20, up = 0.3, deep = [0.58, 0.82], planes = [], chips = null, detail = 14, round = 2, blob = 0.1, box = 0.55, lean = 0, taper = 0, sink = 0.08, warp = null } = {}) {
   const rng = mulberry32(seed * 977 + 13), R = (a, b) => a + rng() * (b - a);
+  if (LOD_K < 1) detail = Math.max(1, Math.round(detail * LOD_K));      // (the same planes cut it: the same shape, fewer points)
   let g = new THREE.IcosahedronGeometry(1, detail);
   g.deleteAttribute('normal'); g.deleteAttribute('uv');
   g = mergeVertices(g);
@@ -818,15 +820,23 @@ const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, pav
   cliffFace: 1, cliffTall: 0.9, buttress: 0.9, cliffTop: 1.0, slopeRock: 1.0, footRock: 0.8, cluster: 0.6, rubble: 0.2, range: 1 };
 const PROP_MOSS_LOW = { cliffFace: 0.1, cliffTall: 0.1, buttress: 0.1, cliffTop: 0, slopeRock: 0.1, range: 0.1 };      // (cliffs: grass on ledges low down too)
 
-// ---- the same few shapes drawn many times over (instancing): one geometry for each type and seed, kept; a level's whole set of
-// rocks is one drawn group for each of them.
-//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s }, ...]);      // angles in degrees; kit.userData.instances: [{ geometry, matrix, mesh, index, item }]
+// ---- the same few shapes drawn many times over (instancing): one geometry for each type and seed (and LOD), kept
 const propGeo = new Map();
-export function propRockGeometry(type, seed = 1) {
-  const key = type + ':' + seed;
+// LOD (level of detail): each shape is made three times, cut more coarsely each time (the same planes, the same shape, fewer
+// points); a rock far off is drawn with a coarser one. Where it changes: how far off, in the rock's own sizes (its bounding
+// sphere's radius times its size), so a big cliff piece keeps its detail further than a pebble does.
+export const ROCK_LOD = { detail: [1, 0.55, 0.32], far: [3.2, 6.5], slack: 0.12 };
+export function propRockGeometry(type, seed = 1, lod = 0) {
+  const key = type + ':' + seed + ':' + lod;
   if (!propGeo.has(key)) {
-    const g = mergeGeometries(PROP_BUILD[type](mulberry32(seed * 7919 + type.length * 31), seed));
+    LOD_K = ROCK_LOD.detail[lod] ?? 1;
+    let g;
+    try { g = mergeGeometries(PROP_BUILD[type](mulberry32(seed * 7919 + type.length * 31), seed)); } finally { LOD_K = 1; }
     g.computeBoundingBox(); g.computeBoundingSphere();
+    if (lod > 0) {                                                            // no coarser than the one before (pebbles are already as coarse as they go): use that one
+      const finer = propRockGeometry(type, seed, lod - 1);
+      if (g.index.count > finer.index.count * 0.8) { g.dispose(); g = finer; }
+    }
     propGeo.set(key, g);
   }
   return propGeo.get(key);
@@ -837,38 +847,83 @@ export function rockMatrix(it, out = new THREE.Matrix4()) {
   const s = it.s || 1;
   return out.compose(_p.set(it.x, it.y || 0, it.z), _q.setFromEuler(_e.set((it.rx || 0) * DEG, (it.ry || 0) * DEG, (it.rz || 0) * DEG, 'YXZ')), _s.set(s, s, s));
 }
+const centreOf = inst => { inst.centre.copy(inst.geometry.boundingSphere.center).applyMatrix4(inst.matrix); inst.radius = inst.geometry.boundingSphere.radius * (inst.item.s || 1); };
 // move one rock of a kit at once (the rock editor, while a finger drags it): its item says where, this puts it there
 export function moveKitRock(inst) {
   rockMatrix(inst.item, inst.matrix);
+  centreOf(inst);
   inst.mesh.setMatrixAt(inst.index, inst.matrix);
   inst.mesh.instanceMatrix.needsUpdate = true;
   inst.mesh.computeBoundingSphere();
 }
+// A level's rocks, drawn as a few instanced groups: for each type and seed, one group for each of its LODs. Each rock is in the
+// group of the LOD its distance from the camera calls for: kit.userData.update(camera) sorts them again (call it each frame; it
+// does the work only when the camera has moved a little).
+//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s }, ...]);      // angles in degrees
+//   kit.userData.instances: [{ geometry (the full one), matrix, item, mesh, index, lod }]; .triangles (all in full), .drawn() (as drawn now)
 export function createRockKit(list, { world = true } = {}) {
   const group = new THREE.Group(), sets = new Map(), instances = [];
   group.name = 'rockKit';
   for (const it of list) {
-    const seed = it.seed || 1, key = it.type + ':' + seed, s = it.s || 1;
-    if (!sets.has(key)) sets.set(key, { type: it.type, seed, mats: [], insts: [] });
-    const matrix = rockMatrix(it, new THREE.Matrix4()), set = sets.get(key);
-    const inst = { geometry: propRockGeometry(it.type, seed), matrix, item: it, mesh: null, index: set.mats.length };
-    set.mats.push(matrix); set.insts.push(inst); instances.push(inst);
+    const seed = it.seed || 1, key = it.type + ':' + seed;
+    if (!sets.has(key)) sets.set(key, { type: it.type, seed, insts: [], meshes: [] });
+    const set = sets.get(key), geometry = propRockGeometry(it.type, seed);
+    const inst = { geometry, matrix: rockMatrix(it, new THREE.Matrix4()), item: it, mesh: null, index: 0, lod: 0, centre: new THREE.Vector3(), radius: 1, set };
+    centreOf(inst);
+    set.insts.push(inst); instances.push(inst);
   }
   let triangles = 0;
-  for (const { type, seed, mats, insts } of sets.values()) {
-    const geo = propRockGeometry(type, seed), im = new THREE.InstancedMesh(geo, propRockMaterial({ moss: PROP_MOSS[type], world, mossLow: PROP_MOSS_LOW[type] }), mats.length);
-    mats.forEach((m, i) => im.setMatrixAt(i, m));
-    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
-    im.name = 'rocks-' + type + '-' + seed;
-    im.userData.instances = insts;                                         // (instance i of this mesh is insts[i]: what a ray that hits it hit)
-    for (const inst of insts) inst.mesh = im;
-    group.add(im);
-    triangles += geo.index.count / 3 * mats.length;
+  for (const set of sets.values()) {
+    const { type, seed, insts } = set, mat = propRockMaterial({ moss: PROP_MOSS[type], world, mossLow: PROP_MOSS_LOW[type] });
+    for (let l = 0; l < ROCK_LOD.detail.length; l++) {
+      const geo = propRockGeometry(type, seed, l);
+      if (l && geo === set.meshes[l - 1].geometry) { set.meshes.push(set.meshes[l - 1]); continue; }      // (no coarser version: the same group)
+      const im = new THREE.InstancedMesh(geo, mat, insts.length);
+      im.name = 'rocks-' + type + '-' + seed + '-lod' + l;
+      im.userData.instances = [];                                           // (slot i of this group is userData.instances[i]: what a ray that hits it hit)
+      set.meshes.push(im);
+      group.add(im);
+    }
+    triangles += insts[0].geometry.index.count / 3 * insts.length;
+    sortSet(set, null);
   }
-  group.userData = { kind: 'rockKit', instances, shapes: sets.size, triangles, dispose() { for (const c of group.children) c.dispose(); } };
+  const at = new THREE.Vector3(), last = new THREE.Vector3(1e9, 0, 0);
+  group.userData = {
+    kind: 'rockKit', instances, shapes: sets.size, triangles,
+    // each rock into the LOD its distance calls for (with a little slack, so one standing at the edge does not flicker)
+    update(camera, force = false) {
+      at.setFromMatrixPosition(camera.matrixWorld);
+      if (!force && at.distanceToSquared(last) < 0.25) return;
+      last.copy(at);
+      const [n1, n2] = ROCK_LOD.far, k = ROCK_LOD.slack;
+      for (const set of sets.values()) {
+        let moved = false;
+        for (const inst of set.insts) {
+          const r = at.distanceTo(inst.centre) / Math.max(0.3, inst.radius), l = inst.lod;
+          const want = r < n1 * (l > 0 ? 1 - k : 1 + k) ? 0 : r < n2 * (l > 1 ? 1 - k : 1 + k) ? 1 : 2;
+          if (set.meshes[want] !== set.meshes[l]) moved = true;
+          inst.lod = want;
+        }
+        if (moved) sortSet(set);
+      }
+    },
+    drawn() { let t = 0; for (const c of group.children) t += c.geometry.index.count / 3 * c.count; return t; },
+    dispose() { for (const c of group.children) c.dispose(); },
+  };
   return group;
 }
-
+// fill a set's groups from its rocks' LODs (null: all in full)
+function sortSet(set, lods) {
+  for (const m of set.meshes) { m.count = 0; m.userData.instances.length = 0; }
+  for (const inst of set.insts) {
+    if (lods === null) inst.lod = 0;
+    const m = set.meshes[inst.lod];
+    m.setMatrixAt(m.count, inst.matrix);
+    inst.mesh = m; inst.index = m.count;
+    m.userData.instances[m.count++] = inst;
+  }
+  for (const m of new Set(set.meshes)) { m.instanceMatrix.needsUpdate = true; m.visible = m.count > 0; if (m.count) m.computeBoundingSphere(); }
+}
 
 // world: paint the foot's dark and the moss by height above the ground (y = 0) instead of by each piece's own foot, so pieces
 // stacked into one rock share one shading (rock-builder.html)
