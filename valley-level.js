@@ -29,7 +29,7 @@ import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
-import { carveValleyRock } from './valley-cliffs.js';
+import { carveValleyRock } from './rocks.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
@@ -660,7 +660,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     }
   }
 
-  // the valley's cliff faces carved into blocks of rock (valley-cliffs.js): the land itself is pushed in and out, so the cliff
+  // the valley's cliff faces carved into blocks of rock (rocks.js): the land itself is pushed in and out, so the cliff
   // stays one piece with the ground. From the foot of the falls to the valley's mouth for now; the paths cut into the cliffs
   // and the brink of the abyss are left smooth. No dice: where the blocks go comes from the land alone.
   {

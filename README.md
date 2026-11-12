@@ -54,7 +54,7 @@ A path is cut into the east cliff's shoulder (`createValley({ climb: { side: 1 }
 
 `stylized-props.js` loads buildings and props that have been restyled into flat colour patches (vertex colours, no textures) and lights them with the kit's three hard bands. The windmill went from 4.9 MB with three textures to under 0.5 MB.
 
-**The cliffs are carved into blocks of rock** (`valley-cliffs.js`), from the foot of the falls to the valley's mouth for now. The land's own mesh is too coarse on a cliff (half a metre between points, so a face is a few stretched triangles), so each face gets a fine skin that follows the very same heights, is tucked under the land along its foot and top edge, and is painted with the land's own material. Between foot and top it stands out of the face block by block, cell by cell and layer by layer, so the ledges fall on the strata's seams. Nothing changes for walking; faces beside a path are left as they are.
+**The cliffs are carved into blocks of rock** (`rocks.js`), from the foot of the falls to the valley's mouth for now. The land's own mesh is too coarse on a cliff (half a metre between points, so a face is a few stretched triangles), so each face gets a fine skin that follows the very same heights, is tucked under the land along its foot and top edge, and is painted with the land's own material. Between foot and top it stands out of the face block by block, cell by cell and layer by layer, so the ledges fall on the strata's seams. Nothing changes for walking; faces beside a path are left as they are.
 
 ## The village above the falls
 
@@ -108,7 +108,7 @@ Two layers down in the abyss, reached by **warp stones**: one on the rim beside 
 
 - **Each layer is a scene of its own** (`depths-level.js`, `?map=depths&layer=1|2`, `&view=stone-shelf|stone-meadow|stone-gorge` to stand by a stone; the old `layer=3` opens layer 1 by the meadow's stone): the valley is too much for a phone to hold along with what lies under it. A warp opens the page again in the other scene (`warp-ui.js`), so everything of the scene she leaves is let go of first; coming back up is `?view=warp-rim`. The valley itself holds only the rim's warp stone.
 - **Where things are and how the land lies** is `abyss-depths.js`: height maths on a 0.5 m grid, drawn with the valley's own terrain paint (`_terrain.terrainMaterial`), so the walls have the same strata as the pit's. A layer has its own ground picture, fluffy grass, clear water (ripples, wading), falls, clouds and plants, built the same way as the other maps.
-- **The rock** down there is built of broken blocks (`rock-blocks.js`): every rock face of a layer's land gets a stack of chunky flat-faced blocks stood in front of it, each its own size, lean and shade, with grass on top hanging over the lip and damp stains low down. The land behind is painted as plain deep stone (`stylized-rockface.js`), so a gap between blocks reads as a crack. `?rock=old` shows the bare walls, to compare.
+- **The rock** down there is built of broken blocks (`rocks.js`): every rock face of a layer's land gets a stack of chunky flat-faced blocks stood in front of it, each its own size, lean and shade, with grass on top hanging over the lip and damp stains low down. The land behind is painted as plain deep stone (`rocks.js`), so a gap between blocks reads as a crack. `?rock=old` shows the bare walls, to compare.
 - **The camera** comes in close when there is a wall of rock behind her, instead of being lifted over it (`player.js`); this holds at the valley's cliffs too.
 
 ## The scene editor
