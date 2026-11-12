@@ -20,7 +20,7 @@
    5. ROCK PROPS    (catalog only, for now: rock-catalog.html) — loose rocks and cliff pieces in a hand-painted stylized
                     look: big flat chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale
                     rim on the edges, moss on what faces the sky. Big shapes are assembled from pieces sunk into each other.
-        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' | 'bluff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
+        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' | 'bluff' | 'mount' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
                     The 'cliff' group is the organic cliff kit: eight shapes (cliffFace, cliffTall, buttress, cliffTop, slopeRock,
                     footRock, cluster, rubble) that go together into cliffs over the land's own shape.
         createRockKit(list)      a level's rocks drawn as a few instanced groups (one for each type and seed)
@@ -574,6 +574,10 @@ export const PROP_ROCK_TYPES = [
   { key: 'bluffTall', name: 'ผาใหญ่ แท่งสูง (16 ม.)', group: 'bluff' }, { key: 'bluffWide', name: 'ผาใหญ่ มีชั้น (16 ม.)', group: 'bluff' },
   { key: 'bluffSplit', name: 'ผาใหญ่ สามแท่ง (16 ม.)', group: 'bluff' }, { key: 'bluffLow', name: 'ผาใหญ่ เตี้ย (8 ม.)', group: 'bluff' },
   { key: 'bluffLowSplit', name: 'ผาใหญ่ เตี้ย สองแท่ง (8 ม.)', group: 'bluff' },
+  // mountains: whole masses of rock 20 to 45 m high, made at that size
+  { key: 'peakSpire', name: 'ยอดแหลม (44 ม.)', group: 'mount' }, { key: 'peakTwin', name: 'ยอดคู่ (38 ม.)', group: 'mount' },
+  { key: 'mesaMount', name: 'ภูเขายอดแบน (26 ม.)', group: 'mount' }, { key: 'stepMount', name: 'ภูเขาขั้นบันได (33 ม.)', group: 'mount' },
+  { key: 'ridgeMount', name: 'สันเขายาว (25 ม.)', group: 'mount' }, { key: 'archMount', name: 'ซุ้มหิน (21 ม.)', group: 'mount' },
 ];
 const PROP_TONES = { lit: '#c9c1ab', mid: '#9c998f', shade: '#6b7685', deep: '#465163', rim: '#e6dfcb', sky: '#b9d3ea',
   moss: ['#a6cf55', '#7db845', '#55953f'] };
@@ -867,11 +871,95 @@ Object.assign(PROP_BUILD, {
       place(under(big(seed + 3, [2.6, 4.6, 2.5], g, { detail: 12 }), top - 0.35 - rng() * 0.4), { x: 2.5 * side, z: 0.0, ry: 0.12 * side })], 1.0);
   },
 });
-const PROP_FLAT = { bluffTall: 0.85, bluffWide: 0.85, bluffSplit: 0.85, bluffLow: 0.85, bluffLowSplit: 0.85 };      // (lit by the mesh's own flat faces)
+// ---- mountains: whole masses of rock, 20 to 45 m high, made at that size. A mountain is a crowd of columns of rock standing
+// close (each 5 to 8 m wide, as high as the mountain's outline says where it stands, so there are tops and ledges at every
+// level, where grass grows) round a few greater masses; cut and painted as the big cliff pieces are. Some have a broad level
+// top or terraces (room to stand, to build on); one is an arch to walk under.
+const mass = (seed, size, g, o = {}) => big(seed, size, g, { detail: 12, cuts: 30, chips: 14, ...o });
+// a column standing in the ground, about w wide and d deep, its top at height h
+const col = (seed, w, h, d, g, o = {}) => under(mass(seed, [w / 1.7, h / 1.85, d / 1.7], g, o), h);
+const FLAT_TOP = { top: [0.93, 0.97], flat: [1.5, 1.57], tops: 1 };        // (a top cut level: room to stand)
+const pillar = (rng, seed, g, x, z, h, w = 5.6 + rng() * 2) => place(col(seed, w, h, w * (0.85 + rng() * 0.2), g,
+  { detail: Math.max(7, Math.min(11, Math.round(6 + h / 7))), cuts: 12, chips: 8, taper: h > 18 ? 0.2 : 0.08, cut: { tops: 2 } }), { x, z, ry: (rng() - 0.5) * 0.5 });
+// columns packed over an ellipse (half sizes rx, rz, centre cx, cz), each as high as height(x, z) says (none where it says < min)
+function crowd(rng, seed, g, { rx, rz, cx = 0, cz = 0, height, step = 4.7, min = 3 }) {
+  const out = [];
+  let n = 0;
+  for (let j = 0, z = -rz; z <= rz; z += step * 0.866, j++) for (let x = -rx + (j % 2) * step * 0.5; x <= rx; x += step) {
+    const px = x + (rng() - 0.5) * 1.8, pz = z + (rng() - 0.5) * 1.8;
+    if ((px / rx) ** 2 + (pz / rz) ** 2 > 1) continue;
+    const h = height(cx + px, cz + pz) + (rng() - 0.5) * 2.4;
+    if (h < min) continue;
+    out.push(pillar(rng, seed + 40 + (n++) * 3, g, cx + px, cz + pz, h));
+  }
+  return out;
+}
+// columns round an ellipse, their heights between h0 and h1
+const ring = (rng, seed, g, { rx, rz, cx = 0, cz = 0, n, h0, h1, a0 = 0 }) => Array.from({ length: n }, (_, i) => {
+  const a = a0 + (i + (rng() - 0.5) * 0.5) / n * Math.PI * 2;
+  return pillar(rng, seed + i * 3, g, cx + Math.cos(a) * rx, cz + Math.sin(a) * rz, h0 + rng() * (h1 - h0));
+});
+const cone = (x, z, cx, cz, h, r, p = 1.1) => h * Math.pow(Math.max(0, 1 - Math.hypot(x - cx, z - cz) / r), p);
+Object.assign(PROP_BUILD, {
+  // one tall spire, a crowd of columns round it falling away to the ground
+  peakSpire: (rng, seed) => {
+    const g = grainOf(rng, 0.25, 0.04);
+    const a0 = rng() * 6.28, SP = { cuts: 60, chips: 24, cut: { batter: [0.05, 0.13], tops: 3 } };
+    return shadeJoins([col(seed, 10.5, 44, 9.5, g, { taper: 0.45, ...SP }),
+      place(col(seed + 3, 8, 38, 7.5, g, { taper: 0.3, ...SP }), { x: Math.cos(a0) * 3.6, z: Math.sin(a0) * 3.6, ry: 0.3 }),
+      place(col(seed + 5, 7.5, 33, 7, g, { taper: 0.25, ...SP }), { x: Math.cos(a0 + 2.3) * 4, z: Math.sin(a0 + 2.3) * 4, ry: -0.3 }),
+      place(col(seed + 7, 7.5, 29, 7, g, { taper: 0.2, ...SP }), { x: Math.cos(a0 + 4.3) * 4.4, z: Math.sin(a0 + 4.3) * 4.4 }),
+      ...crowd(rng, seed, g, { rx: 16, rz: 15, height: (x, z) => cone(x, z, 0, 0, 32, 15.5) })], 1.4);
+  },
+  // two spires side by side, a saddle between them
+  peakTwin: (rng, seed) => {
+    const g = grainOf(rng, 0.25, 0.04), side = rng() < 0.5 ? -1 : 1, ax = -6.5 * side, bx = 7 * side;
+    const SP = { cuts: 60, chips: 24, cut: { batter: [0.04, 0.12], tops: 3 } };
+    return shadeJoins([place(col(seed, 10, 38, 9.5, g, { taper: 0.42, ...SP }), { x: ax, z: -0.5 }),
+      place(col(seed + 3, 9, 30, 8.5, g, { taper: 0.4, ...SP }), { x: bx, z: 1.5, ry: 0.2 }),
+      place(col(seed + 5, 7.5, 32, 7, g, { taper: 0.25, ...SP }), { x: ax + 3.5 * side, z: -3.5, ry: 0.3 }),
+      place(col(seed + 7, 7, 25, 6.5, g, { taper: 0.2, ...SP }), { x: bx - 3 * side, z: 4.5, ry: -0.3 }),
+      ...crowd(rng, seed, g, { rx: 21, rz: 14, height: (x, z) => Math.max(cone(x, z, ax, -0.5, 29, 14), cone(x, z, bx, 1.5, 23, 13)) })], 1.4);
+  },
+  // a mountain with a broad level top (room to stand, to build on), columns all round its sides
+  mesaMount: (rng, seed) => {
+    const g = grainOf(rng, 0.25, 0.03), a0 = rng() * 6.28;
+    return shadeJoins([col(seed, 25, 26, 21, g, { detail: 14, cuts: 60, chips: 24, cut: FLAT_TOP }),
+      ...ring(rng, seed + 3, g, { rx: 11.4, rz: 9.7, n: 17, h0: 19, h1: 25.3, a0 }),
+      ...ring(rng, seed + 50, g, { rx: 15, rz: 13, n: 11, h0: 7, h1: 15, a0: a0 + 0.3 }),
+      ...ring(rng, seed + 90, g, { rx: 18.5, rz: 16.5, n: 7, h0: 3, h1: 6.5, a0: a0 + 0.7 })], 1.4);
+  },
+  // three steps, each with a level top (terraces), columns at their sides
+  stepMount: (rng, seed) => {
+    const g = grainOf(rng, 0.25, 0.03), s = rng() < 0.5 ? -1 : 1, a0 = rng() * 6.28;
+    return shadeJoins([col(seed, 30, 11, 24, g, { detail: 14, cuts: 50, chips: 20, cut: FLAT_TOP }),
+      place(col(seed + 3, 20, 22, 17, g, { detail: 13, cuts: 50, chips: 20, cut: FLAT_TOP }), { x: -3.5 * s, z: -3 }),
+      place(col(seed + 5, 12, 33, 11, g, { taper: 0.2, cuts: 50, chips: 20, cut: { tops: 2 } }), { x: -7 * s, z: -5.5 }),
+      ...ring(rng, seed + 9, g, { rx: 14.6, rz: 11.8, n: 15, h0: 6, h1: 10.6, a0 }),
+      ...ring(rng, seed + 60, g, { rx: 9.6, rz: 8.2, cx: -3.5 * s, cz: -3, n: 10, h0: 15.5, h1: 21.4, a0: a0 + 0.3 }),
+      ...ring(rng, seed + 100, g, { rx: 6.2, rz: 5.8, cx: -7 * s, cz: -5.5, n: 6, h0: 25, h1: 31, a0: a0 + 0.6 }),
+      ...ring(rng, seed + 130, g, { rx: 18, rz: 15, n: 8, h0: 2.5, h1: 5, a0: a0 + 0.9 })], 1.4);
+  },
+  // a long ridge: columns in a crowd, rising to the middle
+  ridgeMount: (rng, seed) => {
+    const g = grainOf(rng, 0.2, 0.04);
+    return shadeJoins(crowd(rng, seed, g, { rx: 26, rz: 9, height: (x, z) => (8 + 17 * Math.exp(-((x / 13) ** 2))) * Math.pow(Math.max(0, 1 - (z / 9.2) ** 2), 0.55) }), 1.4);
+  },
+  // an arch: two great piers of rock and a slab across them, to walk under
+  archMount: (rng, seed) => {
+    const g = grainOf(rng, 0.15, 0.03), s = rng() < 0.5 ? -1 : 1, R = (a, b) => a + rng() * (b - a);
+    const pier = (x, h, k) => [place(col(seed + k, 9, h, 9.5, g), { x }), pillar(rng, seed + k + 3, g, x + 4 * Math.sign(x), 4.2, h * R(0.45, 0.65)),
+      pillar(rng, seed + k + 6, g, x + 4.5 * Math.sign(x), -4, h * R(0.55, 0.8)), pillar(rng, seed + k + 9, g, x + 8 * Math.sign(x), R(-1.5, 1.5), h * R(0.25, 0.4))];
+    return shadeJoins([...pier(-9.5 * s, 25, 0), ...pier(9.5 * s, 18, 20),
+      under(mass(seed + 50, [14.6, 2.9, 4.8], g, { detail: 13, cuts: 50, chips: 24, up: 0.3, cut: { tops: 2, top: [0.86, 0.94] } }), 21),
+      place(under(mass(seed + 53, [8, 2.2, 4.2], g, { detail: 10, cuts: 16, cut: { tops: 2 } }), 19.2), { x: 3 * s, z: -1.2, ry: 0.12 })], 1.4);
+  },
+});
+const PROP_FLAT = { peakSpire: 0.85, peakTwin: 0.85, mesaMount: 0.85, stepMount: 0.85, ridgeMount: 0.85, archMount: 0.85, bluffTall: 0.85, bluffWide: 0.85, bluffSplit: 0.85, bluffLow: 0.85, bluffLowSplit: 0.85 };      // (lit by the mesh's own flat faces)
 const PROP_TONE = { bluffTall: 'pale', bluffWide: 'pale', bluffSplit: 'pale', bluffLow: 'pale', bluffLowSplit: 'pale' };      // (their own stone, unless a kit says otherwise)
-const PROP_MOSS = { bluffTall: 0.9, bluffWide: 1, bluffSplit: 0.9, bluffLow: 1, bluffLowSplit: 0.9, boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, flagstone: 0.15,
+const PROP_MOSS = { peakSpire: 1, peakTwin: 1, mesaMount: 1, stepMount: 1, ridgeMount: 1, archMount: 1, bluffTall: 0.9, bluffWide: 1, bluffSplit: 0.9, bluffLow: 1, bluffLowSplit: 0.9, boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, flagstone: 0.15,
   cliffFace: 1, cliffTall: 0.9, buttress: 0.9, cliffTop: 1.0, slopeRock: 1.0, footRock: 0.8, cluster: 0.6, rubble: 0.2, range: 1 };
-const PROP_MOSS_LOW = { bluffTall: 0.05, bluffWide: 0.05, bluffSplit: 0.05, bluffLow: 0.05, bluffLowSplit: 0.05, cliffFace: 0.1, cliffTall: 0.1, buttress: 0.1, cliffTop: 0, slopeRock: 0.1, range: 0.1 };      // (cliffs: grass on ledges low down too)
+const PROP_MOSS_LOW = { peakSpire: 0.02, peakTwin: 0.02, mesaMount: 0.02, stepMount: 0.02, ridgeMount: 0.02, archMount: 0.02, bluffTall: 0.05, bluffWide: 0.05, bluffSplit: 0.05, bluffLow: 0.05, bluffLowSplit: 0.05, cliffFace: 0.1, cliffTall: 0.1, buttress: 0.1, cliffTop: 0, slopeRock: 0.1, range: 0.1 };      // (cliffs: grass on ledges low down too)
 
 // ---- the same few shapes drawn many times over (instancing): one geometry for each type and seed (and LOD), kept
 const propGeo = new Map();

@@ -52,7 +52,7 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "./rocks.js": "./rocks.js?v=pale1"
+  "./rocks.js": "./rocks.js?v=mount1"
 } }
 </script>
 </head>
@@ -177,7 +177,7 @@ $('dup').onclick = () => { if (!selected) return; const p = { ...selected, mesh:
     if (t.key === 'range') continue;                                       // (an example, not a piece)
     if (lastGroup && t.group !== lastGroup) { const s = document.createElement('div'); s.className = 'sep'; pal.append(s); }
     lastGroup = t.group;
-    const b = document.createElement('button'); b.textContent = ({ cliff: '⛰ ', bluff: '🏔 ' }[t.group] || '🪨 ') + t.name;
+    const b = document.createElement('button'); b.textContent = ({ cliff: '⛰ ', bluff: '🏔 ', mount: '🗻 ' }[t.group] || '🪨 ') + t.name;
     b.onclick = () => { if (fused) unfuse(); add(t.key); };
     pal.append(b);
   }
