@@ -90,15 +90,18 @@ export function createPaths({ paths = [], seed = 1 } = {}) {
       const mat = pathMaterial(map, tex, distTex);
       for (const l of lines) {
         const ACROSS = 12, W = l.half * 1.45, pos = [], acr = [], idx = [];
-        for (let k = 0; k < l.pts.length; k++) {
-          const a = l.pts[Math.max(0, k - 1)], b = l.pts[Math.min(l.pts.length - 1, k + 1)], p = l.pts[k];
+        // (the ribbon runs on a little past both ends of the line: the worn earth there is round, not cut square)
+        const P = l.pts, n = P.length, ext = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1; return [b[0] + dx / dl * W, b[1] + dz / dl * W]; };
+        const rows = [ext(P[1], P[0]), ...P, ext(P[n - 2], P[n - 1])];
+        for (let k = 0; k < rows.length; k++) {
+          const a = rows[Math.max(0, k - 1)], b = rows[Math.min(rows.length - 1, k + 1)], p = rows[k];
           let tx = b[0] - a[0], tz = b[1] - a[1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
           for (let i = 0; i <= ACROSS; i++) {
             const u = -1 + 2 * i / ACROSS, x = p[0] - tz * u * W, z = p[1] + tx * u * W;
             pos.push(x, heightAt(x, z) + 0.03, z); acr.push(u * W / l.half);
           }
         }
-        for (let k = 0; k < l.pts.length - 1; k++) for (let i = 0; i < ACROSS; i++) { const a = k * (ACROSS + 1) + i, b = a + ACROSS + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+        for (let k = 0; k < rows.length - 1; k++) for (let i = 0; i < ACROSS; i++) { const a = k * (ACROSS + 1) + i, b = a + ACROSS + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.setAttribute('aAcross', new THREE.Float32BufferAttribute(acr, 1));
@@ -192,6 +195,7 @@ function pathMaterial(map, tex, distTex) {
         vec4 m = texture2D(uMap, uv);
         float grass = m.a + (noise2(vWP.xz * 6.0) - 0.5) * 0.22 + (noise2(vWP.xz * 17.0) - 0.5) * 0.08;
         if (grass > 0.5) discard;                                                // the grass's ground, not the path's
+        if (texture2D(uPathD, uv).r * 4.0 > 1.04 + (noise2(vWP.xz * 1.8) - 0.5) * 0.3) discard;      // nor bare ground beside it (a beach, a cliff's foot)
         float t = texture2D(uPathD, uv).r * 4.0;                                  // 0 down the middle, 1 at the edge (all paths agree)
         float dab = noise2(vWP.xz * 0.9) * 0.55 + noise2(vWP.xz * 2.6 + 3.0) * 0.3 + noise2(vWP.xz * 7.0) * 0.15 - t * 0.35;
         float damp = smoothstep(0.62, 0.72, noise2(vWP.xz * 0.55 + 11.0));
@@ -206,7 +210,7 @@ function pathMaterial(map, tex, distTex) {
         sand = mix(sand, uCream * (0.85 + 0.3 * dot(sand, vec3(0.33))), 0.3) + grit;  // towards the pale cream of a well-trodden path
         dirt += (texture2D(uDirt, a * 0.9).rgb - texture2D(uDirt, a * 0.9, 5.0).rgb) * 1.4;
         float edgeK = smoothstep(0.35, 1.0, t + (dab - 0.5) * 0.5);                   // dirt creeps in from the edges, in patches
-        vec3 col = mix(sand, dirt, max(edgeK * 0.55, damp * 0.45));
+        vec3 col = mix(sand, dirt, max(edgeK * 0.55, damp * 0.3));
         col *= 0.94 + 0.12 * step(0.45, dab);                                          // a broad painted tone over it
       #else
         // broad flat dabs of tone (three steps, wobbly edges), lighter down the middle

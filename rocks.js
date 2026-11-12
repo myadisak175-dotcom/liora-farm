@@ -21,6 +21,10 @@
                     look: big flat chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale
                     rim on the edges, moss on what faces the sky. Big shapes are assembled from pieces sunk into each other.
         PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
+                    The 'cliff' group is the organic cliff kit: eight shapes (cliffFace, cliffTall, buttress, cliffTop, slopeRock,
+                    footRock, cluster, rubble) that go together into cliffs over the land's own shape.
+        createRockKit(list)      a level's rocks drawn as a few instanced groups (one for each type and seed)
+        propRockGeometry(type, seed), setRockSun(dir)
    6. FUSING        (rock-builder.html) — pieces set into each other melted into one rock, the joins filled out into curves
         fuseRocks(meshes, { blend })
    7. GROUND + WATER (rock-builder.html, rocks-level.js) — what the rocks know of the world round them: the ground's height
@@ -563,12 +567,19 @@ export const PROP_ROCK_TYPES = [
   { key: 'boulder', name: 'ก้อนใหญ่', group: 'rock' }, { key: 'stone', name: 'ก้อนกลาง', group: 'rock' }, { key: 'pillar', name: 'เสาหินตั้ง', group: 'rock' },
   { key: 'ledge', name: 'แผ่นหินซ้อนชั้น', group: 'rock' }, { key: 'pebbles', name: 'หินกรวด', group: 'rock' }, { key: 'paving', name: 'หินปูทาง', group: 'rock' },
   { key: 'flagstone', name: 'หินแผ่นฝังทาง', group: 'rock' },
-  { key: 'wall', name: 'ผาตรง', group: 'cliff' }, { key: 'corner', name: 'ผามุม', group: 'cliff' }, { key: 'overhang', name: 'ผายื่น', group: 'cliff' },
-  { key: 'steps', name: 'ผาขั้นบันได', group: 'cliff' }, { key: 'spire', name: 'ยอดผา', group: 'cliff' }, { key: 'range', name: 'ผาประกอบ (ตัวอย่าง)', group: 'cliff' },
+  { key: 'cliffFace', name: 'หน้าผาใหญ่', group: 'cliff' }, { key: 'cliffTall', name: 'หน้าผาสูง', group: 'cliff' }, { key: 'buttress', name: 'สันผา', group: 'cliff' },
+  { key: 'cliffTop', name: 'ผาบน', group: 'cliff' }, { key: 'slopeRock', name: 'หินเชื่อมทางลาด', group: 'cliff' }, { key: 'footRock', name: 'หินตีนผา', group: 'cliff' },
+  { key: 'cluster', name: 'กลุ่มหิน', group: 'cliff' }, { key: 'rubble', name: 'หินปิดรอยต่อ', group: 'cliff' }, { key: 'range', name: 'ผาประกอบ (ตัวอย่าง)', group: 'cliff' },
 ];
-const PROP_TONES = { lit: '#cec7b4', mid: '#9e9d95', shade: '#717d8a', deep: '#4f5a69', rim: '#e9e3d2', sky: '#b9d3ea',
-  moss: ['#9cba45', '#6f9a3a', '#4b7a31'] };
+const PROP_TONES = { lit: '#c9c1ab', mid: '#9c998f', shade: '#6b7685', deep: '#465163', rim: '#e6dfcb', sky: '#b9d3ea',
+  moss: ['#a6cf55', '#7db845', '#55953f'] };
 const PROP_SUN = new THREE.Vector3(-0.62, 0.62, 0.48).normalize();        // painted with a lowish sun, so the sides read light and dark
+// the sun of the moment (a level with a time of day tells the rocks): kept from standing too high or too low, so the faces still
+// read light and dark at noon and at dusk
+export function setRockSun(dir) {
+  const l = Math.hypot(dir.x, dir.z) || 1, y = Math.min(0.78, Math.max(0.42, dir.y)), k = Math.sqrt(1 - y * y) / l;
+  PROP_SUN.set(dir.x * k, y, dir.z * k);
+}
 
 // one chiselled piece (detail: how finely the ball is cut before the planes slice it; edges per side of each of its 20 faces). size: half widths [x, y, z]; cuts: how many planes slice it; up: share of the cuts that make tops;
 // planes: extra cuts [nx, ny, nz, keep] (keep: how far out the plane stands, of the piece's reach that way); round: how soft
@@ -675,13 +686,13 @@ const PROP_BUILD = {
     }
     return out;
   },
-  flagstone: (rng, seed) => [chiselPiece({ seed, size: [0.42 * (0.85 + rng() * 0.35), 0.075, 0.36 * (0.85 + rng() * 0.35)], cuts: 6, detail: 7,      // one flat stone,
+  flagstone: (rng, seed) => [chiselPiece({ seed, size: [0.42 * (0.85 + rng() * 0.35), 0.075, 0.36 * (0.85 + rng() * 0.35)], cuts: 6, detail: 4,      // one flat stone,
     round: 2, blob: 0.07, sink: 0.45, planes: [[0, 1, 0, 0.6]] })],                                                                   // set into a path
   pebbles: (rng, seed) => {
     const out = [];
     for (let i = 0; i < 12 + Math.floor(rng() * 5); i++) {
       const s = 0.09 + rng() * 0.16 * (i < 3 ? 1.6 : 1), a = rng() * 6.28, r = Math.sqrt(rng()) * 0.95;
-      out.push(place(chiselPiece({ seed: seed * 31 + i, size: [s * (1 + rng() * 0.4), s * 0.5, s], cuts: 5, detail: 4, round: 2, blob: 0.1, sink: 0.15 }), { x: Math.cos(a) * r, z: Math.sin(a) * r, ry: rng() * 6 }));
+      out.push(place(chiselPiece({ seed: seed * 31 + i, size: [s * (1 + rng() * 0.4), s * 0.5, s], cuts: 5, detail: 2, round: 1, blob: 0.1, sink: 0.15 }), { x: Math.cos(a) * r, z: Math.sin(a) * r, ry: rng() * 6 }));
     }
     return out;
   },
@@ -695,55 +706,153 @@ const PROP_BUILD = {
     return out;
   },
 };
-// ---- cliff pieces: big, so cut from a finer ball; each shows its face to +z (the side it is looked at from) and is made to
-// be set in a row with its neighbours sunk into it
-const cliffBlock = (seed, size, o = {}) => chiselPiece({ seed, size, cuts: 24, up: 0.22, deep: [0.78, 0.93], detail: 20, box: 0.7, blob: 0.08, sink: 0.05, ...o });
+// ---- the cliff kit: a few organic pieces that go together into cliffs (the way a studio's rock kit is used: the land is the
+// cliff's bones, these pieces give its face its shape, small rocks cover the joins). Each piece is a few lumps of rock sunk into
+// each other. A lump is cut along one grain, the way rock breaks: four families of side planes that are not square to each
+// other or to the ground, tops that tip, corners and shoulders taken off; no two faces parallel, nothing like a box. Where two
+// lumps meet, the join is shaded dark (as dirt and shadow gather there). Each piece shows its face to +z and stands on y = 0.
+// A piece's shape depends only on its type and seed, so the same few shapes can be drawn many times over (createRockKit).
+function grainPlanes(rng, g, { sides = [0.56, 0.74], tops = 2, top = [0.66, 0.86], flat = [1.2, 1.5], bevels = 5, bevel = [0.68, 0.86], shoulders = 2, shoulder = [0.76, 0.9], batter = [-0.1, 0.18] } = {}) {
+  const R = (a, b) => a + rng() * (b - a), out = [], v = new THREE.Vector3();
+  const G = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(g[1] + R(-0.07, 0.07), g[0] + R(-0.1, 0.1), g[2] + R(-0.07, 0.07), 'YXZ'));
+  const add = (az, el, k) => { v.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).applyMatrix4(G); out.push([v.x, v.y, v.z, k]); };
+  for (let q = 0; q < 4; q++) add(q * Math.PI / 2 + R(-0.16, 0.16), R(batter[0], batter[1]), R(sides[0], sides[1]));              // the four sides
+  for (let q = 0; q < tops; q++) add(R(0, 6.28), R(flat[0], flat[1]), R(top[0], top[1]));                                         // tops, tipped a little
+  for (let q = 0; q < bevels; q++) add((Math.floor(R(0, 4)) + 0.5) * Math.PI / 2 + R(-0.3, 0.3), R(-0.1, 0.3), R(bevel[0], bevel[1]));      // corners cut off
+  for (let q = 0; q < shoulders; q++) add(R(0, 6.28), R(0.45, 0.9), R(shoulder[0], shoulder[1]));                                 // shoulders sloped off
+  return out;
+}
+// one lump: size (half widths), cut along the piece's grain g = [yaw, tip forward, tip sideways]
+const lump = (seed, size, g, o = {}) => chiselPiece({ seed, size: size.map(v => v * 1.3), cuts: 0, chips: 7, detail: 10, box: 0.2, blob: 0.1, round: 1, sink: 0.04,      // (cut deep, so sized up)
+  planes: grainPlanes(mulberry32(seed * 131 + 7), g, o.cut), ...o, cut: undefined });
+const grainOf = (rng, yaw = 0.3, tip = 0.2) => [(rng() - 0.5) * 2 * yaw, (rng() - 0.5) * 2 * tip, (rng() - 0.5) * 2 * tip];
 const topOf = g => { g.computeBoundingBox(); return g.boundingBox.max.y; };      // pieces are stacked by where the one below really ends
+// the joins between the lumps of a piece: each point near another lump's surface is told it lies in a crease (the paint darkens it)
+function shadeJoins(parts, reach = 0.6) {
+  const key = (x, y, z) => (Math.floor(x / reach) * 73856093) ^ (Math.floor(y / reach) * 19349663) ^ (Math.floor(z / reach) * 83492791), grid = new Map();
+  parts.forEach((g, pi) => { const P = g.attributes.position.array; for (let i = 0; i < P.length; i += 3) { const k = key(P[i], P[i + 1], P[i + 2]); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(pi, P[i], P[i + 1], P[i + 2]); } });
+  parts.forEach((g, pi) => {
+    const P = g.attributes.position.array, C = g.attributes.aCurv.array;
+    for (let i = 0; i < C.length; i++) {
+      const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2]; let best = reach;
+      for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const l = grid.get(key(x + dx * reach, y + dy * reach, z + dz * reach)); if (!l) continue;
+        for (let q = 0; q < l.length; q += 4) { if (l[q] === pi) continue; const d = Math.hypot(l[q + 1] - x, l[q + 2] - y, l[q + 3] - z); if (d < best) best = d; }
+      }
+      const k = 1 - best / reach;
+      C[i] += 0.26 * k * k;
+    }
+  });
+  return parts;
+}
 Object.assign(PROP_BUILD, {
-  wall: (rng, seed) => {                                                   // a stretch of cliff: a tall block, a lower one stepping out at its foot, a cap
-    const h = 2.8 + rng() * 0.6, main = cliffBlock(seed, [3.3, h, 1.3]), cap = cliffBlock(seed + 5, [1.7, 0.75, 1.0], { detail: 12 });
-    return [main,
-      place(cliffBlock(seed + 3, [2.4, 1.3, 1.0], { detail: 14 }), { x: (rng() - 0.5) * 2.2, z: 1.0, ry: (rng() - 0.5) * 0.4 }),
-      place(cap, { x: (rng() - 0.5) * 2.4, y: topOf(main) - topOf(cap) * 0.55, z: -0.35, ry: (rng() - 0.5) * 0.5 })];
+  // a broad stretch of cliff: a wide block below, another set back above it (a ledge between), a taller block at its side
+  cliffFace: (rng, seed) => {
+    const g = grainOf(rng, 0.26, 0.12), low = lump(seed, [4.0, 2.8, 2.2], g, { cut: { batter: [-0.05, 0.14] } }), y1 = topOf(low), side = rng() < 0.5 ? -1 : 1;
+    return shadeJoins([place(low, { x: 0.5 * side, z: 0.5 }),
+      place(lump(seed + 3, [3.5, 2.6, 1.9], g, { detail: 9, cut: { tops: 3 } }), { x: -0.6 * side, y: y1 * 0.74, z: -0.6, ry: 0.1 + (rng() - 0.5) * 0.2 }),
+      place(lump(seed + 5, [2.0, 4.7, 1.8], g, { taper: 0.08, detail: 9 }), { x: -3.5 * side - (rng() - 0.5) * 0.4, z: 0.2, ry: -0.18 * side })], 0.8);
   },
-  corner: (rng, seed) => {                                                 // two stretches meeting at a right angle, a block filling the corner
-    const h = 2.9 + rng() * 0.4;
-    return [place(cliffBlock(seed, [2.8, h, 1.2]), { x: 1.9 }),
-      place(cliffBlock(seed + 2, [2.8, h * 0.92, 1.2]), { x: -1.0, z: -2.7, ry: Math.PI / 2 }),
-      place(cliffBlock(seed + 4, [1.5, h * 1.08, 1.5], { detail: 14 }), { x: -0.6, z: -0.4, ry: 0.7 })];
+  // a tall stretch: two great blocks of different heights standing side by side, split by a deep crack
+  cliffTall: (rng, seed) => {
+    const g = grainOf(rng, 0.28, 0.1), side = rng() < 0.5 ? -1 : 1;
+    return shadeJoins([place(lump(seed, [2.7, 5.2, 2.1], g, { taper: 0.08, lean: (rng() - 0.5) * 0.06, cut: { tops: 3 } }), { x: -1.2 * side }),
+      place(lump(seed + 3, [2.1, 4.0, 1.9], g, { taper: 0.06, detail: 9 }), { x: 2.1 * side, z: 0.5 + rng() * 0.3, ry: 0.14 * side })], 0.8);
   },
-  overhang: (rng, seed) => {                                               // one piece: its foot sunk in the ground, its top leaning out over a hollow
-    const out = 2.6 + rng() * 0.6;
-    return [cliffBlock(seed, [2.6, 2.6, 1.7], { up: 0.15, sink: 0.03,
-      warp: (x, y, z, h) => [x, y, z + out * h * h * h - (z > 0 ? z * 0.7 * Math.sin(Math.PI * Math.min(1, h * 1.4)) : 0)] }),
-    place(cliffBlock(seed + 6, [1.1, 0.7, 0.9], { detail: 10 }), { x: 1.9, z: 1.3, ry: rng() * 6 })];      // a block fallen from it
+  // a rib of rock standing out from the face: it leans back as it rises, a block at its toe
+  buttress: (rng, seed) => {
+    const g = grainOf(rng, 0.32, 0.14);
+    return shadeJoins([lump(seed, [2.2, 4.8, 2.5], g, { taper: 0.2, cut: { shoulders: 3 }, warp: (x, y, z, h) => [x, y, z + (1 - h) * 1.4 - 0.4] }),
+      place(lump(seed + 3, [1.5, 1.6, 1.5], g, { detail: 6 }), { x: 0.6 + (rng() - 0.5) * 0.8, z: 3.0, ry: rng() * 0.9 })], 0.8);
   },
-  steps: (rng, seed) => {                                                  // three tiers, each set back and higher, sunk into the one below
-    const out = []; let y = 0, z = 0;
-    for (let i = 0; i < 3; i++) {
-      const g = cliffBlock(seed + i * 7, [3.2 - i * 0.5, 1.1 + rng() * 0.3, 1.5], { detail: 16 }), top = topOf(g);
-      out.push(place(g, { x: (rng() - 0.5) * 0.8, y, z, ry: (rng() - 0.5) * 0.25 }));
-      y += top * 0.72; z -= 1.3;
+  // the cliff's top edge: a slab whose lip leans out over the face, a smaller one on its back; grass grows all over them
+  cliffTop: (rng, seed) => {
+    const g = grainOf(rng, 0.4, 0.1), slab = lump(seed, [3.2, 1.05, 2.1], g, { detail: 9, cut: { tops: 3, top: [0.5, 0.7], batter: [-0.3, 0.05] }, warp: (x, y, z, h) => [x, y, z + h * 0.7] });
+    return shadeJoins([slab, place(lump(seed + 3, [1.9, 0.8, 1.5], g, { detail: 7, cut: { top: [0.5, 0.7] } }), { x: 1.5 * (rng() < 0.5 ? -1 : 1), y: topOf(slab) * 0.55, z: -0.7, ry: 0.35 })], 0.5);
+  },
+  // where a cliff runs down into a slope: a long wedge, tall at one end (+x) and low at the other, a chunk at its low end
+  slopeRock: (rng, seed) => {
+    const g = grainOf(rng, 0.3, 0.14), sy = 2.3;
+    return shadeJoins([lump(seed, [3.3, sy, 1.7], g, { detail: 10, cut: { tops: 3 }, warp: (x, y, z) => [x, (y + sy) * (0.3 + 0.7 * (x + 3.3) / 6.6) - sy, z] }),
+      place(lump(seed + 3, [1.1, 0.8, 0.9], g, { detail: 5 }), { x: -3.2, z: 0.8, ry: 0.6 })], 0.5);
+  },
+  // rocks at a cliff's foot: a block fallen from it, tipped, and a smaller one against it
+  footRock: (rng, seed) => {
+    const g = grainOf(rng, 3.14, 0.34);
+    return shadeJoins([lump(seed, [1.5 + rng() * 0.3, 1.2, 1.2], g, { detail: 8, cut: { batter: [-0.2, 0.3], bevels: 6, bevel: [0.6, 0.8], shoulders: 3, shoulder: [0.72, 0.88], flat: [1.05, 1.45] } }),
+      place(lump(seed + 3, [0.85, 0.7, 0.8], g, { detail: 5, cut: { bevels: 6, bevel: [0.6, 0.8], shoulders: 3, shoulder: [0.72, 0.88], flat: [1.05, 1.45] } }), { x: 1.5 + rng() * 0.3, z: 0.5 * (rng() < 0.5 ? -1 : 1), ry: rng() * 3 })], 0.4);
+  },
+  // a huddle of middling rocks
+  cluster: (rng, seed) => {
+    const g = grainOf(rng, 3.14, 0.3), out = [];
+    for (let i = 0; i < 4; i++) {
+      const s = [0.95, 0.62, 0.5, 0.36][i], a = i ? rng() * 6.28 : 0, r = i ? 0.85 + rng() * 0.55 : 0;
+      out.push(place(lump(seed + i * 3, [s * (1 + rng() * 0.3), s * (0.7 + rng() * 0.3), s], g, { detail: i ? 4 : 6, cut: { batter: [-0.2, 0.35], bevels: 6, bevel: [0.6, 0.8], shoulders: 3, shoulder: [0.72, 0.88], flat: [1.05, 1.45] } }), { x: Math.cos(a) * r, z: Math.sin(a) * r, ry: rng() * 6.28 }));
+    }
+    return shadeJoins(out, 0.3);
+  },
+  // small broken rock: to cover the joins between the big pieces and lie about at their feet
+  rubble: (rng, seed) => {
+    const g = grainOf(rng, 3.14, 0.4), out = [];
+    for (let i = 0; i < 7; i++) {
+      const s = 0.16 + rng() * 0.24 * (i < 2 ? 1.5 : 1), a = rng() * 6.28, r = Math.sqrt(rng()) * 1.2;
+      out.push(place(lump(seed * 7 + i, [s * (1 + rng() * 0.5), s * 0.7, s], g, { detail: 2, chips: 3, round: 1, sink: 0.12, cut: { bevels: 4, bevel: [0.6, 0.8], shoulders: 2, shoulder: [0.72, 0.88], flat: [1.05, 1.45], batter: [-0.2, 0.4] } }), { x: Math.cos(a) * r, z: Math.sin(a) * r, ry: rng() * 6.28 }));
     }
     return out;
   },
-  spire: (rng, seed) => [cliffBlock(seed, [1.5, 4.4 + rng(), 1.3], { up: 0.12, taper: 0.35, lean: (rng() - 0.5) * 0.1 }),
-    place(cliffBlock(seed + 2, [1.3, 1.4, 1.1], { detail: 12 }), { x: 1.2, z: 0.6, ry: rng() * 6 })],
-  range: (rng, seed) => {                                                  // what the pieces make together: a stretch of cliff with a corner and a lean
-    const parts = [], add = (type, s, o, k = 1) => { for (const g of PROP_BUILD[type](mulberry32(s * 31), s)) { g.scale(k, k, k); parts.push(place(g, o)); } };
-    add('wall', seed, { x: -7.5, ry: 0.08 }, 1.5);
-    add('wall', seed + 11, { x: 0.3, z: 0.6, ry: -0.1 }, 1.75);
-    add('spire', seed + 13, { x: -3.6, z: -1.6, ry: 0.4 }, 1.6);
-    add('overhang', seed + 23, { x: 8.2, z: 0.8, ry: -0.25 }, 1.4);
-    add('corner', seed + 37, { x: -14.5, z: -1.5, ry: 0.2 }, 1.35);
-    add('stone', seed + 41, { x: -3.0, z: 4.6 }, 1.6);
-    add('boulder', seed + 43, { x: 3.8, z: 4.4, ry: 0.6 }, 0.9);
-    add('stone', seed + 47, { x: 12, z: 4.2, ry: 1.2 }, 1.2);
-    add('pebbles', seed + 53, { x: -8.5, z: 5.2 }, 1.2);
+  // what the pieces make together (an example, as in the game): the pieces stand in a row sunk into each other, tops on the
+  // joins, rocks and rubble at the foot
+  range: (rng, seed) => {
+    const parts = [], D = 180 / Math.PI;
+    const add = (type, sd, o, k = 1) => { const g = propRockGeometry(type, sd).clone(); g.scale(k, k, k); parts.push(place(g, { ...o, ry: (o.ry || 0) / D })); return (o.y || 0) + topOf(g); };
+    const a = add('cliffFace', 1, { x: -9.5, ry: 6 }, 1.0); add('cliffTall', 1, { x: -3.6, z: 0.5, ry: -8 }, 0.95);
+    const b = add('cliffFace', 2, { x: 2.6, z: -0.2, ry: -4 }, 1.05); add('buttress', 1, { x: 7.8, z: 0.4, ry: -14 }, 1.0); add('cliffTall', 2, { x: 11.6, z: -0.4, ry: 10 }, 0.9);
+    add('cliffTop', 1, { x: -7.5, y: a - 2.0, z: -2.0, ry: 12 }, 0.7); add('cliffTop', 2, { x: 4.4, y: b - 2.0, z: -2.2, ry: -10 }, 0.7);
+    add('slopeRock', 1, { x: -15.4, z: 0.4, ry: 4 }, 1.0);
+    add('footRock', 1, { x: -6.2, z: 3.6, ry: 30 }, 1.0); add('footRock', 2, { x: 4.6, z: 3.9, ry: 200 }, 1.15);
+    add('cluster', 1, { x: -0.8, z: 4.6 }, 1.0); add('rubble', 1, { x: -11.5, z: 3.4 }, 1.3); add('rubble', 2, { x: 9.4, z: 4.0 }, 1.3); add('rubble', 3, { x: 1.4, z: 3.0 }, 1.1);
     return parts;
   },
 });
-const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, flagstone: 0.15, wall: 1, corner: 1, overhang: 1, steps: 1, spire: 0.8, range: 1 };
+const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, flagstone: 0.15,
+  cliffFace: 1, cliffTall: 0.9, buttress: 0.9, cliffTop: 1.0, slopeRock: 1.0, footRock: 0.8, cluster: 0.6, rubble: 0.2, range: 1 };
+const PROP_MOSS_LOW = { cliffFace: 0.1, cliffTall: 0.1, buttress: 0.1, cliffTop: 0, slopeRock: 0.1, range: 0.1 };      // (cliffs: grass on ledges low down too)
+
+// ---- the same few shapes drawn many times over (instancing): one geometry for each type and seed, kept; a level's whole set of
+// rocks is one drawn group for each of them.
+//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s }, ...]);      // angles in degrees; kit.userData.instances: [{ geometry, matrix, item }]
+const propGeo = new Map();
+export function propRockGeometry(type, seed = 1) {
+  const key = type + ':' + seed;
+  if (!propGeo.has(key)) {
+    const g = mergeGeometries(PROP_BUILD[type](mulberry32(seed * 7919 + type.length * 31), seed));
+    g.computeBoundingBox(); g.computeBoundingSphere();
+    propGeo.set(key, g);
+  }
+  return propGeo.get(key);
+}
+export function createRockKit(list, { world = true } = {}) {
+  const group = new THREE.Group(), sets = new Map(), instances = [], q = new THREE.Quaternion(), e = new THREE.Euler(), D = Math.PI / 180;
+  group.name = 'rockKit';
+  for (const it of list) {
+    const seed = it.seed || 1, key = it.type + ':' + seed, s = it.s || 1;
+    if (!sets.has(key)) sets.set(key, { type: it.type, seed, mats: [] });
+    const matrix = new THREE.Matrix4().compose(new THREE.Vector3(it.x, it.y || 0, it.z), q.setFromEuler(e.set((it.rx || 0) * D, (it.ry || 0) * D, (it.rz || 0) * D, 'YXZ')), new THREE.Vector3(s, s, s));
+    sets.get(key).mats.push(matrix);
+    instances.push({ geometry: propRockGeometry(it.type, seed), matrix, item: it });
+  }
+  let triangles = 0;
+  for (const { type, seed, mats } of sets.values()) {
+    const geo = propRockGeometry(type, seed), im = new THREE.InstancedMesh(geo, propRockMaterial({ moss: PROP_MOSS[type], world, mossLow: PROP_MOSS_LOW[type] }), mats.length);
+    mats.forEach((m, i) => im.setMatrixAt(i, m));
+    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
+    im.name = 'rocks-' + type + '-' + seed;
+    group.add(im);
+    triangles += geo.index.count / 3 * mats.length;
+  }
+  group.userData = { kind: 'rockKit', instances, shapes: sets.size, triangles, dispose() { for (const c of group.children) c.dispose(); } };
+  return group;
+}
 
 
 // world: paint the foot's dark and the moss by height above the ground (y = 0) instead of by each piece's own foot, so pieces
@@ -759,14 +868,14 @@ export function createPropRock({ type = 'boulder', seed = 1, world = false } = {
 }
 
 const propMats = {};
-export function propRockMaterial({ moss = 1, world = false } = {}) {
-  const key = 'm' + moss + (world ? 'w' : '');
+export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}) {
+  const key = 'm' + moss + (world ? 'w' : '') + 'l' + mossLow;
   if (propMats[key]) return propMats[key];
   const T = PROP_TONES;
   return (propMats[key] = new THREE.ShaderMaterial({
     uniforms: {
       uLit: { value: rgb(T.lit) }, uMid: { value: rgb(T.mid) }, uShade: { value: rgb(T.shade) }, uDeep: { value: rgb(T.deep) }, uRim: { value: rgb(T.rim) }, uSky: { value: rgb(T.sky) },
-      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uSun: { value: PROP_SUN }, uWorld: { value: world ? 2.6 : 0 }, ...GROUND_U,
+      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uMossLow: { value: mossLow }, uSun: { value: PROP_SUN }, uWorld: { value: world ? 2.6 : 0 }, ...GROUND_U,
       uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
     },
     vertexShader: /* glsl */`
@@ -775,8 +884,13 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
       varying vec3 vWN, vWP;
       varying float vCurv, vHgt, vFacet, vHaze;
       void main() {
-        vWN = normalize(mat3(modelMatrix) * normal);
-        vec4 wp = modelMatrix * vec4(position, 1.0); vWP = wp.xyz;
+      #ifdef USE_INSTANCING
+        mat4 mm = modelMatrix * instanceMatrix;                                // one of many drawn from the same shape (createRockKit)
+      #else
+        mat4 mm = modelMatrix;
+      #endif
+        vWN = normalize(mat3(mm) * normal);
+        vec4 wp = mm * vec4(position, 1.0); vWP = wp.xyz;
         vCurv = aCurv; vHgt = aHgt; vFacet = aFacet;
         vec4 mv = viewMatrix * wp;
         vHaze = uHazeMax * smoothstep(uHazeNear, uHazeFar, length(mv.xyz));
@@ -786,7 +900,7 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
-      uniform float uMoss, uWorld, uGOn, uGHas, uGBlend, uWOn;
+      uniform float uMoss, uMossLow, uWorld, uGOn, uGHas, uGBlend, uWOn;
       uniform sampler2D uGCol, uGH, uWLev;
       uniform vec4 uGRect, uWRect;
       varying vec3 vWN, vWP;
@@ -799,7 +913,7 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
         float groundY = onG ? texture2D(uGH, guv).r : 0.0;
         float hg = uWorld > 0.0 ? clamp((vWP.y - groundY) / uWorld, 0.0, 1.0) : vHgt;     // how high up: on its own foot, or above the ground
         // the light, painted in a few soft steps; the brush wobbles a little
-        float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.07 + (vFacet - 0.5) * 0.16;   // each face its own tone
+        float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.07 + (vFacet - 0.5) * 0.3;   // each face its own tone
         vec3 col = mix(uDeep, uShade, smoothstep(0.28, 0.38, t));
         col = mix(col, uMid, smoothstep(0.5, 0.6, t));
         col = mix(col, uLit, smoothstep(0.7, 0.78, t));
@@ -809,11 +923,18 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
         col = mix(col, uRim, edge * mix(0.25, 0.65, smoothstep(0.35, 0.75, t)));
         col *= 1.0 - crease * 0.38;
         col *= 0.93 + 0.14 * noise2(vWP.xz * 0.45 + vWP.y * 0.3);                       // broad changes of tone across the rock
+        // flat dabs of paint over the faces (lighter and darker patches with clean edges, the way the game's ground is painted)
+        vec2 dq = vWP.xz + vWP.y * vec2(0.63, 0.41);
+        float dabs = noise2(dq * 0.9) * 0.6 + noise2(dq * 2.7 + 5.0) * 0.4;
+        col *= dabs > 0.6 ? 1.07 : (dabs < 0.4 ? 0.92 : 1.0);
+        col *= mix(0.8, 1.06, vHgt);                                                   // each piece a little darker at its foot, lighter at its head
+        float bed = noise2(vec2(vWP.y * 1.7 + noise2(vWP.xz * 0.22) * 2.2, 3.7));       // faint beds of rock, lying nearly level
+        col *= 1.0 - (1.0 - abs(n.y)) * 0.09 * step(0.56, bed);
         float side = 1.0 - abs(n.y);                                                      // faint weathering streaks down the sides
         col *= 1.0 - side * 0.1 * smoothstep(0.55, 0.85, noise2(vec2((vWP.x + vWP.z) * 2.6, vWP.y * 0.35)));
         col *= mix(0.6, 1.0, smoothstep(0.0, 0.3, hg));                                 // dark where it meets the ground
         if (uMoss > 0.0) {
-          float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - hg) * 0.8 - (1.0 - uMoss) * 0.3 - 0.03;
+          float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - hg) * uMossLow - (1.0 - uMoss) * 0.3 - 0.03;
           vec3 mc = mix(uM2, mix(uM1, uM0, smoothstep(0.86, 1.0, n.y + (noise2(vWP.xz * 3.0) - 0.5) * 0.2)), smoothstep(0.35, 0.7, t));
           col *= 1.0 - 0.22 * smoothstep(0.5, 0.64, m) * (1.0 - smoothstep(0.64, 0.7, m));   // a shadow just under the moss's edge
           col = mix(col, mc, smoothstep(0.64, 0.7, m));
