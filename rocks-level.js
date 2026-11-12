@@ -401,7 +401,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   // (bare earth on this map is the cliff's rock showing between the pieces: grey, like their shaded sides; the paths have a paint of their own)
   const grow = [...grassTop.keys()].map(k => { const [i, j] = k.split(',').map(Number); return [(i + 0.5) * SG, (j + 0.5) * SG, 0.4]; });      // (the grass on the rocks' tops)
   const map = G.createGroundMap({ radius: FR, size: 1024, seed, heightAt: H, dirt: 0, lawn: true, grow, shade, bare, press, paint, cast: sunShadows(L.clone()),
-    colors: { ...G.GROUND_COLORS, deep: '#55924a', mid: '#7cae40', sunny: '#9fc84a', shade: '#447a3c', dirt: '#767e89' } });
+    colors: { ...G.GROUND_COLORS, deep: '#55924a', mid: '#7cae40', sunny: '#9fc84a', shade: '#447a3c', dirt: '#73829f' } });
   const fade = { far, fadeA: FR * 0.8, fadeB: FR * 0.985 };
   const terrain = G.createTerrain(field, map, fade);
   group.add(terrain);

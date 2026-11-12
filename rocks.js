@@ -577,7 +577,8 @@ export const PROP_ROCK_TYPES = [
 ];
 const PROP_TONES = { lit: '#c9c1ab', mid: '#9c998f', shade: '#6b7685', deep: '#465163', rim: '#e6dfcb', sky: '#b9d3ea',
   moss: ['#a6cf55', '#7db845', '#55953f'] };
-// the pale, cool stone of the big cliffs (near white in the sun, periwinkle in the shade, blue in the cracks)
+// the pale, cool stone every rock is painted in (near white in the sun, periwinkle in the shade, blue in the cracks); the older
+// warm grey is kept as a tone a kit can still ask for ('warm')
 const PALE_TONES = { lit: '#dcdfda', mid: '#b4bec9', shade: '#8898b4', deep: '#5c6e97', rim: '#f3f5ef', sky: '#b9d3ea', moss: ['#a6cf55', '#7db845', '#55953f'] };
 const TONES = { warm: PROP_TONES, pale: PALE_TONES };
 const PROP_SUN = new THREE.Vector3(-0.62, 0.62, 0.48).normalize();        // painted with a lowish sun, so the sides read light and dark
@@ -998,8 +999,8 @@ export function createPropRock({ type = 'boulder', seed = 1, world = false } = {
 }
 
 const propMats = {};
-export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone = 'warm', flat = 0 } = {}) {
-  tone = TONES[tone] ? tone : 'warm';
+export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone = 'pale', flat = 0 } = {}) {
+  tone = TONES[tone] ? tone : 'pale';
   const key = 'm' + moss + (world ? 'w' : '') + 'l' + mossLow + tone + 'f' + flat;
   if (propMats[key]) return propMats[key];
   const T = TONES[tone];
