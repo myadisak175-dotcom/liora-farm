@@ -63,7 +63,8 @@
   "./water-droplets.js": "./water-droplets.js?v=crown5",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=berrysurface1",
-  "./rocks.js": "./rocks.js?v=1",
+  "./rocks.js": "./rocks.js?v=world1",
+  "./rocks-level.js": "./rocks-level.js?v=1",
   "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
@@ -80,7 +81,7 @@
   "./hills-level.js": "./hills-level.js?v=rocks1",
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks1",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1",
-  "./teleport-menu.js": "./teleport-menu.js?v=5",
+  "./teleport-menu.js": "./teleport-menu.js?v=5r1",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
@@ -150,6 +151,7 @@ import { buildMeadowLevel } from './meadow-level.js';
 import { buildHillsLevel } from './hills-level.js';
 import { buildValleyLevel } from './valley-level.js';
 import { buildDepthsLevel } from './depths-level.js';
+import { buildRocksLevel } from './rocks-level.js';
 import { loadCharacter } from './stylized-character.js';
 import { createPlayer } from './player.js';
 import { createCharacterShadow } from './character-shadow.js';
@@ -207,7 +209,7 @@ const skyW = +Q.get('sky') || (fastMode ? 1024 : IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
 scene.add(sky, Sky.createDistantMountains({ center: [0, 0], seed: 5 }), N.createAlphaFix());
-const buildLevel = { meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel }[Q.get('map')] || buildValleyLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone)
+const buildLevel = { meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel, rocks: buildRocksLevel }[Q.get('map')] || buildValleyLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone); ?map=rocks: the rock test map
 const level = await buildLevel({ layer: +Q.get('layer') || 1, far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000, sun: sky.userData.sun ? sky.userData.sun.toArray() : undefined });
 scene.add(level.group);
 let forage = null;

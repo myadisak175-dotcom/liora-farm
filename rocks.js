@@ -23,10 +23,9 @@
         PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
    6. FUSING        (rock-builder.html) — pieces set into each other melted into one rock, the joins filled out into curves
         fuseRocks(meshes, { blend })
-   7. GROUND BLEND  (rock-builder.html) — the foot of every rock takes on the colour of the ground it stands in (what Unreal
-                    does with a runtime virtual texture): the ground is drawn once from straight above into a picture of its
-                    colour and one of its height, and the rocks' paint reads them
-        bakeGroundForRocks(renderer, grounds, { center, size, res }), GROUND_BLEND (its settings)
+   7. GROUND + WATER (rock-builder.html, rocks-level.js) — what the rocks know of the world round them: the ground's height
+                    and colour, drawn once from straight above (like Unreal's runtime virtual texture), and the water's level
+        bakeGroundForRocks(renderer, grounds, { center, size, res }), GROUND_BLEND (its settings), setRockWater({ texture, ... })
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -784,14 +783,18 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
-      uniform float uMoss, uWorld, uGOn, uGBlend;
-      uniform sampler2D uGCol, uGH;
-      uniform vec4 uGRect;
+      uniform float uMoss, uWorld, uGOn, uGHas, uGBlend, uWOn;
+      uniform sampler2D uGCol, uGH, uWLev;
+      uniform vec4 uGRect, uWRect;
       varying vec3 vWN, vWP;
       varying float vCurv, vHgt, vFacet;
       void main() {
         vec3 n = normalize(vWN);
-        float hg = uWorld > 0.0 ? clamp(vWP.y / uWorld, 0.0, 1.0) : vHgt;     // how high up: on its own foot, or above the ground
+        // the ground under this point, when the ground's height is known (section 7); otherwise the ground is taken to be at y = 0
+        vec2 guv = vec2((vWP.x - uGRect.x) * uGRect.z, (uGRect.y - vWP.z) * uGRect.w);
+        bool onG = uGHas > 0.5 && guv.x > 0.0 && guv.x < 1.0 && guv.y > 0.0 && guv.y < 1.0;
+        float groundY = onG ? texture2D(uGH, guv).r : 0.0;
+        float hg = uWorld > 0.0 ? clamp((vWP.y - groundY) / uWorld, 0.0, 1.0) : vHgt;     // how high up: on its own foot, or above the ground
         // the light, painted in a few soft steps; the brush wobbles a little
         float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.07 + (vFacet - 0.5) * 0.16;   // each face its own tone
         vec3 col = mix(uDeep, uShade, smoothstep(0.28, 0.38, t));
@@ -812,15 +815,20 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
           col *= 1.0 - 0.22 * smoothstep(0.5, 0.64, m) * (1.0 - smoothstep(0.64, 0.7, m));   // a shadow just under the moss's edge
           col = mix(col, mc, smoothstep(0.64, 0.7, m));
         }
-        if (uGOn > 0.5) {                                                                 // the foot takes the ground's colour
-          vec2 guv = vec2((vWP.x - uGRect.x) * uGRect.z, (uGRect.y - vWP.z) * uGRect.w);
-          if (guv.x > 0.0 && guv.x < 1.0 && guv.y > 0.0 && guv.y < 1.0) {
-            // a painted edge, not a fog: ragged, fairly sharp, with a touch of shadow along it on the rock's side
-            float above = vWP.y - texture2D(uGH, guv).r + (noise2(vWP.xz * 1.9 + vWP.y * 0.7) - 0.5) * uGBlend * 0.9 + (noise2(vWP.xz * 6.5 + vWP.y * 2.0) - 0.5) * uGBlend * 0.35;
-            float b = 1.0 - smoothstep(uGBlend * 0.82, uGBlend * 0.95, above);
-            col *= 1.0 - 0.18 * (1.0 - smoothstep(uGBlend * 0.95, uGBlend * 1.35, above)) * (1.0 - b);
-            vec3 gc = texture2D(uGCol, guv).rgb;
-            col = mix(col, gc * mix(0.78, 0.95, clamp(n.y, 0.0, 1.0)), b);
+        if (uGOn > 0.5 && onG) {                                                          // the foot takes the ground's colour: only what faces
+          // up and lies right at the ground (more and the rock seems to float: the eye loses where it meets the ground)
+          float above = vWP.y - groundY + (noise2(vWP.xz * 1.9 + vWP.y * 0.7) - 0.5) * uGBlend * 0.9 + (noise2(vWP.xz * 6.5 + vWP.y * 2.0) - 0.5) * uGBlend * 0.35;
+          float b = (1.0 - smoothstep(uGBlend * 0.82, uGBlend * 0.95, above)) * smoothstep(0.35, 0.65, n.y);
+          col = mix(col, texture2D(uGCol, guv).rgb * 0.9, b);
+        }
+        if (uWOn > 0.5) {                                                                 // water: wet and dark at the waterline, tinted below it
+          vec2 wuv = vec2((vWP.x - uWRect.x) * uWRect.z, (uWRect.y - vWP.z) * uWRect.w);
+          float lv = (wuv.x > 0.0 && wuv.x < 1.0 && wuv.y > 0.0 && wuv.y < 1.0) ? texture2D(uWLev, wuv).r : -1e4;
+          if (lv > -1e3) {
+            float d = vWP.y - lv + (noise2(vWP.xz * 3.1 + vWP.y * 1.3) - 0.5) * 0.08;
+            float wet = 1.0 - smoothstep(0.1, 0.24, d);                                   // the splash line: a band of wet stone above the water
+            col = mix(col, col * vec3(0.62, 0.66, 0.66), wet * 0.85);
+            col = mix(col, col * vec3(0.62, 0.86, 0.8) + vec3(0.0, 0.03, 0.02), (1.0 - smoothstep(-0.02, 0.0, d)) * 0.6);      // under the water: greener, mossy
           }
         }
         gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
@@ -830,15 +838,19 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
 
 // ==================================================================================================== 7. GROUND BLEND
 // The ground under the rocks, drawn once from straight above into two pictures: its colour, and its height. Every prop rock's
-// paint reads them (they share these settings), so the last stretch of a rock above the ground fades into the ground's own
-// colour, with a ragged edge, as if the ground ran up onto it.
-//   bakeGroundForRocks(renderer, [groundMesh], { center: [x, z], size: 60, res: 1024 });   GROUND_BLEND.height = 0.42
+// paint reads them (they share these settings): the height, so the dark at a rock's foot and the moss go by how high it stands
+// above the ground there; the colour, if GROUND_BLEND.on, for a thin painted edge of ground colour on what faces up at the foot.
+// (Painting the whole foot in the ground's colour was tried and dropped: with no line where rock meets ground, rocks seemed to
+// float. What anchors a rock is the shadow round its foot on the ground and the grass against it, which the levels do.)
+//   bakeGroundForRocks(renderer, [groundMesh], { center: [x, z], size: 60, res: 1024 });   GROUND_BLEND.height = 0.2
 const GROUND_U = {
-  uGOn: { value: 0 }, uGBlend: { value: 0.42 }, uGRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uGOn: { value: 0 }, uGHas: { value: 0 }, uGBlend: { value: 0.2 }, uGRect: { value: new THREE.Vector4(0, 0, 1, 1) },
   uGCol: { value: null }, uGH: { value: null },
+  uWOn: { value: 0 }, uWLev: { value: null }, uWRect: { value: new THREE.Vector4(0, 0, 1, 1) },
 };
 export const GROUND_BLEND = {
-  get on() { return GROUND_U.uGOn.value > 0.5; }, set on(v) { GROUND_U.uGOn.value = v && GROUND_U.uGCol.value ? 1 : 0; },
+  get on() { return GROUND_U.uGOn.value > 0.5; }, set on(v) { GROUND_U.uGOn.value = v && GROUND_U.uGCol.value ? 1 : 0; },      // off unless asked for
+  get known() { return GROUND_U.uGHas.value > 0.5; },
   get height() { return GROUND_U.uGBlend.value; }, set height(v) { GROUND_U.uGBlend.value = v; },
 };
 let groundRT = null;
@@ -866,7 +878,15 @@ export function bakeGroundForRocks(renderer, grounds, { center = [0, 0], size = 
   grounds.forEach((g, i) => { if (parents[i]) parents[i].add(g); });
   GROUND_U.uGCol.value = groundRT.col.texture; GROUND_U.uGH.value = groundRT.hgt.texture;
   GROUND_U.uGRect.value.set(cx - h, cz + h, 1 / size, 1 / size);
-  GROUND_U.uGOn.value = 1;
+  GROUND_U.uGHas.value = 1;
+}
+// ---- the water the rocks stand in: a picture of the water's level over the map (-10000 where there is none), laid out like
+// the ground's pictures (x0 at the left edge, z1 at the top edge, 1 / size). Rocks get a wet band at the waterline and a
+// greener tint under the water.
+export function setRockWater({ texture, x0, z1, size } = {}) {
+  GROUND_U.uWLev.value = texture || null;
+  GROUND_U.uWOn.value = texture ? 1 : 0;
+  if (texture) GROUND_U.uWRect.value.set(x0, z1, 1 / size, 1 / size);
 }
 
 // ==================================================================================================== 6. FUSING

@@ -142,3 +142,11 @@ The edits are a small list laid over what `valley-level.js` generates, and never
 **🔥 หลอมรวม** melts everything into one rock (`fuseRocks` in `rocks.js`, section 6): each chiselled piece is measured on a grid of points (signed distance: which side of its surface a point is on is told by the surface's own facing, so folds left by the cuts don't fool it), the pieces are joined with a soft minimum so the joins fill out into curves of rock, and a new surface is drawn through the grid. Faces away from the joins stay flat. It takes a few seconds; **✋ แยกชิ้น** goes back to the pieces to go on editing.
 
 💾 keeps the work: three slots in this browser, and the layout as text to copy out (for the game later) or paste back in. The last layout is also kept by itself as you work.
+
+## The rock test map (`?map=rocks`)
+
+`rocks-level.js`: a small map for seeing the stylized rocks in the world they will live in, with the game's own grass, ground, water and light, before they go into the real maps. A clearing in the middle, a bank to the north with cliff pieces sunk into it, a pond to the east with stones standing in the water, a stream coming down into it with stepping stones across. The rocks put together in `rock-builder.html` stand in the clearing (the builder's last layout in the same browser; `?layout=demo` leaves them out). 📍 has its four places.
+
+How a rock takes part in the world (the same for every rock): the ground under it is cut into one-metre cells. Each cell it stands on is solid (she walks round it), grows no grass, has the grass round it pressed down and its ground shaded (the dark at the foot that sets a rock on the ground), throws a shadow that follows the sun, and keeps the water's waves out (so the water swells round it). The rocks know the ground's height (their foot shading and moss go by it: `bakeGroundForRocks` draws the terrain once from above) and the water's level (`setRockWater`: a wet band at the waterline, greener under the water). Cloud shadows and the light of the hour reach them the way they reach everything else.
+
+The thin edge of ground colour on the rocks' feet (`GROUND_BLEND`) is off: painting the foot in the ground's colour made rocks seem to float (the eye loses where rock meets ground); the shadow round the foot and the grass against it do that job.

@@ -108,8 +108,8 @@ for (const [x, z, type, s] of [[-22, -26, 'broadleaf', 3], [16, -30, 'pine', 5],
   const t = N.createTree({ type, seed: s }); t.position.set(x, ground.userData.heightAt(x, z) - 0.05, z); scene.add(t);
 }
 bakeGroundForRocks(renderer, [ground], { center: [0, 0], size: 64, res: 1024 });     // the ground's colour, for the rocks' feet
-$('blend').onclick = () => { GROUND_BLEND.on = !GROUND_BLEND.on; $('blend').classList.toggle('warm', GROUND_BLEND.on); toast(GROUND_BLEND.on ? 'โคนหินกลืนกับพื้น' : 'ปิดการกลืนพื้น (ไว้เทียบ)'); };
-$('blend').classList.add('warm');
+GROUND_BLEND.on = false;                                                   // (a thin edge of ground colour on the feet: off unless asked for)
+$('blend').onclick = () => { GROUND_BLEND.on = !GROUND_BLEND.on; $('blend').classList.toggle('warm', GROUND_BLEND.on); toast(GROUND_BLEND.on ? 'ขอบสีพื้นที่โคนหิน: เปิด' : 'ขอบสีพื้นที่โคนหิน: ปิด'); };
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
 camera.position.set(9, 8, 16);
 const controls = new OrbitControls(camera, renderer.domElement);
