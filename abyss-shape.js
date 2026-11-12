@@ -44,8 +44,8 @@ export const ABYSS = {
   // brooks that run in across the plateau from the map's edge and fall in from the rim: their lines, half width, pools as
   // above; split: the water spills from its pool either side of a rock, as two falls
   brooks: [
-    { pts: [[67, 87], [57, 90.5], [47, 94.5], [37, 96.6], [29, 97.6]], half: 1.8, pools: [0], split: true },     // from the east
-    { pts: [[-67, 109.5], [-58, 104.8], [-50, 102], [-42, 100.7], [-35, 100.6]], half: 1.9, pools: [0, 1] },     // from the west
+    { pts: [[107, 80], [92, 82.5], [77, 85], [67, 87], [57, 90.5], [47, 94.5], [37, 96.6], [29, 97.6]], half: 1.8, pools: [0], split: true },     // from the east
+    { pts: [[-107, 117], [-92, 115], [-78, 112.5], [-67, 109.5], [-58, 104.8], [-50, 102], [-42, 100.7], [-35, 100.6]], half: 1.9, pools: [0, 1] },     // from the west
     { pts: [[26, 173], [22.5, 161], [18, 150], [13.5, 141.5], [10.5, 136]], half: 1.6, pools: [] },              // from the south
   ],
   // ribs of rock that run down the walls (angles): they break the ledges into lengths, so the pit does not read as rings

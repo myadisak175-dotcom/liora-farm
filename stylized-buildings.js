@@ -14,6 +14,8 @@
    stoneBridgeGeometry  a humpbacked stone bridge along x; stoneBridgeDeck(u, opts) is the height of its deck above its base
    wellGeometry       a round stone well under a little roof
    fenceGeometry      posts and two rails along a line of points on the ground (world space)
+   fieldGeometry      a crop bed: ridged soil with a crop in rows ('cabbage', 'wheat', 'carrot', 'sprout'); local x across, z along
+   riceGeometry       rice plants in rows, to stand in a flooded paddy (y = 0 at the water)
    ropeBridgeGeometry a rope bridge slung along x from 0 to length, sagging between two pairs of posts, with a wider
                       landing in the middle; ropeBridgeDeck(x, opts) / ropeBridgeHalfWidth(x, opts) for walking on it
    propGeometry       small things that make a village look lived in: 'stall', 'table', 'bench', 'barrels', 'crates', 'hay',
@@ -33,6 +35,7 @@ export const BUILD_COLORS = {
   hay: '#dcb95c', cloth: ['#c9483a', '#f2e8cf', '#4f7f96', '#e0a43c'], lantern: '#f6d875', wool: '#f3eddd', woolDark: '#4a4038',
   goods: ['#d8843a', '#7fa64a', '#c9483a', '#e6c95a', '#8e5aa0'],
   rope: '#c7a26a',
+  soil: '#7c5a3a', soilLight: '#94704a', leaf: '#7fae4e', leafLight: '#a8cf6a', grain: '#e0c25a', carrot: '#e08a3a', rice: '#9cc75a', riceLight: '#bcd96e',
 };
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
@@ -280,6 +283,51 @@ export function fenceGeometry({ points, heightAt, closed = true, gap = null, spa
   const g = K.done();
   g.userData = { circles: out };
   return g;
+}
+
+// ---- a crop bed, w across (x) by d along (z), its ground at y = 0: soil ridged along z, the crop planted along the ridges
+export function fieldGeometry({ w = 8, d = 12, crop = 'cabbage', seed = 1, colors = BUILD_COLORS } = {}) {
+  const K = kit(seed), C = colors, r = K.rng;
+  K.box(0, -0.25, 0, w, 0.3, d, C.soil, { vary: 0.02 });
+  const rows = Math.max(1, Math.floor((w - 0.4) / 0.9));
+  for (let i = 0; i < rows; i++) {
+    const x = -w / 2 + 0.2 + (i + 0.5) * (w - 0.4) / rows;
+    K.box(x, 0, 0, 0.55, 0.16, d - 0.3, C.soilLight, { vary: 0.04 });
+    for (let z = -d / 2 + 0.5; z < d / 2 - 0.3; z += crop === 'wheat' ? 0.45 : 0.7) {
+      const jx = x + (r() - 0.5) * 0.08, jz = z + (r() - 0.5) * 0.1;
+      if (crop === 'cabbage') {
+        K.cyl(jx, 0.12, jz, 0.24, 0.17, 0.22, 6, C.leaf, { vary: 0.12, ry: r() * 3 });
+        K.cyl(jx, 0.3, jz, 0.15, 0.06, 0.1, 5, C.leafLight, { vary: 0.08 });
+      } else if (crop === 'wheat') {
+        for (const o of [-0.12, 0.12]) {
+          const h = 0.7 + r() * 0.25;
+          K.box(jx + o, 0.12, jz, 0.05, h, 0.05, C.grain, { rz: (r() - 0.5) * 0.25, vary: 0.1 });
+          K.box(jx + o, 0.12 + h - 0.05, jz, 0.09, 0.2, 0.09, C.grain, { vary: 0.12 });
+        }
+      } else if (crop === 'carrot') {
+        K.box(jx, 0.1, jz, 0.08, 0.38, 0.22, C.leaf, { ry: r() * 3, vary: 0.12 });
+        K.box(jx, 0.1, jz, 0.22, 0.32, 0.08, C.leafLight, { ry: r() * 3, vary: 0.12 });
+        K.box(jx, 0.06, jz, 0.12, 0.08, 0.12, C.carrot);
+      } else {
+        K.box(jx, 0.12, jz, 0.14, 0.14 + r() * 0.08, 0.14, C.leafLight, { ry: r() * 3, vary: 0.15 });
+      }
+    }
+  }
+  return K.done();
+}
+
+// ---- rice: a blade or two in each place, in rows across a paddy w by d (y = 0 at the water's surface)
+export function riceGeometry({ w = 12, d = 10, spacing = 0.95, seed = 1, colors = BUILD_COLORS } = {}) {
+  const K = kit(seed), C = colors, r = K.rng;
+  // each clump: two crossed upright quads, narrow at the water and fanning out to the top (four triangles a clump)
+  for (let x = -w / 2 + spacing / 2; x < w / 2; x += spacing) for (let z = -d / 2 + spacing / 2; z < d / 2; z += spacing) {
+    const cx = x + (r() - 0.5) * 0.2, cz = z + (r() - 0.5) * 0.2, h = 0.5 + r() * 0.25, a = r() * 3.14, col = r() < 0.5 ? C.rice : C.riceLight;
+    for (const t of [a, a + 1.57]) {
+      const c = Math.cos(t), s = Math.sin(t), b0 = 0.06, b1 = 0.26, lean = (r() - 0.5) * 0.12;
+      K.face([[cx - c * b0, -0.1, cz - s * b0], [cx + c * b0, -0.1, cz + s * b0], [cx + c * b1 + lean, h, cz + s * b1], [cx - c * b1 + lean, h, cz - s * b1]], col, 0.1);
+    }
+  }
+  return K.done();
 }
 
 // ---- a rope bridge. Local space: the deck runs along x from 0 to length, at y = 0 at x = 0 and y = rise at the far end,

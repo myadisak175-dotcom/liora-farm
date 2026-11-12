@@ -68,6 +68,12 @@ The village crates and barrels use the original farm GLBs restored from the pre-
 
 The trodden ways between the houses (`VILLAGE.paths`, the ramps and the yards) are drawn by the ground itself. `valley-level.js` bakes a small picture of how far every spot is from the nearest way and how paved it is; the terrain shader (`WAYS` in `stylized-terrain.js`) reads it and lays down, from the grass inwards: a verge of short yellowed grass, a rim of darker damp earth, the trodden earth, and pale worn patches down the middle. The edge wanders and is ragged. Pebbles lie thick along the edges and thin in the middle. Yards marked as paved in `VILLAGE.yards` (round the well, before the keep's door) are laid with cobbles that thin out into single stones at the yard's edge. The grass map agrees with it: no blades on the earth, sparse yellowed ones at its edge, and on the verge they stand about half as tall. Long ways are worn broad, spurs to a door narrow.
 
+## The farmland
+
+Round the village above the falls the map grows (`farm-shape.js`: where everything is, `FARM`, and how it bends the land; the village itself is not touched). To the east and the west, fields on the same two levels as the village's terraces, so one walks straight out onto them: on each side a house in a fenced yard on each level, a barn, a well, crop beds (cabbage, wheat, carrots: `fieldGeometry` in `stylized-buildings.js`), an orchard in the east and a fenced pasture with sheep in the west. Behind the village, where the ridge stood, rice terraces step up the hill: flooded paddies with rice standing in them (`riceGeometry`), dikes to walk along, a hut on a dry patch, and the upper river running down between them in its channel, with plank bridges over it. Ramps lead from one level to the next (one starts at the empty east end of the village's upper terrace). The map is now 210 x 320 m.
+
+`?view=farmEast`, `?view=farmWest`, `?view=paddies` (also in the 📍 menu).
+
 ## The abyss
 
 Down the valley the river runs out over the brink of an abyss: a round pit 80 m across (`abyss-shape.js`: where everything is, `ABYSS`, and how it bends the land; `abyss-scene.js`: its falls and clouds). The map now runs on to z = 170 to take it in.
