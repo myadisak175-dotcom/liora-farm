@@ -24,7 +24,7 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "./rocks.js": "./rocks.js?v=bluff1"
+  "./rocks.js": "./rocks.js?v=bluff2"
 } }
 </script>
 </head>
@@ -59,8 +59,8 @@ const scene = new THREE.Scene();
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   scene.background = t;
 }
-N.setHaze({ color: '#cfe4f1', near: 25, far: 90, max: 0.55 });
-const ground = N.createGround({ radius: 60, flat: 18, hills: 1, far: '#cfe4f1' });
+N.setHaze({ color: '#cfe4f1', near: 45, far: 220, max: 0.55 });
+const ground = N.createGround({ radius: 120, flat: 60, hills: 1, far: '#cfe4f1' });
 scene.add(ground);
 const H = ground.userData.heightAt;
 scene.add(N.createGrass({ count: 2600, radius: 16, heightAt: H, seed: 4, avoid: (x, z) => Math.abs(z) < 2.2 && Math.abs(x) < 15 }));
@@ -68,9 +68,9 @@ for (const [x, z, type, s] of [[-14, -16, 'broadleaf', 3], [10, -19, 'pine', 5],
   const t = N.createTree({ type, seed: s }); t.position.set(x, H(x, z) - 0.05, z); scene.add(t);
 }
 
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 400);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 600);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 1.5; controls.maxDistance = 60;
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 1.5; controls.maxDistance = 140;
 
 const SIZE = { boulder: 4.5, stone: 2.2, pillar: 6.5, ledge: 5.5, pebbles: 3, paving: 4.2, flagstone: 2,
   cliffFace: 17, cliffTall: 17, buttress: 16, cliffTop: 9, slopeRock: 11, footRock: 6.5, cluster: 5, rubble: 3.6, range: 36,
@@ -78,6 +78,9 @@ const SIZE = { boulder: 4.5, stone: 2.2, pillar: 6.5, ledge: 5.5, pebbles: 3, pa
 const CAM = { buttress: [0.75, 0.3, 0.65], slopeRock: [0.2, 0.3, 0.95], range: [0.1, 0.16, 0.62] };     // from where each is best seen (default: front and a little to the side)
 let index = Math.max(0, PROP_ROCK_TYPES.findIndex(t => t.key === Q.get('type')));
 let seed = +Q.get('seed') || 1, showAll = Q.has('all');
+// the groups, in turn: rocks, the cliff kit, the big cliff pieces (the button names the next one)
+const GROUPS = ['rock', 'cliff', 'bluff'], GROUP_NAME = { rock: 'หิน', cliff: 'ผา', bluff: 'ผาใหญ่' }, GROUP_BTN = { rock: '🪨 หิน', cliff: '⛰ ผา', bluff: '🏔 ผาใหญ่' };
+const nextGroup = () => GROUPS[(GROUPS.indexOf(PROP_ROCK_TYPES[index].group) + 1) % GROUPS.length];
 const inGroup = () => PROP_ROCK_TYPES.filter(t => t.group === PROP_ROCK_TYPES[index].group);
 const shown = new THREE.Group(); scene.add(shown);
 const clear = () => { for (const m of [...shown.children]) { m.userData.dispose && m.userData.dispose(); shown.remove(m); } };
@@ -86,7 +89,7 @@ const nameEl = document.getElementById('name');
 function build() {
   clear();
   if (showAll) {                                                          // the whole set in a row, like a kit sheet
-    const cliff = PROP_ROCK_TYPES[index].group === 'cliff', set = inGroup().filter(t => t.key !== 'range');
+    const grp = PROP_ROCK_TYPES[index].group, cliff = grp !== 'rock', set = inGroup().filter(t => t.key !== 'range');
     let x = 0;
     for (const t of set) {
       const r = createPropRock({ type: t.key, seed }), w = SIZE[t.key] * (cliff ? 0.6 : 0.75);
@@ -95,8 +98,8 @@ function build() {
     }
     const off = -(x - 0.6) / 2;                                            // the row centred
     for (const r of shown.children) { r.position.x += off; r.position.y = H(r.position.x, 0); }
-    nameEl.innerHTML = `${cliff ? 'ผา' : 'หิน'}ทั้งหมด <small>ชุดที่ ${seed} · ลากเพื่อหมุนดู</small>`;
-    const k = cliff ? 2.1 : 1;
+    nameEl.innerHTML = `${GROUP_NAME[grp]}ทั้งหมด <small>ชุดที่ ${seed} · ลากเพื่อหมุนดู</small>`;
+    const k = grp === 'bluff' ? 3.6 : cliff ? 2.1 : 1;
     controls.target.set(0, 1.2 * k, 0); camera.position.set(1.5 * k, 4.6 * k, 16.5 * k);
   } else {
     shown.position.x = 0;
@@ -108,13 +111,13 @@ function build() {
     controls.target.set(0, s * 0.18, 0); camera.position.set(s * c[0], s * c[1], s * c[2]);
   }
   document.getElementById('all').classList.toggle('on', showAll);
-  document.getElementById('group').textContent = PROP_ROCK_TYPES[index].group === 'cliff' ? '🪨 หิน' : '⛰ ผา';
+  document.getElementById('group').textContent = GROUP_BTN[nextGroup()];
   controls.update();
 }
 const step = d => { const g = inGroup(), i = g.indexOf(PROP_ROCK_TYPES[index]); index = PROP_ROCK_TYPES.indexOf(g[(i + d + g.length) % g.length]); showAll = false; build(); };
 document.getElementById('prev').onclick = () => step(-1);
 document.getElementById('next').onclick = () => step(1);
-document.getElementById('group').onclick = () => { const other = PROP_ROCK_TYPES[index].group === 'cliff' ? 'rock' : 'cliff'; index = PROP_ROCK_TYPES.findIndex(t => t.group === other); build(); };
+document.getElementById('group').onclick = () => { const g = nextGroup(); index = PROP_ROCK_TYPES.findIndex(t => t.group === g); build(); };
 document.getElementById('dice').onclick = () => { seed++; build(); };
 document.getElementById('all').onclick = () => { showAll = !showAll; build(); };
 build();

@@ -20,7 +20,7 @@
    5. ROCK PROPS    (catalog only, for now: rock-catalog.html) — loose rocks and cliff pieces in a hand-painted stylized
                     look: big flat chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale
                     rim on the edges, moss on what faces the sky. Big shapes are assembled from pieces sunk into each other.
-        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
+        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' | 'bluff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
                     The 'cliff' group is the organic cliff kit: eight shapes (cliffFace, cliffTall, buttress, cliffTop, slopeRock,
                     footRock, cluster, rubble) that go together into cliffs over the land's own shape.
         createRockKit(list)      a level's rocks drawn as a few instanced groups (one for each type and seed)
@@ -571,9 +571,9 @@ export const PROP_ROCK_TYPES = [
   { key: 'cliffTop', name: 'ผาบน', group: 'cliff' }, { key: 'slopeRock', name: 'หินเชื่อมทางลาด', group: 'cliff' }, { key: 'footRock', name: 'หินตีนผา', group: 'cliff' },
   { key: 'cluster', name: 'กลุ่มหิน', group: 'cliff' }, { key: 'rubble', name: 'หินปิดรอยต่อ', group: 'cliff' }, { key: 'range', name: 'ผาประกอบ (ตัวอย่าง)', group: 'cliff' },
   // the big cliff pieces: made large (not small ones sized up), for the sides of tables of land (terrain-blocks.js)
-  { key: 'bluffTall', name: 'ผาใหญ่ แท่งสูง (16 ม.)', group: 'cliff' }, { key: 'bluffWide', name: 'ผาใหญ่ มีชั้น (16 ม.)', group: 'cliff' },
-  { key: 'bluffSplit', name: 'ผาใหญ่ สามแท่ง (16 ม.)', group: 'cliff' }, { key: 'bluffLow', name: 'ผาใหญ่ เตี้ย (8 ม.)', group: 'cliff' },
-  { key: 'bluffLowSplit', name: 'ผาใหญ่ เตี้ย สองแท่ง (8 ม.)', group: 'cliff' },
+  { key: 'bluffTall', name: 'ผาใหญ่ แท่งสูง (16 ม.)', group: 'bluff' }, { key: 'bluffWide', name: 'ผาใหญ่ มีชั้น (16 ม.)', group: 'bluff' },
+  { key: 'bluffSplit', name: 'ผาใหญ่ สามแท่ง (16 ม.)', group: 'bluff' }, { key: 'bluffLow', name: 'ผาใหญ่ เตี้ย (8 ม.)', group: 'bluff' },
+  { key: 'bluffLowSplit', name: 'ผาใหญ่ เตี้ย สองแท่ง (8 ม.)', group: 'bluff' },
 ];
 const PROP_TONES = { lit: '#c9c1ab', mid: '#9c998f', shade: '#6b7685', deep: '#465163', rim: '#e6dfcb', sky: '#b9d3ea',
   moss: ['#a6cf55', '#7db845', '#55953f'] };
