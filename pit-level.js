@@ -4,7 +4,8 @@
 // 16-bit grey: white high, black low), painted and then given hard-edged terraces; the game reads it and lays the meadow's
 // own things over it: the land's paint (the valley's strata on the walls, fading into the pit's mist), the ground picture and
 // the fluffy grass, trees on the rim and on the shelves, the abyss's clouds, and the brooks: the valley's clear water running
-// in channels across the rim (the painting's own brooks, carved into it) and pouring over the brink as the abyss's falls.
+// across the rim where the painting has them, then on down the pit as the land lies: across each shelf, over its edge as a fall
+// onto the next, and from the last one down into the mist. Nothing is cut through the shelves (only a shallow bed under the water).
 // No rocks yet.
 //
 // The picture covers SIZE metres square; black is DEPTH metres under white. The .bin beside it is the same picture as raw
@@ -21,6 +22,7 @@ import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
+import { createWaterfall } from './stylized-waterfall.js';
 import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
 
 const { mulberry32 } = N._internal;
@@ -46,7 +48,7 @@ export async function buildPitLevel({ seed = 5, far = '#cde6f2', grassCount = 15
   // ------------------------------------------------------------------ the land: read from the picture
   await onStep('อ่านแผนที่ความสูง');
   const raw = new Uint16Array(await (await fetch(M.file)).arrayBuffer());
-  const BR = await (await fetch(M.brooks)).json();                        // { brooks: [[[x, z, level, half], ...], ...], falls: [{ x, z, top, width }] }
+  const BR = await (await fetch(M.brooks)).json();                        // { brooks: [[[x, z, level, half], ...], ...], falls: [{ x, z, top, bottom, width, yaw, deep }] }
   const level = v => v < M.eye.below ? M.eye.y : M.rim + (v - 0.93) * M.depth;      // (the eye's black: straight down)
   const px = (i, j) => level(raw[Math.min(n - 1, Math.max(0, j)) * n + Math.min(n - 1, Math.max(0, i))] / 65535);
   const heightFn = (x, z) => {                                             // bilinear between the picture's points
@@ -138,7 +140,7 @@ export async function buildPitLevel({ seed = 5, far = '#cde6f2', grassCount = 15
   const droplets = createWaterDroplets({ time: N._internal.shared.uTime });
   droplets.points.userData.dispose = droplets.dispose;
   group.add(droplets.points);
-  const WL = BR.falls.reduce((s, f) => s + f.top, 0) / BR.falls.length;      // (the waves are worked out on one level: the brooks' middling one)
+  const WL = BR.brooks[0][0][2];                                          // (the waves are worked out on one level: the rim's brooks')
   const sim = W.createWaterSim({ rect: [M.spawn.x - 24, M.spawn.z - 24, 48], size: 512, field, foamTexture, level: WL, follow: true });
   const optics = W.createWaterOptics({ level: WL });
   const waterMat = W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, ...fade });
@@ -161,15 +163,21 @@ export async function buildPitLevel({ seed = 5, far = '#cde6f2', grassCount = 15
     return m;
   };
   const waters = BR.brooks.map(ribbon);
-  // over the brink: a fall into the pit's mist, or (where the brink is a ravine's) down to the ravine's floor
-  const fallList = BR.falls.map(f => {
-    const a = Math.atan2(CZ - f.z, CX - f.x), below = H(f.x + Math.cos(a) * 5, f.z + Math.sin(a) * 5);
-    return { ...f, bottom: below < -20 ? -60 : below + 0.3 };
-  });
-  for (const f of fallList) {
-    const fl = createAbyssFalls({ falls: [f], centre: [f.x + (CX - f.x) * 0.01, f.z + (CZ - f.z) * 0.01], bottom: f.bottom, optics: null, foamTexture });
-    fl.group.userData = { kind: 'waterfall', dispose: fl.dispose };
-    group.add(fl.group);
+  // the falls: over each shelf's edge onto the next (the valley's fall, with its churn where it lands), and from the last shelf
+  // one long fall into the pit's mist (the abyss's)
+  const fallUpdates = [];
+  for (const f of BR.falls) {
+    if (f.deep) {
+      const fl = createAbyssFalls({ falls: [f], centre: [f.x + Math.sin(f.yaw), f.z + Math.cos(f.yaw)], bottom: f.bottom, optics: null, foamTexture });
+      fl.group.userData = { kind: 'waterfall', dispose: fl.dispose };
+      group.add(fl.group);
+    } else {
+      const c = createWaterfall({ x: 0, z: 0, top: f.top, bottom: f.bottom, width: f.width, forward: Math.min(2.2, 0.6 + (f.top - f.bottom) * 0.12), scale: 0.6, foamTexture, cells: animeCells });
+      c.group.position.set(f.x, 0, f.z); c.group.rotation.y = f.yaw;
+      c.group.userData = { kind: 'waterfall', dispose: c.dispose };
+      group.add(c.group);
+      fallUpdates.push(c);
+    }
   }
   const ripple = (x, z, strength = 1, radius = 0.26, mode = null) => {      // something touches the water (as on the other maps)
     const kk = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
@@ -231,6 +239,7 @@ export async function buildPitLevel({ seed = 5, far = '#cde6f2', grassCount = 15
     update(renderer, dt, scene = null, camera = null) {
       sim.step(renderer, dt);
       droplets.update(renderer);
+      for (const c of fallUpdates) c.update(renderer);
       if (scene && camera) {                                               // (the water's two pictures: only when a brook is on screen and near)
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         camWorld.setFromMatrixPosition(camera.matrixWorld);

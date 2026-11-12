@@ -16,38 +16,56 @@ for k in range(4):
     o[band]=levels[k]+0.012*t[band]
 o[pit&(s<edges[-1])]=0.0
 o=ndi.gaussian_filter(o,1.2)
-# ---- brooks: from the map's edge, along what was painted, to the brink; sloping down all the way, a chute through the shelves below
-sm=ndi.gaussian_filter(o,4)
+# ---- brooks: from the map's edge along what was painted, then on down the pit as the land lies: across each shelf to its edge,
+# over it as a fall onto the next, and at the last one down into the eye. Nothing is cut through the shelves: only a shallow
+# bed (TROUGH m) is pressed into the ground under the water, so it sits in the land and does not float on it.
+sm=ndi.gaussian_filter(o,2)
 brooks=[[(0,196),(184,262)],[(830,0),(750,160)],[(1024,512),(910,526)],[(536,1024),(524,910)],[(0,750),(144,694)]]
-HW=1.7; rows_all=[]; falls=[]
-w=lambda p:[round(p[0]*PX-55,2),round(p[1]*PX-55,2)]
+HW=1.5; TROUGH=0.45; ribbons=[]; falls=[]
+w=lambda p:[round(float(p[0])*PX-55,2),round(float(p[1])*PX-55,2)]
+H=lambda p:hm(sm[int(round(p[1])),int(round(p[0]))])
 for b in brooks:
     A=np.array(b[0],float); M=np.array(b[1],float); u=(C-M)/np.linalg.norm(C-M)
-    path=[A+(M-A)*k/200 for k in range(200)]+[M+u*t for t in np.arange(0,600,0.5)]
-    pts=[]
-    for p in path:
-        if hm(o[int(round(p[1])),int(round(p[0]))])<10: break
-        pts.append(p)
-    pts=np.array(pts); keep=[0]
-    for i in range(1,len(pts)):
-        if np.linalg.norm(pts[i]-pts[keep[-1]])*PX>=0.5: keep.append(i)
-    pts=pts[keep][:-3]                                   # (stop a metre or so short of the drop)
-    Bk=pts[-1]
-    g=np.array([hm(sm[int(p[1]),int(p[0])]) for p in pts]); lv=np.minimum.accumulate(g-0.7)
-    tree=cKDTree(pts)
-    box=(x>pts[:,0].min()-40)&(x<pts[:,0].max()+40)&(y>pts[:,1].min()-40)&(y<pts[:,1].max()+40)
-    P=np.stack([x[box],y[box]],1); d,i=tree.query(P); d*=PX
-    bed=lv[i]-0.8; k=np.clip((d-HW*0.5)/HW,0,1); k=k*k*(3-2*k)
-    cur=o[box]; o[box]=np.where(d<HW*1.6,np.minimum(cur,vof(bed+(hm(cur)-bed)*k)),cur)
-    E=C+(Bk-C)/np.linalg.norm(Bk-C)*100; D=E-Bk
-    tp=((x-Bk[0])*D[0]+(y-Bk[1])*D[1])/(D@D); tc=np.clip(tp,0,1)
-    dc=np.hypot(x-Bk[0]-D[0]*tc,y-Bk[1]-D[1]*tc)*PX
-    o[(dc<2.4)&(tp>0.0)&(hm(o)<lv[-1]+0.5)|((dc<2.4)&(tp>0.03))]=0
-    rows_all.append([[*w(p),round(float(l),2),HW] for p,l in zip(pts,lv)])
-    falls.append({'x':w(Bk)[0],'z':w(Bk)[1],'top':round(float(lv[-1]),2),'width':2*HW+0.4})
-    print('brook', len(pts)*0.5,'m long, water from',round(lv[0],1),'to',round(lv[-1],1))
+    path=[A+(M-A)*k/400 for k in range(400)]+[M+u*t for t in np.arange(0,700,0.25)]
+    path=[p for p in path if np.linalg.norm(p-C)>95]
+    # walk down it: a run of ground, then where the ground drops more than 1.5 m within a metre, a fall
+    runs=[[]]; i=0
+    while i<len(path):
+        p=path[i]; runs[-1].append(p)
+        j=i+1
+        while j<len(path) and np.linalg.norm(path[j]-p)*PX<1.0: j+=1
+        if j<len(path) and H(path[j])<H(p)-1.5:
+            # the foot of the drop: the first point past it that is level again
+            k=j
+            while k+1<len(path) and H(path[k+1])<H(path[k])-0.05: k+=1
+            if H(path[k])<-25:                   # into the eye: one long fall into the mist
+                falls.append({'x':w(p)[0],'z':w(p)[1],'top':round(H(p)-TROUGH+0.3,2),'bottom':-60,'width':2*HW+0.4,'yaw':round(float(np.arctan2(u[0] if i>=400 else (M-A)[0],u[1] if i>=400 else (M-A)[1])),3),'deep':1})
+                break
+            falls.append({'x':w(p)[0],'z':w(p)[1],'top':round(H(p)-TROUGH+0.3,2),'bottom':round(H(path[k])-TROUGH+0.3,2),'width':2*HW+0.4,
+                          'yaw':round(float(np.arctan2(u[0],u[1])),3),'deep':0})
+            runs.append([]); i=k
+        else: i=j
+    for run in runs:
+        if len(run)<2: continue
+        pts=np.array(run)
+        g=np.array([H(p) for p in pts]); g=ndi.gaussian_filter1d(g,2,mode='nearest')
+        lv=g-TROUGH+0.3
+        tree=cKDTree(pts)
+        box=(x>pts[:,0].min()-30)&(x<pts[:,0].max()+30)&(y>pts[:,1].min()-30)&(y<pts[:,1].max()+30)
+        P=np.stack([x[box],y[box]],1); d,ii=tree.query(P); d*=PX
+        k=np.clip((d-HW*0.5)/HW,0,1); k=k*k*(3-2*k)
+        cur=o[box]; bed=hm(cur)-TROUGH*(1-k)
+        o[box]=np.where(d<HW*1.6,np.minimum(cur,vof(bed)),cur)
+        ribbons.append([[*w(p),round(float(l),2),HW] for p,l in zip(pts,lv)])
+    print('brook:',len(runs),'runs,',sum(1 for f in falls),'falls so far')
 o=ndi.gaussian_filter(o,0.7)
 Image.fromarray((np.clip(o,0,1)*65535).round().astype(np.uint16)).save('pit-brooks.png')
 b=Image.fromarray(o.astype('f4'),'F').resize((513,513),Image.BILINEAR)
 np.clip(np.array(b)*65535,0,65535).round().astype('<u2').tofile('pit-brooks.bin')
-json.dump({'brooks':rows_all,'falls':falls},open('brooks.json','w'))
+# (a drop the walk found as two, a metre apart, is one fall; and a run of water too short to see is none)
+F=[]
+for f in falls:
+    if F and np.hypot(f['x']-F[-1]['x'],f['z']-F[-1]['z'])<1.8 and F[-1]['deep']==0: F[-1]['bottom']=f['bottom']; F[-1]['deep']=f['deep']
+    else: F.append(dict(f))
+falls=F; ribbons=[r for r in ribbons if len(r)>=5]
+json.dump({'brooks':ribbons,'falls':falls},open('brooks.json','w'))
