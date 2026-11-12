@@ -3,7 +3,8 @@
 //
 // One job: to see the rocks in the world they will live in, before they go into the real maps. A clearing in the middle (the
 // rocks put together in rock-builder.html stand here, if this browser has any), a bank to the north with cliff pieces sunk into
-// it, a pond to the east with stones standing in the water, a stream coming down into it with stepping stones across.
+// it, a pond to the east with stones standing in the water, a stream coming down into it with stepping stones across, and two
+// trodden dirt paths (ground-paths.js): from the start down to the pond's beach, and from there up to the foot of the cliffs.
 //
 //   const level = await buildRocksLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 //   ?layout=demo   leaves the builder's rocks out (only this map's own)
@@ -19,6 +20,7 @@ import * as N from './stylized-nature.js';
 import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import * as RK from './rocks.js';
+import { createPaths } from './ground-paths.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 
@@ -30,6 +32,8 @@ export const ROCKS_MAP = {
   radius: 44, fieldRadius: 70,
   spawn: { x: 2, z: 17, yaw: Math.PI + 0.25 },
   clearing: { x: 0, z: 4, r: 11 },                                         // the builder's rocks stand here
+  paths: [{ points: [[2, 24], [3, 16], [5, 10], [8.5, 5], [12.5, 2.5], [15.5, 2]], half: 1.25 },
+    { points: [[5, 10], [0.5, 7.5], [-3.5, 2], [-6, -4.5], [-5.5, -10.5]], half: 1.0 }],
   bank: { z: -16, top: 6.5 },                                              // the land rises north of here into a bank
   // the stream and the pond: x, z, water level, half width, depth
   stream: [[46, -46, 1.7, 1.3, 0.35], [38, -32, 1.1, 1.4, 0.35], [31, -19, 0.35, 1.7, 0.4], [26, -9, -0.4, 4.2, 0.9], [22, 1, -0.5, 8, 1.4],
@@ -75,6 +79,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
 
   // ------------------------------------------------------------------ the land: a level clearing, a bank to the north, banks round the water
   await onStep('ปั้นพื้นดิน');
+  const paths = createPaths({ paths: M.paths, seed });
   const heightFn = (x, z) => {
     const r = Math.hypot(x, z);
     let h = (fbm3(x * 0.04, 0.5, z * 0.04, seed, 3) - 0.5) * 2.2 + (fbm3(x * 0.12, 1.7, z * 0.12, seed + 5, 2) - 0.5) * 0.5;
@@ -86,7 +91,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       h = lerp(h, Math.max(h, lv + 0.3 + Math.max(0, e) * 0.1), 1 - ss(4.5, 8, e));
       h = lerp(h, lv - wDepth[o], ss(1.5, -0.9 - wDepth[o] * 2.6, e));
     }
-    return h;
+    return h + paths.sink(x, z);
   };
   const field = G.createHeightField({ radius: FR, cells: CELLS, heightFn });
   const H = field.heightAt;
@@ -150,6 +155,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       }
     } catch { /* no builder layout in this browser */ }
   }
+  for (const st of paths.stones()) placeRock(st);                         // flat stones set into the paths, pebbles by their sides
   group.add(rocks);
 
   // ------------------------------------------------------------------ the ground's colour (sand by the water, earth under the bank), shadows
@@ -158,8 +164,10 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     if (Math.hypot(x, z) > 68) return [0, 0, 0];
     const e = gridAt(wEdge, x, z), wide = ss(0.5, 1.4, gridAt(wDepth, x, z));
     const sand = e < 4 ? 1 - ss(wide * 1.5, 0.5 + wide * 3, e) : 0;
-    const earth = ss(0.95, 1.4, slope(x, z)) * 0.7;                        // where the bank is steepest the grass gives up
-    return [earth, sand, 0];
+    let earth = ss(0.95, 1.4, slope(x, z)) * 0.7, mow = 0;                 // where the bank is steepest the grass gives up
+    const pp = paths.paint(x, z);
+    if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }
+    return [earth, sand, mow];
   };
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
   const L = new THREE.Vector3(...sun).normalize();
@@ -173,6 +181,9 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   const fade = { far, fadeA: FR * 0.8, fadeB: FR * 0.985 };
   const terrain = G.createTerrain(field, map, fade);
   group.add(terrain);
+  group.add(paths.ribbon(H, map));
+  { let fs = seed * 71; const pal = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee']];
+    for (const [x, z, r] of paths.flowers) group.add(N.createFlowers({ count: Math.round(30 * r), radius: r, seed: ++fs, heightAt: H, center: [x, z], colors: pal[fs % 3] })); }
 
   // ------------------------------------------------------------------ the water: a ribbon along the stream, wide over the pond
   await onStep('เติมน้ำ');
@@ -252,12 +263,13 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   const views = {
     start: M.spawn,
     'rk-clearing': { x: 0, z: 13, yaw: Math.PI }, 'rk-cliff': { x: -4, z: -8, yaw: Math.PI }, 'rk-pond': { x: 11, z: 3, yaw: Math.PI / 2 },
-    'rk-stream': { x: 28, z: -13, yaw: Math.PI * 0.85 },
+    'rk-stream': { x: 28, z: -13, yaw: Math.PI * 0.85 }, 'rk-path': { x: 3.5, z: 19, yaw: Math.PI + 0.3 },
   };
   console.info('[rocks] map rocks', DEMO.length, 'from the builder', fromBuilder, 'solid cells', solid.size, 'shadow casters', casters.length);
   group.userData = { kind: 'rocksTest', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); if (water.userData.levelTex) water.userData.levelTex.dispose(); RK.setRockWater({}); } };
   return {
     group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns: [], cameraTrunks: [], spawn: M.spawn, radius: M.radius, walkable, views,
+    keepClear: (x, z, r = 0) => { const q = paths.near(x, z); return q.d < q.half * 1.3 + r; },      // nothing grows on the paths
     name: 'ทดสอบหิน', stats: { rocks: rocks.children.length, fromBuilder },
     ripple, sim, optics, waterLevelAt: (x, z) => gridAt(wLevel, x, z),
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },

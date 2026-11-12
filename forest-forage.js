@@ -14,7 +14,8 @@ export async function createForestForage({ level, onStep = async () => {} }) {
     return Number.isFinite(y) && Math.hypot(p.x-x,p.z-z)<.1 && level.waterDepthAt(x,z)<.04
       && Math.abs(level.heightAt(x+.5,z)-y)<.5 && Math.abs(level.heightAt(x,z+.5)-y)<.5;
   };
-  const open = (x,z,r) => dry(x,z) && !level.colliders.some(([cx,cz,cr])=>Math.hypot(cx-x,cz-z)<cr+r);
+  // (a level may keep ground clear of things that grow, a path say, with keepClear(x, z, r))
+  const open = (x,z,r) => dry(x,z) && !level.colliders.some(([cx,cz,cr])=>Math.hypot(cx-x,cz-z)<cr+r) && !(level.keepClear && level.keepClear(x,z,r));
   const bushSites = [];
   const candidates=[[0,-3.2],[2.7,-2.7],[-2.7,-2.7],[3,-4],[-4,-5],[5,-10],[-6,-13],[9,-6],[-9,-4],[4,5],[-4,6],[12,2],[-12,2]];
   // Search more than a handful of fixed points: a map's rocks/river can occupy all of them.

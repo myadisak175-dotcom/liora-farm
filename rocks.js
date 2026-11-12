@@ -562,6 +562,7 @@ export function rockLandMaterial({ far = '#cde6f2' } = {}) {
 export const PROP_ROCK_TYPES = [
   { key: 'boulder', name: 'ก้อนใหญ่', group: 'rock' }, { key: 'stone', name: 'ก้อนกลาง', group: 'rock' }, { key: 'pillar', name: 'เสาหินตั้ง', group: 'rock' },
   { key: 'ledge', name: 'แผ่นหินซ้อนชั้น', group: 'rock' }, { key: 'pebbles', name: 'หินกรวด', group: 'rock' }, { key: 'paving', name: 'หินปูทาง', group: 'rock' },
+  { key: 'flagstone', name: 'หินแผ่นฝังทาง', group: 'rock' },
   { key: 'wall', name: 'ผาตรง', group: 'cliff' }, { key: 'corner', name: 'ผามุม', group: 'cliff' }, { key: 'overhang', name: 'ผายื่น', group: 'cliff' },
   { key: 'steps', name: 'ผาขั้นบันได', group: 'cliff' }, { key: 'spire', name: 'ยอดผา', group: 'cliff' }, { key: 'range', name: 'ผาประกอบ (ตัวอย่าง)', group: 'cliff' },
 ];
@@ -674,6 +675,8 @@ const PROP_BUILD = {
     }
     return out;
   },
+  flagstone: (rng, seed) => [chiselPiece({ seed, size: [0.42 * (0.85 + rng() * 0.35), 0.075, 0.36 * (0.85 + rng() * 0.35)], cuts: 6, detail: 7,      // one flat stone,
+    round: 2, blob: 0.07, sink: 0.45, planes: [[0, 1, 0, 0.6]] })],                                                                   // set into a path
   pebbles: (rng, seed) => {
     const out = [];
     for (let i = 0; i < 12 + Math.floor(rng() * 5); i++) {
@@ -740,7 +743,7 @@ Object.assign(PROP_BUILD, {
     return parts;
   },
 });
-const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, wall: 1, corner: 1, overhang: 1, steps: 1, spire: 0.8, range: 1 };
+const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, flagstone: 0.15, wall: 1, corner: 1, overhang: 1, steps: 1, spire: 0.8, range: 1 };
 
 
 // world: paint the foot's dark and the moss by height above the ground (y = 0) instead of by each piece's own foot, so pieces
