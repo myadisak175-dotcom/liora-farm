@@ -17,9 +17,13 @@
         rockBlock(opts), createRockBlocks(list, { material }), rockBlockMaterial(), faceBlocks(opts)
    4. ROCK LAND     (abyss depths)   — paint for the land behind the blocks: plain deep stone, so gaps read as cracks
         rockLandMaterial({ far })
+   5. ROCK PROPS    (catalog only, for now: rock-catalog.html) — loose rocks in a hand-painted stylized look: big flat
+                    chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale rim on the
+                    edges, moss on what faces the sky
+        PROP_ROCK_TYPES, createPropRock({ type, seed }), propRockMaterial({ moss })
    ========================================================================== */
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 import * as N from './stylized-nature.js';
 import { _strata } from './stylized-terrain.js';
@@ -544,4 +548,209 @@ export function rockLandMaterial({ far = '#cde6f2' } = {}) {
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
+}
+
+// ==================================================================================================== 5. ROCK PROPS
+// Loose rocks in the look of a hand-made stylized kit: a rough ball is cut by a dozen or so planes (the big flat faces), the
+// creases between them are rounded off a little (soft edges), and the paint goes by the faces: warm and light where the sun
+// is, cool blue-grey away from it, a pale rim along the edges, darker in the creases and at the foot, moss on the tops.
+export const PROP_ROCK_TYPES = [
+  { key: 'boulder', name: 'ก้อนใหญ่' }, { key: 'stone', name: 'ก้อนกลาง' }, { key: 'pillar', name: 'เสาหินตั้ง' },
+  { key: 'ledge', name: 'แผ่นหินซ้อนชั้น' }, { key: 'overhang', name: 'ผาหินยื่น' }, { key: 'pebbles', name: 'หินกรวด' },
+  { key: 'paving', name: 'หินปูทาง' },
+];
+const PROP_TONES = { lit: '#e2dccb', mid: '#b3b2a9', shade: '#808c98', deep: '#5c6877', rim: '#f7f4ea', sky: '#b9d3ea',
+  moss: ['#9cba45', '#6f9a3a', '#4b7a31'] };
+const PROP_SUN = new THREE.Vector3(-0.62, 0.62, 0.48).normalize();        // painted with a lowish sun, so the sides read light and dark
+
+// one chiselled piece (detail: how finely the ball is cut before the planes slice it; edges per side of each of its 20 faces). size: half widths [x, y, z]; cuts: how many planes slice it; up: share of the cuts that make tops;
+// planes: extra cuts [nx, ny, nz, keep] (keep: how far out the plane stands, of the piece's reach that way); round: how soft
+// the edges are; lean, taper: for pillars. The piece stands on y = 0 with a little of it under the ground.
+function chiselPiece({ seed = 1, size = [1, 1, 1], cuts = 20, up = 0.3, deep = [0.58, 0.82], planes = [], chips = null, detail = 14, round = 2, blob = 0.1, box = 0.55, lean = 0, taper = 0, sink = 0.08 } = {}) {
+  const rng = mulberry32(seed * 977 + 13), R = (a, b) => a + rng() * (b - a);
+  let g = new THREE.IcosahedronGeometry(1, detail);
+  g.deleteAttribute('normal'); g.deleteAttribute('uv');
+  g = mergeVertices(g);
+  const P = g.attributes.position.array, n = g.attributes.position.count, [sx, sy, sz] = size;
+  for (let i = 0; i < n; i++) {
+    let x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+    const c = 1 / Math.max(Math.abs(x), Math.abs(y), Math.abs(z));      // towards a block: rocks stand on upright sides and flat-ish tops
+    x += (x * c - x) * box * 0.6; y += (y * c - y) * box * 0.6; z += (z * c - z) * box * 0.6;
+    const r = 1 + (fbm3(x * 0.9 + seed * 1.7, y * 0.9, z * 0.9, seed, 2) - 0.5) * 2 * blob;
+    const t = 1 - taper * (y + 1) / 2;
+    P[i * 3] = x * r * sx * t + (y + 1) * lean * sy; P[i * 3 + 1] = y * r * sy; P[i * 3 + 2] = z * r * sz * t;
+  }
+  // the cuts: each plane takes off whatever stands out past it, leaving a flat face
+  const list = planes.map(([x, y, z, k]) => [new THREE.Vector3(x, y, z).normalize(), k]);
+  for (let c = 0; c < cuts; c++) {
+    const a = R(0, Math.PI * 2), el = rng() < up ? R(1.0, 1.5) : R(-0.28, 0.3);      // tops tip only a little; sides stand nearly upright
+    list.push([new THREE.Vector3(Math.cos(el) * Math.cos(a), Math.sin(el), Math.cos(el) * Math.sin(a)), R(deep[0], deep[1])]);
+  }
+  // then small chips off the corners and edges: little faces between the big ones
+  for (let c = 0, k = chips ?? Math.round(cuts * 1.3); c < k; c++) {
+    const a = R(0, Math.PI * 2), el = R(-0.5, 1.3);
+    list.push([new THREE.Vector3(Math.cos(el) * Math.cos(a), Math.sin(el), Math.cos(el) * Math.sin(a)), R(0.9, 0.97)]);
+  }
+  const facet = new Float32Array(n).fill(0.5);                            // which face each point ended up on: each face gets a tone of its own
+  for (const [nv, k] of list) {
+    const tone = rng();
+    let m = -1e9;
+    for (let i = 0; i < n; i++) m = Math.max(m, P[i * 3] * nv.x + P[i * 3 + 1] * nv.y + P[i * 3 + 2] * nv.z);
+    const d = m * k;
+    for (let i = 0; i < n; i++) {
+      const t = P[i * 3] * nv.x + P[i * 3 + 1] * nv.y + P[i * 3 + 2] * nv.z - d;
+      if (t > 0) { P[i * 3] -= t * nv.x; P[i * 3 + 1] -= t * nv.y; P[i * 3 + 2] -= t * nv.z; facet[i] = tone; }
+    }
+  }
+  // soften the creases (Taubin: smooth, then push back out, so the piece keeps its size)
+  const idx = g.index.array, nb = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i < idx.length; i += 3) { const a = idx[i], b = idx[i + 1], c = idx[i + 2]; nb[a].add(b).add(c); nb[b].add(a).add(c); nb[c].add(a).add(b); }
+  const NB = nb.map(q => [...q]), tmp = new Float32Array(n * 3);
+  const pass = f => {
+    for (let i = 0; i < n; i++) {
+      let x = 0, y = 0, z = 0; const q = NB[i];
+      for (const j of q) { x += P[j * 3]; y += P[j * 3 + 1]; z += P[j * 3 + 2]; }
+      const k = 1 / q.length;
+      tmp[i * 3] = P[i * 3] + (x * k - P[i * 3]) * f; tmp[i * 3 + 1] = P[i * 3 + 1] + (y * k - P[i * 3 + 1]) * f; tmp[i * 3 + 2] = P[i * 3 + 2] + (z * k - P[i * 3 + 2]) * f;
+    }
+    P.set(tmp);
+  };
+  for (let r = 0; r < round; r++) { pass(0.55); pass(-0.58); }
+  // the foot: flattened where it meets the ground, a little of it below
+  let y0 = 1e9, y1 = -1e9;
+  for (let i = 0; i < n; i++) { y0 = Math.min(y0, P[i * 3 + 1]); y1 = Math.max(y1, P[i * 3 + 1]); }
+  const foot = y0 + (y1 - y0) * 0.12;
+  for (let i = 0; i < n; i++) { let y = P[i * 3 + 1]; if (y < foot) y = foot + (y - foot) * 0.15; P[i * 3 + 1] = y - foot - sink * (y1 - y0); }
+  g.computeVertexNormals();
+  // what the paint needs: how sharply the surface bends at each point (out: an edge, in: a crease), how high up it is
+  const N = g.attributes.normal.array, curv = new Float32Array(n), hgt = new Float32Array(n), top = y1 - foot - sink * (y1 - y0), bot = -sink * (y1 - y0);
+  for (let i = 0; i < n; i++) {
+    let c = 0;
+    for (const j of NB[i]) {
+      const dx = P[j * 3] - P[i * 3], dy = P[j * 3 + 1] - P[i * 3 + 1], dz = P[j * 3 + 2] - P[i * 3 + 2], l = Math.hypot(dx, dy, dz) || 1;
+      c += (N[i * 3] * dx + N[i * 3 + 1] * dy + N[i * 3 + 2] * dz) / l;
+    }
+    curv[i] = c / NB[i].length;
+    hgt[i] = Math.max(0, Math.min(1, (P[i * 3 + 1] - bot) / (top - bot)));
+  }
+  g.setAttribute('aCurv', new THREE.BufferAttribute(curv, 1));
+  g.setAttribute('aHgt', new THREE.BufferAttribute(hgt, 1));
+  g.setAttribute('aFacet', new THREE.BufferAttribute(facet, 1));
+  return g;
+}
+// a piece set somewhere in the rock: turned, tipped, moved; its height-from-foot stays its own
+const place = (g, { x = 0, y = 0, z = 0, ry = 0, rx = 0, rz = 0 } = {}) => {
+  const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')).setPosition(x, y, z);
+  return g.applyMatrix4(m);
+};
+
+const PROP_BUILD = {
+  boulder: (rng, seed) => [chiselPiece({ seed, size: [1.45 * (0.9 + rng() * 0.2), 1.0 * (0.85 + rng() * 0.3), 1.2], cuts: 22, up: 0.3 })],
+  stone: (rng, seed) => [chiselPiece({ seed, size: [0.62, 0.42 + rng() * 0.12, 0.5], cuts: 16, detail: 9, up: 0.35 })],
+  pillar: (rng, seed) => {
+    const h = 2.4 + rng() * 0.9;
+    return [chiselPiece({ seed, size: [0.62, h, 0.55], cuts: 22, up: 0.15, deep: [0.7, 0.9], lean: (rng() - 0.5) * 0.12, taper: 0.22, sink: 0.04, blob: 0.12 }),
+      place(chiselPiece({ seed: seed + 5, size: [0.55, 0.35, 0.45], cuts: 10, detail: 7 }), { x: 0.75, z: 0.35, ry: rng() * 6 })];      // a chunk fallen at its foot
+  },
+  ledge: (rng, seed) => {                                                  // slabs stacked in steps, each a little smaller and set back
+    const out = [], k = 3 + Math.floor(rng() * 2);
+    let y = 0, x = 0, z = 0;
+    for (let i = 0; i < k; i++) {
+      const w = 2.5 - i * 0.42 + rng() * 0.3, d = 1.8 - i * 0.25 + rng() * 0.25, t = 0.32 + rng() * 0.12;
+      out.push(place(chiselPiece({ seed: seed + i * 11, size: [w, t, d], cuts: 14, up: 0.15, planes: [[0, 1, 0, 0.82], [0.12, 1, -0.1, 0.86]], sink: i ? 0.25 : 0.1, blob: 0.1 }), { x, y, z, ry: (rng() - 0.5) * 0.5 }));
+      y += t * 1.45; x += (rng() - 0.5) * 0.6 - 0.25; z += (rng() - 0.5) * 0.4;
+    }
+    return out;
+  },
+  overhang: (rng, seed) => [                                               // a big slab tipped up over a mass of rock, jutting out
+    chiselPiece({ seed, size: [2.0, 1.4, 1.9], cuts: 20, up: 0.25 }),
+    place(chiselPiece({ seed: seed + 3, size: [3.2, 0.62, 1.75], cuts: 16, up: 0.15, planes: [[0, 1, 0, 0.85]], sink: 0, blob: 0.1 }), { x: 1.6, y: 1.55, z: 0.1, rz: 0.2, ry: (rng() - 0.5) * 0.3 }),
+    place(chiselPiece({ seed: seed + 7, size: [0.8, 0.55, 0.7], cuts: 10, detail: 8 }), { x: 3.3, z: -0.6, ry: rng() * 6 }),
+  ],
+  pebbles: (rng, seed) => {
+    const out = [];
+    for (let i = 0; i < 12 + Math.floor(rng() * 5); i++) {
+      const s = 0.09 + rng() * 0.16 * (i < 3 ? 1.6 : 1), a = rng() * 6.28, r = Math.sqrt(rng()) * 0.95;
+      out.push(place(chiselPiece({ seed: seed * 31 + i, size: [s * (1 + rng() * 0.4), s * 0.5, s], cuts: 5, detail: 4, round: 2, blob: 0.1, sink: 0.15 }), { x: Math.cos(a) * r, z: Math.sin(a) * r, ry: rng() * 6 }));
+    }
+    return out;
+  },
+  paving: (rng, seed) => {                                                 // stepping stones along a gentle curve
+    const out = [];
+    for (let i = 0; i < 5; i++) {
+      const t = i - 2, s = 0.34 + rng() * 0.08;
+      out.push(place(chiselPiece({ seed: seed * 17 + i, size: [s * 1.15, 0.11, s], cuts: 4, detail: 7, round: 2, blob: 0.06, sink: 0.35,
+        planes: [[1, 0, 0, 0.8], [-1, 0, 0, 0.8], [0, 0, 1, 0.82], [0, 0, -1, 0.82], [0, 1, 0, 0.7]] }), { x: t * 0.82, z: Math.sin(t * 0.7) * 0.35, ry: (rng() - 0.5) * 0.5 }));
+    }
+    return out;
+  },
+};
+const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, overhang: 1, pebbles: 0, paving: 0.35 };
+
+export function createPropRock({ type = 'boulder', seed = 1 } = {}) {
+  const rng = mulberry32(seed * 7919 + type.length * 31);
+  const geo = mergeGeometries(PROP_BUILD[type](rng, seed));
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, propRockMaterial({ moss: PROP_MOSS[type] }));
+  mesh.name = 'propRock-' + type;
+  mesh.userData = { kind: 'propRock', type, seed, dispose: () => geo.dispose() };
+  return mesh;
+}
+
+const propMats = {};
+export function propRockMaterial({ moss = 1 } = {}) {
+  const key = 'm' + moss;
+  if (propMats[key]) return propMats[key];
+  const T = PROP_TONES;
+  return (propMats[key] = new THREE.ShaderMaterial({
+    uniforms: {
+      uLit: { value: rgb(T.lit) }, uMid: { value: rgb(T.mid) }, uShade: { value: rgb(T.shade) }, uDeep: { value: rgb(T.deep) }, uRim: { value: rgb(T.rim) }, uSky: { value: rgb(T.sky) },
+      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uSun: { value: PROP_SUN },
+      uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
+    },
+    vertexShader: /* glsl */`
+      uniform float uHazeNear, uHazeFar, uHazeMax;
+      attribute float aCurv, aHgt, aFacet;
+      varying vec3 vWN, vWP;
+      varying float vCurv, vHgt, vFacet, vHaze;
+      void main() {
+        vWN = normalize(mat3(modelMatrix) * normal);
+        vec4 wp = modelMatrix * vec4(position, 1.0); vWP = wp.xyz;
+        vCurv = aCurv; vHgt = aHgt; vFacet = aFacet;
+        vec4 mv = viewMatrix * wp;
+        vHaze = uHazeMax * smoothstep(uHazeNear, uHazeFar, length(mv.xyz));
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      ${NOISE}
+      ${HAZEF}
+      uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
+      uniform float uMoss;
+      varying vec3 vWN, vWP;
+      varying float vCurv, vHgt, vFacet;
+      void main() {
+        vec3 n = normalize(vWN);
+        // the light, painted in a few soft steps; the brush wobbles a little
+        float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.07 + (vFacet - 0.5) * 0.16;   // each face its own tone
+        vec3 col = mix(uDeep, uShade, smoothstep(0.28, 0.38, t));
+        col = mix(col, uMid, smoothstep(0.5, 0.6, t));
+        col = mix(col, uLit, smoothstep(0.7, 0.78, t));
+        col = mix(col, col * uSky * 1.25, (1.0 - smoothstep(0.4, 0.65, t)) * clamp(n.y * 0.5 + 0.5, 0.0, 1.0) * 0.35);   // sky in the shade
+        // edges catch the light, creases hold the dark
+        float edge = clamp(-vCurv * 5.0 - 0.08, 0.0, 1.0), crease = clamp(vCurv * 5.0 - 0.05, 0.0, 1.0);
+        col = mix(col, uRim, edge * mix(0.25, 0.65, smoothstep(0.35, 0.75, t)));
+        col *= 1.0 - crease * 0.38;
+        col *= 0.93 + 0.14 * noise2(vWP.xz * 0.45 + vWP.y * 0.3);                       // broad changes of tone across the rock
+        float side = 1.0 - abs(n.y);                                                      // faint weathering streaks down the sides
+        col *= 1.0 - side * 0.1 * smoothstep(0.55, 0.85, noise2(vec2((vWP.x + vWP.z) * 2.6, vWP.y * 0.35)));
+        col *= mix(0.6, 1.0, smoothstep(0.0, 0.3, vHgt));                               // dark where it meets the ground
+        if (uMoss > 0.0) {
+          float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - vHgt) * 0.8 - (1.0 - uMoss) * 0.3 - 0.03;
+          vec3 mc = mix(uM2, mix(uM1, uM0, smoothstep(0.86, 1.0, n.y + (noise2(vWP.xz * 3.0) - 0.5) * 0.2)), smoothstep(0.35, 0.7, t));
+          col *= 1.0 - 0.22 * smoothstep(0.5, 0.64, m) * (1.0 - smoothstep(0.64, 0.7, m));   // a shadow just under the moss's edge
+          col = mix(col, mc, smoothstep(0.64, 0.7, m));
+        }
+        gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
+      }`,
+  }));
 }

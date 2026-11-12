@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#9cc7ea">
+<title>หิน stylized — แคตตาล็อก</title>
+<!--
+  rock-catalog.html  —  look at the stylized prop rocks (rocks.js, section 5) one at a time, or all in a row.
+  One job: show them. Nothing here goes into the game.
+    ?type=pillar   open on that rock        ?all=1   open on the row of all of them        ?seed=4   which dice
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9cc7ea; font-family: system-ui, sans-serif; touch-action: none; }
+  canvas { display: block; }
+  #name { position: fixed; left: 0; right: 0; top: calc(12px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 18px system-ui; color: #fff; text-shadow: 0 1px 6px #0006; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.85; margin-top: 2px; }
+  #bar { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 0 8px; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 10px 16px; background: #1d4f6ed9; color: #fff; font: 700 14px system-ui; touch-action: manipulation; }
+  #bar button.on { background: #c0702e; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./rocks.js": "./rocks.js?v=props1"
+} }
+</script>
+</head>
+<body>
+<div id="name"></div>
+<div id="bar">
+  <button id="prev">◀</button>
+  <button id="next">▶</button>
+  <button id="dice">🎲 สุ่มใหม่</button>
+  <button id="all">🪨 ดูทั้งหมด</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import { PROP_ROCK_TYPES, createPropRock } from './rocks.js';
+
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+{ // a sky: deep blue overhead, pale at the horizon
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+N.setHaze({ color: '#cfe4f1', near: 25, far: 90, max: 0.55 });
+const ground = N.createGround({ radius: 60, flat: 18, hills: 1, far: '#cfe4f1' });
+scene.add(ground);
+const H = ground.userData.heightAt;
+scene.add(N.createGrass({ count: 2600, radius: 16, heightAt: H, seed: 4, avoid: (x, z) => Math.abs(z) < 2.2 && Math.abs(x) < 15 }));
+for (const [x, z, type, s] of [[-14, -16, 'broadleaf', 3], [10, -19, 'pine', 5], [17, -12, 'oak', 8], [-21, -6, 'birch', 11]]) {
+  const t = N.createTree({ type, seed: s }); t.position.set(x, H(x, z) - 0.05, z); scene.add(t);
+}
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 400);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 1.5; controls.maxDistance = 40;
+
+const SIZE = { boulder: 4.5, stone: 2.2, pillar: 6.5, ledge: 5.5, overhang: 8, pebbles: 3, paving: 4.2 };
+let index = Math.max(0, PROP_ROCK_TYPES.findIndex(t => t.key === Q.get('type')));
+let seed = +Q.get('seed') || 1, showAll = Q.has('all');
+const shown = new THREE.Group(); scene.add(shown);
+const clear = () => { for (const m of [...shown.children]) { m.userData.dispose && m.userData.dispose(); shown.remove(m); } };
+const nameEl = document.getElementById('name');
+
+function build() {
+  clear();
+  if (showAll) {                                                          // all of them in a row, like a kit sheet
+    let x = -13;
+    for (const t of PROP_ROCK_TYPES) {
+      const r = createPropRock({ type: t.key, seed }), w = SIZE[t.key] * 0.75;
+      x += w / 2; r.position.set(x, H(x, 0), 0); x += w / 2 + 0.6;
+      shown.add(r);
+    }
+    shown.position.x = 13 - (x + 13 - 0.6) / 2;                           // the row centred
+    nameEl.innerHTML = `หินทั้งหมด <small>ชุดที่ ${seed} · ลากเพื่อหมุนดู</small>`;
+    controls.target.set(0, 1.2, 0); camera.position.set(1.5, 4.6, 16.5);
+  } else {
+    shown.position.x = 0;
+    const t = PROP_ROCK_TYPES[index], r = createPropRock({ type: t.key, seed }), s = SIZE[t.key];
+    r.position.y = H(0, 0); shown.add(r);
+    nameEl.innerHTML = `${t.name} <small>${index + 1} / ${PROP_ROCK_TYPES.length} · ชุดที่ ${seed}</small>`;
+    controls.target.set(0, s * 0.18, 0); camera.position.set(s * 0.5, s * 0.38, s * 0.85);
+  }
+  document.getElementById('all').classList.toggle('on', showAll);
+  controls.update();
+}
+document.getElementById('prev').onclick = () => { showAll = false; index = (index + PROP_ROCK_TYPES.length - 1) % PROP_ROCK_TYPES.length; build(); };
+document.getElementById('next').onclick = () => { showAll = false; index = (index + 1) % PROP_ROCK_TYPES.length; build(); };
+document.getElementById('dice').onclick = () => { seed++; build(); };
+document.getElementById('all').onclick = () => { showAll = !showAll; build(); };
+build();
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const clock = new THREE.Clock();
+const frame = () => { N.update(clock.getDelta()); controls.update(); renderer.render(scene, camera); };
+window.__cat = { frame, renderer, scene, camera, controls, build, set: (o) => { if ('index' in o) index = o.index; if ('seed' in o) seed = o.seed; if ('all' in o) showAll = o.all; build(); } };
+if (!Q.get('still')) renderer.setAnimationLoop(frame);
+</script>
+</body>
+</html>
