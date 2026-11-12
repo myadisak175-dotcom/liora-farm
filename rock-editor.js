@@ -15,7 +15,7 @@
 //   ⋯              the rocks as text, to send to Claude to put into rocks-layout.js for everyone, or to paste back in;
 //                  back to the game's own layout
 //
-// Works on a level that offers level.rockEdit (rocks-level.js). Nothing here knows how a rock is made: rocks.js draws them.
+// Works on a level that offers level.rockEdit (rock-world.js: every map whose rocks it puts in the world). Nothing here knows how a rock is made: rocks.js draws them.
 //
 //   const editor = createRockEditor({ level, camera, player });      // null on a map without it
 //   editor.open();                          editor.active is true while it is open
@@ -27,7 +27,7 @@ import { moveKitRock, propRockGeometry } from './rocks.js';
 
 const RESUME_KEY = 'liora.rockEditor.resume';
 const SEEDS = 6;                                                            // shapes of each kind to choose from
-const CLIFF = new Set(['cliffFace', 'cliffTall', 'buttress', 'slopeRock']);  // put down at a cliff, these are fitted to its edge
+const CLIFF = new Set(['cliffFace', 'cliffTall', 'buttress', 'slopeRock', 'bluffTall', 'bluffWide', 'bluffSplit', 'bluffLow', 'bluffLowSplit']);      // put down at a cliff, these are fitted to its edge
 const CSS = `
 #rockEditor { position:fixed; inset:0; z-index:60; touch-action:none; user-select:none; -webkit-user-select:none; font:600 13px system-ui, sans-serif; color:#16324a; pointer-events:none; }
 #rockEditor canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:auto; touch-action:none; }

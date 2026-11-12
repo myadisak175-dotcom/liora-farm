@@ -18,13 +18,12 @@
 // (rock-editor.js, the 🪨 button), the way an artist goes over a layout. What was placed by hand is the map's rocks from then on:
 // kept in this browser, and once copied into rocks-layout.js, in the game for everyone (level.rockEdit is what the editor uses).
 //
-// All the rocks are drawn as a few instanced groups (createRockKit): the same few shapes, many times over.
-// How a rock takes part in the world (the footprint below, the same for every rock): the ground under it is cut into one-metre
-// cells. Each cell it stands on is solid (she walks round it), grows no grass, has the grass round it pressed down and its
-// ground shaded (the dark at the foot that sets a rock on the ground), throws a shadow with the sun, and keeps the water's waves
-// out (so the water swells round it); tall ones keep the camera from passing through them. The rocks also know the ground's
-// height (their foot shading and moss go by it), the water's level (a wet band at the waterline, greener under the water) and
-// where the sun is.
+// The rocks take part in the world through rock-world.js, the same on every map: drawn as a few instanced groups (the same few
+// shapes, many times over, each as finely as its distance calls for); each one's footprint on the land in one-metre cells (solid
+// where it stands out, no grass, the grass round it pressed down, its ground shaded, a shadow with the sun, the camera kept out
+// of tall ones); their tops she can stand on, and the meadow's grass on the mossy ones. This map adds what only it knows: where
+// its cliff runs (fitToBrink below: the cliff's pieces fitted to its edge), the water's level (a wet band at the waterline,
+// greener under the water; the waves swell round the rocks in the water) and where the sun is.
 
 import * as THREE from 'three';
 import * as N from './stylized-nature.js';
@@ -36,13 +35,13 @@ import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall } from './stylized-waterfall.js';
 import { ROCKS_MAP_LAYOUT } from './rocks-layout.js';
+import { createRockWorld } from './rock-world.js';
 
 const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
 export const ROCKS_EDIT_KEY = 'liora.rocks.layout.v2';                  // where this browser keeps the rocks as placed by hand
-const PROP_KEYS = new Set(RK.PROP_ROCK_TYPES.map(t => t.key));
 const UP = 7.5, POND = -0.5;                                               // the water's level on the plateau, and in the pool and the pond
 export const ROCKS_MAP = {
   radius: 49, fieldRadius: 76,
@@ -236,132 +235,25 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       put('footRock', sgn > 0 ? 2 : 3, C.falls + sgn * 3.6, lipZ + 4.6, { ry: R(0, 360), s: 1.15, sink: 0.5 });
     }
   }
-  // ---- placed by hand (rock-editor.js): a list of every rock, laid over what the code put down. Kept as height above the ground
-  // rather than height, so it stays put on the land.
-  const QS = new URLSearchParams(location.search);
-  const r2 = v => Math.round(v * 100) / 100, r1 = v => Math.round(v * 10) / 10;
-  const toRow = it => [it.type, it.seed || 1, r2(it.x), r2(it.z), r2((it.y ?? 0) - H(it.x, it.z)), r1(it.ry || 0), r1(it.rx || 0), r1(it.rz || 0), Math.round((it.s || 1) * 1000) / 1000, Math.round((it.sy || 1) * 1000) / 1000, it.fit ? 1 : 0];
-  const fromRow = ([type, sd, x, z, dy, ry, rx, rz, s, sy = 1, fit = 0]) => ({ type, seed: sd, x, z, y: H(x, z) + dy, ry, rx, rz, s, sy, fit: !!fit });
-  const validLayout = d => !!(d && Array.isArray(d.rocks) && d.rocks.every(r => Array.isArray(r) && r.length >= 9 && r.length <= 11 && PROP_KEYS.has(r[0]) && r.slice(1).every(Number.isFinite)));
-  const generated = rockList.map(it => ({ ...it }));
-  const committed = validLayout(ROCKS_MAP_LAYOUT) ? ROCKS_MAP_LAYOUT : null;
-  let local = null;
-  if (QS.get('edits') !== 'off') {
-    try { local = JSON.parse(localStorage.getItem(ROCKS_EDIT_KEY) || 'null'); } catch { /* none kept */ }
-    if (!validLayout(local)) local = null;
-  }
-  const layout = QS.get('edits') === 'off' ? null : local || committed;
-  if (layout) { rockList.length = 0; for (const r of layout.rocks) rockList.push(fromRow(r)); }
-  const placed = rockList.length;                                           // the rocks that can be moved by hand (not the builder's)
-  // the rocks put together in the builder (this browser's last layout), set in the clearing
-  let fromBuilder = 0;
+  // ---- the rocks in the world (rock-world.js, the same on every map): placed by hand over what the code put down, drawn, each
+  // one's footprint on the land, where she stands on their tops (the heads of the cliff's pieces under the plateau's edge, low
+  // rocks, stepping stones), the meadow's grass on the tops of the mossy ones. The rocks put together in the builder (this
+  // browser's last layout) stand in the clearing with them, not moved by hand here.
+  const QS = new URLSearchParams(location.search), builder = [];
   if (!QS.has('layout')) {
     try {
       const d = JSON.parse(localStorage.getItem('rockBuilder.v1') || 'null');
       for (const q of (d && d.pieces) || []) {
         if (!RK.PROP_ROCK_TYPES.some(t => t.key === q.type)) continue;
         const x = M.clearing.x + (+q.x || 0), z = M.clearing.z + (+q.z || 0);
-        put(q.type, q.seed | 0 || 1, x, z, { ry: +q.ry || 0, rx: +q.rx || 0, rz: +q.rz || 0, s: +q.s || 1, y: H(x, z) + (+q.y || 0) });
-        fromBuilder++;
+        builder.push({ type: q.type, seed: q.seed | 0 || 1, x, z, y: H(x, z) + (+q.y || 0), ry: +q.ry || 0, rx: +q.rx || 0, rz: +q.rz || 0, s: +q.s || 1 });
       }
     } catch { /* no builder layout in this browser */ }
   }
-  const makeKit = list => {
-    const kit = RK.createRockKit(list);
-    kit.name = 'rocks';
-    kit.traverse(o => o.layers.enable(W.UNDERWATER));
-    return kit;
-  };
-  let rocks = makeKit(rockList);
-  group.add(rocks);
-  // each rock's footprint: the cells it stands on (a cell is taken if a point of its surface comes down to within half a metre
-  // of the ground there) and how tall it is over each
-  // ---- where she can stand on the rocks: the tops of the rocks, worked out from their real shapes on a grid of half a metre.
-  // A cell of rock top she can stand on: reached from the land she walks on (or from another such cell) by a step of no more
-  // than half a metre, and with nothing round it that drops away more than that (so she stops short of a rock's edge). The
-  // heads of the cliff's rocks, under the plateau's edge, are such cells; so are low rocks and stepping stones.
-  const SG = 0.5, standTop = new Map(), standable = new Set(), grassTop = new Map();
   const walkLand = (x, z) => Math.hypot(x, z) < M.radius && waterDepthAt(x, z) < 0.9 && slope(x, z) < 0.85;
-  {
-    const top = new Map(), key = (i, j) => i + ',' + j, pts = RK.sampleKitSurface(rocks, { step: 0.3, seed });
-    for (let q = 0; q < pts.length; q += 4) { const k = key(Math.floor(pts[q] / SG), Math.floor(pts[q + 2] / SG)); if (!(top.get(k) >= pts[q + 1])) top.set(k, pts[q + 1]); }
-    // a cell of rock: where a rock stands well out of the land, or covers land too steep to walk on (the cliff's face, at its
-    // brink): its height, the rock's top (or the land's, if that is higher)
-    const rockAt = (i, j) => {
-      const t = top.get(key(i, j)), x = (i + 0.5) * SG, z = (j + 0.5) * SG;
-      if (t === undefined) return null;
-      const h = H(x, z);
-      return t > h + 0.35 || (t > h - 0.5 && !walkLand(x, z)) ? Math.max(t, h) : null;
-    };
-    const heightOf = (i, j) => rockAt(i, j) ?? H((i + 0.5) * SG, (j + 0.5) * SG);
-    const landOk = (i, j) => rockAt(i, j) === null && walkLand((i + 0.5) * SG, (j + 0.5) * SG);
-    const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    const inner = (i, j, t) => N4.every(([a, b]) => { const r = rockAt(i + a, j + b); return r !== null ? Math.abs(r - t) <= 0.6 : landOk(i + a, j + b) && Math.abs(H((i + a + 0.5) * SG, (j + b + 0.5) * SG) - t) <= 0.6; });
-    const queue = [];
-    for (const k of top.keys()) {
-      const [i, j] = k.split(',').map(Number), t = rockAt(i, j);
-      if (t === null || !inner(i, j, t)) continue;
-      const x = (i + 0.5) * SG, z = (j + 0.5) * SG;
-      if (waterDepthAt(x, z) > 0 && t < levelAt(x, z) + 0.05) continue;     // (under the water)
-      if (N4.some(([a, b]) => landOk(i + a, j + b) && Math.abs(H((i + a + 0.5) * SG, (j + b + 0.5) * SG) - t) <= 0.5)) { standable.add(k); queue.push([i, j]); }
-      else standTop.set(k, t);                                               // (a candidate: reached, if at all, from another rock top)
-    }
-    while (queue.length) {
-      const [i, j] = queue.pop(), t = rockAt(i, j);
-      for (const [a, b] of N4) {
-        const k = key(i + a, j + b);
-        if (standable.has(k) || !standTop.has(k)) continue;
-        if (Math.abs(standTop.get(k) - t) <= 0.5) { standable.add(k); queue.push([i + a, j + b]); }
-      }
-    }
-    standTop.clear();
-    for (const k of standable) { const [i, j] = k.split(',').map(Number); standTop.set(k, rockAt(i, j)); }
-    // where the meadow's own grass grows on: the rock tops she stands on whose top is the flat top of a mossy rock, and not at
-    // an edge (each side another such top, or the land)
-    const mossTop = new Map(), mp = RK.sampleKitSurface(rocks, { step: 0.25, seed: seed + 3, filter: it => RK.rockMoss(it.type) >= 0.75 });
-    for (let q = 0; q < mp.length; q += 4) { if (mp[q + 3] < 0.8) continue; const k = key(Math.floor(mp[q] / SG), Math.floor(mp[q + 2] / SG)); if (!(mossTop.get(k) >= mp[q + 1])) mossTop.set(k, mp[q + 1]); }
-    const lawnish = k => standable.has(k) && Math.abs((mossTop.get(k) ?? -1e9) - standTop.get(k)) < 0.15;
-    for (const k of standable) {
-      if (!lawnish(k)) continue;
-      const [i, j] = k.split(',').map(Number);
-      if (N4.every(([a, b]) => lawnish(key(i + a, j + b)) || landOk(i + a, j + b))) grassTop.set(k, standTop.get(k));
-    }
-  }
-  const standKey = (x, z) => Math.floor(x / SG) + ',' + Math.floor(z / SG);
-  const onRockTop = (x, z) => standable.has(standKey(x, z));
-  const standAt = (x, z) => {                                              // the height she stands at: the rock's top, or the land
-    if (!onRockTop(x, z)) return H(x, z);
-    const fx = x / SG - 0.5, fz = z / SG - 0.5, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, own = standTop.get(standKey(x, z));
-    const at = (a, b) => standTop.get((i + a) + ',' + (j + b)) ?? own;       // (smoothed between neighbouring tops)
-    return (at(0, 0) * (1 - u) + at(1, 0) * u) * (1 - v) + (at(0, 1) * (1 - u) + at(1, 1) * u) * v;
-  };
-  const colliders = [], shade = [], bare = [], press = [], casters = [], cameraTrunks = [], solid = new Set();
-  {
-    const v = new THREE.Vector3(), cells = new Map();
-    for (const { geometry, matrix } of rocks.userData.instances) {
-      const pos = geometry.attributes.position;
-      for (let i = 0; i < pos.count; i += 2) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
-        const cx = Math.floor(v.x), cz = Math.floor(v.z), key = cx + ',' + cz;
-        let c = cells.get(key);
-        if (!c) cells.set(key, c = { cx, cz, g: H(cx + 0.5, cz + 0.5), low: Infinity, top: -Infinity });
-        c.low = Math.min(c.low, v.y - c.g); c.top = Math.max(c.top, v.y - c.g);
-      }
-    }
-    for (const c of cells.values()) {
-      if (c.low > 0.5 || c.top < 0.08) continue;                            // an overhang above the ground, or a sliver at its foot
-      const x = c.cx + 0.5, z = c.cz + 0.5;
-      const stood = [0.25, 0.75].reduce((n, a) => n + [0.25, 0.75].filter(b => onRockTop(c.cx + a, c.cz + b)).length, 0);
-      if (c.top > 0.35 && stood < 3) { colliders.push([x, z, 0.62]); solid.add(c.cx + ',' + c.cz); }      // (a rock top she can stand on is not in her way)
-      bare.push([x, z, 0.55]); press.push([x, z, 1.25]);
-      if (c.top < 0.25) continue;                                            // a flat stone or pebbles: no pool of shade, no shadow worth drawing
-      shade.push([x, z, 1.3, Math.min(0.55, 0.2 + c.top * 0.12)]);
-      const above = c.g + c.top - Math.max(H(x + 3, z), H(x - 3, z), H(x, z + 3), H(x, z - 3));      // (a rock on the cliff's face casts only as high as it stands above the land beside it)
-      if (above > 0.3) casters.push([x, z, Math.min(c.top, above), 0.62, 0.85]);
-      if (c.top > 1.8) cameraTrunks.push([x, z, 0.7, c.g, c.g + c.top]);
-    }
-  }
-  const inRock = (x, z) => solid.has(Math.floor(x) + ',' + Math.floor(z));
+  const rw = createRockWorld({ group, list: rockList, extra: builder, heightAt: H, walkLand, waterDepthAt, waterLevelAt: levelAt, seed,
+    key: ROCKS_EDIT_KEY, committed: ROCKS_MAP_LAYOUT, fit: it => fitToBrink(it), onKit: kit => kit.traverse(o => o.layers.enable(W.UNDERWATER)) });
+  const { colliders, shade, bare, press, casters, cameraTrunks, inRock, onRockTop, standAt } = rw;
 
   // ------------------------------------------------------------------ trees: a ring far off, and a few on the plateau above the cliff
   const plants = [];
@@ -399,8 +291,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     return casters.map(([x, z, h, r, st]) => [x + ux * len * h / 2, z + uz * len * h / 2, len * h / 2 + r, r * 1.1, ux, uz, st, 0]);
   };
   // (bare earth on this map is the cliff's rock showing between the pieces: grey, like their shaded sides; the paths have a paint of their own)
-  const grow = [...grassTop.keys()].map(k => { const [i, j] = k.split(',').map(Number); return [(i + 0.5) * SG, (j + 0.5) * SG, 0.4]; });      // (the grass on the rocks' tops)
-  const map = G.createGroundMap({ radius: FR, size: 1024, seed, heightAt: H, dirt: 0, lawn: true, grow, shade, bare, press, paint, cast: sunShadows(L.clone()),
+  const map = G.createGroundMap({ radius: FR, size: 1024, seed, heightAt: H, dirt: 0, lawn: true, grow: rw.grow, shade, bare, press, paint, cast: sunShadows(L.clone()),
     colors: { ...G.GROUND_COLORS, deep: '#55924a', mid: '#7cae40', sunny: '#9fc84a', shade: '#447a3c', dirt: '#73829f' } });
   const fade = { far, fadeA: FR * 0.8, fadeB: FR * 0.985 };
   const terrain = G.createTerrain(field, map, fade);
@@ -481,23 +372,12 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
 
   // ------------------------------------------------------------------ grass, leaves
   await onStep('ปลูกหญ้า');
-  const grassField = { texture: field.texture, rect: field.rect };
-  if (grassTop.size) {
-    const n = field.n, hh = new Uint16Array(n * n);
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const x = -FR + i * STEP, z = -FR + j * STEP, ci = Math.round(x / SG), cj = Math.round(z / SG);      // (a point of the land's grid lies between four cells)
-      let h = field.heights[j * n + i];
-      for (const [a, b] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) { const t = grassTop.get((ci + a) + ',' + (cj + b)); if (t !== undefined && t > h) h = t; }
-      hh[j * n + i] = THREE.DataUtils.toHalfFloat(h);
-    }
-    grassField.texture = new THREE.DataTexture(hh, n, n, THREE.RedFormat, THREE.HalfFloatType);
-    grassField.texture.magFilter = grassField.texture.minFilter = THREE.LinearFilter; grassField.texture.needsUpdate = true;
-  }
+  const grassField = rw.grassField(field);                                 // (the land's height, with the grassy rock tops raised into it)
   const grass = G.createFollowGrass({ map, field: grassField, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
   // the tops of the mossy rocks are the meadow's own grass: the paint under it (rocks.js, setRockLawn), and the meadow's blades,
   // which stand at the height of the land, or of the rock's top where it grows on one (a picture of the land's height with the
   // grassy rock tops raised into it)
-  RK.setRockLawn({ texture: map.lawnTexture, center: map.center, size: FR * 2 });
+  rw.useLawn(map);
 
   group.add(grass);
   if (plants.length) group.add(N.createForest(plants));
@@ -511,40 +391,24 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   const waterSpheres = [new THREE.Sphere(new THREE.Vector3(22, POND, 4), 14), new THREE.Sphere(new THREE.Vector3(26, POND, -17), 10), new THREE.Sphere(new THREE.Vector3(34, -1, 30), 10),
     new THREE.Sphere(new THREE.Vector3(C.falls, UP / 2, lipZ), UP / 2 + 3)];
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
-  let frameNo = 0, baked = false;
+  let frameNo = 0;
   const walkable = (x, z) => Math.hypot(x, z) < M.radius && (onRockTop(x, z) || (waterDepthAt(x, z) < 0.9 && !inRock(x, z) && slope(x, z) < 0.85));
   const views = {
     start: M.spawn,
     'rk-clearing': { x: 0, z: 13, yaw: Math.PI }, 'rk-cliff': { x: -4, z: -8.5, yaw: Math.PI + 0.2 }, 'rk-falls': { x: 19.5, z: -15.5, yaw: 2.5 },
     'rk-top': { x: 21.5, z: -29.5, yaw: 0.5 }, 'rk-pond': { x: 11, z: 3, yaw: Math.PI / 2 }, 'rk-stream': { x: 26.5, z: 26.8, yaw: 2.1 }, 'rk-path': { x: 3.5, z: 19, yaw: Math.PI + 0.3 },
   };
-  console.info('[rocks] rock tops she can stand on', standable.size * SG * SG, 'm2, grass on', grassTop.size * SG * SG, 'm2 of them; rocks', rockList.length, 'in', rocks.userData.shapes, 'shapes,', Math.round(rocks.userData.triangles / 1000) + 'k triangles in full; from the builder', fromBuilder, '; solid cells', solid.size, 'shadow casters', casters.length);
+  const st = rw.stats;
+  console.info('[rocks] rock tops she can stand on', st.standM2, 'm2, grass on', st.grassM2, 'm2 of them; rocks', st.rocks, 'in', st.shapes, 'shapes,', Math.round(st.triangles / 1000) + 'k triangles in full; from the builder', builder.length, '; solid cells', st.solid, 'shadow casters', casters.length);
   group.userData = { kind: 'rocksTest', dispose() {
     group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); });
-    waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); if (grassField.texture !== field.texture) grassField.texture.dispose(); levelTex.dispose(); RK.setRockWater({}); RK.setRockLawn({}); W.WATER_CHURN.value.w = 0;
+    waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); rw.dispose(); levelTex.dispose(); RK.setRockWater({}); W.WATER_CHURN.value.w = 0;
   } };
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: M.spawn, radius: M.radius, walkable, views,
     keepClear: (x, z, r = 0) => onPath(x, z, r) || slope(x, z) > 0.6,       // nothing grows on the paths or on the cliff's face
-    // for the rock editor: the rocks that can be moved, what they were before (the game's own layout; and the code's, if the game
-    // has one placed by hand), and a way to draw a changed list at once (her paths round them, the grass and the shadows follow
-    // when the scene loads again)
-    rockEdit: {
-      key: ROCKS_EDIT_KEY, heightAt: H, fit: fitToBrink, types: RK.PROP_ROCK_TYPES.filter(t => t.key !== 'range'), edited: !!local,
-      get kit() { return rocks; },
-      items: () => rockList.slice(0, placed).map(it => ({ ...it })),
-      base: () => committed ? committed.rocks.map(fromRow) : generated.map(it => ({ ...it })),
-      generated: committed ? () => generated.map(it => ({ ...it })) : null,
-      save: items => ({ v: 1, rocks: items.map(toRow) }),
-      load: d => validLayout(d) ? d.rocks.map(fromRow) : null,
-      show(items) {
-        const old = rocks;
-        rocks = makeKit([...items, ...rockList.slice(placed)]);
-        group.add(rocks); group.remove(old); old.userData.dispose();
-        return rocks;
-      },
-    },
-    name: 'ทดสอบหิน', stats: { rocks: rockList.length, shapes: rocks.userData.shapes, triangles: rocks.userData.triangles, fromBuilder },
+    rockEdit: rw.edit,                                                     // (for the rock editor)
+    name: 'ทดสอบหิน', stats: { rocks: st.rocks, shapes: st.shapes, triangles: st.triangles, fromBuilder: builder.length },
     ripple, sim, optics, waterLevelAt: levelAt,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     confine(p) {                                                           // a step back off a rock, out of deep water, off the cliff's face
@@ -555,8 +419,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       }
     },
     update(renderer, dt, scene = null, camera = null) {
-      // the ground's height for the rocks' paint, drawn once (the terrain from straight above)
-      if (!baked) { baked = true; RK.bakeGroundForRocks(renderer, [terrain], { center: [0, 0], size: FR * 2, res: 1024 }); }
+      rw.update(renderer, camera, { terrain, size: FR * 2 });                 // (the ground's height for the rocks' paint, drawn once; each rock as finely as its distance calls for)
       sim.step(renderer, dt);
       droplets.update(renderer);
       falls.update(renderer);
@@ -565,7 +428,6 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
       if (!scene || !camera) return;
-      rocks.userData.update(camera);                                       // each rock drawn as finely as its distance calls for (LOD)
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       camWorld.setFromMatrixPosition(camera.matrixWorld);
       let near = Infinity;

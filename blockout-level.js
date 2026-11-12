@@ -8,7 +8,9 @@
 //   - the top C, 26 m: one small block standing on B; a ramp up from B; one great tree on it, to be seen from everywhere
 //   - a knoll by the lake
 // The blocks are land, so grass grows on them and she walks on them. Their sides are dressed with the big cliff pieces, in the
-// pale stone. The water is still plain (a blockout). The whole layout is the few lines of BLOCKOUT_MAP.
+// pale stone, and take part in the world the way every map's rocks do (rock-world.js): she stands on their heads and on the low
+// ones, the meadow's grass grows on the flat tops of the mossy ones, and they can be moved by hand (the 🪨 button). The water is
+// still plain (a blockout). The whole layout is the few lines of BLOCKOUT_MAP.
 //
 //   const level = await buildBlockoutLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
@@ -17,6 +19,8 @@ import * as N from './stylized-nature.js';
 import * as G from './stylized-grassfield.js';
 import * as RK from './rocks.js';
 import { createTerrainBlocks } from './terrain-blocks.js';
+import { createRockWorld } from './rock-world.js';
+import { BLOCKOUT_MAP_LAYOUT } from './blockout-layout.js';
 
 const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -45,6 +49,7 @@ export const BLOCKOUT_MAP = {
   ],
   stream: [[27, -5], [19, 0], [10, 5], [2, 10], [-6, 16], [-12, 19]],      // the spring on A, over the edge, to the lake
 };
+export const BLOCKOUT_EDIT_KEY = 'liora.blockout.layout.v1';            // where this browser keeps the rocks as placed by hand
 const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24 }, TREE_H = { broadleaf: 7.5, oak: 7.5, pine: 7.5, birch: 8 };
 
 export async function buildBlockoutLevel({ seed = 11, far = '#cde6f2', grassCount = 160000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
@@ -102,37 +107,12 @@ export async function buildBlockoutLevel({ seed = 11, far = '#cde6f2', grassCoun
   // ------------------------------------------------------------------ the cliffs: the big pieces round every block, in the pale stone
   await onStep('ตั้งหน้าผา');
   const rockList = blocks.dress(H, { skip: (x, z) => nearStream(x, z) < 3.2 || onRamp(x, z, 3.5) });
-  const rocks = RK.createRockKit(rockList, { tone: 'pale' });
-  rocks.name = 'rocks';
-  group.add(rocks);
-  // each rock's footprint, in one-metre cells: where it stands out of the ground she walks round it, no grass grows, the ground
-  // is shaded, it throws a shadow
-  const colliders = [], shade = [], bare = [], press = [], casters = [], cameraTrunks = [], solid = new Set();
-  {
-    const v = new THREE.Vector3(), cells = new Map();
-    for (const { geometry, matrix } of rocks.userData.instances) {
-      const pos = geometry.attributes.position;
-      for (let i = 0; i < pos.count; i += 2) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
-        const cx = Math.floor(v.x), cz = Math.floor(v.z), key = cx + ',' + cz;
-        let c = cells.get(key);
-        if (!c) cells.set(key, c = { cx, cz, g: H(cx + 0.5, cz + 0.5), low: Infinity, top: -Infinity });
-        c.low = Math.min(c.low, v.y - c.g); c.top = Math.max(c.top, v.y - c.g);
-      }
-    }
-    for (const c of cells.values()) {
-      if (c.low > 0.5 || c.top < 0.08) continue;
-      const x = c.cx + 0.5, z = c.cz + 0.5;
-      if (c.top > 0.35) { colliders.push([x, z, 0.62]); solid.add(c.cx + ',' + c.cz); }
-      bare.push([x, z, 0.55]); press.push([x, z, 1.25]);
-      if (c.top < 0.25) continue;
-      shade.push([x, z, 1.4, Math.min(0.55, 0.2 + c.top * 0.1)]);
-      const above = c.g + c.top - Math.max(H(x + 3, z), H(x - 3, z), H(x, z + 3), H(x, z - 3));
-      if (above > 0.3) casters.push([x, z, Math.min(c.top, above), 0.62, 0.85]);
-      if (c.top > 1.8) cameraTrunks.push([x, z, 0.7, c.g, c.g + c.top]);
-    }
-  }
-  const inRock = (x, z) => solid.has(Math.floor(x) + ',' + Math.floor(z));
+  // in the world (rock-world.js, the same on every map): placed by hand over what the blocks put down, drawn, each one's footprint
+  // on the land, where she stands on them, the meadow's grass on their tops; a piece moved by hand to a block's edge can be fitted to it
+  const walkLand = (x, z) => Math.hypot(x, z) < M.radius && waterDepthAt(x, z) < 0.9 && slope(x, z) < 0.85;
+  const rw = createRockWorld({ group, list: rockList, heightAt: H, walkLand, waterDepthAt, waterLevelAt: () => M.lake.level, seed,
+    key: BLOCKOUT_EDIT_KEY, committed: BLOCKOUT_MAP_LAYOUT, tone: 'pale' });
+  const { colliders, shade, bare, press, casters, cameraTrunks, inRock, onRockTop, standAt } = rw;
 
   const top = M.blocks[6];      // (the places 📍 offers: no tree right in front of them)
   const views = {
@@ -154,7 +134,7 @@ export async function buildBlockoutLevel({ seed = 11, far = '#cde6f2', grassCoun
       shade.push([x, z, 4 * scale, 0.4]); bare.push([x, z, rad * 1.5]); casters.push([x, z, TREE_H[type] * scale, 2.4 * scale, 0.7]);
     };
     const flat = (x, z) => Math.max(slope(x, z), slope(x + 2.5, z), slope(x - 2.5, z), slope(x, z + 2.5), slope(x, z - 2.5)) < 0.45;      // (not at a brink, not at a foot)
-    const ok = (x, z, pad = 2) => Math.hypot(x, z) < M.radius - 4 && flat(x, z) && !inRock(x, z) && waterDepthAt(x, z) === 0 && lakeIn(x, z) < -3 && !onRamp(x, z, pad) && nearStream(x, z) > 3
+    const ok = (x, z, pad = 2) => Math.hypot(x, z) < M.radius - 4 && flat(x, z) && !inRock(x, z) && !onRockTop(x, z) && waterDepthAt(x, z) === 0 && lakeIn(x, z) < -3 && !onRamp(x, z, pad) && nearStream(x, z) > 3
       && Object.values(views).every(v => Math.hypot(x - v.x - Math.sin(v.yaw) * 5, z - v.z - Math.cos(v.yaw) * 5) > 8);
     for (let i = 0; i < 400 && plants.length < 70; i++) {
       const x = (r() - 0.5) * 2 * (M.radius - 6), z = (r() - 0.5) * 2 * (M.radius - 6);
@@ -181,13 +161,14 @@ export async function buildBlockoutLevel({ seed = 11, far = '#cde6f2', grassCoun
     const dxz = Math.hypot(L.x, L.z) || 1, ly = Math.max(0.3, L.y), ux = -L.x / dxz, uz = -L.z / dxz, len = dxz / ly;
     return casters.map(([x, z, h, r, st]) => [x + ux * len * h / 2, z + uz * len * h / 2, len * h / 2 + r, r * 1.1, ux, uz, st, 0]);
   };
-  const map = G.createGroundMap({ radius: FR, size: 1024, seed, heightAt: H, dirt: 0, shade, bare, press, paint, cast: sunShadows(L.clone()),
+  const map = G.createGroundMap({ radius: FR, size: 1024, seed, heightAt: H, dirt: 0, lawn: true, grow: rw.grow, shade, bare, press, paint, cast: sunShadows(L.clone()),
     colors: { ...G.GROUND_COLORS, deep: '#55924a', mid: '#7cae40', sunny: '#9fc84a', shade: '#447a3c', dirt: '#73829f', dirtRim: '#7d8f7e' } });
   const fade = { far, fadeA: FR * 0.8, fadeB: FR * 0.985 };
   const terrain = G.createTerrain(field, map, fade);
   group.add(terrain);
   await onStep('ปลูกหญ้า');
-  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
+  rw.useLawn(map);
+  const grass = G.createFollowGrass({ map, field: rw.grassField(field), count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
   group.add(grass);
   if (plants.length) group.add(N.createForest(plants));
 
@@ -216,21 +197,22 @@ export async function buildBlockoutLevel({ seed = 11, far = '#cde6f2', grassCoun
   }
 
   // ------------------------------------------------------------------ the sun: the shadows on the ground follow it (drawn in the background), the rocks' light too
-  let castSun = L.clone(), castK = 1, wantSun = castSun.clone(), wantK = 1, lastCast = -99, castBusy = false, baked = false;
+  let castSun = L.clone(), castK = 1, wantSun = castSun.clone(), wantK = 1, lastCast = -99, castBusy = false;
   const cast = { dir: castSun.clone(), k: 1 };
   RK.setRockSun(L);
-  const walkable = (x, z) => Math.hypot(x, z) < M.radius && waterDepthAt(x, z) < 0.9 && slope(x, z) < 0.85 && !inRock(x, z);
-  console.info('[blockout] blocks', M.blocks.length, '; rocks', rockList.length, 'in', rocks.userData.shapes, 'shapes,', Math.round(rocks.userData.triangles / 1000) + 'k triangles in full; trees', plants.length);
+  const walkable = (x, z) => Math.hypot(x, z) < M.radius && (onRockTop(x, z) || (waterDepthAt(x, z) < 0.9 && slope(x, z) < 0.85 && !inRock(x, z)));
+  const st = rw.stats;
+  console.info('[blockout] blocks', M.blocks.length, '; rocks', st.rocks, 'in', st.shapes, 'shapes,', Math.round(st.triangles / 1000) + 'k triangles in full; rock tops she can stand on', st.standM2, 'm2, grass on', st.grassM2, 'm2; trees', plants.length);
   group.userData = { kind: 'blockout', dispose() {
     group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); });
-    map.dispose(); field.texture.dispose();
+    map.dispose(); field.texture.dispose(); rw.dispose();
   } };
   const optics = { quality: 0, setQuality() {} };                          // (no water optics in a blockout)
   return {
-    group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: M.spawn, radius: M.radius, walkable, views,
-    keepClear: (x, z, r = 0) => onRamp(x, z, r) || slope(x, z) > 0.6 || inRock(x, z),
-    name: 'Blockout มอนด์', stats: { blocks: M.blocks.length, rocks: rockList.length, shapes: rocks.userData.shapes, triangles: rocks.userData.triangles, trees: plants.length },
-    rocks, optics, waterLevelAt: () => M.lake.level, ripple() {}, tapWater() { return false; },
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: M.spawn, radius: M.radius, walkable, views,
+    keepClear: (x, z, r = 0) => onRamp(x, z, r) || slope(x, z) > 0.6 || inRock(x, z) || onRockTop(x, z),
+    name: 'Blockout มอนด์', stats: { blocks: M.blocks.length, rocks: st.rocks, shapes: st.shapes, triangles: st.triangles, trees: plants.length },
+    get rocks() { return rw.kit; }, rockEdit: rw.edit, optics, waterLevelAt: () => M.lake.level, ripple() {}, tapWater() { return false; },
     addUnderwater() {},
     confine(p) {                                                           // off the cliffs' faces, off the rocks, out of deep water
       if (walkable(p.x, p.z)) return;
@@ -240,11 +222,10 @@ export async function buildBlockoutLevel({ seed = 11, far = '#cde6f2', grassCoun
       }
     },
     update(renderer, dt, scene = null, camera = null) {
-      if (!baked) { baked = true; RK.bakeGroundForRocks(renderer, [terrain], { center: [0, 0], size: FR * 2, res: 1024 }); }      // the ground's height for the rocks' paint
+      rw.update(renderer, camera, { terrain, size: FR * 2 });                 // (the ground's height for the rocks' paint, drawn once; each rock as finely as its distance calls for)
       const nowT = N._internal.shared.uTime.value;
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
-      if (camera) rocks.userData.update(camera);                           // each rock drawn as finely as its distance calls for (LOD)
     },
     setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); RK.setRockSun(dir); },
     get sunCast() { return cast; },
