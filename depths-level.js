@@ -1,15 +1,17 @@
 /* ==========================================================================
-   depths-level.js  —  one layer of the abyss's depths, as a scene of its own  (?map=depths&layer=1|2|3)
+   depths-level.js  —  one layer of the abyss's depths, as a scene of its own  (?map=depths&layer=1|2, &view=stone-<key>)
 
    The valley is too much for a phone to hold along with what lies under it, so each layer down the abyss is loaded on its
    own: a warp stone up on the rim (and one in each layer) leads from scene to scene. Where things are and how the land lies
    comes from abyss-depths.js; this file builds the one layer asked for into a level index.html can run, the same way the
    other maps are: its land (the valley's terrain paint), a ground picture and the fluffy grass, the clear water with its
-   waves, the falls, clouds, floating rocks, what grows there, and the layer's warp stone.
+   waves, the falls, clouds, floating rocks, what grows there, and the layer's warp stones (layer 1 has two: the shelf's
+   and the meadow's; level.views['stone-<key>'] stands beside each). The old ?layer=3 (the meadow) opens layer 1 at the
+   meadow's stone.
 
      const level = await buildDepthsLevel({ layer: 2, far, grassCount, onStep });
      scene.add(level.group);  level.update(renderer, dt, scene, camera);  level.follow(player.position, lookDir);
-     level.warps        where the warp stone leads (see warp-ui.js)       level.zone   which layer this is (0, 1, 2)
+     level.warps        where the warp stones lead (see warp-ui.js)       level.zone   which layer this is (0, 1)
    ========================================================================== */
 import * as THREE from 'three';
 import * as N from './stylized-nature.js';
@@ -33,7 +35,8 @@ const ROCK_R = { boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8,
 const PALS = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee'], ['#f6f2e6', '#f7d84a'], ['#93b8ee', '#f6f2e6']];
 
 export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', grassCount = 150000, onStep = async () => {} } = {}) {
-  const WL = 0, k = Math.min(DP.DEPTH_NAMES.length, Math.max(1, Math.round(layer) || 1)) - 1;
+  const asked = Math.round(layer) || 1, meadowFirst = asked === 3;         // ?layer=3 was the meadow, now part of layer 1
+  const WL = 0, k = meadowFirst ? 0 : Math.min(DP.DEPTH_NAMES.length, Math.max(1, asked)) - 1;
   await onStep('วัดความสูงพื้น');
   const D = DP.createDepths({ WL, seed, only: DP.DEPTH_NAMES[k].key }), L = D.layers[k];
   const [x0, x1, z0, z1] = L.box, CX = (x0 + x1) / 2, CZ = (z0 + z1) / 2, FR = Math.max(x1 - x0, z1 - z0) / 2 + 8;
@@ -45,7 +48,9 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
   const rocks = new THREE.Group();
   const waterDepthAt = (x, z) => D.wetAt(x, z) ? Math.max(0, WL - H(x, z)) : 0;
   const walkable = D.walkable;
-  const [wx, wz] = L.warp, spawn = { x: wx + Math.sin(L.yaw) * 2.4, z: wz + Math.cos(L.yaw) * 2.4, yaw: L.yaw };
+  const stones = L.stones.map(s => ({ ...s, x: s.warp[0], z: s.warp[1], stand: { x: s.warp[0] + Math.sin(s.yaw) * 2.4, z: s.warp[1] + Math.cos(s.yaw) * 2.4, yaw: s.yaw } }));
+  const first = (meadowFirst && stones.find(s => s.key === 'meadow')) || stones[0];
+  const [wx, wz] = [first.x, first.z], spawn = first.stand;
 
   // ------------------------------------------------------------------ what grows and lies about
   await onStep('วางต้นไม้และก้อนหิน');
@@ -73,13 +78,13 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
     }
     for (const i of L.islands) if (i.tree) plants.push({ kind: 'tree', type: i.tree, seed: ++ds, detail: 0.7, x: i.x + 0.4, y: i.y + 0.25, z: i.z - 0.3, rotY: drng() * 6.28, scale: 0.9 });
     if (L.key === 'gorge') for (let n = 0; n < L.ribbons[0].rows.length; n += 5) { const q = L.ribbons[0].rows[n]; shade.push([q[0], q[1], 11, 0.5]); }      // the gorge lies in shadow
-    colliders.push([wx, wz, 0.5]); bare.push([wx, wz, 2.0]); press.push([wx, wz, 3.2]);
+    for (const st of stones) { colliders.push([st.x, st.z, 0.5]); bare.push([st.x, st.z, 2.0]); press.push([st.x, st.z, 3.2]); }
   }
 
   // ------------------------------------------------------------------ the ground picture, the land, the grass
   await onStep('ระบายสีพื้น');
   const inBox = (x, z) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
-  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: field.heightAt, dirt: 0, shade, bare, press, paint: (x, z) => (inBox(x, z) && D.paint(x, z)) || [1, 0, 0] });
+  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: FR > 120 ? 1280 : 768, seed, heightAt: field.heightAt, dirt: 0, shade, bare, press, paint: (x, z) => (inBox(x, z) && D.paint(x, z)) || [1, 0, 0] });
   const landMat = new URLSearchParams(location.search).get('rock') === 'old' ? T._terrain.terrainMaterial(far, [1e5, 1e5], 0) : rockLandMaterial({ far });      // ?rock=old: the land's old banded paint, to compare
   const terrain = new THREE.Mesh(DP.layerGeometry(L, D), landMat);
   terrain.name = 'depthsLand';
@@ -87,7 +92,7 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
   group.add(terrain);
   // the rock faces: built of broken blocks stood in front of the land's walls (rock-blocks.js); ?rock=old: the walls bare
   if (new URLSearchParams(location.search).get('rock') !== 'old') {
-    const nearWarp = (x, z) => Math.hypot(x - wx, z - wz) > 4;
+    const nearWarp = (x, z) => stones.every(st => Math.hypot(x - st.x, z - st.z) > 4);
     const { list, colliders: bc } = RB.faceBlocks({ x0, z0, nx: L.nx, nz: L.nz, step: 0.5, h: L.h, seed: seed + k * 7, keep: nearWarp });
     const blocks = RB.createRockBlocks(list);
     group.add(blocks);
@@ -182,12 +187,15 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
   await onStep('ปลูกหญ้า');
   const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), far, fadeA: 1e5, fadeB: 2e5 });
   group.add(grass);
-  const warpStone = DP.createWarpStone();
-  warpStone.group.position.set(wx, H(wx, wz), wz);
-  group.add(warpStone.group);
-  // where the stone leads: up to the rim (the valley's scene), or to another layer (its own scene)
+  const warpStones = stones.map(st => { const w = DP.createWarpStone(); w.group.position.set(st.x, H(st.x, st.z), st.z); group.add(w.group); return w; });
+  // where the stones lead: up to the rim (the valley's scene), to the other stone of this layer, or to another layer (its own scene)
   const warps = [{ key: 'rim', name: 'ขอบห้วงลึก', scene: { view: 'warp-rim' } },
-    ...DP.DEPTH_NAMES.map((d, i) => i === k ? { key: d.key, name: d.name, x: wx, z: wz, yaw: L.yaw, stand: [spawn.x, spawn.z] } : { key: d.key, name: d.name, scene: { map: 'depths', layer: i + 1 } })];
+    ...DP.DEPTH_STOPS.map(d => {
+      const st = d.layer === k + 1 && stones.find(s => s.key === d.key);
+      return st ? { key: d.key, name: d.name, layer: d.layer, x: st.x, z: st.z, yaw: st.yaw, stand: [st.stand.x, st.stand.z] } : { key: d.key, name: d.name, layer: d.layer, scene: { map: 'depths', layer: d.layer, view: 'stone-' + d.key } };
+    })];
+  const views = { start: spawn };
+  for (const st of stones) views['stone-' + st.key] = st.stand;
 
   terrain.layers.enable(W.UNDERWATER);
   rocks.traverse(o => o.layers.enable(W.UNDERWATER));
@@ -201,7 +209,7 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
     group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, walkable, warps,
     zone: k, name: L.name,
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
-    views: { start: spawn },
+    views,
     ripple, sim, optics, waterLevelAt: () => WL,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     // keeps her on ground she can stand on: a step back from a wall, the brink or deep rock
@@ -223,7 +231,7 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
       lastRenderer = renderer;
       sim.step(renderer, dt);
       droplets.update(renderer);
-      warpStone.update(N._internal.shared.uTime.value);
+      for (const w of warpStones) w.update(N._internal.shared.uTime.value);
       for (const c of falls) c.update(renderer);
       if (!scene || !camera) return;
       // the two water pictures cost a redraw of the scene each: only when water is on screen and close enough to matter

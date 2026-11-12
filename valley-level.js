@@ -34,7 +34,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
 import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
-import { createWarpStone, DEPTH_NAMES } from './abyss-depths.js';
+import { createWarpStone, DEPTH_STOPS } from './abyss-depths.js';
 import { createGuild, GUILD_SITE } from './stylized-guild.js';
 
 // ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
@@ -1154,7 +1154,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   warpStone.group.position.set(rimWarp.x, HV(rimWarp.x, rimWarp.z) + 0.08, rimWarp.z);
   group.add(warpStone.group);
   const warps = [{ key: 'rim', name: 'ขอบห้วงลึก', x: rimWarp.x, z: rimWarp.z, yaw: rimWarp.yaw, stand: [rimWarp.x + Math.sin(rimWarp.yaw) * 2.4, rimWarp.z + Math.cos(rimWarp.yaw) * 2.4] },
-    ...DEPTH_NAMES.map((d, i) => ({ key: d.key, name: d.name, scene: { map: 'depths', layer: i + 1 } }))];
+    ...DEPTH_STOPS.map(d => ({ key: d.key, name: d.name, layer: d.layer, scene: { map: 'depths', layer: d.layer, view: 'stone-' + d.key } }))];
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {

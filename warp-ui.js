@@ -5,7 +5,7 @@
      warp.update();                                     // every frame: shows the button while she stands by a stone
 
    level.warps lists every place the stones lead to. One that stands in this scene has { key, name, x, z, yaw, stand: [x, z] };
-   one in another scene has { key, name, scene: { map, layer, view } }: going there loads that scene (the page is opened again
+   one in another scene has { key, name, scene: { map, layer, view } }. Every stone down the abyss also has its layer (1-based): going there loads that scene (the page is opened again
    with those in its address, so everything of this scene is let go of first: a phone never holds two scenes at once).
    One job: when she is by a warp stone, offer the other places; on a tap, a white flash, and she is there.
    ========================================================================== */
@@ -35,8 +35,7 @@ export function createWarpUI({ level, player, reach = 3.4 } = {}) {
   const flash = document.createElement('div'); flash.id = 'warpFlash';
   document.body.append(btn, sheet, flash);
   let here = null, busy = false;
-  const layers = warps.filter(q => q.key !== 'rim');
-  const label = w => `${ICON[w.key] || '🌀'} ${w.key === 'rim' ? '' : 'ชั้น ' + (layers.indexOf(w) + 1) + ' · '}${w.name}`;
+  const label = w => `${ICON[w.key] || '🌀'} ${w.key === 'rim' ? '' : 'ชั้น ' + w.layer + ' · '}${w.name}`;      // (a layer may have more than one stone)
   const close = () => sheet.classList.remove('open');
   const go = w => {
     if (busy) return;

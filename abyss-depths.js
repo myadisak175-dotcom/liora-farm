@@ -1,19 +1,26 @@
 /* ==========================================================================
-   abyss-depths.js  —  three places down in the abyss, reached by warp stones (no path joins them to the rim)
+   abyss-depths.js  —  two layers down in the abyss, reached by warp stones (no path joins them to the rim)
 
-     1  the shelf    a grassy shelf on the pit's wall above a sea of cloud: a tarn, a stream that runs off the brink
+     1  the shelf and the meadow, one map:
+          the shelf   a grassy shelf on the pit's wall above a sea of cloud: a tarn, a stream that runs off the brink
+          the ledge   at the shelf's south end a narrow ledge runs on along the brink, outside the meadow's east wall
+          the meadow  a broad meadow under floating rocks, walled round: a pond with lilies, paths, and a window in its
+                      east wall that opens onto the ledge (the way in)
      2  the gorge    a winding gorge in the mist: tall thin falls in side chambers, pools, a stream, rock pillars
-     3  the meadow   a broad meadow under floating rocks: a pond with lilies, paths, a window in the wall onto the clouds
 
-   Each is a scene of its own (depths-level.js builds one layer into a level; the valley holds only the warp stone on the
-   rim): a phone cannot hold the valley and what lies under it at once.
+   Each layer is a scene of its own (depths-level.js builds one layer into a level; the valley holds only the warp stone on
+   the rim): a phone cannot hold the valley and what lies under it at once. Layer 1 has two warp stones, one at the shelf's
+   north end and one at the meadow's north end. The meadow is laid out in a frame of its own (MEADOW) and turned half round
+   into the shelf's (toM).
 
    This file knows where things are and how the land lies (pure height maths on a 0.5 m grid), and builds the few meshes
    that are the depths' own: the land of each layer, the cloud sea, floating rocks, shafts of light, the warp stones.
 
      const D = createDepths({ WL, seed });
-     D.layers[k]            { key, name, box: [x0, x1, z0, z1], warp: [x, z], yaw, haze, trees, bushes, rocks, flowers, pads,
-                              falls, ribbons, spheres, islands, clouds, shafts, mist }
+     D.layers[k]            { key, name, box: [x0, x1, z0, z1], warp: [x, z], yaw, stones: [{ key, name, warp, yaw }], haze,
+                              trees, bushes, rocks, flowers, pads, falls, ribbons, spheres, islands, clouds, shafts, mist }
+     DEPTH_NAMES            the layers, from the top down: [{ key, name }]
+     DEPTH_STOPS            every warp stone down there: [{ key, name, layer (1-based) }]
      D.layerAt(x, z)        which layer this spot is in (-1: none)        D.covers(x, z)
      D.heightAt(x, z)       the land there        D.wetAt(x, z)  true where there may be water (ponds, streams)
      D.walkable(x, z)       she may stand there   D.paint(x, z)  [earth, sand, mow] for the ground picture
@@ -100,15 +107,23 @@ const SHELF = {
   box: [78, 141, -102, 36],
   tarn: { x: 98.5, z: -58, a: 10, b: 6.4 },
   stacks: [{ x: 135.5, z: -78, r: 3.4, top: 5.5 }, { x: 137.5, z: -3, r: 4.2, top: 8 }, { x: 131, z: 22, r: 2.6, top: 3.5 }],
-  paths: [smooth([[105, 15], [102, -4], [108, -20], [121, -29], [110, -38], [108, -48]]), smooth([[100, -67], [100, -78], [103, -88]])],
+  paths: [smooth([[105, 15], [102, -4], [108, -20], [121, -29], [110, -38], [108, -48]])],
 };
 const shelfFoot = z => 89 + (n1(z, 0.06, 11) - 0.5) * 6;
 const shelfBrink = z => 113 + 7 * Math.sin(z * 0.05 + 0.8) + (n1(z, 0.11, 13) - 0.5) * 7 + 14 * Math.exp(-(((z + 30) / 10) ** 2));
 const shelfStream = x => -58 + 1.6 * Math.sin((x - 108) * 0.32);
+// ---- where the shelf meets the meadow: past its south end (SEAM) the shelf goes on as a narrow ledge along the brink, outside
+// the meadow's east wall, down to the window in that wall; past the window the ledge ends against the wall
+const SEAM = -102, LEDGE_END = -236;
+const ledgeFoot = z => 111.5 + (n1(z, 0.09, 151) - 0.5) * 3;              // the outer face of the meadow's east wall
+const ledgeBrink = z => 121 + (n1(z, 0.07, 157) - 0.5) * 5;
+const brinkJ = z => lerp(shelfBrink(z), ledgeBrink(z), ss(-90, -110, z));
+const footJ = z => lerp(shelfFoot(z), lerp(ledgeFoot(z), brinkJ(z) + 4, ss(LEDGE_END + 6, LEDGE_END - 6, z)), ss(-80, -98, z));
 function shelfLand(x, z, WL) {
-  const S = SHELF, end = Math.max(ss(-84, -97, z), ss(19, 31, z)), brink = shelfBrink(z);
-  const foot = lerp(shelfFoot(z), brink + 4, end);                         // at its ends the wall swings round to the brink
-  let h = 1.7 + (fbm3(x * 0.05, 3.3, z * 0.05, 17, 3) - 0.5) * 2.8 + 4.4 * ss(foot + 15, foot + 1, x);
+  const S = SHELF, end = ss(19, 31, z), brink = brinkJ(z);
+  const foot = lerp(footJ(z), brink + 4, end);                             // at its north end the wall swings round to the brink
+  const lt = ss(-80, -98, z);                                              // on the ledge: no rise under the wall (it would stand a step above the meadow)
+  let h = 1.7 + (fbm3(x * 0.05, 3.3, z * 0.05, 17, 3) - 0.5) * 2.8 * (1 - 0.5 * lt) + lerp(4.4 * ss(foot + 15, foot + 1, x), 0.6 * ss(foot + 4, foot + 0.5, x), lt);
   // the tarn, and the stream that runs from it to the brink
   const T = S.tarn, e = Math.hypot((x - T.x) / T.a, (z - T.z) / T.b) + (n2(x, z, 0.2, 23) - 0.5) * 0.3;
   h = dig(h, e, WL);
@@ -161,10 +176,11 @@ function gorgeLand(x, z, WL) {
 }
 
 // ------------------------------------------------------------------ 3: the meadow under the floating rocks
+// laid out in a frame of its own (as it was when it was a scene of its own); toM turns it into the shelf's frame
 const MEADOW = {
   box: [-141, -78, -40, 150],
   ponds: [{ x: -111, z: 96, a: 12.5, b: 8.5 }, { x: -99, z: 17, a: 5.5, b: 4.6 }],
-  window: [44, 82],                                                        // along the west wall: open onto the clouds between these z
+  window: [44, 82],                                                        // along the west wall: open onto the ledge between these z
   pillars: [{ x: -93, z: -8, r: 3.2, top: 19 }, { x: -122, z: 6, r: 2.4, top: 11 }, { x: -91.5, z: 47, r: 4.0, top: 28 }, { x: -121.5, z: 122, r: 3.0, top: 15 }, { x: -95, z: 128, r: 2.2, top: 9 }],
   paths: [smooth([[-108, -26], [-105, -6], [-110, 14], [-112, 34], [-119, 52], [-127.5, 62]]), smooth([[-112, 34], [-104, 52], [-101, 72], [-106, 84]])],
   hill: { x: -98, z: 62, r: 15, h: 4.2 },
@@ -181,31 +197,47 @@ function meadowLand(x, z, WL) {
   h += M.hill.h * ss(M.hill.r, M.hill.r * 0.25, Math.hypot(x - M.hill.x, z - M.hill.z));
   h = Math.max(h, 0.55);
   for (let i = 0; i < M.ponds.length; i++) { const p = M.ponds[i]; h = dig(h, Math.hypot((x - p.x) / p.a, (z - p.z) / p.b) + (n2(x, z, 0.18, 97 + i) - 0.5) * 0.3, WL, i ? 0.7 : 1.1); }
-  // the walls; in the window the west wall is gone and the meadow ends at a brink over the clouds
+  // the walls; in the window the west wall is gone and the meadow runs on out onto the ledge (the brink is the shelf's)
   const westWall = west < 20 ? win : 0;
   h += wallUp(o, 78, (n2(x, z, 0.12, 101) - 0.5) * 5, x, z) * (1 - westWall);
-  if (westWall > 0) { const de = 9.5 + rag * 0.35 - west; h = lerp(h, lerp(h + 0.2 * ss(-1.4, -0.4, de), -46, ss(-0.2, 2.3, de)), westWall); }
   if (o < 0) for (let i = 0; i < M.pillars.length; i++) h = stand(h, x, z, M.pillars[i], 103 + i * 3);
   return h;
 }
+// the meadow's frame <-> the shelf's: turned half round, its north end against the shelf's south end, its window on the
+// brink side (the same sum both ways)
+const toM = (x, z) => [-x - 33, -z - 142];
+const tp = p => { const [x, z] = toM(p[0], p[1]); return [x, z, ...p.slice(2)]; };
+// layer 1: the shelf, its ledge and the meadow. Under the seam the land is the lower of the two: the meadow inside its walls,
+// the shelf's ledge and brink outside them
+function joinedLand(x, z, WL) {
+  const hs = shelfLand(x, z, WL);
+  if (z >= SEAM) return hs;
+  const [mx, mz] = toM(x, z);
+  return Math.min(hs, meadowLand(mx, mz, WL));
+}
+const LEDGE_PATH = smooth([[100, -67], [101, -78], [107.5, -90], [114.5, -100], [116.5, -112], [116, -135], [115.5, -162], [116, -186], [113, -199], [104, -204.5], [94.5, -204]]);
 
 const DEFS = [
-  { key: 'shelf', name: 'หิ้งหญ้าริมทะเลเมฆ', box: SHELF.box, land: shelfLand, top: 9.5, warp: [105, 17], yaw: Math.PI, haze: { near: 34, far: 210, max: 0.56 }, paths: SHELF.paths },
+  { key: 'shelf', name: 'หิ้งหญ้าและทุ่งใต้เสาหินลอย', box: [45, 141, -292, 36], land: joinedLand, top: 9.5, warp: [105, 17], yaw: Math.PI,
+    stones: [{ key: 'shelf', name: 'หิ้งหญ้าริมทะเลเมฆ', warp: [105, 17], yaw: Math.PI }, { key: 'meadow', name: 'ทุ่งใต้เสาหินลอย', warp: toM(-108, -28), yaw: Math.PI }],
+    haze: { near: 36, far: 215, max: 0.53 }, paths: [...SHELF.paths, LEDGE_PATH, ...MEADOW.paths.map(pl => pl.map(tp))] },
   { key: 'gorge', name: 'หุบน้ำตกในหมอก', box: GORGE.box, land: gorgeLand, top: 4.6, warp: [111.5, 168.5], yaw: Math.PI, haze: { near: 9, far: 82, max: 0.74 }, paths: [] },
-  { key: 'meadow', name: 'ทุ่งใต้เสาหินลอย', box: MEADOW.box, land: meadowLand, top: 9.5, warp: [-108, -28], yaw: 0, haze: { near: 38, far: 220, max: 0.5 }, paths: MEADOW.paths },
 ];
+for (const d of DEFS) d.stones = d.stones || [{ key: d.key, name: d.name, warp: d.warp, yaw: d.yaw }];
 
 export const DEPTH_NAMES = DEFS.map(d => ({ key: d.key, name: d.name }));      // the layers, from the top down
-// only: the key of the one layer wanted ('shelf' | 'gorge' | 'meadow'); left out, all three are worked out
+export const DEPTH_STOPS = DEFS.flatMap((d, i) => d.stones.map(s => ({ key: s.key, name: s.name, layer: i + 1 })));      // every warp stone down there
+// only: the key of the one layer wanted ('shelf' | 'gorge'); left out, both are worked out
 export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
   const layers = DEFS.map((def, k) => {
     if (only && def.key !== only) return null;
     const [x0, x1, z0, z1] = def.box, nx = Math.round((x1 - x0) / STEP) + 1, nz = Math.round((z1 - z0) / STEP) + 1;
     const h = new Float32Array(nx * nz), path = new Float32Array(nx * nz);
+    const pbox = def.paths.map(pts => ({ pts, x0: Math.min(...pts.map(p => p[0])) - 3, x1: Math.max(...pts.map(p => p[0])) + 3, z0: Math.min(...pts.map(p => p[1])) - 3, z1: Math.max(...pts.map(p => p[1])) + 3 }));
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const x = x0 + i * STEP, z = z0 + j * STEP;
       h[j * nx + i] = def.land(x, z, WL);
-      for (const pl of def.paths) path[j * nx + i] = Math.max(path[j * nx + i], ss(1.7, 0.7, lineDist(pl, x, z).d + (n2(x, z, 0.5, 7) - 0.5) * 0.7));
+      for (const pl of pbox) if (x > pl.x0 && x < pl.x1 && z > pl.z0 && z < pl.z1) path[j * nx + i] = Math.max(path[j * nx + i], ss(1.7, 0.7, lineDist(pl.pts, x, z).d + (n2(x, z, 0.5, 7) - 0.5) * 0.7));
     }
     const at = (arr, x, z) => {
       const fx = Math.min(nx - 1.001, Math.max(0, (x - x0) / STEP)), fz = Math.min(nz - 1.001, Math.max(0, (z - z0) / STEP));
@@ -230,9 +262,11 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
   // but dry)
   const wetAt = (x, z) => {
     const k = layerAt(x, z);
-    if (k === 0) { const T = SHELF.tarn; return Math.hypot((x - T.x) / T.a, (z - T.z) / T.b) < 1.5 || (x > T.x && x < shelfBrink(z) + 0.6 && Math.abs(z - shelfStream(x)) < 3.2); }
+    if (k === 0) {
+      if (z < SEAM) { const [mx, mz] = toM(x, z); return MEADOW.ponds.some(p => Math.hypot((mx - p.x) / p.a, (mz - p.z) / p.b) < 1.5); }
+      const T = SHELF.tarn; return Math.hypot((x - T.x) / T.a, (z - T.z) / T.b) < 1.5 || (x > T.x && x < brinkJ(z) + 0.6 && Math.abs(z - shelfStream(x)) < 3.2);
+    }
     if (k === 1) { const { o, q } = gorgeOpen(x, z); if (o > 0.5) return false; if (q.d < 3.4) return true; return GORGE.chambers.some(c => Math.hypot(x - c.pool.x, z - c.pool.z) < c.pool.a * 1.5 || lineDist(c.run, x, z).d < 3.4); }
-    if (k === 2) return MEADOW.ponds.some(p => Math.hypot((x - p.x) / p.a, (z - p.z) / p.b) < 1.5);
     return false;
   };
   const walkable = (x, z) => {
@@ -258,26 +292,38 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
 
   // ---- what grows and lies about (thrown with dice of its own)
   const rng = rngOf(seed * 7919 + 13), R = (a, b) => a + rng() * (b - a);
-  const scatter = (L, n, min, ok, out, make) => {
-    const [x0, x1, z0, z1] = L.box;
+  const scatter = (L, n, min, ok, out, make, box = L.box) => {
+    const [x0, x1, z0, z1] = box;
     for (let i = 0, tries = 0; i < n && tries < n * 60; tries++) {
       const x = R(x0 + 3, x1 - 3), z = R(z0 + 3, z1 - 3);
       if (!walkable(x, z) || wetAt(x, z) || L.pathAt(x, z) > 0.05 || L.heightAt(x, z) < WL + 0.32 || !ok(x, z)) continue;
-      if (Math.hypot(x - L.warp[0], z - L.warp[1]) < 5) continue;
+      if (L.stones.some(s => Math.hypot(x - s.warp[0], z - s.warp[1]) < 5)) continue;
       if (out.some(p => Math.hypot(p.x - x, p.z - z) < min + (p.r || 0))) continue;
       out.push(make(x, z)); i++;
     }
   };
   const any = () => true;
-  if (layers[0]) {                                                         // the shelf: a few wind-bent trees, boulders under the wall
-    const L = layers[0], all = [];
+  if (layers[0]) {
+    const L = layers[0], all = [], SB = [78, 141, SEAM, 36], LB = [104, 128, LEDGE_END, SEAM], MB = [45, 108, -292, SEAM];
     L.trees = []; L.bushes = []; L.rocks = []; L.flowers = [];
-    scatter(L, 9, 7, (x, z) => x - shelfFoot(z) > 5 && shelfBrink(z) - x > 4, all, (x, z) => { const t = { type: rng() < 0.45 ? 'birch' : rng() < 0.6 ? 'pine' : 'sapling', x, z, scale: R(0.8, 1.15), r: 2 }; L.trees.push(t); return t; });
-    scatter(L, 16, 3, any, all, (x, z) => { const b = { x, z, scale: R(0.7, 1.2), r: 1 }; L.bushes.push(b); return b; });
-    scatter(L, 13, 4, (x, z) => x - shelfFoot(z) < 9 || rng() < 0.3, all, (x, z) => { const r = { type: rng() < 0.5 ? 'boulder' : rng() < 0.6 ? 'crag' : 'stones', x, z, scale: R(0.8, 1.7), r: 1.5 }; L.rocks.push(r); return r; });
-    scatter(L, 12, 5, any, all, (x, z) => { const f = { x, z, rad: R(1.6, 3.2), r: 1 }; L.flowers.push(f); return f; });
-    scatter(L, 14, 2.2, (x, z) => L.wallNear(x, z) > 4, all, (x, z) => { const r = { type: rng() < 0.5 ? 'boulder' : rng() < 0.6 ? 'stones' : 'crag', x, z, scale: R(0.7, 1.6), r: 1.2 }; L.rocks.push(r); return r; });      // fallen from the wall
+    // the shelf: a few wind-bent trees, boulders under the wall
+    scatter(L, 9, 7, (x, z) => x - footJ(z) > 5 && brinkJ(z) - x > 4, all, (x, z) => { const t = { type: rng() < 0.45 ? 'birch' : rng() < 0.6 ? 'pine' : 'sapling', x, z, scale: R(0.8, 1.15), r: 2 }; L.trees.push(t); return t; }, SB);
+    scatter(L, 16, 3, any, all, (x, z) => { const b = { x, z, scale: R(0.7, 1.2), r: 1 }; L.bushes.push(b); return b; }, SB);
+    scatter(L, 13, 4, (x, z) => x - footJ(z) < 9 || rng() < 0.3, all, (x, z) => { const r = { type: rng() < 0.5 ? 'boulder' : rng() < 0.6 ? 'crag' : 'stones', x, z, scale: R(0.8, 1.7), r: 1.5 }; L.rocks.push(r); return r; }, SB);
+    scatter(L, 12, 5, any, all, (x, z) => { const f = { x, z, rad: R(1.6, 3.2), r: 1 }; L.flowers.push(f); return f; }, SB);
+    scatter(L, 14, 2.2, (x, z) => L.wallNear(x, z) > 4, all, (x, z) => { const r = { type: rng() < 0.5 ? 'boulder' : rng() < 0.6 ? 'stones' : 'crag', x, z, scale: R(0.7, 1.6), r: 1.2 }; L.rocks.push(r); return r; }, SB);      // fallen from the wall
     for (const s of SHELF.stacks.slice(0, 2)) L.trees.push({ type: 'pine', x: s.x + 0.3, z: s.z - 0.2, scale: 0.8, r: 2, loose: true });      // one on each of the far stacks
+    // the ledge: bare but for a few stones fallen from the wall above, tufts and a sapling or two
+    scatter(L, 10, 3, (x, z) => L.wallNear(x, z) > 3, all, (x, z) => { const r = { type: rng() < 0.5 ? 'stones' : 'boulder', x, z, scale: R(0.6, 1.2), r: 1 }; L.rocks.push(r); return r; }, LB);
+    scatter(L, 8, 4, any, all, (x, z) => { const b = { x, z, scale: R(0.6, 0.95), r: 1 }; L.bushes.push(b); return b; }, LB);
+    scatter(L, 3, 12, (x, z) => x - ledgeFoot(z) < 4, all, (x, z) => { const t = { type: 'sapling', x, z, scale: R(0.7, 0.95), r: 1.5 }; L.trees.push(t); return t; }, LB);
+    // the meadow: broad trees in ones and twos, drifts of flowers, big stones
+    const inM = (x, z) => z < SEAM - 3 && x < 108;
+    scatter(L, 13, 9, inM, all, (x, z) => { const t = { type: rng() < 0.5 ? 'broadleaf' : rng() < 0.6 ? 'birch' : 'oak', x, z, scale: R(0.85, 1.25), r: 2.5 }; L.trees.push(t); return t; }, MB);
+    scatter(L, 20, 3.5, inM, all, (x, z) => { const b = { x, z, scale: R(0.7, 1.3), r: 1 }; L.bushes.push(b); return b; }, MB);
+    scatter(L, 15, 5, inM, all, (x, z) => { const r = { type: rng() < 0.4 ? 'boulder' : rng() < 0.5 ? 'slab' : rng() < 0.6 ? 'standing' : 'stones', x, z, scale: R(0.9, 2.1), r: 1.6 }; L.rocks.push(r); return r; }, MB);
+    scatter(L, 30, 4.5, inM, all, (x, z) => { const f = { x, z, rad: R(1.8, 3.6), r: 1 }; L.flowers.push(f); return f; }, MB);
+    scatter(L, 30, 2.4, (x, z) => inM(x, z) && L.wallNear(x, z) > 4, all, (x, z) => { const r = { type: rng() < 0.45 ? 'boulder' : rng() < 0.55 ? 'stones' : rng() < 0.6 ? 'crag' : 'slab', x, z, scale: R(0.7, 1.8), r: 1.2 }; L.rocks.push(r); return r; }, MB);      // fallen from the walls
   }
   if (layers[1]) {                                                         // the gorge: mossy boulders everywhere, ferny bushes, a few saplings
     const L = layers[1], all = [];
@@ -286,15 +332,6 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
     scatter(L, 22, 2.4, any, all, (x, z) => { const b = { x, z, scale: R(0.6, 1.1), r: 0.9 }; L.bushes.push(b); return b; });
     scatter(L, 6, 6, any, all, (x, z) => { const t = { type: 'sapling', x, z, scale: R(0.8, 1.1), r: 1.5 }; L.trees.push(t); return t; });
     scatter(L, 6, 5, any, all, (x, z) => { const f = { x, z, rad: R(1.2, 2.2), r: 1 }; L.flowers.push(f); return f; });
-  }
-  if (layers[2]) {                                                         // the meadow: broad trees in ones and twos, drifts of flowers, big stones
-    const L = layers[2], all = [];
-    L.trees = []; L.bushes = []; L.rocks = []; L.flowers = [];
-    scatter(L, 13, 9, any, all, (x, z) => { const t = { type: rng() < 0.5 ? 'broadleaf' : rng() < 0.6 ? 'birch' : 'oak', x, z, scale: R(0.85, 1.25), r: 2.5 }; L.trees.push(t); return t; });
-    scatter(L, 20, 3.5, any, all, (x, z) => { const b = { x, z, scale: R(0.7, 1.3), r: 1 }; L.bushes.push(b); return b; });
-    scatter(L, 15, 5, any, all, (x, z) => { const r = { type: rng() < 0.4 ? 'boulder' : rng() < 0.5 ? 'slab' : rng() < 0.6 ? 'standing' : 'stones', x, z, scale: R(0.9, 2.1), r: 1.6 }; L.rocks.push(r); return r; });
-    scatter(L, 30, 4.5, any, all, (x, z) => { const f = { x, z, rad: R(1.8, 3.6), r: 1 }; L.flowers.push(f); return f; });
-    scatter(L, 30, 2.4, (x, z) => L.wallNear(x, z) > 4, all, (x, z) => { const r = { type: rng() < 0.45 ? 'boulder' : rng() < 0.55 ? 'stones' : rng() < 0.6 ? 'crag' : 'slab', x, z, scale: R(0.7, 1.8), r: 1.2 }; L.rocks.push(r); return r; });      // fallen from the walls
   }
 
   // ---- water: the ribbons the clear water is drawn on (rows of [x, z, level, half width]), the falls, lily pads
@@ -311,6 +348,16 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
       { x: lip[0] - 0.9, z: lip[1], yaw: Math.PI / 2, top: WL, bottom: -30, width: 2.6, forward: 1.6, quiet: true }];       // off the brink into the clouds
     L.spheres = [[T.x, T.z, 13], [T.x + 12, T.z, 9]];
     L.pads = [];
+    // the meadow's ponds, one with a fall from the floating rock above it
+    const P = MEADOW.ponds.map(p => { const [x, z] = toM(p.x, p.z); return { ...p, x, z }; });
+    for (const p of P) { L.ribbons.push({ rows: disc(p), along: 'z' }); L.spheres.push([p.x, p.z, p.a + 4]); }
+    const pf = { x: P[0].x - 2.5, z: P[0].z + 2.5, yaw: 0.4 + Math.PI, top: 30, bottom: WL, width: 1.9, forward: 1.5 };
+    L.falls.push(pf);
+    for (let i = 0; i < 46; i++) {
+      const p = P[rng() < 0.82 ? 0 : 1], a = R(0, 6.28), q = Math.sqrt(rng()) * 0.86, x = p.x + Math.cos(a) * p.a * q, z = p.z + Math.sin(a) * p.b * q, r = R(0.26, 0.46);
+      if (heightAtRaw(0, x, z) > WL - 0.25 || Math.hypot(x - pf.x, z - pf.z) < 4 || L.pads.some(o => Math.hypot(o[0] - x, o[1] - z) < o[2] + r + 0.12)) continue;
+      L.pads.push([x, z, r, rng() < 0.16, WL]);
+    }
   }
   if (layers[1]) {
     const L = layers[1];
@@ -326,41 +373,27 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
     for (let i = 0; i < GORGE.line.length; i += 14) L.spheres.push([GORGE.line[i][0], GORGE.line[i][1], 9]);
     L.pads = [];
   }
-  if (layers[2]) {
-    const L = layers[2], P = MEADOW.ponds;
-    L.ribbons = P.map(p => ({ rows: disc(p), along: 'z' }));
-    L.falls = [{ x: P[0].x + 2.5, z: P[0].z - 2.5, yaw: 0.4, top: 30, bottom: WL, width: 1.9, forward: 1.5 }];                // from the floating rock over the pond
-    L.spheres = P.map(p => [p.x, p.z, p.a + 4]);
-    L.pads = [];
-    for (let i = 0; i < 46; i++) {
-      const p = P[rng() < 0.82 ? 0 : 1], a = R(0, 6.28), q = Math.sqrt(rng()) * 0.86, x = p.x + Math.cos(a) * p.a * q, z = p.z + Math.sin(a) * p.b * q, r = R(0.26, 0.46);
-      if (heightAtRaw(2, x, z) > WL - 0.25 || Math.hypot(x - L.falls[0].x, z - L.falls[0].z) < 4 || L.pads.some(o => Math.hypot(o[0] - x, o[1] - z) < o[2] + r + 0.12)) continue;
-      L.pads.push([x, z, r, rng() < 0.16, WL]);
-    }
-  }
   function heightAtRaw(k, x, z) { return layers[k].heightAt(x, z); }
 
   // ---- the depths' own sights
   // floating rocks over the meadow (one pours into the pond), and rocks that stand in the cloud sea off the shelf
-  if (layers[0]) layers[0].islands = [{ x: 164, z: -52, y: 16, r: 9, depth: 22, seed: 3, tree: 'pine' }, { x: 176, z: 6, y: 30, r: 13, depth: 30, seed: 5 }, { x: 158, z: -108, y: 42, r: 7, depth: 16, seed: 9 }];
+  const mIsle = i => { const [x, z] = toM(i.x, i.z); return { ...i, x, z }; };
+  if (layers[0]) layers[0].islands = [{ x: 164, z: -52, y: 16, r: 9, depth: 22, seed: 3, tree: 'pine' }, { x: 176, z: 6, y: 30, r: 13, depth: 30, seed: 5 }, { x: 158, z: -108, y: 42, r: 7, depth: 16, seed: 9 },
+    ...[{ x: MEADOW.ponds[0].x + 3, z: MEADOW.ponds[0].z - 6.5, y: 31, r: 7.5, depth: 15, seed: 11, tree: 'birch' }, { x: -100, z: 34, y: 44, r: 11, depth: 24, seed: 13, tree: 'broadleaf' },
+      { x: -124, z: -12, y: 36, r: 6, depth: 13, seed: 17 }, { x: -158, z: 70, y: 22, r: 12, depth: 28, seed: 19, tree: 'pine' }, { x: -172, z: 28, y: 52, r: 8, depth: 18, seed: 23 }, { x: -92, z: 104, y: 58, r: 6.5, depth: 15, seed: 29 }].map(mIsle)];
   if (layers[1]) layers[1].islands = [];
-  if (layers[2]) layers[2].islands = [{ x: MEADOW.ponds[0].x + 3, z: MEADOW.ponds[0].z - 6.5, y: 31, r: 7.5, depth: 15, seed: 11, tree: 'birch' }, { x: -100, z: 34, y: 44, r: 11, depth: 24, seed: 13, tree: 'broadleaf' },
-    { x: -124, z: -12, y: 36, r: 6, depth: 13, seed: 17 }, { x: -158, z: 70, y: 22, r: 12, depth: 28, seed: 19, tree: 'pine' }, { x: -172, z: 28, y: 52, r: 8, depth: 18, seed: 23 }, { x: -92, z: 104, y: 58, r: 6.5, depth: 15, seed: 29 }];
-  // cloud: a sea below the shelf's brink and outside the meadow's window, banks of mist on the gorge's floor
+  // cloud: a sea below the brink all along layer 1 (the shelf, the ledge, the meadow's window), banks of mist on the gorge's floor
   const puffs = (n, fn) => { const out = []; for (let i = 0; i < n; i++) { const p = fn(i); if (p) out.push(p); } return out; };
-  if (layers[0]) layers[0].sea = { x: 205, z: -33, y: -6.5, radius: 190 };
-  if (layers[0]) layers[0].clouds = puffs(230, () => { const z = R(-150, 86), x = shelfBrink(Math.max(-100, Math.min(34, z))) + 4 + Math.pow(rng(), 1.7) * 150; if (SHELF.stacks.some(s => Math.hypot(x - s.x, z - s.z) < s.r + 3)) return null; return [x, z, R(-6.5, -3.4), R(5, 9) + (x - 110) * 0.05]; })
-    .concat(puffs(26, () => [R(80, 138), R(-100, 34), R(46, 70), R(7, 13)]));          // and wisps high on the wall
+  if (layers[0]) layers[0].sea = { x: 205, z: -128, y: -6.5, radius: 265 };
+  if (layers[0]) layers[0].clouds = puffs(330, () => { const z = R(-300, 86), x = brinkJ(Math.max(-280, Math.min(34, z))) + 4 + Math.pow(rng(), 1.7) * 150; if (SHELF.stacks.some(s => Math.hypot(x - s.x, z - s.z) < s.r + 3)) return null; return [x, z, R(-6.5, -3.4), R(5, 9) + (x - 110) * 0.05]; })
+    .concat(puffs(26, () => [R(80, 138), R(-100, 34), R(46, 70), R(7, 13)]))           // and wisps high on the walls
+    .concat(puffs(34, () => { const [x, z] = toM(R(-140, -80), R(-36, 146)); return [x, z, R(52, 74), R(8, 14)]; }));
   if (layers[1]) layers[1].sea = { x: 109.5, z: 109, y: 47, radius: 80, veil: 0.6 };                  // a lid of mist over the gorge
   if (layers[1]) layers[1].clouds = puffs(34, () => { const c = GORGE.chambers[Math.floor(rng() * 4)].pool, near = rng() < 0.6; const x = near ? c.x + R(-1, 1) * c.a * 1.3 : R(84, 136), z = near ? c.z + R(-1, 1) * c.a * 1.3 : R(46, 172); if (gorgeOpen(x, z).o > -0.5) return null; return [x, z, R(0.3, 1.1), R(1.1, 2.1)]; })
     .concat(puffs(40, () => [R(84, 136), R(46, 172), R(30, 46), R(7, 12)]));
-  if (layers[2]) layers[2].sea = { x: -230, z: 60, y: -6.5, radius: 150 };
-  if (layers[2]) layers[2].clouds = puffs(110, () => { const z = R(-30, 150), x = -146 - Math.pow(rng(), 1.5) * 120; return [x, z, R(-6.5, -3.2), R(6, 11)]; })
-    .concat(puffs(34, () => [R(-140, -80), R(-36, 146), R(52, 74), R(8, 14)]));
   // shafts of light: [x, z of the foot, yaw, length, width]
-  if (layers[0]) layers[0].shafts = [];
+  if (layers[0]) layers[0].shafts = [[-118, 60, -1.2, 70, 10], [-104, 92, -0.9, 64, 8]].map(s => { const [x, z] = toM(s[0], s[1]); return [x, z, s[2] + Math.PI, s[3], s[4]]; });      // over the meadow
   if (layers[1]) layers[1].shafts = [[110, 150, 0.5, 46, 5], [103, 121, 0.9, 52, 6.5], [116, 97, 0.3, 48, 5], [108, 66, 0.7, 50, 7]];
-  if (layers[2]) layers[2].shafts = [[-118, 60, -1.2, 70, 10], [-104, 92, -0.9, 64, 8]];
 
   return { layers, layerAt, covers, heightAt, wetAt, walkable, paint, WL };
 }
