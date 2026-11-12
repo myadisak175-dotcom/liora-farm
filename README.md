@@ -134,3 +134,11 @@ The edits are a small list laid over what `valley-level.js` generates, and never
 - **Cliffs:** ผาตรง, ผามุม, ผายื่น (one piece bent before it is cut: foot in the ground, top leaning out over a hollow), ผาขั้นบันได, ยอดผา, and ผาประกอบ, an example of what the pieces make together.
 
 ⛰/🪨 switches between the two sets, ◀ ▶ go through a set, 🎲 rolls new shapes, ดูทั้งชุด shows the set in a row (`?type=wall`, `?all=1`, `?seed=4`). Nothing in the game uses them yet.
+
+## The rock builder
+
+`rock-builder.html` is for putting those pieces together by hand. Tap a piece in the bar at the bottom to set it down; tap a rock to pick it (a yellow box shows which), drag it to move it over the ground, and use the panel for turning, tipping forward/back and left/right, size and height (sink it into the ground or another rock, or lift it onto one); ⧉ copies it, 🎲 gives it a new shape, 🗑 takes it away. The pieces are painted by height above the ground (`createPropRock({ world: true })`), so stacked pieces share one shading.
+
+**🔥 หลอมรวม** melts everything into one rock (`fuseRocks` in `rocks.js`, section 6): each chiselled piece is measured on a grid of points (signed distance: which side of its surface a point is on is told by the surface's own facing, so folds left by the cuts don't fool it), the pieces are joined with a soft minimum so the joins fill out into curves of rock, and a new surface is drawn through the grid. Faces away from the joins stay flat. It takes a few seconds; **✋ แยกชิ้น** goes back to the pieces to go on editing.
+
+💾 keeps the work: three slots in this browser, and the layout as text to copy out (for the game later) or paste back in. The last layout is also kept by itself as you work.

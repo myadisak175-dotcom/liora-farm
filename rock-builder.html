@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#9cc7ea">
+<title>ประกอบหิน</title>
+<!--
+  rock-builder.html  —  put stylized rock and cliff pieces (rocks.js, section 5) together by hand, and melt them into one rock
+  (rocks.js, section 6). One job: building rocks. Nothing here goes into the game yet; the layout can be copied out as text.
+
+  Pieces are painted by height above the ground, so stacked pieces share one shading. 🔥 หลอมรวม melts them into one surface
+  with the joins filled out; ✋ แยกชิ้น goes back to the pieces. The layout is kept in this browser as you work.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9cc7ea; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; }
+  button { font: 700 13px system-ui; border: 1px solid #ffffff99; border-radius: 999px; padding: 9px 13px; background: #1d4f6ee6; color: #fff; touch-action: manipulation; }
+  button.warm { background: #c0702ee6; }
+  button.red { background: #9b3b3be6; }
+  #top { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); display: flex; gap: 6px; align-items: center; pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  #title { color: #fff; font: 700 16px system-ui; text-shadow: 0 1px 5px #0007; margin-right: auto; pointer-events: none; }
+  #title small { display: block; font: 500 11px system-ui; opacity: .85; }
+  #palette { position: fixed; left: 0; right: 0; bottom: calc(8px + env(safe-area-inset-bottom)); display: flex; gap: 6px; overflow-x: auto; padding: 4px max(8px, env(safe-area-inset-left)); scrollbar-width: none; }
+  #palette::-webkit-scrollbar { display: none; }
+  #palette button { flex: none; background: #ffffffe6; color: #16324a; border-color: #bcd6e4; }
+  #palette .sep { flex: none; width: 1px; background: #ffffff88; margin: 4px 2px; }
+  #panel { position: fixed; left: max(8px, env(safe-area-inset-left)); bottom: calc(62px + env(safe-area-inset-bottom)); width: min(340px, calc(100% - 16px)); display: none;
+    background: #fffffff2; border-radius: 16px; box-shadow: 0 6px 24px #0005; padding: 10px 12px 8px; color: #16324a; font: 12px system-ui; }
+  #panel.on { display: block; }
+  #panel h4 { margin: 0 0 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+  #panel h4 button { padding: 4px 10px; background: #16324a; }
+  .row { display: grid; grid-template-columns: 92px 1fr 42px; align-items: center; gap: 6px; margin: 3px 0; }
+  .row input { width: 100%; accent-color: #c0702e; }
+  .row span:last-child { text-align: right; font-variant-numeric: tabular-nums; color: #557; }
+  .btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .btns button { padding: 8px 11px; }
+  #sheet { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: #0007; }
+  #sheet.open { display: flex; }
+  #sheet .box { width: min(92%, 420px); max-height: 88%; overflow: auto; background: #fffffffa; border-radius: 18px; padding: 14px; color: #16324a; font: 13px system-ui; }
+  #sheet .box button { display: block; width: 100%; margin: 6px 0; text-align: left; background: #eef7fb; color: #16324a; border-color: #bcd6e4; padding: 12px 14px; border-radius: 14px; }
+  #sheet .box button.close { text-align: center; background: #16324a; color: #fff; }
+  #sheet textarea { width: 100%; box-sizing: border-box; height: 120px; font: 11px ui-monospace, monospace; border-radius: 10px; border: 1px solid #bcd6e4; padding: 8px; }
+  #busy { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: #0006; color: #fff; font: 700 16px system-ui; }
+  #busy.on { display: flex; }
+  #toast { position: fixed; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); background: #16324ae6; color: #fff; padding: 8px 14px; border-radius: 999px; font: 600 12px system-ui; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.on { opacity: 1; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./rocks.js": "./rocks.js?v=fuse1"
+} }
+</script>
+</head>
+<body>
+<div id="top">
+  <div id="title">ประกอบหิน <small id="count">แตะชิ้นหินด้านล่างเพื่อวาง</small></div>
+  <button id="fuse" class="warm">🔥 หลอมรวม</button>
+  <button id="menu">💾</button>
+</div>
+<div id="panel">
+  <h4><span id="pname"></span><button id="done">เสร็จ</button></h4>
+  <div class="row"><span>หมุน</span><input id="ry" type="range" min="-180" max="180" step="1"><span id="ry_v"></span></div>
+  <div class="row"><span>เอียงหน้า–หลัง</span><input id="rx" type="range" min="-60" max="60" step="1"><span id="rx_v"></span></div>
+  <div class="row"><span>เอียงซ้าย–ขวา</span><input id="rz" type="range" min="-60" max="60" step="1"><span id="rz_v"></span></div>
+  <div class="row"><span>ขนาด</span><input id="s" type="range" min="0.3" max="4" step="0.05"><span id="s_v"></span></div>
+  <div class="row"><span>สูง–ต่ำ</span><input id="y" type="range" min="-4" max="10" step="0.05"><span id="y_v"></span></div>
+  <div class="btns"><button id="dup">⧉ ทำซ้ำ</button><button id="reroll">🎲 ทรงใหม่</button><button id="del" class="red">🗑 ลบ</button></div>
+</div>
+<div id="palette"></div>
+<div id="sheet"><div class="box" id="sheetBox"></div></div>
+<div id="busy">กำลังหลอมหิน…</div>
+<div id="toast"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import { PROP_ROCK_TYPES, createPropRock, propRockMaterial, fuseRocks } from './rocks.js';
+
+const Q = new URLSearchParams(location.search);
+const $ = id => document.getElementById(id);
+const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 1800); };
+
+// ---------------------------------------------------------------- the scene: sky, a meadow, a few trees far off
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; scene.background = t;
+}
+N.setHaze({ color: '#cfe4f1', near: 40, far: 120, max: 0.5 });
+const ground = N.createGround({ radius: 80, flat: 30, hills: 1, far: '#cfe4f1' });
+scene.add(ground);
+scene.add(N.createGrass({ count: 2200, radius: 26, seed: 4, heightAt: ground.userData.heightAt }));
+for (const [x, z, type, s] of [[-22, -26, 'broadleaf', 3], [16, -30, 'pine', 5], [27, -18, 'oak', 8], [-32, -8, 'birch', 11]]) {
+  const t = N.createTree({ type, seed: s }); t.position.set(x, ground.userData.heightAt(x, z) - 0.05, z); scene.add(t);
+}
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
+camera.position.set(9, 8, 16);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, 0); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 2; controls.maxDistance = 80;
+
+// ---------------------------------------------------------------- the pieces
+// one piece: { type, seed, x, y, z, ry, rx, rz, s } (angles in degrees). y: how far above (or below) the ground its foot stands.
+const pieces = [], holder = new THREE.Group(); scene.add(holder);
+const groundY = (x, z) => ground.userData.heightAt(x, z);
+const nameOf = type => (PROP_ROCK_TYPES.find(t => t.key === type) || {}).name || type;
+function makeMesh(p) {
+  if (p.mesh) { holder.remove(p.mesh); p.mesh.userData.dispose(); }
+  p.mesh = createPropRock({ type: p.type, seed: p.seed, world: true });
+  p.mesh.userData.piece = p;
+  holder.add(p.mesh);
+  apply(p);
+}
+function apply(p) {
+  const m = p.mesh, D = Math.PI / 180;
+  m.position.set(p.x, groundY(p.x, p.z) + p.y, p.z);
+  m.rotation.set(p.rx * D, p.ry * D, p.rz * D, 'YXZ');
+  m.scale.setScalar(p.s);
+  m.updateMatrixWorld();
+  if (selected === p) boxHelper.box.setFromObject(m);
+}
+const boxHelper = new THREE.Box3Helper(new THREE.Box3(), 0xffd34d); boxHelper.visible = false; scene.add(boxHelper);
+let selected = null;
+function select(p) {
+  selected = p;
+  boxHelper.visible = !!p;
+  $('panel').classList.toggle('on', !!p);
+  if (!p) return;
+  boxHelper.box.setFromObject(p.mesh);
+  $('pname').textContent = nameOf(p.type);
+  for (const k of ['ry', 'rx', 'rz', 's', 'y']) { $(k).value = p[k]; $(k + '_v').textContent = fmt(k, p[k]); }
+}
+const fmt = (k, v) => k === 's' ? (+v).toFixed(2) + '×' : k === 'y' ? (+v).toFixed(1) + ' ม.' : Math.round(v) + '°';
+function add(type, at = null) {
+  const c = at || aimAt();
+  const p = { type, seed: 1 + Math.floor(Math.random() * 999), x: c.x, y: 0, z: c.z, ry: Math.round(Math.random() * 360 - 180), rx: 0, rz: 0, s: 1 };
+  pieces.push(p); makeMesh(p); select(p); changed();
+  return p;
+}
+function remove(p) { const i = pieces.indexOf(p); if (i < 0) return; pieces.splice(i, 1); holder.remove(p.mesh); p.mesh.userData.dispose(); if (selected === p) select(null); changed(); }
+// where a new piece goes: where the middle of the screen looks at the ground, a little to the side of the last one if that is taken
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function aimAt() {
+  ray.setFromCamera(ndc.set(0, -0.1), camera);
+  const hit = ray.intersectObject(ground)[0];
+  const at = hit ? hit.point : controls.target.clone();
+  if (pieces.some(p => Math.hypot(p.x - at.x, p.z - at.z) < 1.5)) { at.x += 2.5 * (Math.random() - 0.3); at.z += 2.5 * (Math.random() - 0.5); }
+  return at;
+}
+
+// ---------------------------------------------------------------- the panel
+for (const k of ['ry', 'rx', 'rz', 's', 'y']) $(k).addEventListener('input', () => { if (!selected) return; selected[k] = +$(k).value; $(k + '_v').textContent = fmt(k, selected[k]); apply(selected); changed(); });
+$('done').onclick = () => select(null);
+$('del').onclick = () => selected && remove(selected);
+$('reroll').onclick = () => { if (!selected) return; selected.seed = 1 + Math.floor(Math.random() * 999); makeMesh(selected); select(selected); changed(); };
+$('dup').onclick = () => { if (!selected) return; const p = { ...selected, mesh: null, x: selected.x + 1.5 * selected.s, z: selected.z + 0.8 }; pieces.push(p); makeMesh(p); select(p); changed(); };
+{
+  const pal = $('palette');
+  let lastGroup = null;
+  for (const t of PROP_ROCK_TYPES) {
+    if (t.key === 'range') continue;                                       // (an example, not a piece)
+    if (lastGroup && t.group !== lastGroup) { const s = document.createElement('div'); s.className = 'sep'; pal.append(s); }
+    lastGroup = t.group;
+    const b = document.createElement('button'); b.textContent = (t.group === 'cliff' ? '⛰ ' : '🪨 ') + t.name;
+    b.onclick = () => { if (fused) unfuse(); add(t.key); };
+    pal.append(b);
+  }
+}
+
+// ---------------------------------------------------------------- touch: tap a piece to pick it; drag the picked piece over the ground
+const pick = e => {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+};
+let drag = null, down = null;
+const plane = new THREE.Plane(), hitP = new THREE.Vector3();
+renderer.domElement.addEventListener('pointerdown', e => {
+  down = { x: e.clientX, y: e.clientY, id: e.pointerId, t: performance.now() };
+  if (!selected || fused || !e.isPrimary) return;
+  pick(e);
+  const hit = ray.intersectObject(selected.mesh)[0];
+  if (!hit) return;
+  plane.set(new THREE.Vector3(0, 1, 0), -hit.point.y);
+  drag = { id: e.pointerId, dx: selected.x - hit.point.x, dz: selected.z - hit.point.z };
+  controls.enabled = false;
+  renderer.domElement.setPointerCapture(e.pointerId);
+}, { capture: true });
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  pick(e);
+  if (!ray.ray.intersectPlane(plane, hitP)) return;
+  selected.x = hitP.x + drag.dx; selected.z = hitP.z + drag.dz; apply(selected);
+});
+const up = e => {
+  if (drag && e.pointerId === drag.id) { drag = null; controls.enabled = true; changed(); return; }
+  if (!down || e.pointerId !== down.id) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+  if (moved < 8 && performance.now() - down.t < 500 && !fused) {         // a tap
+    pick(e);
+    const hit = ray.intersectObjects(holder.children)[0];
+    select(hit ? hit.object.userData.piece : null);
+  }
+  down = null;
+};
+renderer.domElement.addEventListener('pointerup', up);
+renderer.domElement.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.id) { drag = null; controls.enabled = true; } down = null; });
+
+// ---------------------------------------------------------------- melting into one
+let fused = null;
+const fuseMat = propRockMaterial({ moss: 1, world: true });
+function unfuse() {
+  if (!fused) return;
+  scene.remove(fused); fused.geometry.dispose(); fused = null;
+  holder.visible = true; $('fuse').textContent = '🔥 หลอมรวม'; $('palette').style.opacity = 1;
+}
+$('fuse').onclick = () => {
+  if (fused) { unfuse(); toast('แยกเป็นชิ้นแล้ว'); return; }
+  if (pieces.length < 1) { toast('วางหินก่อนนะ'); return; }
+  select(null);
+  $('busy').classList.add('on');
+  setTimeout(() => {
+    const t0 = performance.now();
+    let geo = null;
+    try { geo = fuseRocks(pieces.map(p => p.mesh), { blend: 0.6 }); } catch (err) { console.error(err); }
+    $('busy').classList.remove('on');
+    if (!geo) { toast('หลอมไม่สำเร็จ'); return; }
+    fused = new THREE.Mesh(geo, fuseMat); fused.name = 'fusedRock';
+    scene.add(fused); holder.visible = false;
+    $('fuse').textContent = '✋ แยกชิ้น';
+    console.info('[fuse]', Math.round(performance.now() - t0), 'ms', geo.index.count / 3, 'triangles, cell', geo.userData.cell.toFixed(3));
+    toast(`หลอมแล้ว · ${((performance.now() - t0) / 1000).toFixed(1)} วิ`);
+  }, 60);
+};
+
+// ---------------------------------------------------------------- keeping the work
+const KEY = 'rockBuilder.v1', slotKey = n => KEY + '.slot' + n;
+const snapshot = () => JSON.stringify({ v: 1, pieces: pieces.map(({ mesh, ...p }) => p) });
+function load(json) {
+  let d; try { d = JSON.parse(json); } catch { return false; }
+  if (!d || !Array.isArray(d.pieces)) return false;
+  unfuse(); select(null);
+  for (const p of [...pieces]) { holder.remove(p.mesh); p.mesh.userData.dispose(); }
+  pieces.length = 0;
+  for (const q of d.pieces) {
+    if (!PROP_ROCK_TYPES.some(t => t.key === q.type)) continue;
+    const p = { type: q.type, seed: q.seed | 0 || 1, x: +q.x || 0, y: +q.y || 0, z: +q.z || 0, ry: +q.ry || 0, rx: +q.rx || 0, rz: +q.rz || 0, s: +q.s || 1 };
+    pieces.push(p); makeMesh(p);
+  }
+  changed(false);
+  return true;
+}
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } } };
+let saveTimer = 0;
+function changed(save = true) {
+  $('count').textContent = pieces.length ? `${pieces.length} ชิ้น · แตะหินเพื่อแก้ ลากเพื่อย้าย` : 'แตะชิ้นหินด้านล่างเพื่อวาง';
+  if (save) { clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set(KEY, snapshot()), 400); }
+}
+const sheet = $('sheet'), box = $('sheetBox');
+const closeSheet = () => sheet.classList.remove('open');
+sheet.addEventListener('pointerdown', e => { if (e.target === sheet) closeSheet(); });
+const btn = (label, fn, cls = '') => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = fn; box.append(b); return b; };
+$('menu').onclick = () => {
+  box.textContent = '';
+  const h = document.createElement('h4'); h.textContent = 'เก็บผลงาน'; h.style.margin = '2px 2px 8px'; box.append(h);
+  for (let n = 1; n <= 3; n++) {
+    const has = store.get(slotKey(n));
+    btn(`💾 บันทึกลงช่อง ${n}${has ? ' (ทับของเดิม)' : ''}`, () => { toast(store.set(slotKey(n), snapshot()) ? `บันทึกช่อง ${n} แล้ว` : 'เบราว์เซอร์นี้บันทึกไม่ได้'); closeSheet(); });
+    if (has) btn(`📂 เปิดช่อง ${n}`, () => { load(store.get(slotKey(n))); toast(`เปิดช่อง ${n} แล้ว`); closeSheet(); });
+  }
+  const ta = document.createElement('textarea'); ta.value = snapshot(); box.append(ta);
+  btn('📋 คัดลอกข้อความนี้ (เอาไปใช้ในเกมทีหลัง)', async () => { try { await navigator.clipboard.writeText(ta.value); toast('คัดลอกแล้ว'); } catch { ta.select(); toast('กดค้างที่ข้อความเพื่อคัดลอก'); } });
+  btn('📥 โหลดจากข้อความในกล่อง', () => { toast(load(ta.value) ? 'โหลดแล้ว' : 'ข้อความไม่ถูกต้อง'); closeSheet(); });
+  btn('🗑 ล้างทั้งหมด', () => { load('{"pieces":[]}'); store.set(KEY, snapshot()); closeSheet(); }, 'red');
+  btn('ปิด', closeSheet, 'close');
+  sheet.classList.add('open');
+};
+
+// ---------------------------------------------------------------- start: the last work in this browser, or a small example
+if (!(store.get(KEY) && load(store.get(KEY)) && pieces.length)) {
+  load(JSON.stringify({ pieces: [
+    { type: 'wall', seed: 4, x: -3, y: 0, z: 0, ry: 8, rx: 0, rz: 0, s: 1.3 },
+    { type: 'wall', seed: 9, x: 2.6, y: -0.4, z: 0.7, ry: -12, rx: 0, rz: 0, s: 1.1 },
+    { type: 'boulder', seed: 3, x: 0.2, y: -0.3, z: 2.8, ry: 30, rx: 0, rz: 6, s: 1.0 },
+    { type: 'stone', seed: 6, x: 4.8, y: -0.1, z: 2.6, ry: 70, rx: 0, rz: 0, s: 1.2 },
+  ] }));
+}
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const clock = new THREE.Clock();
+const frame = () => { N.update(clock.getDelta()); controls.update(); renderer.render(scene, camera); };
+window.__rb = { frame, renderer, scene, camera, controls, pieces, add, select, load, snapshot, fuse: () => $('fuse').onclick(), get fused() { return fused; } };
+if (!Q.get('still')) renderer.setAnimationLoop(frame);
+</script>
+</body>
+</html>

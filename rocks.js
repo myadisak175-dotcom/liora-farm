@@ -20,7 +20,9 @@
    5. ROCK PROPS    (catalog only, for now: rock-catalog.html) — loose rocks and cliff pieces in a hand-painted stylized
                     look: big flat chiselled faces with soft rounded edges, warm light tops, cool blue-grey sides, a pale
                     rim on the edges, moss on what faces the sky. Big shapes are assembled from pieces sunk into each other.
-        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed }), propRockMaterial({ moss })
+        PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
+   6. FUSING        (rock-builder.html) — pieces set into each other melted into one rock, the joins filled out into curves
+        fuseRocks(meshes, { blend })
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -625,20 +627,25 @@ function chiselPiece({ seed = 1, size = [1, 1, 1], cuts = 20, up = 0.3, deep = [
   for (let i = 0; i < n; i++) { let y = P[i * 3 + 1]; if (y < foot) y = foot + (y - foot) * 0.15; P[i * 3 + 1] = y - foot - sink * (y1 - y0); }
   g.computeVertexNormals();
   // what the paint needs: how sharply the surface bends at each point (out: an edge, in: a crease), how high up it is
-  const N = g.attributes.normal.array, curv = new Float32Array(n), hgt = new Float32Array(n), top = y1 - foot - sink * (y1 - y0), bot = -sink * (y1 - y0);
-  for (let i = 0; i < n; i++) {
+  const hgt = new Float32Array(n), top = y1 - foot - sink * (y1 - y0), bot = -sink * (y1 - y0);
+  for (let i = 0; i < n; i++) hgt[i] = Math.max(0, Math.min(1, (P[i * 3 + 1] - bot) / (top - bot)));
+  g.setAttribute('aCurv', new THREE.BufferAttribute(bendOf(P, g.attributes.normal.array, NB), 1));
+  g.setAttribute('aHgt', new THREE.BufferAttribute(hgt, 1));
+  g.setAttribute('aFacet', new THREE.BufferAttribute(facet, 1));
+  return g;
+}
+// how the surface bends at each point: the mean slope from it to its neighbours along its normal (< 0: an edge, > 0: a crease)
+function bendOf(P, N, NB) {
+  const curv = new Float32Array(NB.length);
+  for (let i = 0; i < NB.length; i++) {
     let c = 0;
     for (const j of NB[i]) {
       const dx = P[j * 3] - P[i * 3], dy = P[j * 3 + 1] - P[i * 3 + 1], dz = P[j * 3 + 2] - P[i * 3 + 2], l = Math.hypot(dx, dy, dz) || 1;
       c += (N[i * 3] * dx + N[i * 3 + 1] * dy + N[i * 3 + 2] * dz) / l;
     }
-    curv[i] = c / NB[i].length;
-    hgt[i] = Math.max(0, Math.min(1, (P[i * 3 + 1] - bot) / (top - bot)));
+    curv[i] = NB[i].length ? c / NB[i].length : 0;
   }
-  g.setAttribute('aCurv', new THREE.BufferAttribute(curv, 1));
-  g.setAttribute('aHgt', new THREE.BufferAttribute(hgt, 1));
-  g.setAttribute('aFacet', new THREE.BufferAttribute(facet, 1));
-  return g;
+  return curv;
 }
 // a piece set somewhere in the rock: turned, tipped, moved; its height-from-foot stays its own
 const place = (g, { x = 0, y = 0, z = 0, ry = 0, rx = 0, rz = 0 } = {}) => {
@@ -733,25 +740,27 @@ Object.assign(PROP_BUILD, {
 const PROP_MOSS = { boulder: 1, stone: 0.6, pillar: 1, ledge: 1, pebbles: 0, paving: 0.35, wall: 1, corner: 1, overhang: 1, steps: 1, spire: 0.8, range: 1 };
 
 
-export function createPropRock({ type = 'boulder', seed = 1 } = {}) {
+// world: paint the foot's dark and the moss by height above the ground (y = 0) instead of by each piece's own foot, so pieces
+// stacked into one rock share one shading (rock-builder.html)
+export function createPropRock({ type = 'boulder', seed = 1, world = false } = {}) {
   const rng = mulberry32(seed * 7919 + type.length * 31);
   const geo = mergeGeometries(PROP_BUILD[type](rng, seed));
   geo.computeBoundingSphere();
-  const mesh = new THREE.Mesh(geo, propRockMaterial({ moss: PROP_MOSS[type] }));
+  const mesh = new THREE.Mesh(geo, propRockMaterial({ moss: PROP_MOSS[type], world }));
   mesh.name = 'propRock-' + type;
   mesh.userData = { kind: 'propRock', type, seed, dispose: () => geo.dispose() };
   return mesh;
 }
 
 const propMats = {};
-export function propRockMaterial({ moss = 1 } = {}) {
-  const key = 'm' + moss;
+export function propRockMaterial({ moss = 1, world = false } = {}) {
+  const key = 'm' + moss + (world ? 'w' : '');
   if (propMats[key]) return propMats[key];
   const T = PROP_TONES;
   return (propMats[key] = new THREE.ShaderMaterial({
     uniforms: {
       uLit: { value: rgb(T.lit) }, uMid: { value: rgb(T.mid) }, uShade: { value: rgb(T.shade) }, uDeep: { value: rgb(T.deep) }, uRim: { value: rgb(T.rim) }, uSky: { value: rgb(T.sky) },
-      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uSun: { value: PROP_SUN },
+      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uSun: { value: PROP_SUN }, uWorld: { value: world ? 2.6 : 0 },
       uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
     },
     vertexShader: /* glsl */`
@@ -771,11 +780,12 @@ export function propRockMaterial({ moss = 1 } = {}) {
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
-      uniform float uMoss;
+      uniform float uMoss, uWorld;
       varying vec3 vWN, vWP;
       varying float vCurv, vHgt, vFacet;
       void main() {
         vec3 n = normalize(vWN);
+        float hg = uWorld > 0.0 ? clamp(vWP.y / uWorld, 0.0, 1.0) : vHgt;     // how high up: on its own foot, or above the ground
         // the light, painted in a few soft steps; the brush wobbles a little
         float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.07 + (vFacet - 0.5) * 0.16;   // each face its own tone
         vec3 col = mix(uDeep, uShade, smoothstep(0.28, 0.38, t));
@@ -789,9 +799,9 @@ export function propRockMaterial({ moss = 1 } = {}) {
         col *= 0.93 + 0.14 * noise2(vWP.xz * 0.45 + vWP.y * 0.3);                       // broad changes of tone across the rock
         float side = 1.0 - abs(n.y);                                                      // faint weathering streaks down the sides
         col *= 1.0 - side * 0.1 * smoothstep(0.55, 0.85, noise2(vec2((vWP.x + vWP.z) * 2.6, vWP.y * 0.35)));
-        col *= mix(0.6, 1.0, smoothstep(0.0, 0.3, vHgt));                               // dark where it meets the ground
+        col *= mix(0.6, 1.0, smoothstep(0.0, 0.3, hg));                                 // dark where it meets the ground
         if (uMoss > 0.0) {
-          float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - vHgt) * 0.8 - (1.0 - uMoss) * 0.3 - 0.03;
+          float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - hg) * 0.8 - (1.0 - uMoss) * 0.3 - 0.03;
           vec3 mc = mix(uM2, mix(uM1, uM0, smoothstep(0.86, 1.0, n.y + (noise2(vWP.xz * 3.0) - 0.5) * 0.2)), smoothstep(0.35, 0.7, t));
           col *= 1.0 - 0.22 * smoothstep(0.5, 0.64, m) * (1.0 - smoothstep(0.64, 0.7, m));   // a shadow just under the moss's edge
           col = mix(col, mc, smoothstep(0.64, 0.7, m));
@@ -799,4 +809,256 @@ export function propRockMaterial({ moss = 1 } = {}) {
         gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
       }`,
   }));
+}
+
+// ==================================================================================================== 6. FUSING
+// Pieces set into each other in the builder melt into one rock. Each piece's shape is measured on a grid of points (how far each
+// point is from its surface, below zero inside it); the pieces are joined with a soft minimum, so where two meet the join fills
+// out into a curve of rock instead of a crease; a new surface is drawn through the grid (surface nets). Faces away from the joins
+// keep their flat chiselled planes; the faces' tones are carried over from the nearest point of the pieces.
+//   const geo = fuseRocks(meshes, { blend: 0.6 });     // geometry in world space, for propRockMaterial({ world: true })
+// blend: how soft the joins are (a join swells out about a quarter of this, in metres); the grid is cut off just under the
+// ground, where nothing shows.
+export function fuseRocks(meshes, { blend = 0.6, maxCells = 1.6e6, floor = -0.3 } = {}) {
+  const pieces = [], box = new THREE.Box3(), v = new THREE.Vector3();
+  for (const m of meshes) {
+    m.updateMatrixWorld(true);
+    const g = m.geometry, pos = g.attributes.position, nor = g.attributes.normal, W = new Float32Array(pos.count * 3), NW = new Float32Array(pos.count * 3);
+    const nm = new THREE.Matrix3().getNormalMatrix(m.matrixWorld);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); W[i * 3] = v.x; W[i * 3 + 1] = v.y; W[i * 3 + 2] = v.z;
+      v.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize(); NW[i * 3] = v.x; NW[i * 3 + 1] = v.y; NW[i * 3 + 2] = v.z;
+    }
+    // a rock may be several chiselled pieces in one mesh (each closed on itself, sunk into the others): each is taken on its own,
+    // so the surfaces inside the rock are not mistaken for its outside, and the joins between them fill out too
+    const I = g.index.array, F = g.attributes.aFacet ? g.attributes.aFacet.array : null, up = new Int32Array(pos.count).map((_, i) => i);
+    const root = x => { while (up[x] !== x) x = up[x] = up[up[x]]; return x; };
+    for (let t = 0; t < I.length; t += 3) { const a = root(I[t]), b = root(I[t + 1]), c = root(I[t + 2]); up[b] = a; up[root(c)] = a; }
+    const parts = new Map();
+    for (let t = 0; t < I.length; t += 3) { const r = root(I[t]); let l = parts.get(r); if (!l) parts.set(r, l = []); l.push(I[t], I[t + 1], I[t + 2]); }
+    for (const l of parts.values()) {
+      const idx = Uint32Array.from(l), pb = new THREE.Box3();
+      for (const q of idx) pb.expandByPoint(v.set(W[q * 3], W[q * 3 + 1], W[q * 3 + 2]));
+      box.union(pb);
+      pieces.push({ W, NW, idx, F, box: pb });
+    }
+  }
+  if (!pieces.length) return null;
+  box.min.y = Math.max(box.min.y, floor);
+  const pad = blend * 1.5 + 0.3, sz = box.getSize(new THREE.Vector3()).addScalar(pad * 2);
+  const cell = Math.max(0.05, Math.cbrt(sz.x * sz.y * sz.z / maxCells));
+  const O = box.min.clone().subScalar(pad); O.y = Math.max(O.y, floor);
+  const nx = Math.ceil(sz.x / cell) + 1, ny = Math.ceil((box.max.y + pad - O.y) / cell) + 1, nz = Math.ceil(sz.z / cell) + 1;
+  const band = blend * 1.6 + 2 * cell, D = new Float32Array(nx * ny * nz).fill(band);
+  const at = (i, j, k) => (k * ny + j) * nx + i;
+  const smin = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+
+  for (const pc of pieces) {
+    const { W, NW, idx } = pc, T = idx.length / 3;
+    // the piece's own part of the grid
+    const i0 = Math.max(0, Math.floor((pc.box.min.x - band - O.x) / cell)), i1 = Math.min(nx - 1, Math.ceil((pc.box.max.x + band - O.x) / cell));
+    const j0 = Math.max(0, Math.floor((pc.box.min.y - band - O.y) / cell)), j1 = Math.min(ny - 1, Math.ceil((pc.box.max.y + band - O.y) / cell));
+    const k0 = Math.max(0, Math.floor((pc.box.min.z - band - O.z) / cell)), k1 = Math.min(nz - 1, Math.ceil((pc.box.max.z + band - O.z) / cell));
+    const lx = i1 - i0 + 1, ly = j1 - j0 + 1, lz = k1 - k0 + 1, L = lx * ly * lz, li = (i, j, k) => (k * ly + j) * lx + i;
+    const X = i => O.x + (i0 + i) * cell, Y = j => O.y + (j0 + j) * cell, Z = k => O.z + (k0 + k) * cell;
+    // the triangles over each column of the grid
+    const cols = Array.from({ length: lx * lz }, () => []);
+    for (let t = 0; t < T; t++) {
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      const ia = Math.max(0, Math.ceil((Math.min(W[a], W[b], W[c]) - O.x) / cell) - i0), ib = Math.min(lx - 1, Math.floor((Math.max(W[a], W[b], W[c]) - O.x) / cell) - i0);
+      const ka = Math.max(0, Math.ceil((Math.min(W[a + 2], W[b + 2], W[c + 2]) - O.z) / cell) - k0), kb = Math.min(lz - 1, Math.floor((Math.max(W[a + 2], W[b + 2], W[c + 2]) - O.z) / cell) - k0);
+      for (let k = ka; k <= kb; k++) for (let i = ia; i <= ib; i++) cols[k * lx + i].push(t);
+    }
+    // inside or out: a ray up each column, counting where it crosses the surface by which way the surface faces there (going out
+    // +1, coming in -1), so where the cuts folded the surface over itself the layers cancel out. Three rays a little apart in each
+    // column, and a point is inside if two of them say so.
+    const occ = new Uint8Array(L), votes = new Uint8Array(L), hits = [], JIT = [[0.0013, 0.0007], [0.21, -0.17], [-0.19, 0.23]];
+    for (const [jx, jz] of JIT) for (let k = 0; k < lz; k++) for (let i = 0; i < lx; i++) {
+      const px = X(i) + cell * jx, pz = Z(k) + cell * jz; hits.length = 0;
+      for (const t of cols[k * lx + i]) {
+        const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+        const x1 = W[a], z1 = W[a + 2], x2 = W[b], z2 = W[b + 2], x3 = W[c], z3 = W[c + 2];
+        const d = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3);
+        if (Math.abs(d) < 1e-14) continue;
+        const u = ((z2 - z3) * (px - x3) + (x3 - x2) * (pz - z3)) / d, w = ((z3 - z1) * (px - x3) + (x1 - x3) * (pz - z3)) / d, q = 1 - u - w;
+        if (u < 0 || w < 0 || q < 0) continue;
+        const ny = (z2 - z1) * (x3 - x1) - (x2 - x1) * (z3 - z1);              // which way it faces, up or down
+        hits.push(u * W[a + 1] + w * W[b + 1] + q * W[c + 1], ny > 0 ? 1 : -1);
+      }
+      if (hits.length < 4) continue;
+      const order = []; for (let n = 0; n < hits.length; n += 2) order.push(n);
+      order.sort((p, q) => hits[q] - hits[p]);                               // from the top down
+      let wind = 0, above = Infinity;
+      for (const n of order) {
+        const y = hits[n];
+        if (wind > 0) {                                                      // inside between this crossing and the one above
+          const ja = Math.max(0, Math.ceil((y - O.y) / cell) - j0), jb = Math.min(ly - 1, Math.floor((above - O.y) / cell) - j0);
+          for (let j = ja; j <= jb; j++) votes[li(i, j, k)]++;
+        }
+        wind += hits[n + 1]; above = y;
+      }
+    }
+    for (let o = 0; o < L; o++) occ[o] = votes[o] >= 2 ? 1 : 0;
+    // exact distances where the surface passes, from the triangles near each point
+    const hb = cell * 2, hk = (a, b, c) => (Math.floor(a / hb) * 73856093) ^ (Math.floor(b / hb) * 19349663) ^ (Math.floor(c / hb) * 83492791), hash = new Map();
+    for (let t = 0; t < T; t++) {
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3, e = cell * 1.6;
+      const xa = Math.floor((Math.min(W[a], W[b], W[c]) - e) / hb), xb = Math.floor((Math.max(W[a], W[b], W[c]) + e) / hb);
+      const ya = Math.floor((Math.min(W[a + 1], W[b + 1], W[c + 1]) - e) / hb), yb = Math.floor((Math.max(W[a + 1], W[b + 1], W[c + 1]) + e) / hb);
+      const za = Math.floor((Math.min(W[a + 2], W[b + 2], W[c + 2]) - e) / hb), zb = Math.floor((Math.max(W[a + 2], W[b + 2], W[c + 2]) + e) / hb);
+      for (let z = za; z <= zb; z++) for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+        const key = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791);
+        let list = hash.get(key); if (!list) hash.set(key, list = []); list.push(t);
+      }
+    }
+    // near the surface (where inside and out change over, and one point either side of that) the exact distance to the nearest
+    // triangle, and which side of it the point is on, from the surface's own facing there (more to be trusted than the rays)
+    const A = new Float32Array(L).fill(Infinity), C = new Float32Array(L * 3), side = new Int8Array(L), near = new Uint8Array(L);
+    for (let k = 0; k < lz; k++) for (let j = 0; j < ly; j++) for (let i = 0; i < lx; i++) {
+      const o = li(i, j, k), s = occ[o];
+      if ((i > 0 && occ[o - 1] !== s) || (i < lx - 1 && occ[o + 1] !== s) || (j > 0 && occ[o - lx] !== s) || (j < ly - 1 && occ[o + lx] !== s) ||
+        (k > 0 && occ[o - lx * ly] !== s) || (k < lz - 1 && occ[o + lx * ly] !== s)) {
+        for (let dk = -1; dk <= 1; dk++) for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          const ii = i + di, jj = j + dj, kk = k + dk;
+          if (ii >= 0 && jj >= 0 && kk >= 0 && ii < lx && jj < ly && kk < lz) near[li(ii, jj, kk)] = 1;
+        }
+      }
+    }
+    for (let k = 0; k < lz; k++) for (let j = 0; j < ly; j++) for (let i = 0; i < lx; i++) {
+      const o = li(i, j, k);
+      if (!near[o]) continue;
+      const px = X(i), py = Y(j), pz = Z(k), list = hash.get(hk(px, py, pz));
+      let best = Infinity, bt = -1;
+      if (list) for (const t of list) { const d = triDist2(W, idx[t * 3] * 3, idx[t * 3 + 1] * 3, idx[t * 3 + 2] * 3, px, py, pz); if (d < best) { best = d; bt = t; C[o * 3] = TQ[0]; C[o * 3 + 1] = TQ[1]; C[o * 3 + 2] = TQ[2]; } }
+      if (bt < 0) continue;                                                // no surface near: left for the sweep to reach
+      A[o] = Math.sqrt(best);
+      // the surface's facing at the nearest point: its corners' normals, the nearer corners counting for more
+      let nx = 0, ny = 0, nz = 0;
+      for (let e = 0; e < 3; e++) {
+        const vtx = idx[bt * 3 + e] * 3, wgt = 1 / (Math.hypot(W[vtx] - C[o * 3], W[vtx + 1] - C[o * 3 + 1], W[vtx + 2] - C[o * 3 + 2]) + 1e-4);
+        nx += NW[vtx] * wgt; ny += NW[vtx + 1] * wgt; nz += NW[vtx + 2] * wgt;
+      }
+      const dot = (px - C[o * 3]) * nx + (py - C[o * 3 + 1]) * ny + (pz - C[o * 3 + 2]) * nz;
+      side[o] = A[o] < cell * 0.05 ? (occ[o] ? -1 : 1) : (dot >= 0 ? 1 : -1);
+    }
+    // out from there across the grid, each point taking the nearest surface point of its neighbours (forward, then back):
+    // near-exact distances, so the joins swell out smoothly
+    const NBR = [];
+    for (let dk = -1; dk <= 1; dk++) for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) if (di || dj || dk) NBR.push([di, dj, dk, dk * lx * ly + dj * lx + di]);
+    const before = NBR.filter(q => q[3] < 0), after = NBR.filter(q => q[3] > 0);
+    const sweep = (list, from, to, st) => {
+      for (let k = from[2]; k !== to[2]; k += st) for (let j = from[1]; j !== to[1]; j += st) for (let i = from[0]; i !== to[0]; i += st) {
+        const o = li(i, j, k), px = X(i), py = Y(j), pz = Z(k); let a = A[o];
+        for (const [di, dj, dk, d] of list) {
+          const ii = i + di, jj = j + dj, kk = k + dk, q = o + d;
+          if (ii < 0 || jj < 0 || kk < 0 || ii >= lx || jj >= ly || kk >= lz || A[q] === Infinity || occ[q] !== occ[o]) continue;
+          const b = Math.hypot(px - C[q * 3], py - C[q * 3 + 1], pz - C[q * 3 + 2]);
+          if (b < a) { a = b; C[o * 3] = C[q * 3]; C[o * 3 + 1] = C[q * 3 + 1]; C[o * 3 + 2] = C[q * 3 + 2]; }
+        }
+        A[o] = a;
+      }
+    };
+    sweep(before, [0, 0, 0], [lx, ly, lz], 1);
+    sweep(after, [lx - 1, ly - 1, lz - 1], [-1, -1, -1], -1);
+    sweep(before, [0, 0, 0], [lx, ly, lz], 1);
+    // into the whole: a soft minimum with what is there already
+    for (let k = 0; k < lz; k++) for (let j = 0; j < ly; j++) for (let i = 0; i < lx; i++) {
+      const o = li(i, j, k), d = Math.min(A[o], band) * (side[o] || (occ[o] ? -1 : 1)), g = at(i0 + i, j0 + j, k0 + k);
+      D[g] = smin(D[g], d, blend);
+    }
+  }
+
+  // a point whose side disagrees with all six around it is a mistake (a pit or a pimple): it takes its neighbours' mean
+  for (let pass = 0; pass < 2; pass++) for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const o = at(i, j, k), d = D[o], nb = [D[o - 1], D[o + 1], D[o - nx], D[o + nx], D[o - nx * ny], D[o + nx * ny]];
+    if (nb.every(q => (q < 0) !== (d < 0))) D[o] = nb.reduce((a, q) => a + q, 0) / 6;
+  }
+  // the new surface: one point in every cube of the grid the surface passes through, joined across every edge it crosses
+  const cubeV = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1), cv = (i, j, k) => (k * (ny - 1) + j) * (nx - 1) + i;
+  const pos = [], CORN = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
+  const EDG = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]], val = new Float32Array(8);
+  for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    let inside = 0;
+    for (let c = 0; c < 8; c++) { val[c] = D[at(i + CORN[c][0], j + CORN[c][1], k + CORN[c][2])]; if (val[c] < 0) inside++; }
+    if (inside === 0 || inside === 8) continue;
+    let sx = 0, sy = 0, sz2 = 0, m = 0;
+    for (const [a, b] of EDG) {
+      if ((val[a] < 0) === (val[b] < 0)) continue;
+      const t = val[a] / (val[a] - val[b]);
+      sx += CORN[a][0] + (CORN[b][0] - CORN[a][0]) * t; sy += CORN[a][1] + (CORN[b][1] - CORN[a][1]) * t; sz2 += CORN[a][2] + (CORN[b][2] - CORN[a][2]) * t; m++;
+    }
+    cubeV[cv(i, j, k)] = pos.length / 3;
+    pos.push(O.x + (i + sx / m) * cell, O.y + (j + sy / m) * cell, O.z + (k + sz2 / m) * cell);
+  }
+  // a quad of four points, turned to face out, split along whichever diagonal keeps both halves facing out (a quad folded across
+  // a crease split the other way leaves a sliver facing in)
+  const P = pos, facing = (a, b, c, out) => {
+    const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2], wx = P[c * 3] - P[a * 3], wy = P[c * 3 + 1] - P[a * 3 + 1], wz = P[c * 3 + 2] - P[a * 3 + 2];
+    const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx, l = Math.hypot(nx, ny, nz) || 1;
+    return (nx * out[0] + ny * out[1] + nz * out[2]) / l;
+  };
+  const index = [], quad = (a, b, c, d, out) => {
+    if (a < 0 || b < 0 || c < 0 || d < 0) return;
+    if (facing(a, b, c, out) + facing(a, c, d, out) < 0) { const t = b; b = d; d = t; }          // wound the other way round
+    const s1 = Math.min(facing(a, b, c, out), facing(a, c, d, out)), s2 = Math.min(facing(a, b, d, out), facing(b, c, d, out));
+    if (s1 >= s2) index.push(a, b, c, a, c, d); else index.push(a, b, d, b, c, d);
+  };
+  for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const d0 = D[at(i, j, k)], in0 = d0 < 0;
+    if (in0 !== (D[at(i + 1, j, k)] < 0)) quad(cubeV[cv(i, j - 1, k - 1)], cubeV[cv(i, j, k - 1)], cubeV[cv(i, j, k)], cubeV[cv(i, j - 1, k)], [in0 ? 1 : -1, 0, 0]);
+    if (in0 !== (D[at(i, j + 1, k)] < 0)) quad(cubeV[cv(i - 1, j, k - 1)], cubeV[cv(i, j, k - 1)], cubeV[cv(i, j, k)], cubeV[cv(i - 1, j, k)], [0, in0 ? 1 : -1, 0]);
+    if (in0 !== (D[at(i, j, k + 1)] < 0)) quad(cubeV[cv(i - 1, j - 1, k)], cubeV[cv(i, j - 1, k)], cubeV[cv(i, j, k)], cubeV[cv(i - 1, j, k)], [0, 0, in0 ? 1 : -1]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  // the paint's attributes: bends from the new surface, heights from the ground, face tones from the pieces' nearest points
+  const n = pos.length / 3, NB = Array.from({ length: n }, () => new Set());
+  for (let t = 0; t < index.length; t += 3) { const a = index[t], b = index[t + 1], c = index[t + 2]; NB[a].add(b).add(c); NB[b].add(a).add(c); NB[c].add(a).add(b); }
+  g.setAttribute('aCurv', new THREE.BufferAttribute(bendOf(pos, g.attributes.normal.array, NB.map(q => [...q])), 1));
+  const hgt = new Float32Array(n), top = Math.max(0.5, box.max.y);
+  for (let i = 0; i < n; i++) hgt[i] = Math.max(0, Math.min(1, pos[i * 3 + 1] / top));
+  g.setAttribute('aHgt', new THREE.BufferAttribute(hgt, 1));
+  const fb = 0.3, fk = (x, y, z) => (Math.floor(x / fb) * 73856093) ^ (Math.floor(y / fb) * 19349663) ^ (Math.floor(z / fb) * 83492791), fh = new Map();
+  for (const pc of new Set(pieces.filter(q => q.F).map(q => q))) if (pc === pieces.find(q => q.W === pc.W)) for (let i = 0; i < pc.F.length; i++) { const key = fk(pc.W[i * 3], pc.W[i * 3 + 1], pc.W[i * 3 + 2]); let l = fh.get(key); if (!l) fh.set(key, l = []); l.push(pc.W[i * 3], pc.W[i * 3 + 1], pc.W[i * 3 + 2], pc.F[i]); }
+  const facet = new Float32Array(n).fill(0.5);
+  for (let i = 0; i < n; i++) {
+    const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2]; let best = Infinity;
+    for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const l = fh.get(fk(x + dx * fb, y + dy * fb, z + dz * fb)); if (!l) continue;
+      for (let q = 0; q < l.length; q += 4) { const d = (l[q] - x) ** 2 + (l[q + 1] - y) ** 2 + (l[q + 2] - z) ** 2; if (d < best) { best = d; facet[i] = l[q + 3]; } }
+    }
+  }
+  g.setAttribute('aFacet', new THREE.BufferAttribute(facet, 1));
+  g.computeBoundingSphere();
+  g.userData = { cell, cells: nx * ny * nz };
+  return g;
+}
+// the squared distance from a point to a triangle (corners at offsets a, b, c in W); the nearest point is left in TQ
+const TQ = [0, 0, 0];
+function triDist2(W, a, b, c, px, py, pz) {
+  const ax = W[a], ay = W[a + 1], az = W[a + 2];
+  const abx = W[b] - ax, aby = W[b + 1] - ay, abz = W[b + 2] - az, acx = W[c] - ax, acy = W[c + 1] - ay, acz = W[c + 2] - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+  let qx, qy, qz;
+  if (d1 <= 0 && d2 <= 0) { qx = ax; qy = ay; qz = az; }
+  else {
+    const bpx = px - W[b], bpy = py - W[b + 1], bpz = pz - W[b + 2];
+    const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+    if (d3 >= 0 && d4 <= d3) { qx = W[b]; qy = W[b + 1]; qz = W[b + 2]; }
+    else {
+      const cpx = px - W[c], cpy = py - W[c + 1], cpz = pz - W[c + 2];
+      const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+      const vc = d1 * d4 - d3 * d2, vb = d5 * d2 - d1 * d6, va = d3 * d6 - d5 * d4;
+      if (d6 >= 0 && d5 <= d6) { qx = W[c]; qy = W[c + 1]; qz = W[c + 2]; }
+      else if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); qx = ax + abx * v; qy = ay + aby * v; qz = az + abz * v; }
+      else if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); qx = ax + acx * w; qy = ay + acy * w; qz = az + acz * w; }
+      else if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / ((d4 - d3) + (d5 - d6)); qx = W[b] + (W[c] - W[b]) * w; qy = W[b + 1] + (W[c + 1] - W[b + 1]) * w; qz = W[b + 2] + (W[c + 2] - W[b + 2]) * w; }
+      else { const dn = 1 / (va + vb + vc), v = vb * dn, w = vc * dn; qx = ax + abx * v + acx * w; qy = ay + aby * v + acy * w; qz = az + abz * v + acz * w; }
+    }
+  }
+  TQ[0] = qx; TQ[1] = qy; TQ[2] = qz;
+  return (px - qx) ** 2 + (py - qy) ** 2 + (pz - qz) ** 2;
 }
