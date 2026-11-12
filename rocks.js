@@ -23,6 +23,10 @@
         PROP_ROCK_TYPES ({ key, name, group: 'rock' | 'cliff' }), createPropRock({ type, seed, world }), propRockMaterial({ moss, world })
    6. FUSING        (rock-builder.html) — pieces set into each other melted into one rock, the joins filled out into curves
         fuseRocks(meshes, { blend })
+   7. GROUND BLEND  (rock-builder.html) — the foot of every rock takes on the colour of the ground it stands in (what Unreal
+                    does with a runtime virtual texture): the ground is drawn once from straight above into a picture of its
+                    colour and one of its height, and the rocks' paint reads them
+        bakeGroundForRocks(renderer, grounds, { center, size, res }), GROUND_BLEND (its settings)
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -760,7 +764,7 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
   return (propMats[key] = new THREE.ShaderMaterial({
     uniforms: {
       uLit: { value: rgb(T.lit) }, uMid: { value: rgb(T.mid) }, uShade: { value: rgb(T.shade) }, uDeep: { value: rgb(T.deep) }, uRim: { value: rgb(T.rim) }, uSky: { value: rgb(T.sky) },
-      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uSun: { value: PROP_SUN }, uWorld: { value: world ? 2.6 : 0 },
+      uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uSun: { value: PROP_SUN }, uWorld: { value: world ? 2.6 : 0 }, ...GROUND_U,
       uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
     },
     vertexShader: /* glsl */`
@@ -780,7 +784,9 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
-      uniform float uMoss, uWorld;
+      uniform float uMoss, uWorld, uGOn, uGBlend;
+      uniform sampler2D uGCol, uGH;
+      uniform vec4 uGRect;
       varying vec3 vWN, vWP;
       varying float vCurv, vHgt, vFacet;
       void main() {
@@ -806,9 +812,61 @@ export function propRockMaterial({ moss = 1, world = false } = {}) {
           col *= 1.0 - 0.22 * smoothstep(0.5, 0.64, m) * (1.0 - smoothstep(0.64, 0.7, m));   // a shadow just under the moss's edge
           col = mix(col, mc, smoothstep(0.64, 0.7, m));
         }
+        if (uGOn > 0.5) {                                                                 // the foot takes the ground's colour
+          vec2 guv = vec2((vWP.x - uGRect.x) * uGRect.z, (uGRect.y - vWP.z) * uGRect.w);
+          if (guv.x > 0.0 && guv.x < 1.0 && guv.y > 0.0 && guv.y < 1.0) {
+            // a painted edge, not a fog: ragged, fairly sharp, with a touch of shadow along it on the rock's side
+            float above = vWP.y - texture2D(uGH, guv).r + (noise2(vWP.xz * 1.9 + vWP.y * 0.7) - 0.5) * uGBlend * 0.9 + (noise2(vWP.xz * 6.5 + vWP.y * 2.0) - 0.5) * uGBlend * 0.35;
+            float b = 1.0 - smoothstep(uGBlend * 0.82, uGBlend * 0.95, above);
+            col *= 1.0 - 0.18 * (1.0 - smoothstep(uGBlend * 0.95, uGBlend * 1.35, above)) * (1.0 - b);
+            vec3 gc = texture2D(uGCol, guv).rgb;
+            col = mix(col, gc * mix(0.78, 0.95, clamp(n.y, 0.0, 1.0)), b);
+          }
+        }
         gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
       }`,
   }));
+}
+
+// ==================================================================================================== 7. GROUND BLEND
+// The ground under the rocks, drawn once from straight above into two pictures: its colour, and its height. Every prop rock's
+// paint reads them (they share these settings), so the last stretch of a rock above the ground fades into the ground's own
+// colour, with a ragged edge, as if the ground ran up onto it.
+//   bakeGroundForRocks(renderer, [groundMesh], { center: [x, z], size: 60, res: 1024 });   GROUND_BLEND.height = 0.42
+const GROUND_U = {
+  uGOn: { value: 0 }, uGBlend: { value: 0.42 }, uGRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uGCol: { value: null }, uGH: { value: null },
+};
+export const GROUND_BLEND = {
+  get on() { return GROUND_U.uGOn.value > 0.5; }, set on(v) { GROUND_U.uGOn.value = v && GROUND_U.uGCol.value ? 1 : 0; },
+  get height() { return GROUND_U.uGBlend.value; }, set height(v) { GROUND_U.uGBlend.value = v; },
+};
+let groundRT = null;
+export function bakeGroundForRocks(renderer, grounds, { center = [0, 0], size = 60, res = 1024 } = {}) {
+  const [cx, cz] = center, h = size / 2;
+  if (!groundRT) groundRT = {
+    col: new THREE.WebGLRenderTarget(res, res, { depthBuffer: true }),
+    hgt: new THREE.WebGLRenderTarget(res, res, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }),
+    heightMat: new THREE.ShaderMaterial({
+      vertexShader: 'varying float vY; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: 'varying float vY; void main() { gl_FragColor = vec4(vY, 0.0, 0.0, 1.0); }',
+    }),
+  };
+  const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(-h, h, h, -h, 1, 1000);
+  cam.position.set(cx, 500, cz); cam.up.set(0, 0, -1); cam.lookAt(cx, 0, cz);
+  const parents = grounds.map(g => g.parent);
+  for (const g of grounds) scene.add(g);
+  const haze = shared.uHazeMax.value, oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
+  shared.uHazeMax.value = 0;                                               // the ground's own colour, not as seen through air
+  renderer.setRenderTarget(groundRT.col); renderer.setClearColor(0x000000, 1); renderer.clear(); renderer.render(scene, cam);
+  scene.overrideMaterial = groundRT.heightMat;
+  renderer.setRenderTarget(groundRT.hgt); renderer.setClearColor(0x000000, 1); renderer.clear(); renderer.render(scene, cam);
+  renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha);
+  shared.uHazeMax.value = haze;
+  grounds.forEach((g, i) => { if (parents[i]) parents[i].add(g); });
+  GROUND_U.uGCol.value = groundRT.col.texture; GROUND_U.uGH.value = groundRT.hgt.texture;
+  GROUND_U.uGRect.value.set(cx - h, cz + h, 1 / size, 1 / size);
+  GROUND_U.uGOn.value = 1;
 }
 
 // ==================================================================================================== 6. FUSING
