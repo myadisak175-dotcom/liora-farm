@@ -3,7 +3,9 @@
 
    One job: build cliff geometry and say where each piece is solid. Placing them is meadow-level.js's business.
 
-     CLIFF_TYPES                      'wall' | 'ledge' | 'corner' | 'spire'
+     CLIFF_TYPES                      'wall' | 'ledge' | 'corner' | 'spire' | 'slabs'
+                                      slabs: big chunky plates of rock stacked up a face, each a little offset from the one
+                                      below and the top one capped green (the look of the cliffs in Genshin Impact)
      cliffFootprint(type, opts)       [[u, v, r], ...] circles in the piece's own space (u = along the face, v = out of it)
      createCliffSet(list)             list: [{ type, x, y, z, rotY, scale, seed, opts }, ...]  ->  ONE mesh, one draw call
 
@@ -17,13 +19,14 @@ import * as N from './stylized-nature.js';
 const { fbm3, mulberry32 } = N._internal;
 const range = (r, a, b) => a + r() * (b - a);
 
-export const CLIFF_TYPES = ['wall', 'ledge', 'corner', 'spire'];
+export const CLIFF_TYPES = ['wall', 'ledge', 'corner', 'spire', 'slabs'];
 
 const DEFAULTS = {
   wall: { width: 7, height: 3.6 },
   ledge: { width: 8, height: 1.8 },
   corner: { width: 5, height: 3.4 },      // width = length of each of the two arms
   spire: { width: 1.6, height: 5.2 },
+  slabs: { width: 6, height: 5, depth: 3 },
 };
 
 // One faceted rock column: nearly vertical faces, each stratum juts out or in a little, lumpy top, foot buried.
@@ -51,6 +54,53 @@ function column(seed, w, h, d, lean = 0) {
   return g;
 }
 
+// One chunk of rock, w x t x d: a box cut down to a few big facets, its corners knocked off and its top edge bevelled,
+// pushed about by slow noise so no two are alike and its top and bottom are tilted plates, not a flat lid.
+function chunk(seed, w, t, d) {
+  let g = new THREE.BoxGeometry(w, t, d, 4, 2, 2);
+  g.deleteAttribute('uv');
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const nx = x / (w / 2), ny = y / (t / 2), nz = z / (d / 2);
+    x *= 1 - 0.2 * nz * nz * (0.6 + 0.4 * Math.abs(ny));                 // the corners knocked off
+    z *= 1 - 0.24 * nx * nx;
+    if (ny > 0) { x *= 0.92; z *= 0.88; }                                  // the top edge bevelled back
+    x += (fbm3(x * 0.3 + seed, y * 0.4, z * 0.3, seed, 2) - 0.5) * w * 0.2;
+    z += (fbm3(x * 0.3, y * 0.4 + 3.3, z * 0.3 + seed, seed + 5, 2) - 0.5) * d * 0.3;
+    if (nz > 0.99) z += (fbm3(x * 0.9 + seed, y * 0.9, 2.1, seed + 13, 2) - 0.5) * 0.9;   // the front broken into facets
+    y += (fbm3(x * 0.25 + seed * 1.3, 1.7, z * 0.25, seed + 9, 2) - 0.5) * t * 0.45;      // tilted plates
+    p.setXYZ(i, x, y, z);
+  }
+  g = g.toNonIndexed();
+  g.computeVertexNormals();
+  return g;
+}
+
+// A stack of plates up a face, h high: each plate a different thickness, set back or jutting out a little from the one
+// below; the face is local +z, the foot 0.9 m below the origin, like the other pieces.
+function slabStack(seed, w, h, d, r) {
+  const n = Math.max(2, Math.min(5, Math.round(h / 2.3))), parts = [];
+  const weights = Array.from({ length: n }, () => range(r, 0.7, 1.4)), total = weights.reduce((a, b) => a + b, 0);
+  let y0 = -0.9;
+  for (let i = 0; i < n; i++) {
+    const t = h * weights[i] / total + 0.9 * (i === 0 ? 1 : 0);
+    const pw = w * range(r, 0.86, 1.08) * (1 - 0.05 * i), back = (r() < 0.25 ? 0.35 : -0.18 * i) + range(r, -0.15, 0.15), cx = range(r, -0.3, 0.3);
+    // most plates are cracked through into two blocks, one standing a little proud of the other
+    const cut = pw > 2.6 && r() < 0.75 ? range(r, 0.35, 0.65) : 1;
+    for (const [a, b] of cut < 1 ? [[0, cut], [cut, 1]] : [[0, 1]]) {
+      const bw = pw * (b - a), c = chunk(seed * 7 + i * 3 + a * 10, bw + 0.12, t + 0.35, d * range(r, 0.85, 1.1));
+      c.rotateY(range(r, -0.12, 0.12));
+      c.translate(cx + pw * ((a + b) / 2 - 0.5), y0 + t / 2 + range(r, -0.12, 0.12), back + (cut < 1 ? range(r, -0.25, 0.25) : 0));
+      parts.push(c);
+    }
+    y0 += t;
+  }
+  const g = mergeGeometries(parts);
+  parts.forEach(q => q.dispose());
+  return g;
+}
+
 // a row of columns along local x, centred on (cx, cz), turned by rotY
 function row(parts, seed, r, { cx = 0, cz = 0, rotY = 0, length, height, depth, tip = 0.35 }) {
   const n = Math.max(2, Math.round(length / 1.7));
@@ -73,6 +123,16 @@ function buildGeometry(type, seed, opts = {}) {
   const parts = [];
   if (type === 'wall') row(parts, seed, r, { length: D.width, height: D.height, depth: 2.0 });
   else if (type === 'ledge') row(parts, seed, r, { length: D.width, height: D.height, depth: 2.8, tip: 0.5 });
+  else if (type === 'slabs') {                                             // a few stacks side by side, overlapping, the ends a little lower
+    const n = Math.max(1, Math.round(D.width / 4.2));
+    for (let i = 0; i < n; i++) {
+      const u = n === 1 ? 0 : (i / (n - 1) - 0.5);
+      const st = slabStack(seed * 13 + i, D.width / n * range(r, 1.25, 1.5), D.height * range(r, 0.88, 1.06) * (1 - 0.12 * Math.abs(u) * 2), D.depth, r);
+      st.rotateY(range(r, -0.1, 0.1));
+      st.translate(u * D.width * (n - 1) / n, 0, range(r, -0.2, 0.2));
+      parts.push(st);
+    }
+  }
   else if (type === 'corner') {
     row(parts, seed, r, { cx: D.width / 2, length: D.width, height: D.height, depth: 2.0 });
     row(parts, seed + 5, r, { cz: -D.width / 2, rotY: Math.PI / 2, length: D.width, height: D.height * 0.9, depth: 2.0 });

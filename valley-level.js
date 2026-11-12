@@ -27,6 +27,8 @@ import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
+import { createCliffSet } from './stylized-cliffs.js';
+import { valleyCliffPieces } from './valley-cliffs.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
@@ -653,6 +655,20 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       mesh.name = 'villageRocks';
       mesh.userData.dispose = () => mesh.geometry.dispose();
       group.add(mesh);
+    }
+  }
+
+  // the valley's cliff faces dressed in stacked plates of rock (valley-cliffs.js), from the foot of the falls to the valley's
+  // mouth for now; the paths cut into the cliffs are left bare. No dice: where the pieces go comes from the land alone.
+  {
+    const skipFace = (x, z) => CLS.some(cl => cl.at(x, z).d < cl.half + 1.6) || AB.inPit(x, z, 6);
+    const { list, colliders: cc } = valleyCliffPieces({ V, heightAt: HV, z0: fall.z + 9, z1: 50, skip: skipFace, seed });
+    if (list.length) {
+      const cliffs = createCliffSet(list);
+      cliffs.name = 'valleyCliffs';
+      group.add(cliffs);
+      for (const c of cc) colliders.push(c);
+      console.info('[valley] cliff pieces', list.length);
     }
   }
 
