@@ -243,12 +243,6 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   };
   let rocks = makeKit(rockList);
   group.add(rocks);
-  // the land's own face along the cliff, as rock (what shows between the kit's pieces, and beside the falls)
-  const skinPts = [];
-  for (let x = -42; x <= 60; x += 0.34) skinPts.push([x, cliffZ(x), ...normalAt(x)]);
-  const skin = RK.createCliffSkin({ points: skinPts, heightAt: H, seed, quiet: x => 1 - 0.85 * Math.exp(-(((x - C.falls) / 2.3) ** 2)) });
-  skin.layers.enable(W.UNDERWATER);
-  group.add(skin);
   // each rock's footprint: the cells it stands on (a cell is taken if a point of its surface comes down to within half a metre
   // of the ground there) and how tall it is over each
   const colliders = [], shade = [], bare = [], press = [], casters = [], cameraTrunks = [], solid = new Set();
@@ -414,7 +408,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     'rk-clearing': { x: 0, z: 13, yaw: Math.PI }, 'rk-cliff': { x: -4, z: -8.5, yaw: Math.PI + 0.2 }, 'rk-falls': { x: 19.5, z: -15.5, yaw: 2.5 },
     'rk-top': { x: 21.5, z: -29.5, yaw: 0.5 }, 'rk-pond': { x: 11, z: 3, yaw: Math.PI / 2 }, 'rk-stream': { x: 26.5, z: 26.8, yaw: 2.1 }, 'rk-path': { x: 3.5, z: 19, yaw: Math.PI + 0.3 },
   };
-  console.info('[rocks] cliff skin', skin.userData.triangles, 'triangles;', 'rocks', rockList.length, 'in', rocks.userData.shapes, 'shapes,', Math.round(rocks.userData.triangles / 1000) + 'k triangles; from the builder', fromBuilder, '; solid cells', solid.size, 'shadow casters', casters.length);
+  console.info('[rocks] rocks', rockList.length, 'in', rocks.userData.shapes, 'shapes,', Math.round(rocks.userData.triangles / 1000) + 'k triangles; from the builder', fromBuilder, '; solid cells', solid.size, 'shadow casters', casters.length);
   group.userData = { kind: 'rocksTest', dispose() {
     group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); });
     waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); levelTex.dispose(); RK.setRockWater({}); W.WATER_CHURN.value.w = 0;
