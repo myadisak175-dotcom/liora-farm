@@ -48,7 +48,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
 
   // ------------------------------------------------------------------ the land: read from the picture
   await onStep('อ่านแผนที่ความสูง');
-  const [raw, P] = await Promise.all([fetch(url(M.land)).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan)).then(r => r.json())]);
+  const fresh = { cache: 'no-cache' };                                    // (the land and the plan change together: never one from the browser's cache and one new)
+  const [raw, P] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json())]);
   const { size: SIZE, play: PLAY, cells: n, base, range } = P.land, half = SIZE / 2, FR = half;      // (she walks on the middle PLAY metres each way; the rest is wooded hills to look at)
   const paths = createPaths({ paths: [...P.paths.map(p => ({ points: p.points, half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))], seed });      // (a yard: a short way as wide as the yard)
   const px = (i, j) => base + raw[Math.min(n - 1, Math.max(0, j)) * n + Math.min(n - 1, Math.max(0, i))] / 65535 * range;
@@ -75,7 +76,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const d = (wEdge[o] * (1 - u) + wEdge[o + 1] * u) * (1 - v) + (wEdge[o + wn] * (1 - u) + wEdge[o + wn + 1] * u) * v;
     return d < 1.6 ? { d, level: wLevel[Math.round(fz) * wn + Math.round(fx)] } : null;      // (the level is never blended: two waters lie metres apart in height)
   };
-  const waterDepthAt = (x, z) => { const b = brookAt(x, z); return b ? Math.max(0, b.level - H(x, z)) : 0; };
+  // the stone bridge's deck: where it lies (u along it, v across). On it she is over the water, not in it
+  const br = P.bridge, bc = Math.cos(br.yaw), bs = Math.sin(br.yaw), bL = br.length;
+  const deckUV = (x, z) => [(x - br.x) * bc - (z - br.z) * bs, (x - br.x) * bs + (z - br.z) * bc];
+  const onDeck = (x, z) => { const [u, v] = deckUV(x, z); return Math.abs(u) < bL / 2 && Math.abs(v) < 1.0; };
+  const waterDepthAt = (x, z) => { if (onDeck(x, z)) return 0; const b = brookAt(x, z); return b ? Math.max(0, b.level - H(x, z)) : 0; };      // (the player will not walk into water deeper than half a metre: without this the river under the bridge stopped her on it)
   const inRect = (f, x, z, pad = 0) => { const c = Math.cos(f.yaw), s = Math.sin(f.yaw), lx = (x - f.x) * c - (z - f.z) * s, lz = (x - f.x) * s + (z - f.z) * c; return Math.abs(lx) < f.w / 2 + pad && Math.abs(lz) < f.d / 2 + pad; };
   const inField = (x, z, pad = 0) => P.fields.some(f => inRect(f, x, z, pad));
 
@@ -139,13 +144,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   wheel.position.set(P.wheel.x, P.wheel.level + 1.35, P.wheel.z);
   wheel.userData.dispose = () => wheel.geometry.dispose();
   group.add(wheel); colliders.push([P.wheel.x, P.wheel.z, 1.3]);
-  // the stone bridge: built along its own x, turned to lie across the river; a deck to walk on
-  const br = P.bridge, bc = Math.cos(br.yaw), bs = Math.sin(br.yaw), bL = br.length;
+  // the stone bridge: built along its own x, turned to lie across the river
   const bEnd = s => [br.x + s * (bL / 2 - 0.4) * bc, br.z - s * (bL / 2 - 0.4) * bs];
   const by = Math.min(H(...bEnd(-1)), H(...bEnd(1))) - 0.12;
   builds.push(BD.place(BD.stoneBridgeGeometry({ length: bL, seed: 25 }), br.x, by, br.z, br.yaw));
-  const deckUV = (x, z) => [(x - br.x) * bc - (z - br.z) * bs, (x - br.x) * bs + (z - br.z) * bc];
-  const onDeck = (x, z) => { const [u, v] = deckUV(x, z); return Math.abs(u) < bL / 2 && Math.abs(v) < 1.0; };
   for (let u = -bL / 2; u <= bL / 2; u += 1) for (const v of [-0.8, 0.8]) bare.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 1.3]);
   for (const s of [-1, 1]) for (const v of [-1.45, 1.45]) for (let u = 1; u <= bL / 2 + 0.6; u += 0.8) colliders.push([br.x + s * u * bc + v * bs, br.z - s * u * bs + v * bc, 0.42]);      // its parapets (and no stepping off its side)
   casters.push([br.x, br.z, 0.6, 4.2, 0.7]);

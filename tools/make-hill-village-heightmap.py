@@ -138,9 +138,11 @@ B.append({'id': 'great_tree', 'kind': 'tree', 'x': M(.55, .345)[0], 'z': M(.55, 
 
 # ------------------------------------------------------------------ 3. the water, as planned: four stretches, each on its own terrace
 # (name, how far under its terrace the water stands, how deep its bed is pressed, the line: (u, v, half-width in metres))
+# The two streams are shallow enough to wade (she will not walk into water deeper than half a metre); the river and the pool
+# are not: the river is crossed by the bridge.
 WATER = [
-    ('upper_stream', 27, 0.35, 0.55, [(.085, .365, 4.2), (.13, .385, 3.0), (.165, .40, 2.0), (.19, .41, 2.1)]),
-    ('mill_stream', 18, 0.35, 0.6, [(.235, .445, 2.6), (.265, .455, 2.2), (.30, .485, 2.2), (.34, .50, 2.2), (.37, .53, 2.5)]),
+    ('upper_stream', 27, 0.35, 0.3, [(.085, .365, 4.2), (.13, .385, 3.0), (.165, .40, 2.0), (.19, .41, 2.1)]),
+    ('mill_stream', 18, 0.35, 0.3, [(.235, .445, 2.6), (.265, .455, 2.2), (.30, .485, 2.2), (.34, .50, 2.2), (.37, .53, 2.5)]),
     ('river', 10, 1.1, 1.0, [(.40, .585, 4.2), (.425, .615, 3.8), (.4625, .6375, 3.8), (.50, .665, 4.6), (.55, .675, 5.4), (.60, .695, 6.4), (.645, .705, 6.4), (.68, .74, 6.0)]),
     ('pool', 3, 0.8, 1.3, [(.72, .80, 8.0), (.765, .85, 13.0), (.815, .90, 15.5), (.86, .95, 14.0), (.895, 1.0, 12.0), (.92, 1.05, 8.0)]),
 ]
@@ -202,6 +204,11 @@ PATHS = {   # name: (half-width, points in the plan's u, v)
     'to_house_3': (0.8, [(.36, .725), uv(door_of('village_house_3'))]),
     'to_cottage_2': (0.8, [(.52, .355), uv(door_of('cottage_upper_2'))]),
     'to_mill_field': (0.8, [(.60, .535), (.615, .50), (.622, .47)]),
+    # ways to the parts of the map no door stands on, so all of it can be walked: the west wood and its spring, the low ground
+    # round the pool (down the cliff below the village), and the east wood and the pool's far shore
+    'to_west_wood': (1.0, [(.54, .375), (.48, .385), (.43, .385), (.38, .375), (.32, .36), (.26, .35), (.20, .335), (.14, .345), (.125, .345)]),
+    'to_pool_shore': (1.0, [(.39, .685), (.45, .73), (.50, .765), (.545, .79), (.575, .82), (.605, .85), (.615, .89), (.59, .93)]),
+    'to_east_shore': (1.0, [(.74, .56), (.77, .555), (.83, .57), (.88, .60), (.92, .66), (.915, .72), (.885, .775), (.865, .80)]),
 }
 YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(M(.385, .158)), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0]]     # x, z, radius, paved?
 STEP = 0.15
@@ -356,7 +363,7 @@ for kind, x, z in plants:
 px_, pz_ = PLAZA; ty = TREE_YARD; barn = by_id['barn']; wmill = by_id['windmill']; fr = M(.835, .36)
 PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, yaw
     ['stall', px_ - 7.5, pz_ - 5.0, 0.9], ['stall', px_ + 2.5, pz_ - 8.0, -0.2], ['stall', px_ + 8.0, pz_ + 3.5, -1.9], ['stall', px_ - 3.0, pz_ + 8.5, 2.9],
-    ['barrels', px_ - 9.4, pz_ - 2.4, 0.3], ['crates', px_ + 5.6, pz_ - 7.4, 1.0], ['crates', px_ + 9.8, pz_ + 0.6, 2.0], ['kit:Prop_Wagon', px_ + 11.0, pz_ + 5.5, 2.4], ['bench', px_ - 2.6, pz_ - 3.6, 0.6], ['bench', px_ + 3.4, pz_ + 2.6, -2.4], ['lamp', px_ - 4.4, pz_ + 3.4, 0], ['lamp', px_ + 4.6, pz_ - 3.2, 0],
+    ['barrels', px_ - 9.4, pz_ - 2.4, 0.3], ['crates', px_ + 5.6, pz_ - 7.4, 1.0], ['crates', px_ + 10.2, pz_ + 4.6, 2.0], ['kit:Prop_Wagon', px_ + 13.0, pz_ + 8.0, 2.4], ['bench', px_ - 2.6, pz_ - 3.6, 0.6], ['bench', px_ + 3.4, pz_ + 2.6, -2.4], ['lamp', px_ - 4.4, pz_ + 3.4, 0], ['lamp', px_ + 4.6, pz_ - 3.2, 0],
     ['table', *M(.47, .775), 0.3], ['bench', M(.47, .775)[0], M(.47, .775)[1] + 1.6, 0.3], ['table', M(.47, .775)[0] + 4, M(.47, .775)[1] + 0.8, 0.2], ['signpost', *M(.19, .835), 0.8],
     ['stall', ty[0] + 8.0, ty[1] - 6.5, -2.3], ['barrels', ty[0] + 10.5, ty[1] - 4.6, 0.4], ['bench', ty[0] - 3.4, ty[1] + 4.6, 2.4], ['lamp', ty[0] + 4.6, ty[1] + 2.6, 0],
     ['hay', barn['x'] + 5.0, barn['z'] + 4.0, 0.4], ['hay', barn['x'] + 5.6, barn['z'] + 6.2, 1.9], ['woodpile', barn['x'] - 4.6, barn['z'] + 2.0, 1.57], ['cart', barn['x'] - 6.0, barn['z'] + 8.5, 0.5],
@@ -381,6 +388,8 @@ VIEWS = {
     'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
     'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.655, .555)), round(face(M(.655, .555), (wmill['x'], wmill['z'])), 2)],
     'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-pool': [*R2(M(.60, .80)), round(face(M(.60, .80), M(.80, .88)), 2)],
+    'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)], 'vl-shore': [*R2(M(.60, .91)), round(face(M(.60, .91), M(.78, .88)), 2)],
+    'vl-eastwood': [*R2(M(.88, .60)), round(face(M(.88, .60), M(.92, .66)), 2)],
 }
 
 # ------------------------------------------------------------------ 10. write it all out
