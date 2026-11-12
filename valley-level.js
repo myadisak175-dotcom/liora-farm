@@ -29,8 +29,7 @@ import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
-import { createCliffSet } from './stylized-cliffs.js';
-import { valleyCliffPieces, valleyCliffMaterial } from './valley-cliffs.js';
+import { carveValleyRock } from './valley-cliffs.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
@@ -661,18 +660,14 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     }
   }
 
-  // the valley's cliff faces dressed in stacked plates of rock (valley-cliffs.js), from the foot of the falls to the valley's
-  // mouth for now; the paths cut into the cliffs are left bare. No dice: where the pieces go comes from the land alone.
+  // the valley's cliff faces carved into blocks of rock (valley-cliffs.js): the land itself is pushed in and out, so the cliff
+  // stays one piece with the ground. From the foot of the falls to the valley's mouth for now; the paths cut into the cliffs
+  // and the brink of the abyss are left smooth. No dice: where the blocks go comes from the land alone.
   {
-    const skipFace = (x, z) => CLS.some(cl => cl.at(x, z).d < cl.half + 1.6) || AB.inPit(x, z, 6);
-    const { list, colliders: cc } = valleyCliffPieces({ V, heightAt: HV, z0: fall.z + 9, z1: 50, skip: skipFace, seed });
-    if (list.length) {
-      const cliffs = createCliffSet(list, { material: valleyCliffMaterial() });
-      cliffs.name = 'valleyCliffs';
-      group.add(cliffs);
-      for (const c of cc) colliders.push(c);
-      console.info('[valley] cliff pieces', list.length);
-    }
+    const ssk = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const keep = (x, z) => AB.inPit(x, z, 6) ? 0 : [...CLS, ...V.ramps].reduce((k, cl) => Math.min(k, ssk(cl.half + 0.8, cl.half + 3.5, cl.at(x, z).d)), ssk(1.6, 4, V.pathDist(x, z)));
+    const moved = carveValleyRock(V, { z0: fall.z + 9, z1: 50, keep, seed });
+    console.info('[valley] cliff skin columns', moved);
   }
 
   // things added by hand in the editor (their turn and tilt come from where they stand, not from the dice)

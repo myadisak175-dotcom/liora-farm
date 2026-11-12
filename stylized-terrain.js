@@ -42,12 +42,16 @@ import { _internal, createCardCluster } from './stylized-nature.js';
 
 const { NOISE, HAZEF, rgb, fbm3, mulberry32, range, shared } = _internal;
 const HAZE_U = () => ({ uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax });
-// A cliff face: horizontal rock strata, lit faces lighter, dark seams between layers. One snippet, so that rock stood in
-// front of a face (valley-cliffs.js) is painted with the very same layers as the land behind it. Needs NOISE before it.
+// A cliff face: horizontal rock strata, lit faces lighter, dark seams between layers. strataSt says which layer a spot is in
+// (2.6 per layer); land that is carved into blocks (valley-cliffs.js) brings its own, so its ledges and the seams agree.
+// Needs NOISE before it.
 const STRATA = /* glsl */`
-  float strataTone(vec3 wp, vec3 n) {
+  float strataSt(vec3 wp) {
     float along = wp.x * 0.7 + wp.z * 0.7;
-    float st = wp.y * 0.85 + (noise2(vec2(along * 0.11, wp.y * 0.2)) - 0.5) * 1.8;
+    return wp.y * 0.85 + (noise2(vec2(along * 0.11, wp.y * 0.2)) - 0.5) * 1.8;
+  }
+  float strataTone(vec3 wp, vec3 n, float st) {
+    float along = wp.x * 0.7 + wp.z * 0.7;
     float band = fract(st / 2.6);                                     // 0 bottom .. 1 top of a layer
     float alt = mod(floor(st / 2.6), 2.0);                            // alternating layers
     float lit = dot(n, normalize(vec3(-0.55, 0.5, 0.65))) * 0.5 + 0.5;
@@ -55,7 +59,8 @@ const STRATA = /* glsl */`
     v += (noise2(vec2(along * 0.5, wp.y * 2.2)) - 0.5) * 0.12;
     if (band < 0.12) v -= 0.24;                                       // dark seam between layers
     return v;
-  }`;
+  }
+  float strataTone(vec3 wp, vec3 n) { return strataTone(wp, n, strataSt(wp)); }`;
 
 const HAZEV = /* glsl */`
 uniform float uHazeNear, uHazeFar, uHazeMax;
@@ -95,6 +100,7 @@ function terrainMaterial(far, half, zc) {
       uWays: { value: BLANK_WAYS }, uWaysRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uWaysOn: { value: 0 },
       uFar: { value: rgb(far) }, uHalf: { value: new THREE.Vector2(half[0], half[1]) }, uZc: { value: zc },
       // DEEP: land far below the rim of a pit fades into its mist and then into the dark (uDeepOn = 0: no pit on this map)
+      uRockOn: { value: 0 },      // 1 once valley-cliffs.js has carved the land and given it aRock
       uDeepOn: { value: 0 }, uDeepMist: { value: rgb('#a9c8d6') }, uDeepBlue: { value: rgb('#2c4a68') }, uDeepVoid: { value: rgb('#0f1b2c') },
       ...HAZE_U(),
     },
@@ -102,6 +108,8 @@ function terrainMaterial(far, half, zc) {
       ${HAZEV}
       attribute float aBank;   // height above the local water level
       attribute float aPath;   // 1 on the dirt path
+      attribute vec4 aRock;    // carved rock (valley-cliffs.js): how much, the block's own shade, its layer (st); read when uRockOn
+      varying vec4 vRock;
       varying vec3 vWP;
       varying vec3 vN;
       varying float vBank;
@@ -112,6 +120,7 @@ function terrainMaterial(far, half, zc) {
         vN = normalize(mat3(modelMatrix) * normal);
         vBank = aBank;
         vPath = aPath;
+        vRock = aRock;
         vec4 mv = viewMatrix * wp;
         vHaze = uHazeMax * smoothstep(uHazeNear, uHazeFar, length(mv.xyz));
         gl_Position = projectionMatrix * mv;
@@ -122,6 +131,8 @@ function terrainMaterial(far, half, zc) {
       ${HAZEF}
       uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar, uDeepMist, uDeepBlue, uDeepVoid;
       uniform float uDeepOn;
+      uniform float uRockOn;
+      varying vec4 vRock;
       uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
       uniform vec4 uWaysRect;       // centre x, centre z, 1 / width, 1 / depth of the ground the picture covers
       uniform float uWaysOn;
@@ -136,7 +147,7 @@ function terrainMaterial(far, half, zc) {
         float j = noise2(vWP.xz * 0.9) * 0.5 + noise2(vWP.xz * 3.0) * 0.25;   // jagged borders
         vec3 col;
         if (n.y + (j - 0.37) * 0.3 < 0.7) {
-          float v = strataTone(vWP, n);
+          float v = uRockOn > 0.5 ? strataTone(vWP, n, vRock.z) + vRock.y : strataTone(vWP, n);
           col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
         } else {
           float s = noise2(vWP.xz * 0.08) * 0.6 + noise2(vWP.xz * 0.3) * 0.3 + noise2(vWP.xz * 1.6) * 0.1;
