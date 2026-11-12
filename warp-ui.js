@@ -1,10 +1,13 @@
 /* ==========================================================================
    warp-ui.js  —  the button that appears at a warp stone, and the list of places it leads to
 
-     const warp = createWarpUI({ level, player });      // reads level.warps: [{ key, name, x, z, yaw, stand: [x, z] }]
+     const warp = createWarpUI({ level, player });      // reads level.warps
      warp.update();                                     // every frame: shows the button while she stands by a stone
 
-   One job: when she is by a warp stone, offer the other stones; on a tap, a white flash and she stands by that one.
+   level.warps lists every place the stones lead to. One that stands in this scene has { key, name, x, z, yaw, stand: [x, z] };
+   one in another scene has { key, name, scene: { map, layer, view } }: going there loads that scene (the page is opened again
+   with those in its address, so everything of this scene is let go of first: a phone never holds two scenes at once).
+   One job: when she is by a warp stone, offer the other places; on a tap, a white flash, and she is there.
    ========================================================================== */
 const CSS = `
 #warpBtn { position:fixed; left:50%; bottom:calc(168px + env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:5; display:none; border:1px solid #ffffffaa; border-radius:999px;
@@ -18,6 +21,7 @@ const CSS = `
 #warpSheet button.close { text-align:center; background:#16324a; color:#fff; border:0; margin-top:12px; }
 #warpFlash { position:fixed; inset:0; z-index:30; background:#fff; opacity:0; pointer-events:none; transition:opacity .18s ease-in; }
 #warpFlash.on { opacity:1; }
+#warpFlash.on::after { content:'กำลังวาป…'; position:absolute; left:0; right:0; top:50%; text-align:center; font:700 15px system-ui; color:#1d4f6e; }
 `;
 const ICON = { rim: '🏞', shelf: '☁️', gorge: '💦', meadow: '🪨' };
 
@@ -39,6 +43,13 @@ export function createWarpUI({ level, player, reach = 3.4 } = {}) {
     busy = true; close();
     flash.classList.add('on');
     setTimeout(() => {
+      if (w.scene) {                                                       // another scene: open the page again there
+        const u = new URL(location.href);
+        for (const key of ['map', 'layer', 'view']) u.searchParams.delete(key);
+        for (const [key, v] of Object.entries(w.scene)) u.searchParams.set(key, v);
+        location.href = u.toString();
+        return;
+      }
       player.teleport(w.stand[0], w.stand[1], w.yaw);
       if (level.follow) level.follow(player.position, player.lookDir);
       setTimeout(() => { flash.style.transition = 'opacity .45s ease-out'; flash.classList.remove('on'); setTimeout(() => { flash.style.transition = ''; busy = false; }, 460); }, 120);
@@ -62,7 +73,7 @@ export function createWarpUI({ level, player, reach = 3.4 } = {}) {
     update() {
       const p = player.position;
       let best = null, bd = reach;
-      for (const w of warps) { const d = Math.hypot(p.x - w.x, p.z - w.z); if (d < bd) { bd = d; best = w; } }
+      for (const w of warps) { if (w.scene) continue; const d = Math.hypot(p.x - w.x, p.z - w.z); if (d < bd) { bd = d; best = w; } }
       if (best !== here) { here = best; btn.classList.toggle('on', !!here && !busy); if (!here) close(); }
       else if (here) btn.classList.toggle('on', !busy);
     },

@@ -6,8 +6,7 @@
 // is built up in terraces round the upper river, which comes down them in cascades: a windmill on the meadow by the lip, a
 // stone bridge, a few houses round a well, a water mill, and on the terrace above a great tree, more houses, a pasture and
 // the adventurers' guild on its own rock (stylized-guild.js: a hall she can walk into, a duelling ring, a training yard).
-// Down in the abyss are three more places, reached by warp stones (abyss-depths.js): a shelf over a sea of cloud, a gorge of
-// falls in the mist, a meadow under floating rocks. They are part of this same map (nothing loads), drawn only while she is there.
+// On the abyss's rim stands a warp stone: it leads down to the abyss's depths, which are scenes of their own (depths-level.js).
 // The buildings are stand-ins built in code (stylized-buildings.js) until real models take their place.
 // Down the valley the river runs out over the brink of the abyss (abyss-shape.js: where it is and how it bends the land;
 // abyss-scene.js: its falls and clouds): it spreads out among rock islands and pours in in four falls, and three brooks drop
@@ -15,7 +14,7 @@
 //
 //   const level = await buildValleyLevel({ far, deer, onStep });      // same result object as the other maps
 //   level.confine(p)   keeps a walker where she can walk: the valley floor, the cliff path, the meadow (the cliffs are walls)
-//   level.warps        the warp stones [{ key, name, x, z, yaw, stand }]; level.zone: the layer of the abyss she is in (-1: up in the valley)
+//   level.warps        where the warp stones lead: [{ key, name, x, z, yaw, stand } (a stone that stands in this scene) | { key, name, scene } (one in another)]
 //   level.guild        the guild (level.guild.storey: -1 out of doors, 0 hall, 1 gallery, 2 attic; level.guild.spots: places for people later)
 
 import * as THREE from 'three';
@@ -35,8 +34,8 @@ import { valleyCliffPieces, valleyCliffMaterial } from './valley-cliffs.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
-import { createAbyssFalls, createAbyssClouds, _abyss } from './abyss-scene.js';
-import * as DP from './abyss-depths.js';
+import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
+import { createWarpStone, DEPTH_NAMES } from './abyss-depths.js';
 import { createGuild, GUILD_SITE } from './stylized-guild.js';
 
 // ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
@@ -151,12 +150,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     skirt.geometry.computeBoundingSphere();
   }
   const rx = V.riverX, rw = V.riverHalfWidth, fall = V.waterfall, WL = V.levels.water;
-  // The depths of the abyss (abyss-depths.js): three places far down it, reached by warp stones. They lie out past the
-  // valley's edges, inside the square its height field, ground picture, grass and water already cover, so all of those
-  // work down there as they do up here. Only the one she is in is drawn (and the valley is put away meanwhile).
-  const DPT = DP.createDepths({ WL, seed });
-  const HVD = (x, z) => DPT.covers(x, z) ? DPT.heightAt(x, z) : HV(x, z);    // the land, down there too
-  const deepMat = T._terrain.terrainMaterial(far, [1e5, 1e5], 0);          // the same paint as the valley's land
   const HV = V.heightAt;
   // The guild (stylized-guild.js) stands on ground levelled for it where the keep's knoll was. Everything that grows or lies
   // about the valley is still thrown with the same dice as before it was built, on the land as it was (HV0, Hf0,
@@ -173,11 +166,10 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const deckU = (d, x, z) => { const c = Math.cos(d.yaw || 0), s = Math.sin(d.yaw || 0), dx = x - d.x, dz = z - d.z; return [dx * c - dz * s, dx * s + dz * c]; };
   const deckAt = (x, z) => { for (const d of decks) { const [u, v] = deckU(d, x, z); if (Math.abs(u) < d.len / 2 && Math.abs(v) < (d.halfWAt ? d.halfWAt(u) : d.halfW)) return d; } return null; };
   const H = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckU(d, x, z)[0]) : V.surfaceAt(x, z); };      // ground, or a bridge deck
-  const waterDepthAt = (x, z) => DPT.covers(x, z) ? (DPT.wetAt(x, z) ? Math.max(0, WL - DPT.heightAt(x, z)) : 0)
-    : (!lower(x, z) || H(x, z) > HV(x, z) + 0.01 || AB.inPit(x, z, 0.2)) ? 0 : Math.max(0, WL - HV(x, z));
+  const waterDepthAt = (x, z) => (!lower(x, z) || H(x, z) > HV(x, z) + 0.01 || AB.inPit(x, z, 0.2)) ? 0 : Math.max(0, WL - HV(x, z));
   await onStep('วัดความสูงพื้น');
   // half-metre cells, on the same grid as before the map grew, so every height read off it in the old valley is as it was
-  const field = G.createHeightField({ radius: FR, center: [CX, CZ], cells: Math.round(FR * 4), heightFn: HVD });
+  const field = G.createHeightField({ radius: FR, center: [CX, CZ], cells: Math.round(FR * 4), heightFn: HV });
   const Hf = field.heightAt;                                             // cheap copy of the height, for painting
   const Hf0 = (x, z) => {                                                  // the same copy as it was before the guild's ground was levelled
     if (!nearPad(x, z)) return Hf(x, z);
@@ -222,24 +214,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // round the abyss: the walk along the rim (inside the rail, short of the forest), the lookout, the brooks' bridges
   const steepAt = (x, z) => { const e = 0.5, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e); return hx * hx + hz * hz; };
   const onAbyssRim = (x, z) => AB.onSpur(x, z) || (AB.onRim(x, z) && Hf(x, z) > ABYSS.rimH - 2.5 && steepAt(x, z) < 0.36);
-  const walkable = (x, z) => DPT.covers(x, z) ? DPT.walkable(x, z) : onPath(x, z) || pathShoulder(x, z) || (!upTop(x, z) && !!deckAt(x, z)) || ((floorOK(x, z) || onPlateau(x, z) || onAbyssRim(x, z)) && !underPath(x, z));
+  const walkable = (x, z) => onPath(x, z) || pathShoulder(x, z) || (!upTop(x, z) && !!deckAt(x, z)) || ((floorOK(x, z) || onPlateau(x, z) || onAbyssRim(x, z)) && !underPath(x, z));
   const confine = p => {
     if (walkable(p.x, p.z)) return;
-    if (DPT.covers(p.x, p.z)) {                                            // down in the depths: a step back onto ground she can stand on
-      for (let r = 0.12; r <= 3.4; r += 0.16) {
-        let best = null, bd = Infinity;
-        for (let a = 0; a < 12; a++) {
-          const q = { x: p.x + Math.cos(a * Math.PI / 6) * r, z: p.z + Math.sin(a * Math.PI / 6) * r };
-          if (!walkable(q.x, q.z)) continue;
-          let inside = 0; for (let b = 0; b < 6; b++) if (walkable(q.x + Math.cos(b * Math.PI / 3) * 0.3, q.z + Math.sin(b * Math.PI / 3) * 0.3)) inside++;
-          if (-inside < bd) { bd = -inside; best = q; }
-        }
-        if (best) { p.x = best.x; p.z = best.z; return; }
-      }
-      const L = DPT.layers[DPT.layerAt(p.x, p.z)];                         // lost: back to the layer's warp stone
-      p.x = L.warp[0] + 2.2; p.z = L.warp[1];
-      return;
-    }
     // the nearest place she may stand: a step back the way she came (a small ring round her), or back onto the floor or the path's line
     const cands = [];
     ring: for (let r = 0.12; r <= 2.6; r += 0.16) {
@@ -882,49 +859,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   }
 
   // ------------------------------------------------------------------ ground colour map: where grass grows
-  // ------------------------------------------------------------------ the depths: what grows and lies about down there
-  await onStep('ลงสู่ก้นห้วงลึก');
-  const deepGroups = DPT.layers.map(L => { const g = new THREE.Group(); g.name = 'depths-' + L.key; g.visible = false; group.add(g); return g; });
-  const deepPlants = DPT.layers.map(() => []);
-  {
-    let ds = seed * 53;
-    const drng = mulberry32(seed * 131 + 7);
-    DPT.layers.forEach((L, k) => {
-      const g = deepGroups[k], list = deepPlants[k];
-      for (const t of L.trees) {
-        const y = DPT.heightAt(t.x, t.z), sc = t.scale, ty = t.type;
-        list.push({ kind: 'tree', type: ty, seed: ++ds, detail: 0.8, x: t.x, y: y - 0.05, z: t.z, rotY: drng() * 6.28, scale: sc });
-        if (t.loose) continue;                                             // (out on a stack in the clouds: nobody gets there)
-        colliders.push([t.x, t.z, TRUNK[ty] * sc + 0.22]);
-        cameraTrunks.push([t.x, t.z, TRUNK[ty] * sc + 0.12, y, y + CROWN_Y[ty] * sc]);
-        crowns.push([t.x, y + CROWN_Y[ty] * sc, t.z, CROWN_R[ty] * sc]);
-        shade.push([t.x, t.z, CROWN[ty] * sc * 1.05, 0.4]); bare.push([t.x, t.z, TRUNK[ty] * sc * 1.5]);
-        castBall(t.x, t.z, CROWN_Y[ty] * sc, CROWN_R[ty] * sc, 0.88, 0.3);
-        castStick(t.x, t.z, CROWN_Y[ty] * sc * 0.85, Math.max(0.22, TRUNK[ty] * sc * 0.7));
-      }
-      for (const b of L.bushes) {
-        list.push({ kind: 'bush', type: drng() < 0.35 ? 'flowering' : 'round', seed: ++ds, x: b.x, y: DPT.heightAt(b.x, b.z), z: b.z, rotY: drng() * 6.28, scale: b.scale });
-        colliders.push([b.x, b.z, 0.75 * b.scale]); shade.push([b.x, b.z, 1.7 * b.scale, 0.45]); castBall(b.x, b.z, 0.55 * b.scale, 0.95 * b.scale, 0.8, 0.2);
-      }
-      for (const r of L.rocks) {
-        const m = N.createRock({ type: r.type, seed: ++ds }), rad = ROCK_R[r.type] * r.scale;
-        m.position.set(r.x, DPT.heightAt(r.x, r.z) - 0.2 * r.scale, r.z); m.rotation.y = drng() * 6.28; m.scale.setScalar(r.scale);
-        g.add(m);
-        if (rad > 0) { colliders.push([r.x, r.z, rad]); press.push([r.x, r.z, rad * 1.6]); shade.push([r.x, r.z, rad * 2.0, 0.3]); castBall(r.x, r.z, rad * 0.5, rad * 0.95, 0.85); }
-      }
-      for (const i of L.islands) if (i.tree) list.push({ kind: 'tree', type: i.tree, seed: ++ds, detail: 0.7, x: i.x + 0.4, y: i.y + 0.25, z: i.z - 0.3, rotY: drng() * 6.28, scale: 0.9 });
-      if (L.key === 'gorge') for (let n = 0; n < L.ribbons[0].rows.length; n += 5) { const q = L.ribbons[0].rows[n]; shade.push([q[0], q[1], 11, 0.5]); }      // the gorge lies in shadow
-      const [wx, wz] = L.warp;
-      colliders.push([wx, wz, 0.5]); bare.push([wx, wz, 2.0]); press.push([wx, wz, 3.2]);
-    });
-  }
   // the warp stone up on the rim: on the grass beside the walk, a few steps from the way out onto the lookout
   const rimWarp = (() => { const a = AB.spur.a + 0.1, [x, z] = AB.polar(a, AB.rimR(a) + ABYSS.walk.off + 3.3), [bx, bz] = AB.polar(a, AB.rimR(a) + ABYSS.walk.off); return { x, z, yaw: Math.atan2(bx - x, bz - z) }; })();
   colliders.push([rimWarp.x, rimWarp.z, 0.5]); bare.push([rimWarp.x, rimWarp.z, 2.1]); press.push([rimWarp.x, rimWarp.z, 3.2]);
   await onStep('ระบายสีพื้น');
   const paint = (x, z) => {
-    const deep = DPT.paint(x, z);
-    if (deep) return deep;
     const h = Hf(x, z), low = lower(x, z);
     const sand = low ? 1 - ss(0.35, 0.8, h - WL) : 1 - ss(-0.2, 0.25, h - V.plateauWaterAt(z));
     // the village's ways: no grass on the trodden earth; beside it a verge where the grass is worn thin and short. The edge of
@@ -965,10 +904,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       Object.assign(tm.uniforms, { uCast: { value: map.cast }, uCastRect: { value: map.rect }, uCastTint: { value: new THREE.Vector3(...map.castTint) }, uCastK: { value: 1 } });
       tm.fragmentShader = 'uniform sampler2D uCast;\nuniform vec3 uCastRect;\nuniform vec3 uCastTint;\nuniform float uCastK;\n' + tm.fragmentShader.replace(key, 'col *= mix(vec3(1.0), uCastTint, texture2D(uCast, (vWP.xz - uCastRect.xy) * uCastRect.z + 0.5).r * uCastK);\n        ' + key);
       tm.needsUpdate = true;
-      const u = tm.uniforms;                                               // the depths' land reads the same shadow picture
-      Object.assign(deepMat.uniforms, { uCast: u.uCast, uCastRect: u.uCastRect, uCastTint: u.uCastTint, uCastK: u.uCastK });
-      deepMat.fragmentShader = 'uniform sampler2D uCast;\nuniform vec3 uCastRect;\nuniform vec3 uCastTint;\nuniform float uCastK;\n' + deepMat.fragmentShader.replace(key, 'col *= mix(vec3(1.0), uCastTint, texture2D(uCast, (vWP.xz - uCastRect.xy) * uCastRect.z + 0.5).r * uCastK);\n        ' + key);
-      deepMat.needsUpdate = true;
     }
   }
   const fade = { far, fadeA: FR * 0.9, fadeB: FR * 1.2 };
@@ -1199,55 +1134,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const waterSpheres = [];
   for (let k = 0; k < stream.length; k += 20) { const sp = stream[k]; waterSpheres.push(new THREE.Sphere(new THREE.Vector3(sp[0], sp[2], sp[1]), sp[3] + 7)); }
   waterSpheres.push(new THREE.Sphere(new THREE.Vector3(fall.x, (fall.top + WL) / 2, fall.z), (fall.top - WL) / 2 + 3));      // the falls see through too
-  // ------------------------------------------------------------------ the depths: their land, water, clouds and warp stones
-  await onStep('ลงสู่ก้นห้วงลึก');
-  const warpStones = [], warps = [];
-  const putWarp = (key, name, x, z, y, yaw, parent) => {
-    const w = DP.createWarpStone();
-    w.group.position.set(x, y, z);
-    parent.add(w.group); warpStones.push(w);
-    warps.push({ key, name, x, z, yaw, stand: [x + Math.sin(yaw) * 2.4, z + Math.cos(yaw) * 2.4] });      // stand: where she arrives, a step off the stone
-  };
-  {
-    let fs2 = seed * 71;
-    DPT.layers.forEach((L, k) => {
-      const g = deepGroups[k];
-      const land = new THREE.Mesh(DP.layerGeometry(L, DPT), deepMat);
-      land.name = 'depthsLand'; land.layers.enable(W.UNDERWATER);
-      land.userData.dispose = () => land.geometry.dispose();
-      g.add(land);
-      g.traverse(o => o.layers.enable(W.UNDERWATER));                      // (the rocks put there earlier)
-      for (const r of L.ribbons) {                                         // the clear water: the same water as the river's
-        const m = new THREE.Mesh(flowRibbon(r.rows, r.along === 'line' ? 10 : 18, 0), water.material);
-        m.renderOrder = 1; m.name = 'depthsWater';
-        m.userData = { kind: 'water', dispose() { m.geometry.dispose(); } };
-        g.add(m); hidden.push(m);
-      }
-      if (L.pads.length) { const pads = W.createLilyPads({ pads: L.pads, seed: seed + k, sim }); g.add(pads); }
-      for (const f of L.falls) {
-        const c = createWaterfall({ x: 0, z: 0, top: f.top, bottom: f.bottom - 0.25, width: f.width, forward: f.forward, scale: f.scale ?? 0.6, foamTexture, cells: animeCells });
-        c.group.position.set(f.x, 0, f.z); c.group.rotation.y = f.yaw;
-        c.group.userData = { kind: 'waterfall', dispose: c.dispose };
-        g.add(c.group); cascades.push(c);
-      }
-      for (const [x, z, r] of L.spheres) waterSpheres.push(new THREE.Sphere(new THREE.Vector3(x, WL, z), r));
-      // cloud: a sea of it (or a lid of mist), puffs, shafts of light; rocks that hang in the air
-      if (L.sea) g.add(DP.createCloudSea(L.sea));
-      if (L.clouds.length) g.add(DP.cloudPuffs(L.clouds, _abyss.puffMaterial(), [L.sea.x, L.sea.z]));
-      if (L.shafts.length) g.add(DP.createShafts(L.shafts));
-      for (const i of L.islands) { const m = new THREE.Mesh(DP.floatingRock(i), deepMat); m.position.set(i.x, i.y, i.z); m.userData.dispose = () => m.geometry.dispose(); g.add(m); }
-      if (deepPlants[k].length) {
-        const f = N.createForest(deepPlants[k]), box = new THREE.Box3();
-        for (const q of deepPlants[k]) { box.expandByPoint(new THREE.Vector3(q.x - 7, q.y - 1, q.z - 7)); box.expandByPoint(new THREE.Vector3(q.x + 7, q.y + 17, q.z + 7)); }
-        const sphere = box.getBoundingSphere(new THREE.Sphere());
-        f.children.forEach(m => { m.geometry.boundingSphere = sphere.clone(); m.frustumCulled = true; });
-        g.add(f);
-      }
-      for (const fl of L.flowers) g.add(N.createFlowers({ count: Math.round(42 * fl.rad), radius: fl.rad, seed: ++fs2, heightAt: DPT.heightAt, center: [fl.x, fl.z], colors: PALS[fs2 % PALS.length] }));
-      putWarp(L.key, L.name, L.warp[0], L.warp[1], DPT.heightAt(L.warp[0], L.warp[1]), L.yaw, g);
-    });
-    putWarp('rim', 'ขอบห้วงลึก', rimWarp.x, rimWarp.z, HV(rimWarp.x, rimWarp.z) + 0.08, rimWarp.yaw, group);
-  }
   // the walker's own shadow: a soft dark patch thrown along the sun's direction (the baked ones above cannot move)
   const blob = (() => {
     const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -1268,28 +1154,18 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   walkerShadow.name = 'walkerShadow'; walkerShadow.renderOrder = 3; walkerShadow.visible = false;
   aimWalkerShadow();                                                                       // long side along the shadow direction
   group.add(walkerShadow);
-  // ---- up in the valley, or down in one of the depths: only where she is gets drawn
-  const surface = new THREE.Group();
-  surface.name = 'valleySurface';
-  { const keep = new Set([grass, droplets.points, walkerShadow, ...deepGroups]); for (const c of [...group.children]) if (!keep.has(c)) surface.add(c); }
-  group.add(surface);
-  let zone = -1;
-  const hz = N._internal.shared, haze0 = { near: hz.uHazeNear.value, far: hz.uHazeFar.value, max: hz.uHazeMax.value };
-  const fades = [grass.material.uniforms, water.material.uniforms].filter(u => u && u.uFadeA && u.uFadeB).map(u => ({ u, a: u.uFadeA.value, b: u.uFadeB.value }));
-  const setZone = k => {
-    if (zone < 0) { haze0.near = hz.uHazeNear.value; haze0.far = hz.uHazeFar.value; haze0.max = hz.uHazeMax.value; }
-    zone = k;
-    surface.visible = k < 0;
-    deepGroups.forEach((g, i) => { g.visible = i === k; });
-    for (const f of fades) { f.u.uFadeA.value = k < 0 ? f.a : 1e5; f.u.uFadeB.value = k < 0 ? f.b : 2e5; }      // (the map's edge is not an edge down there)
-    N.setHaze(k < 0 ? haze0 : DPT.layers[k].haze);
-  };
+  // the warp stone, and where it leads: down to the layers of the abyss, each a scene of its own (depths-level.js)
+  const warpStone = createWarpStone();
+  warpStone.group.position.set(rimWarp.x, HV(rimWarp.x, rimWarp.z) + 0.08, rimWarp.z);
+  group.add(warpStone.group);
+  const warps = [{ key: 'rim', name: 'ขอบห้วงลึก', x: rimWarp.x, z: rimWarp.z, yaw: rimWarp.yaw, stand: [rimWarp.x + Math.sin(rimWarp.yaw) * 2.4, rimWarp.z + Math.cos(rimWarp.yaw) * 2.4] },
+    ...DEPTH_NAMES.map((d, i) => ({ key: d.key, name: d.name, scene: { map: 'depths', layer: i + 1 } }))];
   group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
     group, map, field, grass, terrain, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, walkable, guild,
-    heightAt: (x, z) => DPT.covers(x, z) ? DPT.heightAt(x, z) : guild.heightAt(x, z, H(x, z)),      // the land, a bridge's deck, a floor of the guild's hall, or the depths
-    warps, get zone() { return zone; },                                    // the warp stones ({ key, name, x, z, yaw, stand }); which layer she is in (-1: up in the valley)
+    heightAt: (x, z) => guild.heightAt(x, z, H(x, z)),                     // the land, a bridge's deck, or a floor of the guild's hall
+    warps,
     confine(p) { confine(p); guild.collide(p); },                          // and the hall's walls, rails and furniture
     // places worth a look: the foot of the cliff path, and the meadow by the windmill (x, z, the way to face)
     views: {
@@ -1305,7 +1181,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
         return [k, { x, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z) }];
       })),
       start: { x: spawn.x, z: spawn.z, yaw: spawn.yaw },
-      ...Object.fromEntries(warps.map(w => ['warp-' + w.key, { x: w.stand[0], z: w.stand[1], yaw: w.yaw }])),      // beside each warp stone
+      'warp-rim': { x: warps[0].stand[0], z: warps[0].stand[1], yaw: warps[0].yaw },      // beside the warp stone on the abyss's rim
       bridge: { x: AB.span.mid[0], z: AB.span.mid[1], yaw: 0 },              // the middle of the rope bridge, looking out over the pit
       falls: { x: fall.x + 5, z: fall.z + 13, yaw: Math.atan2(-5, -13) },
     },
@@ -1349,7 +1225,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
         span.swing.rotation.x = 0.0016 * Math.sin(t * 0.7) + span.k * (0.0035 * Math.sin(t * 1.9) + 0.0015 * Math.sin(t * 3.1));
       }                             // the stream turns the wheel: its lowest paddles go with the water
       guild.update(dt, camera);                                            // the hall opens up while she is inside it
-      for (const w of warpStones) w.update(N._internal.shared.uTime.value);
+      warpStone.update(N._internal.shared.uTime.value);
       sim.step(renderer, dt);
       droplets.update(renderer);
       // the sun moved: new shadows are drawn in the background a few milliseconds a frame, and swapped in when whole
@@ -1377,7 +1253,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     tapWater(origin, dir) {
       for (let t = 1; t < 70; t += 0.25) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
-        const ground = HVD(x, z), depth = waterDepthAt(x, z);
+        const ground = HV(x, z), depth = waterDepthAt(x, z);
         if (depth > 0.03 && y <= ground + depth) { ripple(x, z, 2.4, 0.36); return true; }
         if (y <= ground) return false;
       }
@@ -1385,13 +1261,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     follow(pos, lookDir) {
       walker = pos;
-      const zk = DPT.layerAt(pos.x, pos.z);
-      if (zk !== zone) setZone(zk);
       guild.follow(pos);
       grass.userData.follow(pos, lookDir);
       W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z));
       sim.focus(pos.x, pos.z);
-      const wy = HVD(pos.x, pos.z), dry = waterDepthAt(pos.x, pos.z) < 0.05;
+      const wy = HV(pos.x, pos.z), dry = waterDepthAt(pos.x, pos.z) < 0.05;
       // with the real shadow on the ground only, the soft patch is a stand-in over grass (the blades cover the ground there);
       // with the real shadow on the blades as well, it is not needed at all
       const run = Math.min(SLEN, 2.5) * 0.8, px = pos.x + SU[0] * run, pz = pos.z + SU[1] * run;
