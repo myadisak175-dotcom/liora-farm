@@ -28,7 +28,7 @@ import { loadProp, propMaterial } from './stylized-props.js';
 import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
 import { createCliffSet } from './stylized-cliffs.js';
-import { valleyCliffPieces } from './valley-cliffs.js';
+import { valleyCliffPieces, valleyCliffMaterial } from './valley-cliffs.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
@@ -664,7 +664,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     const skipFace = (x, z) => CLS.some(cl => cl.at(x, z).d < cl.half + 1.6) || AB.inPit(x, z, 6);
     const { list, colliders: cc } = valleyCliffPieces({ V, heightAt: HV, z0: fall.z + 9, z1: 50, skip: skipFace, seed });
     if (list.length) {
-      const cliffs = createCliffSet(list);
+      const cliffs = createCliffSet(list, { material: valleyCliffMaterial() });
       cliffs.name = 'valleyCliffs';
       group.add(cliffs);
       for (const c of cc) colliders.push(c);

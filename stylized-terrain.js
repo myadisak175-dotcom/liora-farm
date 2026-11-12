@@ -42,6 +42,21 @@ import { _internal, createCardCluster } from './stylized-nature.js';
 
 const { NOISE, HAZEF, rgb, fbm3, mulberry32, range, shared } = _internal;
 const HAZE_U = () => ({ uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax });
+// A cliff face: horizontal rock strata, lit faces lighter, dark seams between layers. One snippet, so that rock stood in
+// front of a face (valley-cliffs.js) is painted with the very same layers as the land behind it. Needs NOISE before it.
+const STRATA = /* glsl */`
+  float strataTone(vec3 wp, vec3 n) {
+    float along = wp.x * 0.7 + wp.z * 0.7;
+    float st = wp.y * 0.85 + (noise2(vec2(along * 0.11, wp.y * 0.2)) - 0.5) * 1.8;
+    float band = fract(st / 2.6);                                     // 0 bottom .. 1 top of a layer
+    float alt = mod(floor(st / 2.6), 2.0);                            // alternating layers
+    float lit = dot(n, normalize(vec3(-0.55, 0.5, 0.65))) * 0.5 + 0.5;
+    float v = 0.36 + lit * 0.34 + alt * 0.1 + (band - 0.5) * 0.2;     // each layer lighter on top, like the leaves
+    v += (noise2(vec2(along * 0.5, wp.y * 2.2)) - 0.5) * 0.12;
+    if (band < 0.12) v -= 0.24;                                       // dark seam between layers
+    return v;
+  }`;
+
 const HAZEV = /* glsl */`
 uniform float uHazeNear, uHazeFar, uHazeMax;
 varying float vHaze;`;
@@ -103,6 +118,7 @@ function terrainMaterial(far, half, zc) {
       }`,
     fragmentShader: /* glsl */`
       ${NOISE}
+      ${STRATA}
       ${HAZEF}
       uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar, uDeepMist, uDeepBlue, uDeepVoid;
       uniform float uDeepOn;
@@ -120,15 +136,7 @@ function terrainMaterial(far, half, zc) {
         float j = noise2(vWP.xz * 0.9) * 0.5 + noise2(vWP.xz * 3.0) * 0.25;   // jagged borders
         vec3 col;
         if (n.y + (j - 0.37) * 0.3 < 0.7) {
-          // cliff face: horizontal rock strata, lit faces lighter, dark seams between layers
-          float along = vWP.x * 0.7 + vWP.z * 0.7;
-          float st = vWP.y * 0.85 + (noise2(vec2(along * 0.11, vWP.y * 0.2)) - 0.5) * 1.8;
-          float band = fract(st / 2.6);                                     // 0 bottom .. 1 top of a layer
-          float alt = mod(floor(st / 2.6), 2.0);                            // alternating layers
-          float lit = dot(n, normalize(vec3(-0.55, 0.5, 0.65))) * 0.5 + 0.5;
-          float v = 0.36 + lit * 0.34 + alt * 0.1 + (band - 0.5) * 0.2;     // each layer lighter on top, like the leaves
-          v += (noise2(vec2(along * 0.5, vWP.y * 2.2)) - 0.5) * 0.12;
-          if (band < 0.12) v -= 0.24;                                       // dark seam between layers
+          float v = strataTone(vWP, n);
           col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
         } else {
           float s = noise2(vWP.xz * 0.08) * 0.6 + noise2(vWP.xz * 0.3) * 0.3 + noise2(vWP.xz * 1.6) * 0.1;
@@ -771,3 +779,4 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
 
 // water shader for sibling modules: needs geometry attributes aDepth (water depth, >1 = deep) and aFlow (along, across -1..1)
 export const _water = { waterMaterial, WATER_COLORS };
+export const _strata = { GLSL: STRATA, HAZEV, colors: TERRAIN_COLORS };

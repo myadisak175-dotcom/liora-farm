@@ -4,10 +4,11 @@
    One job: build cliff geometry and say where each piece is solid. Placing them is meadow-level.js's business.
 
      CLIFF_TYPES                      'wall' | 'ledge' | 'corner' | 'spire' | 'slabs'
-                                      slabs: big chunky plates of rock stacked up a face, each a little offset from the one
-                                      below and the top one capped green (the look of the cliffs in Genshin Impact)
+                                      slabs: big blocks of bedrock stacked up a face like steps, each of a few large flat
+                                      faces and set back a little from the one below
      cliffFootprint(type, opts)       [[u, v, r], ...] circles in the piece's own space (u = along the face, v = out of it)
-     createCliffSet(list)             list: [{ type, x, y, z, rotY, scale, seed, opts }, ...]  ->  ONE mesh, one draw call
+     createCliffSet(list, { material })   list: [{ type, x, y, z, rotY, scale, seed, opts }, ...]  ->  ONE mesh, one draw call
+                                      material: paint the set with something other than the mossy rock (the valley does)
 
    A piece stands with its face towards local +z, its feet buried about a metre, so it can be sunk into a slope.
    Material and light are the rock material of stylized-nature.js, so the cliffs match the stones and the haze.
@@ -54,22 +55,21 @@ function column(seed, w, h, d, lean = 0) {
   return g;
 }
 
-// One chunk of rock, w x t x d: a box cut down to a few big facets, its corners knocked off and its top edge bevelled,
-// pushed about by slow noise so no two are alike and its top and bottom are tilted plates, not a flat lid.
+// One block of rock, w x t x d: a box of a few BIG flat faces, so each face takes one tone and the block reads as a
+// solid mass and not as a pattern. Its front is bent once down the middle, its corners are knocked off, its top edge is
+// bevelled back, and the whole block leans a touch.
 function chunk(seed, w, t, d) {
-  let g = new THREE.BoxGeometry(w, t, d, 4, 2, 2);
+  let g = new THREE.BoxGeometry(w, t, d, 2, 1, 1);
   g.deleteAttribute('uv');
-  const p = g.attributes.position;
+  const r = mulberry32(seed * 977 + 3), p = g.attributes.position;
+  const ridge = range(r, -0.25, 0.45), ridgeX = range(r, -0.2, 0.2) * w, lean = range(r, -0.05, 0.05), tilt = range(r, -0.04, 0.04);
   for (let i = 0; i < p.count; i++) {
     let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const nx = x / (w / 2), ny = y / (t / 2), nz = z / (d / 2);
-    x *= 1 - 0.2 * nz * nz * (0.6 + 0.4 * Math.abs(ny));                 // the corners knocked off
-    z *= 1 - 0.24 * nx * nx;
-    if (ny > 0) { x *= 0.92; z *= 0.88; }                                  // the top edge bevelled back
-    x += (fbm3(x * 0.3 + seed, y * 0.4, z * 0.3, seed, 2) - 0.5) * w * 0.2;
-    z += (fbm3(x * 0.3, y * 0.4 + 3.3, z * 0.3 + seed, seed + 5, 2) - 0.5) * d * 0.3;
-    if (nz > 0.99) z += (fbm3(x * 0.9 + seed, y * 0.9, 2.1, seed + 13, 2) - 0.5) * 0.9;   // the front broken into facets
-    y += (fbm3(x * 0.25 + seed * 1.3, 1.7, z * 0.25, seed + 9, 2) - 0.5) * t * 0.45;      // tilted plates
+    if (Math.abs(nx) < 0.01) { x += ridgeX; if (nz > 0) z += ridge; }       // the one bend down the front
+    else if (nz > 0) z -= 0.3 + 0.12 * d * (0.5 + 0.5 * Math.sin(seed * 3.7 + nx * 2.0));   // corners knocked off
+    if (ny > 0) { x *= 0.95; if (nz > 0) z -= 0.22; }                        // the top edge bevelled back
+    y += x * tilt + z * lean;                                                // tilted plates
     p.setXYZ(i, x, y, z);
   }
   g = g.toNonIndexed();
@@ -77,24 +77,24 @@ function chunk(seed, w, t, d) {
   return g;
 }
 
-// A stack of plates up a face, h high: each plate a different thickness, set back or jutting out a little from the one
-// below; the face is local +z, the foot 0.9 m below the origin, like the other pieces.
+// A stack of blocks up a face, h high: each a different thickness and set back a little from the one below, like steps of
+// bedrock; now and then one is cracked through into two. The face is local +z, the foot 0.9 m below the origin.
 function slabStack(seed, w, h, d, r) {
-  const n = Math.max(2, Math.min(5, Math.round(h / 2.3))), parts = [];
-  const weights = Array.from({ length: n }, () => range(r, 0.7, 1.4)), total = weights.reduce((a, b) => a + b, 0);
-  let y0 = -0.9;
+  const n = Math.max(1, Math.min(4, Math.round(h / 3.4))), parts = [];
+  const weights = Array.from({ length: n }, () => range(r, 0.8, 1.3)), total = weights.reduce((a, b) => a + b, 0);
+  let y0 = -0.9, back = 0;
   for (let i = 0; i < n; i++) {
     const t = h * weights[i] / total + 0.9 * (i === 0 ? 1 : 0);
-    const pw = w * range(r, 0.86, 1.08) * (1 - 0.05 * i), back = (r() < 0.25 ? 0.35 : -0.18 * i) + range(r, -0.15, 0.15), cx = range(r, -0.3, 0.3);
-    // most plates are cracked through into two blocks, one standing a little proud of the other
-    const cut = pw > 2.6 && r() < 0.75 ? range(r, 0.35, 0.65) : 1;
+    const pw = w * range(r, 0.94, 1.06), cx = range(r, -0.2, 0.2);
+    const cut = pw > 3.2 && r() < 0.3 ? range(r, 0.4, 0.6) : 1;
     for (const [a, b] of cut < 1 ? [[0, cut], [cut, 1]] : [[0, 1]]) {
-      const bw = pw * (b - a), c = chunk(seed * 7 + i * 3 + a * 10, bw + 0.12, t + 0.35, d * range(r, 0.85, 1.1));
-      c.rotateY(range(r, -0.12, 0.12));
-      c.translate(cx + pw * ((a + b) / 2 - 0.5), y0 + t / 2 + range(r, -0.12, 0.12), back + (cut < 1 ? range(r, -0.25, 0.25) : 0));
+      const c = chunk(seed * 7 + i * 3 + a * 10, pw * (b - a) + 0.15, t + 0.3, d);
+      c.rotateY(range(r, -0.06, 0.06));
+      c.translate(cx + pw * ((a + b) / 2 - 0.5), y0 + t / 2, back + (cut < 1 ? range(r, -0.15, 0.15) : 0));
       parts.push(c);
     }
     y0 += t;
+    back -= range(r, 0.15, 0.5);                                             // each step stands back from the one below
   }
   const g = mergeGeometries(parts);
   parts.forEach(q => q.dispose());
@@ -127,8 +127,8 @@ function buildGeometry(type, seed, opts = {}) {
     const n = Math.max(1, Math.round(D.width / 4.2));
     for (let i = 0; i < n; i++) {
       const u = n === 1 ? 0 : (i / (n - 1) - 0.5);
-      const st = slabStack(seed * 13 + i, D.width / n * range(r, 1.25, 1.5), D.height * range(r, 0.88, 1.06) * (1 - 0.12 * Math.abs(u) * 2), D.depth, r);
-      st.rotateY(range(r, -0.1, 0.1));
+      const st = slabStack(seed * 13 + i, D.width / n * range(r, 1.2, 1.35), D.height * range(r, 0.95, 1.04), D.depth, r);
+      st.rotateY(range(r, -0.05, 0.05));
       st.translate(u * D.width * (n - 1) / n, 0, range(r, -0.2, 0.2));
       parts.push(st);
     }
@@ -167,7 +167,7 @@ export function cliffFootprint(type, opts = {}) {
 }
 
 // every piece merged into one mesh: pieces are placed by the matrix, so the whole set costs a single draw call
-export function createCliffSet(list = []) {
+export function createCliffSet(list = [], { material = null } = {}) {
   const parts = [];
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), t = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
@@ -178,7 +178,7 @@ export function createCliffSet(list = []) {
     g.applyMatrix4(m);
     parts.push(g);
   }
-  const mesh = new THREE.Mesh(parts.length ? mergeGeometries(parts) : new THREE.BufferGeometry(), N.rockMaterial(true, 'cliff'));
+  const mesh = new THREE.Mesh(parts.length ? mergeGeometries(parts) : new THREE.BufferGeometry(), material || N.rockMaterial(true, 'cliff'));
   parts.forEach(p => p.dispose());
   mesh.name = 'cliffs';
   mesh.userData = { kind: 'cliffs', count: list.length, dispose() { mesh.geometry.dispose(); } };

@@ -1,13 +1,68 @@
 // valley-cliffs.js
-// Dresses the valley's cliff faces in stacked plates of rock ('slabs' in stylized-cliffs.js), the look of the cliffs in
-// Genshin Impact. The land itself stays as it is (stylized-terrain.js): this only finds where it is steep and stands a
-// piece of rock in front of each stretch of face, so the stretched ground there is hidden behind real chunks of stone.
+// Gives the valley's cliff faces real body: blocks of bedrock ('slabs' in stylized-cliffs.js) stood in front of each steep
+// stretch, so the face has steps, corners and a broken skyline instead of being one stretched sheet of ground. The land
+// itself stays as it is (stylized-terrain.js), and the blocks are painted with the land's own rock layers and grass, so
+// they read as the same cliff, only solid.
 //
 //   const { list, colliders } = valleyCliffPieces({ V, heightAt, z0, z1, skip });
-//   group.add(createCliffSet(list));                 // one mesh, one draw call
+//   group.add(createCliffSet(list, { material: valleyCliffMaterial() }));      // one mesh, one draw call
 //
 // Where: both sides of the river, between z0 and z1, every steep stretch going out from the river (the lower tier of the
 // cliffs and the upper one). skip(x, z) says where to leave the face bare (paths cut into it, and so on).
+
+import * as THREE from 'three';
+import { _internal } from './stylized-nature.js';
+import { _strata } from './stylized-terrain.js';
+
+const { NOISE, HAZEF, rgb, shared } = _internal;
+
+// The land's own paint: the same strata on every face that stands, the same grass on every face that lies flat.
+let material = null;
+export function valleyCliffMaterial() {
+  if (material) return material;
+  const C = _strata.colors;
+  return (material = new THREE.ShaderMaterial({
+    uniforms: {
+      uR0: { value: rgb(C.rock[0]) }, uR1: { value: rgb(C.rock[1]) }, uR2: { value: rgb(C.rock[2]) }, uR3: { value: rgb(C.rock[3]) },
+      uG0: { value: rgb(C.grass[0]) }, uG1: { value: rgb(C.grass[1]) }, uG2: { value: rgb(C.grass[2]) }, uG3: { value: rgb(C.grass[3]) },
+      uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
+    },
+    vertexShader: /* glsl */`
+      uniform float uHazeNear, uHazeFar, uHazeMax;
+      varying vec3 vWP;
+      varying vec3 vN;
+      varying float vHaze;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWP = wp.xyz;
+        vN = normalize(mat3(modelMatrix) * normal);
+        vec4 mv = viewMatrix * wp;
+        vHaze = uHazeMax * smoothstep(uHazeNear, uHazeFar, length(mv.xyz));
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      ${NOISE}
+      ${_strata.GLSL}
+      ${HAZEF}
+      uniform vec3 uR0, uR1, uR2, uR3, uG0, uG1, uG2, uG3;
+      varying vec3 vWP;
+      varying vec3 vN;
+      void main() {
+        vec3 n = normalize(vN);
+        float j = noise2(vWP.xz * 0.9) * 0.5 + noise2(vWP.xz * 3.0) * 0.25;
+        vec3 col;
+        if (n.y + (j - 0.37) * 0.3 < 0.7) {
+          float v = strataTone(vWP, n);
+          col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
+        } else {                                                            // a top or a step: grass, as on the land
+          float s = noise2(vWP.xz * 0.08) * 0.6 + noise2(vWP.xz * 0.3) * 0.3 + noise2(vWP.xz * 1.6) * 0.1;
+          float g = s * 0.6 + (dot(n, normalize(vec3(-0.3, 1.0, 0.35))) - 0.9) * 2.6 + 0.2;
+          col = g > 0.6 ? uG3 : (g > 0.45 ? uG2 : (g > 0.3 ? uG1 : uG0));
+        }
+        gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
+      }`,
+  }));
+}
 
 const STEP = 3.6;          // metres along the valley between pieces (they are wider than this, so they overlap)
 const WIDTH = 5.4, DEPTH = 3.2;
