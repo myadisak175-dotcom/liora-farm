@@ -134,6 +134,24 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
   const onPath = (x, z, pad = 0) => { const q = paths.near(x, z); return q.d < q.half * 1.3 + pad; };
 
+  // ---- a cliff piece fitted to the cliff where it stands: its foot sunk into the low ground in front, its head (the top of its
+  // front: rocks.js, rockFrontTop) level with the plateau's edge, and stretched up or down to span the face, whatever its size.
+  // false where there is no face to fit (away from the cliff, on the ramp, at the falls). head: how far over or under the edge.
+  const fitToBrink = (it, head = -0.06) => {
+    if (Math.abs(it.z - cliffZ(it.x)) > 4 || Math.abs(it.x - C.falls) < 2.5) return false;
+    const bb = RK.propRockGeometry(it.type, it.seed || 1).boundingBox, s = it.s || 1, half = Math.max(0.5, (bb.max.x - bb.min.x) * s * 0.4);
+    let edge = Infinity, low = Infinity;
+    for (let k = -2; k <= 2; k++) {                                         // (the lowest of the edge, and of the ground in front, along its width)
+      const q = it.x + half * k / 2, [nx, nz] = normalAt(q), cz = cliffZ(q), e = Math.min(1.25, faceHalf(q)) + 0.7;
+      edge = Math.min(edge, H(q - nx * e, cz - nz * e)); low = Math.min(low, H(q + nx * 3.2, cz + nz * 3.2));
+    }
+    if (edge - low < 1.5) return false;
+    it.y = low - 0.6 * s;
+    it.sy = Math.min(3, Math.max(0.35, (edge + head - it.y) / (RK.rockFrontTop(it.type, it.seed || 1) * s)));
+    it.fit = true;
+    return true;
+  };
+
   // ------------------------------------------------------------------ the rocks: listed first (what, where), drawn together at the end
   await onStep('วางหินและหน้าผา');
   const rockList = [];
@@ -159,12 +177,6 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     const clear = (x, z, r) => !onPath(x, z, r) && Math.hypot(x - landing[0], z - landing[1]) > 2.6 + r && Math.hypot(x, z) < 60;
     const probe = xx => { const cz = cliffZ(xx), [nx, nz] = normalAt(xx); return { cz, nx, nz, low: H(xx + nx * 3.2, cz + nz * 3.2), top: H(xx - nx * 2.6, cz - nz * 2.6), steep: slope(xx, cz), lip: -Math.min(1.25, faceHalf(xx)) }; };      // (lip: how far out from the line the plateau's edge lies)
     const brink = xx => { let m = 1e9; for (let k = 0; k <= 8; k++) { const q = xx + k, [nx, nz] = normalAt(q), d = Math.min(1.25, faceHalf(q)) + 0.7; m = Math.min(m, H(q - nx * d, cliffZ(q) - nz * d)); } return m; };      // the plateau's edge at its lowest over the next few metres (a piece's head lies under all of it)
-    // the height of a piece's head: the top of what stands out in front (its face side), which is what lies at the brink
-    const fronts = new Map(), frontTop = (type, sd) => {
-      const k = type + sd;
-      if (!fronts.has(k)) { const P = RK.propRockGeometry(type, sd).attributes.position; let m = 0; for (let i = 0; i < P.count; i++) if (P.getZ(i) > 0.3) m = Math.max(m, P.getY(i)); fronts.set(k, m); }
-      return fronts.get(k);
-    };
     const GAP = 2.9;                                                       // either side of the falls: left open
     let x = -36, n = 0;
     while (x < 56) {
@@ -174,7 +186,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       const type = big ? TURN[n++ % TURN.length] : fh > 2.0 ? 'slopeRock' : rng() < 0.5 ? 'footRock' : 'cluster', sd = 1 + Math.floor(rng() * 3);
       const bb = RK.propRockGeometry(type, sd).boundingBox, sink = type === 'cluster' ? 0.15 : R(0.5, 0.9);
       // its head: just under the plateau's edge (the land lies over the back of it: grass to the brink, and she walks there)
-      const head = big ? R(-0.15, 0.0) : -0.2, hy = big ? frontTop(type, sd) : bb.max.y;
+      const head = big ? R(-0.15, 0.0) : -0.2, hy = big ? RK.rockFrontTop(type, sd) : bb.max.y;
       const s = big ? Math.min(2.0, Math.max(0.5, (fh + sink + head) / hy)) : fh > 2.0 ? Math.min(1.3, Math.max(0.55, (fh + sink + head) / bb.max.y)) : R(0.8, 1.2);
       const w = (bb.max.x - bb.min.x) * s;
       let xc = x + w * 0.4;
@@ -184,6 +196,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       const ox = xc - p.nx * back - p.nz * mid, oz = p.cz - p.nz * back + p.nx * mid;      // (the piece's own x runs along the face)
       if (big || clear(ox + p.nx * 2, oz + p.nz * 2, 0.5)) {
         put(type, sd, ox, oz, { ry: Math.atan2(p.nx, p.nz) * DEG + R(-9, 9), s, y: Math.min(p.low, H(ox + p.nx * 2, oz + p.nz * 2)) - sink });
+        if (big) fitToBrink(rockList[rockList.length - 1], head);           // (fitted to the face: in the editor it stays fitted, however it is sized or moved)
       }
       x = xc + w * (big ? 0.48 : 0.5);                                      // the next one only just overlaps this one: each piece reads as one rock
       if (fh > 2.0) joins.push(x);
@@ -215,9 +228,9 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   // rather than height, so it stays put on the land.
   const QS = new URLSearchParams(location.search);
   const r2 = v => Math.round(v * 100) / 100, r1 = v => Math.round(v * 10) / 10;
-  const toRow = it => [it.type, it.seed || 1, r2(it.x), r2(it.z), r2((it.y ?? 0) - H(it.x, it.z)), r1(it.ry || 0), r1(it.rx || 0), r1(it.rz || 0), Math.round((it.s || 1) * 1000) / 1000];
-  const fromRow = ([type, sd, x, z, dy, ry, rx, rz, s]) => ({ type, seed: sd, x, z, y: H(x, z) + dy, ry, rx, rz, s });
-  const validLayout = d => !!(d && Array.isArray(d.rocks) && d.rocks.every(r => Array.isArray(r) && r.length === 9 && PROP_KEYS.has(r[0]) && r.slice(1).every(Number.isFinite)));
+  const toRow = it => [it.type, it.seed || 1, r2(it.x), r2(it.z), r2((it.y ?? 0) - H(it.x, it.z)), r1(it.ry || 0), r1(it.rx || 0), r1(it.rz || 0), Math.round((it.s || 1) * 1000) / 1000, Math.round((it.sy || 1) * 1000) / 1000, it.fit ? 1 : 0];
+  const fromRow = ([type, sd, x, z, dy, ry, rx, rz, s, sy = 1, fit = 0]) => ({ type, seed: sd, x, z, y: H(x, z) + dy, ry, rx, rz, s, sy, fit: !!fit });
+  const validLayout = d => !!(d && Array.isArray(d.rocks) && d.rocks.every(r => Array.isArray(r) && r.length >= 9 && r.length <= 11 && PROP_KEYS.has(r[0]) && r.slice(1).every(Number.isFinite)));
   const generated = rockList.map(it => ({ ...it }));
   const committed = validLayout(ROCKS_MAP_LAYOUT) ? ROCKS_MAP_LAYOUT : null;
   let local = null;
@@ -492,7 +505,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     // has one placed by hand), and a way to draw a changed list at once (her paths round them, the grass and the shadows follow
     // when the scene loads again)
     rockEdit: {
-      key: ROCKS_EDIT_KEY, heightAt: H, types: RK.PROP_ROCK_TYPES.filter(t => t.key !== 'range'), edited: !!local,
+      key: ROCKS_EDIT_KEY, heightAt: H, fit: fitToBrink, types: RK.PROP_ROCK_TYPES.filter(t => t.key !== 'range'), edited: !!local,
       get kit() { return rocks; },
       items: () => rockList.slice(0, placed).map(it => ({ ...it })),
       base: () => committed ? committed.rocks.map(fromRow) : generated.map(it => ({ ...it })),

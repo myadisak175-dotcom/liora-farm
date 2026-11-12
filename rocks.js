@@ -841,13 +841,21 @@ export function propRockGeometry(type, seed = 1, lod = 0) {
   }
   return propGeo.get(key);
 }
-// a rock's place, turn (degrees: ry about the up axis first, then rx, rz) and size, as a matrix
+// a rock's place, turn (degrees: ry about the up axis first, then rx, rz) and size (sy: stretched up, times its size), as a matrix
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), DEG = Math.PI / 180;
 export function rockMatrix(it, out = new THREE.Matrix4()) {
   const s = it.s || 1;
-  return out.compose(_p.set(it.x, it.y || 0, it.z), _q.setFromEuler(_e.set((it.rx || 0) * DEG, (it.ry || 0) * DEG, (it.rz || 0) * DEG, 'YXZ')), _s.set(s, s, s));
+  return out.compose(_p.set(it.x, it.y || 0, it.z), _q.setFromEuler(_e.set((it.rx || 0) * DEG, (it.ry || 0) * DEG, (it.rz || 0) * DEG, 'YXZ')), _s.set(s, s * (it.sy || 1), s));
 }
-const centreOf = inst => { inst.centre.copy(inst.geometry.boundingSphere.center).applyMatrix4(inst.matrix); inst.radius = inst.geometry.boundingSphere.radius * (inst.item.s || 1); };
+// how high a piece's head stands (its own units): the top of what stands out in front of it (its face side, +z). A cliff piece is
+// set by this, so its head lies at the brink.
+const fronts = new Map();
+export function rockFrontTop(type, seed = 1) {
+  const k = type + ':' + seed;
+  if (!fronts.has(k)) { const P = propRockGeometry(type, seed).attributes.position; let m = 0; for (let i = 0; i < P.count; i++) if (P.getZ(i) > 0.3) m = Math.max(m, P.getY(i)); fronts.set(k, m || propRockGeometry(type, seed).boundingBox.max.y); }
+  return fronts.get(k);
+}
+const centreOf = inst => { inst.centre.copy(inst.geometry.boundingSphere.center).applyMatrix4(inst.matrix); inst.radius = inst.geometry.boundingSphere.radius * inst.matrix.getMaxScaleOnAxis(); };
 // move one rock of a kit at once (the rock editor, while a finger drags it): its item says where, this puts it there
 export function moveKitRock(inst) {
   rockMatrix(inst.item, inst.matrix);
@@ -859,7 +867,7 @@ export function moveKitRock(inst) {
 // A level's rocks, drawn as a few instanced groups: for each type and seed, one group for each of its LODs. Each rock is in the
 // group of the LOD its distance from the camera calls for: kit.userData.update(camera) sorts them again (call it each frame; it
 // does the work only when the camera has moved a little).
-//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s }, ...]);      // angles in degrees
+//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s, sy }, ...]);      // angles in degrees; sy: stretched up (1 = not)
 //   kit.userData.instances: [{ geometry (the full one), matrix, item, mesh, index, lod }]; .triangles (all in full), .drawn() (as drawn now)
 export function createRockKit(list, { world = true } = {}) {
   const group = new THREE.Group(), sets = new Map(), instances = [];
@@ -959,7 +967,8 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}
       #else
         mat4 mm = modelMatrix;
       #endif
-        vWN = normalize(mat3(mm) * normal);
+        mat3 m3 = mat3(mm);                                                    // (a piece may be stretched up: the normal goes the other way)
+        vWN = normalize(m3 * (normal / vec3(dot(m3[0], m3[0]), dot(m3[1], m3[1]), dot(m3[2], m3[2]))));
         vec4 wp = mm * vec4(position, 1.0); vWP = wp.xyz;
         vCurv = aCurv; vHgt = aHgt; vFacet = aFacet;
         vec4 mv = viewMatrix * wp;

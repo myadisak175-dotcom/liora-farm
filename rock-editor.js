@@ -27,6 +27,7 @@ import { moveKitRock, propRockGeometry } from './rocks.js';
 
 const RESUME_KEY = 'liora.rockEditor.resume';
 const SEEDS = 6;                                                            // shapes of each kind to choose from
+const CLIFF = new Set(['cliffFace', 'cliffTall', 'buttress', 'slopeRock']);  // put down at a cliff, these are fitted to its edge
 const CSS = `
 #rockEditor { position:fixed; inset:0; z-index:60; touch-action:none; user-select:none; -webkit-user-select:none; font:600 13px system-ui, sans-serif; color:#16324a; pointer-events:none; }
 #rockEditor canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:auto; touch-action:none; }
@@ -69,7 +70,10 @@ export function createRockEditor({ level, camera, player = null }) {
     if (!h) return say('ไม่มีอะไรให้ย้อนแล้ว');
     items = h.items; sel = h.sel < items.length ? h.sel : -1; show(); panel(); say('ย้อนแล้ว');
   };
-  const nudge = () => { if (sel >= 0) moveKitRock(instOf(sel)); };      // the picked rock has moved: draw it there
+  // a rock fitted to the cliff's edge (level.rockEdit.fit) is fitted again whenever it moves, turns or changes size: its head stays
+  // level with the edge, its foot in the ground below, and it stretches up or down to span the face
+  const refit = it => !!(it.fit && R.fit && R.fit(it));
+  const nudge = () => { if (sel >= 0) { refit(items[sel]); moveKitRock(instOf(sel)); } };      // the picked rock has moved: draw it there
 
   // ---- the camera: it looks at a point on the ground, from a way off and a height
   const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0.45, dist: 14 };
@@ -215,8 +219,9 @@ export function createRockEditor({ level, camera, player = null }) {
       const w = onGround(sx, sy);
       if (!w) return say('แตะบนพื้น');
       remember();
-      const it = { type: placing, seed: 1, x: w[0], z: w[1], y: 0, ry: Math.round((cam.yaw * 180 / Math.PI + 360) % 360), rx: 0, rz: 0, s: 1 };
+      const it = { type: placing, seed: 1, x: w[0], z: w[1], y: 0, ry: Math.round((cam.yaw * 180 / Math.PI + 360) % 360), rx: 0, rz: 0, s: 1, sy: 1 };
       items.push(it); toGround(it);
+      if (R.fit && CLIFF.has(it.type) && !R.fit(it)) it.fit = false;        // (a cliff piece put down at the cliff: fitted to its edge)
       sel = items.length - 1; placing = null; show(); panel(); return;
     }
     const hit = pick(sx, sy);
@@ -270,22 +275,32 @@ export function createRockEditor({ level, camera, player = null }) {
     const it = items[sel], y0 = it.y, deg = v => Math.round(v) + '°';
     const p = stop(document.createElement('div')); p.className = 'panel';
     const name = document.createElement('span'); name.className = 'name'; name.textContent = (NAME[it.type] || it.type) + ' · ทรง ' + it.seed;
-    const shape = d => { remember(); it.seed = (it.seed - 1 + d + SEEDS) % SEEDS + 1; show(); panel(); };
+    const shape = d => { remember(); it.seed = (it.seed - 1 + d + SEEDS) % SEEDS + 1; refit(it); show(); panel(); };
+    const fitted = it.fit && R.fit;
     p.append(
       row([name, btn('◀', () => shape(-1)), btn('▶', () => shape(1))]),
       slider('หมุน', -180, 180, 1, () => ((it.ry || 0) + 540) % 360 - 180, v => { it.ry = v; }, deg),
       slider('เอียงหน้า-หลัง', -35, 35, 1, () => it.rx || 0, v => { it.rx = v; }, deg),
       slider('เอียงข้าง', -35, 35, 1, () => it.rz || 0, v => { it.rz = v; }, deg),
       slider('ขนาด', 0.3, 2.5, 0.01, () => it.s || 1, v => { it.s = v; }, v => v.toFixed(2)),
-      slider('สูง-ต่ำ', -4, 4, 0.02, () => it.y - y0, v => { it.y = y0 + v; }, v => (v > 0 ? '+' : '') + v.toFixed(1)),
+      fitted ? Object.assign(document.createElement('div'), { textContent: 'ยอดเสมอขอบผา ความสูงยืดตามผาเอง', style: 'font-weight:500;color:#5a6a7a;text-align:center' })
+        : slider('สูง-ต่ำ', -4, 4, 0.02, () => it.y - y0, v => { it.y = y0 + v; }, v => (v > 0 ? '+' : '') + v.toFixed(1)),
       row([
         btn('⧉ ก๊อป', () => {
           remember();
           const c = { ...it, x: it.x + Math.cos(cam.yaw) * 2 * (it.s || 1), z: it.z - Math.sin(cam.yaw) * 2 * (it.s || 1), ry: ((it.ry || 0) + 40) % 360 };
           c.y = it.y + H(c.x, c.z) - H(it.x, it.z);
+          refit(c);
           items.push(c); sel = items.length - 1; show(); panel();
         }),
-        btn('⬇ ลงพื้น', () => { remember(); toGround(it); nudge(); panel(); }),
+        btn('⬇ ลงพื้น', () => { remember(); if (!refit(it)) toGround(it); nudge(); panel(); }),
+        ...(R.fit ? [btn(fitted ? '📐 เสมอขอบผา' : '📐 เสมอขอบ', () => {
+          remember();
+          if (it.fit) { it.fit = false; panel(); return say('เลิกยึดขอบผาแล้ว'); }
+          it.fit = true;
+          if (!R.fit(it)) { it.fit = false; history.pop(); return say('ตรงนี้ไม่มีขอบผาให้ยึด ลองลากไปชิดหน้าผาก่อน'); }
+          nudge(); panel(); say('ยอดเสมอขอบผาแล้ว ย่อขยายได้ตามใจ');
+        }, fitted ? 'on' : '')] : []),
         Object.assign(document.createElement('span'), { className: 'grow' }),
         btn('🗑 ลบ', () => { remember(); items.splice(sel, 1); sel = -1; show(); panel(); }, 'warn'),
         btn('✓', () => { sel = -1; panel(); }),
