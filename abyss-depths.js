@@ -59,8 +59,30 @@ const smooth = (pts, step = 1.2) => {                                      // Ca
   out.push(pts[pts.length - 1]);
   return out;
 };
-// a wall that goes up in steps: o metres into the rock from its foot -> how high it stands there
-const wallUp = (o, total, rag = 0) => o <= 0 ? 0 : total * (0.26 * ss(0, 2.6, o) + 0.3 * ss(4.2, 7.6, o + rag) + 0.44 * ss(9.5, 15.5, o + rag * 1.6));
+// cells over the ground: f1 distance to the nearest cell's heart, id which cell (0..1)
+const hh = (i, j, k) => { const v = Math.sin(i * 127.1 + j * 311.7 + k * 74.7) * 43758.5453; return v - Math.floor(v); };
+const cellAt = (x, z, size, k) => {
+  const gx = x / size, gz = z / size, ix = Math.floor(gx), iz = Math.floor(gz);
+  let f1 = 9, id = 0;
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+    const cx = ix + di, cz = iz + dj, px = cx + 0.1 + 0.8 * hh(cx, cz, k), pz = cz + 0.1 + 0.8 * hh(cx, cz, k + 1), d = Math.hypot(gx - px, gz - pz);
+    if (d < f1) { f1 = d; id = hh(cx, cz, k + 2); }
+  }
+  return id;
+};
+// a wall of broken blocks: o metres into the rock from its foot -> how high it stands there. The wall is cut into blocks
+// (cells a few metres across); each stands its own distance forward or back and has its own ledges at its own heights, so
+// no ledge runs level along the wall and the joins between blocks make upright faces, cracks and corners.
+const wallUp = (o, total, rag = 0, x = 0, z = 0) => {
+  if (o < -6) return 0;
+  const a = cellAt(x, z, 6.5, 5), a2 = cellAt(x, z, 2.8, 11), b = hh(a * 91, a * 13, 3), d = hh(a * 37, a * 71, 7);
+  const oo = o + (a - 0.5) * 4.2 + (a2 - 0.5) * 1.3 + rag * 0.35;
+  if (oo <= 0) return 0;
+  const t1 = 0.14 + 0.18 * b, t2 = 0.42 + 0.22 * d, s1 = 4.2 + 3.6 * d, s2 = 9.5 + 4.5 * b;
+  let h = total * (t1 * ss(0, 0.8, oo) + (t2 - t1) * ss(s1, s1 + 0.8, oo) + (1 - t2) * ss(s2, s2 + 1.0, oo));
+  h += ss(0, 0.8, oo) * ((d - 0.5) * 2.2 + (a2 - 0.5) * 1.2 - ss(0.8, 3.5, oo) * (b - 0.3) * 1.5);      // block tops lean and dip a little
+  return h;
+};
 // a pond dug into the land h: e = 1 at its shore; the banks slope down to the water, the bed lies `deep` below it
 const dig = (h, e, WL, deep = 0.95) => {
   h = lerp(h, WL + 0.28, ss(2.6, 1.25, e) * 0.92);
@@ -95,7 +117,7 @@ function shelfLand(x, z, WL) {
     h = lerp(h, WL + 0.3, ss(5.5, 2.4, d) * 0.9);
     h = lerp(h, WL - 0.42, ss(2.1, 0.9, d));
   }
-  h += wallUp(foot - x, 86, (n2(x, z, 0.13, 31) - 0.5) * 5);
+  h += wallUp(foot - x, 86, (n2(x, z, 0.13, 31) - 0.5) * 5, x, z);
   // the brink: a lip, then straight down into the clouds
   const de = x - brink + (n2(x, z, 0.3, 19) - 0.5) * 1.3;
   if (de > -1.4) h = lerp(h + 0.22 * ss(-1.4, -0.4, de) * (1 - ss(3.2, 1.2, Math.abs(z - shelfStream(x)))), -48 + (n2(x, z, 0.1, 37) - 0.5) * 6, ss(-0.2, 2.3, de));
@@ -133,7 +155,7 @@ function gorgeLand(x, z, WL) {
   h = lerp(h, WL + 0.26, ss(5.2, 2.3, d) * 0.9);
   h = lerp(h, WL - 0.4, ss(2.0, 0.9, d));
   for (const c of GORGE.chambers) h = dig(h, Math.hypot(x - c.pool.x, z - c.pool.z) / c.pool.a + (n2(x, z, 0.25, 67) - 0.5) * 0.25, WL, 1.05);
-  h += wallUp(o, 92, (n2(x, z, 0.12, 71) - 0.5) * 5);
+  h += wallUp(o, 92, (n2(x, z, 0.12, 71) - 0.5) * 5, x, z);
   if (o < 0) for (let i = 0; i < GORGE.pillars.length; i++) h = stand(h, x, z, GORGE.pillars[i], 73 + i * 3);
   return h;
 }
@@ -161,7 +183,7 @@ function meadowLand(x, z, WL) {
   for (let i = 0; i < M.ponds.length; i++) { const p = M.ponds[i]; h = dig(h, Math.hypot((x - p.x) / p.a, (z - p.z) / p.b) + (n2(x, z, 0.18, 97 + i) - 0.5) * 0.3, WL, i ? 0.7 : 1.1); }
   // the walls; in the window the west wall is gone and the meadow ends at a brink over the clouds
   const westWall = west < 20 ? win : 0;
-  h += wallUp(o, 78, (n2(x, z, 0.12, 101) - 0.5) * 5) * (1 - westWall);
+  h += wallUp(o, 78, (n2(x, z, 0.12, 101) - 0.5) * 5, x, z) * (1 - westWall);
   if (westWall > 0) { const de = 9.5 + rag * 0.35 - west; h = lerp(h, lerp(h + 0.2 * ss(-1.4, -0.4, de), -46, ss(-0.2, 2.3, de)), westWall); }
   if (o < 0) for (let i = 0; i < M.pillars.length; i++) h = stand(h, x, z, M.pillars[i], 103 + i * 3);
   return h;
@@ -190,7 +212,15 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
       const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, o = j * nx + i;
       return (arr[o] * (1 - u) + arr[o + 1] * u) * (1 - v) + (arr[o + nx] * (1 - u) + arr[o + nx + 1] * u) * v;
     };
-    return { ...def, k, nx, nz, h, pathW: path, heightAt: (x, z) => at(h, x, z), pathAt: (x, z) => at(path, x, z) };
+    // topW: how far down from the highest ground within 2 m (small just under the lip of a ledge, large at a wall's foot)
+    const topW = new Float32Array(nx * nz), R = 4;
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      let m = -1e9;
+      for (let dj = -R; dj <= R; dj++) { const jj = j + dj; if (jj < 0 || jj >= nz) continue; for (let di = -R; di <= R; di++) { const ii = i + di; if (ii < 0 || ii >= nx || di * di + dj * dj > R * R) continue; const v = h[jj * nx + ii]; if (v > m) m = v; } }
+      topW[j * nx + i] = m - h[j * nx + i];
+    }
+    const wallNear = (x, z) => at(topW, x, z);
+    return { ...def, k, nx, nz, h, pathW: path, topW, wallNear, heightAt: (x, z) => at(h, x, z), pathAt: (x, z) => at(path, x, z) };
   });
   const layerAt = (x, z) => { for (const L of layers) if (L && x >= L.box[0] && x <= L.box[1] && z >= L.box[2] && z <= L.box[3]) return L.k; return -1; };
   const covers = (x, z) => layerAt(x, z) >= 0;
@@ -246,6 +276,7 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
     scatter(L, 16, 3, any, all, (x, z) => { const b = { x, z, scale: R(0.7, 1.2), r: 1 }; L.bushes.push(b); return b; });
     scatter(L, 13, 4, (x, z) => x - shelfFoot(z) < 9 || rng() < 0.3, all, (x, z) => { const r = { type: rng() < 0.5 ? 'boulder' : rng() < 0.6 ? 'crag' : 'stones', x, z, scale: R(0.8, 1.7), r: 1.5 }; L.rocks.push(r); return r; });
     scatter(L, 12, 5, any, all, (x, z) => { const f = { x, z, rad: R(1.6, 3.2), r: 1 }; L.flowers.push(f); return f; });
+    scatter(L, 14, 2.2, (x, z) => L.wallNear(x, z) > 4, all, (x, z) => { const r = { type: rng() < 0.5 ? 'boulder' : rng() < 0.6 ? 'stones' : 'crag', x, z, scale: R(0.7, 1.6), r: 1.2 }; L.rocks.push(r); return r; });      // fallen from the wall
     for (const s of SHELF.stacks.slice(0, 2)) L.trees.push({ type: 'pine', x: s.x + 0.3, z: s.z - 0.2, scale: 0.8, r: 2, loose: true });      // one on each of the far stacks
   }
   if (layers[1]) {                                                         // the gorge: mossy boulders everywhere, ferny bushes, a few saplings
@@ -263,6 +294,7 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
     scatter(L, 20, 3.5, any, all, (x, z) => { const b = { x, z, scale: R(0.7, 1.3), r: 1 }; L.bushes.push(b); return b; });
     scatter(L, 15, 5, any, all, (x, z) => { const r = { type: rng() < 0.4 ? 'boulder' : rng() < 0.5 ? 'slab' : rng() < 0.6 ? 'standing' : 'stones', x, z, scale: R(0.9, 2.1), r: 1.6 }; L.rocks.push(r); return r; });
     scatter(L, 30, 4.5, any, all, (x, z) => { const f = { x, z, rad: R(1.8, 3.6), r: 1 }; L.flowers.push(f); return f; });
+    scatter(L, 30, 2.4, (x, z) => L.wallNear(x, z) > 4, all, (x, z) => { const r = { type: rng() < 0.45 ? 'boulder' : rng() < 0.55 ? 'stones' : rng() < 0.6 ? 'crag' : 'slab', x, z, scale: R(0.7, 1.8), r: 1.2 }; L.rocks.push(r); return r; });      // fallen from the walls
   }
 
   // ---- water: the ribbons the clear water is drawn on (rows of [x, z, level, half width]), the falls, lily pads
@@ -337,12 +369,13 @@ export function createDepths({ WL = 0, seed = 3, only = null } = {}) {
 // the land of one layer: positions on its grid, with what the valley's terrain material asks for
 export function layerGeometry(L, D) {
   const { nx, nz, h } = L, [x0, , z0] = L.box, WL = D.WL;
-  const pos = new Float32Array(nx * nz * 3), bank = new Float32Array(nx * nz), path = new Float32Array(nx * nz);
+  const pos = new Float32Array(nx * nz * 3), bank = new Float32Array(nx * nz), path = new Float32Array(nx * nz), top = new Float32Array(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const o = j * nx + i, x = x0 + i * STEP, z = z0 + j * STEP;
     pos[o * 3] = x; pos[o * 3 + 1] = h[o]; pos[o * 3 + 2] = z;
     bank[o] = D.wetAt(x, z) ? h[o] - WL : 5;                                // sand only round the water
     path[o] = L.pathW[o];
+    top[o] = L.topW[o];
   }
   const idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
   let k = 0;
@@ -351,6 +384,7 @@ export function layerGeometry(L, D) {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('aBank', new THREE.BufferAttribute(bank, 1));
   g.setAttribute('aPath', new THREE.BufferAttribute(path, 1));
+  g.setAttribute('aTop', new THREE.BufferAttribute(top, 1));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeVertexNormals();
   g.computeBoundingSphere();
@@ -380,6 +414,7 @@ export function floatingRock({ r = 8, depth = 18, seed = 1 } = {}) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aBank', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3).fill(5), 1));
   g.setAttribute('aPath', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3), 1));
+  g.setAttribute('aTop', new THREE.Float32BufferAttribute(Float32Array.from({ length: pos.length / 3 }, (_, i) => Math.max(0, 0.5 - pos[i * 3 + 1])), 1));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;

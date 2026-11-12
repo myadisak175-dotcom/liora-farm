@@ -104,6 +104,7 @@ Three places down in the abyss, reached by **warp stones**: one on the rim besid
 
 - **Each layer is a scene of its own** (`depths-level.js`, `?map=depths&layer=1|2|3`): the valley is too much for a phone to hold along with what lies under it. A warp opens the page again in the other scene (`warp-ui.js`), so everything of the scene she leaves is let go of first; coming back up is `?view=warp-rim`. The valley itself holds only the rim's warp stone.
 - **Where things are and how the land lies** is `abyss-depths.js`: height maths on a 0.5 m grid, drawn with the valley's own terrain paint (`_terrain.terrainMaterial`), so the walls have the same strata as the pit's. A layer has its own ground picture, fluffy grass, clear water (ripples, wading), falls, clouds and plants, built the same way as the other maps.
+- **The rock** down there is built of broken blocks (`rock-blocks.js`): every rock face of a layer's land gets a stack of chunky flat-faced blocks stood in front of it, each its own size, lean and shade, with grass on top hanging over the lip and damp stains low down. The land behind is painted as plain deep stone (`stylized-rockface.js`), so a gap between blocks reads as a crack. `?rock=old` shows the bare walls, to compare.
 - **The camera** comes in close when there is a wall of rock behind her, instead of being lifted over it (`player.js`); this holds at the valley's cliffs too.
 
 ## The scene editor

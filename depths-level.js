@@ -21,6 +21,8 @@ import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall } from './stylized-waterfall.js';
 import { _abyss } from './abyss-scene.js';
 import * as DP from './abyss-depths.js';
+import { rockLandMaterial } from './stylized-rockface.js';
+import * as RB from './rock-blocks.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -78,11 +80,20 @@ export async function buildDepthsLevel({ layer = 1, seed = 1, far = '#cde6f2', g
   await onStep('ระบายสีพื้น');
   const inBox = (x, z) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
   const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 768, seed, heightAt: field.heightAt, dirt: 0, shade, bare, press, paint: (x, z) => (inBox(x, z) && D.paint(x, z)) || [1, 0, 0] });
-  const landMat = T._terrain.terrainMaterial(far, [1e5, 1e5], 0);
+  const landMat = new URLSearchParams(location.search).get('rock') === 'old' ? T._terrain.terrainMaterial(far, [1e5, 1e5], 0) : rockLandMaterial({ far });      // ?rock=old: the land's old banded paint, to compare
   const terrain = new THREE.Mesh(DP.layerGeometry(L, D), landMat);
   terrain.name = 'depthsLand';
   terrain.userData.dispose = () => { terrain.geometry.dispose(); landMat.dispose(); };
   group.add(terrain);
+  // the rock faces: built of broken blocks stood in front of the land's walls (rock-blocks.js); ?rock=old: the walls bare
+  if (new URLSearchParams(location.search).get('rock') !== 'old') {
+    const nearWarp = (x, z) => Math.hypot(x - wx, z - wz) > 4;
+    const { list, colliders: bc } = RB.faceBlocks({ x0, z0, nx: L.nx, nz: L.nz, step: 0.5, h: L.h, seed: seed + k * 7, keep: nearWarp });
+    const blocks = RB.createRockBlocks(list);
+    group.add(blocks);
+    for (const c of bc) colliders.push(c);
+    console.info('[depths] rock blocks', list.length, 'triangles', blocks.geometry.attributes.position.count / 3);
+  }
   for (const i of L.islands) { const m = new THREE.Mesh(DP.floatingRock(i), landMat); m.position.set(i.x, i.y, i.z); m.userData.dispose = () => m.geometry.dispose(); group.add(m); }
 
   // ------------------------------------------------------------------ water: the same clear water as the valley's, on ribbons over the ponds and streams
