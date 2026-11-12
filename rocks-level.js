@@ -41,7 +41,7 @@ const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export const ROCKS_EDIT_KEY = 'liora.rocks.layout.v1';                  // where this browser keeps the rocks as placed by hand
+export const ROCKS_EDIT_KEY = 'liora.rocks.layout.v2';                  // where this browser keeps the rocks as placed by hand
 const PROP_KEYS = new Set(RK.PROP_ROCK_TYPES.map(t => t.key));
 const UP = 7.5, POND = -0.5;                                               // the water's level on the plateau, and in the pool and the pond
 export const ROCKS_MAP = {
@@ -80,8 +80,9 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   // ------------------------------------------------------------------ the cliff's line
   // z of the middle of its face at x: it wanders, lies back into a hollow round the falls, and has a notch where the water comes over
   const cliffZ = x => C.z + (fbm3(x * 0.07, 2.2, 0.4, seed + 3, 2) - 0.5) * 5 - C.hollow * Math.exp(-(((x - C.falls) / 6.5) ** 2)) - 1.2 * Math.exp(-(((x - C.falls) / 1.9) ** 2));
-  // half the width of the face: steep along the cliff, nearly upright at the falls, a long ramp at the west end
-  const faceHalf = x => lerp(lerp(1.25, 12, ss(C.ramp[0], C.ramp[1], x)), 0.7, Math.exp(-(((x - C.falls) / 2.4) ** 2)));
+  // half the width of the face: all but upright along the cliff (the rocks that stand against it have their heads just out past
+  // the plateau's edge and under its level: from above the grass runs to the brink, and she walks to it), a long ramp at the west end
+  const faceHalf = x => lerp(lerp(0.3, 12, ss(C.ramp[0], C.ramp[1], x)), 0.7, Math.exp(-(((x - C.falls) / 2.4) ** 2)));
   const normalAt = x => { const d = cliffZ(x + 0.5) - cliffZ(x - 0.5), l = Math.hypot(d, 1); return [-d / l, 1 / l]; };      // out of the face, towards the low ground
   const lipZ = cliffZ(C.falls) - 0.4;                                      // where the stream leaves the plateau
 
@@ -156,39 +157,38 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     const TURN = ['cliffFace', 'cliffTall', 'buttress', 'cliffFace', 'cliffTall', 'cliffFace', 'buttress', 'cliffTall'], joins = [];
     const landing = [C.falls, lipZ + 2.7];                                 // where the falls come down
     const clear = (x, z, r) => !onPath(x, z, r) && Math.hypot(x - landing[0], z - landing[1]) > 2.6 + r && Math.hypot(x, z) < 60;
-    const probe = xx => { const cz = cliffZ(xx), [nx, nz] = normalAt(xx); return { cz, nx, nz, low: H(xx + nx * 3.2, cz + nz * 3.2), top: H(xx - nx * 2.6, cz - nz * 2.6), steep: slope(xx, cz) }; };
+    const probe = xx => { const cz = cliffZ(xx), [nx, nz] = normalAt(xx); return { cz, nx, nz, low: H(xx + nx * 3.2, cz + nz * 3.2), top: H(xx - nx * 2.6, cz - nz * 2.6), steep: slope(xx, cz), lip: -Math.min(1.25, faceHalf(xx)) }; };      // (lip: how far out from the line the plateau's edge lies)
+    const brink = xx => { let m = 1e9; for (let k = 0; k <= 8; k++) { const q = xx + k, [nx, nz] = normalAt(q), d = Math.min(1.25, faceHalf(q)) + 0.7; m = Math.min(m, H(q - nx * d, cliffZ(q) - nz * d)); } return m; };      // the plateau's edge at its lowest over the next few metres (a piece's head lies under all of it)
     const GAP = 2.9;                                                       // either side of the falls: left open
     let x = -36, n = 0;
     while (x < 56) {
-      if (Math.abs(x - C.falls) < GAP) { x = C.falls + GAP; continue; }
-      const p0 = probe(x), fh = p0.top - p0.low, big = fh > 3.2;
+      if (Math.abs(x - C.falls) < GAP) { x = C.falls + GAP + 0.01; continue; }
+      const p0 = probe(x), fh = brink(x) - p0.low, big = fh > 3.2;
       if (p0.steep < 0.8 || fh < 0.9) { x += 2.5; continue; }               // no face here (the ramp): left to the grass
       const type = big ? TURN[n++ % TURN.length] : fh > 2.0 ? 'slopeRock' : rng() < 0.5 ? 'footRock' : 'cluster', sd = 1 + Math.floor(rng() * 3);
       const bb = RK.propRockGeometry(type, sd).boundingBox, sink = type === 'cluster' ? 0.15 : R(0.5, 0.9);
-      const s = big ? Math.min(1.6, Math.max(0.5, (fh + sink + R(-0.1, 0.8)) / bb.max.y)) : fh > 2.0 ? Math.min(1.3, Math.max(0.55, (fh + sink + 0.4) / bb.max.y)) : R(0.8, 1.2);
+      // its head: just under the plateau's edge (the land lies over the back of it: grass to the brink, and she walks there)
+      const head = big ? R(-0.3, -0.1) : -0.2;
+      const s = big ? Math.min(2.0, Math.max(0.5, (fh + sink + head) / bb.max.y)) : fh > 2.0 ? Math.min(1.3, Math.max(0.55, (fh + sink + head) / bb.max.y)) : R(0.8, 1.2);
       const w = (bb.max.x - bb.min.x) * s;
       let xc = x + w * 0.4;
       if (xc < C.falls && xc + w * 0.5 > C.falls - GAP + 0.3) xc = C.falls - GAP + 0.3 - w * 0.5;      // up to the falls, not over them
       if (x >= C.falls && x < C.falls + GAP + 0.1) xc = C.falls + GAP - 0.3 + w * 0.5;
-      const p = probe(xc), back = big ? R(0.5, 1.1) : R(0.2, 0.6), mid = (bb.max.x + bb.min.x) / 2 * s;
+      const p = probe(xc), back = big ? -(p.lip + R(0, 0.6)) : R(0.2, 0.6), mid = (bb.max.x + bb.min.x) / 2 * s;      // (a big piece: its middle just out past the plateau's edge, its back in the land)
       const ox = xc - p.nx * back - p.nz * mid, oz = p.cz - p.nz * back + p.nx * mid;      // (the piece's own x runs along the face)
       if (big || clear(ox + p.nx * 2, oz + p.nz * 2, 0.5)) {
         put(type, sd, ox, oz, { ry: Math.atan2(p.nx, p.nz) * DEG + R(-9, 9), s, y: Math.min(p.low, H(ox + p.nx * 2, oz + p.nz * 2)) - sink });
-        if (big && rng() < 0.3 && Math.abs(xc - C.falls) > 6) {             // a top slab on the plateau's edge above
-          const tx = xc - p.nx * 2.8 + R(-1, 1), tz = p.cz - p.nz * 2.8;
-          put('cliffTop', 1 + Math.floor(rng() * 3), tx, tz, { ry: Math.atan2(p.nx, p.nz) * DEG + R(-25, 25), s: R(0.42, 0.62), y: H(tx, tz) - R(0.25, 0.4) });
-        }
       }
       x = xc + w * (big ? 0.48 : 0.5);                                      // the next one only just overlaps this one: each piece reads as one rock
       if (fh > 2.0) joins.push(x);
-      if (big && rng() < 0.4 && Math.abs(x - C.falls) > GAP + 1.5) {         // behind some of the joins: another, set deeper into the face (elsewhere the land's own face shows, as a crack)
+      if (big && rng() < 0.7 && Math.abs(x - C.falls) > GAP + 1.5) {         // behind some of the joins: another, set deeper into the face (elsewhere the land's own face shows, as a crack)
         const q = probe(x), t2 = n % 2 ? 'cliffFace' : 'cliffTall', sd2 = 1 + Math.floor(rng() * 3), b2 = RK.propRockGeometry(t2, sd2).boundingBox;
-        const s2 = Math.min(1.6, Math.max(0.5, (q.top - q.low + 1.2 + R(0.2, 0.9)) / b2.max.y)), back2 = R(1.5, 2.0), mid2 = (b2.max.x + b2.min.x) / 2 * s2;
+        const s2 = Math.min(2.0, Math.max(0.5, (brink(x - 4) - q.low + 1.2 + R(-0.5, -0.15)) / b2.max.y)), back2 = -q.lip + R(0.6, 1.1), mid2 = (b2.max.x + b2.min.x) / 2 * s2;
         put(t2, sd2, x - q.nx * back2 - q.nz * mid2, q.cz - q.nz * back2 + q.nx * mid2, { ry: Math.atan2(q.nx, q.nz) * DEG + R(-12, 12), s: s2, y: q.low - 1.2 });
       }
     }
     for (const jx of joins) {
-      const cz = cliffZ(jx), [nx, nz] = normalAt(jx), at = (out, side) => [jx + nx * out + nz * side, cz + nz * out - nx * side];
+      const cz = cliffZ(jx), [nx, nz] = normalAt(jx), o = 0.6, at = (out, side) => [jx + nx * (out + o) + nz * side, cz + nz * (out + o) - nx * side];
       const a = at(R(1.7, 2.5), R(-1, 1));
       if (rng() < 0.55 && clear(a[0], a[1], 0.3)) put('rubble', 1 + Math.floor(rng() * 3), a[0], a[1], { ry: R(0, 360), s: R(1.1, 1.7), sink: 0.03 });
       const b = at(R(2.6, 3.6), R(-1.5, 1.5));
@@ -296,6 +296,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
     const e = gridAt(wEdge, x, z), wide = ss(0.5, 1.4, gridAt(wDepth, x, z));
     const sand = e < 4 ? 1 - ss(wide * 1.5, 0.5 + wide * 3, e) : 0;
     let earth = ss(0.9, 1.3, slope(x, z)), mow = 0;                        // where the land is steep the grass gives up: the cliff's own rock
+    if (earth > 0) { const [nx, nz] = normalAt(x); earth *= ss(0.5, 1.7, H(x - nx * 1.2, z - nz * 1.2) - H(x, z)); }      // (but the grass hangs a little way down over the brink: no bare strip between it and the rocks' heads)
     const pp = paths.paint(x, z);
     if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }
     return [earth, sand, mow];
@@ -308,7 +309,7 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   };
   // (bare earth on this map is the cliff's rock showing between the pieces: grey, like their shaded sides; the paths have a paint of their own)
   const map = G.createGroundMap({ radius: FR, size: 1024, seed, heightAt: H, dirt: 0, shade, bare, press, paint, cast: sunShadows(L.clone()),
-    colors: { ...G.GROUND_COLORS, deep: '#55924a', mid: '#7cae40', sunny: '#9fc84a', shade: '#447a3c', dirt: '#8b8f93' } });
+    colors: { ...G.GROUND_COLORS, deep: '#55924a', mid: '#7cae40', sunny: '#9fc84a', shade: '#447a3c', dirt: '#767e89' } });
   const fade = { far, fadeA: FR * 0.8, fadeB: FR * 0.985 };
   const terrain = G.createTerrain(field, map, fade);
   group.add(terrain);
