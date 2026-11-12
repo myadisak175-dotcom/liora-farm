@@ -237,10 +237,15 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
         const hit = -b - Math.sqrt(disc);
         if (hit > 0 && hit < reach) reach = hit;
       }
-      camReach += (Math.max(1.3, reach - 0.25) - camReach) * Math.min(1, dt * (reach < camReach ? 16 : 3.5));   // in fast, out slowly
+      // a wall of rock behind her (a cliff she has her back to): the camera comes in close too, instead of being lifted over it
+      let walled = false;
+      for (let r = 0.6; r < reach; r += 0.4) {
+        if (level.heightAt(look.x + dx * r, look.z + dz * r) + 0.45 - (look.y + dy * r + 0.25) > 2.5) { reach = Math.max(0.7, r - 0.4); walled = true; break; }
+      }
+      camReach += (Math.max(walled ? 0.7 : 1.3, reach - (walled ? 0 : 0.25)) - camReach) * Math.min(1, dt * (reach < camReach ? 16 : 3.5));   // in fast, out slowly
       camPos.set(look.x + dx * camReach, look.y + dy * camReach + 0.25, look.z + dz * camReach);
       const floor = level.heightAt(camPos.x, camPos.z) + 0.45;
-      if (camPos.y < floor) camPos.y = floor;
+      if (camPos.y < floor) camPos.y = Math.min(floor, camPos.y + 2.5);      // over a rise in the ground, never up a cliff
       camPos.lerpVectors(look, camPos, cameraTrunkFraction(look, camPos, level.cameraTrunks));
       if (!camReady) { camera.position.copy(camPos); camTarget.copy(look); camReady = true; }
       camera.position.lerp(camPos, Math.min(1, dt * 14));

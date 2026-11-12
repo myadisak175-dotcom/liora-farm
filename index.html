@@ -63,7 +63,7 @@
   "./water-droplets.js": "./water-droplets.js?v=crown5",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=berrysurface1",
-  "./stylized-terrain.js": "./stylized-terrain.js?v=strata1",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=strata1depths1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
@@ -79,14 +79,16 @@
   "./stylized-cliffs.js": "./stylized-cliffs.js?v=slabs3",
   "./valley-cliffs.js": "./valley-cliffs.js?v=2",
   "./hills-level.js": "./hills-level.js?v=wake3",
-  "./valley-level.js": "./valley-level.js?v=cliffs3",
-  "./teleport-menu.js": "./teleport-menu.js?v=3",
+  "./valley-level.js": "./valley-level.js?v=cliffs3depths1",
+  "./teleport-menu.js": "./teleport-menu.js?v=4",
+  "./warp-ui.js": "./warp-ui.js?v=1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=abyss2",
   "./abyss-shape.js": "./abyss-shape.js?v=6",
-  "./abyss-scene.js": "./abyss-scene.js?v=6",
-  "./player.js": "./player.js?v=shadow1",
+  "./abyss-scene.js": "./abyss-scene.js?v=6d",
+  "./abyss-depths.js": "./abyss-depths.js?v=1",
+  "./player.js": "./player.js?v=shadow1cam1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=woodprops1",
@@ -161,6 +163,7 @@ import DEER_GLB from './deer-glb.js';
 import { createForestForage } from './forest-forage.js?v=4';
 import { createSceneEditor } from './scene-editor.js';
 import { createTeleportMenu } from './teleport-menu.js';
+import { createWarpUI } from './warp-ui.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -349,6 +352,9 @@ if (sceneEditor) {
 }
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
 const teleportMenu = createTeleportMenu({ level, player, top: sceneEditor ? 206 : 164 });
+// ---- 🌀 warp stones: by one, a button offers the others (the rim of the abyss and the three layers down it)
+const warpUI = createWarpUI({ level, player });
+const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;
 
 const clock = new THREE.Clock();
 let moved = false;
@@ -360,6 +366,8 @@ const frame = (dt = clock.getDelta()) => {
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   if (forage) forage.update(dt, player.position);
   level.follow(player.position, player.lookDir);
+  if (warpUI) warpUI.update();
+  if (farHills && (level.zone ?? -1) !== lastZone) { lastZone = level.zone ?? -1; farHills.visible = lastZone < 0; }      // no far hills from down in the abyss
   {
     // the level knows the sun its own shadows are drawn for; a map without them goes by the sky
     const cast = level.sunCast, dir = cast ? cast.dir : (sky.userData.sun || NOON), k = cast ? cast.k : (tod ? tod.daylight : 1);
@@ -389,7 +397,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow };
+window.__game = { sceneEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI };
 </script>
 </body>
 </html>

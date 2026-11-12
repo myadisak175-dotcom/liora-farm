@@ -780,3 +780,4 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
 // water shader for sibling modules: needs geometry attributes aDepth (water depth, >1 = deep) and aFlow (along, across -1..1)
 export const _water = { waterMaterial, WATER_COLORS };
 export const _strata = { GLSL: STRATA, HAZEV, colors: TERRAIN_COLORS };
+export const _terrain = { terrainMaterial };      // the land's own paint, for land built elsewhere (the abyss's depths)

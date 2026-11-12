@@ -94,6 +94,18 @@ Where the keep stood, on the rock at the west end of the upper terrace, is the a
 - **The ground** is levelled by a `pads` entry in `createValley({ tiers })` (`stylized-terrain.js`). The plants and rocks of the valley are still thrown with the same dice on the land as it was, and whatever fell on the guild's ground is left out, so nothing else in the valley moved.
 - `level.guild.spots` lists places for people and things to do later (reception, board, shop, tables, library, master's room, balcony, ring, yard). `?view=guild` starts at the foot of the steps.
 
+## The depths of the abyss
+
+Three places down in the abyss (`abyss-depths.js`), reached by **warp stones**: one on the rim beside the walk near the lookout, one in each layer. Standing by a stone shows a 🌀 button that lists the others; the 📍 menu lists them too. No path joins them to the rim.
+
+1. **The shelf** (หิ้งหญ้าริมทะเลเมฆ): a grassy shelf on the pit's wall above a sea of cloud. A tarn fed by a fall off the wall, a stream that runs off the brink, a headland to look out from, rocks standing in the clouds and hanging in the air.
+2. **The gorge** (หุบน้ำตกในหมอก): a winding gorge with four side chambers, each with a tall two-step fall and a pool; a stream joins them. Rock pillars, mossy boulders, shafts of light, a lid of mist overhead.
+3. **The meadow** (ทุ่งใต้เสาหินลอย): the widest. Rolling grass, paths, two ponds (one with lilies and a fall from a floating rock), flower drifts, trees, a window in the west wall onto the clouds.
+
+- **One map, nothing to load.** The layers lie out past the valley's east and west edges, inside the square its height field, ground picture, grass and water already cover, and near the water's level. So the grass, the clear water (ripples, wading), the baked shadows and her own shadow all work down there unchanged. `level.follow` notices which layer she is in (`level.zone`), draws only that one, puts the valley away meanwhile, and sets the haze for it.
+- **The land** of each layer is height maths on a 0.5 m grid, drawn with the valley's own terrain paint (`_terrain.terrainMaterial`), so the walls have the same strata as the pit's. Its trees, bushes, rocks and flowers are thrown with dice of their own: nothing up in the valley moved.
+- **The camera** now comes in close when there is a wall of rock behind her, instead of being lifted over it (`player.js`); this holds at the valley's cliffs too.
+
 ## The scene editor
 
 `🛠 แก้ฉาก` opens an editor made for a phone (`scene-editor.js`). It has two views:

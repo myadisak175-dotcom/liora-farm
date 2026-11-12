@@ -237,3 +237,4 @@ export function createAbyssClouds({ centre, rimR, ledges, falls = [], count = 17
     dispose() { geo.dispose(); quad.dispose(); mat.dispose(); for (const m of swirls) { m.geometry.dispose(); m.material.dispose(); } },
   };
 }
+export const _abyss = { puffMaterial, swirlMaterial };      // the cloud paint, for clouds placed elsewhere (abyss-depths.js)
