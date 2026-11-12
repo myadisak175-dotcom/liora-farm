@@ -20,7 +20,7 @@ import * as N from './stylized-nature.js';
 import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import * as RK from './rocks.js';
-import { createPaths } from './ground-paths.js';
+import { createPaths, loadPathTextures } from './ground-paths.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 
@@ -126,7 +126,9 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       if (c.low > 0.5 || c.top < 0.08) continue;                            // an overhang above the ground, or a sliver at its foot
       const x = c.cx + 0.5, z = c.cz + 0.5;
       if (c.top > 0.35) { colliders.push([x, z, 0.62]); solid.add(c.cx + ',' + c.cz); }
-      bare.push([x, z, 0.55]); press.push([x, z, 1.25]); shade.push([x, z, 1.3, Math.min(0.55, 0.2 + c.top * 0.12)]);
+      bare.push([x, z, 0.55]); press.push([x, z, 1.25]);
+      if (c.top < 0.25) continue;                                            // a flat stone or pebbles: no pool of shade, no shadow worth a disc
+      shade.push([x, z, 1.3, Math.min(0.55, 0.2 + c.top * 0.12)]);
       casters.push([x, z, c.top * 0.5, 0.62, 0.85]);
     }
   };
@@ -181,7 +183,11 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   const fade = { far, fadeA: FR * 0.8, fadeB: FR * 0.985 };
   const terrain = G.createTerrain(field, map, fade);
   group.add(terrain);
-  group.add(paths.ribbon(H, map));
+  let pathTex = null;
+  try { pathTex = await loadPathTextures(); } catch (err) { console.warn('[rocks] path textures', err); }      // without them: the painted look
+  const pathRibbon = paths.ribbon(H, map, pathTex);
+  if (pathTex) pathRibbon.userData.dispose = (d => () => { d(); pathTex.dispose(); })(pathRibbon.userData.dispose);
+  group.add(pathRibbon);
   { let fs = seed * 71; const pal = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee']];
     for (const [x, z, r] of paths.flowers) group.add(N.createFlowers({ count: Math.round(30 * r), radius: r, seed: ++fs, heightAt: H, center: [x, z], colors: pal[fs % 3] })); }
 
