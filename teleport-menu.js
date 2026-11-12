@@ -10,7 +10,6 @@
 // the places, in the order they are shown, by area: the view's name in level.views, and what the button says
 const GROUPS = [
   ['หุบเขา', [['start', '🏠 จุดเริ่ม'], ['falls', '💧 ตีนน้ำตก'], ['climb', '🧗 ทางขึ้นผา']]],
-  ['ฟาร์ม', [['farmEast', '🥕 ฟาร์มฝั่งตะวันออก'], ['farmWest', '🐑 ฟาร์มฝั่งตะวันตก'], ['paddies', '🌾 นาขั้นบันได']]],
   ['หมู่บ้าน', [['village', '🏘 หมู่บ้าน'], ['mill', '🌾 กังหันลม'], ['tree', '🌳 ต้นไม้ใหญ่'], ['guild', '⚔️ กิลด์นักผจญภัย']]],
   ['ห้วงลึก', [['abyss', '👀 จุดชมวิว'], ['bridge', '🌉 กลางสะพานแขวน'], ['brink', '🌊 ขอบเหว (ลุยน้ำ)'], ['abyssNorth', '🧭 ขอบหลุมฝั่งเหนือ'],
     ['abyssEast', '🌅 ขอบหลุมฝั่งตะวันออก'], ['abyssWest', '🌄 ขอบหลุมฝั่งตะวันตก'], ['rim', '🧗 ตีนทางขึ้นรอบหลุม']]],

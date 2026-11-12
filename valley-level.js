@@ -30,7 +30,6 @@ import * as BD from './stylized-buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
-import { FARM, FS } from './farm-shape.js';
 import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
 import { createGuild, GUILD_SITE } from './stylized-guild.js';
 
@@ -123,11 +122,9 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
 
   // ------------------------------------------------------------------ the land
   await onStep('ปั้นหุบเขาและหน้าผา');
-  // the map runs on past the old valley mouth to take in the abyss (and a stretch of plateau beyond it), and out to either
-  // side and back behind the village for the farmland (farm-shape.js)
+  // the map runs on past the old valley mouth to take in the abyss (and a stretch of plateau beyond it)
   const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true, climb: { side: 1 },      // the cliff path is on the +x side
-    width: 210, depth: 320, zCenter: 10, climbs: [ABYSS.climb], reshape: (x, z, h) => FS.reshape(x, z, AB.reshape(x, z, h)), widen: AB.widen, waterAt: AB.waterAt,
-    trails: [...AB.trails, ...FS.trails],
+    depth: 265, zCenter: 37.5, climbs: [ABYSS.climb], reshape: AB.reshape, widen: AB.widen, waterAt: AB.waterAt, trails: AB.trails,
     tiers: { steps: VILLAGE.steps, flat: villageLevel, mounds: [VILLAGE.knoll, ...VILLAGE.tors], rise: villageHills, ramps: VILLAGE.ramps, pads: [GUILD_SITE.pad] } });
   group.add(V.group);
   const terrain = V.group.children.find(o => o.name !== 'water' && o.isMesh);
@@ -212,9 +209,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // round the abyss: the walk along the rim (inside the rail, short of the forest), the lookout, the brooks' bridges
   const steepAt = (x, z) => { const e = 0.5, hx = (Hf(x + e, z) - Hf(x - e, z)) / (2 * e), hz = (Hf(x, z + e) - Hf(x, z - e)) / (2 * e); return hx * hx + hz * hz; };
   const onAbyssRim = (x, z) => AB.onSpur(x, z) || (AB.onRim(x, z) && Hf(x, z) > ABYSS.rimH - 2.5 && steepAt(x, z) < 0.36);
-  // the farmland round the village: level ground and its ramps (the banks between levels are walls), off the paddies and crop beds
-  const onFarm = (x, z) => FS.walkable(x, z) && (FS.onRamp(x, z) || steepAt(x, z) < 0.36);
-  const walkable = (x, z) => onPath(x, z) || pathShoulder(x, z) || (!upTop(x, z) && !!deckAt(x, z)) || ((floorOK(x, z) || onPlateau(x, z) || onAbyssRim(x, z) || onFarm(x, z)) && !underPath(x, z));
+  const walkable = (x, z) => onPath(x, z) || pathShoulder(x, z) || (!upTop(x, z) && !!deckAt(x, z)) || ((floorOK(x, z) || onPlateau(x, z) || onAbyssRim(x, z)) && !underPath(x, z));
   const confine = p => {
     if (walkable(p.x, p.z)) return;
     // the nearest place she may stand: a step back the way she came (a small ring round her), or back onto the floor or the path's line
@@ -260,12 +255,11 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // V.legacyKindAt, legacyHeightAt, legacyRiverHalfWidth), so every throw falls as it always did and nothing placed or
   // taken out by hand in the scene editor loses its place. What now lands somewhere it cannot be (in the widened river, on
   // the new path, in the pit) is simply not put down. The abyss's own trees and rocks come after, with dice of their own.
-  const OLD_Z1 = 55, OLD_X0 = -65, OLD_X1 = 65, OLD_Z0 = -95, rw0 = V.legacyRiverHalfWidth;                         // (HV0, the land as it lay, is up by the guild's ground)
+  const OLD_Z1 = 55, rw0 = V.legacyRiverHalfWidth;                         // (HV0, the land as it lay, is up by the guild's ground)
   const CL2 = V.climbs[0];
   const stillFine = (x, z, r = 0.6) => {                                  // not in the water, the pit, on the new path or a brook
     if (CL2.at(x, z).d < CL2.half + 1.0 + r) return false;
     if (AB.inPit(x, z, 2 + r) || AB.brookDist(x, z).d < 1.5 + r || AB.islandAt(x, z) > 0.2) return false;
-    if (FS.inFarm(x, z) || FS.onRamp(x, z)) return false;                    // the farmland: what grew there before does not grow there now
     if (nearPad(x, z)) return true;                                        // the bank round the guild's ground: lower than it was, but still land (the guild clears its own)
     if (HV(x, z) < HV0(x, z) - 0.3 || (lower(x, z) && HV(x, z) < WL + 0.5 && HV0(x, z) >= WL + 0.5)) return false;
     return AB.rimDist(x, z) > 11 || HV(x, z) < 6;
@@ -429,7 +423,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   for (const [ax, az, bx, bz] of vsegs) { const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 2.5); for (let i = 0; i <= n; i++) placed.push([ax + (bx - ax) * i / n, az + (bz - az) * i / n, 2.2]); }
   // dense forest on the heights (seen from below, so light on leaf cards), bushes only at tree feet
   for (let i = 0; i < 2600; i++) {
-    const x = R(OLD_X0 + 2, OLD_X1 - 2), z = R(OLD_Z0 + 2, OLD_Z1 - 2);
+    const x = R(B.x0 + 2, B.x1 - 2), z = R(B.z0 + 2, OLD_Z1 - 2);
     const kind = V.legacyKindAt(x, z);
     if (kind === 'plateau') {
       if (Math.abs(x - V.plateauRiverX(z)) < 5 && !lower(x, z)) continue;         // keep the upper river open
@@ -678,7 +672,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const RIM = ABYSS.rimH;
   // the forest round the rim: thick on the plateau, kept back from the walk, the brooks and the top of the path up
   for (let i = 0; i < 2200; i++) {
-    const x = AR(OLD_X0 + 2, OLD_X1 - 2), z = AR(OLD_Z1 - 12, B.z1 - 2), pick = arng(), sc = AR(0.95, 1.5), rot = arng() * 6.28;
+    const x = AR(B.x0 + 2, B.x1 - 2), z = AR(OLD_Z1 - 12, B.z1 - 2), pick = arng(), sc = AR(0.95, 1.5), rot = arng() * 6.28;
     const rd = AB.rimDist(x, z);
     if (rd < 11.5 || HV(x, z) < RIM - 3 || steepAt(x, z) > 0.3 || AB.brookDist(x, z).d < 3) continue;
     if (CL2.at(x, z).d < CL2.half + 3 || Math.hypot(x - CL2.top[0], z - CL2.top[1]) < 7) continue;
@@ -845,107 +839,8 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     }
   }
 
-  // ------------------------------------------------------------------ the farmland round the village (its own dice, after everything above)
-  await onStep('ไถนาและล้อมรั้ว');
-  const frng = mulberry32(seed * 6151 + 29), FR_ = (a, b) => a + frng() * (b - a);
-  let fps_ = seed * 5000;
-  const farmBuilt = [];
-  const levelOr = (x, z) => FS.levelAt(x, z) ?? HV(x, z);
-  // a fence round a yard, with a gate (an opening 2.4 m wide) on one side
-  const fenceYard = ([x0, x1, z0, z1, side, at]) => {
-    // the fence runs all the way round from one post of the gate to the other
-    const g0 = at - 1.2, g1 = at + 1.2;
-    const line = {
-      w: [[x0, g1], [x0, z1], [x1, z1], [x1, z0], [x0, z0], [x0, g0]],
-      e: [[x1, g0], [x1, z0], [x0, z0], [x0, z1], [x1, z1], [x1, g1]],
-      n: [[g1, z0], [x1, z0], [x1, z1], [x0, z1], [x0, z0], [g0, z0]],
-      s: [[g0, z1], [x0, z1], [x0, z0], [x1, z0], [x1, z1], [g1, z1]],
-    }[side];
-    const g = BD.fenceGeometry({ points: line, heightAt: levelOr, closed: false, spacing: 1.8, seed: 70 + farmBuilt.length });
-    for (const c of g.userData.circles) colliders.push(c);
-    farmBuilt.push(g);
-  };
-  for (const hd of FARM.houses) {
-    const g = BD.houseGeometry(hd), { w, d, height } = g.userData;
-    farmBuilt.push(BD.place(g, hd.x, levelOr(hd.x, hd.z) - 0.05, hd.z, hd.yaw));
-    solid(hd.x, hd.z, w, d, hd.yaw, height);
-    if (hd.yard) fenceYard(hd.yard);
-  }
-  for (const b of FARM.barns) {                                            // barns: big, plain boards, a dark roof
-    const g = BD.houseGeometry({ w: 10, d: 7, wall: 3.8, roof: 3.4, floors: 1, chimney: false, seed: b.seed, colors: { ...BD.BUILD_COLORS, plaster: '#a8693e', roof: '#7a3f2c', roofDark: '#5f2f20', shutters: ['#5e4030'] } });
-    const { w, d, height } = g.userData;
-    farmBuilt.push(BD.place(g, b.x, levelOr(b.x, b.z) - 0.05, b.z, b.yaw));
-    solid(b.x, b.z, w, d, b.yaw, height);
-  }
-  {                                                                        // the pasture
-    const g = BD.fenceGeometry({ points: FARM.pasture, heightAt: levelOr, gap: [1, 4], seed: 77 });
-    for (const c of g.userData.circles) colliders.push(c);
-    farmBuilt.push(g);
-  }
-  for (const [x, z] of FARM.wells) { farmBuilt.push(BD.place(BD.wellGeometry({ seed: 78 }), x, levelOr(x, z), z, 0.3)); colliders.push([x, z, 1.15]); bare.push([x, z, 2.2]); castBall(x, z, 1.4, 1.3, 0.8); }
-  let fprop = 80;
-  for (const [kind, x, z, yaw] of FARM.props) {
-    const g = BD.propGeometry(kind, { seed: fprop++ }), r = g.userData.solid;
-    farmBuilt.push(BD.place(g, x, levelOr(x, z) - 0.03, z, yaw));
-    if (r > 0.3) { colliders.push([x, z, r * 0.8]); press.push([x, z, r * 1.5]); castBall(x, z, 0.5, r * 0.9, 0.75); } else colliders.push([x, z, 0.22]);
-  }
-  for (const pl of FARM.plots) {                                           // crop beds
-    const cx = (pl.x0 + pl.x1) / 2, cz = (pl.z0 + pl.z1) / 2;
-    farmBuilt.push(BD.place(BD.fieldGeometry({ w: pl.x1 - pl.x0, d: pl.z1 - pl.z0, crop: pl.crop, seed: fprop++ }), cx, levelOr(cx, cz), cz, 0));
-  }
-  for (const p of FS.paddies) {                                            // rice standing in the paddies
-    const cx = (p.x0 + p.x1) / 2, cz = (p.z0 + p.z1) / 2;
-    farmBuilt.push(BD.place(BD.riceGeometry({ w: p.x1 - p.x0 - 0.8, d: p.z1 - p.z0 - 0.8, seed: fprop++ }), cx, p.y, cz, 0));
-  }
-  for (const bz of FARM.bridges) {                                         // plank bridges over the river between the rice terraces
-    const x = FS.riverX(bz), L = 2 * (FS.riverHalf + 2.2), by = (levelOr(x - L / 2, bz) + levelOr(x + L / 2, bz)) / 2 - 0.15;
-    const b = T.createBridge({ length: L, seed: seed + 41 + Math.round(bz) });
-    b.position.set(x, by, bz);
-    group.add(b);
-    decks.push({ x, z: bz, len: L, halfW: 0.95, y: u => by + 0.41 + 0.7 * (1 - Math.pow(2 * u / L, 2)) });
-  }
-  {
-    const m = new THREE.Mesh(mergeGeometries(farmBuilt), propMaterial());
-    farmBuilt.forEach(g => g.dispose());
-    m.name = 'farmland';
-    m.userData.dispose = () => m.geometry.dispose();
-    group.add(m);
-  }
-  const farmTree = (type, x, z, sc, detail = 0.6) => {
-    if (!clear(x, z, CROWN[type] * sc * 0.36)) return;
-    placed.push([x, z, CROWN[type] * sc * 0.42]);
-    const at = placeOf('tree', type, x, z, CROWN_R[type] * sc);
-    if (!at) return;
-    const y = HV(at[0], at[1]), rot = frng() * 6.28;
-    plants.push({ kind: 'tree', type, seed: ++fps_, detail, x: at[0], y, z: at[1], rotY: rot, scale: sc });
-    colliders.push([at[0], at[1], TRUNK[type] * sc + 0.22]);
-    cameraTrunks.push([at[0], at[1], TRUNK[type] * sc + 0.12, y, y + CROWN_Y[type] * sc]);
-    crowns.push([at[0], y + CROWN_Y[type] * sc, at[1], CROWN_R[type] * sc]);
-    shade.push([at[0], at[1], CROWN[type] * sc * 1.05, 0.4]); bare.push([at[0], at[1], TRUNK[type] * sc * 1.5]);
-    castBall(at[0], at[1], CROWN_Y[type] * sc, CROWN_R[type] * sc, 0.88, 0.3);
-    castStick(at[0], at[1], CROWN_Y[type] * sc * 0.85, Math.max(0.22, TRUNK[type] * sc * 0.7));
-  };
-  {                                                                        // the orchard: small round trees in rows
-    const o = FARM.orchard;
-    for (let x = o.x0; x <= o.x1 + 0.01; x += o.step) for (let z = o.z0; z <= o.z1 + 0.01; z += o.step) farmTree('broadleaf', x + FR_(-0.3, 0.3), z + FR_(-0.3, 0.3), FR_(0.62, 0.78), 0.55);
-  }
-  // trees round the farmland's outer edges, and on the new land either side of the abyss: kept off the fields, paths and brooks
-  for (let i = 0; i < 1700; i++) {
-    const x = FR_(B.x0 + 2, B.x1 - 2), z = FR_(B.z0 + 2, B.z1 - 2), pick = frng(), sc = FR_(0.95, 1.45);
-    const outer = Math.abs(x) > OLD_X1 + 1 || z < OLD_Z0 - 1;
-    if (!outer) continue;
-    const edge = Math.abs(x) > 101.5 || z < -147;
-    if (!edge && (FS.inFarm(x, z) || FS.onRamp(x, z) || (z < -40 && Math.abs(x) < 104))) continue;
-    if (HV(x, z) < ABYSS.rimH - 3 || steepAt(x, z) > 0.3 || AB.brookDist(x, z).d < 3 || AB.rimDist(x, z) < 11.5) continue;
-    if (!edge && frng() < 0.25) continue;
-    const type = pick < 0.42 ? 'pine' : pick < 0.72 ? 'oak' : pick < 0.9 ? 'broadleaf' : 'birch';
-    farmTree(type, x, z, sc, type === 'pine' ? 0.25 : 0.3);
-  }
-
   // ------------------------------------------------------------------ ground colour map: where grass grows
   await onStep('ระบายสีพื้น');
-  const farmSegs = [];
-  for (const t of FS.trails) for (let i = 0; i < t.length - 1; i++) farmSegs.push([t[i][0], t[i][1], t[i + 1][0], t[i + 1][1]]);
   const paint = (x, z) => {
     const h = Hf(x, z), low = lower(x, z);
     const sand = low ? 1 - ss(0.35, 0.8, h - WL) : 1 - ss(-0.2, 0.25, h - V.plateauWaterAt(z));
@@ -961,17 +856,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     }
     let earth = Math.max(ss(0.14, 0.24, slopeF(x, z)), 1 - ss(0.55, 1.3, CL.at(x, z).d), 1 - ss(0.55, 1.3, CL2.at(x, z).d), trod);      // cliffs and steep ledges: rock; the cliff paths and the village's ways: trodden earth
     let s2 = sand;
-    if (z < -40 && (Math.abs(x) > 40 || z < -84)) {
-      // the farmland: bare soil under the crop beds and the paddies (the water and the rice cover it), trodden ways between
-      if (FS.inPlot(x, z, 0.4) || FS.inPaddy(x, z, 0.1)) earth = 1;
-      let wd = 99;
-      for (const [ax, az, bx, bz] of farmSegs) {
-        const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
-        wd = Math.min(wd, Math.hypot(x - ax - dx * t, z - az - dz * t));
-      }
-      if (wd < 2.5) earth = Math.max(earth, 1 - ss(0.6, 1.5, wd + (N._internal.fbm3(x * 0.4, 7.1, z * 0.4, 49, 2) - 0.5) * 0.8));
-      if (FS.onRamp(x, z)) earth = Math.max(earth, 0.85);
-    }
     if (z > OLD_Z1 - 20) {
       // round the abyss: nothing grows over the brink (the ledges are drawn green by the ground itself); the brooks run between
       // sandy banks; the walk round the rim and out onto the lookout is trodden earth
@@ -990,7 +874,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     return [earth, s2, verge * 0.85];
   };
   const colors = { ...G.GROUND_COLORS, deep: '#7a9b3c', mid: '#86a640', sunny: '#a5c04b', shade: '#6d8d38', lawn: '#93b145' };
-  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1152, seed, heightAt: Hf, dirt: 0, shade, cast: sunShadows(new THREE.Vector3(...sun)), bare, press, paint, colors });
+  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1024, seed, heightAt: Hf, dirt: 0, shade, cast: sunShadows(new THREE.Vector3(...sun)), bare, press, paint, colors });
   // the bare ground (sand, banks, cliff feet) is drawn by the terrain's own shader: it reads the same shadow picture
   {
     const tm = terrain.material, key = 'col = mix(col, uHaze, vHaze);';
@@ -1114,22 +998,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6, optics, foamTexture, cells: animeCells, surfaceChurn: W.WATER_CHURN });
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
-    // the paddies' water, all in one mesh
-    {
-      const parts = [];
-      for (const p of FS.paddies) {
-        const rows = [], zc = (p.z0 + p.z1) / 2, half = (p.z1 - p.z0) / 2 - 0.25;
-        for (let x = p.x0 + 0.25; x <= p.x1 - 0.25 + 0.01; x += 1.0) rows.push([x, zc, p.y, half]);
-        if (rows.length > 1) parts.push(flowRibbon(rows, 6, 0));
-      }
-      if (parts.length) {
-        const pg = mergeGeometries(parts); parts.forEach(g => g.dispose());
-        const m = new THREE.Mesh(pg, upMat);
-        m.renderOrder = 1; m.name = 'paddyWater';
-        m.userData = { kind: 'water', dispose() { pg.dispose(); } };
-        upperWater.add(m);
-      }
-    }
     // the pools the falls in the abyss land in on their way down
     for (const f of AB.falls) for (const st of f.steps) {
       const rows = [], dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz);
@@ -1284,7 +1152,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
         return [k, { x, z, yaw: Math.atan2(ABYSS.x - x, ABYSS.z - z) }];
       })),
       start: { x: spawn.x, z: spawn.z, yaw: spawn.yaw },
-      farmEast: { x: 52, z: -55, yaw: Math.PI / 2 }, farmWest: { x: -52, z: -55, yaw: -Math.PI / 2 }, paddies: { x: 32, z: -97.5, yaw: Math.PI },
       bridge: { x: AB.span.mid[0], z: AB.span.mid[1], yaw: 0 },              // the middle of the rope bridge, looking out over the pit
       falls: { x: fall.x + 5, z: fall.z + 13, yaw: Math.atan2(-5, -13) },
     },
