@@ -40,7 +40,8 @@ export function cameraTrunkFraction(from, to, trunks, padding = 0.3) {
 
 export function createPlayer({ character, level, camera, dom, ui = null, onTap = null }) {
   const pos = new THREE.Vector3(level.spawn.x, 0, level.spawn.z);
-  pos.y = level.heightAt(pos.x, pos.z);
+  const standAt = level.standAt || level.heightAt;   // where her feet are: the land, or (on maps that know them) the tops of rocks she can stand on
+  pos.y = standAt(pos.x, pos.z);
   let heading = level.spawn.yaw;              // where the character faces (0 = +Z)
   let camYaw = level.spawn.yaw - Math.PI, camPitch = 0.17, camDist = 4.3;   // the camera starts behind her
   let speed = 0;
@@ -130,7 +131,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
     object: root, position: pos, character, blob: shadow,
     get heading() { return heading; }, get camYaw() { return camYaw; }, get speed() { return speed; },
     lookDir: new THREE.Vector3(0, 0, -1),
-    teleport(x, z, yaw = heading) { pos.set(x, level.heightAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; },
+    teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; },
     setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
     update(dt) {
       dt = Math.min(dt, 0.05);
@@ -185,7 +186,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
         pos.x = tmp.x; pos.z = tmp.z;
         speed = Math.min(speed, went * 1.15 + 0.05);          // pushing against something: stop walking on the spot
       }
-      const ground = level.heightAt(pos.x, pos.z);
+      const ground = standAt(pos.x, pos.z);
       pos.y += (ground - pos.y) * Math.min(1, dt * 18);
       // ---- animation follows the real speed, so feet do not slide
       const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 ? 'walk' : 'run';

@@ -56,10 +56,12 @@ export function createGroundMap({
   press = [],           // [x, z, radius]                 short grass, e.g. around rocks
   paint = null,         // (x, z) => [earth, sand, mow] each 0..1, or null: hand-placed paths, plots, beaches, lawns
   colors = GROUND_COLORS,
+  lawn = false,         // also keep the grass's own colour everywhere, as if nothing were painted over it (map.lawnTexture,
+                        // map.lawnAt(x, z)): for things that grow grass of their own, e.g. the tops of rocks
 } = {}) {
   const C = {};
   for (const k in GROUND_COLORS) C[k] = toRGB(colors[k] || GROUND_COLORS[k]);
-  const data = new Uint8Array(size * size * 4);
+  const data = new Uint8Array(size * size * 4), lawnData = lawn ? new Uint8Array(size * size * 4) : null;
   const span = radius * 2, cx = center[0], cz = center[1];
   const S = seed * 13 + 7;
   for (let j = 0; j < size; j++) {
@@ -76,6 +78,7 @@ export function createGroundMap({
         t = Math.min(1, Math.max(0, t + (sx * 0.3 - sz * 0.35) * 1.2));
       }
       let col = t < 0.5 ? mix3(C.deep, C.mid, t * 2) : mix3(C.mid, C.sunny, t * 2 - 1);
+      if (lawnData) lawnData.set([col[0], col[1], col[2], 255], (j * size + i) * 4);
       let grass = 1;
       const earth = k => {            // grass thins into earth: rim colour first, then bare soil
         col = mix3(col, k < 0.5 ? mix3(col, C.dirtRim, k * 2) : mix3(C.dirtRim, C.dirt, k * 2 - 1), Math.min(1, k * 1.6));
@@ -187,8 +190,18 @@ export function createGroundMap({
     job = null;
     return true;
   };
+  let lawnTexture = null, lawnAt = null;
+  if (lawnData) {
+    lawnTexture = new THREE.DataTexture(lawnData, size, size, THREE.RGBAFormat);
+    lawnTexture.colorSpace = THREE.NoColorSpace; lawnTexture.magFilter = lawnTexture.minFilter = THREE.LinearFilter;
+    lawnTexture.wrapS = lawnTexture.wrapT = THREE.ClampToEdgeWrapping; lawnTexture.needsUpdate = true;
+    lawnAt = (x, z) => {
+      const i = Math.min(size - 1, Math.max(0, Math.floor((x - cx + radius) / span * size))), j = Math.min(size - 1, Math.max(0, Math.floor((z - cz + radius) / span * size))), o = (j * size + i) * 4;
+      return [lawnData[o] / 255, lawnData[o + 1] / 255, lawnData[o + 2] / 255];
+    };
+  }
   // area: where the live grass currently is (centre x, centre z, tile size; 0 = no follow-grass). Ground and grass share it.
-  return { texture, cast: castTex, castTint, beginCast, stepCast, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, dispose() { texture.dispose(); castTex.dispose(); } };
+  return { texture, cast: castTex, castTint, beginCast, stepCast, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, lawnTexture, lawnAt, dispose() { texture.dispose(); castTex.dispose(); if (lawnTexture) lawnTexture.dispose(); } };
 }
 
 // GLSL shared by ground and blades: where to look in the map
@@ -490,6 +503,47 @@ export function createFluffyGrass({
     dispose() { group.children.forEach(m => m.geometry.dispose()); blade.dispose(); mat.dispose(); },
   };
   return group;
+}
+
+// ---- grass on given roots (the tops of rocks): each blade where it is told, in the colour it is told (the ground's grass there),
+// otherwise the same blades as the meadow's
+//   const g = createGrassOn({ map, roots: [x, y, z, ...], colors: [r, g, b, ...] (0..1), seed });
+export function createGrassOn({ map, roots, colors, seed = 7, bladeHeight = 0.3, bladeWidth = 0.065, tip = GRASS_TIP, far = '#eef5e4', fadeA = null, fadeB = null } = {}) {
+  const rng = mulberry32(seed * 911 + 5), n = roots.length / 3, rnd = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const x = roots[i * 3], z = roots[i * 3 + 2], cn = fbm3(x * 0.55, 0.9, z * 0.55, seed, 2);
+    rnd.set([rng() * 2 - 1, (0.62 + 0.8 * cn) * (0.75 + 0.4 * rng()), rng(), Math.max(-1, Math.min(1, (cn - 0.5) * 3.2 + (rng() * 2 - 1) * 0.35))], i * 4);
+  }
+  const mat = new THREE.ShaderMaterial({
+    uniforms: bladeUniforms(map, { tip, far, fadeA, fadeB, bladeHeight, bladeWidth }),
+    vertexShader: /* glsl */`
+      ${BLADE_PARS}
+      attribute vec3 iRoot;      // where the blade stands
+      attribute vec3 iCol;       // the grass's colour there
+      void main() {
+        vec3 root = iRoot;
+        vec4 m = vec4(iCol, 1.0);
+        float h = uBlade.y * iRnd.y;
+        float tint = iRnd.w;
+        ${BLADE_BODY}
+      }`,
+    fragmentShader: BLADE_FRAG,
+    side: THREE.DoubleSide,
+  });
+  const blade = bladeGeometry(), g = new THREE.InstancedBufferGeometry();
+  g.index = blade.index;
+  g.setAttribute('position', blade.attributes.position);
+  g.setAttribute('iRoot', new THREE.InstancedBufferAttribute(new Float32Array(roots), 3));
+  g.setAttribute('iCol', new THREE.InstancedBufferAttribute(new Float32Array(colors), 3));
+  g.setAttribute('iRnd', new THREE.InstancedBufferAttribute(rnd, 4));
+  g.instanceCount = n;
+  const box = new THREE.Box3();
+  for (let i = 0; i < n; i++) box.expandByPoint(new THREE.Vector3(roots[i * 3], roots[i * 3 + 1], roots[i * 3 + 2]));
+  g.boundingSphere = n ? box.getBoundingSphere(new THREE.Sphere()).expandByPoint(box.max.clone().addScalar(bladeHeight * 2)) : new THREE.Sphere();
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'grassOn';
+  mesh.userData = { kind: 'grassOn', blades: n, setWalker(pos, r = 0.55) { mat.uniforms.uWalker.value.set(pos.x, pos.y, pos.z, r); }, dispose() { g.dispose(); blade.dispose(); mat.dispose(); } };
+  return mesh;
 }
 
 // ---- grass that follows the player: a fixed pool of TUFTS (5 fine blades each) laid out on a square tile that wraps

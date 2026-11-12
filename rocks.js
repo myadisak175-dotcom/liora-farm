@@ -970,9 +970,10 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
-      uniform float uMoss, uMossLow, uWorld, uGOn, uGHas, uGBlend, uWOn;
-      uniform sampler2D uGCol, uGH, uWLev;
+      uniform float uMoss, uMossLow, uWorld, uGOn, uGHas, uGBlend, uWOn, uLOn;
+      uniform sampler2D uGCol, uGH, uWLev, uLawn;
       uniform vec4 uGRect, uWRect;
+      uniform vec3 uLRect, uLTip;
       varying vec3 vWN, vWP;
       varying float vCurv, vHgt, vFacet;
       void main() {
@@ -998,6 +999,18 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8 } = {}
         if (uMoss > 0.0) {
           float m = n.y + (noise2(vWP.xz * 1.3 + vWP.y) - 0.5) * 0.9 + (noise2(vWP.xz * 6.0) - 0.5) * 0.2 - (1.0 - hg) * uMossLow - (1.0 - uMoss) * 0.3 - 0.03;
           vec3 mc = mix(uM2, mix(uM1, uM0, smoothstep(0.86, 1.0, n.y + (noise2(vWP.xz * 3.0) - 0.5) * 0.2)), smoothstep(0.35, 0.7, t));
+          if (uLOn > 0.5) {
+            // in a level whose grass is known (setRockLawn): the tops are the meadow's own grass, painted as the ground is (its
+            // colour there, in a few flat tones laid in long dabs), and every flat top of a mossy rock is grass (the level grows
+            // blades there too, where the top faces straight up)
+            m += smoothstep(0.8, 0.9, n.y) * 0.5 * step(0.75, uMoss) * step(0.15, vWP.y - groundY);
+            vec3 lawn = texture2D(uLawn, (vWP.xz - uLRect.xy) * uLRect.z + 0.5).rgb;
+            vec2 q = vec2(vWP.x * 0.82 + vWP.z * 0.57, -vWP.x * 0.57 + vWP.z * 0.82);
+            float v = noise2(vec2(q.x * 0.55, q.y * 1.9)) * 0.6 + noise2(vec2(q.x * 1.5 + 5.0, q.y * 4.6)) * 0.4;
+            vec3 light = mix(lawn * 1.17, uLTip, 0.3), gc = lawn * vec3(0.8, 0.94, 0.9);
+            gc = mix(gc, lawn, step(0.4, v)); gc = mix(gc, mix(lawn, light, 0.62), step(0.52, v)); gc = mix(gc, light, step(0.71, v));
+            mc = gc * mix(0.74, 1.0, smoothstep(0.35, 0.7, t));
+          }
           col *= 1.0 - 0.22 * smoothstep(0.5, 0.64, m) * (1.0 - smoothstep(0.64, 0.7, m));   // a shadow just under the moss's edge
           col = mix(col, mc, smoothstep(0.64, 0.7, m));
         }
@@ -1033,6 +1046,7 @@ const GROUND_U = {
   uGOn: { value: 0 }, uGHas: { value: 0 }, uGBlend: { value: 0.2 }, uGRect: { value: new THREE.Vector4(0, 0, 1, 1) },
   uGCol: { value: null }, uGH: { value: null },
   uWOn: { value: 0 }, uWLev: { value: null }, uWRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uLOn: { value: 0 }, uLawn: { value: null }, uLRect: { value: new THREE.Vector3(0, 0, 1) }, uLTip: { value: rgb('#c6e26c') },
 };
 export const GROUND_BLEND = {
   get on() { return GROUND_U.uGOn.value > 0.5; }, set on(v) { GROUND_U.uGOn.value = v && GROUND_U.uGCol.value ? 1 : 0; },      // off unless asked for
@@ -1073,6 +1087,39 @@ export function setRockWater({ texture, x0, z1, size } = {}) {
   GROUND_U.uWLev.value = texture || null;
   GROUND_U.uWOn.value = texture ? 1 : 0;
   if (texture) GROUND_U.uWRect.value.set(x0, z1, 1 / size, 1 / size);
+}
+
+// ---- the meadow's own grass colour over the map (the ground map's lawnTexture: its grass with nothing painted over it), so the
+// tops of the rocks are grass that matches the grass round them. centre and size: the map's (as the ground map has them).
+export function setRockLawn({ texture, center = [0, 0], size = 1 } = {}) {
+  GROUND_U.uLawn.value = texture || null;
+  GROUND_U.uLOn.value = texture ? 1 : 0;
+  if (texture) GROUND_U.uLRect.value.set(center[0], center[1], 1 / size);
+}
+// how mossy a kind of rock is (0..1): a level grows grass on the flat tops of the mossy ones (0.75 and up), as the paint does
+export const rockMoss = type => PROP_MOSS[type] ?? 0;
+// points over the surface of a kit's rocks, about `step` apart, in the world: [x, y, z, ny, ...] (ny: how much the surface
+// faces up there). For what a level works out from the rocks' real shapes: where she can stand on them, where grass grows.
+export function sampleKitSurface(kit, { step = 0.35, filter = null, seed = 1 } = {}) {
+  const out = [], a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), rng = mulberry32(seed * 4447 + 1), per = 1 / (step * step);
+  for (const inst of kit.userData.instances) {
+    if (filter && !filter(inst.item)) continue;
+    const P = inst.geometry.attributes.position, I = inst.geometry.index.array, M = inst.matrix;
+    for (let t = 0; t < I.length; t += 3) {
+      a.fromBufferAttribute(P, I[t]).applyMatrix4(M); b.fromBufferAttribute(P, I[t + 1]).applyMatrix4(M); c.fromBufferAttribute(P, I[t + 2]).applyMatrix4(M);
+      e1.subVectors(b, a); e2.subVectors(c, a); e1.cross(e2);
+      const area = e1.length() / 2;
+      if (area < 1e-6) continue;
+      const ny = e1.y / (area * 2);
+      let k = area * per; k = Math.floor(k) + (rng() < k % 1 ? 1 : 0);
+      for (let q = 0; q < k; q++) {
+        let u = rng(), v = rng();
+        if (u + v > 1) { u = 1 - u; v = 1 - v; }
+        out.push(a.x + (b.x - a.x) * u + (c.x - a.x) * v, a.y + (b.y - a.y) * u + (c.y - a.y) * v, a.z + (b.z - a.z) * u + (c.z - a.z) * v, ny);
+      }
+    }
+  }
+  return out;
 }
 
 // ==================================================================================================== 6. FUSING
