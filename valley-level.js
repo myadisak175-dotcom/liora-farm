@@ -31,7 +31,7 @@ import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
 import { carveValleyRock, setRockSun, setRockDeep } from './rocks.js';
 import { createRockWorld } from './rock-world.js';
-import { abyssRockList, ABYSS_ROCKS } from './abyss-rocks.js';
+import { abyssRockList } from './abyss-rocks.js';
 import { ABYSS_ROCKS_LAYOUT } from './abyss-rocks-layout.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
@@ -40,8 +40,8 @@ import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
 import { createWarpStone, DEPTH_STOPS } from './abyss-depths.js';
 import { createGuild, GUILD_SITE } from './stylized-guild.js';
 
-// ?rocks=new: a trial of the rock kit's big pieces in and round the abyss (abyss-rocks.js): pillars standing up out of its clouds,
-// a stretch of its wall dressed in tiers; and 🪨 แก้หิน to move them by hand. Without it the valley is as it was.
+// ?rocks=new: a trial of the rock kit's big pieces in the abyss (abyss-rocks.js): pillars standing up out of its clouds; and
+// 🪨 แก้หิน to move them by hand. Without it the valley is as it was.
 const NEW_ROCKS = new URLSearchParams(location.search).get('rocks') === 'new';
 export const ABYSS_ROCKS_KEY = 'liora.abyss.rocks.v1';                   // where this browser keeps them as placed by hand
 
@@ -135,7 +135,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // ------------------------------------------------------------------ the land
   await onStep('ปั้นหุบเขาและหน้าผา');
   // the map runs on past the old valley mouth to take in the abyss (and a stretch of plateau beyond it)
-  if (NEW_ROCKS) AB.clearRibs(ABYSS_ROCKS.wall.from - 6, ABYSS_ROCKS.wall.to + 6);      // (the trial's dressed wall: its pieces part it, not the ribs)
   const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true, climb: { side: 1 },      // the cliff path is on the +x side
     depth: 265, zCenter: 37.5, climbs: [ABYSS.climb], reshape: AB.reshape, widen: AB.widen, waterAt: AB.waterAt, trails: AB.trails,
     tiers: { steps: VILLAGE.steps, flat: villageLevel, mounds: [VILLAGE.knoll, ...VILLAGE.tors], rise: villageHills, ramps: VILLAGE.ramps, pads: [GUILD_SITE.pad] } });
@@ -747,27 +746,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     const a = arng() * 6.28, d = isl.r + AR(0.2, 0.9);
     arock(arng() < 0.6 ? 'river' : 'boulder', isl.x + Math.cos(a) * d, isl.z + Math.sin(a) * d, AR(0.6, 1.0), 0.3, false);
   }
-  // a fall's way into the pit, as a point u metres in from where it goes over
-  const inward = (f, u) => { const dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz); return [f.x + dx / l * u, f.z + dz / l * u]; };
-  const freeRock = (type, x, y, z, scale, ry = arng() * 6.28) => {                              // a rock set by hand, not on the ground
-    const m = N.createRock({ type, seed: ++ars });
-    m.position.set(x, y, z); m.rotation.y = ry; m.scale.setScalar(scale); m.updateMatrix();
-    abyssRocks.push(m);
-  };
-  for (const f of AB.falls) if (f.rock) { const [x, z] = inward(f, f.rock.u); freeRock('crag', x, f.rock.y - 0.9, z, 1.25); }   // the rock that splits a fall
-  for (const f of AB.falls) for (const st of f.steps) for (const s of [-1, 1]) {                // stones at the corners of each pool's lip
-    const [cx, cz] = inward(f, st.u1 - 0.3), dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz), side = f.width / 2 + 0.5 + AR(0, 0.4);
-    freeRock(arng() < 0.5 ? 'boulder' : 'stones', cx - dz / l * side * s, st.y - 0.25, cz + dx / l * side * s, AR(0.8, 1.15));
-  }
-  // slabs of rock jutting out over the brink, each on a crag (outside the rail: no one stands on them)
-  for (const deg of [-22, 24, 54, 128, 172, 214]) {
-    if (NEW_ROCKS && deg > ABYSS_ROCKS.wall.from - 8 && deg < ABYSS_ROCKS.wall.to + 8) continue;      // (the trial's dressed wall: the kit's pieces stand there instead)
-    const a = deg * Math.PI / 180;
-    if (AB.chuteAt(a) > 0.01 || AB.spurDist(...AB.polar(a, AB.rimR(a))) < 9 || AB.brookDist(...AB.polar(a, AB.rimR(a))).d < 4) continue;
-    const [x, z] = AB.polar(a, AB.rimR(a) - 0.6), [x2, z2] = AB.polar(a, AB.rimR(a) - 0.1);
-    freeRock('slab', x, RIM - 0.85, z, AR(2.2, 3.0), -a + AR(-0.4, 0.4));
-    freeRock('crag', x2, RIM - 4.2, z2, AR(1.6, 2.1));
-  }
   for (const f of AB.falls) if (f.kind === 'brook') for (const s of [-1, 1]) {                  // boulders flanking where each brook goes over
     const t = f.a + s * (f.width / 2 + 1.6) / ABYSS.r, x = ABYSS.x + Math.cos(t) * (AB.rimR(t) + 1.6), z = ABYSS.z + Math.sin(t) * (AB.rimR(t) + 1.6);
     arock('boulder', x, z, AR(1.0, 1.4), 0.3);
@@ -1041,15 +1019,6 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     waterfall = createWaterfall({ x: fall.x, z: fall.z - 1.25, top: fall.top, bottom: WL - 0.25, width: 4.6, optics, foamTexture, cells: animeCells, surfaceChurn: W.WATER_CHURN });
     waterfall.group.userData = { kind: 'waterfall', dispose: waterfall.dispose };
     group.add(waterfall.group);
-    // the pools the falls in the abyss land in on their way down
-    for (const f of AB.falls) for (const st of f.steps) {
-      const rows = [], dx = ABYSS.x - f.x, dz = ABYSS.z - f.z, l = Math.hypot(dx, dz);
-      for (let u = st.u0 + 0.75; u <= st.u1 + 0.01; u += 0.5) rows.push([f.x + dx / l * u, f.z + dz / l * u, st.y, f.width / 2 + 0.2]);
-      const pg = flowRibbon(rows, 10, 1.0), m = new THREE.Mesh(pg, upMat);
-      m.renderOrder = 1;
-      m.userData = { kind: 'water', dispose() { pg.dispose(); } };
-      upperWater.add(m);
-    }
     // the brooks on the plateau round the abyss: the same clear water as the upper river, running to the brink
     for (const b of AB.brooks) {
       const rows = [];

@@ -2,21 +2,20 @@
    abyss-scene.js  —  what is seen in the abyss: the falls going over its brink and the clouds that hang in it
 
    One job: draw them. Where the abyss is and where its falls are comes from abyss-shape.js.
-     const falls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], foamTexture });
+     const falls = createAbyssFalls({ falls: AB.falls, centre: [ABYSS.x, ABYSS.z], optics, foamTexture });
      const clouds = createAbyssClouds({ centre: [ABYSS.x, ABYSS.z], rimR: AB.rimR, ledges, falls: AB.falls });
-     scene.add(falls.group, clouds.group)      both driven by the shared clock: nothing to call each frame
+     scene.add(falls.group, clouds.group)      both are driven by the shared clock: nothing to call each frame
 
-   A fall here is the same water as the valley's waterfall (stylized-waterfall.js: its material, its painted foam streaks).
-   Some go down in steps: a short sheet into a pool on a ledge, where white spray boils up (the billows of the valley's falls),
-   and on over the pool's lip; one splits round a rock. The last drop of each never lands: the sheet bows out a little as it
-   falls, frays into white, and fades away into the clouds a good forty metres down. AB.falls says how each one goes. The clouds are soft white puffs (flat white in the light, pale blue in the folds, as
+   A fall here is the same water as the valley's waterfall (stylized-waterfall.js: its material, its painted foam streaks),
+   only it never lands: the sheet leaves the brink, bows out a little as it drops and frays into white, and fades away into
+   the clouds a good forty metres down. The clouds are soft white puffs (flat white in the light, pale blue in the folds, as
    at the foot of the falls) sitting on the ledges along the walls and drifting slowly round the pit, thicker where the falls
    go into them, and below them a slow swirl of mist with the dark eye of the abyss showing through in the middle.
    Mobile-safe shaders: no uniform arrays, no loops.
    ========================================================================== */
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
-import { _fall, createBillows, FALL_TUNE } from './stylized-waterfall.js';
+import { _fall } from './stylized-waterfall.js';
 
 const { NOISE, shared } = _internal;
 const D = Math.PI / 180;
@@ -36,49 +35,32 @@ function sheetGeometry({ width, height, forward, bulge = 0.5, inset = 0, spread 
   return g;
 }
 
-export function createAbyssFalls({ falls, centre, optics = null, foamTexture = null, sun = [-0.4, 0.9, 0.5] }) {
+export function createAbyssFalls({ falls, centre, bottom = -52, optics = null, foamTexture = null, sun = [-0.4, 0.9, 0.5] }) {
   const group = new THREE.Group();
   group.name = 'abyssFalls';
   const common = _fall.commonUniforms({ optics, foamTexture, sun });
-  const owned = [], billows = [];
+  const owned = [];
   for (const f of falls) {
+    const H = f.top - bottom, w = f.width;
     const holder = new THREE.Group();
-    holder.position.set(f.x, 0, f.z);
+    holder.position.set(f.x, f.top, f.z);
     // local +z points into the pit: turn it toward the centre
-    const yaw = Math.atan2(centre[0] - f.x, centre[1] - f.z);
-    holder.rotation.y = yaw;
-    for (const sh of f.sheets) {
-      const H = sh.top - sh.bottom, w = sh.width, long = H > 25;
-      // (a long drop breaks the water up: whiter than the valley's falls, and it spreads as it goes)
-      const body = new THREE.Mesh(sheetGeometry({ width: w, height: H, forward: sh.forward, bulge: long ? 0.5 : 0.35, spread: long ? 1.1 : 0.35 }),
-        _fall.fallMaterial(common, { layer: 0, speed: 1.15, white: long ? 0.32 : 0.12, width: w, height: H }));
-      const veil = new THREE.Mesh(sheetGeometry({ width: w * 0.7, height: H, forward: sh.forward, inset: 0.25, bulge: 0.38, spread: long ? 1.3 : 0.4 }),
-        _fall.fallMaterial(common, { layer: 1, speed: 1.55, white: long ? 0.6 : 0.35, opacity: 0.7, width: w * 0.7, height: H }));
-      for (const m of [body, veil]) m.position.set(sh.off + (m === veil ? -w * 0.04 : 0), sh.top, sh.u);
-      body.renderOrder = 2; veil.renderOrder = 3;
-      holder.add(body); owned.push(body);
-      if (long) { holder.add(veil); owned.push(veil); } else { veil.geometry.dispose(); veil.material.dispose(); }      // a short step into a pool needs no second layer
-    }
-    // where a sheet lands in a pool: white spray boiling up out of it and drifting out over the water (not the mist: that
-    // hangs in the pit, bluer and slower, below)
-    for (const L of f.landings) {
-      const x = f.x + Math.sin(yaw) * L.u, z = f.z + Math.cos(yaw) * L.u;
-      const b = createBillows({ x, z, y: L.y, width: L.width, yaw, tune: SPRAY });
-      b.renderOrder = 6;
-      group.add(b);
-      billows.push(b);
-    }
+    holder.rotation.y = Math.atan2(centre[0] - f.x, centre[1] - f.z);
+    // (a long drop breaks the water up: whiter than the valley's falls, and it spreads as it goes)
+    const body = new THREE.Mesh(sheetGeometry({ width: w, height: H, forward: 4.2, bulge: 0.5, spread: 1.1 }), _fall.fallMaterial(common, { layer: 0, speed: 1.15, white: 0.32, width: w, height: H }));
+    const veil = new THREE.Mesh(sheetGeometry({ width: w * 0.7, height: H, forward: 4.2, inset: 0.25, bulge: 0.38, spread: 1.3 }),
+      _fall.fallMaterial(common, { layer: 1, speed: 1.55, white: 0.6, opacity: 0.7, width: w * 0.7, height: H }));
+    veil.position.x = -w * 0.04;
+    body.renderOrder = 2; veil.renderOrder = 3;
+    holder.add(body, veil);
     group.add(holder);
+    owned.push(body, veil);
   }
   return {
     group,
-    dispose() { for (const m of owned) { m.geometry.dispose(); m.material.dispose(); } for (const b of billows) b.userData.dispose(); },
+    dispose() { for (const m of owned) { m.geometry.dispose(); m.material.dispose(); } },
   };
 }
-
-// the spray in the pools: the valley's billows, a little smaller and quicker (set once, not live from the tuner)
-const SPRAY = Object.fromEntries(Object.entries(FALL_TUNE).map(([k, v]) => [k, { value: v.value }]));
-SPRAY.puffSize.value *= 0.8; SPRAY.puffLife.value *= 0.85; SPRAY.puffAmount.value = 0.75;
 
 // ---------------------------------------------------------------- the clouds
 // one card per puff, always turned full to the camera (they are seen from above as much as from the side). Each card has a
@@ -220,10 +202,9 @@ export function createAbyssClouds({ centre, rimR, ledges, falls = [], count = 17
   puffs.name = 'abyssPuffs';
   puffs.renderOrder = 6;
   group.add(puffs);
-  // three sheets of swirling mist, thicker the deeper they hang: they hide the ledges further down, so the pit's shape is
-  // never all seen at once
+  // two sheets of swirling mist: one between the third and fourth ledges, a thicker one over the eye
   const swirls = [];
-  for (const [y, radius, tint, den] of [[-25, 36, '#d6e6ee', 0.42], [-41, 31, '#c2d8e4', 0.7], [-63, 23, '#93b0c4', 0.9]]) {
+  for (const [y, radius, tint, den] of [[-41, 30, '#c2d8e4', 0.55], [-63, 22, '#93b0c4', 0.8]]) {
     const g = new THREE.CircleGeometry(radius, 64);
     g.rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(g, swirlMaterial({ radius, tint, density: den }));
