@@ -63,10 +63,12 @@
   "./water-droplets.js": "./water-droplets.js?v=crown5",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=berrysurface1",
-  "./rocks.js": "./rocks.js?v=mount1",
+  "./rocks.js": "./rocks.js?v=deep1",
   "./ground-paths.js": "./ground-paths.js?v=tex2",
   "./rocks-level.js": "./rocks-level.js?v=14",
-  "./rock-world.js": "./rock-world.js?v=1",
+  "./rock-world.js": "./rock-world.js?v=2",
+  "./abyss-rocks.js": "./abyss-rocks.js?v=1",
+  "./abyss-rocks-layout.js": "./abyss-rocks-layout.js?v=1",
   "./blockout-level.js": "./blockout-level.js?v=3",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
@@ -86,14 +88,14 @@
   "./time-of-day.js": "./time-of-day.js?v=tod3",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./hills-level.js": "./hills-level.js?v=rocks1",
-  "./valley-level.js": "./valley-level.js?v=skin2j1rocks1",
+  "./valley-level.js": "./valley-level.js?v=skin2j1rocks2",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1",
   "./teleport-menu.js": "./teleport-menu.js?v=6c",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
   "./stylized-waterfall.js": "./stylized-waterfall.js?v=abyss2",
-  "./abyss-shape.js": "./abyss-shape.js?v=6",
+  "./abyss-shape.js": "./abyss-shape.js?v=7",
   "./abyss-scene.js": "./abyss-scene.js?v=6d",
   "./abyss-depths.js": "./abyss-depths.js?v=3j1",
   "./player.js": "./player.js?v=stand1",
@@ -362,16 +364,17 @@ if (sceneEditor) {
   if (sceneEditor.resume) sceneEditor.open(sceneEditor.resume);                // back from "save": the same place in the editor
   else if (Q.has('edit')) sceneEditor.open({ x: 0, z: -62, h: 60, mode: 'ways', view: 'top' });
 }
-// ---- the rock editor: move the map's rocks by hand (only where the level offers it: the rock test map)
+// ---- the rock editor: move the map's rocks by hand (only where the level offers it: the rock test map, the blockout, the valley with ?rocks=new)
 const rockEditor = createRockEditor({ level, camera, player });
 if (rockEditor) {
   const b = document.createElement('button'); b.id = 'rockEditBtn'; b.textContent = '🪨 แก้หิน';
   b.onpointerdown = e => e.stopPropagation(); b.onclick = () => rockEditor.open();
+  if (sceneEditor) b.style.top = 'calc(206px + env(safe-area-inset-top))';    // (below the scene editor's button, where a map has both)
   document.body.append(b);
   if (rockEditor.resume) rockEditor.open(rockEditor.resume);                  // back from "save": the same view, the same rock
 }
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
-const teleportMenu = createTeleportMenu({ level, player, top: sceneEditor || rockEditor ? 206 : 164 });
+const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0)) });
 // ---- 🌀 warp stones: by one, a button offers the others (the rim of the abyss and the stones down it)
 const warpUI = createWarpUI({ level, player });
 const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;

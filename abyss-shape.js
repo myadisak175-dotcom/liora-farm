@@ -17,6 +17,8 @@
 //   AB.bridges         where the rim walk crosses a brook: { x, z, yaw (the way the deck runs), len }
 //   AB.ledge(k)        the k-th ledge down: { y, u0, u1 } (u: metres in from the brink)
 //   AB.span            the rope bridge across the pit: { a, b, mid: [x, z], len, yaw, sag }; AB.spanDist(x, z) metres from its line
+//   AB.clearRibs(from, to)   takes the ribs out of a stretch of the wall (degrees), before the land is made: where the rock
+//                      kit's pieces dress the wall, they part it instead (abyss-rocks.js, behind ?rocks=new)
 import { _internal } from './stylized-nature.js';
 
 const { fbm3 } = _internal;
@@ -342,10 +344,11 @@ const waterAt = (x, z) => {
 };
 const widen = z => 12 * ss(47, 61, z);
 const ledge = k => { const L = LEDGES[k]; return { y: L.y, u0: L.u, u1: k + 1 < LEDGES.length ? LEDGES[k + 1].u : 18 }; };
+const clearRibs = (from, to) => { for (let i = RIBS.length - 1; i >= 0; i--) { const deg = RIBS[i].a / D; if (deg > from && deg < to) RIBS.splice(i, 1); } };
 
 export const AB = {
   reshape, widen, waterAt, trails, rimR, rimDist, inPit, onRim, onSpur, islandAt, brookDist, spurDist,
-  falls: FALLS, brooks, bridges, islands, ledge, chuteAt, polar, span, spanDist, ribs: RIBS, ledgeStart, ledgeY,
+  falls: FALLS, brooks, bridges, islands, ledge, chuteAt, polar, span, spanDist, ribs: RIBS, clearRibs, ledgeStart, ledgeY,
   spur: { a: spA, base: spurA, tip: spurB, half: SP.half },
   walkR,
 };

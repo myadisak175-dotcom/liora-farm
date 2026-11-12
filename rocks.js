@@ -1010,7 +1010,7 @@ export function moveKitRock(inst) {
 // does the work only when the camera has moved a little).
 //   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s, sy }, ...]);      // angles in degrees; sy: stretched up (1 = not)
 //   kit.userData.instances: [{ geometry (the full one), matrix, item, mesh, index, lod }]; .triangles (all in full), .drawn() (as drawn now)
-export function createRockKit(list, { world = true, tone = null } = {}) {                 // tone: 'warm' | 'pale' for every rock of the kit (null: each kind's own)
+export function createRockKit(list, { world = true, tone = null, lod = 1 } = {}) {      // tone: 'warm' | 'pale' for every rock of the kit (null: each kind's own); lod: < 1 drops to the coarser versions sooner
   const group = new THREE.Group(), sets = new Map(), instances = [];
   group.name = 'rockKit';
   for (const it of list) {
@@ -1044,7 +1044,7 @@ export function createRockKit(list, { world = true, tone = null } = {}) {       
       at.setFromMatrixPosition(camera.matrixWorld);
       if (!force && at.distanceToSquared(last) < 0.25) return;
       last.copy(at);
-      const [n1, n2] = ROCK_LOD.far, k = ROCK_LOD.slack;
+      const n1 = ROCK_LOD.far[0] * lod, n2 = ROCK_LOD.far[1] * lod, k = ROCK_LOD.slack;
       for (const set of sets.values()) {
         let moved = false;
         for (const inst of set.insts) {
@@ -1121,7 +1121,8 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone 
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
-      uniform float uMoss, uMossLow, uWorld, uGOn, uGHas, uGBlend, uWOn, uLOn, uFlat;
+      uniform float uMoss, uMossLow, uWorld, uGOn, uGHas, uGBlend, uWOn, uLOn, uFlat, uDpOn;
+      uniform vec3 uDpMist, uDpBlue, uDpVoid;
       uniform sampler2D uGCol, uGH, uWLev, uLawn;
       uniform vec4 uGRect, uWRect;
       uniform vec3 uLRect, uLTip;
@@ -1183,7 +1184,15 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone 
             col = mix(col, col * vec3(0.62, 0.86, 0.8) + vec3(0.0, 0.03, 0.02), (1.0 - smoothstep(-0.02, 0.0, d)) * 0.6);      // under the water: greener, mossy
           }
         }
-        gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
+        col = mix(col, uHaze, vHaze);
+        // down a pit: pale into the mist that hangs in it, then blue, then dark, as the land's own walls go (setRockDeep)
+        if (uDpOn > 0.5 && vWP.y < -4.0) {
+          float y = vWP.y + (noise2(vWP.xz * 0.12 + vWP.y * 0.05) - 0.5) * 6.0;
+          col = mix(col, uDpMist, smoothstep(-6.0, -42.0, y) * 0.55);
+          col = mix(col, uDpBlue, smoothstep(-26.0, -80.0, y));
+          col = mix(col, uDpVoid, smoothstep(-72.0, -170.0, y));
+        }
+        gl_FragColor = vec4(col, 1.0);
       }`,
   }));
 }
@@ -1200,6 +1209,7 @@ const GROUND_U = {
   uGCol: { value: null }, uGH: { value: null },
   uWOn: { value: 0 }, uWLev: { value: null }, uWRect: { value: new THREE.Vector4(0, 0, 1, 1) },
   uLOn: { value: 0 }, uLawn: { value: null }, uLRect: { value: new THREE.Vector3(0, 0, 1) }, uLTip: { value: rgb('#c6e26c') },
+  uDpOn: { value: 0 }, uDpMist: { value: rgb('#a9c8d6') }, uDpBlue: { value: rgb('#2c4a68') }, uDpVoid: { value: rgb('#0f1b2c') },
 };
 export const GROUND_BLEND = {
   get on() { return GROUND_U.uGOn.value > 0.5; }, set on(v) { GROUND_U.uGOn.value = v && GROUND_U.uGCol.value ? 1 : 0; },      // off unless asked for
@@ -1240,6 +1250,13 @@ export function setRockWater({ texture, x0, z1, size } = {}) {
   GROUND_U.uWLev.value = texture || null;
   GROUND_U.uWOn.value = texture ? 1 : 0;
   if (texture) GROUND_U.uWRect.value.set(x0, z1, 1 / size, 1 / size);
+}
+
+// ---- a map with a pit (the valley's abyss): the rocks down in it go into its mist and dark the way the land's walls do
+// (stylized-terrain.js, DEEP). Pass the same colours as the land's (null: off).
+export function setRockDeep({ mist = null, blue = null, dark = null } = {}) {
+  GROUND_U.uDpOn.value = mist ? 1 : 0;
+  if (mist) { GROUND_U.uDpMist.value.copy(mist); GROUND_U.uDpBlue.value.copy(blue); GROUND_U.uDpVoid.value.copy(dark); }
 }
 
 // ---- the meadow's own grass colour over the map (the ground map's lawnTexture: its grass with nothing painted over it), so the

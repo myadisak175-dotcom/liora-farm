@@ -34,8 +34,9 @@ const PROP_KEYS = new Set(RK.PROP_ROCK_TYPES.map(t => t.key));
 // to span the drop; nothing of it stands up out of the land behind (where a part of it lies under the land up there, it stays
 // under the grass). A piece much taller than the drop is not squashed flat: it keeps at least `least` of its height and is sunk
 // deeper. The edge: the top of the rise behind its front (not the next block up, further back). Along its width, only where there is a drop counts (a piece on a corner, its ends past the edge, is fitted to the
-// part of the edge it stands at). false where there is no drop under its middle (and the piece is left as it was).
-export function fitToEdge(it, H, { head = -0.06, least = 0.75, skip = null } = {}) {
+// part of the edge it stands at). foot: the height of the ground in front, where the map knows it (a ledge); otherwise it is
+// looked for a little way out in front of the piece. false where there is no drop under its middle (and the piece is left as it was).
+export function fitToEdge(it, H, { head = -0.06, least = 0.75, foot = null, skip = null } = {}) {
   if (skip && skip(it.x, it.z)) return false;
   const seed = it.seed || 1, geo = RK.propRockGeometry(it.type, seed), bb = geo.boundingBox, s = it.s || 1, a = (it.ry || 0) * DEG;
   const fx = Math.sin(a), fz = Math.cos(a), lx = Math.cos(a), lz = -Math.sin(a);      // where its face looks; along its width
@@ -49,7 +50,7 @@ export function fitToEdge(it, H, { head = -0.06, least = 0.75, skip = null } = {
       if (h > prev + 0.15) { rose = true; flat = 0; } else if (rose && ++flat >= 4) break;
       up = Math.max(up, h); prev = h;
     }
-    const lo = H(cx + fx * (front + 2.5), cz + fz * (front + 2.5));
+    const lo = foot ?? H(cx + fx * (front + 2.5), cz + fz * (front + 2.5));
     if (up - lo < 1.5) continue;
     if (k === 0) centre = true;
     edge = Math.min(edge, up); low = Math.min(low, lo);
@@ -72,8 +73,10 @@ export function fitToEdge(it, H, { head = -0.06, least = 0.75, skip = null } = {
   return true;
 }
 
-export function createRockWorld({ group, list, extra = [], heightAt: H, walkLand, waterDepthAt = () => 0, waterLevelAt = () => -1e4,
-  key = null, committed = null, fit = null, tone = null, onKit = null, seed = 1, types = null } = {}) {
+// stand: false for rocks no one can reach (in a pit): no rock tops to stand on, no grass on them (and none of the work of
+// finding them). lod: < 1 for a map that can spare fewer triangles (the kit drops to its coarser versions sooner).
+export function createRockWorld({ group, list, extra = [], heightAt: H, walkLand = () => false, waterDepthAt = () => 0, waterLevelAt = () => -1e4,
+  key = null, committed = null, fit = null, tone = null, lod = 1, stand = true, onKit = null, seed = 1, types = null } = {}) {
   const refit = fit || (it => fitToEdge(it, H));                          // (a map that knows its cliffs better brings its own)
 
   // ---- placed by hand: a list of every rock, kept as height above the ground (so it stays put on the land)
@@ -94,7 +97,7 @@ export function createRockWorld({ group, list, extra = [], heightAt: H, walkLand
 
   // ---- drawn
   const makeKit = l => {
-    const kit = RK.createRockKit(l, tone ? { tone } : {});
+    const kit = RK.createRockKit(l, { tone, lod });
     kit.name = 'rocks';
     if (onKit) onKit(kit);
     return kit;
@@ -104,7 +107,7 @@ export function createRockWorld({ group, list, extra = [], heightAt: H, walkLand
 
   // ---- where she can stand on them
   const standTop = new Map(), standable = new Set(), grassTop = new Map();
-  {
+  if (stand) {
     const top = new Map(), pts = RK.sampleKitSurface(kit, { step: 0.3, seed });
     for (let q = 0; q < pts.length; q += 4) { const k = key2(Math.floor(pts[q] / SG), Math.floor(pts[q + 2] / SG)); if (!(top.get(k) >= pts[q + 1])) top.set(k, pts[q + 1]); }
     // a cell of rock: where a rock stands well out of the land, or covers land too steep to walk on (a cliff's face, at its brink):

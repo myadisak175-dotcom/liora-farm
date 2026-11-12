@@ -29,13 +29,21 @@ import { createWaterfall, FALL_TUNE } from './stylized-waterfall.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import { loadLegacyWoodProps } from './legacy-wood-props.js';
 import * as BD from './stylized-buildings.js';
-import { carveValleyRock } from './rocks.js';
+import { carveValleyRock, setRockSun, setRockDeep } from './rocks.js';
+import { createRockWorld } from './rock-world.js';
+import { abyssRockList, ABYSS_ROCKS } from './abyss-rocks.js';
+import { ABYSS_ROCKS_LAYOUT } from './abyss-rocks-layout.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { VALLEY_EDITS } from './valley-edits.js';
 import { ABYSS, AB } from './abyss-shape.js';
 import { createAbyssFalls, createAbyssClouds } from './abyss-scene.js';
 import { createWarpStone, DEPTH_STOPS } from './abyss-depths.js';
 import { createGuild, GUILD_SITE } from './stylized-guild.js';
+
+// ?rocks=new: a trial of the rock kit's big pieces in and round the abyss (abyss-rocks.js): pillars standing up out of its clouds,
+// a stretch of its wall dressed in tiers; and 🪨 แก้หิน to move them by hand. Without it the valley is as it was.
+const NEW_ROCKS = new URLSearchParams(location.search).get('rocks') === 'new';
+export const ABYSS_ROCKS_KEY = 'liora.abyss.rocks.v1';                   // where this browser keeps them as placed by hand
 
 // ---- edits made by hand in the scene editor (scene-editor.js). They are laid over what this file generates, and never change
 // what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so
@@ -127,6 +135,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   // ------------------------------------------------------------------ the land
   await onStep('ปั้นหุบเขาและหน้าผา');
   // the map runs on past the old valley mouth to take in the abyss (and a stretch of plateau beyond it)
+  if (NEW_ROCKS) AB.clearRibs(ABYSS_ROCKS.wall.from - 6, ABYSS_ROCKS.wall.to + 6);      // (the trial's dressed wall: its pieces part it, not the ribs)
   const V = T.createValley({ seed, far, path: false, bridge: true, skirt: true, climb: { side: 1 },      // the cliff path is on the +x side
     depth: 265, zCenter: 37.5, climbs: [ABYSS.climb], reshape: AB.reshape, widen: AB.widen, waterAt: AB.waterAt, trails: AB.trails,
     tiers: { steps: VILLAGE.steps, flat: villageLevel, mounds: [VILLAGE.knoll, ...VILLAGE.tors], rise: villageHills, ramps: VILLAGE.ramps, pads: [GUILD_SITE.pad] } });
@@ -752,6 +761,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   }
   // slabs of rock jutting out over the brink, each on a crag (outside the rail: no one stands on them)
   for (const deg of [-22, 24, 54, 128, 172, 214]) {
+    if (NEW_ROCKS && deg > ABYSS_ROCKS.wall.from - 8 && deg < ABYSS_ROCKS.wall.to + 8) continue;      // (the trial's dressed wall: the kit's pieces stand there instead)
     const a = deg * Math.PI / 180;
     if (AB.chuteAt(a) > 0.01 || AB.spurDist(...AB.polar(a, AB.rimR(a))) < 9 || AB.brookDist(...AB.polar(a, AB.rimR(a))).d < 4) continue;
     const [x, z] = AB.polar(a, AB.rimR(a) - 0.6), [x2, z2] = AB.polar(a, AB.rimR(a) - 0.1);
@@ -851,6 +861,22 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       mesh.userData.dispose = () => mesh.geometry.dispose();
       group.add(mesh);
     }
+  }
+
+  // ---- the trial (?rocks=new): the rock kit's big pieces in and round the pit, laid out by abyss-rocks.js and put in the world by
+  // rock-world.js the way every map's rocks are (drawn in a few batches, each as finely as its distance calls for; their footprint
+  // on the land: shaded ground and shadows on the ledges; moved by hand with 🪨 แก้หิน). No one reaches them: no tops to stand on.
+  let kitRocks = null;
+  if (NEW_ROCKS) {
+    const tone = new URLSearchParams(location.search).get('tone') === 'warm' ? 'warm' : null;      // (&tone=warm: the kit's warm grey instead of its pale stone, to compare)
+    kitRocks = createRockWorld({ group, list: abyssRockList({ heightAt: HV, seed }), heightAt: HV, seed, stand: false, lod: 0.6, tone, key: ABYSS_ROCKS_KEY, committed: ABYSS_ROCKS_LAYOUT });
+    colliders.push(...kitRocks.colliders); shade.push(...kitRocks.shade); bare.push(...kitRocks.bare); press.push(...kitRocks.press); cameraTrunks.push(...kitRocks.cameraTrunks);
+    for (const [x, z, h, r, st] of kitRocks.casters) castStick(x, z, h, r, st);
+    setRockSun(L);
+    const tu = terrain.material.uniforms;
+    if (tu.uDeepOn) setRockDeep({ mist: tu.uDeepMist.value, blue: tu.uDeepBlue.value, dark: tu.uDeepVoid.value });      // (into the pit's mist and dark, as its walls go)
+    const st = kitRocks.stats;
+    console.info('[valley] the rock kit round the abyss:', st.rocks, 'pieces in', st.shapes, 'shapes,', Math.round(st.triangles / 1000) + 'k triangles in full');
   }
 
   // ------------------------------------------------------------------ ground colour map: where grass grows
@@ -1155,7 +1181,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   group.add(warpStone.group);
   const warps = [{ key: 'rim', name: 'ขอบห้วงลึก', x: rimWarp.x, z: rimWarp.z, yaw: rimWarp.yaw, stand: [rimWarp.x + Math.sin(rimWarp.yaw) * 2.4, rimWarp.z + Math.cos(rimWarp.yaw) * 2.4] },
     ...DEPTH_STOPS.map(d => ({ key: d.key, name: d.name, layer: d.layer, scene: { map: 'depths', layer: d.layer, view: 'stone-' + d.key } }))];
-  group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); } };
+  group.userData = { kind: 'valleyLevel', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); map.dispose(); field.texture.dispose(); if (kitRocks) { kitRocks.dispose(); setRockDeep({}); } } };
   console.info('[valley] trees', plants.filter(p => p.kind === 'tree').length, 'rocks', rocks.children.length, 'leaf cards', cards);
   return {
     group, map, field, grass, terrain, waterDepthAt, colliders, crowns, cameraTrunks, spawn, radius: 1e4, walkable, guild,
@@ -1182,6 +1208,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     },
     stats: { trees: plants.filter(p => p.kind === 'tree').length, bushes: plants.filter(p => p.kind === 'bush').length, cards, forestDraws: draws, rocks: rocks.children.length },
     ripple, sim, optics, waterLevelAt: (x, z) => WL,
+    rockEdit: kitRocks ? kitRocks.edit : null,                             // (the trial's pieces, for the rock editor)
     // what the scene editor (scene-editor.js) works with
     editor: {
       key: VALLEY_EDIT_KEY, box: WAYS_BOX, heightAt: HV, items: editItems, ramps: V.ramps.map(r => r.line.map(c => [c[0], c[1]])),
@@ -1212,6 +1239,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     update(renderer, dt, scene = null, camera = null) {
       lastRenderer = renderer;
+      if (kitRocks) kitRocks.update(renderer, camera, { terrain, size: 160, center: [ABYSS.x, ABYSS.z] });      // (the ground under them, drawn once; each as finely as its distance calls for)
       if (mill) mill.update(dt);
       if (wheel) wheel.rotation.x -= dt * 0.9;
       if (span) {                                                          // the rope bridge sways, more while she is on it
@@ -1242,7 +1270,7 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
       if (doThrough || doMirror) optics.render(renderer, scene, camera, hidden, doThrough, doMirror);
     },
     // where the sun is (a direction) and how strongly it casts (0 at night); the shadows follow in the background
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); },
+    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); if (kitRocks) setRockSun(dir); },
     get sunCast() { return cast; },
     useRealShadow(on, onGrass = false) { realShadow = !!on; realOnGrass = realShadow && !!onGrass; },
     tapWater(origin, dir) {
