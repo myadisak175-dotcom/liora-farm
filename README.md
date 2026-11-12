@@ -17,6 +17,7 @@ Credits retained from the supplied project:
 - “DEER” by WildMesh 3D (CC BY-NC 4.0).
 - Grass approach inspired by Cortiz (MIT).
 - Windmill: a Sketchfab model supplied for this project, restyled into flat colour patches (`assets/models/windmill.glb`); author and licence credit still to be filled in.
+- Village houses: pieces of the Medieval Village MegaKit by Quaternius (CC0 1.0), the free Standard set, packed into `assets/models/village-kit.glb` (the glTF files were taken from the copy kept at github.com/J-Ponzo/gltf-medieval-village-megakit).
 
 The previous game remains available in Git history before this replacement.
 
@@ -206,3 +207,22 @@ A trial of the village above the falls rebuilt on terraces, after the concept ar
 On it, as in the concept art: the keep on the knoll with the water mill beside its stream, the manor and the great tree by the river's spring on the high plateau with the sheep's pasture, the market on the middle shelf, the windmill on the east shelf, houses on the west shelf, houses round a well in the lower village (where she starts), and a stone bridge over the river on the low ground. Everything stands where `VILLAGE` (in the same file) says. Trees thicken on the low ground and along the cliff tops; the plateaus stay open for the village. The buildings are the code-built stand-ins of `stylized-buildings.js`.
 
 For now she walks one level at a time: the cliffs are too steep to climb and there are no ways up or down yet. **📍 ไปที่…** has every level under "หมู่บ้านขั้นบันได". To change the land: edit the plateaus (`MESAS`), the ravine or the rivers in the tool and run it again from the repo's root (`python3 tools/make-village-heightmap.py`, needs numpy, scipy and pillow); then check that `VILLAGE`'s places still stand on flat ground.
+
+## The hill village on a heightmap (`?map=hillvillage`)
+
+![The hill village](docs/previews/hill-village-map.jpg)
+
+A village on stepped cliffs, laid out from a painting: a keep on a crag, a manor, a great tree with a few cottages round it, a pasture and a barn, the windmill on a ledge, a water mill on a stream, and below them a market round a well, houses, fenced fields and a road in. A river comes down through it in three falls, under a stone bridge, to a pool. It is a separate trial map: nothing in the valley is touched, and it is not the terraced village island above (`?map=village`), which is another trial of the same painting with code-built houses.
+
+The land and the plan come from one place, `tools/make-hill-village-heightmap.py`. It lays the plateaus out as polygons with a height, makes their edges wander, cuts ramps where the ways climb (none steeper than 30%), levels the ground under every building, and lays the water in shallow beds: each stretch of water lies on its own terrace and goes over the terrace's edge as a fall (nothing is cut through the terraces; only the cliff right under a fall is made sheer, so the water falls free). Round the 160 m she walks on there is a 30 m margin of wooded hills to look at. It writes, in `assets/heightmaps/`:
+
+- `hill-village.bin`: the land as raw 16-bit numbers, 641 x 641, little-endian (what the game reads); `hill-village.png` is the same picture to look at.
+- `hill-village.json`: the plan. How big the land is, the water (`brooks` and `falls`, as for `?map=pit`), the buildings, the bridge, the ways and yards, the fences, the fields, the small things, the plants, and the places to start from. Places are metres from the middle of the map, x east and z south.
+
+To move or change anything, edit the tool, run it (`python3 tools/make-hill-village-heightmap.py`; Termux: `pip install numpy scipy pillow`) and reload. It warns when a prop stands on a way, in water or on a cliff.
+
+`hill-village-level.js` reads the two files and puts the game's own things on top: the valley's land paint (strata on the cliffs), the ground picture and the fluffy grass, the dirt ways of `ground-paths.js` (a yard is a short way as wide as the yard), the woods, a ribbon of the valley's clear water down each stretch and `createWaterfall` at each fall. The waves and the water's mirror are worked out on one level, the river's by the bridge; the other waters borrow them.
+
+The houses are put together from a modular building kit by `village-kit.js`: walls 2 m wide and 3 m tall, doors, windows, shutters, tiled roofs, gables, chimneys and dormers, stood side by side on a 2 m grid (`builder().house({ w, l, floors, wall, door, seed })`; the keep is a four-floor tower with the kit's tower roof and a hall against it). All the houses of the map are merged into one mesh for each of the kit's pictures and drawn with the props' material, so the game's three bands of light fall on them. `?look=flat` draws them in flat colour patches instead (each face takes one colour from the kit's picture), like the windmill. `tools/pack-village-kit.py` makes `village-kit.glb` from the kit's glTF folder: only the 60 pieces used, only their colour pictures, at 1024 px (2.7 MB instead of 59 MB).
+
+What the kit has no piece for is still built in code, in flat colours: the well, the water wheel, the stone bridge, fences, stalls, barrels, carts and sheep (`stylized-buildings.js`), and the fields (`village-fields.js`: ridges of turned earth that follow the ground, with cabbages, carrots or wheat on them). The windmill is the model supplied for the game. She may walk anywhere that is not a cliff or deep water, and over the bridge. `?map=hillvillage&view=vl-plaza` (or `vl-bridge`, `vl-tree`, `vl-castle`, `vl-manor`, `vl-pasture`, `vl-windmill`, `vl-watermill`, `vl-fields`, `vl-pool`) starts there; the same places are in the 📍 menu.
