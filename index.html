@@ -63,9 +63,11 @@
   "./water-droplets.js": "./water-droplets.js?v=crown5",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=berrysurface1",
-  "./rocks.js": "./rocks.js?v=kit2",
+  "./rocks.js": "./rocks.js?v=kit3",
   "./ground-paths.js": "./ground-paths.js?v=tex2",
-  "./rocks-level.js": "./rocks-level.js?v=5",
+  "./rocks-level.js": "./rocks-level.js?v=6",
+  "./rock-editor.js": "./rock-editor.js?v=1",
+  "./rocks-layout.js": "./rocks-layout.js?v=1",
   "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1",
   "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
@@ -166,6 +168,7 @@ import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
 import DEER_GLB from './deer-glb.js';
 import { createForestForage } from './forest-forage.js?v=5';
 import { createSceneEditor } from './scene-editor.js';
+import { createRockEditor } from './rock-editor.js';
 import { createTeleportMenu } from './teleport-menu.js';
 import { createWarpUI } from './warp-ui.js';
 
@@ -219,7 +222,7 @@ await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
-  if (sceneEditor && sceneEditor.active) return;     // while editing, a tap belongs to the editor
+  if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active)) return;     // while editing, a tap belongs to the editor
   ray.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
@@ -354,8 +357,16 @@ if (sceneEditor) {
   if (sceneEditor.resume) sceneEditor.open(sceneEditor.resume);                // back from "save": the same place in the editor
   else if (Q.has('edit')) sceneEditor.open({ x: 0, z: -62, h: 60, mode: 'ways', view: 'top' });
 }
+// ---- the rock editor: move the map's rocks by hand (only where the level offers it: the rock test map)
+const rockEditor = createRockEditor({ level, camera, player });
+if (rockEditor) {
+  const b = document.createElement('button'); b.id = 'rockEditBtn'; b.textContent = '🪨 แก้หิน';
+  b.onpointerdown = e => e.stopPropagation(); b.onclick = () => rockEditor.open();
+  document.body.append(b);
+  if (rockEditor.resume) rockEditor.open(rockEditor.resume);                  // back from "save": the same view, the same rock
+}
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
-const teleportMenu = createTeleportMenu({ level, player, top: sceneEditor ? 206 : 164 });
+const teleportMenu = createTeleportMenu({ level, player, top: sceneEditor || rockEditor ? 206 : 164 });
 // ---- 🌀 warp stones: by one, a button offers the others (the rim of the abyss and the stones down it)
 const warpUI = createWarpUI({ level, player });
 const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;
@@ -368,8 +379,10 @@ const frame = (dt = clock.getDelta()) => {
   A.updateAnimals(dt);
   player.update(dt);
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
+  const rockEditing = rockEditor && rockEditor.active;
+  if (rockEditing) rockEditor.apply(camera);                              // the rock editor's camera flies free of her
   if (forage) forage.update(dt, player.position);
-  level.follow(player.position, player.lookDir);
+  level.follow(rockEditing ? rockEditor.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
   if (warpUI) warpUI.update();
   if (farHills && (level.zone ?? -1) !== lastZone) { lastZone = level.zone ?? -1; farHills.visible = lastZone < 0; }      // no far hills from down in the abyss
   {
@@ -401,7 +414,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI };
+window.__game = { sceneEditor, rockEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI };
 </script>
 </body>
 </html>

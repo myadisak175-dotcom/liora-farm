@@ -820,7 +820,7 @@ const PROP_MOSS_LOW = { cliffFace: 0.1, cliffTall: 0.1, buttress: 0.1, cliffTop:
 
 // ---- the same few shapes drawn many times over (instancing): one geometry for each type and seed, kept; a level's whole set of
 // rocks is one drawn group for each of them.
-//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s }, ...]);      // angles in degrees; kit.userData.instances: [{ geometry, matrix, item }]
+//   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s }, ...]);      // angles in degrees; kit.userData.instances: [{ geometry, matrix, mesh, index, item }]
 const propGeo = new Map();
 export function propRockGeometry(type, seed = 1) {
   const key = type + ':' + seed;
@@ -831,22 +831,37 @@ export function propRockGeometry(type, seed = 1) {
   }
   return propGeo.get(key);
 }
+// a rock's place, turn (degrees: ry about the up axis first, then rx, rz) and size, as a matrix
+const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), DEG = Math.PI / 180;
+export function rockMatrix(it, out = new THREE.Matrix4()) {
+  const s = it.s || 1;
+  return out.compose(_p.set(it.x, it.y || 0, it.z), _q.setFromEuler(_e.set((it.rx || 0) * DEG, (it.ry || 0) * DEG, (it.rz || 0) * DEG, 'YXZ')), _s.set(s, s, s));
+}
+// move one rock of a kit at once (the rock editor, while a finger drags it): its item says where, this puts it there
+export function moveKitRock(inst) {
+  rockMatrix(inst.item, inst.matrix);
+  inst.mesh.setMatrixAt(inst.index, inst.matrix);
+  inst.mesh.instanceMatrix.needsUpdate = true;
+  inst.mesh.computeBoundingSphere();
+}
 export function createRockKit(list, { world = true } = {}) {
-  const group = new THREE.Group(), sets = new Map(), instances = [], q = new THREE.Quaternion(), e = new THREE.Euler(), D = Math.PI / 180;
+  const group = new THREE.Group(), sets = new Map(), instances = [];
   group.name = 'rockKit';
   for (const it of list) {
     const seed = it.seed || 1, key = it.type + ':' + seed, s = it.s || 1;
-    if (!sets.has(key)) sets.set(key, { type: it.type, seed, mats: [] });
-    const matrix = new THREE.Matrix4().compose(new THREE.Vector3(it.x, it.y || 0, it.z), q.setFromEuler(e.set((it.rx || 0) * D, (it.ry || 0) * D, (it.rz || 0) * D, 'YXZ')), new THREE.Vector3(s, s, s));
-    sets.get(key).mats.push(matrix);
-    instances.push({ geometry: propRockGeometry(it.type, seed), matrix, item: it });
+    if (!sets.has(key)) sets.set(key, { type: it.type, seed, mats: [], insts: [] });
+    const matrix = rockMatrix(it, new THREE.Matrix4()), set = sets.get(key);
+    const inst = { geometry: propRockGeometry(it.type, seed), matrix, item: it, mesh: null, index: set.mats.length };
+    set.mats.push(matrix); set.insts.push(inst); instances.push(inst);
   }
   let triangles = 0;
-  for (const { type, seed, mats } of sets.values()) {
+  for (const { type, seed, mats, insts } of sets.values()) {
     const geo = propRockGeometry(type, seed), im = new THREE.InstancedMesh(geo, propRockMaterial({ moss: PROP_MOSS[type], world, mossLow: PROP_MOSS_LOW[type] }), mats.length);
     mats.forEach((m, i) => im.setMatrixAt(i, m));
     im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
     im.name = 'rocks-' + type + '-' + seed;
+    im.userData.instances = insts;                                         // (instance i of this mesh is insts[i]: what a ray that hits it hit)
+    for (const inst of insts) inst.mesh = im;
     group.add(im);
     triangles += geo.index.count / 3 * mats.length;
   }

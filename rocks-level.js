@@ -12,6 +12,11 @@
 //
 //   const level = await buildRocksLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 //   ?layout=demo   leaves the builder's rocks out (only this map's own)
+//   ?edits=off     the rocks as the code lays them out, not as placed by hand
+//
+// Placed by hand: the code lays the rocks out (as a studio's tools do), and then they can be moved by hand in the map itself
+// (rock-editor.js, the 🪨 button), the way an artist goes over a layout. What was placed by hand is the map's rocks from then on:
+// kept in this browser, and once copied into rocks-layout.js, in the game for everyone (level.rockEdit is what the editor uses).
 //
 // All the rocks are drawn as a few instanced groups (createRockKit): the same few shapes, many times over.
 // How a rock takes part in the world (the footprint below, the same for every rock): the ground under it is cut into one-metre
@@ -30,11 +35,14 @@ import { createPaths, loadPathTextures } from './ground-paths.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { createWaterfall } from './stylized-waterfall.js';
+import { ROCKS_MAP_LAYOUT } from './rocks-layout.js';
 
 const { fbm3, mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
+export const ROCKS_EDIT_KEY = 'liora.rocks.layout.v1';                  // where this browser keeps the rocks as placed by hand
+const PROP_KEYS = new Set(RK.PROP_ROCK_TYPES.map(t => t.key));
 const UP = 7.5, POND = -0.5;                                               // the water's level on the plateau, and in the pool and the pond
 export const ROCKS_MAP = {
   radius: 49, fieldRadius: 76,
@@ -197,9 +205,26 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       put('footRock', sgn > 0 ? 2 : 3, C.falls + sgn * 3.6, lipZ + 4.6, { ry: R(0, 360), s: 1.15, sink: 0.5 });
     }
   }
+  // ---- placed by hand (rock-editor.js): a list of every rock, laid over what the code put down. Kept as height above the ground
+  // rather than height, so it stays put on the land.
+  const QS = new URLSearchParams(location.search);
+  const r2 = v => Math.round(v * 100) / 100, r1 = v => Math.round(v * 10) / 10;
+  const toRow = it => [it.type, it.seed || 1, r2(it.x), r2(it.z), r2((it.y ?? 0) - H(it.x, it.z)), r1(it.ry || 0), r1(it.rx || 0), r1(it.rz || 0), Math.round((it.s || 1) * 1000) / 1000];
+  const fromRow = ([type, sd, x, z, dy, ry, rx, rz, s]) => ({ type, seed: sd, x, z, y: H(x, z) + dy, ry, rx, rz, s });
+  const validLayout = d => !!(d && Array.isArray(d.rocks) && d.rocks.every(r => Array.isArray(r) && r.length === 9 && PROP_KEYS.has(r[0]) && r.slice(1).every(Number.isFinite)));
+  const generated = rockList.map(it => ({ ...it }));
+  const committed = validLayout(ROCKS_MAP_LAYOUT) ? ROCKS_MAP_LAYOUT : null;
+  let local = null;
+  if (QS.get('edits') !== 'off') {
+    try { local = JSON.parse(localStorage.getItem(ROCKS_EDIT_KEY) || 'null'); } catch { /* none kept */ }
+    if (!validLayout(local)) local = null;
+  }
+  const layout = QS.get('edits') === 'off' ? null : local || committed;
+  if (layout) { rockList.length = 0; for (const r of layout.rocks) rockList.push(fromRow(r)); }
+  const placed = rockList.length;                                           // the rocks that can be moved by hand (not the builder's)
   // the rocks put together in the builder (this browser's last layout), set in the clearing
   let fromBuilder = 0;
-  if (!new URLSearchParams(location.search).has('layout')) {
+  if (!QS.has('layout')) {
     try {
       const d = JSON.parse(localStorage.getItem('rockBuilder.v1') || 'null');
       for (const q of (d && d.pieces) || []) {
@@ -210,8 +235,13 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
       }
     } catch { /* no builder layout in this browser */ }
   }
-  const rocks = RK.createRockKit(rockList);
-  rocks.name = 'rocks';
+  const makeKit = list => {
+    const kit = RK.createRockKit(list);
+    kit.name = 'rocks';
+    kit.traverse(o => o.layers.enable(W.UNDERWATER));
+    return kit;
+  };
+  let rocks = makeKit(rockList);
   group.add(rocks);
   // each rock's footprint: the cells it stands on (a cell is taken if a point of its surface comes down to within half a metre
   // of the ground there) and how tall it is over each
@@ -367,7 +397,6 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   const cast = { dir: castSun.clone(), k: 1 };
   RK.setRockSun(L);
   terrain.layers.enable(W.UNDERWATER);
-  rocks.traverse(o => o.layers.enable(W.UNDERWATER));
   const hidden = [...waters, grass, droplets.points];
   const waterSpheres = [new THREE.Sphere(new THREE.Vector3(22, POND, 4), 14), new THREE.Sphere(new THREE.Vector3(26, POND, -17), 10), new THREE.Sphere(new THREE.Vector3(34, -1, 30), 10),
     new THREE.Sphere(new THREE.Vector3(C.falls, UP / 2, lipZ), UP / 2 + 3)];
@@ -387,6 +416,24 @@ export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 
   return {
     group, map, field, grass, terrain, heightAt: H, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: M.spawn, radius: M.radius, walkable, views,
     keepClear: (x, z, r = 0) => onPath(x, z, r) || slope(x, z) > 0.6,       // nothing grows on the paths or on the cliff's face
+    // for the rock editor: the rocks that can be moved, what they were before (the game's own layout; and the code's, if the game
+    // has one placed by hand), and a way to draw a changed list at once (her paths round them, the grass and the shadows follow
+    // when the scene loads again)
+    rockEdit: {
+      key: ROCKS_EDIT_KEY, heightAt: H, types: RK.PROP_ROCK_TYPES.filter(t => t.key !== 'range'), edited: !!local,
+      get kit() { return rocks; },
+      items: () => rockList.slice(0, placed).map(it => ({ ...it })),
+      base: () => committed ? committed.rocks.map(fromRow) : generated.map(it => ({ ...it })),
+      generated: committed ? () => generated.map(it => ({ ...it })) : null,
+      save: items => ({ v: 1, rocks: items.map(toRow) }),
+      load: d => validLayout(d) ? d.rocks.map(fromRow) : null,
+      show(items) {
+        const old = rocks;
+        rocks = makeKit([...items, ...rockList.slice(placed)]);
+        group.add(rocks); group.remove(old); old.userData.dispose();
+        return rocks;
+      },
+    },
     name: 'ทดสอบหิน', stats: { rocks: rockList.length, shapes: rocks.userData.shapes, triangles: rocks.userData.triangles, fromBuilder },
     ripple, sim, optics, waterLevelAt: levelAt,
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
