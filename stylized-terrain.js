@@ -88,10 +88,14 @@ const WATER_COLORS = { deep: '#2f86b2', mid: '#41a2c6', shallow: '#69bfd2', edge
 const BLANK_WAYS = new THREE.DataTexture(new Uint8Array([255, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
 BLANK_WAYS.needsUpdate = true;
 
-function terrainMaterial(far, half, zc) {
+// cliffPaint: a seamless painted picture of rock (a THREE.Texture) to lay on the cliffs in place of the strata, covering
+// cliffTile metres along a cliff and up it. Without it nothing changes.
+function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10] } = {}) {
   const C = TERRAIN_COLORS;
   return new THREE.ShaderMaterial({
+    defines: cliffPaint ? { CLIFF_PAINT: 1 } : {},
     uniforms: {
+      uCliffPaint: { value: cliffPaint }, uCliffTile: { value: new THREE.Vector2(1 / cliffTile[0], 1 / cliffTile[1]) },
       uG0: { value: rgb(C.grass[0]) }, uG1: { value: rgb(C.grass[1]) }, uG2: { value: rgb(C.grass[2]) }, uG3: { value: rgb(C.grass[3]) },
       uR0: { value: rgb(C.rock[0]) }, uR1: { value: rgb(C.rock[1]) }, uR2: { value: rgb(C.rock[2]) }, uR3: { value: rgb(C.rock[3]) },
       uB0: { value: rgb(C.sand[0]) }, uB1: { value: rgb(C.sand[1]) }, uB2: { value: rgb(C.sand[2]) },
@@ -132,6 +136,10 @@ function terrainMaterial(far, half, zc) {
       uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar, uDeepMist, uDeepBlue, uDeepVoid;
       uniform float uDeepOn;
       uniform float uRockOn;
+      #ifdef CLIFF_PAINT
+        uniform sampler2D uCliffPaint;
+        uniform vec2 uCliffTile;
+      #endif
       varying vec4 vRock;
       uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
       uniform vec4 uWaysRect;       // centre x, centre z, 1 / width, 1 / depth of the ground the picture covers
@@ -145,10 +153,20 @@ function terrainMaterial(far, half, zc) {
       void main() {
         vec3 n = normalize(vN);
         float j = noise2(vWP.xz * 0.9) * 0.5 + noise2(vWP.xz * 3.0) * 0.25;   // jagged borders
+        #ifdef CLIFF_PAINT
+          // laid on from the side a face looks to (along x or along z), so it never smears across a corner
+          vec2 pw = pow(abs(n.xz), vec2(4.0)); pw /= max(pw.x + pw.y, 1e-4);
+          vec3 paint = texture2D(uCliffPaint, vWP.zy * uCliffTile).rgb * pw.x + texture2D(uCliffPaint, vWP.xy * uCliffTile).rgb * pw.y;
+        #endif
         vec3 col;
         if (n.y + (j - 0.37) * 0.3 < 0.7) {
-          float v = uRockOn > 0.5 ? strataTone(vWP, n, vRock.z) + vRock.y : strataTone(vWP, n);
-          col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
+          #ifdef CLIFF_PAINT
+            // the painted rock: lit a little by the sun, and lighter where a face leans back to the sky (a cliff's shoulder, a ledge's top)
+            col = paint * mix(0.88, 1.04, smoothstep(0.3, 0.75, dot(n, normalize(vec3(-0.4, 0.9, 0.5))) * 0.5 + 0.5)) * (1.0 + 0.1 * smoothstep(0.3, 0.7, n.y));
+          #else
+            float v = uRockOn > 0.5 ? strataTone(vWP, n, vRock.z) + vRock.y : strataTone(vWP, n);
+            col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
+          #endif
         } else {
           float s = noise2(vWP.xz * 0.08) * 0.6 + noise2(vWP.xz * 0.3) * 0.3 + noise2(vWP.xz * 1.6) * 0.1;
           float lit = dot(n, normalize(vec3(-0.3, 1.0, 0.35)));

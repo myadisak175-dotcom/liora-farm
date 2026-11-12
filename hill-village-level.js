@@ -36,6 +36,7 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 
 export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
+  cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   cells: 500,                     // the ground's own grid (0.44 m)
   sails: /^polySurface142_/,      // the part of the windmill that turns
 };
@@ -208,7 +209,14 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     g.setAttribute('aBank', new THREE.BufferAttribute(bank, 1));
     g.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     g.computeVertexNormals();
-    terrain.material = T._terrain.terrainMaterial(far, [FR, FR], 0);
+    // the cliffs: rock painted with a brush (tools/make-cliff-paint.py), in place of the valley's strata. ?cliff=strata: as before
+    let cliffPaint = null;
+    if (new URLSearchParams(location.search).get('cliff') !== 'strata') try {
+      cliffPaint = await new THREE.TextureLoader().loadAsync(url(M.cliff));
+      cliffPaint.wrapS = cliffPaint.wrapT = THREE.RepeatWrapping; cliffPaint.anisotropy = 4; cliffPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
+    } catch (err) { console.warn('[hill-village] cliff paint', err); }
+    terrain.material = T._terrain.terrainMaterial(far, [FR, FR], 0, { cliffPaint });
+    if (cliffPaint) terrain.userData.dispose = (d => () => { d(); cliffPaint.dispose(); })(terrain.userData.dispose);
   }
   group.add(terrain);
   let pathTex = null;
