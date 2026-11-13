@@ -359,6 +359,9 @@ export function createWaterOptics({ level = 0, throughScale = 0.5 } = {}) {
     uniforms, level,
     get quality() { return quality; },
     setQuality(q) { quality = Math.max(0, Math.min(2, Math.round(q))); uniforms.uMirrorOn.value = quality > 0 ? 1 : 0; },
+    // the height of the water the pictures are made for: a map whose waters lie at several heights sets it, before render,
+    // to the one she is nearest
+    setLevel(y) { level = y; point.y = y; },
     // hide: objects that must not appear in either picture (the water itself, things floating on it, the grass)
     // doThrough / doMirror: which of the two pictures to refresh this frame
     render(renderer, scene, camera, hide = [], doThrough = true, doMirror = true) {
