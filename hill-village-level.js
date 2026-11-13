@@ -67,7 +67,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
   const onLand = (x, z, in_ = 0) => x > X0 + in_ && x < X1 - in_ && z > Z0 + in_ && z < Z1 - in_;
   const pathStyle = new URLSearchParams(location.search).get('paths') === 'grit' ? 'grit' : M.paths;
-  const paths = createPaths({ paths: [...P.paths.map(p => ({ points: p.points, half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))], seed, style: pathStyle });      // (a yard: a short way as wide as the yard)
+  const paths = createPaths({ paths: [...P.paths.map(p => ({ points: p.points, half: p.half, square: p.square })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))], seed, style: pathStyle });      // (a yard: a short way as wide as the yard)
   const px = (i, j) => base + raw[Math.min(nz - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))] / 65535 * range;
   const heightFn = (x, z) => {                                             // bilinear between the picture's points; the ways lie a little below the grass
     const fx = (x - X0) / cell, fz = (z - Z0) / cell, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
@@ -119,15 +119,45 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const corners = (x, z, w, d, yaw) => { const c = Math.cos(yaw), s = Math.sin(yaw); return [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]].map(([a, b]) => H(x + a * w / 2 * c + b * d / 2 * s, z - a * w / 2 * s + b * d / 2 * c)); };
   const kit = await loadVillageKit();
   const kb = kit.builder();
+  // the kit's stone stair (2 m long, a metre up, five steps; it climbs toward its own -z) and its landing (2 m square, its top a
+  // metre above its foot). She walks on each as on a bridge's deck: a stair is a slope under her feet, a landing level
+  const STAIR = { long: 2, up: 1, lift: -0.1 };                             // (lift: where her feet go against the line from foot to head: the treads lie under it, 0.1 m on average)
+  const stairPiece = (kind, x, z, y, yaw, wide) => {                        // x, z: its middle; y: a stair's foot, a landing's top; the way up is toward (sin yaw, cos yaw)
+    const ux = Math.sin(yaw), uz = Math.cos(yaw), stair = kind === 'stair';
+    kb.piece(stair ? 'Stairs_Exterior_Straight' : 'Stairs_Exterior_Platform', x, stair ? y : y - 1, z, yaw + Math.PI, wide);
+    decks.push({ x, z, yaw: Math.atan2(-uz, ux), len: STAIR.long + 0.24, halfW: wide,      // (a little longer than the piece: on a bend no gap opens between one deck and the next)
+      y: stair ? u => y + STAIR.up * (0.5 + u / STAIR.long) + STAIR.lift : () => y });
+    for (const t of [-0.5, 0.5]) bare.push([x + ux * t, z + uz * t, 1.9 * wide]);
+  };
+  // steps down from a door: n stairs in a row from the sill at (x, z, top), going down toward (sin yaw, cos yaw) ... turned round, as stairPiece wants the way up
+  const stairFlight = (x, z, top, up, n, wide) => {
+    const ux = Math.sin(up), uz = Math.cos(up);
+    for (let k = 0; k < n; k++) stairPiece('stair', x - ux * (STAIR.long * (k + 0.5)), z - uz * (STAIR.long * (k + 0.5)), top - STAIR.up * (k + 1), up, wide);
+  };
   for (const b of P.buildings) {
     if (b.kind !== 'house') continue;
     const { w, l, floors = 1 } = b.spec, hs = corners(b.x, b.z, w, l, b.yaw), hi = Math.max(...hs), lo = Math.min(...hs), y = hi + 0.03;
-    kb.house(b.spec, b.x, y, b.z, b.yaw);
+    // on a slope its floor is level with the highest corner: where that leaves it standing clear of the ground, a storey of
+    // the kit's stone wall goes down under it (a low footing of plain stone is enough where it does not)
+    const base = hi - lo > 0.9 ? Math.ceil((hi - lo + 0.3) / 3) : 0;
+    kb.house({ ...b.spec, base }, b.x, y, b.z, b.yaw);
     const K = BD.kit(b.spec.seed || 1);                                    // a stone footing down into the ground, so a slope never shows a gap
-    K.box(0, -(hi - lo) - 1.2, 0, w + 0.5, hi - lo + 1.26, l + 0.5, C.stoneDark);
+    if (base) K.box(0, -(hi - lo) - 1.2, 0, w - 0.3, hi - lo + 1.2, l - 0.3, C.stoneDark);      // (inside the stone walls: only so nothing shows between them)
+    else K.box(0, -(hi - lo) - 1.2, 0, w + 0.5, hi - lo + 1.26, l + 0.5, C.stoneDark);
     builds.push(BD.place(K.done(), b.x, y, b.z, b.yaw));
     solid(b.x, b.z, w + 0.5, l + 0.5, b.yaw, floors * 3 + (b.spec.tower ? 6 : w * 0.45 + 1));
+    // a door that hangs above the ground gets steps: the kit's stair (a metre up, 2 m long), one for each metre, its head at the sill
+    const door = b.spec.door || 'front', n = { front: w / 2, back: w / 2, right: l / 2, left: l / 2 }[door], dk = b.spec.doorAt ?? Math.floor((n - 1) / 2);
+    const [dx, dz, out] = { front: [-w / 2 + 1 + 2 * dk, l / 2, 0], back: [w / 2 - 1 - 2 * dk, -l / 2, Math.PI], right: [w / 2, l / 2 - 1 - 2 * dk, Math.PI / 2], left: [-w / 2, -l / 2 + 1 + 2 * dk, -Math.PI / 2] }[door];
+    const face = b.yaw + out, fx = Math.sin(face), fz = Math.cos(face), c = Math.cos(b.yaw), s = Math.sin(b.yaw), sill = [b.x + dx * c + dz * s, b.z - dx * s + dz * c];
+    const drop = y - H(sill[0] + fx * 1.2, sill[1] + fz * 1.2);
+    if (drop > 0.45) {
+      const n = Math.max(1, Math.round(drop)), foot = H(sill[0] + fx * (STAIR.long * n + 0.06), sill[1] + fz * (STAIR.long * n + 0.06));
+      stairFlight(sill[0] + fx * 0.06, sill[1] + fz * 0.06, y - Math.min(0.15, Math.max(0, y - n * STAIR.up - 0.14 - foot)), face + Math.PI, n, 1);      // (let down a little, if its foot would hang over lower ground)
+    }
   }
+  // the streets of stairs: the plan lists them piece by piece (stairs and landings up two steep ways)
+  for (const st of P.stairs || []) stairPiece(st.kind, st.x, st.z, st.y, st.yaw, st.wide || 1);
   // the windmill: its tower and the miller's house are two of the plan's kit houses (above). Its sails are the supplied
   // model's (stylized-props.js takes them out of the file), in the kit's own wood and a linen that sits with its plaster, on
   // an axle out of the tower's wall

@@ -9,7 +9,7 @@
 #   1. the land: meadow green, a little paler the higher it lies, lit from the north-west so every terrace's edge shows;
 #   2. the cliffs: rock where the land is steep; the pit going down into its mist; the land she cannot walk on, washed out;
 #   3. the water: each stretch as wide as it is, with a pale middle; foam where it falls;
-#   4. the ways and yards (sand), the fields (tilled rows) and their fences, the bridges;
+#   4. the ways and yards (sand), the streets of stairs (stone), the fields (tilled rows) and their fences, the bridges;
 #   5. the houses from above (a roof, lit on one side of the ridge), the windmill's sails, the well;
 #   6. rocks, bushes and trees (a shadow, a crown, a light on it).
 #
@@ -115,6 +115,12 @@ for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])):
     for pts, half in ways: stroke(d, pts, 2 * half + 2 * grow, colour)
     for x, z, r, *_ in plan['yards']:
         cx, cy = P(x, z); rr = (r + grow) * K; d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=colour)
+for grow, colour in ((0.25, COL['stone_edge']), (0.0, COL['stone'])):      # the streets of stairs: stone, piece by piece ...
+    for st in plan.get('stairs', []): d.polygon(box(st['x'], st['z'], 2 * st.get('wide', 1) + 2 * grow, 2.05 + 2 * grow, st['yaw']), fill=colour)
+for st in plan.get('stairs', []):                                     # ... and a stair's steps across it
+    if st['kind'] != 'stair': continue
+    for t in (-0.3, -0.1, 0.1, 0.3):
+        q = box(st['x'], st['z'], 2 * st.get('wide', 1), 2.0, st['yaw'], -0.5, 0.5, t, t); d.line([q[0], q[1]], fill=COL['stone_edge'], width=max(1, int(0.14 * K)))
 for f in plan['fields']:
     d.polygon(box(f['x'], f['z'], f['w'], f['d'], f['yaw']), fill=COL['soil'])
     n = max(3, int(f['d'] / 1.1))

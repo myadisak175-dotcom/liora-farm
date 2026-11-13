@@ -489,10 +489,35 @@ def densify(pts, attrs=None, step=STEP):
     return np.vstack(P)
 
 
+# Two steep ways are streets of stone stairs: the building kit's own stair (2 m long, a metre up, five steps) and its landing
+# (2 m square), one after another up the way. Where the land climbs, stairs; where it eases, and where another way joins, a
+# landing; never more than three stairs without one. The land under the street is cut to that shape, the dirt way is laid
+# only up to its foot and on from its head, and the plan lists the pieces for the level to stand there (from, to: metres
+# along the way; landings: stretches that must be level)
+STAIR_WAYS = {
+    'bridge_up': {'from': 0.0, 'to': 32.8, 'landings': [(12.0, 18.0)]},      # from the stone bridge's end up to the great tree (the ways to the two mills join it)
+    'to_castle': {'from': 7.0, 'to': 41.9, 'landings': [(23.0, 27.0)]},      # from the great tree up to the keep (the way to the manor joins it)
+}
+STAIR_WIDE = 1.2                                                      # the kit's pieces are 2 m wide: laid this many times as wide
+stairs = []; stair_things = []; stair_foot = {}; streets = []      # (things beside a street: a lamp at every third landing, flowers at the others; where each street begins)
+
+
+def smooth_line(pts, step=STEP):
+    """the way through its points as the game lays it: a smooth curve (Catmull-Rom), a point every `step`"""
+    out = []; g_ = lambda i: np.array(pts[min(len(pts) - 1, max(0, i))], float)
+    for i in range(len(pts) - 1):
+        a_, b_, c_, d_ = g_(i - 1), g_(i), g_(i + 1), g_(i + 2); n = max(2, int(np.hypot(*(c_ - b_)) / (step * 0.5)))
+        for t in np.arange(n) / n: out.append(0.5 * ((2 * b_) + (-a_ + c_) * t + (2 * a_ - 5 * b_ + 4 * c_ - d_) * t * t + (-a_ + 3 * b_ - 3 * c_ + d_) * t ** 3))
+    out.append(g_(len(pts) - 1)); out = np.array(out)
+    run = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(out, axis=0).T))])      # ... evenly spaced along it
+    at = np.arange(0, run[-1], step)
+    return np.stack([np.interp(at, run, out[:, 0]), np.interp(at, run, out[:, 1])], axis=1)
+
+
 path_d = np.full(NZ * NX, 1e9); plan_paths = []
 for name, (half, pts_uv) in PATHS.items():
-    pts = [M(*p) for p in pts_uv]
-    P = densify(pts); hp = sample(H, P); arc = np.arange(len(P)) * STEP
+    pts = [M(*p) for p in pts_uv]; street = STAIR_WAYS.get(name)
+    P = smooth_line(pts) if street else densify(pts); hp = sample(H, P); arc = np.arange(len(P)) * STEP
     line = hp[0] + (hp[-1] - hp[0]) * arc / arc[-1]                  # a straight ramp end to end ...
     taper = np.clip(np.minimum(arc, arc[-1] - arc) / 6.0, 0, 1)
     for sig in (4, 6, 9, 13, 18, 25, 35, 50):                        # ... and the land's own shape laid on it, smoothed until it can be walked
@@ -502,11 +527,58 @@ for name, (half, pts_uv) in PATHS.items():
     while np.abs(np.diff(hs)).max() / STEP > 0.30 and k > 0:
         k -= 0.1; hs = line + max(k, 0) * (hs - line)
     print(f'  way {name}: {hs[0]:.1f} -> {hs[-1]:.1f} m, steepest {np.abs(np.diff(hs)).max() / STEP * 100:.0f}%')
+    laid = [(name, 0.0, arc[-1])]                                      # the stretches of it that are a dirt way
+    if street:
+        i_at = lambda a_: min(len(P) - 1, int(round(a_ / STEP)))
+        p_at = lambda a_: np.array([np.interp(a_, arc, P[:, 0]), np.interp(a_, arc, P[:, 1])])      # the point exactly that far along it
+        a0 = street['from']; n = int((min(street['to'], arc[-1]) - a0) / 2); a1 = a0 + 2 * n
+        free = [not any(a0 + 2 * k < f1 - 0.01 and a0 + 2 * k + 2 > f0 + 0.01 for f0, f1 in street['landings']) for k in range(n)]
+        y = float(hs[i_at(a0)]); want = int(hs[-1] - y + 0.25) if arc[-1] - a1 < 8 else int(round(hs[i_at(a1)] - y))      # (its head comes out level with the way's end, when that is near)
+        # stair or landing, piece by piece: of all the ways to lay `want` stairs with no more than three in a row and none where a
+        # landing must be, the one that keeps closest to the hill's own shape
+        best = {(0, 0): (0.0, [])}                                    # (stairs laid so far, stairs in a row just now) -> (how far from the hill, the pieces)
+        for k in range(n):
+            hill = hs[i_at(a0 + 2 * k + 2)] - y; nxt = {}
+            for (laid_, row_), (cost, seq) in best.items():
+                for up in ((0, 1) if free[k] and row_ < 3 and laid_ < want else (0,)):
+                    key = (laid_ + up, row_ + 1 if up else 0); c_ = cost + (laid_ + up - hill) ** 2
+                    if key not in nxt or c_ < nxt[key][0]: nxt[key] = (c_, seq + [up])
+            best = nxt
+        done = [v for (laid_, _), v in best.items() if laid_ == want]
+        assert done, (name, want, n, free)
+        kinds = min(done)[1]
+        stair_foot[name] = (tuple(P[i_at(max(0.0, a0 - 2.5))]), tuple(P[i_at(a0 + 8)]))
+        for j_, k in enumerate([k for k, up in enumerate(kinds) if not up]):      # beside its landings, on one side and the other in turn
+            way_ = p_at(a0 + 2 * k + 2) - p_at(a0 + 2 * k); way_ = way_ / np.linalg.norm(way_); side = (1 if j_ % 2 == 0 else -1) * np.array([-way_[1], way_[0]])
+            mid = p_at(a0 + 2 * k + 1)
+            if j_ % 3 == 0: q = mid + side * (STAIR_WIDE - 0.24) + way_ * 0.7; stair_things.append(('lamp', float(q[0]), float(q[1]), math.atan2(side[1], -side[0])))      # (on the landing's own corner; its lantern hangs over the stairs)
+            else: q = mid + side * (STAIR_WIDE + 1.4); stair_things.append(('flower', float(q[0]), float(q[1]), 0.0))
+        new = hs.copy(); top = y + want; under = np.zeros(len(hs))
+        for k, up in enumerate(kinds):
+            i0, i1 = i_at(a0 + 2 * k), i_at(a0 + 2 * k + 2); yk = y + sum(kinds[:k])
+            new[i0:i1 + 1] = yk + (np.linspace(0, 1, i1 - i0 + 1) if up else 0)
+            under[i0:i1 + 1] = 0.32 if up else 0.12                   # (a stair's treads lie up to 0.2 m under the line from its foot to its head)
+            mid = p_at(a0 + 2 * k + 1); way_ = p_at(a0 + 2 * k + 2) - p_at(a0 + 2 * k); way_ = way_ / np.linalg.norm(way_)
+            stairs.append({'kind': 'stair' if up else 'landing', 'x': round(float(mid[0]), 2), 'z': round(float(mid[1]), 2), 'y': round(yk, 2),
+                           'yaw': round(math.atan2(way_[0], way_[1]), 3), 'wide': STAIR_WIDE, 'way': name})      # (y: a stair's foot, a landing's top; yaw: the way up is toward (sin yaw, cos yaw))
+        i1 = i_at(a1); new[i1:] = hs[i1:] + (top - hs[i1]) * (1 - (arc[i1:] - a1) / max(0.1, arc[-1] - a1))      # on from its head: eased back to where the way ends
+        under[i1:] = under[i1 - 1]
+        hs = new - under * np.clip(np.minimum((arc - a0) / 0.6, (a1 + 0.15 - arc) / 0.45), 0, 1)      # the land lies under the stone, so it never shows through (right up to the street's head)
+        laid = [(nm, b0, b1) for nm, b0, b1 in ((name, 0.0, a0), (name + '_top', a1, arc[-1])) if b1 - b0 > 1.6]
+        print(f"    a street of stairs from {a0:.0f} to {a1:.0f} m: {''.join('S' if k_ else '-' for k_ in kinds)} ({want} stairs, {n - want} landings), {y:.1f} -> {top:.1f} m")
+        streets.append((P, arc, hs, a0, a1))
     at, dd, idx = nearest(P, half + 3.2)
     w = np.clip(1 - (dd - half) / 3.0, 0, 1); w = w * w * (3 - 2 * w)
     flat = H.ravel(); flat[at] = flat[at] * (1 - w) + hs[idx] * w; H = flat.reshape(NZ, NX)
     path_d[at] = np.minimum(path_d[at], dd - half)
-    plan_paths.append({'id': name, 'half': half, 'points': [R2(p) for p in pts]})
+    for nm, b0, b1 in laid:
+        if street: keep = [R2(P[min(len(P) - 1, int(round(a_ / STEP)))]) for a_ in np.linspace(b0, b1, max(2, int((b1 - b0) / 2.5) + 1))]
+        plan_paths.append({'id': nm, 'half': half, 'points': keep if street else [R2(p) for p in pts]})
+        if street: plan_paths[-1]['square'] = [nm != name, nm == name]      # (it stops square against the street's stone: at its end below the stairs, at its start above them)
+for P_, arc_, hs_, a0_, a1_ in streets:                             # the ways laid after a street (those that cross it) raised its land again:
+    at, dd, idx = nearest(P_, STAIR_WIDE + 1.3)                      # pressed back under the stone, so no grass comes through the steps
+    w = np.clip(1 - (dd - STAIR_WIDE - 0.2) / 1.0, 0, 1) * ((arc_[idx] > a0_ + 0.3) & (arc_[idx] < a1_ + 0.1))
+    flat = H.ravel(); flat[at] = np.minimum(flat[at], flat[at] * (1 - w) + hs_[idx] * w); H = flat.reshape(NZ, NX)
 path_d = path_d.reshape(NZ, NX)
 for x, z, r, _ in YARDS: path_d = np.minimum(path_d, np.hypot(WX - x, WZ - z) - r)
 
@@ -746,6 +818,9 @@ for kind, x, z in plants:
     row = [kind, round(x, 2), round(z, 2), round(float(vr.uniform(*sc)), 2)]
     if kind not in ('bush', 'flower') and (sample(OUTSIDE, (x, z))[0] > 6 or math.hypot(x - BOWL[0], z - BOWL[1]) < PIT_BRINK + 1): row.append(0.5)      # (trees she never comes near, in the margin and down the pit: drawn with half the leaves)
     out_plants.append(row)
+for kind, x, z, _ in stair_things:                                    # the flowers beside the stairs' landings (where the ground there can hold them)
+    i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
+    if kind == 'flower' and slope[i, j] < 0.45 and water_d[i, j] > 1.0 and path_d[i, j] > 0.5: out_plants.append(['flower', round(x, 2), round(z, 2), 0.9])
 
 # rocks in the valley: water-worn stones and pebbles along the river's banks, boulders round the plunge pool and at the cliffs' feet
 rocks = []
@@ -789,6 +864,9 @@ PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, y
     # the pit: a signpost where the west bank's way comes to it, a bench on its far side
     ['signpost', J_W[0] - 2.0, J_W[1] - 1.4, 0.6], ['bench', PIT_SOUTH[0] + 6.0, PIT_SOUTH[1] + 2.6, round(face(PIT_SOUTH, tuple(BOWL)), 2)],
 ]
+for kind, x, z, yaw in stair_things:                                  # the lamps beside the stairs' landings
+    i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
+    if kind == 'lamp' and slope[i, j] < 0.5 and water_d[i, j] > 0.5: PROPS.append(['lamp', x, z, yaw])
 PROPS = [[k, round(float(x), 2), round(float(z), 2), round(float(y), 2)] for k, x, z, y in PROPS]
 for k, x, z, _ in PROPS:
     i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
@@ -800,7 +878,7 @@ SPAWN = M(.04, .868); FALL = tuple(LIP + RIVER_DIR * 2.0); above = M(.60, .80); 
 VIEWS = {
     'start': [*R2(SPAWN), round(face(SPAWN, M(.12, .895)), 2)], 'vl-plaza': [*R2((px_ + 1.5, pz_ + 5.0)), 3.0], 'vl-bridge': [*R2(BS - BRIDGE_DIR * 3), round(face(BS, BN), 2)],
     'vl-tree': [*R2((ty[0] - 2.5, ty[1] + 3.5)), round(face(ty, (by_id['great_tree']['x'], by_id['great_tree']['z'])), 2)],
-    'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
+    'vl-stairs': [*R2(stair_foot['to_castle'][0]), round(face(stair_foot['to_castle'][0], stair_foot['to_castle'][1]), 2)], 'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
     'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.60, .535)), round(face(M(.60, .535), (wmill['x'], wmill['z'])), 2)],
     'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-falltop': [*R2(above), round(face(above, tuple(BASIN)), 2)],
     'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)],
@@ -810,6 +888,12 @@ VIEWS = {
     'vl-pit-above': [*R2(PIT_ABOVE), round(face(PIT_ABOVE, tuple(BOWL)), 2)],
     'vl-fallfoot': [*R2(FALL_FOOT), round(face(FALL_FOOT, FALL), 2)], 'vl-valley': [*R2((PW[0] - 2.5, PW[1] + 0.4)), round(face(PW, (riv_x(ZH + 40), ZH + 40)), 2)],
 }
+# nothing grows where she is set down: a tree, a bush or a boulder on one of these spots would have her standing in it
+_on_view = lambda x, z, r: any(math.hypot(x - v[0], z - v[1]) < r for v in VIEWS.values())
+_n = len(out_plants), len(rocks)
+out_plants = [p for p in out_plants if p[0] == 'flower' or not _on_view(p[1], p[2], 2.5)]
+rocks = [q for q in rocks if not _on_view(q[1], q[2], 2.0 + q[3] * 0.8)]
+if (len(out_plants), len(rocks)) != _n: print(f'  cleared from the places to start: {_n[0] - len(out_plants)} plants, {_n[1] - len(rocks)} rocks')
 
 # ------------------------------------------------------------------ 10. write it all out
 assert H.min() > BASE and H.max() < BASE + RANGE, (H.min(), H.max())
@@ -827,7 +911,7 @@ plan = {
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': 0.0},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit
-    'paths': plan_paths, 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
+    'paths': plan_paths, 'stairs': stairs, 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
     # the pit: its middle, about how far its brink is from that, how far its picture's heights were moved to stand in the bowl (the
     # abyss's clouds and the land's fading into mist are set by height), and its shelves (metres in from the brink)
     'pit': {'x': round(float(BOWL[0]), 2), 'z': round(float(BOWL[1]), 2), 'brink': 39.2, 'shift': round(PIT_SHIFT, 2), 'turn': round(PIT_TURN, 3),
