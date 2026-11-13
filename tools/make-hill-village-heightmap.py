@@ -6,14 +6,21 @@
 # water's beds. Nothing is cut through the land for the falls: each stretch of water lies on its own terrace, in a shallow
 # bed, and goes over the terrace's edge as a fall.
 #
+# South of the pool the land goes on, and the valley of the first map lies in it, made again here to its measure: the pool
+# runs out over the valley's head in one great fall, and a river winds down a floor some forty metres wide between stepped
+# cliffs. A way cut along the west cliff goes down to it; a plank bridge crosses the river half way. (No abyss at its end yet:
+# the valley runs on out of the map.)
+#
 #   python3 tools/make-hill-village-heightmap.py       (Termux: pip install numpy scipy pillow)
 #
 # writes, in assets/heightmaps/:
-#   hill-village.png    the land, 16-bit grey, 1024 px: white high, black low  (to look at, or to paint on)
-#   hill-village.bin    the same as raw 16-bit numbers, 641 x 641, little-endian (what the game reads)
-#   hill-village.json   the plan: how big the land is, the water (brooks and falls, as for ?map=pit), the buildings, the bridge,
-#                       the ways, yards, fences, fields, small things, plants, and the places to start from
-# Places are metres from the middle of the map: x east, z south. A yaw is the way a thing faces: 0 south (+z), pi/2 east.
+#   hill-village.png    the land to look at, 16-bit grey: white high, black low
+#   hill-village.bin    the land as raw 16-bit numbers, little-endian, land.nx across by land.nz down, one every land.cell
+#                       metres from (land.x0, land.z0)  (what the game reads)
+#   hill-village.json   the plan: where the land lies and the part she walks on, the water (brooks and falls, as for ?map=pit),
+#                       the buildings, the two bridges, the ways, yards, fences, fields, small things, plants, rocks, and the
+#                       places to start from
+# Places are metres from the middle of the village: x east, z south. A yaw is the way a thing faces: 0 south (+z), pi/2 east.
 import json, math
 from pathlib import Path
 import numpy as np
@@ -21,18 +28,20 @@ from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
 
-SIZE = 160.0                      # metres across the part she walks on (the plan's u, v run over this)
+SIZE = 160.0                      # metres across the village's part she walks on (the plan's u, v run over this)
 MARGIN = 30.0                     # and round it, land she only sees: wooded hills rising to the map's edge
-LAND = SIZE + 2 * MARGIN
+VLAND = SIZE + 2 * MARGIN         # the village's own square of land, as it was first drawn
 S = SIZE / 200.0                  # (the plan was drawn on a 200 m square: heights and widths drawn there are scaled by this)
-N = 1024; MPP = LAND / N
-BASE, RANGE = -4.0, 52.0          # black is BASE metres, white BASE + RANGE
+N = 1024; MPP = VLAND / N
+BASE, RANGE = -16.0, 66.0         # black is BASE metres, white BASE + RANGE
 OUT = Path(__file__).resolve().parent.parent / 'assets/heightmaps'
 rng = np.random.default_rng(7)
 M = lambda u, v: ((u - .5) * SIZE, (v - .5) * SIZE)                 # the plan's (u, v) in 0..1 -> metres
-PXU = lambda u: ((u - .5) * SIZE + LAND / 2) / MPP                  # the plan's u (or v) -> a pixel of the land picture
+uvm = lambda x, z: (x / SIZE + .5, z / SIZE + .5)                   # and back (the valley is given in metres)
+PXU = lambda u: ((u - .5) * SIZE + VLAND / 2) / MPP                 # the plan's u (or v) -> a pixel of the village's picture
 face = lambda a, b: math.atan2(b[0] - a[0], b[1] - a[1])            # the yaw that looks from a toward b
 R2 = lambda p: [round(float(p[0]), 2), round(float(p[1]), 2)]
+sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 0, 1))      # 0 at a, 1 at b, smooth between
 
 
 def fbm(cells, octaves=4, gain=0.5):
@@ -82,17 +91,79 @@ gy, gx = np.gradient(H, MPP)
 rock = ndi.gaussian_filter(np.clip((np.hypot(gx, gy) - .45) / 1.3, 0, 1), 3.5)
 H += (fbm(10, 3) - .5) * 0.9 * S * (1 - rock)                        # soft on the grass
 H += (np.abs(fbm(26, 4) - .5) * 2 - .5) * 3.2 * S * rock             # craggy on the cliffs
-
-# world metres of every pixel
-WX = (xx / N - .5) * LAND; WZ = (yy / N - .5) * LAND
-OUTSIDE = np.maximum(np.abs(WX), np.abs(WZ)) - SIZE / 2             # metres out into the margin (negative: inside)
+WX = (xx / N - .5) * VLAND; WZ = (yy / N - .5) * VLAND
+OUTSIDE = np.maximum(np.abs(WX) - SIZE / 2, -SIZE / 2 - WZ)         # metres out into the margin: west, east and north (to the south the land goes on)
 H += np.clip(OUTSIDE / MARGIN, 0, 1) ** 1.5 * (5 + 9 * fbm(6, 3)) * (1 - 0.75 * (H < 6 * S))      # the margin rises into hills (hardly at all round the pool)
-PIX = np.stack([WX.ravel(), WZ.ravel()], 1)
+
+# ------------------------------------------------------------------ 1b. the land goes on to the south, and the valley lies in it
+# The village's picture is set into a longer one (the same metres to a pixel, so the village is as it was): a little more
+# margin to the north, and 116 m more land to the south.
+PAD_N = 65; NZ = 1629; NX = N
+XH = VLAND / 2; Z0 = -XH - PAD_N * MPP; Z1 = Z0 + NZ * MPP           # the land: x -XH..XH, z Z0..Z1
+PLAY = (-SIZE / 2, SIZE / 2, -SIZE / 2, 190.0)                       # the part she walks on: x0, x1, z0, z1
+H = np.pad(H, ((PAD_N, NZ - N - PAD_N), (0, 0)), mode='edge')
+yy, xx = np.mgrid[0:NZ, 0:NX].astype(np.float64)
+WX = (xx / NX - .5) * VLAND; WZ = Z0 + yy * MPP                      # world metres of every pixel
+OUTSIDE = np.maximum.reduce([np.abs(WX) - PLAY[1], PLAY[2] - WZ, WZ - PLAY[3]])
+rs = np.random.default_rng(31)                                       # (dice of its own: the village's are thrown as before)
+
+
+def fbm_big(cell, octaves=3, gain=0.5):
+    """noise over the whole land; cell: metres across its broadest lumps"""
+    out = np.zeros((NZ, NX)); amp = 1.0; tot = 0.0
+    for o in range(octaves):
+        k = cell / 2 ** o / MPP
+        z = ndi.zoom(rs.random((int(NZ / k) + 4, int(NX / k) + 4)), k, order=3)[:NZ, :NX]
+        out += amp * z; tot += amp; amp *= gain
+    out /= tot
+    return (out - out.min()) / (out.max() - out.min())
 
 
 def sample(Hm, P):
     P = np.atleast_2d(P)
-    return ndi.map_coordinates(Hm, [(P[:, 1] / LAND + .5) * N, (P[:, 0] / LAND + .5) * N], order=1, mode='nearest')
+    return ndi.map_coordinates(Hm, [(P[:, 1] - Z0) / MPP, (P[:, 0] + XH) / MPP], order=1, mode='nearest')
+
+
+# the low ground runs on south as a rolling meadow a little above the pool, with hills round it as round the village
+P_S = 2.9 + (fbm_big(45, 3) - .5) * 1.3 + (fbm_big(12, 2) - .5) * 0.4
+hills = np.clip(np.maximum(np.abs(WX) - PLAY[1], WZ - PLAY[3]) / MARGIN, 0, 1) ** 1.5 * (5 + 9 * fbm_big(40, 3))
+H = H + (P_S - H) * (1 - sm(4.0, 5.6, H)) * sm(58, 76, WZ)           # (only the low ground: the village's terrace keeps its cliff)
+H = H + (P_S + hills - H) * sm(96, 110, WZ)
+
+# the valley: its head under the pool's lip, its floor DROP metres below the pool. Xc: the middle of its floor s metres down
+# from the head; HWf: half the floor's width there; RIV: the river's middle
+ZH, XV, HEAD, DROP = 90.0, 38.0, 20.0, 13.0
+RL = 3 * S - 0.8 - DROP; FLOOR = RL + 1.2                            # the river's level (the pool's, less the fall), and the floor
+Xc = lambda s: XV + 6 * np.sin(s / 38 + 0.6) - 6 * math.sin(0.6)
+HWf = lambda s: 21 + 3.5 * np.sin(s / 27 + 1) + 2 * np.sin(s / 11 + 2)
+RIV = lambda s: Xc(s) + 3.5 * np.sin(s / 13 + 0.5) * np.clip((s - 20) / 20, 0, 1)
+sx = WX + (fbm_big(28, 2) - .5) * 7; sz = WZ + (fbm_big(28, 2) - .5) * 7      # its outline wanders
+s_ = sz - ZH
+cap = np.where(s_ >= HEAD, 1.0, np.sqrt(np.clip(1 - ((HEAD - s_) / HEAD) ** 2, 0, 1)))      # the head is round
+floor = ndi.binary_fill_holes((s_ > 0) & (np.abs(sx - Xc(s_)) < HWf(s_) * cap))
+d_out = ndi.distance_transform_edt(~floor) * MPP                     # metres out from the floor's edge (into the cliff)
+d_in = ndi.distance_transform_edt(floor) * MPP                       # metres in from it
+# the cliffs are stepped: a lower face, a ledge of grass (some metres wide in places, none in others), an upper face. No ledge
+# under the fall, nor on the stretch of the west cliff the way down is cut along
+west = WX < Xc(WZ - ZH)
+no_ledge = np.maximum(west * sm(ZH - 2, ZH + 4, WZ) * (1 - sm(ZH + 68, ZH + 76, WZ)), (1 - sm(10, 16, np.abs(WX - XV))) * (1 - sm(ZH + 6, ZH + 12, WZ)))
+LW = np.clip((fbm_big(22, 2) - 0.42) * 14, 0, 5.0) * (1 - no_ledge)
+T1, H1, T2, H2 = 1.8, 6.4, 2.0, 8.0                                  # the lower face's run and height, the upper face's
+e_ = d_out - T1 - LW
+rise = H1 * sm(0, T1, d_out) + 0.5 * np.clip((d_out - T1) / np.maximum(LW, 0.01), 0, 1) * (LW > 0.05) + np.where(e_ > 0, H2 * sm(0, T2, e_) + 4.0 * np.clip(e_ - T2, 0, None), 0)
+talus = sm(8, 16, WZ - ZH); fnoise = (fbm_big(14, 2) - .5) * 0.4     # the floor: nearly level, a little higher at the cliffs' feet
+H_before = H.copy()
+H = np.minimum(H, np.where(floor, FLOOR + 0.9 * talus * sm(6, 0.5, d_in) + fnoise, FLOOR + 0.9 * talus + fnoise + rise))
+gy, gx = np.gradient(H, MPP)
+rock = ndi.gaussian_filter(np.clip((np.hypot(gx, gy) - .45) / 1.3, 0, 1), 3.5) * sm(78, 88, WZ)
+H += (np.abs(fbm_big(8.5, 4) - .5) * 2 - .5) * 2.4 * rock            # craggy on its cliffs, as on the village's
+_rows = np.nonzero(floor.any(1))[0]; _xw = WX[0, floor[_rows].argmax(1)]; _sd = d_out - d_in
+
+
+def west_cliff(z, out):
+    """the spot at z on the valley's west side that lies `out` metres out from the floor's edge (less than 0: on the floor)"""
+    xs = np.arange(-14.0, 8.0, 0.1) + float(np.interp(z, Z0 + _rows * MPP, _xw))
+    return float(xs[np.abs(sample(_sd, np.c_[xs, np.full(len(xs), z)]) - out).argmin()])
 
 
 def level_ground(x, z, r, feather=0.6):
@@ -103,6 +174,26 @@ def level_ground(x, z, r, feather=0.6):
     w = np.clip(1 - (dist - r) / (r * feather), 0, 1); w = w * w * (3 - 2 * w)
     H = H * (1 - w) + target * w
     return float(target)
+
+
+def even_ends(a, b, r=2.4, feather=2.0):
+    """both ends of a bridge brought to one height"""
+    global H
+    hb_ = float(np.mean(sample(H, np.array([a, b]))))
+    for p_ in (a, b):
+        dist = np.hypot(WX - p_[0], WZ - p_[1]); w = np.clip(1 - (dist - r) / feather, 0, 1); w = w * w * (3 - 2 * w)
+        H = H * (1 - w) + hb_ * w
+    return hb_
+
+
+def nearest(P, reach):
+    """every pixel within reach of the line P: (which pixels, how far, which point of P is nearest)"""
+    j0 = max(0, int((P[:, 1].min() - reach - Z0) / MPP)); j1 = min(NZ, int((P[:, 1].max() + reach - Z0) / MPP) + 2)
+    i0 = max(0, int((P[:, 0].min() - reach + XH) / MPP)); i1 = min(NX, int((P[:, 0].max() + reach + XH) / MPP) + 2)
+    if j1 <= j0 or i1 <= i0: return np.zeros(0, int), np.zeros(0), np.zeros(0, int)
+    dd, idx = cKDTree(P).query(np.stack([WX[j0:j1, i0:i1].ravel(), WZ[j0:j1, i0:i1].ravel()], 1), distance_upper_bound=reach)
+    ok = np.isfinite(dd)
+    return (np.arange(j0, j1)[:, None] * NX + np.arange(i0, i1)[None, :]).ravel()[ok], dd[ok], idx[ok]
 
 
 # ------------------------------------------------------------------ 2. the buildings (houses are put together from the kit: village-kit.js)
@@ -136,16 +227,24 @@ B.append({'id': 'windmill', 'kind': 'windmill', 'x': M(.70, .56)[0], 'z': M(.70,
 B.append({'id': 'fountain', 'kind': 'well', 'x': PLAZA[0] - 0.8, 'z': PLAZA[1] - 3.0, 'yaw': 0.4, 'pad': 3.2})      # (beside the road through the market, not on it)
 B.append({'id': 'great_tree', 'kind': 'tree', 'x': M(.55, .345)[0], 'z': M(.55, .345)[1], 'type': 'oak', 'scale': 2.3, 'pad': 4.5})
 
-# ------------------------------------------------------------------ 3. the water, as planned: four stretches, each on its own terrace
-# (name, how far under its terrace the water stands, how deep its bed is pressed, the line: (u, v, half-width in metres))
-# The two streams are shallow enough to wade (she will not walk into water deeper than half a metre); the river and the pool
-# are not: the river is crossed by the bridge.
+# ------------------------------------------------------------------ 3. the water, as planned: five stretches, each on its own level
+# (name, the terrace it lies on, how far under that terrace the water stands, how deep its bed is pressed, the line: (u, v,
+# half-width in metres as drawn)). The two streams are shallow enough to wade (she will not walk into water deeper than half a
+# metre); the river, the pool and the valley's river are not: the river is crossed by the stone bridge, the valley's by planks.
+mv = lambda x, z, half: (*uvm(x, z), half / S)                        # a point of a line given in metres
 WATER = [
     ('upper_stream', 27, 0.35, 0.3, [(.085, .365, 4.2), (.13, .385, 3.0), (.165, .40, 2.0), (.19, .41, 2.1)]),
     ('mill_stream', 18, 0.35, 0.3, [(.235, .445, 2.6), (.265, .455, 2.2), (.30, .485, 2.2), (.34, .50, 2.2), (.37, .53, 2.5)]),
     ('river', 10, 1.1, 1.0, [(.40, .585, 4.2), (.425, .615, 3.8), (.4625, .6375, 3.8), (.50, .665, 4.6), (.55, .675, 5.4), (.60, .695, 6.4), (.645, .705, 6.4), (.68, .74, 6.0)]),
-    ('pool', 3, 0.8, 1.3, [(.72, .80, 8.0), (.765, .85, 13.0), (.815, .90, 15.5), (.86, .95, 14.0), (.895, 1.0, 12.0), (.92, 1.05, 8.0)]),
+    # the pool: as it was where the river falls into it, then turning south to the valley's head, narrowing to its lip
+    ('pool', 3, 0.8, 1.3, [(.72, .80, 8.0), (.765, .85, 13.0), (.815, .90, 15.5), mv(48.5, 72.5, 10.5), mv(44.0, 80.0, 8.0), mv(39.5, 85.0, 5.6), mv(XV, 88.0, 4.7)]),
+    # the valley's river: a plunge pool under the great fall, then winding down the floor and out of the map
+    ('valley_river', 3, 0.8 + DROP, 1.2, [mv(XV, ZH + 8, 6.5), mv(float(Xc(10)), ZH + 10, 8.5), mv(float(Xc(17)), ZH + 17, 7.6), mv(float(Xc(24)), ZH + 24, 5.2)]
+     + [mv(float(RIV(s)), ZH + s, 3.9 + 0.3 * math.sin(s / 9)) for s in range(32, 135, 6)]),
 ]
+_rl = WATER[4][4]; _rz = [M(u, v)[1] for u, v, _ in _rl]
+riv_x = lambda z: float(np.interp(z, _rz, [M(u, v)[0] for u, v, _ in _rl]))      # the valley river's middle at z, and half its width
+riv_h = lambda z: float(np.interp(z, _rz, [hw * S for _, _, hw in _rl]))
 # the water mill stands on the mill stream's north bank, its wheel in the water
 ms = WATER[1][4]; a, b = np.array(M(*ms[2][:2])), np.array(M(*ms[3][:2])); t = (b - a) / np.linalg.norm(b - a); nrm = np.array([t[1], -t[0]])
 if nrm[1] > 0: nrm = -nrm                                             # the bank toward the north
@@ -180,15 +279,30 @@ FENCES = [
     {'id': 'mill_field', 'points': rect(FIELDS[2]['x'], FIELDS[2]['z'], 19.5, 11, FIELDS[2]['yaw']), 'gate': 3},
 ]
 
-# ------------------------------------------------------------------ 5. the stone bridge and the ways (ramps where they climb)
+# ------------------------------------------------------------------ 5. the two bridges and the ways (ramps where they climb)
 BRIDGE_C = np.array(M(.4625, .6375)); BRIDGE_DIR = np.array([1.0, -1.0]) / math.sqrt(2); BRIDGE_LEN = 13.0
 BS, BN = BRIDGE_C - BRIDGE_DIR * BRIDGE_LEN / 2, BRIDGE_C + BRIDGE_DIR * BRIDGE_LEN / 2
-hb = float(np.mean(sample(H, np.array([BS, BN]))))                   # both its ends stand at one height
-for p_ in (BS, BN):
-    dist = np.hypot(WX - p_[0], WZ - p_[1]); w = np.clip(1 - (dist - 2.4) / 2.0, 0, 1); w = w * w * (3 - 2 * w)
-    H = H * (1 - w) + hb * w
+even_ends(BS, BN)                                                     # the stone bridge: both its ends stand at one height
+# the plank bridge over the valley's river (it lies east-west), a little below where the way down reaches the floor
+PLANK_Z = ZH + 71.0; PLANK_X = riv_x(PLANK_Z); PLANK_LEN = round(2 * riv_h(PLANK_Z) + 4.6, 1)
+PW, PE = np.array([PLANK_X - PLANK_LEN / 2, PLANK_Z]), np.array([PLANK_X + PLANK_LEN / 2, PLANK_Z])
+even_ends(PW, PE, 1.6, 1.6)
 uv = lambda p: (p[0] / SIZE + .5, p[1] / SIZE + .5)
 door_of = lambda id, out=1.2: (lambda b_: (b_['x'] + math.sin(b_['yaw']) * (b_['spec']['l'] / 2 + out), b_['z'] + math.cos(b_['yaw']) * (b_['spec']['l'] / 2 + out)))(by_id[id])
+# the way down into the valley, cut along its west cliff: from the brink near the head to the floor by the plank bridge,
+# keeping to the cliff's face all the way (at its top on the brink, at its foot on the floor)
+RAMP_A, RAMP_B = 10.0, 66.0
+RAMP = [(west_cliff(ZH + RAMP_A + (RAMP_B - RAMP_A) * k / 14, (T1 + T2 + 1.4) * (1 - k / 14) - 1.8 * k / 14), ZH + RAMP_A + (RAMP_B - RAMP_A) * k / 14) for k in range(15)]
+RAMP = [RAMP[0]] + [((a_[0] + 2 * b_[0] + c_[0]) / 4, b_[1]) for a_, b_, c_ in zip(RAMP, RAMP[1:], RAMP[2:])] + [RAMP[-1]]      # (its line eased)
+RAMP_TOP, RAMP_FOOT = RAMP[0], RAMP[-1]
+# the lookout on the valley's east brink, a little way down from the head (the great fall is seen from its side there): 2.4 m
+# back from where the land breaks off
+_lx = np.arange(XV + 8.0, XV + 44.0, 0.2); _lzz = np.full(len(_lx), ZH + 14.0)
+_cut = sample(H_before, np.c_[_lx, _lzz]) - sample(H, np.c_[_lx, _lzz]) > 0.3
+LOOKOUT = (float(_lx[len(_cut) - 1 - _cut[::-1].argmax()]) + 2.4, ZH + 14.0)
+east_bank = lambda s, out=4.0: (riv_x(ZH + s) + riv_h(ZH + s) + out, ZH + s)
+west_bank = lambda s, out=4.0: (riv_x(ZH + s) - riv_h(ZH + s) - out, ZH + s)
+FALL_FOOT = east_bank(15, 3.5)
 PATHS = {   # name: (half-width, points in the plan's u, v)
     'road_in': (1.5, [(-.13, .815), (-.05, .83), (0, .845), (.06, .875), (.12, .895), (.18, .845), (.26, .76), (.34, .70), (.39, .685), uv(BS)]),
     'bridge_up': (1.4, [uv(BN), (.515, .56), (.525, .49), (.53, .43), (.54, .385)]),
@@ -209,8 +323,18 @@ PATHS = {   # name: (half-width, points in the plan's u, v)
     'to_west_wood': (1.0, [(.54, .375), (.48, .385), (.43, .385), (.38, .375), (.32, .36), (.26, .35), (.20, .335), (.14, .345), (.125, .345)]),
     'to_pool_shore': (1.0, [(.39, .685), (.45, .73), (.50, .765), (.545, .79), (.575, .82), (.605, .85), (.615, .89), (.59, .93)]),
     'to_east_shore': (1.0, [(.74, .56), (.77, .555), (.83, .57), (.88, .60), (.92, .66), (.915, .72), (.885, .775), (.865, .80)]),
+    # and on into the valley: from the pool's west shore along the brink to the top of the way down, down the cliff, over the
+    # floor to the plank bridge; up the east bank to the foot of the great fall, and down the west bank to the map's end; and
+    # from the pool's east shore to a lookout on the brink beside the fall
+    'to_valley': (1.0, [(.59, .93), uvm(12.0, 79.5), uvm(RAMP_TOP[0] - 3.0, RAMP_TOP[1] - 9.0), uvm(*RAMP_TOP)]),
+    'valley_ramp': (1.1, [uvm(*p) for p in RAMP]),
+    'valley_floor': (1.0, [uvm(*RAMP_FOOT), uvm((RAMP_FOOT[0] + PW[0]) / 2 - 1.0, (RAMP_FOOT[1] + PW[1]) / 2 + 0.5), uvm(*PW)]),
+    'valley_east': (0.9, [uvm(*PE), uvm(*east_bank(64)), uvm(*east_bank(54)), uvm(*east_bank(44)), uvm(*east_bank(34)), uvm(*east_bank(25, 3.5)), uvm(*FALL_FOOT)]),
+    'valley_south': (0.9, [uvm(*PW), uvm(*west_bank(79)), uvm(*west_bank(88)), uvm(*west_bank(97))]),
+    'to_brink': (0.9, [(.865, .80), uvm(64.5, 54.0), uvm(68.0, 63.0), uvm(67.0, 73.0), uvm(LOOKOUT[0] + 2.5, 84.0), uvm(LOOKOUT[0] + 2.0, LOOKOUT[1] - 9.0), uvm(*LOOKOUT)]),
 }
-YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(M(.385, .158)), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0]]     # x, z, radius, paved?
+YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(M(.385, .158)), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0],
+         [*R2(LOOKOUT), 2.2, 0]]     # x, z, radius, paved?
 STEP = 0.15
 
 
@@ -227,7 +351,7 @@ def densify(pts, attrs=None, step=STEP):
     return np.vstack(P)
 
 
-path_d = np.full(N * N, 1e9); plan_paths = []
+path_d = np.full(NZ * NX, 1e9); plan_paths = []
 for name, (half, pts_uv) in PATHS.items():
     pts = [M(*p) for p in pts_uv]
     P = densify(pts); hp = sample(H, P); arc = np.arange(len(P)) * STEP
@@ -240,21 +364,19 @@ for name, (half, pts_uv) in PATHS.items():
     while np.abs(np.diff(hs)).max() / STEP > 0.30 and k > 0:
         k -= 0.1; hs = line + max(k, 0) * (hs - line)
     print(f'  way {name}: {hs[0]:.1f} -> {hs[-1]:.1f} m, steepest {np.abs(np.diff(hs)).max() / STEP * 100:.0f}%')
-    reach = half + 3.2
-    dd, idx = cKDTree(P).query(PIX, distance_upper_bound=reach); ok = np.isfinite(dd)
-    w = np.clip(1 - (dd[ok] - half) / 3.0, 0, 1); w = w * w * (3 - 2 * w)
-    flat = H.ravel(); flat[ok] = flat[ok] * (1 - w) + hs[idx[ok]] * w; H = flat.reshape(N, N)
-    path_d = np.minimum(path_d, np.where(ok, dd - half, 1e9))
+    at, dd, idx = nearest(P, half + 3.2)
+    w = np.clip(1 - (dd - half) / 3.0, 0, 1); w = w * w * (3 - 2 * w)
+    flat = H.ravel(); flat[at] = flat[at] * (1 - w) + hs[idx] * w; H = flat.reshape(NZ, NX)
+    path_d[at] = np.minimum(path_d[at], dd - half)
     plan_paths.append({'id': name, 'half': half, 'points': [R2(p) for p in pts]})
-path_d = path_d.reshape(N, N)
+path_d = path_d.reshape(NZ, NX)
 for x, z, r, _ in YARDS: path_d = np.minimum(path_d, np.hypot(WX - x, WZ - z) - r)
 
 # ------------------------------------------------------------------ 6. the water laid on the land: beds, and falls where a terrace ends
 H0 = H.copy()
 tiers = []
 for name, terrace, under, deep, line in WATER:
-    tiers.append({'name': name, 'level': terrace * S - under, 'deep': deep, 'pts': [M(u, v) for u, v, _ in line], 'half': [hw * (S if name != 'pool' else 1) for _, _, hw in line]})
-tiers[3]['half'] = [hw * S for _, _, hw in WATER[3][4]]
+    tiers.append({'name': name, 'level': terrace * S - under, 'deep': deep, 'pts': [M(u, v) for u, v, _ in line], 'half': [hw * S for _, _, hw in line]})
 falls = []
 for up, low in zip(tiers[:-1], tiers[1:]):
     a_, b_ = np.array(up['pts'][-1]), np.array(low['pts'][0]); L = np.linalg.norm(b_ - a_); dirn = (b_ - a_) / L
@@ -271,29 +393,28 @@ for f_, low in zip(falls, tiers[1:]):                                # under eac
     along = rx * dx_ + rz * dz_; across = np.abs(rx * dz_ - rz * dx_)
     w = np.clip((along - 0.25) / 0.5, 0, 1) * np.clip((6.0 - along) / 1.5, 0, 1) * np.clip((f_['width'] / 2 + 1.2 - across) / 1.0, 0, 1)
     H = np.where(w > 0, np.minimum(H, H * (1 - w) + (low['level'] - 0.4) * w), H)
-brooks = []; water_d = np.full(N * N, 1e9); water_lvl = np.zeros(N * N)
-flat = H.ravel(); g0 = H0.ravel()
+brooks = []; water_d = np.full(NZ * NX, 1e9)
+flat = H.ravel().copy(); g0 = H0.ravel()
 unit = lambda v_: v_ / np.linalg.norm(v_)
 for k_, tr in enumerate(tiers):
     P, A = densify(tr['pts'], [[hw] for hw in tr['half']], step=0.25)
-    dd, idx = cKDTree(P).query(PIX); half = A[idx, 0]; lvl = tr['level']; bank = 2.2 + half * 0.35
+    at, dd, idx = nearest(P, max(tr['half']) * 1.35 + 2.2 + 3.0); half = A[idx, 0]; lvl = tr['level']; bank = 2.2 + half * 0.35
     # its own terrace only: the cliff above is never cut into, and past the brink (or behind the foot of the fall that feeds it)
     # the land is left as it is; up to the brink its bed is laid even where the ground has begun to drop
-    past = np.zeros(len(PIX), bool)
-    if k_ < len(tiers) - 1: past |= (idx == len(P) - 1) & (((PIX - P[-1]) @ unit(P[-1] - P[-9])) > 0.1)
-    if k_ > 0: past |= (idx == 0) & (((PIX - P[0]) @ unit(P[0] - P[8])) > 0.1)
-    own = (g0 < lvl + 3.2) & ((g0 > lvl - 3.2) | (dd < half)) & ~past
+    px_at = np.stack([WX.ravel()[at], WZ.ravel()[at]], 1); past = np.zeros(len(at), bool)
+    if k_ < len(tiers) - 1: past |= (idx == len(P) - 1) & (((px_at - P[-1]) @ unit(P[-1] - P[-9])) > 0.1)
+    if k_ > 0: past |= (idx == 0) & (((px_at - P[0]) @ unit(P[0] - P[8])) > 0.1)
+    own = (g0[at] < lvl + 3.2) & ((g0[at] > lvl - 3.2) | (dd < half)) & ~past
     inside = dd < half
     bed = lvl - tr['deep'] * (1 - (dd / np.maximum(half, 1e-6)) ** 2) - 0.12
     s_ = np.clip((dd - half) / bank, 0, 1); s_ = s_ * s_ * (3 - 2 * s_)
-    shore = (lvl + 0.22) * (1 - s_) + flat * s_                       # the banks come up (or down) to the water's edge
+    shore = (lvl + 0.22) * (1 - s_) + flat[at] * s_                   # the banks come up (or down) to the water's edge
     new = np.where(inside, bed, shore)
-    flat = np.where(own & (dd < half + bank), new, flat)
-    near = dd - half
-    water_lvl = np.where(near < water_d, lvl, water_lvl); water_d = np.minimum(water_d, near)
+    flat[at] = np.where(own & (dd < half + bank), new, flat[at])
+    water_d[at] = np.minimum(water_d[at], dd - half)
     rows = np.vstack([P[:-1:4], P[-1:]]); hw = np.concatenate([A[:-1:4, 0], A[-1:, 0]])
     brooks.append([[round(float(p[0]), 2), round(float(p[1]), 2), round(lvl, 2), round(float(h_), 2)] for p, h_ in zip(rows, hw)])
-H = flat.reshape(N, N); water_d = water_d.reshape(N, N)
+H = flat.reshape(NZ, NX); water_d = water_d.reshape(NZ, NX)
 H = ndi.gaussian_filter(H, 0.6)
 
 # ------------------------------------------------------------------ 7. plants: woods where the painting has them, bushes at the cliffs' feet, flowers by the houses
@@ -302,18 +423,21 @@ px_m = lambda m: max(1, int(round(m / MPP)))
 blocked = (water_d < 2.0) | (path_d < 1.3) | ndi.binary_dilation(slope > 0.55, iterations=px_m(1.2))
 for b_ in B:
     blocked |= np.hypot(WX - b_['x'], WZ - b_['z']) < (b_['pad'] + 0.8 if b_['kind'] != 'tree' else 3.0)
-mk = Image.new('L', (N, N), 0); md = ImageDraw.Draw(mk)
-P2 = lambda p: ((p[0] / LAND + .5) * N, (p[1] / LAND + .5) * N)
-md.line([P2(BS), P2(BN)], fill=255, width=px_m(6))
+mk = Image.new('L', (NX, NZ), 0); md = ImageDraw.Draw(mk)
+P2 = lambda p: ((p[0] + XH) / MPP, (p[1] - Z0) / MPP)
+PXX = lambda u: ((u - .5) * SIZE + XH) / MPP; PXZ = lambda v: ((v - .5) * SIZE - Z0) / MPP
+md.line([P2(BS), P2(BN)], fill=255, width=px_m(6)); md.line([P2(PW), P2(PE)], fill=255, width=px_m(5))
 for f in FENCES: md.polygon([P2(p) for p in f['points']], fill=255); md.line([P2(p) for p in f['points'] + f['points'][:1]], fill=255, width=px_m(3))
 blocked |= np.array(mk) > 0
 e = px_m(2.5); blocked[:e] = blocked[-e:] = True; blocked[:, :e] = blocked[:, -e:] = True
 blocked |= (np.abs(OUTSIDE) < 1.2)                                    # (nothing on the line she cannot cross: a trunk there would look like a wall)
 near_cliff = ndi.gaussian_filter((slope > 0.8).astype(float), px_m(3.5)) > 0.06
+seen = np.maximum(np.abs(WX) / XH, np.abs(WZ - (Z0 + Z1) / 2) / ((Z1 - Z0) / 2)) < 0.94      # (past this the land is lost in the haze)
+south = WZ > PLAY[1] + 4
 
 
 def zone(poly):
-    m = Image.new('L', (N, N), 0); ImageDraw.Draw(m).polygon([(PXU(u), PXU(v)) for u, v in poly], fill=255); return np.array(m) > 0
+    m = Image.new('L', (NX, NZ), 0); ImageDraw.Draw(m).polygon([(PXX(u), PXZ(v)) for u, v in poly], fill=255); return np.array(m) > 0
 
 
 WOODS = [   # where the trees stand thick: polygon (u, v), metres between trees, share of pines
@@ -324,6 +448,10 @@ WOODS = [   # where the trees stand thick: polygon (u, v), metres between trees,
     ([(.30, .915), (.57, .875), (.57, 1), (.30, 1)], 5.6, 0.6), ([(0, .965), (.30, .93), (.30, 1), (0, 1)], 6.5, 0.2),
     ([(.41, .33), (.455, .33), (.455, .45), (.41, .45)], 7.5, 0.0), ([(.615, .385), (.675, .37), (.675, .44), (.615, .465)], 7.5, 0.0),
     ([(.235, .30), (.40, .30), (.40, .385), (.235, .40)], 7.0, 0.3),
+    # the meadow above the valley: a wood along its west side, two copses nearer the brink, and trees along the east brink
+    ([uvm(-80, 84), uvm(-42, 84), uvm(-36, 120), uvm(-44, 190), uvm(-80, 190)], 8.5, 0.35),
+    ([uvm(-24, 116), uvm(-7, 111), uvm(1, 128), (uvm(-9, 146)), uvm(-26, 139)], 7.0, 0.1), ([uvm(-22, 160), uvm(-2, 157), uvm(2, 186), uvm(-20, 188)], 7.5, 0.3),
+    ([uvm(70, 94), uvm(80, 94), uvm(80, 190), uvm(71, 190)], 7.0, 0.6),
 ]
 vr = np.random.default_rng(21); plants = []
 
@@ -331,7 +459,7 @@ vr = np.random.default_rng(21); plants = []
 def scatter(mask, spacing, pick, tries=0.25, keep=1.0):
     ys, xs = np.nonzero(mask & ~blocked)
     for i in vr.integers(0, max(1, len(ys)), int(len(ys) * MPP * MPP * tries)):
-        x, z = (xs[i] + vr.random()) * MPP - LAND / 2, (ys[i] + vr.random()) * MPP - LAND / 2
+        x, z = (xs[i] + vr.random()) * MPP - XH, (ys[i] + vr.random()) * MPP + Z0
         if vr.random() > keep: continue
         if plants and min(math.hypot(p[1] - x, p[2] - z) - (spacing if p[0] != 'flower' else 1.5) for p in plants) < 0: continue
         plants.append(pick() + (x, z))
@@ -344,20 +472,52 @@ def tree(pine):
     return pick
 
 
-wood_area = np.zeros((N, N), bool)
+wood_area = np.zeros((NZ, NX), bool)
 for poly, spacing, pine in WOODS:
     m = zone(poly) & (OUTSIDE < 0); wood_area |= m; scatter(m, spacing, tree(pine))
+# the valley's floor: trees in clumps at the cliffs' feet, a few out on the grass
+clumps = floor & (d_in > 1.5) & (d_in < 8.5) & (WZ > ZH + 14) & (OUTSIDE < 0) & (fbm_big(16, 2) > 0.5)
+wood_area |= clumps; scatter(clumps, 5.5, tree(0.15), keep=0.8)
+scatter(floor & (d_in >= 8.5) & (OUTSIDE < 0), 13.0, lambda: ('broadleaf',) if vr.random() < 0.6 else ('birch',), tries=0.05, keep=0.5)
+wood_area |= floor
 ring = OUTSIDE > 0; wood_area |= ring                                # the margin: woods all round, thickest just past the line
-scatter(ring & (OUTSIDE < 10), 6.5, tree(0.45)); scatter(ring & (OUTSIDE >= 10) & (np.hypot(WX, WZ) < LAND / 2 - 2), 9.0, tree(0.6))      # (past the land's round edge nothing is seen)
+scatter(ring & (OUTSIDE < 10), 7.0, tree(0.45)); scatter(ring & (OUTSIDE >= 10) & seen, 10.0, tree(0.6))
 scatter(~wood_area, 15.0, lambda: ('broadleaf',) if vr.random() < 0.6 else ('birch',), tries=0.02, keep=0.5)       # lone trees in the open
-scatter(near_cliff & (OUTSIDE < 0), 4.0, lambda: ('bush',), tries=0.08, keep=0.6)
+scatter(near_cliff & (OUTSIDE < 0) & ~south, 4.0, lambda: ('bush',), tries=0.08, keep=0.6)
+scatter(near_cliff & (OUTSIDE < 0) & south, 4.5, lambda: ('bush',), tries=0.08, keep=0.35)
 scatter(~near_cliff & (OUTSIDE < 4), 8.0, lambda: ('bush',), tries=0.02, keep=0.4)
 flower_at = zone([(.14, .64), (.40, .64), (.52, .76), (.50, .86), (.22, .87), (.14, .80)]) | zone([(.46, .28), (.66, .26), (.67, .42), (.47, .46)])
 scatter(flower_at, 5.0, lambda: ('flower',), tries=0.05, keep=0.5)
+scatter(floor & (d_in > 4) & (WZ > ZH + 12) & (OUTSIDE < 0), 6.5, lambda: ('flower',), tries=0.04, keep=0.5)      # and on the valley's floor
 out_plants = []
 for kind, x, z in plants:
     sc = {'pine': (0.9, 1.4), 'oak': (0.9, 1.35), 'broadleaf': (0.85, 1.3), 'birch': (0.9, 1.2), 'bush': (0.7, 1.15), 'flower': (1.1, 1.8)}[kind]
-    out_plants.append([kind, round(x, 2), round(z, 2), round(float(vr.uniform(*sc)), 2)])
+    row = [kind, round(x, 2), round(z, 2), round(float(vr.uniform(*sc)), 2)]
+    if kind not in ('bush', 'flower') and sample(OUTSIDE, (x, z))[0] > 6: row.append(0.5)      # (trees she never comes near: drawn with half the leaves)
+    out_plants.append(row)
+
+# rocks in the valley: water-worn stones and pebbles along the river's banks, boulders round the plunge pool and at the cliffs' feet
+rocks = []
+clear = lambda x, z, r: sample(path_d, (x, z))[0] > r and math.hypot(x - PLANK_X, z - PLANK_Z) > PLANK_LEN / 2 + 2 and all(math.hypot(x - q[1], z - q[2]) > r + q[3] * 0.8 for q in rocks)
+z_ = ZH + 13.0
+while z_ < PLAY[3] + 24:
+    for side in (-1, 1):
+        if vr.random() < 0.35: continue
+        x_ = riv_x(z_) + side * (riv_h(z_) + vr.uniform(-0.4, 1.4)); sc_ = float(vr.uniform(0.7, 1.35))
+        if clear(x_, z_, 0.7 * sc_ + 0.5): rocks.append(['river', x_, z_, sc_, float(vr.uniform(0, 6.28))])
+        if vr.random() < 0.5:
+            x_, zz_ = riv_x(z_) + side * (riv_h(z_) + vr.uniform(1.5, 3.0)), z_ + vr.uniform(-2, 2)
+            if clear(x_, zz_, 1.0): rocks.append(['pebbles', x_, zz_, float(vr.uniform(0.9, 1.3)), float(vr.uniform(0, 6.28))])
+    z_ += vr.uniform(5, 9)
+for ang in (0.5, 1.25, 2.0, 4.3, 5.1, 5.8):                           # round the plunge pool (0: east of it)
+    c_ = (float(Xc(11)), ZH + 11.0); rr_ = riv_h(c_[1]) + vr.uniform(0.2, 1.2); x_, zz_ = c_[0] + math.cos(ang) * rr_, c_[1] + math.sin(ang) * rr_ * 0.85
+    if clear(x_, zz_, 1.2): rocks.append(['boulder' if vr.random() < 0.6 else 'river', x_, zz_, float(vr.uniform(0.9, 1.5)), float(vr.uniform(0, 6.28))])
+ys_, xs_ = np.nonzero(floor & (d_in > 1.0) & (d_in < 2.6) & (WZ > ZH + 16) & (WZ < PLAY[3] + 20) & (water_d > 3))
+for i in vr.integers(0, len(ys_), 60):
+    x_, zz_ = xs_[i] * MPP - XH, ys_[i] * MPP + Z0
+    if len([q for q in rocks if q[0] in ('boulder', 'stones')]) < 20 and clear(x_, zz_, 4.0) and all(math.hypot(x_ - p[1], zz_ - p[2]) > 2.2 for p in plants if p[0] != 'flower'):
+        rocks.append(['boulder' if vr.random() < 0.55 else 'stones', x_, zz_, float(vr.uniform(0.8, 1.5)), float(vr.uniform(0, 6.28))])
+rocks = [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, z, sc_, rot in rocks]
 
 # ------------------------------------------------------------------ 8. the small things: a market round the fountain, and what a farm leaves lying about
 px_, pz_ = PLAZA; ty = TREE_YARD; barn = by_id['barn']; wmill = by_id['windmill']; fr = M(.835, .36)
@@ -373,15 +533,17 @@ PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, y
     ['crates', by_id['castle_hall']['x'] + 2.5, by_id['castle_hall']['z'] + 4.2, 0.5], ['lamp', M(.385, .158)[0] + 2.6, M(.385, .158)[1] + 1.2, 0],
     ['barrels', by_id['manor']['x'] - 5.0, by_id['manor']['z'] + 5.6, 0], ['bench', by_id['manor']['x'] + 4.0, by_id['manor']['z'] + 5.6, 3.14], ['lamp', M(.565, .158)[0] - 2.4, M(.565, .158)[1] + 0.6, 0],
     ['signpost', *M(.535, .40), 2.0], ['signpost', BS[0] - 2.2, BS[1] + 2.4, 0.4], ['woodpile', by_id['ledge_house']['x'] + 4.0, by_id['ledge_house']['z'] - 1.5, 1.57],
+    # the valley: a signpost where the way to it leaves the pool's shore, another at the foot of the way down; a bench at the lookout
+    ['signpost', M(.59, .93)[0] - 2.0, M(.59, .93)[1] + 2.2, 2.6], ['signpost', RAMP_FOOT[0] + 2.4, RAMP_FOOT[1] - 1.0, 1.2], ['bench', LOOKOUT[0] + 1.2, LOOKOUT[1] + 1.4, -1.9],
 ]
 PROPS = [[k, round(float(x), 2), round(float(z), 2), round(float(y), 2)] for k, x, z, y in PROPS]
 for k, x, z, _ in PROPS:
-    i, j = int((z / LAND + .5) * N), int((x / LAND + .5) * N)
+    i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
     if k not in ('lamp', 'signpost') and path_d[i, j] < 0.6 and not any(math.hypot(x - yx, z - yz) < yr for yx, yz, yr, _p in YARDS): print(f'  ! {k} at {x:.1f}, {z:.1f} stands on a way')
     if water_d[i, j] < 0.5 or slope[i, j] > 0.5: print(f'  ! {k} at {x:.1f}, {z:.1f} is in water or on a cliff')
 
 # ------------------------------------------------------------------ 9. the places to start from (name, spot, the way she faces)
-SPAWN = M(.04, .868)
+SPAWN = M(.04, .868); FALL = (XV, ZH + 1.0); rim = (RAMP_TOP[0] - 1.2, RAMP_TOP[1] - 4.0)
 VIEWS = {
     'start': [*R2(SPAWN), round(face(SPAWN, M(.12, .895)), 2)], 'vl-plaza': [*R2((px_ + 1.5, pz_ + 5.0)), 3.0], 'vl-bridge': [*R2(BS - BRIDGE_DIR * 3), round(face(BS, BN), 2)],
     'vl-tree': [*R2((ty[0] - 2.5, ty[1] + 3.5)), round(face(ty, (by_id['great_tree']['x'], by_id['great_tree']['z'])), 2)],
@@ -390,25 +552,31 @@ VIEWS = {
     'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-pool': [*R2(M(.60, .80)), round(face(M(.60, .80), M(.80, .88)), 2)],
     'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)], 'vl-shore': [*R2(M(.60, .91)), round(face(M(.60, .91), M(.78, .88)), 2)],
     'vl-eastwood': [*R2(M(.88, .60)), round(face(M(.88, .60), M(.92, .66)), 2)],
+    'vl-brink': [*R2(LOOKOUT), round(face(LOOKOUT, (XV, ZH + 3)), 2)], 'vl-rim': [*R2(rim), round(face(rim, (riv_x(ZH + 60), ZH + 60)), 2)],
+    'vl-fallfoot': [*R2(FALL_FOOT), round(face(FALL_FOOT, FALL), 2)], 'vl-valley': [*R2((PW[0] - 2.5, PW[1] + 0.4)), round(face(PW, (riv_x(ZH + 30), ZH + 30)), 2)],
 }
 
 # ------------------------------------------------------------------ 10. write it all out
 assert H.min() > BASE and H.max() < BASE + RANGE, (H.min(), H.max())
-v16 = np.clip((H - BASE) / RANGE, 0, 1)
 OUT.mkdir(parents=True, exist_ok=True)
-Image.fromarray((v16 * 65535).round().astype(np.uint16)).save(OUT / 'hill-village.png')
-CELLS = 641
-small = np.array(Image.fromarray(v16.astype('f4'), 'F').resize((CELLS, CELLS), Image.BILINEAR))
-np.clip(small * 65535, 0, 65535).round().astype('<u2').tofile(OUT / 'hill-village.bin')
+v16 = np.clip((H - BASE) / RANGE, 0, 1)
+Image.fromarray((np.array(Image.fromarray(v16.astype('f4'), 'F').resize((NX // 2, NZ // 2), Image.BILINEAR)) * 65535).round().astype(np.uint16)).save(OUT / 'hill-village.png')
+CELL = 0.4; nx = int(2 * XH / CELL) + 1; nz = int((Z1 - Z0) / CELL) + 1      # the game's copy: a height every CELL metres
+gz, gx_ = np.mgrid[0:nz, 0:nx].astype(np.float64)
+small = ndi.map_coordinates(H, [gz * CELL / MPP, gx_ * CELL / MPP], order=1, mode='nearest')
+np.clip((small - BASE) / RANGE * 65535, 0, 65535).round().astype('<u2').tofile(OUT / 'hill-village.bin')
 plan = {
-    'land': {'size': LAND, 'play': SIZE / 2, 'cells': CELLS, 'base': BASE, 'range': RANGE},
+    'land': {'x0': -XH, 'z0': round(Z0, 4), 'cell': CELL, 'nx': nx, 'nz': nz, 'base': BASE, 'range': RANGE, 'play': list(PLAY)},
     'brooks': brooks, 'falls': falls, 'waters': [{'id': t_['name'], 'level': round(t_['level'], 2)} for t_ in tiers],
     'buildings': B, 'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
-    'paths': plan_paths, 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants,
+    'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': 0.0},
+    'paths': plan_paths, 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
     'spawn': {'x': round(SPAWN[0], 2), 'z': round(SPAWN[1], 2), 'yaw': VIEWS['start'][2]}, 'views': VIEWS,
 }
 json.dump(plan, open(OUT / 'hill-village.json', 'w'), separators=(',', ':'))
 kinds = {}
 for p in out_plants: kinds[p[0]] = kinds.get(p[0], 0) + 1
-print(f'land {H.min():.1f} .. {H.max():.1f} m; {len(B)} buildings, {len(plan_paths)} ways, {sum(len(b_) for b_ in brooks)} water rows, {len(falls)} falls, plants {kinds}')
+far_trees = sum(1 for p in out_plants if len(p) > 4)
+print(f'land {H.min():.1f} .. {H.max():.1f} m, {nx} x {nz} heights; {len(B)} buildings, {len(plan_paths)} ways, {sum(len(b_) for b_ in brooks)} water rows, {len(falls)} falls')
+print(f'plants {kinds} (trees she never comes near: {far_trees}); rocks {len(rocks)}')
