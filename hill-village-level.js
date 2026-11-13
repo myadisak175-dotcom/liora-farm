@@ -158,6 +158,35 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   }
   // the streets of stairs: the plan lists them piece by piece (stairs and landings up two steep ways)
   for (const st of P.stairs || []) stairPiece(st.kind, st.x, st.z, st.y, st.yaw, st.wide || 1);
+  // a low stone wall along the streets of stairs (the kit's own side wall: 2 m long, a metre tall, 0.4 m thick), where the plan
+  // says one can stand (walls: [on the side toward (cos yaw, -sin yaw), on the other]). Beside a stair it leans with the
+  // steps, beside a landing it is level; its top is the same height over the steps all the way, its foot goes down into the
+  // ground however that falls away, and a post stands where a run of wall begins and where it ends. She cannot walk through it
+  const WALL = { piece: 'Stairs_Exterior_SingleSideThick', thick: 0.75, over: 0.6, post: 0.3 };      // (thick: of the piece's 0.4 m; over: its top over the line of the steps; post: how much taller a post is)
+  const wallM = new THREE.Matrix4(), wallT = new THREE.Matrix4(), wallR = new THREE.Matrix4();
+  const stairWall = (st, sign) => {
+    const ux = Math.sin(st.yaw), uz = Math.cos(st.yaw), out = (st.wide || 1) + 0.03, stair = st.kind === 'stair';
+    const x = st.x + sign * uz * out, z = st.z - sign * ux * out, line = t => st.y + (stair ? (t + 1) / 2 : 0);
+    let under = 0.4; for (let t = -1; t <= 1.01; t += 0.5) under = Math.max(under, line(t) - H(x + ux * t, z + uz * t) + 0.12);
+    under = Math.min(under, 2.4);
+    // (the piece: x across, y 0..1 up, z -1..1 along; turned as the stair is, so its -z end is the uphill one, and leaned by half a metre each way)
+    wallM.set(WALL.thick, 0, 0, 0, 0, WALL.over + under, stair ? -0.5 : 0, 0, 0, 0, 1.03, 0, 0, 0, 0, 1);
+    kb.set(WALL.piece, wallT.makeTranslation(x, line(0) - under, z).multiply(wallR.makeRotationY(st.yaw + Math.PI)).multiply(wallM));
+    for (const t of [-0.75, -0.25, 0.25, 0.75]) colliders.push([x + ux * t, z + uz * t, 0.22]);
+    return { x, z, ux, uz, line, under };
+  };
+  const stairPost = (w, t, yaw) => {                                      // at the wall's end t (-1: its lower end, 1: its upper)
+    const x = w.x + w.ux * t * 0.86, z = w.z + w.uz * t * 0.86, y0 = w.line(t) - w.under - 0.3;
+    wallM.set(1.15, 0, 0, 0, 0, w.line(t) + WALL.over + WALL.post - y0, 0, 0, 0, 0, 0.23, 0, 0, 0, 0, 1);
+    kb.set(WALL.piece, wallT.makeTranslation(x, y0, z).multiply(wallR.makeRotationY(yaw + Math.PI)).multiply(wallM));
+  };
+  { const S = P.stairs || [];
+    for (const [side, sign] of [[0, 1], [1, -1]]) for (let i = 0; i < S.length; i++) {
+      if (!S[i].walls || !S[i].walls[side]) continue;
+      const w = stairWall(S[i], sign), has = k => S[k] && S[k].way === S[i].way && S[k].walls && S[k].walls[side];
+      if (!has(i - 1)) stairPost(w, -1, S[i].yaw);
+      if (!has(i + 1)) stairPost(w, 1, S[i].yaw);
+    } }
   // the windmill: its tower and the miller's house are two of the plan's kit houses (above). Its sails are the supplied
   // model's (stylized-props.js takes them out of the file), in the kit's own wood and a linen that sits with its plaster, on
   // an axle out of the tower's wall

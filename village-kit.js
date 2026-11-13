@@ -34,7 +34,7 @@ const WALLS = {
     door: ['Wall_UnevenBrick_Door_Flat', 'Wall_UnevenBrick_Door_Round'], wide: ['Wall_UnevenBrick_Window_Wide_Flat', 'Wall_UnevenBrick_Window_Wide_Round'], thin: 'Wall_UnevenBrick_Window_Thin_Round' },
 };
 
-export async function loadVillageKit(url = new URL('./assets/models/village-kit.glb', import.meta.url).href) {
+export async function loadVillageKit(url = new URL('./assets/models/village-kit.glb?v=2', import.meta.url).href) {
   const gltf = await new GLTFLoader().loadAsync(url);
   // every piece: its primitives, each with the picture it is painted from (or none: glass)
   const pieces = new Map(), pictures = new Map();
@@ -127,6 +127,7 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       root.identity();
     }
     const piece = (name, x, y, z, yaw = 0, wide = 1) => { root.identity(); local(name, x, y, z, yaw, wide); };      // (wide: made that many times as wide, e.g. a stair for a broad way)
+    const set = (name, matrix) => put(name, matrix);                       // a piece set by a matrix of the caller's own (stretched, or leaned: a wall that follows a stair)
 
     function build({ look = 'kit' } = {}) {
       const group = new THREE.Group(); group.name = 'village-kit';
@@ -160,7 +161,7 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       parts.clear();
       return group;
     }
-    return { house, piece, build };
+    return { house, piece, set, build };
   }
   return { builder, names: [...pieces.keys()], dispose() { for (const list of pieces.values()) for (const p of list) p.geometry.dispose(); for (const t of pictures.values()) t.dispose(); } };
 }
