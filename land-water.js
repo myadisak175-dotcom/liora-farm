@@ -22,7 +22,8 @@
 //   const lookup = waterLookup(stretches, { x0, z0, x1, z1 });        // lookup.at(x, z): the water there ({ d: metres past its edge, level }) or null
 //   const water = createLandWater({ stretches, heightAt, lookup, material, foamTexture, cells, expect, deep, deepFall });
 //   scene.add(water.group);      every frame: water.update(renderer, frustum, cameraPosition)
-//   water.surfaces (to hide while the water's own pictures are taken), water.stretches (level, sphere, near(point)), water.report
+//   water.surfaces (to hide while the water's own pictures are taken), water.small (the spray, billows and mist at the falls' feet:
+//   left out of the mirror picture too), water.stretches (level, sphere, near(point)), water.report
 //
 // (Before this each level laid a strip or a sheet from the line alone, ended it on a straight line, and stood a ready-made
 // fall at a spot given in numbers: where a cliff's edge was not square to the stream the sheet hung out over it, the fall
@@ -56,7 +57,7 @@ export function waterLookup(stretches, { x0, z0, x1, z1 }, step = 0.5) {
 
 export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null }) {
   const group = new THREE.Group(); group.name = 'landWater';
-  const surfaces = [], falls = [], info = [], owned = [];
+  const surfaces = [], falls = [], info = [], owned = [], small = [];
   const report = { falls: [], hanging: 0, open: 0, short: 0, where: [], noLip: [], ok: true };      // (where: which stretches the open and short edges are on)
 
   for (const [k, rows] of stretches.entries()) {
@@ -192,7 +193,13 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
       fall.group.position.set(O[0], 0, O[1]); fall.group.rotation.y = yaw;
       fall.group.userData = { kind: 'waterfall' };
       group.add(fall.group);
-      falls.push({ fall, foot, spray: fall.group.children.filter(o => o.isPoints || o.isSprite || o.name === 'waterfallBillows'), ball: new THREE.Sphere(new THREE.Vector3(O[0], (lv + bottom) / 2, O[1]), (lv - bottom) / 2 + width + 3) });
+      // a low fall (one step of a cascade) raises no mist, and from far off is drawn without its veil; the small things at any
+      // fall's foot (spray, flecks, billows, mist) are too small to see from far off
+      const step = lv - bottom < 5.5, parts = fall.group.children;
+      if (step) for (const o of parts) if (o.isSprite) o.visible = false;
+      const spray = parts.filter(o => o.isPoints || o.name === 'waterfallBillows' || (o.isSprite && !step));
+      falls.push({ fall, foot, spray, veil: step ? parts[1] : null, ball: new THREE.Sphere(new THREE.Vector3(O[0], (lv + bottom) / 2, O[1]), (lv - bottom) / 2 + width + 3) });
+      small.push(...spray);
       report.falls.push({ from: k, x: +O[0].toFixed(1), z: +O[1].toFixed(1), top: lv, bottom, width: +width.toFixed(1), onWater });
     }
   }
@@ -202,14 +209,16 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
 
   return {
     group, surfaces, falls, stretches: info, report,
+    small,                    // the small things at the falls' feet: a level leaves them out of the water's mirror picture
     // every frame: a fall out of view (or far away) is not drawn, and one more than 60 m off is drawn without its spray, mist
-    // and billows (too small to see from there)
+    // and billows (too small to see from there); a low one without its veil too
     update(renderer, frustum = null, cam = null) {
       for (const f of falls) {
         const far = cam ? f.ball.distanceToPoint(cam) : 0;
         f.fall.group.visible = !frustum || (frustum.intersectsSphere(f.ball) && far < 170);
         if (!f.fall.group.visible || f.deep) continue;
         for (const o of f.spray) o.visible = far < 60;
+        if (f.veil) f.veil.visible = far < 60;
         f.fall.update(renderer);
       }
     },

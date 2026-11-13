@@ -8,7 +8,7 @@
 // trodden dirt ways (ground-paths.js), the woods, the valley's clear water lying in each stretch's bed and a fall where a
 // terrace ends (land-water.js: both are worked out from the land as it is drawn), and the village: houses put together from the building kit (village-kit.js), the windmill, a water mill with a
 // turning wheel, a stone bridge, a keep, a market, fenced fields and a pasture (stylized-buildings.js, village-fields.js); in
-// the valley a plank bridge and the river's stones.
+// the valley a plank bridge and the river's stones, and three more plank bridges on the way round the pit.
 //
 // The land picture is raw 16-bit numbers (little-endian), plan.land.nx across by plan.land.nz down, one every plan.land.cell
 // metres from (x0, z0): 0 is plan.land.base metres, 65535 base + range. Places in the plan are metres from the middle of the
@@ -156,16 +156,17 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     for (const s of [-1, 1]) for (const v of [-1.45, 1.45]) for (let u = 1; u <= bL / 2 + 0.6; u += 0.8) colliders.push([br.x + s * u * bc + v * bs, br.z - s * u * bs + v * bc, 0.42]);      // its parapets (and no stepping off its side)
     casters.push([br.x, br.z, 0.6, 4.2, 0.7]);
   }
-  // the plank bridge over the valley's river (the first valley's: stylized-terrain.js)
-  if (P.plank) {
-    const pl = P.plank, pc = Math.cos(pl.yaw), ps = Math.sin(pl.yaw), pL = pl.length;
+  // the plank bridges (the first valley's: stylized-terrain.js): one over the valley's river, and one over each of the three
+  // waters where the way round the pit crosses them. Each lies along its own x, turned by its yaw
+  for (const [i, pl] of [P.plank, ...(P.planks || [])].filter(Boolean).entries()) {
+    const pc = Math.cos(pl.yaw), ps = Math.sin(pl.yaw), pL = pl.length;
     const pby = (H(pl.x - pL / 2 * pc, pl.z + pL / 2 * ps) + H(pl.x + pL / 2 * pc, pl.z - pL / 2 * ps)) / 2 - 0.15;
-    const planks = T.createBridge({ length: pL, seed: seed + 5 });
+    const planks = T.createBridge({ length: pL, seed: seed + 5 + i });
     planks.position.set(pl.x, pby, pl.z); planks.rotation.y = pl.yaw; planks.name = 'plankBridge';
     group.add(planks);
     decks.push({ x: pl.x, z: pl.z, yaw: pl.yaw, len: pL, halfW: 0.95, y: u => pby + 0.41 + 0.7 * (1 - Math.pow(2 * u / pL, 2)) });
     for (let u = -pL / 2; u <= pL / 2; u += 1) bare.push([pl.x + u * pc, pl.z - u * ps, 1.5]);
-    casters.push([pl.x, pl.z, 0.4, 3.6, 0.65]);
+    casters.push([pl.x, pl.z, 0.4, Math.min(3.6, pL * 0.36), 0.65]);
   }
   // fences: round the pasture and the fields, a gate in each
   for (const [k, f] of P.fences.entries()) {
@@ -387,6 +388,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
           if (optics.setLevel) optics.setLevel(level);
           const out = hidden.slice();
           for (const g of groves) if (g.obj.visible && g.box.distanceToPoint(camWorld) > 70) out.push(g.obj);
+          for (const o of water.small) out.push(o);                           // (nor the spray and billows at the falls' feet: too small to tell in a mirror)
           optics.render(renderer, scene, camera, out, doThrough, doMirror);
         }
       }
