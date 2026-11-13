@@ -12,7 +12,9 @@
 //
 // The land picture is raw 16-bit numbers (little-endian), plan.land.nx across by plan.land.nz down, one every plan.land.cell
 // metres from (x0, z0): 0 is plan.land.base metres, 65535 base + range. Places in the plan are metres from the middle of the
-// village, x east and z south. To change the land or move anything: edit the tool, run it, reload. ?look=flat draws the kit's
+// village, x east and z south. To change the land or move anything: edit the tool, run it, reload. The houses and the small
+// things can also be moved by hand in the game (place-editor.js): the moves are kept in the browser and put onto the plan as
+// it loads (place-edits.js), until they go into the tool. ?look=flat draws the kit's
 // houses in flat colour patches instead of the kit's own painted pictures; ?cliff=strata the cliffs as they were before the brush.
 //
 // The land is longer than it is wide, and big: the ground is drawn in pieces and the woods in groves, so what lies behind her
@@ -37,6 +39,7 @@ import { createPaths, loadPathTextures } from './ground-paths.js';
 import { loadSpinner, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
 import { fieldGeometry } from './village-fields.js';
+import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -63,6 +66,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   await onStep('อ่านแผนที่ความสูง');
   const fresh = { cache: 'no-cache' };                                    // (the land and the plan change together: never one from the browser's cache and one new)
   const [raw, P] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json())]);
+  const placeBase = placeables(P), placed = applyPlaceEdits(P, placeKey('hillvillage'));      // the things moved by hand, kept in this browser
   const { x0: X0, z0: Z0, cell, nx, nz, base, range, play } = P.land;     // (she walks inside play: x0, x1, z0, z1; the rest is wooded hills to look at)
   const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
   const onLand = (x, z, in_ = 0) => x > X0 + in_ && x < X1 - in_ && z > Z0 + in_ && z < Z1 - in_;
@@ -103,11 +107,12 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     else if (kind === 'flower') flowerBeds.push([x, z, scale]);
     else tree(x, z, kind, scale, detail);
   }
-  for (const b of P.buildings) if (b.kind === 'tree') tree(b.x, b.z, b.type, b.scale);      // the great tree
+  const bigTrees = [];                                                     // the great tree: a forest of its own, so it can be moved by hand
+  for (const b of P.buildings) if (b.kind === 'tree') { const n = plants.length; tree(b.x, b.z, b.type, b.scale); bigTrees.push({ b, plant: plants.splice(n, 1)[0] }); }
 
   // ------------------------------------------------------------------ the village
   await onStep('สร้างหมู่บ้าน');
-  const builds = [];                                                       // everything built in code, merged into one mesh at the end
+  const builds = [];                                                       // what is built in code and stays where it is, merged into one mesh at the end
   const C = BD.BUILD_COLORS;
   // something built: solid to walk into, bare ground under it, and its shadow
   const solid = (x, z, w, d, yaw, h) => {
@@ -119,13 +124,21 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const corners = (x, z, w, d, yaw) => { const c = Math.cos(yaw), s = Math.sin(yaw); return [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]].map(([a, b]) => H(x + a * w / 2 * c + b * d / 2 * s, z - a * w / 2 * s + b * d / 2 * c)); };
   const kit = await loadVillageKit();
   const kb = kit.builder();
+  // the things that may be moved by hand (place-edits.js says which): each knows how high it stands wherever it is put (lift:
+  // { y, deep }) and builds itself there (make), into the village's merged meshes - or, while the place editor is open, into an
+  // object of its own (placeEdit, below)
+  const things = [], baseOf = new Map(placeBase.map(t => [t.id, t]));
+  const addThing = (id, at, lift, make, extra = {}) => { const t = { ...baseOf.get(id), x: at.x, z: at.z, yaw: at.yaw || 0, lift, make, ...extra }; things.push(t); return t; };
   for (const b of P.buildings) {
     if (b.kind !== 'house') continue;
-    const { w, l, floors = 1 } = b.spec, hs = corners(b.x, b.z, w, l, b.yaw), hi = Math.max(...hs), lo = Math.min(...hs), y = hi + 0.03;
-    kb.house(b.spec, b.x, y, b.z, b.yaw);
-    const K = BD.kit(b.spec.seed || 1);                                    // a stone footing down into the ground, so a slope never shows a gap
-    K.box(0, -(hi - lo) - 1.2, 0, w + 0.5, hi - lo + 1.26, l + 0.5, C.stoneDark);
-    builds.push(BD.place(K.done(), b.x, y, b.z, b.yaw));
+    const { w, l, floors = 1 } = b.spec;
+    const lift = (x, z, yaw) => { const hs = corners(x, z, w, l, yaw), hi = Math.max(...hs), lo = Math.min(...hs); return { y: hi + 0.03, deep: hi - lo }; };
+    addThing(b.id, b, lift, (k, out, x, y, z, yaw, deep) => {
+      k.house(b.spec, x, y, z, yaw);
+      const K = BD.kit(b.spec.seed || 1);                                  // a stone footing down into the ground, so a slope never shows a gap
+      K.box(0, -deep - 1.2, 0, w + 0.5, deep + 1.26, l + 0.5, C.stoneDark);
+      out.push(BD.place(K.done(), x, y, z, yaw));
+    }, { foot: [w + 0.5, l + 0.5], top: floors * 3 + (b.spec.tower ? 6 : w * 0.45 + 1) + 0.8 });
     solid(b.x, b.z, w + 0.5, l + 0.5, b.yaw, floors * 3 + (b.spec.tower ? 6 : w * 0.45 + 1));
   }
   // the windmill: its tower and the miller's house are two of the plan's kit houses (above). Its sails are the supplied
@@ -139,14 +152,22 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     mill = await loadSpinner(url(M.windmill), { part: M.sails, span: wm.span, speed: 0.12, recolor: (r, g, b) => (r - b > 0.23 ? WOOD : LINEN) });
     mill.object.position.set(wm.x + fx * wm.out, foot + wm.hub, wm.z + fz * wm.out); mill.object.rotation.y = wm.yaw; mill.object.name = 'windmillSails';
     group.add(mill.object);
-    const K = BD.kit(31);
-    K.box(0, wm.hub - 0.2, (2 + wm.out) / 2 + 0.1, 0.4, 0.4, wm.out - 2 + 0.6, C.timberDark);      // the axle
-    K.box(0, wm.hub - 0.45, 2.12, 0.9, 0.9, 0.24, C.timber);                                       // and the block it comes out of
-    builds.push(BD.place(K.done(), wm.x, foot, wm.z, wm.yaw));
+    const tower = things.find(t => t.id === 'mill_tower'), turn = tower ? wm.yaw - tower.yaw : 0;      // (the sails stand on the tower's front: they go where it goes)
+    const axle = (out, x, y, z, yaw) => {
+      const K = BD.kit(31);
+      K.box(0, wm.hub - 0.2, (2 + wm.out) / 2 + 0.1, 0.4, 0.4, wm.out - 2 + 0.6, C.timberDark);      // the axle
+      K.box(0, wm.hub - 0.45, 2.12, 0.9, 0.9, 0.24, C.timber);                                       // and the block it comes out of
+      out.push(BD.place(K.done(), x, y, z, yaw + turn));
+    };
+    if (tower) {
+      const make = tower.make;
+      tower.make = (k, out, x, y, z, yaw, deep) => { make(k, out, x, y, z, yaw, deep); axle(out, x, y, z, yaw); };
+      tower.follow = (x, y, z, yaw) => { const a = yaw + turn; mill.object.position.set(x + Math.sin(a) * wm.out, y + wm.hub, z + Math.cos(a) * wm.out); mill.object.rotation.y = a; };
+    } else axle(builds, wm.x, foot, wm.z, wm.yaw);
     casters.push([wm.x + fx * wm.out, wm.z + fz * wm.out, wm.hub, wm.span * 0.3, 0.5]);
   } catch (e) { console.warn('[hill-village] windmill sails', e); mill = null; }
   for (const b of P.buildings) if (b.kind === 'well') {                    // the fountain's stand-in: a well in the middle of the market
-    builds.push(BD.place(BD.wellGeometry({ seed: 22 }), b.x, H(b.x, b.z), b.z, b.yaw));
+    addThing(b.id, b, (x, z) => ({ y: H(x, z), deep: 0 }), (k, out, x, y, z, yaw) => out.push(BD.place(BD.wellGeometry({ seed: 22 }), x, y, z, yaw)));
     colliders.push([b.x, b.z, 1.15]); bare.push([b.x, b.z, 2.2]); casters.push([b.x, b.z, 2.4, 1.3, 0.8]);
   }
   // the water mill's wheel, in the stream beside its house
@@ -189,19 +210,37 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   for (const [k, f] of P.fields.entries()) builds.push(fieldGeometry({ ...f, heightAt: H, seed: 40 + k }));
   // the small things: the market's stalls, barrels, carts, sheep
   let propSeed = 60;
-  for (const [kind, x, z, yaw] of P.props) {
+  for (const [i, [kind, x, z, yaw]] of P.props.entries()) {
     let rad = 0.7;
-    if (kind.startsWith('kit:')) { kb.piece(kind.slice(4), x, H(x, z) - 0.02, z, yaw); rad = 1.3; }
-    else { const g = BD.propGeometry(kind, { seed: propSeed++ }); rad = g.userData.solid; builds.push(BD.place(g, x, H(x, z) - 0.03, z, yaw)); }
+    const at = { x, z, yaw }, b = placeBase.filter(t => t.kind === 'prop')[i];
+    if (kind.startsWith('kit:')) { addThing(b.id, at, (x, z) => ({ y: H(x, z) - 0.02, deep: 0 }), (k, out, x, y, z, yaw) => k.piece(kind.slice(4), x, y, z, yaw)); rad = 1.3; }
+    else {
+      const ps = propSeed++;
+      const g0 = BD.propGeometry(kind, { seed: ps }); rad = g0.userData.solid; g0.dispose();
+      addThing(b.id, at, (x, z) => ({ y: H(x, z) - 0.03, deep: 0 }), (k, out, x, y, z, yaw) => out.push(BD.place(BD.propGeometry(kind, { seed: ps }), x, y, z, yaw)));
+    }
     if (rad > 0.3) { colliders.push([x, z, rad * 0.8]); press.push([x, z, rad * 1.5]); casters.push([x, z, 1.0, rad * 0.9, 0.75]); }
     else colliders.push([x, z, 0.22]);
   }
+  // the great tree: a forest of one
+  for (const { b, plant } of bigTrees) {
+    const obj = N.createForest([plant]); obj.name = 'greatTree';
+    group.add(obj);
+    addThing(b.id, b, (x, z) => ({ y: H(x, z) - 0.05, deep: 0 }), null, { obj, y0: plant.y + 0.05 });
+  }
+  // the things, each where it stands, merged with the rest
+  const thingBuilds = [];
+  for (const t of things) if (t.make) { const { y, deep } = t.lift(t.x, t.z, t.yaw); t.make(kb, thingBuilds, t.x, y, t.z, t.yaw, deep); }
   const houses = kb.build({ look });
   group.add(houses);
-  const built = new THREE.Mesh(mergeGeometries(builds), propMaterial());
-  builds.forEach(g => g.dispose());
-  built.name = 'hillVillageBuilt'; built.userData.dispose = () => built.geometry.dispose();
-  group.add(built);
+  const merged = (list, name) => {
+    const m = new THREE.Mesh(mergeGeometries(list), propMaterial());
+    list.forEach(g => g.dispose());
+    m.name = name; m.userData.dispose = () => m.geometry.dispose();
+    group.add(m); return m;
+  };
+  merged(builds, 'hillVillageBuilt');
+  const builtThings = thingBuilds.length ? merged(thingBuilds, 'hillVillageThings') : null;
   // the valley's rocks: water-worn stones and pebbles along the river, boulders round the plunge pool and under the cliffs
   const rocks = new THREE.Group(); rocks.name = 'rocks';
   for (const [k, [type, x, z, scale, rot]] of (P.rocks || []).entries()) {
@@ -355,8 +394,86 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};
   for (const [name, [x, z, yaw]] of Object.entries(P.views)) views[name] = { x, z, yaw };
+
+  // ------------------------------------------------------------------ moving things by hand (place-editor.js asks; place-edits.js keeps the moves)
+  // While the editor is open each thing is an object of its own, built where it stands at its own origin and set where it is
+  // put; the village's merged meshes of them are hidden. Only the thing moves until the moves are saved and the map loads
+  // again: then her way round it, the bare ground, the grass and the shadows are worked out for where it now stands.
+  let split = null;
+  const viewOf = t => {                                                    // the thing as an object of its own, built at its origin
+    if (t.obj) return t.obj;
+    const k = kit.builder(), out = [], { deep } = t.lift(t.x, t.z, t.yaw);
+    t.make(k, out, 0, 0, 0, 0, deep);
+    const o = new THREE.Group(), kg = k.build({ look });
+    if (kg.children.length) o.add(kg); else kg.userData.dispose();
+    if (out.length) { const g = mergeGeometries(out); out.forEach(q => q.dispose()); const m = new THREE.Mesh(g, propMaterial()); m.userData.dispose = () => g.dispose(); o.add(m); }
+    o.userData.dispose = () => o.traverse(c => { if (c !== o && c.userData.dispose && !c.isGroup) c.userData.dispose(); });
+    return o;
+  };
+  const setView = (i, it) => {
+    const t = things[i], o = t.view, { y } = t.lift(it.x, it.z, it.yaw);
+    if (t.obj) o.position.set(it.x - t.x, y - t.y0, it.z - t.z);          // (the great tree's forest stands where it was made: it is moved by the difference)
+    else { o.position.set(it.x, y, it.z); o.rotation.y = it.yaw; }
+    o.updateMatrixWorld(true);
+    if (t.follow) t.follow(it.x, y, it.z, it.yaw);
+  };
+  const unsplit = () => {
+    if (!split) return;
+    for (const t of things) {
+      if (t.obj) t.obj.position.set(0, 0, 0);
+      else if (t.view) { split.remove(t.view); t.view.userData.dispose(); }
+      if (t.follow) { const { y } = t.lift(t.x, t.z, t.yaw); t.follow(t.x, y, t.z, t.yaw); }
+      t.view = null;
+    }
+    group.remove(split); split = null;
+    houses.visible = true; if (builtThings) builtThings.visible = true;
+  };
+  const wayAt = (x, z) => { const n = paths.near(x, z); return n.d < n.half - 0.2; };
+  const placeEdit = {
+    key: placeKey('hillvillage'), report: placed,
+    heightAt: H,
+    base: () => things.map(t => ({ ...baseOf.get(t.id) })),               // where the map's tool put them (in the order of things)
+    items: () => { const now = new Map(itemsFrom(placeBase, placed.used).map(it => [it.id, it])); return things.map(t => ({ ...now.get(t.id) })); },      // where they stand now (with the moves kept in this browser)
+    show(items) {                                                          // each thing on its own, where the editor has it
+      if (!split) {
+        split = new THREE.Group(); split.name = 'placeEdit'; group.add(split);
+        houses.visible = false; if (builtThings) builtThings.visible = false;
+        for (const [i, t] of things.entries()) { t.view = viewOf(t); t.view.userData.place = i; if (!t.obj) split.add(t.view); }
+      }
+      for (const [i, it] of items.entries()) setView(i, it);
+    },
+    move: setView,                                                         // one thing moved (while a finger drags it)
+    settle(i, it) {                                                        // it is down: built again for the ground where it now stands (its footing)
+      const t = things[i];
+      if (!split || t.obj) return;
+      split.remove(t.view); t.view.userData.dispose();
+      const at = { x: t.x, z: t.z, yaw: t.yaw };
+      Object.assign(t, { x: it.x, z: it.z, yaw: it.yaw }); t.view = viewOf(t); Object.assign(t, at);
+      t.view.userData.place = i; split.add(t.view); setView(i, it);
+    },
+    hide: unsplit,                                                         // back to the village as it was built
+    pick(ray) {                                                            // which thing a ray from the camera meets first
+      if (!split) return -1;
+      const hits = ray.intersectObjects([split, ...things.filter(t => t.obj).map(t => t.obj)], true);
+      for (const h of hits) { let o = h.object; while (o && o.userData.place === undefined) o = o.parent; if (o) return o.userData.place; }
+      return -1;
+    },
+    size: i => { const t = things[i]; return t.foot ? Math.hypot(...t.foot) / 2 : t.kind === 'tree' ? 2.2 : t.kind === 'well' ? 1.6 : 0.9; },
+    top: i => { const t = things[i]; return t.top || (t.kind === 'tree' ? 13 : 2.2); },      // (how high over the ground its name is shown)
+    clash(i, it) {                                                         // what is wrong with where it is put: words, or ''
+      const t = things[i], c = Math.cos(it.yaw), sn = Math.sin(it.yaw);
+      const [w, l] = t.foot || [1.2, 1.2], spots = [];
+      for (let a = -0.5; a <= 0.501; a += 0.25) for (let b = -0.5; b <= 0.501; b += 0.25) spots.push([it.x + a * (w - 1.2) * c + b * (l - 1.2) * sn, it.z - a * (w - 1.2) * sn + b * (l - 1.2) * c]);
+      if (spots.some(([x, z]) => !inMap(x, z))) return 'อยู่นอกแมพ';
+      if (spots.some(([x, z]) => waterDepthAt(x, z) > 0.05)) return 'ลงไปในน้ำ';
+      if (t.foot && spots.some(([x, z]) => wayAt(x, z))) return 'ทับทางเดิน';
+      if (t.foot) { const { deep } = t.lift(it.x, it.z, it.yaw); if (deep > 1.2) return 'ตั้งคร่อมผา ฐานสูง ' + deep.toFixed(1) + ' ม.'; }
+      else if (spots.some(([x, z]) => slope(x, z) > 0.9)) return 'อยู่บนหน้าผา';
+      return '';
+    },
+  };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
     map: url(M.map),

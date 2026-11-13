@@ -72,7 +72,9 @@
   "./blockout-level.js": "./blockout-level.js?v=3",
   "./pit-level.js": "./pit-level.js?v=3",
   "./village-level.js": "./village-level.js?v=1",
-  "./hill-village-level.js": "./hill-village-level.js?v=12",
+  "./hill-village-level.js": "./hill-village-level.js?v=13",
+  "./place-editor.js": "./place-editor.js?v=1",
+  "./place-edits.js": "./place-edits.js?v=1",
   "./land-water.js": "./land-water.js?v=3",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
@@ -184,6 +186,7 @@ import DEER_GLB from './deer-glb.js';
 import { createForestForage } from './forest-forage.js?v=5';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
+import { createPlaceEditor } from './place-editor.js';
 import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
 import { createGameMap } from './game-map.js';
 import { createWarpUI } from './warp-ui.js';
@@ -238,7 +241,7 @@ await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
-  if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active)) return;     // while editing, a tap belongs to the editor
+  if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active)) return;     // while editing, a tap belongs to the editor
   ray.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
@@ -382,8 +385,17 @@ if (rockEditor) {
   document.body.append(b);
   if (rockEditor.resume) rockEditor.open(rockEditor.resume);                  // back from "save": the same view, the same rock
 }
+// ---- the place editor: move the houses and the small things by hand (only where the level offers it: the hill village)
+const placeEditor = createPlaceEditor({ level, camera, player });
+if (placeEditor) {
+  const b = document.createElement('button'); b.id = 'placeEditBtn'; b.textContent = '🏠 ย้ายของ';
+  b.onpointerdown = e => e.stopPropagation(); b.onclick = () => placeEditor.open();
+  b.style.top = `calc(${164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0))}px + env(safe-area-inset-top))`;
+  document.body.append(b);
+  if (placeEditor.resume) placeEditor.open(placeEditor.resume);              // back from "save": the same view, the same thing
+}
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
-const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0)) });
+const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0)) });
 // ---- 🗺 the map: a small round one at the top that follows her; a tap opens the whole map, where a pin takes her to a place
 let gameMap = null;
 if (level.map) try {
@@ -405,8 +417,10 @@ const frame = (dt = clock.getDelta()) => {
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   const rockEditing = rockEditor && rockEditor.active;
   if (rockEditing) rockEditor.apply(camera);                              // the rock editor's camera flies free of her
+  const placing = placeEditor && placeEditor.active;
+  if (placing) placeEditor.apply(camera);                                 // and the place editor's
   if (forage) forage.update(dt, player.position);
-  level.follow(rockEditing ? rockEditor.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
+  level.follow(rockEditing ? rockEditor.focus : placing ? placeEditor.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
   if (warpUI) warpUI.update();
   if (gameMap) gameMap.update();
   if (farHills && (level.zone ?? -1) !== lastZone) { lastZone = level.zone ?? -1; farHills.visible = lastZone < 0; }      // no far hills from down in the abyss
@@ -439,7 +453,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { sceneEditor, rockEditor, placeEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

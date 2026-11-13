@@ -339,6 +339,22 @@ s0 = a + (b - a) * 0.35; mill_yaw = math.atan2(t[0], t[1])            # ridge al
 WHEEL = s0 + nrm * (ms[2][2] - 0.2); MILL = s0 + nrm * (ms[2][2] + 1.3 + 2.0)
 house('watermill', (float(MILL[0]), float(MILL[1])), dict(w=4, l=6, floors=2, wall='brick', door='front', seed=24, windows=0.5), mill_yaw)
 
+# the houses and small things moved by hand in the game (place-editor.js; the moves sent from there are kept in
+# hill-village-moves.json beside the plan): each is put where it was moved to, before the ground is levelled under it. A move
+# finds its thing where it was when it was moved; if the tool has put it somewhere else since, the move is out of date and left
+_mv_file = OUT / 'hill-village-moves.json'
+MOVES = json.loads(_mv_file.read_text())['moves'] if _mv_file.exists() else []
+for m in MOVES:
+    b_ = next((q for q in B if q['id'] == m['id']), None)
+    if b_ is None: continue                                              # (a small thing: in 8)
+    (fx_, fz_, _), (tx_, tz_, ty_) = m['from'], m['to']
+    if abs(b_['x'] - fx_) > 0.06 or abs(b_['z'] - fz_) > 0.06: print(f"  ! the move of {m['id']} is out of date: it is no longer at {fx_}, {fz_}"); continue
+    if b_['id'] == 'mill_tower':                                         # the windmill's sails go with its tower
+        s_ = next(q for q in B if q['kind'] == 'sails'); d_ = ty_ - b_['yaw']; c_, sn_ = math.cos(d_), math.sin(d_); ox_, oz_ = s_['x'] - b_['x'], s_['z'] - b_['z']
+        s_['x'], s_['z'], s_['yaw'] = tx_ + ox_ * c_ + oz_ * sn_, tz_ - ox_ * sn_ + oz_ * c_, round(s_['yaw'] + d_, 3)
+    b_['x'], b_['z'] = tx_, tz_
+    if b_['kind'] != 'tree': b_['yaw'] = ty_
+    print(f"  moved by hand: {m['id']} to {tx_}, {tz_}")
 for b_ in B:
     if b_['pad'] > 1.5: b_['y'] = round(level_ground(b_['x'], b_['z'], b_['pad']), 2)
 by_id = {b_['id']: b_ for b_ in B}
@@ -822,6 +838,12 @@ PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, y
     ['signpost', J_W[0] - 2.0, J_W[1] - 1.4, 0.6], ['bench', PIT_SOUTH[0] + 6.0, PIT_SOUTH[1] + 2.6, round(face(PIT_SOUTH, tuple(BOWL)), 2)],
 ]
 PROPS = [[k, round(float(x), 2), round(float(z), 2), round(float(y), 2)] for k, x, z, y in PROPS]
+for m in MOVES:                                                          # the small things moved by hand: the nearest of its kind_ to where it was
+    if '@' not in m['id']: continue
+    kind_ = m['id'].split('@')[0]; (fx_, fz_, _), (tx_, tz_, ty_) = m['from'], m['to']
+    p_ = min((q for q in PROPS if q[0] == kind_), key=lambda q: math.hypot(q[1] - fx_, q[2] - fz_), default=None)
+    if p_ is None or math.hypot(p_[1] - fx_, p_[2] - fz_) > 0.3: print(f"  ! the move of {m['id']} is out of date"); continue
+    p_[1:] = [tx_, tz_, ty_]; print(f"  moved by hand: {m['id']} to {tx_}, {tz_}")
 for k, x, z, _ in PROPS:
     i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
     if k not in ('lamp', 'signpost') and path_d[i, j] < 0.6 and not any(math.hypot(x - yx, z - yz) < yr for yx, yz, yr, _p in YARDS): print(f'  ! {k} at {x:.1f}, {z:.1f} stands on a way')
