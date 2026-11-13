@@ -304,7 +304,13 @@ house('stable_shed', (.85, .285), dict(w=4, l=4, floors=1, wall='plaster', seed=
 KEEP = M(.345, .125)
 house('castle_keep', KEEP, dict(w=4, l=4, floors=4, wall='brick', upper='brick', tower=True, door='back', seed=22, windows=0.35, shutters=False), 0.0, pad=9.5)
 house('castle_hall', (KEEP[0] + 6, KEEP[1]), dict(w=4, l=8, floors=2, wall='brick', upper='plaster', door='left', doorAt=1, seed=23), math.pi / 2, pad=1)
-B.append({'id': 'windmill', 'kind': 'windmill', 'x': M(.70, .56)[0], 'z': M(.70, .56)[1], 'yaw': -2.2, 'height': 11.5, 'pad': 6.0})
+# the windmill, of the kit like the other houses: a tower, the miller's house against its south wall, and on its west face
+# (toward the way up from the village) the sails, which are the supplied model's (hub: how high above the tower's foot they
+# turn; span: tip to tip; out: how far in front of the tower's middle)
+WMILL = M(.70, .56); WM_YAW = -math.pi / 2
+house('mill_tower', WMILL, dict(w=4, l=4, floors=3, wall='brick', upper='plaster', tower=True, door='left', seed=31, windows=0.4, chimney=False), WM_YAW, pad=9.0)
+house('mill_house', (WMILL[0] + 2.0, WMILL[1] + 4.0), dict(w=4, l=6, floors=1, wall='plaster', door='front', seed=32, windows=0.6), WM_YAW, pad=1)
+B.append({'id': 'windmill', 'kind': 'sails', 'x': WMILL[0], 'z': WMILL[1], 'yaw': round(WM_YAW, 3), 'hub': 7.6, 'span': 10.4, 'out': 2.8, 'pad': 1})
 B.append({'id': 'fountain', 'kind': 'well', 'x': PLAZA[0] - 0.8, 'z': PLAZA[1] - 3.0, 'yaw': 0.4, 'pad': 3.2})      # (beside the road through the market, not on it)
 B.append({'id': 'great_tree', 'kind': 'tree', 'x': M(.55, .345)[0], 'z': M(.55, .345)[1], 'type': 'oak', 'scale': 2.3, 'pad': 4.5})
 
@@ -342,9 +348,9 @@ by_id['castle_hall']['y'] = by_id['castle_keep']['y']
 FIELDS = [   # centre, size across x and z, yaw, what grows
     {'id': 'west_field_1', 'at': M(.076, .705), 'w': 15, 'd': 9.5, 'yaw': 0.0, 'crop': 'cabbage'},
     {'id': 'west_field_2', 'at': M(.076, .775), 'w': 15, 'd': 9.5, 'yaw': 0.0, 'crop': 'carrot'},
-    {'id': 'mill_field', 'at': M(.685, .465), 'w': 17, 'd': 8.5, 'yaw': 0.12, 'crop': 'wheat'},
+    {'id': 'mill_field', 'at': (WMILL[0], WMILL[1] - 10.8), 'w': 15.5, 'd': 7.5, 'yaw': 0.0, 'crop': 'wheat'},      # on the windmill's ledge, north of the mill
 ]
-for f in FIELDS:                                                       # (the land is left as it lies: the rows follow it)
+for f in FIELDS:
     f['x'], f['z'] = round(f['at'][0], 2), round(f['at'][1], 2); del f['at']
 
 
@@ -357,8 +363,29 @@ wf = (FIELDS[0]['x'], (FIELDS[0]['z'] + FIELDS[1]['z']) / 2)
 FENCES = [
     {'id': 'pasture', 'points': [R2(M(.755, .315)), R2(M(.91, .31)), R2(M(.915, .41)), R2(M(.76, .41))], 'gate': 3},       # (gate: in the middle of which side)
     {'id': 'west_fields', 'points': rect(wf[0], wf[1], 18, 24), 'gate': 1},
-    {'id': 'mill_field', 'points': rect(FIELDS[2]['x'], FIELDS[2]['z'], 19.5, 11, FIELDS[2]['yaw']), 'gate': 3},
+    {'id': 'mill_field', 'points': rect(FIELDS[2]['x'], FIELDS[2]['z'], 18, 10, FIELDS[2]['yaw']), 'gate': 3},
 ]
+
+
+def lie(points, step=0.5):
+    """the ground along a closed line and inside it: (lowest, highest, the steepest rise along the line, metres up per metre)"""
+    P_ = [np.array(q, float) for q in points]; along = []
+    for a_, b_ in zip(P_, P_[1:] + P_[:1]):
+        n_ = max(2, int(np.linalg.norm(b_ - a_) / step)); along.append(sample(H, np.array([a_ + (b_ - a_) * k / n_ for k in range(n_ + 1)])))
+    c_ = sum(P_) / len(P_); inside = sample(H, np.array([c_ + (q - c_) * t_ for q in P_ for t_ in np.arange(0.1, 1.0, 0.1)]))
+    every = np.concatenate(along + [inside])
+    return float(every.min()), float(every.max()), float(max(np.abs(np.diff(g_)).max() for g_ in along) / step)
+
+
+# a field is tilled ground: made even, if it is nearly so. A field or a fence across a cliff is a mistake in this plan (the
+# crop and the rails would climb the rock): said out loud here, and again at the end, on the land as it is written
+for f in FIELDS:
+    fence = next(q for q in FENCES if q['id'] == f['id'] or (q['id'] == 'west_fields' and f['id'].startswith('west_field')))
+    lo_, hi_, _ = lie(rect(f['x'], f['z'], f['w'] + 2, f['d'] + 2, f['yaw']))
+    if hi_ - lo_ > 2.5: print(f"  ! field {f['id']} lies across a cliff: its ground is {lo_:.1f} .. {hi_:.1f} m"); continue
+    c_, s_ = math.cos(f['yaw']), math.sin(f['yaw']); u_ = (WX - f['x']) * c_ - (WZ - f['z']) * s_; v_ = (WX - f['x']) * s_ + (WZ - f['z']) * c_
+    out_ = np.maximum(np.abs(u_) - f['w'] / 2 - 1.0, np.abs(v_) - f['d'] / 2 - 1.0)
+    w_ = 1 - sm(0.0, 2.5, out_); H = H * (1 - w_) + float(np.median(H[out_ < 0])) * w_
 
 # ------------------------------------------------------------------ 5. the two bridges and the ways (ramps where they climb)
 BRIDGE_C = np.array(M(.4625, .6375)); BRIDGE_DIR = np.array([1.0, -1.0]) / math.sqrt(2); BRIDGE_LEN = 13.0
@@ -426,7 +453,7 @@ PATHS = {   # name: (half-width, points in the plan's u, v)
     'to_house_1': (0.8, [(.285, .735), uv(door_of('village_house_1'))]),
     'to_house_3': (0.8, [(.36, .725), uv(door_of('village_house_3'))]),
     'to_cottage_2': (0.8, [(.52, .355), uv(door_of('cottage_upper_2'))]),
-    'to_mill_field': (0.8, [(.60, .535), (.615, .50), (.622, .47)]),
+    'to_mill_field': (0.8, [(.60, .535), (.622, .509), (.639, .4925)]),
     # ways to the parts of the map no door stands on, so all of it can be walked: the west wood and its spring; down the cliff
     # below the village to the meadow and along the valley's brink to the top of the way down; and from the windmill's ledge
     # through the east wood to a lookout on the valley's east brink
@@ -752,7 +779,7 @@ PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, y
     ['stall', ty[0] + 8.0, ty[1] - 6.5, -2.3], ['barrels', ty[0] + 10.5, ty[1] - 4.6, 0.4], ['bench', ty[0] - 3.4, ty[1] + 4.6, 2.4], ['lamp', ty[0] + 4.6, ty[1] + 2.6, 0],
     ['hay', barn['x'] + 5.0, barn['z'] + 4.0, 0.4], ['hay', barn['x'] + 5.6, barn['z'] + 6.2, 1.9], ['woodpile', barn['x'] - 4.6, barn['z'] + 2.0, 1.57], ['cart', barn['x'] - 6.0, barn['z'] + 8.5, 0.5],
     ['sheep', fr[0] - 5, fr[1] - 2, 0.6], ['sheep', fr[0] + 1, fr[1] + 2.4, 2.4], ['sheep', fr[0] + 5.5, fr[1] - 1.5, 4.0], ['sheep', fr[0] - 1.5, fr[1] + 4.6, 5.2], ['sheep', fr[0] + 8, fr[1] + 3, 1.6],
-    ['hay', fr[0] - 8.5, fr[1] - 4.5, 1.0], ['hay', wmill['x'] - 2.5, wmill['z'] - 7.5, 0.3], ['barrels', wmill['x'] + 5.2, wmill['z'] + 2.8, 1.0], ['cart', wmill['x'] - 4.0, wmill['z'] + 6.0, 2.0],
+    ['hay', fr[0] - 8.5, fr[1] - 4.5, 1.0], ['hay', wmill['x'] + 5.5, wmill['z'] - 4.0, 0.3], ['barrels', wmill['x'] + 6.2, wmill['z'] + 3.2, 1.0], ['cart', wmill['x'] - 4.0, wmill['z'] + 6.0, 2.0],
     ['woodpile', MILL[0] + nrm[0] * 3.6 - t[0] * 2, MILL[1] + nrm[1] * 3.6 - t[1] * 2, mill_yaw], ['barrels', MILL[0] + t[0] * 4.6 + nrm[0] * 2.6, MILL[1] + t[1] * 4.6 + nrm[1] * 2.6, 0.2],
     ['crates', by_id['castle_hall']['x'] + 2.5, by_id['castle_hall']['z'] + 4.2, 0.5], ['lamp', M(.385, .158)[0] + 2.6, M(.385, .158)[1] + 1.2, 0],
     ['barrels', by_id['manor']['x'] - 5.0, by_id['manor']['z'] + 5.6, 0], ['bench', by_id['manor']['x'] + 4.0, by_id['manor']['z'] + 5.6, 3.14], ['lamp', M(.565, .158)[0] - 2.4, M(.565, .158)[1] + 0.6, 0],
@@ -774,7 +801,7 @@ VIEWS = {
     'start': [*R2(SPAWN), round(face(SPAWN, M(.12, .895)), 2)], 'vl-plaza': [*R2((px_ + 1.5, pz_ + 5.0)), 3.0], 'vl-bridge': [*R2(BS - BRIDGE_DIR * 3), round(face(BS, BN), 2)],
     'vl-tree': [*R2((ty[0] - 2.5, ty[1] + 3.5)), round(face(ty, (by_id['great_tree']['x'], by_id['great_tree']['z'])), 2)],
     'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
-    'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.655, .555)), round(face(M(.655, .555), (wmill['x'], wmill['z'])), 2)],
+    'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.60, .535)), round(face(M(.60, .535), (wmill['x'], wmill['z'])), 2)],
     'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-falltop': [*R2(above), round(face(above, tuple(BASIN)), 2)],
     'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)],
     'vl-eastwood': [*R2(M(.88, .60)), round(face(M(.88, .60), M(.92, .66)), 2)],
@@ -812,5 +839,11 @@ json.dump(plan, open(OUT / 'hill-village.json', 'w'), separators=(',', ':'))
 kinds = {}
 for p in out_plants: kinds[p[0]] = kinds.get(p[0], 0) + 1
 far_trees = sum(1 for p in out_plants if len(p) > 4)
+for f in FIELDS:                                                       # (the check of section 4 again, on the land as it is written)
+    lo_, hi_, _ = lie(rect(f['x'], f['z'], f['w'], f['d'], f['yaw']))
+    if hi_ - lo_ > 1.2: print(f"  ! field {f['id']} is not on level ground: {lo_:.1f} .. {hi_:.1f} m")
+for q in FENCES:
+    lo_, hi_, rise_ = lie(q['points'])
+    if rise_ > 1.0: print(f"  ! fence {q['id']} climbs a cliff: its ground is {lo_:.1f} .. {hi_:.1f} m, {rise_:.1f} m up in a metre at the steepest")
 print(f'land {H.min():.1f} .. {H.max():.1f} m, {nx} x {nz} heights; {len(B)} buildings, {len(plan_paths)} ways, {sum(len(b_) for b_ in brooks)} water rows, {len(falls)} falls')
 print(f'plants {kinds} (trees she never comes near: {far_trees}); rocks {len(rocks)}')
