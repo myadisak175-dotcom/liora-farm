@@ -489,22 +489,54 @@ def densify(pts, attrs=None, step=STEP):
     return np.vstack(P)
 
 
+WAY_STEEP = 0.30                                                     # the steepest a way may climb (rise over run)
+
+
+def way_profile(hp, arc, pin=(True, True)):
+    """the height of a way along its line: as near the land under it as it can lie and still be walked (never steeper than
+    WAY_STEEP). Where the land is gentler it is the land itself, a little smoothed; where the land is steeper the way is cut
+    into the top of the slope and laid on a bank at its foot, half and half, over just as long as the climb needs. So a way
+    goes up a hill on the hill, and across a level village at the village's level - not on a straight ramp from one end to
+    the other, which stood the village's road on a bank 5 m over the houses on either side. An end that is pinned lies on
+    the land, so a way meets the plaza, the bridge or the way it comes from at the height it had before (an end out past the
+    edge of the play is not: the road coming in from beyond it only has to arrive)"""
+    s_ = WAY_STEEP * 0.97; d = s_ * STEP
+    lo = hp.copy(); hi = hp.copy()                                   # the highest walkable line under the land (all cut) and the lowest over it (all bank)
+    for i in range(1, len(hp)): lo[i] = min(lo[i], lo[i - 1] + d); hi[i] = max(hi[i], hi[i - 1] - d)
+    for i in range(len(hp) - 2, -1, -1): lo[i] = min(lo[i], lo[i + 1] + d); hi[i] = max(hi[i], hi[i + 1] - d)
+    hs = ndi.gaussian_filter1d((lo + hi) / 2, 2.5 / STEP, mode='nearest')      # (smoothing keeps it no steeper)
+    A = np.full(len(hp), -1e9); B = np.full(len(hp), 1e9)            # the band a line from the pinned ends can lie in, climbing no steeper
+    for end, k, on in ((0, arc, pin[0]), (-1, arc[-1] - arc, pin[1])):
+        if on: A = np.maximum(A, hp[end] - s_ * k); B = np.minimum(B, hp[end] + s_ * k)
+    if (A > B + 1e-6).any(): print(f'  ! a way climbs {abs(hp[-1] - hp[0]):.1f} m in {arc[-1]:.0f} m: steeper than it may')
+    return np.clip(hs, A, np.maximum(A, B))
+
+
 path_d = np.full(NZ * NX, 1e9); plan_paths = []
+BANK_SIDE = 2.6                                                      # a bank h m high has sides 2.6 h m wide: no steeper than about a half
+keep_land = np.zeros((NZ, NX), bool)
+for b_ in B: keep_land |= np.hypot(WX - b_['x'], WZ - b_['z']) < b_['pad'] + 1.0
+for _, _, _, _, line_ in WATER:
+    for u_, v_, hw_ in line_:
+        x_, z_ = M(u_, v_); keep_land |= np.hypot(WX - x_, WZ - z_) < hw_ * S + 4.0
 for name, (half, pts_uv) in PATHS.items():
     pts = [M(*p) for p in pts_uv]
     P = densify(pts); hp = sample(H, P); arc = np.arange(len(P)) * STEP
-    line = hp[0] + (hp[-1] - hp[0]) * arc / arc[-1]                  # a straight ramp end to end ...
-    taper = np.clip(np.minimum(arc, arc[-1] - arc) / 6.0, 0, 1)
-    for sig in (4, 6, 9, 13, 18, 25, 35, 50):                        # ... and the land's own shape laid on it, smoothed until it can be walked
-        hs = line + taper * ndi.gaussian_filter1d(hp - line, sig / STEP, mode='constant')
-        if np.abs(np.diff(hs)).max() / STEP <= 0.30: break
-    k = 1.0
-    while np.abs(np.diff(hs)).max() / STEP > 0.30 and k > 0:
-        k -= 0.1; hs = line + max(k, 0) * (hs - line)
+    hs = way_profile(hp, arc, [bool(PLAY[0] < x < PLAY[1] and PLAY[2] < z < PLAY[3]) for x, z in (P[0], P[-1])])
     print(f'  way {name}: {hs[0]:.1f} -> {hs[-1]:.1f} m, steepest {np.abs(np.diff(hs)).max() / STEP * 100:.0f}%')
-    at, dd, idx = nearest(P, half + 3.2)
+    # where the way stands over the land, or is sunk in it (it must be, to climb a cliff gently enough), the bank's or the
+    # cutting's sides run out BANK_SIDE times as far as it is high or deep: a slope of earth and grass, not a wall of rock
+    bank, cut = np.maximum(hs - hp, 0), np.maximum(hp - hs, 0)
+    side = np.clip(BANK_SIDE * np.maximum(bank, cut), 3.0, 16.0)
+    at, dd, idx = nearest(P, half + side.max() + 0.2)
     w = np.clip(1 - (dd - half) / 3.0, 0, 1); w = w * w * (3 - 2 * w)
-    flat = H.ravel(); flat[at] = flat[at] * (1 - w) + hs[idx] * w; H = flat.reshape(NZ, NX)
+    flat = H.ravel(); old = flat[at].copy(); flat[at] = old * (1 - w) + hs[idx] * w
+    sw = np.clip(1 - (dd - half) / side[idx], 0, 1); sw = sw * sw * (3 - 2 * sw)
+    sw[keep_land.ravel()[at]] = 0                                    # (never over a house's pad, the yards round the fountain and the great tree, or the water's banks)
+    to = old * (1 - sw) + hs[idx] * sw
+    up = bank[idx] > 0                                               # (a bank's sides only ever raise the land, a cutting's only lower it)
+    flat[at] = np.where(up, np.maximum(flat[at], to), np.minimum(flat[at], to))
+    H = flat.reshape(NZ, NX)
     path_d[at] = np.minimum(path_d[at], dd - half)
     plan_paths.append({'id': name, 'half': half, 'points': [R2(p) for p in pts]})
 path_d = path_d.reshape(NZ, NX)
