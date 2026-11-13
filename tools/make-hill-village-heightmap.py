@@ -514,7 +514,7 @@ def smooth_line(pts, step=STEP):
     return np.stack([np.interp(at, run, out[:, 0]), np.interp(at, run, out[:, 1])], axis=1)
 
 
-path_d = np.full(NZ * NX, 1e9); plan_paths = []
+path_d = np.full(NZ * NX, 1e9); plan_paths = []; way_lines = {}
 for name, (half, pts_uv) in PATHS.items():
     pts = [M(*p) for p in pts_uv]; street = STAIR_WAYS.get(name)
     P = smooth_line(pts) if street else densify(pts); hp = sample(H, P); arc = np.arange(len(P)) * STEP
@@ -567,6 +567,7 @@ for name, (half, pts_uv) in PATHS.items():
         laid = [(nm, b0, b1) for nm, b0, b1 in ((name, 0.0, a0), (name + '_top', a1, arc[-1])) if b1 - b0 > 1.6]
         print(f"    a street of stairs from {a0:.0f} to {a1:.0f} m: {''.join('S' if k_ else '-' for k_ in kinds)} ({want} stairs, {n - want} landings), {y:.1f} -> {top:.1f} m")
         streets.append((P, arc, hs, a0, a1))
+    way_lines[name] = (P, half)
     at, dd, idx = nearest(P, half + 3.2)
     w = np.clip(1 - (dd - half) / 3.0, 0, 1); w = w * w * (3 - 2 * w)
     flat = H.ravel(); flat[at] = flat[at] * (1 - w) + hs[idx] * w; H = flat.reshape(NZ, NX)
@@ -821,6 +822,38 @@ for kind, x, z in plants:
 for kind, x, z, _ in stair_things:                                    # the flowers beside the stairs' landings (where the ground there can hold them)
     i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
     if kind == 'flower' and slope[i, j] < 0.45 and water_d[i, j] > 1.0 and path_d[i, j] > 0.5: out_plants.append(['flower', round(x, 2), round(z, 2), 0.9])
+
+# a low stone wall along each side of a street's pieces (walls: [on the side toward (cos yaw, -sin yaw), on the other]): none
+# where another way comes in, where a house stands, or where the hillside itself stands as high as the wall would
+WALL_OUT, WALL_OVER = STAIR_WIDE + 0.03, 0.6                         # (its middle that far from the street's; its top that far over the line of the steps)
+def _in_house(x, z, more=0.45):
+    for b_ in B:
+        if b_['kind'] != 'house': continue
+        c_, s_ = math.cos(b_['yaw']), math.sin(b_['yaw']); dx, dz = x - b_['x'], z - b_['z']
+        if abs(dx * c_ - dz * s_) < b_['spec']['w'] / 2 + more and abs(dx * s_ + dz * c_) < b_['spec']['l'] / 2 + more: return True
+    return False
+for st_ in stairs:
+    c_, s_ = math.cos(st_['yaw']), math.sin(st_['yaw']); st_['walls'] = []
+    for sign_ in (1, -1):
+        ok_ = True
+        for t_ in (-0.8, 0.0, 0.8):
+            x_, z_ = st_['x'] + s_ * t_ + sign_ * c_ * WALL_OUT, st_['z'] + c_ * t_ - sign_ * s_ * WALL_OUT
+            line_ = st_['y'] + ((t_ + 1) / 2 if st_['kind'] == 'stair' else 0)
+            if _in_house(x_, z_) or sample(H, (x_, z_))[0] > line_ + WALL_OVER - 0.2: ok_ = False
+            xo_, zo_ = x_ + sign_ * c_ * 1.2, z_ - sign_ * s_ * 1.2          # (a way that only begins at the street's middle does not open the side it does not leave by: it must lie past the wall too)
+            for nm_, (P_, half_) in way_lines.items():
+                if nm_ != st_['way'] and np.hypot(P_[:, 0] - x_, P_[:, 1] - z_).min() < half_ + 0.5 and np.hypot(P_[:, 0] - xo_, P_[:, 1] - zo_).min() < half_ + 0.5: ok_ = False
+        st_['walls'].append(ok_)
+for way_ in STAIR_WAYS:                                               # (a single piece of wall on its own, between two gaps, is taken away: it would be two posts and little else)
+    row_ = [q_ for q_ in stairs if q_['way'] == way_]
+    for side_ in (0, 1):
+        k_ = 0
+        while k_ < len(row_):
+            n_ = k_
+            while n_ < len(row_) and row_[n_]['walls'][side_]: n_ += 1
+            if n_ - k_ == 1: row_[k_]['walls'][side_] = False
+            k_ = max(n_, k_ + 1)
+print(f"  walls along the stairs: {sum(sum(q_['walls']) for q_ in stairs)} of {2 * len(stairs)} sides")
 
 # rocks in the valley: water-worn stones and pebbles along the river's banks, boulders round the plunge pool and at the cliffs' feet
 rocks = []
