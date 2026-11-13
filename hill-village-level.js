@@ -2,8 +2,8 @@
 //
 // One job: to lay a village out on the land of assets/heightmaps/hill-village.bin as its plan (hill-village.json beside it)
 // says. Both come from tools/make-hill-village-heightmap.py, which is where the land and every place on it are decided: plateaus stepping
-// down to a river, ramps where the ways climb, level ground under each building, the water's beds; and south of the pool the
-// valley, its floor thirteen metres below, with the way down its west cliff. This file reads them and puts the game's own
+// down to a river, ramps where the ways climb, level ground under each building, the water's beds; and under the village's
+// terrace the valley, into which the river falls, with the way down its west cliff. This file reads them and puts the game's own
 // things on top: the valley's land paint (rock painted with a brush on the cliffs), the ground picture and the fluffy grass,
 // trodden dirt ways (ground-paths.js), the woods, the valley's clear water lying in each stretch's bed and a fall where a
 // terrace ends, and the village: houses put together from the building kit (village-kit.js), the windmill, a water mill with a
@@ -438,7 +438,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         for (const g of inView) g.obj.visible = frustum.intersectsBox(g.box) && (!g.far || g.box.distanceToPoint(camWorld) < g.far);
         for (const f of falls) f.fall.group.visible = frustum.intersectsSphere(f.ball) && f.ball.distanceToPoint(camWorld) < 170;
         // the water's two pictures (what lies under it, what is mirrored on it): only when water is on screen and near, made
-        // for the height of the stretch she is nearest (the waters lie at five heights), and without the far groves
+        // for the height of the stretch she is nearest (the waters lie at several heights), and without the far groves
         let near = Infinity, level = WL;
         for (const s of stretches) if (frustum.intersectsSphere(s.sphere)) { const d = s.near(camWorld); if (d < near) { near = d; level = s.level; } }
         frameNo++;
