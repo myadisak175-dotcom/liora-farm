@@ -2,6 +2,7 @@
    teleport-menu.js  —  a button that takes her straight to a place on the map
 
      createTeleportMenu({ level, player, top: 206 });      // reads level.views ({ name: { x, z, yaw } })
+     teleportPlaces(level)                                 // the same places as a list, for the map's pins
 
    One job: show the places the level offers, grouped by area, and send her there on a tap.
    Only the places the map actually has are listed; a map with none gets no button.
@@ -34,6 +35,12 @@ const CSS = `
 #tpSheet button { border:1px solid #c9d8c0; border-radius:999px; padding:9px 13px; background:#f3f8ee; color:#16324a; font:600 12px system-ui; touch-action:manipulation; }
 #tpSheet button.close { display:block; margin:12px auto 2px; background:#16324a; color:white; border:0; }
 `;
+
+// the places a level offers, in the order above: [{ key, label, x, z, yaw }] (the map shows them as pins: game-map.js)
+export function teleportPlaces(level) {
+  const views = (level && level.views) || {};
+  return GROUPS.flatMap(([, items]) => items.filter(([k]) => views[k]).map(([key, label]) => ({ key, label, ...views[key] })));
+}
 
 export function createTeleportMenu({ level, player, top = 206, onGo = null } = {}) {
   const views = level.views || {};
