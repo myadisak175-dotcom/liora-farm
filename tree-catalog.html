@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#9cc7ea">
+<title>ต้นไม้ stylized — แคตตาล็อก</title>
+<!--
+  tree-catalog.html  —  look at the trees of stylized-nature.js one at a time, or a whole set in a row.
+  One job: show them. Nothing here goes into the game.
+    ?type=sakura   open on that tree      ?all=1   open on the row of its set      ?seed=4   which dice
+    ?novivi=1      no Vivi beside the tree (she is there for scale)
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9cc7ea; font-family: system-ui, sans-serif; touch-action: none; }
+  canvas { display: block; }
+  #name { position: fixed; left: 0; right: 0; top: calc(12px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 18px system-ui; color: #fff; text-shadow: 0 1px 6px #0006; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.85; margin-top: 2px; }
+  #bar { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 0 8px; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 10px 16px; background: #1d4f6ed9; color: #fff; font: 700 14px system-ui; touch-action: manipulation; }
+  #bar button.on { background: #c0702e; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./stylized-nature.js": "./stylized-nature.js?v=trees2"
+} }
+</script>
+</head>
+<body>
+<div id="name"></div>
+<div id="bar">
+  <button id="group">🌳 ชุดเดิม</button>
+  <button id="prev">◀</button>
+  <button id="next">▶</button>
+  <button id="dice">🎲 สุ่มใหม่</button>
+  <button id="all">ดูทั้งชุด</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+{ // a sky: deep blue overhead, pale at the horizon
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+scene.add(N.createAlphaFix());
+N.setHaze({ color: '#cfe4f1', near: 90, far: 420, max: 0.55 });
+const ground = N.createGround({ radius: 240, flat: 130, hills: 1, far: '#cfe4f1' });
+scene.add(ground);
+const H = ground.userData.heightAt;
+scene.add(N.createGrass({ count: 3200, radius: 22, heightAt: H, seed: 4 }));
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 900);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 1.5; controls.maxDistance = 320;
+
+// name, set, and how wide the tree stands (for the row and for where Vivi waits)
+const TREES = [
+  { key: 'sakura', name: 'ซากุระ', set: 'new', w: 7 },
+  { key: 'maple', name: 'เมเปิลใบแดง', set: 'new', w: 6 },
+  { key: 'apple', name: 'ต้นแอปเปิล', set: 'new', w: 4.6 },
+  { key: 'orange', name: 'ต้นส้ม', set: 'new', w: 4.2 },
+  { key: 'giant', name: 'ต้นยักษ์โบราณ', set: 'new', w: 22 },
+  { key: 'willow', name: 'หลิวกิ่งย้อย', set: 'new', w: 7.5 },
+  { key: 'bamboo', name: 'กอไผ่', set: 'new', w: 6 },
+  { key: 'cypress', name: 'สนทรงสูง', set: 'new', w: 3 },
+  { key: 'umbrella', name: 'ต้นทรงร่ม', set: 'new', w: 8.5 },
+  { key: 'broadleaf', name: 'ต้นใบกว้าง', set: 'old', w: 5.5 },
+  { key: 'oak', name: 'ต้นโอ๊ก', set: 'old', w: 7.5 },
+  { key: 'pine', name: 'ต้นสน', set: 'old', w: 6 },
+  { key: 'birch', name: 'ต้นเบิร์ช', set: 'old', w: 3.6 },
+  { key: 'sapling', name: 'ต้นอ่อน', set: 'old', w: 2.8 },
+];
+const SETS = ['new', 'old'], SET_NAME = { new: 'ต้นไม้ใหม่', old: 'ต้นไม้ชุดเดิม' }, SET_BTN = { new: '🆕 ชุดใหม่', old: '🌳 ชุดเดิม' };
+let index = Math.max(0, TREES.findIndex(t => t.key === Q.get('type')));
+let seed = +Q.get('seed') || 1, showAll = Q.has('all');
+const nextSet = () => SETS[(SETS.indexOf(TREES[index].set) + 1) % SETS.length];
+const inSet = () => TREES.filter(t => t.set === TREES[index].set);
+const shown = new THREE.Group(); scene.add(shown);
+const clear = () => { for (const m of [...shown.children]) { m.userData.dispose && m.userData.dispose(); shown.remove(m); } };
+const nameEl = document.getElementById('name');
+
+// Vivi stands beside the tree so its size reads (loaded after the first tree is up; the page works without her)
+let vivi = null;
+const placeVivi = () => {
+  if (!vivi) return;
+  const t = TREES[index];
+  const x = showAll ? 0 : t.w * 0.5 + 1.2, z = showAll ? 6 : 1.5;
+  vivi.object.position.set(x, H(x, z), z);
+  vivi.object.rotation.y = -0.5;
+};
+if (!Q.has('novivi')) (async () => {
+  try {
+    const [{ loadCharacter }, { VIVI_GLB, VIVI_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js')]);
+    vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
+    vivi.play('idle');
+    scene.add(vivi.object);
+    placeVivi();
+  } catch (err) { console.warn('Vivi not loaded', err); }
+})();
+
+function build() {
+  clear();
+  const t = TREES[index];
+  if (showAll) {                                                          // the whole set in a row, like a kit sheet
+    const set = inSet();
+    let x = 0, tall = 0;
+    for (const s of set) {
+      const tree = N.createTree({ type: s.key, seed });
+      x += s.w / 2; tree.position.x = x; x += s.w / 2 + 1.2;
+      tall = Math.max(tall, tree.userData.height);
+      shown.add(tree);
+    }
+    const off = -(x - 1.2) / 2;                                           // the row centred
+    for (const tr of shown.children) { tr.position.x += off; tr.position.y = H(tr.position.x, 0) - 0.05; }
+    nameEl.innerHTML = `${SET_NAME[t.set]}ทั้งหมด <small>ชุดที่ ${seed} · ลากเพื่อหมุนดู</small>`;
+    const span = Math.max(x, tall * 2.2);
+    controls.target.set(0, tall * 0.35, 0); camera.position.set(span * 0.05, tall * 0.5, span * 0.72);
+  } else {
+    const tree = N.createTree({ type: t.key, seed });
+    tree.position.y = H(0, 0) - 0.05; shown.add(tree);
+    const g = inSet(), h = tree.userData.height, extra = tree.userData.fruit ? ` · ผล ${tree.userData.fruit} ลูก` : '';
+    nameEl.innerHTML = `${t.name} <small>${g.indexOf(t) + 1} / ${g.length} · สูง ~${Math.round(h)} ม.${extra} · ชุดที่ ${seed}</small>`;
+    const d = Math.max(h * 1.8, t.w * 1.6);
+    controls.target.set(0, h * 0.48, 0); camera.position.set(d * 0.42, h * 0.42, d * 0.92);
+  }
+  placeVivi();
+  document.getElementById('all').classList.toggle('on', showAll);
+  document.getElementById('group').textContent = SET_BTN[nextSet()];
+  controls.update();
+}
+const step = d => { const g = inSet(), i = g.indexOf(TREES[index]); index = TREES.indexOf(g[(i + d + g.length) % g.length]); showAll = false; build(); };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.getElementById('group').onclick = () => { const s = nextSet(); index = TREES.findIndex(t => t.set === s); build(); };
+document.getElementById('dice').onclick = () => { seed++; build(); };
+document.getElementById('all').onclick = () => { showAll = !showAll; build(); };
+build();
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const clock = new THREE.Clock();
+const frame = () => { const dt = clock.getDelta(); N.update(dt); if (vivi) vivi.update(dt); controls.update(); renderer.render(scene, camera); };
+window.__cat = { frame, renderer, scene, camera, controls, build, TREES, set: (o) => { if ('index' in o) index = o.index; if ('seed' in o) seed = o.seed; if ('all' in o) showAll = o.all; build(); } };
+if (!Q.get('still')) renderer.setAnimationLoop(frame);
+</script>
+</body>
+</html>
