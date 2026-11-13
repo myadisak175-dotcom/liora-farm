@@ -6,7 +6,7 @@
 // terrace the valley, into which the river falls, with the way down its west cliff. This file reads them and puts the game's own
 // things on top: the valley's land paint (rock painted with a brush on the cliffs), the ground picture and the fluffy grass,
 // trodden dirt ways (ground-paths.js), the woods, the valley's clear water lying in each stretch's bed and a fall where a
-// terrace ends, and the village: houses put together from the building kit (village-kit.js), the windmill, a water mill with a
+// terrace ends (land-water.js: both are worked out from the land as it is drawn), and the village: houses put together from the building kit (village-kit.js), the windmill, a water mill with a
 // turning wheel, a stone bridge, a keep, a market, fenced fields and a pasture (stylized-buildings.js, village-fields.js); in
 // the valley a plank bridge and the river's stones.
 //
@@ -31,7 +31,7 @@ import * as W from './stylized-water.js';
 import * as BD from './stylized-buildings.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
-import { createWaterfall } from './stylized-waterfall.js';
+import { waterLookup, createLandWater } from './land-water.js';
 import { createPaths, loadPathTextures } from './ground-paths.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
@@ -74,20 +74,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
   const colliders = [], cameraTrunks = [], shade = [], bare = [], press = [], casters = [], plants = [];
 
-  // the water: for every half metre of the land, how far the nearest water's edge is and how high that water stands
-  const WS = 0.5, wnx = Math.round((X1 - X0) / WS) + 1, wnz = Math.round((Z1 - Z0) / WS) + 1, wEdge = new Float32Array(wnx * wnz).fill(99), wLevel = new Float32Array(wnx * wnz);
-  for (const rows of P.brooks) for (const [bx, bz, lv, hw] of rows) {
-    const reach = hw + 4, i0 = Math.max(0, Math.floor((bx - reach - X0) / WS)), i1 = Math.min(wnx - 1, Math.ceil((bx + reach - X0) / WS));
-    for (let j = Math.max(0, Math.floor((bz - reach - Z0) / WS)); j <= Math.min(wnz - 1, Math.ceil((bz + reach - Z0) / WS)); j++) for (let i = i0; i <= i1; i++) {
-      const d = Math.hypot(X0 + i * WS - bx, Z0 + j * WS - bz) - hw, o = j * wnx + i;
-      if (d < wEdge[o]) { wEdge[o] = d; wLevel[o] = lv; }
-    }
-  }
-  const brookAt = (x, z) => {
-    const fx = Math.min(wnx - 1.001, Math.max(0, (x - X0) / WS)), fz = Math.min(wnz - 1.001, Math.max(0, (z - Z0) / WS)), i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, o = j * wnx + i;
-    const d = (wEdge[o] * (1 - u) + wEdge[o + 1] * u) * (1 - v) + (wEdge[o + wnx] * (1 - u) + wEdge[o + wnx + 1] * u) * v;
-    return d < 1.6 ? { d, level: wLevel[Math.round(fz) * wnx + Math.round(fx)] } : null;      // (the level is never blended: two waters lie metres apart in height)
-  };
+  // the water: where it lies and how high it stands (land-water.js)
+  const brookAt = waterLookup(P.brooks, { x0: X0, z0: Z0, x1: X1, z1: Z1 }).at;
   // the bridges' decks: where each lies (u along it, v across) and how high its boards are. On one she is over the water, not in it
   const decks = [];
   const deckUV = (d, x, z) => { const c = Math.cos(d.yaw), s = Math.sin(d.yaw); return [(x - d.x) * c - (z - d.z) * s, (x - d.x) * s + (z - d.z) * c]; };
@@ -313,64 +301,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const sim = W.createWaterSim({ rect: [P.spawn.x - 24, P.spawn.z - 24, 48], size: 512, field, foamTexture, level: WL, follow: true });
   const optics = W.createWaterOptics({ level: WL });
   const waterMat = W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, fadeA: Z1 - 30, fadeB: Z1 - 2 });      // (it fades with the land where the valley's river runs out of the map to the south)
-  // A stretch of water: a sheet at the stretch's height, cut out to within its half-width of its line (rows: x, z, level,
-  // half-width), its rim drawn in to that outline. A strip laid row by row along the line folded over itself wherever a wide
-  // pool turned; a sheet cannot. Every point still carries what the water's paint reads: how far down the stretch it is, how
-  // far off its middle, and which way the water runs there.
-  const sheet = rows => {
-    const n = rows.length, lv = rows[0][2], F = [0], tan = [];
-    for (let k = 1; k < n; k++) F.push(F[k - 1] + Math.hypot(rows[k][0] - rows[k - 1][0], rows[k][1] - rows[k - 1][1]));
-    for (let k = 0; k < n; k++) { const a = rows[Math.max(0, k - 1)], b = rows[Math.min(n - 1, k + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; tan.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]); }
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, wide = 0;
-    for (const [x, z, , hw] of rows) { x0 = Math.min(x0, x - hw - 1.5); x1 = Math.max(x1, x + hw + 1.5); z0 = Math.min(z0, z - hw - 1.5); z1 = Math.max(z1, z + hw + 1.5); wide = Math.max(wide, hw); }
-    const cs = wide > 6 ? 1.0 : wide > 3 ? 0.7 : 0.5, gx = Math.ceil((x1 - x0) / cs) + 1, gz = Math.ceil((z1 - z0) / cs) + 1;
-    const A = rows[0], B = rows[n - 1], tA = tan[0], tB = tan[n - 1];
-    const pts = new Array(gx * gz);
-    for (let j = 0; j < gz; j++) for (let i = 0; i < gx; i++) {
-      let x = x0 + i * cs, z = z0 + j * cs, best = Infinity, bk = 0, bt = 0;
-      for (let k = 0; k < n - 1; k++) {                                    // the nearest spot on the stretch's line
-        const ax = rows[k][0], az = rows[k][1], dx = rows[k + 1][0] - ax, dz = rows[k + 1][1] - az, t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1))), d = Math.hypot(x - ax - dx * t, z - az - dz * t);
-        if (d < best) { best = d; bk = k; bt = t; }
-      }
-      const a = rows[bk], b = rows[bk + 1], qx = a[0] + (b[0] - a[0]) * bt, qz = a[1] + (b[1] - a[1]) * bt, hw = a[3] + (b[3] - a[3]) * bt + 0.5;
-      let tx = tan[bk][0] + (tan[bk + 1][0] - tan[bk][0]) * bt, tz = tan[bk][1] + (tan[bk + 1][1] - tan[bk][1]) * bt; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
-      const before = bk === 0 ? (x - A[0]) * tA[0] + (z - A[1]) * tA[1] : 1, after = bk === n - 2 ? (x - B[0]) * tB[0] + (z - B[1]) * tB[1] : -1;      // (metres short of its first row, metres past its last)
-      let inside = best <= hw && before >= 0 && after <= 0;
-      // behind its first row (under the fall that feeds it) the water lies on as far as the cliff's foot
-      if (!inside && before < 0 && before > -3.5 && Math.abs((x - A[0]) * -tA[1] + (z - A[1]) * tA[0]) <= A[3] + 0.5 && H(x, z) < lv - 0.03) inside = true;
-      if (!inside && !(before < 0 && H(x, z) >= lv - 0.03)) {              // outside: drawn in to the outline (unless it lies inside the cliff behind the fall, where it is never seen)
-        const end = after > 0 ? [B, tB, after] : before < 0 ? [A, tA, before] : null;
-        if (end) {                                                         // past an end: back onto the line across that end, no wider than the water is there
-          const [E, tE, al] = end; x -= al * tE[0]; z -= al * tE[1];
-          const lat = (x - E[0]) * -tE[1] + (z - E[1]) * tE[0], lim = E[3] + 0.5;
-          if (Math.abs(lat) > lim) { x = E[0] - tE[1] * Math.sign(lat) * lim; z = E[1] + tE[0] * Math.sign(lat) * lim; }
-        } else { x = qx + (x - qx) * hw / best; z = qz + (z - qz) * hw / best; }
-      }
-      pts[j * gx + i] = { x, z, inside, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 };
-    }
-    const pos = [], flow = [], dir = [], idx = [];
-    const use = p => { if (p.at < 0) { p.at = pos.length / 3; pos.push(p.x, lv, p.z); flow.push(p.F, p.lat, 1); dir.push(p.tx, p.tz); } return p.at; };
-    for (let j = 0; j < gz - 1; j++) for (let i = 0; i < gx - 1; i++) {
-      const a = pts[j * gx + i], b = pts[(j + 1) * gx + i], c = pts[j * gx + i + 1], d = pts[(j + 1) * gx + i + 1];
-      if (a.inside || b.inside || c.inside || d.inside) idx.push(use(a), use(b), use(c), use(b), use(d), use(c));
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 3)); g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 2));
-    g.setIndex(idx);
-    const m = new THREE.Mesh(g, waterMat); m.renderOrder = 1; m.name = 'water';
-    m.userData = { kind: 'water', dispose() { g.dispose(); } };
-    group.add(m);
-    return m;
-  };
-  const waters = P.brooks.map(sheet);
-  const falls = [];
-  for (const f of P.falls) {
-    const c = createWaterfall({ x: 0, z: 0, top: f.top, bottom: f.bottom, width: f.width, forward: Math.min(2.2, 0.6 + (f.top - f.bottom) * 0.12), scale: Math.min(1, Math.max(0.6, f.width / 9)), foamTexture, cells: animeCells });
-    c.group.position.set(f.x, 0, f.z); c.group.rotation.y = f.yaw;
-    c.group.userData = { kind: 'waterfall', dispose: c.dispose };
-    group.add(c.group);
-    falls.push({ fall: c, ball: new THREE.Sphere(new THREE.Vector3(f.x, (f.top + f.bottom) / 2, f.z), (f.top - f.bottom) / 2 + f.width + 3) });
-  }
+  // each stretch's surface, and a fall wherever one runs off an edge, are worked out from the land itself (land-water.js): the
+  // sheet lies only where the ground holds it, the fall hangs from the sheet's own edge and its foam is where it lands
+  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length });
+  water.group.userData.dispose = water.dispose;
+  group.add(water.group);
   const ripple = (x, z, strength = 1, radius = 0.26, mode = null) => {      // something touches the water (as on the other maps)
     const kk = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * kk);
@@ -384,13 +319,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       sim.impulse(x, z, radius, (st ? -0.042 : -0.03) * strength * kk, -Math.min(st ? 0.15 : 0.55, (st ? 0.18 : 0.75) * strength) * foam);
     }
   };
-  const hidden = [...waters, grass, droplets.points];
-  // each stretch of water: a ball round it (is it in view?), and how near she is to it
-  const stretches = P.brooks.map(rows => {
-    const b = new THREE.Box3(); for (const q of rows) b.expandByPoint(new THREE.Vector3(q[0], q[2], q[1]));
-    const level = rows[0][2];
-    return { level, sphere: b.getBoundingSphere(new THREE.Sphere()), near: c => { let d = Infinity; for (let k = 0; k < rows.length; k += 2) d = Math.min(d, Math.hypot(c.x - rows[k][0], c.y - level, c.z - rows[k][1]) - rows[k][3]); return d; } };
-  });
+  const hidden = [...water.surfaces, grass, droplets.points], stretches = water.stretches;
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0;
 
@@ -407,7 +336,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
-    name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look },
+    name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
     horizon: { center: [0, CZ], scale: Math.hypot(HX, FR) / 170 * 1.08 },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out past this land's corners
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
@@ -434,9 +363,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (scene && camera) {
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         camWorld.setFromMatrixPosition(camera.matrixWorld);
-        // what is out of view is not drawn: a grove, a bed of flowers (nor one too far off to see), a fall (nor one far away)
+        // what is out of view is not drawn: a grove, a bed of flowers (nor one too far off to see)
         for (const g of inView) g.obj.visible = frustum.intersectsBox(g.box) && (!g.far || g.box.distanceToPoint(camWorld) < g.far);
-        for (const f of falls) f.fall.group.visible = frustum.intersectsSphere(f.ball) && f.ball.distanceToPoint(camWorld) < 170;
+        water.update(renderer, frustum, camWorld);                           // (a fall out of view or far away is not drawn either)
         // the water's two pictures (what lies under it, what is mirrored on it): only when water is on screen and near, made
         // for the height of the stretch she is nearest (the waters lie at several heights), and without the far groves
         let near = Infinity, level = WL;
@@ -450,7 +379,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
           optics.render(renderer, scene, camera, out, doThrough, doMirror);
         }
       }
-      for (const f of falls) if (f.fall.group.visible) f.fall.update(renderer);
+      else water.update(renderer);
       const nowT = N._internal.shared.uTime.value;
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }

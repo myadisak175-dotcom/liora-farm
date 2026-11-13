@@ -4,7 +4,8 @@
 # windmill, a river coming down in falls under a stone bridge) and is laid out here by hand: plateaus as
 # polygons with a height, their edges made to wander, ramps where the ways climb, level ground under every building, and the
 # water's beds. Nothing is cut through the land for the falls: each stretch of water lies on its own terrace, in a shallow
-# bed, and goes over the terrace's edge as a fall.
+# bed, and goes over the terrace's edge as a fall. (The plan only says where each stretch runs and how high it stands: where
+# its surface lies, where its lip is and where the fall lands are worked out in the game from the land itself, land-water.js.)
 #
 # South of the village the land goes on, and the valley of the first map lies in it, made again here to its measure, its head
 # right under the village's terrace: the river goes over the terrace's edge in one great fall to the valley's floor (no pool
@@ -409,11 +410,19 @@ for k_, tr in enumerate(tiers):
     px_at = np.stack([WX.ravel()[at], WZ.ravel()[at]], 1); past = np.zeros(len(at), bool)
     if k_ < len(tiers) - 1: past |= (idx == len(P) - 1) & (((px_at - P[-1]) @ unit(P[-1] - P[-9])) > 0.1)
     if k_ > 0: past |= (idx == 0) & (((px_at - P[0]) @ unit(P[0] - P[8])) > 0.1)
-    own = (g0[at] < lvl + 3.2) & ((g0[at] > lvl - 3.2) | (dd < half)) & ~past
+    # where it ends in a fall, its last 3 m are made a lip: the bed comes up to a shallow sill, and a shoulder of rock stands
+    # each side of the water right to the lip's line, even where the cliff's edge had already curved away there. The water
+    # then leaves over a straight edge, with a bank on both sides to the very end
+    up_lip = (len(P) - 1 - idx) * 0.25 if k_ < len(tiers) - 1 else np.full(len(at), 99.0)      # metres up from the lip
+    at_lip = (up_lip < 3.0) & ~past
+    own = (g0[at] < lvl + 3.2) & ((g0[at] > lvl - 3.2) | (dd < half) | at_lip) & ~past
     inside = dd < half
-    bed = lvl - tr['deep'] * (1 - (dd / np.maximum(half, 1e-6)) ** 2) - 0.12
+    deep_ = np.minimum(tr['deep'], 0.3 + (tr['deep'] - 0.3) * sm(0.5, 3.0, up_lip))
+    bed = lvl - deep_ * (1 - (dd / np.maximum(half, 1e-6)) ** 2) - 0.12
     s_ = np.clip((dd - half) / bank, 0, 1); s_ = s_ * s_ * (3 - 2 * s_)
     shore = (lvl + 0.22) * (1 - s_) + flat[at] * s_                   # the banks come up (or down) to the water's edge
+    shoulder = (lvl + 0.3) + (flat[at] - (lvl + 0.3)) * sm(0, 1.0, dd - half - 1.2)
+    shore = shore + (np.maximum(shore, shoulder) - shore) * (1 - sm(2.0, 3.0, up_lip))
     new = np.where(inside, bed, shore)
     flat[at] = np.where(own & (dd < half + bank), new, flat[at])
     water_d[at] = np.minimum(water_d[at], dd - half)

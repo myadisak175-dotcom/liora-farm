@@ -127,7 +127,11 @@ function fallMaterial(common, { layer = 0, speed = 1, white = 0, opacity = 1, wi
 }
 
 // a curved sheet with a rounded front: centre bulges towards the viewer, sides tuck back
-function fallGeometry({ x, z, top, bottom, width, forward, inset = 0, bulge = 0.5 }) {
+// lip: the edge the water goes over, as points [x, z] from one end to the other (the water falls toward +z). With one, the sheet
+// hangs from exactly that line: its top row of points are the lip's own (over: the share of the lip's length it takes, about
+// its middle), so the sheet and a water surface cut to the same line meet with no gap. Without one: a straight lip, width wide.
+function fallGeometry({ x, z, top, bottom, width, forward, inset = 0, bulge = 0.5, lip = null, over = 1 }) {
+  if (lip) return lipFallGeometry({ lip, top, bottom, forward, inset, bulge, over });
   const g = new THREE.PlaneGeometry(1, 1, 18, 48);
   const a = g.attributes.position, uv = g.attributes.uv, H = top - bottom;
   for (let i = 0; i < a.count; i++) {
@@ -138,6 +142,32 @@ function fallGeometry({ x, z, top, bottom, width, forward, inset = 0, bulge = 0.
     uv.setXY(i, u * 0.5 + 0.5, t);
   }
   g.computeVertexNormals();
+  return g;
+}
+
+function lipFallGeometry({ lip, top, bottom, forward, inset, bulge, over }) {
+  const len = [0];
+  for (let i = 1; i < lip.length; i++) len.push(len[i - 1] + Math.hypot(lip[i][0] - lip[i - 1][0], lip[i][1] - lip[i - 1][1]));
+  const L = len[lip.length - 1] || 1, H = top - bottom, ROWS = 48;
+  const at = d => {                                                        // the lip's point d metres along it, and which way is out from it there
+    let i = 1; while (i < lip.length - 1 && len[i] < d) i++;
+    const a = lip[i - 1], b = lip[i], k = Math.min(1, Math.max(0, (d - len[i - 1]) / (len[i] - len[i - 1] || 1))), tx = b[0] - a[0], tz = b[1] - a[1], tl = Math.hypot(tx, tz) || 1;
+    return [a[0] + tx * k, a[1] + tz * k, tx / tl, tz / tl];
+  };
+  // the columns: the lip's own points when the sheet takes all of it, else evenly over its share
+  const d0 = L * (1 - over) / 2, d1 = L - d0, cols = over >= 1 ? len.slice() : Array.from({ length: 13 }, (_, i) => d0 + (d1 - d0) * i / 12);
+  const pos = [], uv = [], idx = [];
+  for (let j = 0; j <= ROWS; j++) for (let i = 0; i < cols.length; i++) {
+    const t = j / ROWS, [px, pz, tx, tz] = at(cols[i]), u = (cols[i] - d0) / (d1 - d0 || 1) * 2 - 1;
+    const out = inset + forward * Math.sqrt(t) + bulge * (1 - u * u) * (0.4 + 0.6 * t) * Math.min(1, t / 0.1);      // (no bulge at the very top: there it is the lip)
+    const wide = u * (d1 - d0) / 2 * 0.35 * t;                             // the fall widens a little as it drops
+    pos.push(px - tz * out + tx * wide, top - t * H, pz + tx * out + tz * wide);
+    uv.push(u * 0.5 + 0.5, t);
+  }
+  for (let j = 0; j < ROWS; j++) for (let i = 0; i < cols.length - 1; i++) { const a = j * cols.length + i, b = a + cols.length; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
 
@@ -364,6 +394,7 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
         // it sits on the water (the card's lower edge is under the surface), drifts out and apart, and lifts a little as it goes
         vec3 c = vec3(aBase.x + aDrift.y * go * puffSpread, aBase.y + s * 0.42 + aSeed.w * go * puffRise, aBase.z + aDrift.x * go * puffSpread);
+        c = (modelMatrix * vec4(c, 1.0)).xyz;                              // where the fall has been put (a fall built at 0, 0 and then moved or turned took its billows nowhere: they stayed at the world's middle)
         vec3 p = c + (right * position.x + vec3(0.0, 1.0, 0.0) * position.y) * s * 1.3;      // the card is bigger than the cloud drawn on it, so no lobe is ever cut off by its edge
         vP = position.xy * 1.3; vK = vec3(k, smoothstep(puffFade, 1.0, k), aSeed.z);
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
@@ -411,15 +442,21 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
 
 // scale: below 1 for a small cascade: less spray and mist, smaller puffs at its foot (those take their size from FALL_TUNE
 // once, when the cascade is made; only the big falls follow the sliders live)
-export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5], scale = 1 } = {}) {
+// lip: the edge the water goes over as points [x, z] (see fallGeometry); the fall then hangs from that line, x and z are the
+// middle of it and width its length.
+export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5], scale = 1, lip = null } = {}) {
+  if (lip) {
+    let L = 0; for (let i = 1; i < lip.length; i++) L += Math.hypot(lip[i][0] - lip[i - 1][0], lip[i][1] - lip[i - 1][1]);
+    width = L; x = (lip[0][0] + lip[lip.length - 1][0]) / 2; z = (lip[0][1] + lip[lip.length - 1][1]) / 2;
+  }
   const group = new THREE.Group();
   group.name = 'waterfallClear';
   const common = commonUniforms({ optics, foamTexture, sun });
   const H = top - bottom, owned = [];
   const add = (mesh, order) => { mesh.renderOrder = order; group.add(mesh); owned.push(mesh); return mesh; };
   // the body and a faster veil in front of it
-  add(new THREE.Mesh(fallGeometry({ x, z, top, bottom, width, forward, bulge: 0.55 }), fallMaterial(common, { layer: 0, speed: 1, width, height: H })), 2);
-  add(new THREE.Mesh(fallGeometry({ x: x - width * 0.05, z, top, bottom, width: width * 0.62, forward, inset: 0.22, bulge: 0.4 }),
+  add(new THREE.Mesh(fallGeometry({ x, z, top, bottom, width, forward, bulge: 0.55, lip }), fallMaterial(common, { layer: 0, speed: 1, width, height: H })), 2);
+  add(new THREE.Mesh(fallGeometry({ x: x - width * 0.05, z, top, bottom, width: width * 0.62, forward, inset: 0.22, bulge: 0.4, lip, over: 0.62 }),
     fallMaterial(common, { layer: 1, speed: 1.4, white: 0.25, opacity: 0.6, width: width * 0.62, height: H })), 3);
   // churn on the pool
   const footZ = z + forward + 0.35, R = width * 1.5;
