@@ -8,11 +8,12 @@
      const kit = await loadVillageKit();
      const b = kit.builder();
      b.house({ w: 4, l: 6, floors: 2, wall: 'plaster', door: 'front', seed: 3 }, x, y, z, yaw);     // as many as wanted
-     b.piece('Prop_Wagon', x, y, z, yaw);                                                           // or single pieces
+     b.piece('Prop_Wagon', x, y, z, yaw);                                                           // or single pieces (the kit's stairs and landings too)
      scene.add(b.build());                                                                          // a Group of merged meshes
 
    A house: w metres across (4, 6 or 8), l metres along its ridge (4 .. 14, the sizes the kit has roofs for), ridge along
-   its own z, gables at +z ("front") and -z, eaves at +x and -x. y = 0 is the foot of the walls.
+   its own z, gables at +z ("front") and -z, eaves at +x and -x. y = 0 is the foot of the walls. base: 1 gives it a storey of
+   plain stone wall below that, for a house that stands on a slope.
    houseFootprint(spec) gives [w, l] with the eaves' and steps' room, for colliders and bare ground.
 
    look: 'kit' (the kit's own painted pictures) or 'flat' (each face one flat colour taken from them, like the restyled props).
@@ -77,7 +78,7 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
     const at = (x, y, z, yaw) => root.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(UP, yaw), new THREE.Vector3(1, 1, 1));
 
     function house(spec, x = 0, y = 0, z = 0, yaw = 0) {
-      const { w = 4, l = 6, floors = 1, wall = 'plaster', upper = 'plaster', door = 'front', doorAt = null, seed = 1, chimney = true, dormer = false, shutters = true, windows = 0.6, tower = false } = spec;
+      const { w = 4, l = 6, floors = 1, wall = 'plaster', upper = 'plaster', door = 'front', doorAt = null, seed = 1, chimney = true, dormer = false, shutters = true, windows = 0.6, tower = false, base = 0 } = spec;
       const r = mulberry(seed * 7919 + 13), pick = a => a[Math.floor(r() * a.length)];
       at(x, y, z, yaw);
       const nx = w / 2, nz = l / 2, hw = w / 2, hl = l / 2;
@@ -86,6 +87,11 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
         front: [nx, k => [-hw + 1 + 2 * k, hl], 0], back: [nx, k => [hw - 1 - 2 * k, -hl], Math.PI],
         right: [nz, k => [hw, hl - 1 - 2 * k], Math.PI / 2], left: [nz, k => [-hw, -hl + 1 + 2 * k], -Math.PI / 2],
       };
+      // a house on a slope: `base` storeys of plain stone wall under its floor, down into the ground (no doors, no windows)
+      for (let f = 1; f <= base; f++) {
+        for (const [n, where, turn] of Object.values(sides)) for (let k = 0; k < n; k++) { const [px, pz] = where(k); local(WALLS.brick.plain[0], px, -f * 3, pz, turn); }
+        for (const [cx, cz, turn] of [[hw, hl, 0], [-hw, hl, -Math.PI / 2], [-hw, -hl, Math.PI], [hw, -hl, Math.PI / 2]]) local('Corner_Exterior_Wood', cx, -f * 3, cz, turn);
+      }
       for (let f = 0; f < floors; f++) {
         const W = WALLS[f === 0 ? wall : upper], fy = f * 3;
         for (const [name, [n, where, turn]] of Object.entries(sides)) {
@@ -120,7 +126,7 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       }
       root.identity();
     }
-    const piece = (name, x, y, z, yaw = 0) => { root.identity(); local(name, x, y, z, yaw); };
+    const piece = (name, x, y, z, yaw = 0, wide = 1) => { root.identity(); local(name, x, y, z, yaw, wide); };      // (wide: made that many times as wide, e.g. a stair for a broad way)
 
     function build({ look = 'kit' } = {}) {
       const group = new THREE.Group(); group.name = 'village-kit';
