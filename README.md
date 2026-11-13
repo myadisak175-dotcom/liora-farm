@@ -137,6 +137,15 @@ The ground (ways, yards, brush work) can be edited inside the village (the dashe
 
 The edits are a small list laid over what `valley-level.js` generates, and never change what it generates: a plant taken out still takes its turn in the dice and still keeps its neighbours at their distance, so everything else stays exactly where it was. A thing is known by its kind and where it was first put; if the level later stops generating it, its edit is simply ignored. Brush work is a list of dabs `[x, z, radius, what]` stamped over the picture of the ways, in order.
 
+## Trees (catalog)
+
+`tree-catalog.html` shows every tree in `stylized-nature.js` one at a time (Vivi stands beside it for scale), or a whole set in a row. Nine new kinds were added beside the five the maps already use, all in the same flat-patch look:
+
+- **Accent crowns:** ซากุระ (`sakura`, pink puffs on a short leaning trunk), เมเปิลใบแดง (`maple`, reds, oranges and gold), ต้นแอปเปิล / ต้นส้ม (`apple`, `orange`: low orchard trees with toon fruit hung on the outside of the crown), ต้นยักษ์โบราณ (`giant`: a wide old tree with buttress roots and moss patches, built at a normal size and stood up 2.2× bigger by `createTree` and `createForest`).
+- **New silhouettes:** หลิวกิ่งย้อย (`willow`: curtains of leaf strings hanging from the crown), กอไผ่ (`bamboo`: a clump of ringed culms bowing out like a vase, leaf sprays hanging off them), สนทรงสูง (`cypress`: one tall dark flame), ต้นทรงร่ม (`umbrella`: a long bare leaning trunk under a flat wide crown).
+
+The five old kinds come out exactly as before (same dice, same geometry). Fruit is batched by `createForest` like everything else (one more draw call for all of it). 🆕/🌳 switches between the new and the old set, ◀ ▶ go through a set, 🎲 rolls new shapes, ดูทั้งชุด shows the set in a row (`?type=willow`, `?all=1`, `?seed=4`, `?novivi=1`). Nothing in the game uses the new kinds yet.
+
 ## Stylized prop rocks and cliffs (catalog)
 
 `rock-catalog.html` shows a new set of rocks and cliff pieces made in the look of a hand-made stylized kit (`rocks.js`, section 5: `createPropRock({ type, seed })`). Each piece is a rough block cut by many flat planes (big faces, then small chips off the edges), with the creases softened a little; the paint goes by the faces: warm and light towards the sun, cool blue-grey away from it, a pale rim on the edges, darker in the creases and at the foot, moss on the tops. Big shapes are assembled from pieces sunk into each other, the way such kits are used.

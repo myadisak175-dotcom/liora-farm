@@ -5,6 +5,9 @@
 
    Assets
      createTree({ type, seed, detail })   type: 'broadleaf' | 'oak' | 'pine' | 'birch' | 'sapling'
+                                          | 'sakura' | 'maple' | 'apple' | 'orange' | 'giant'
+                                          | 'willow' | 'bamboo' | 'cypress' | 'umbrella'
+                                          (giant is built at a normal size and stood up spec.scale times bigger)
      createForest([{ kind:'tree'|'bush', type, seed, x, y, z, rotY, scale }, ...])
                                           many plants in ~10 draw calls (use this for dense worlds)
      createBush({ type, seed })           type: 'round' | 'flowering'
@@ -144,6 +147,27 @@ export const PALETTES = {
     top: ['#2e431e', '#4f6f33', '#7f9b3e', '#b4c42b', '#d1db37', '#e9ed5c'],
     bot: ['#243819', '#41602b', '#6a8737', '#94aa24', '#abbe26', '#cad630'],
   },
+  // accent crowns: same six-step gradient idea, other hues
+  sakura: {
+    top: ['#7a3f58', '#b0607d', '#d9879f', '#efa9bd', '#f8c9d5', '#fde6ec'],
+    bot: ['#5f3047', '#94506a', '#c47189', '#e294aa', '#f0b5c4', '#f9d6df'],
+  },
+  maple: {
+    top: ['#6a1f1c', '#a2321f', '#d1502a', '#ec7a2c', '#f5a63a', '#f9cf5a'],
+    bot: ['#521716', '#83281b', '#b14223', '#d26326', '#e38e30', '#efb847'],
+  },
+  willow: {
+    top: ['#2f4420', '#557434', '#86a043', '#b3c54f', '#cfdb6a', '#e6eea0'],
+    bot: ['#253719', '#46622b', '#708c37', '#99ad3d', '#b5c652', '#d0dc82'],
+  },
+  bamboo: {
+    top: ['#26401f', '#3f6a2c', '#6c9a36', '#9fc23e', '#c3db4f', '#e0ee7a'],
+    bot: ['#1d3319', '#335826', '#57822e', '#82a632', '#a4c23d', '#c4d85e'],
+  },
+  cypress: {
+    top: ['#16261d', '#24402d', '#3a5f36', '#5c8040', '#86a347', '#adc35a'],
+    bot: ['#101d17', '#1c3324', '#2e4d2c', '#486836', '#6b8a3b', '#8fa948'],
+  },
 };
 // fraction of cards that end up darker than each tone step (tuned on the reference tree)
 const TONE_QUANTILES = [0.102, 0.271, 0.537, 0.624, 0.812];
@@ -167,7 +191,57 @@ const LEAF_STYLES = {
   broad:  { body: 0.68, lobes: [7, 0.30, 0.56, 0.36, 0.56], fringe: [48, 0.13, 0.25, 0.50, 0.75], seed: 92 },
   needle: { body: 0.60, lobes: [6, 0.28, 0.50, 0.30, 0.46], fringe: [110, 0.16, 0.34, 0.20, 0.32], seed: 99 },
   soft:   { body: 0.62, lobes: [8, 0.30, 0.56, 0.30, 0.48], fringe: [70, 0.10, 0.19, 0.55, 0.80], seed: 57 },
+  // round petal-like fringe: a puff of blossom
+  blossom: { body: 0.66, lobes: [9, 0.30, 0.56, 0.30, 0.46], fringe: [80, 0.07, 0.13, 0.80, 1.00], seed: 41 },
+  // fewer, sharper points
+  maple:  { body: 0.62, lobes: [7, 0.30, 0.56, 0.32, 0.50], fringe: [44, 0.16, 0.30, 0.30, 0.42], seed: 23 },
+  // not a patch: hanging strings of narrow leaves (willow curtains), and fans of long drooping blades (bamboo)
+  willow: { draw: 'tassel', seed: 64 },
+  bamboo: { draw: 'spray', seed: 18 },
 };
+// one leaf blade along +x: from the stalk (0, 0) to the tip (L, 0), W wide
+function bladePath(g, L, W, bend = 0) {
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.quadraticCurveTo(L * 0.4, W + bend, L, bend);
+  g.quadraticCurveTo(L * 0.4, -W + bend, 0, 0);
+  g.fill();
+}
+function drawTassel(g, rng, ox, oy, C) {
+  const strings = 3 + Math.floor(rng() * 2);
+  g.strokeStyle = '#fff'; g.lineCap = 'round';
+  for (let s = 0; s < strings; s++) {
+    const x0 = ox + C * (0.5 + (s - (strings - 1) / 2) * 0.14 + (rng() - 0.5) * 0.05);
+    const y0 = oy + C * 0.05, y1 = oy + C * range(rng, 0.84, 0.95), sway = (rng() - 0.5) * C * 0.1;
+    const at = u => [x0 + sway * u * u, lerp(y0, y1, u)];
+    g.lineWidth = C * 0.012;
+    g.beginPath();
+    for (let k = 0; k <= 10; k++) { const [x, y] = at(k / 10); k ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke();
+    const n = 9 + Math.floor(rng() * 4);
+    for (let i = 0; i < n; i++) {
+      const u = (i + rng() * 0.6) / n, [x, y] = at(u), side = i % 2 ? 1 : -1;
+      const L = C * range(rng, 0.12, 0.18) * (1 - u * 0.3);
+      g.save(); g.translate(x, y); g.rotate(Math.PI / 2 + side * range(rng, 0.4, 0.75));   // canvas y is down: point down and out
+      bladePath(g, L, L * range(rng, 0.26, 0.36));
+      g.restore();
+    }
+  }
+}
+function drawSpray(g, rng, ox, oy, C) {
+  const twigs = 2 + Math.floor(rng() * 2);
+  for (let s = 0; s < twigs; s++) {
+    const bx = ox + C * range(rng, 0.32, 0.68), by = oy + C * range(rng, 0.2, 0.4);
+    const k = 5 + Math.floor(rng() * 3);
+    for (let i = 0; i < k; i++) {
+      const a = Math.PI * lerp(0.08, 0.92, (i + rng() * 0.7) / k);       // a fan hanging down from the twig
+      const L = C * range(rng, 0.26, 0.38);
+      g.save(); g.translate(bx, by); g.rotate(a);
+      bladePath(g, L, L * range(rng, 0.11, 0.15), L * 0.08 * (a < Math.PI / 2 ? 1 : -1));
+      g.restore();
+    }
+  }
+}
 function leafMask(style) {
   const key = 'leaf_' + style;
   if (cache[key]) return cache[key];
@@ -180,6 +254,15 @@ function leafMask(style) {
   g.fillStyle = '#fff';
   const rng = mulberry32(P.seed);
   const circ = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+  if (P.draw) {
+    for (let v = 0; v < 4; v++) {
+      const ox = (v % 2) * C, oy = Math.floor(v / 2) * C;
+      g.save(); g.beginPath(); g.rect(ox + 6, oy + 6, C - 12, C - 12); g.clip();     // never bleed into the next atlas cell
+      (P.draw === 'tassel' ? drawTassel : drawSpray)(g, rng, ox, oy, C);
+      g.restore();
+    }
+    return (cache[key] = canvasTex(cv));
+  }
   for (let v = 0; v < 4; v++) {
     const ox = (v % 2) * C, oy = Math.floor(v / 2) * C, cx = ox + C / 2, cy = oy + C / 2, R = C * 0.28;
     circ(cx, cy, R * P.body);
@@ -417,6 +500,8 @@ function barkMaterial(spec) {
       uMarkCol: { value: rgb(spec.markCol || '#2e2a26') },
       uMarks: { value: spec.marks ? 1 : 0 },
       uShadeY: { value: spec.shadeY ?? 99 },
+      uRings: { value: spec.rings || 0 }, uRingCol: { value: rgb(spec.ringCol || '#4a5a28') },    // bamboo nodes (0 = none)
+      uMoss: { value: spec.moss || 0 }, uMossA: { value: rgb('#a9bd3c') }, uMossB: { value: rgb('#6c8a35') },  // old wood (0 = none)
     },
     vertexShader: /* glsl */`
       ${VCOMMON}
@@ -451,8 +536,8 @@ function barkMaterial(spec) {
     fragmentShader: /* glsl */`
       ${NOISE}
       ${HAZEF}
-      uniform vec3 uLight, uA, uB, uC, uH, uMarkCol;
-      uniform float uShadeY, uMarks, uDebug;
+      uniform vec3 uLight, uA, uB, uC, uH, uMarkCol, uRingCol, uMossA, uMossB;
+      uniform float uShadeY, uMarks, uDebug, uRings, uMoss;
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
@@ -501,6 +586,15 @@ function barkMaterial(spec) {
           float h = hash2(cell);
           float fy = fract(vOP.y * 4.0);
           if (h > 0.55 && fy > 0.3 && fy < 0.42 + h * 0.25) col = uMarkCol;
+        }
+        if (uRings > 0.0) {                                           // bamboo: a dark node ring, a pale band just above it
+          float fr = fract(vOP.y / uRings + sin(vCtr.x * 2.3 + vCtr.z * 1.7) * 1.3);
+          col = mix(col, uH, smoothstep(0.06, 0.09, fr) * (1.0 - smoothstep(0.13, 0.2, fr)) * 0.45);
+          col = mix(col, uRingCol, 1.0 - smoothstep(0.025, 0.06, fr));
+        }
+        if (uMoss > 0.0) {                                            // moss on what faces up (roots, limb tops) and low on the trunk
+          float m = (normalize(vN).y * 0.55 + (noise3(vOP * 3.4) - 0.5) * 1.5 + (noise3(vOP * 9.0) - 0.5) * 0.25 - 0.52) * uMoss;
+          col = mix(col, mix(uMossB, uMossA, smoothstep(0.1, 0.45, lit)), smoothstep(0.0, 0.06, m));   // patches, lit like the wood
         }
         gl_FragColor = vec4(uDebug > 0.5 ? vec3(0.0, 0.0, 1.0) : mix(col, uHaze, vHaze), 1.0);
       }`,
@@ -567,6 +661,58 @@ function flowerMaterial() {
     alphaToCoverage: true,
     side: THREE.DoubleSide,
   }));
+}
+
+// fruit hanging in a crown: little toon balls (three flat bands + a glint), swaying with the leaves round them
+function fruitMaterial() {
+  if (cache.fruitMat) return cache.fruitMat;
+  return (cache.fruitMat = new THREE.ShaderMaterial({
+    uniforms: { ...shared, uLight: { value: new THREE.Vector3(-0.4, 0.9, 0.5).normalize() } },
+    vertexShader: /* glsl */`
+      ${VCOMMON}
+      attribute vec3 iCenter;
+      attribute vec4 iFruit;    // xyz: colour, w: radius (already scaled)
+      attribute vec4 iBase;     // plant foot + scale; (0,0,0,1) for a single tree
+      varying vec3 vN;
+      varying vec3 vCol;
+      void main() {
+        float ph = objPhase() + iBase.x * 0.37 + iBase.z * 0.23;
+        vec3 c = iCenter + windOffset((iCenter - iBase.xyz) / iBase.w, ph) * iBase.w;
+        vec4 mv = modelViewMatrix * vec4(c + position * iFruit.w, 1.0);
+        vN = normalize(mat3(modelMatrix) * normal);
+        vCol = iFruit.xyz;
+        vHaze = hazeAt(mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      ${HAZEF}
+      uniform vec3 uLight;
+      varying vec3 vN;
+      varying vec3 vCol;
+      void main() {
+        float d = dot(normalize(vN), uLight);
+        vec3 col = d > 0.0 ? vCol * 1.06 + 0.03 : vCol * vec3(0.66, 0.55, 0.68);     // one clean terminator: no stripes on a small ball
+        col = mix(col, vec3(1.0, 0.97, 0.88), smoothstep(0.86, 0.9, d) * 0.6);      // the glint
+        gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
+      }`,
+  }));
+}
+function fruitMesh({ pos, col, base = null }) {
+  const ball = new THREE.IcosahedronGeometry(1, 1);     // 80 faces: a forest of fruit trees stays light
+  ball.scale(1, 0.9, 1);
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', ball.attributes.position);
+  g.setAttribute('normal', ball.attributes.normal);
+  const n = pos.length / 3;
+  if (!base) { base = new Float32Array(n * 4); for (let i = 3; i < base.length; i += 4) base[i] = 1; }
+  g.setAttribute('iCenter', new THREE.InstancedBufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('iFruit', new THREE.InstancedBufferAttribute(new Float32Array(col), 4));
+  g.setAttribute('iBase', new THREE.InstancedBufferAttribute(base instanceof Float32Array ? base : new Float32Array(base), 4));
+  g.instanceCount = n;
+  const m = new THREE.Mesh(g, fruitMaterial());
+  m.frustumCulled = false;
+  m.name = 'fruit';
+  return m;
 }
 
 function grassMaterial() {
@@ -896,12 +1042,18 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
         SS.push(W[0] * hT + W[1] * (e.y * 0.5 + 0.5) + W[2] * lam + clumpTint + cardTint);
         C.push(v.x, v.y, v.z);
         P.push(hT, clumpTint, cardTint, Math.floor(rng() * 4));
-        K.push(rng() * Math.PI * 2, cr * (1.7 + rng() * 0.45) * (T.cardScale ?? 1), e.y);
+        const spin = rng();
+        K.push(T.upright ? (spin - 0.5) * T.upright : spin * Math.PI * 2, cr * (1.7 + rng() * 0.45) * (T.cardScale ?? 1), e.y);   // upright: hanging sprays keep hanging
         A.push(1 + rng() * 0.32);
       }
     }
   }
-  // tone steps from this crown's own distribution -> every shape gets the same look
+  toneCards(SS, palName, quantiles, TC, BC);
+  return { C, P, K, A, TC, BC, SS };
+}
+
+// tone steps from this crown's own distribution -> every shape gets the same look
+function toneCards(SS, palName, quantiles, TC, BC) {
   const sorted = SS.slice().sort((a, b) => a - b);
   const steps = (quantiles || TONE_QUANTILES).map(qq => sorted[Math.min(sorted.length - 1, Math.floor(qq * sorted.length))]);
   const pal = PALETTES[palName];
@@ -912,7 +1064,88 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
     TC.push(TOP[b].x, TOP[b].y, TOP[b].z);
     BC.push(BOT[b].x, BOT[b].y, BOT[b].z);
   }
+}
+
+// willow curtains: strings of cards hanging from the rim of one crown tier down toward the ground
+function buildStrands(rng, S, tier, palName) {
+  const C = [], P = [], K = [], A = [], SS = [], TC = [], BC = [];
+  const c = new THREE.Vector3(...tier.c), r = new THREE.Vector3(...tier.r);
+  for (let i = 0; i < S.count; i++) {
+    const az = i * 2.39996 + rng() * 0.6;
+    const el = range(rng, S.from, S.to);                       // where on the crown the string leaves it
+    const rr = Math.sqrt(1 - el * el);
+    const outw = new THREE.Vector3(Math.cos(az), 0, Math.sin(az));
+    const p0 = new THREE.Vector3(outw.x * rr, el, outw.z * rr).multiply(r).multiplyScalar(range(rng, 0.82, 0.98)).add(c);
+    const L = Math.max(1, p0.y - range(rng, S.bottom[0], S.bottom[1]));
+    const k = Math.ceil(L / S.step);
+    const lam = outw.dot(SUN) * 0.5 + 0.5;
+    const tintS = (rng() - 0.5) * 0.12;
+    for (let j = 0; j <= k; j++) {
+      const t = j / k;
+      const bow = S.bow * (1 - Math.pow(1 - Math.min(1, t * 1.6), 2));   // eases out over the rim, then hangs straight
+      C.push(p0.x + outw.x * bow + (rng() - 0.5) * 0.08, p0.y - L * t, p0.z + outw.z * bow + (rng() - 0.5) * 0.08);
+      const tint = tintS + (rng() - 0.5) * 0.04;
+      P.push(0.5 + 2.2 * t, tint, (rng() - 0.5) * 0.04, Math.floor(rng() * 4));     // x: the tips flutter most
+      K.push((rng() - 0.5) * 0.3, lerp(S.card[0], S.card[1], t) * range(rng, 0.85, 1.1), 0);
+      A.push(range(rng, 0.8, 0.95));
+      SS.push(0.55 * (1 - t * 0.8) + 0.3 * lam + 0.15 * (el * 0.5 + 0.5) + tint);
+    }
+  }
+  toneCards(SS, palName, S.quantiles, TC, BC);
   return { C, P, K, A, TC, BC, SS };
+}
+
+// fruit on the outside of the crown: spots = leaf-clump surfaces (as blossoms use)
+function placeFruit(rng, F, spots) {
+  const pos = [], col = [];
+  const cols = F.colors.map(rgb), placed = [];
+  for (let tries = 0; tries < F.count * 4 && placed.length < F.count; tries++) {
+    const s = spots[Math.floor(rng() * spots.length)];
+    const rad = range(rng, F.r[0], F.r[1]);
+    const t = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).projectOnPlane(s.n).normalize().multiplyScalar(s.r * range(rng, 0, 0.5));
+    const p = s.p.clone().add(t).addScaledVector(s.n, rad * 0.15);
+    if (s.n.y < 0.4) p.y -= rad * 1.2;                          // on the sides they hang a little below the leaves
+    if (placed.some(q => q.distanceTo(p) < rad * 2.6)) continue;
+    placed.push(p);
+    const cc = cols[Math.floor(rng() * cols.length)], sh = range(rng, 0.94, 1.04);
+    pos.push(p.x, p.y, p.z);
+    col.push(cc.x * sh, cc.y * sh, cc.z * sh, rad);
+  }
+  return { pos, col };
+}
+
+// bamboo: a clump of thin culms leaning out from one foot, leaf sprays on their upper half
+function buildBamboo(rng, spec) {
+  const parts = [], tiers = [];
+  const n = Math.round(range(rng, spec.culms[0], spec.culms[1]));
+  const ph = rng() * 6.28;
+  for (let i = 0; i < n; i++) {
+    const a = ph + i * 2.39996 + (rng() - 0.5) * 0.5;
+    const d0 = Math.sqrt((i + 0.5) / n);                         // 0 = middle of the clump, 1 = its rim
+    const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+    const base = out.clone().multiplyScalar(d0 * 0.8);
+    const H = range(rng, 7.5, 10.5) * (1.1 - 0.3 * d0);         // the middle culms tallest
+    const lean = (0.1 + 0.32 * d0 + rng() * 0.08) * H;           // the outer ones bow out further: a vase
+    const pts = [];
+    for (let k = 0; k <= 5; k++) {
+      const t = k / 5;
+      pts.push(base.clone().addScaledVector(out, lean * Math.pow(t, 1.7)).setY(-0.05 + H * t - H * 0.08 * t * t * t));   // the tip nods
+    }
+    const r0 = range(rng, 0.06, 0.085) * H / 9;
+    const tube = taperedTube(pts, t => r0 * (1 - 0.5 * t), 6, 16);
+    parts.push(tube.geo);
+    const L = 4 + (rng() < 0.5 ? 1 : 0);
+    for (let k = 0; k < L; k++) {
+      const t = Math.min(0.99, 0.42 + 0.58 * (k + rng() * 0.6) / L);
+      const p = tube.curve.getPointAt(t);
+      const sa = a + (rng() - 0.5) * 1.8, s = 0.55 + 0.5 * t;
+      p.x += Math.cos(sa) * 0.4 * s; p.z += Math.sin(sa) * 0.4 * s; p.y -= 0.15 * s;      // sprays hang off the culm
+      tiers.push({ c: [p.x, p.y, p.z], r: [0.9 * s, 0.5 * s, 0.9 * s], clumpR: 0.42 * s, n: 2, openBelow: -0.95, cardScale: 1.2, upright: 1.4 });
+    }
+  }
+  const trunk = mergeGeometries(parts);
+  parts.forEach(p => p.dispose());
+  return { trunk, tiers };
 }
 
 function cardGeometry({ C, P, K, A, TC, BC, SS, B = null }) {
@@ -1046,31 +1279,191 @@ const TREE_TYPES = {
     tiers: [{ c: [0.05, 3.4, 0], r: [1.35, 1.05, 1.25], clumpR: 0.62, n: 18, taper: 0.3, taperLow: 0.25, openBelow: -0.8 }],
     shadeY: 2.4,
   },
+
+  // ---- accent crowns -----------------------------------------------------------------------
+  // cherry in bloom: short leaning trunk, limbs spreading wide, a low puffy pink crown
+  sakura: {
+    palette: 'sakura', mask: 'blossom', height: 7.2,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.05, 0.9, 0], [0.2, 1.8, 0.05], [0.3, 2.7, 0]],
+      radius: t => 0.25 - 0.11 * t + 0.16 * Math.exp(-t * 30), lean: 0.3, sway: 0.2, roots: 4,
+    },
+    branches: [
+      { t: [0.62, 0.95], n: 5, rise: [1.5, 2.4], out: [1.9, 3.0], r: 0.1, twig: 1 },
+    ],
+    tiers: [
+      { c: [0.3, 4.8, 0], r: [3.2, 1.55, 3.0], clumpR: 1.0, n: 32, openBelow: -0.72, taper: 0.3, taperLow: 0.25, egg: -0.1 },
+      { c: [-2.7, 4.1, 0.8], r: [1.6, 1.1, 1.5], clumpR: 0.78, n: 12, openBelow: -0.6, taper: 0.2 },
+      { c: [3.0, 4.3, -0.7], r: [1.6, 1.1, 1.5], clumpR: 0.78, n: 12, openBelow: -0.6, taper: 0.2 },
+      { c: [0.5, 6.1, 0.3], r: [1.9, 1.0, 1.8], clumpR: 0.8, n: 14, bright: 0.06, openBelow: -0.5, taper: 0.3 },
+    ],
+    quantiles: [0.08, 0.22, 0.45, 0.62, 0.82],       // a lighter crown than the greens
+    bark: ['#6b4a48', '#4b3336', '#33252c'], barkHi: '#d9b8a8', marks: true, markCol: '#664845', shadeY: 3.4,
+  },
+  // autumn maple: a round crown in reds, oranges and gold
+  maple: {
+    palette: 'maple', mask: 'maple', height: 8,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.02, 1.0, 0], [0.05, 2.2, 0], [0.1, 3.4, 0], [0.12, 4.6, 0]],
+      radius: t => 0.2 - 0.12 * t + 0.14 * Math.exp(-t * 35), lean: 0.14, roots: 4,
+    },
+    branches: [
+      { t: [0.45, 0.6], n: 5, rise: [1.5, 2.1], out: [1.4, 2.2], r: 0.085, twig: 0.8 },
+      { t: [0.8, 0.95], n: 3, rise: [1.0, 1.5], out: [0.8, 1.3], r: 0.06 },
+    ],
+    tiers: [
+      { c: [0, 5.3, 0], r: [3.0, 2.1, 2.9], clumpR: 1.1, n: 34, openBelow: -0.8, taper: 0.2, taperLow: 0.3, egg: 0.05 },
+      { c: [0.2, 6.7, 0.1], r: [2.0, 1.15, 1.9], clumpR: 0.85, n: 14, bright: 0.08, openBelow: -0.6, taper: 0.3 },
+      { c: [-2.3, 4.7, 1.0], r: [1.4, 1.1, 1.3], clumpR: 0.75, n: 10, openBelow: -0.6, taper: 0.2 },
+    ],
+    quantiles: [0.1, 0.25, 0.48, 0.64, 0.84],
+    bark: ['#6f5a52', '#4d3f3b', '#342b2c'], shadeY: 3.6,
+  },
+  // orchard trees: low fork, a round dense crown, fruit hung on the outside of it
+  apple: {
+    palette: 'broad', mask: 'broad', height: 5.4,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.03, 0.7, 0], [0.08, 1.4, 0], [0.1, 2.1, 0]],
+      radius: t => 0.15 - 0.07 * t + 0.1 * Math.exp(-t * 35), lean: 0.2, roots: 3,
+    },
+    branches: [{ t: [0.55, 0.95], n: 5, rise: [1.0, 1.6], out: [1.0, 1.6], r: 0.07, twig: 0.9 }],
+    tiers: [
+      { c: [0, 3.4, 0], r: [2.2, 1.5, 2.1], clumpR: 0.85, n: 30, openBelow: -0.7, coreBottom: 0.6, taper: 0.25, taperLow: 0.35 },
+      { c: [0.1, 4.6, 0], r: [1.4, 0.9, 1.3], clumpR: 0.7, n: 12, bright: 0.06, openBelow: -0.5, taper: 0.3 },
+    ],
+    quantiles: [0.16, 0.4, 0.64, 0.78, 0.92],        // deeper green so the fruit stands out
+    fruit: { colors: ['#d63a2f', '#c4302c', '#e0552e'], r: [0.1, 0.13], count: 48 },
+    shadeY: 2.4,
+  },
+  orange: {
+    palette: 'pine', mask: 'broad', height: 5.2,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.02, 0.7, 0], [0.05, 1.3, 0], [0.06, 1.9, 0]],
+      radius: t => 0.14 - 0.07 * t + 0.1 * Math.exp(-t * 35), lean: 0.12, roots: 3,
+    },
+    branches: [{ t: [0.55, 0.95], n: 5, rise: [1.0, 1.5], out: [0.9, 1.4], r: 0.065, twig: 0.8 }],
+    tiers: [
+      { c: [0, 3.3, 0], r: [2.0, 1.8, 1.95], clumpR: 0.8, n: 32, openBelow: -0.75, coreBottom: 0.6, taper: 0.2, taperLow: 0.3, egg: 0.1 },
+      { c: [0.05, 4.7, 0], r: [1.1, 0.8, 1.05], clumpR: 0.6, n: 10, bright: 0.05, openBelow: -0.4, taper: 0.3 },
+    ],
+    quantiles: [0.12, 0.34, 0.6, 0.74, 0.9],
+    fruit: { colors: ['#f39a1e', '#f7ad2b', '#ec8a17'], r: [0.1, 0.12], count: 44 },
+    shadeY: 2.3,
+  },
+  // the old giant at the heart of a village: built at a normal size, stood up spec.scale times bigger
+  giant: {
+    palette: 'broad', mask: 'broad', height: 10, scale: 2.2,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.05, 1.0, 0], [0.15, 2.0, 0.05], [0.1, 3.0, 0], [0.2, 3.9, 0.05], [0.3, 4.6, 0]],
+      radius: t => 0.72 - 0.34 * t + 0.5 * Math.exp(-t * 12), lean: 0.1, sway: 0.25, roots: 7,
+    },
+    branches: [
+      { t: [0.5, 0.72], n: 6, rise: [1.3, 2.0], out: [3.0, 4.2], r: 0.26, twig: 1 },
+      { t: [0.86, 0.98], n: 3, rise: [1.4, 2.0], out: [1.4, 2.2], r: 0.18, twig: 0.5 },
+    ],
+    tiers: [
+      { c: [0, 6.8, 0], r: [4.6, 2.0, 4.4], clumpR: 1.3, n: 48, openBelow: -0.75, coreBottom: 0.55, taper: 0.3, taperLow: 0.2, egg: -0.05 },
+      { c: [-4.3, 5.9, 1.3], r: [2.4, 1.4, 2.3], clumpR: 1.0, n: 16, openBelow: -0.62, taper: 0.2 },
+      { c: [4.2, 6.1, -1.5], r: [2.5, 1.5, 2.4], clumpR: 1.0, n: 16, openBelow: -0.62, taper: 0.2 },
+      { c: [1.1, 5.8, 4.1], r: [2.2, 1.3, 2.1], clumpR: 0.95, n: 14, openBelow: -0.62, taper: 0.2 },
+      { c: [-1.0, 5.9, -4.2], r: [2.3, 1.3, 2.2], clumpR: 0.95, n: 14, openBelow: -0.62, taper: 0.2 },
+      { c: [0.4, 8.5, 0.2], r: [2.8, 1.2, 2.6], clumpR: 1.0, n: 20, bright: 0.04, openBelow: -0.5, taper: 0.35 },
+    ],
+    quantiles: [0.14, 0.36, 0.6, 0.74, 0.9],         // an old, deep green
+    bark: ['#6e5146', '#4a3632', '#30242a'], moss: 1, shadeY: 4.4,
+  },
+
+  // ---- new silhouettes ---------------------------------------------------------------------
+  // weeping willow: a leaning trunk, a dome, and curtains of leaves hanging almost to the ground
+  willow: {
+    palette: 'willow', mask: 'soft', height: 8.4,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.1, 1.0, 0], [0.3, 2.0, 0.05], [0.4, 3.0, 0], [0.45, 4.2, 0]],
+      radius: t => 0.28 - 0.15 * t + 0.18 * Math.exp(-t * 30), lean: 0.35, sway: 0.2, roots: 5,
+    },
+    branches: [{ t: [0.6, 0.9], n: 6, rise: [1.5, 2.3], out: [1.4, 2.4], r: 0.09, twig: 0.8 }],
+    tiers: [
+      { c: [0.4, 6.4, 0], r: [3.0, 1.6, 2.9], clumpR: 0.85, n: 26, openBelow: -0.15, coreBottom: 0.45, taper: 0.2, egg: 0.1 },
+      { c: [0.5, 7.6, 0], r: [1.8, 0.9, 1.7], clumpR: 0.7, n: 10, bright: 0.06, openBelow: -0.3 },
+    ],
+    strands: { tier: 0, count: 72, from: -0.3, to: 0.35, bottom: [0.4, 1.9], step: 0.26, bow: 0.5, card: [0.85, 0.58],
+      mask: 'willow', quantiles: [0.12, 0.32, 0.58, 0.74, 0.9] },
+    bark: ['#6f5f4f', '#4c4038', '#332b2a'], shadeY: 4.8,
+  },
+  // a clump of bamboo: many thin culms from one foot (built by buildBamboo)
+  bamboo: {
+    palette: 'bamboo', mask: 'bamboo', height: 10, custom: buildBamboo, culms: [12, 16], detailMul: 0.4, core: false,
+    quantiles: [0.12, 0.32, 0.56, 0.72, 0.88],
+    bark: ['#b9c65c', '#86a03c', '#5a7230'], barkHi: '#f4f3b8', rings: 0.42, ringCol: '#4a5a28',
+  },
+  // a tall dark flame of a tree, for ridges and lining a path
+  cypress: {
+    palette: 'cypress', mask: 'soft', height: 12,
+    trunk: {
+      pts: [[0, -0.05, 0], [0, 1.5, 0], [0.02, 3.5, 0], [0, 6, 0], [0.02, 9, 0]],
+      radius: t => 0.2 - 0.15 * t + 0.1 * Math.exp(-t * 40), lean: 0.03, roots: 3,
+    },
+    branches: [],
+    tiers: [
+      { c: [0, 6.0, 0], r: [1.45, 4.6, 1.45], clumpR: 0.6, n: 64, openBelow: -0.92, coreScale: 0.6, coreBottom: 0.85, taper: 0.62, taperLow: 0.25, egg: 0.12 },
+      { c: [0, 11.0, 0], r: [0.42, 1.0, 0.42], clumpR: 0.32, n: 7, openBelow: -0.6, egg: 0.5, bright: 0.05 },
+    ],
+    quantiles: [0.2, 0.44, 0.68, 0.8, 0.93],
+    shadeY: 1.6,
+  },
+  // umbrella pine: a long bare leaning trunk, limbs splaying at the top, a flat wide crown
+  umbrella: {
+    palette: 'pine', mask: 'needle', height: 9.6,
+    trunk: {
+      pts: [[0, -0.05, 0], [0.1, 1.8, 0], [0.35, 3.6, 0], [0.55, 5.2, 0], [0.5, 6.5, 0]],
+      radius: t => 0.2 - 0.1 * t + 0.15 * Math.exp(-t * 35), lean: 0.25, sway: 0.15, roots: 4,
+    },
+    branches: [{ t: [0.72, 0.92], n: 5, rise: [1.0, 1.7], out: [1.6, 2.6], r: 0.09, twig: 0.8 }],
+    tiers: [
+      { c: [0.5, 8.2, 0], r: [3.9, 1.1, 3.7], clumpR: 1.05, n: 38, openBelow: -0.3, coreBottom: 0.35, taper: 0.12 },
+      { c: [-2.4, 7.7, 1.5], r: [1.8, 0.75, 1.7], clumpR: 0.75, n: 12, openBelow: -0.3, coreBottom: 0.4 },
+      { c: [3.3, 7.8, -1.2], r: [1.7, 0.75, 1.6], clumpR: 0.75, n: 12, openBelow: -0.3, coreBottom: 0.4 },
+      { c: [0.7, 8.9, -0.2], r: [2.3, 0.7, 2.1], clumpR: 0.75, n: 14, bright: 0.06, openBelow: -0.3 },
+    ],
+    quantiles: [0.17, 0.4, 0.66, 0.76, 0.9],
+    shadeY: 7.2,
+  },
 };
 export const TREE_TYPE_NAMES = Object.keys(TREE_TYPES);
+export const treeSpecScale = type => TREE_TYPES[type]?.scale ?? 1;
 
 function treeParts(type, seed, detail) {
   const spec = TREE_TYPES[type];
   if (!spec) throw new Error('unknown tree type: ' + type);
   const rng = mulberry32(seed * 7919 + type.length);
-  const trunk = buildTrunk(rng, spec);
-  const core = buildCore(spec.tiers);
-  const cards = buildCanopy(rng, spec.tiers, spec.palette, detail, null, spec.quantiles);
-  return { spec, trunk, core, cards };
+  let trunk, tiers = spec.tiers;
+  if (spec.custom) ({ trunk, tiers } = spec.custom(rng, spec));
+  else trunk = buildTrunk(rng, spec);
+  const core = buildCore(spec.core === false ? [] : tiers);
+  const spots = spec.fruit ? [] : null;
+  const cards = buildCanopy(rng, tiers, spec.palette, detail * (spec.detailMul ?? 1), spots, spec.quantiles);
+  const strands = spec.strands ? buildStrands(rng, spec.strands, tiers[spec.strands.tier], spec.palette) : null;
+  const fruit = spec.fruit ? placeFruit(rng, spec.fruit, spots) : null;
+  return { spec, trunk, core, cards, strands, fruit };
 }
 
 export function createTree({ type = 'broadleaf', seed = 7, detail = 1 } = {}) {
-  const { spec, trunk: tg, core: cg, cards } = treeParts(type, seed, detail);
+  const { spec, trunk: tg, core: cg, cards, strands, fruit } = treeParts(type, seed, detail);
   const group = new THREE.Group();
   const trunk = new THREE.Mesh(withBase(tg), barkMaterial(spec));
   const core = new THREE.Mesh(withBase(cg), coreMaterial(spec.palette));
   const leaves = new THREE.Mesh(cardGeometry(cards), leafMaterial(spec.mask));
-  for (const m of [trunk, core, leaves]) m.frustumCulled = false;
-  group.add(trunk, core, leaves);
+  const parts = [trunk, core, leaves];
+  if (strands) parts.push(new THREE.Mesh(cardGeometry(strands), leafMaterial(spec.strands.mask)));
+  if (fruit) parts.push(fruitMesh(fruit));
+  for (const m of parts) m.frustumCulled = false;
+  group.add(...parts);
+  if (spec.scale) group.scale.setScalar(spec.scale);
   group.name = 'tree_' + type;
   group.userData = {
-    kind: 'tree', type, height: spec.height, cards: leaves.geometry.instanceCount,
-    dispose() { trunk.geometry.dispose(); trunk.material.dispose(); core.geometry.dispose(); leaves.geometry.dispose(); },
+    kind: 'tree', type, height: spec.height * (spec.scale ?? 1),
+    cards: leaves.geometry.instanceCount + (strands ? strands.C.length / 3 : 0), fruit: fruit ? fruit.pos.length / 3 : 0,
+    dispose() { trunk.material.dispose(); for (const m of parts) m.geometry.dispose(); },
   };
   return group;
 }
@@ -1137,7 +1530,7 @@ export function createBush({ type = 'round', seed = 3, blossom = null } = {}) {
 export function createForest(list) {
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), T = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);
-  const leafB = {}, barkB = {}, coreB = {}, flowersB = { pos: [], par: [], pet: [], cen: [] };
+  const leafB = {}, barkB = {}, coreB = {}, flowersB = { pos: [], par: [], pet: [], cen: [] }, fruitB = { pos: [], col: [], base: [] };
   const addCards = (mask, cards, e, s) => {
     const b = leafB[mask] || (leafB[mask] = { C: [], P: [], K: [], A: [], TC: [], BC: [], SS: [], B: [] });
     for (let i = 0; i < cards.C.length / 3; i++) {
@@ -1153,7 +1546,7 @@ export function createForest(list) {
     }
   };
   for (const e of list) {
-    const s = e.scale ?? 1;
+    const s = (e.scale ?? 1) * (e.kind === 'bush' ? 1 : treeSpecScale(e.type || 'broadleaf'));   // a giant is stood up at its own size
     M.compose(T.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S.set(s, s, s));
     if (e.kind === 'bush') {
       const { core, cards, flowers } = bushParts(e.type || 'round', e.seed ?? 1, e.blossom || null);
@@ -1167,11 +1560,19 @@ export function createForest(list) {
         flowersB.cen.push(flowers.cen[i * 3], flowers.cen[i * 3 + 1], flowers.cen[i * 3 + 2]);
       }
     } else {
-      const { spec, trunk, core, cards } = treeParts(e.type || 'broadleaf', e.seed ?? 1, e.detail ?? 1);
+      const { spec, trunk, core, cards, strands, fruit } = treeParts(e.type || 'broadleaf', e.seed ?? 1, e.detail ?? 1);
       trunk.applyMatrix4(M); trunk.attributes.aCtr.applyMatrix4(M); trunk.attributes.aAx.applyMatrix4(M);
       (barkB[e.type] || (barkB[e.type] = { spec, geos: [] })).geos.push(withBase(trunk, e.x, e.y, e.z, s));
-      (coreB[spec.palette] || (coreB[spec.palette] = [])).push(withBase(core.applyMatrix4(M), e.x, e.y, e.z, s));
+      if (core.attributes.position.count) (coreB[spec.palette] || (coreB[spec.palette] = [])).push(withBase(core.applyMatrix4(M), e.x, e.y, e.z, s));
+      else core.dispose();
       addCards(spec.mask, cards, e, s);
+      if (strands) addCards(spec.strands.mask, strands, e, s);
+      if (fruit) for (let i = 0; i < fruit.pos.length / 3; i++) {
+        V.set(fruit.pos[i * 3], fruit.pos[i * 3 + 1], fruit.pos[i * 3 + 2]).applyMatrix4(M);
+        fruitB.pos.push(V.x, V.y, V.z);
+        fruitB.col.push(fruit.col[i * 4], fruit.col[i * 4 + 1], fruit.col[i * 4 + 2], fruit.col[i * 4 + 3] * s);
+        fruitB.base.push(e.x, e.y, e.z, s);
+      }
     }
   }
   const group = new THREE.Group();
@@ -1187,6 +1588,7 @@ export function createForest(list) {
   for (const [pal, geos] of Object.entries(coreB)) { add(mergeGeometries(geos), coreMaterial(pal)); geos.forEach(g => g.dispose()); }
   for (const [mask, b] of Object.entries(leafB)) add(cardGeometry({ ...b, B: new Float32Array(b.B) }), leafMaterial(mask));
   if (flowersB.pos.length) { const f = flowerCards(flowersB.pos, flowersB.par, flowersB.pet, flowersB.cen); group.add(f); owned.push(f.geometry); }
+  if (fruitB.pos.length) { const f = fruitMesh(fruitB); group.add(f); owned.push(f.geometry); }
   let cards = 0;
   for (const b of Object.values(leafB)) cards += b.C.length / 3;
   group.name = 'forest';
