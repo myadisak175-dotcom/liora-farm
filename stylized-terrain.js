@@ -105,7 +105,8 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
       uFar: { value: rgb(far) }, uHalf: { value: new THREE.Vector2(half[0], half[1]) }, uZc: { value: zc },
       // DEEP: land far below the rim of a pit fades into its mist and then into the dark (uDeepOn = 0: no pit on this map)
       uRockOn: { value: 0 },      // 1 once rocks.js (carved faces) has carved the land and given it aRock
-      uDeepOn: { value: 0 }, uDeepMist: { value: rgb('#a9c8d6') }, uDeepBlue: { value: rgb('#2c4a68') }, uDeepVoid: { value: rgb('#0f1b2c') },
+      uDeepOn: { value: 0 }, uDeepTop: { value: 0 },      // uDeepTop: metres the pit stands lower than the one the depths below were set for (its rim about 15 m up)
+      uDeepMist: { value: rgb('#a9c8d6') }, uDeepBlue: { value: rgb('#2c4a68') }, uDeepVoid: { value: rgb('#0f1b2c') },
       ...HAZE_U(),
     },
     vertexShader: /* glsl */`
@@ -134,7 +135,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
       ${STRATA}
       ${HAZEF}
       uniform vec3 uG0, uG1, uG2, uG3, uR0, uR1, uR2, uR3, uB0, uB1, uB2, uP0, uP1, uP2, uPV, uFar, uDeepMist, uDeepBlue, uDeepVoid;
-      uniform float uDeepOn;
+      uniform float uDeepOn, uDeepTop;
       uniform float uRockOn;
       #ifdef CLIFF_PAINT
         uniform sampler2D uCliffPaint;
@@ -215,8 +216,8 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         }
         col = mix(col, uHaze, vHaze);
         // DEEP: down a pit the walls go pale into the mist that hangs in it, then blue, then dark: no floor is ever seen
-        if (uDeepOn > 0.5 && vWP.y < -4.0) {
-          float y = vWP.y + (noise2(vWP.xz * 0.12 + vWP.y * 0.05) - 0.5) * 6.0;
+        if (uDeepOn > 0.5 && vWP.y - uDeepTop < -4.0) {
+          float y = vWP.y - uDeepTop + (noise2(vWP.xz * 0.12 + vWP.y * 0.05) - 0.5) * 6.0;
           col = mix(col, uDeepMist, smoothstep(-6.0, -42.0, y) * 0.55);
           col = mix(col, uDeepBlue, smoothstep(-34.0, -92.0, y));
           col = mix(col, uDeepVoid, smoothstep(-85.0, -190.0, y));

@@ -443,8 +443,8 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
 // scale: below 1 for a small cascade: less spray and mist, smaller puffs at its foot (those take their size from FALL_TUNE
 // once, when the cascade is made; only the big falls follow the sliders live)
 // lip: the edge the water goes over as points [x, z] (see fallGeometry); the fall then hangs from that line, x and z are the
-// middle of it and width its length.
-export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5], scale = 1, lip = null } = {}) {
+// middle of it and width its length. churn: the reach of the foam at its foot (metres), if not one and a half times the width.
+export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.6, forward = 2.9, optics = null, foamTexture = null, cells = null, surfaceChurn = null, sun = [-0.4, 0.9, 0.5], scale = 1, lip = null, churn: churnR = null } = {}) {
   if (lip) {
     let L = 0; for (let i = 1; i < lip.length; i++) L += Math.hypot(lip[i][0] - lip[i - 1][0], lip[i][1] - lip[i - 1][1]);
     width = L; x = (lip[0][0] + lip[lip.length - 1][0]) / 2; z = (lip[0][1] + lip[lip.length - 1][1]) / 2;
@@ -459,7 +459,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   add(new THREE.Mesh(fallGeometry({ x: x - width * 0.05, z, top, bottom, width: width * 0.62, forward, inset: 0.22, bulge: 0.4, lip, over: 0.62 }),
     fallMaterial(common, { layer: 1, speed: 1.4, white: 0.25, opacity: 0.6, width: width * 0.62, height: H })), 3);
   // churn on the pool
-  const footZ = z + forward + 0.35, R = width * 1.5;
+  const footZ = z + forward + 0.35, R = churnR || width * 1.5;      // (churn: how far the foam at its foot reaches; a fall into a narrow stream gives the stream's half-width, so the foam stays on the water)
   const churnGeo = new THREE.CircleGeometry(R, 56);
   churnGeo.rotateX(-Math.PI / 2);
   churnGeo.scale(1, 1, 0.75);
