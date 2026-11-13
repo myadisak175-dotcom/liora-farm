@@ -13,7 +13,9 @@
 # cut along the west cliff goes down to it; a plank bridge crosses the river. At its end the valley opens into a round bowl,
 # and in the bowl's floor lies the pit: the hand-drawn one of ?map=pit (assets/heightmaps/abyss-pit.bin, read as pit-level.js
 # reads it), its rim set at the floor's height. The river runs to the pit's brink and goes down its shelves in falls, and two
-# brooks from the meadow fall into the bowl and follow it down, each from the third shelf into the mist.
+# brooks from the meadow fall into the bowl and follow it down, each from the third shelf into the mist. The top of each
+# water's way down is a cascade of low steps with a small pool on each (5b), and the way round the pit crosses each water
+# by a plank bridge.
 #
 #   python3 tools/make-hill-village-heightmap.py       (Termux: pip install numpy scipy pillow)
 #
@@ -22,7 +24,7 @@
 #   hill-village.bin    the land as raw 16-bit numbers, little-endian, land.nx across by land.nz down, one every land.cell
 #                       metres from (land.x0, land.z0)  (what the game reads)
 #   hill-village.json   the plan: where the land lies and the part she walks on, the water (brooks and falls, as for ?map=pit),
-#                       the buildings, the two bridges, the ways, yards, fences, fields, small things, plants, rocks, and the
+#                       the buildings, the bridges, the ways, yards, fences, fields, small things, plants, rocks, and the
 #                       places to start from
 # Places are metres from the middle of the village: x east, z south. A yaw is the way a thing faces: 0 south (+z), pi/2 east.
 import json, math
@@ -211,7 +213,31 @@ def brink_at(th):
     return float(rr[(sample(H, np.array([polar(th, r) for r in rr])) < FLOOR - 3).argmax()])
 
 
-RIVER_MOUTH = polar(TH_R, brink_at(TH_R) + 4.0)                      # the river's line ends here, 4 m short of the brink (the lip itself is found from the land, in 6)
+# Where the three waters come to the pit, the top of their way down is a cascade: low steps with a small pool on each, in
+# place of one tall fall. From the bowl's floor down to the pit's first shelf the steps are let into the floor, back from
+# the brink (the shelf below is too narrow to build them out onto); and where a side brook comes over the bowl's cliff, into
+# that cliff. A step is a level bench CASC_RUN metres long, the face above it included; CASC_N benches between one level and
+# the next, so CASC_N + 1 falls. Each is a bench with a pool on it and the water falling free over its edge: wider than the
+# water, with rock either side, not a chute. The way round the pit crosses each water by a plank bridge on the strip of
+# floor above its steps. (b: the pit's brink as drawn, the way th; nb: the floor's new brink, at the head of the steps; rb:
+# where the bridge lies; rf, rh: the foot and the head of the steps in the bowl's cliff; all metres from the pit's middle)
+CASC_RUN, CASC_FACE, CASC_N = 3.7, 0.45, 2
+
+
+def cliff_foot(th):
+    """how far from the pit's middle the bowl's cliff stands, the way th"""
+    rr = np.arange(BOWL_R - 10, BOWL_R + 12, 0.2)
+    return float(rr[(sample(H, np.array([polar(th, r) for r in rr])) > FLOOR + 2.0).argmax()])
+
+
+def cascade(th, half, from_meadow, sunk=0.0):
+    b = brink_at(th); c = {'th': th, 'half': half, 'sunk': sunk, 'b': b, 'nb': b + CASC_N * CASC_RUN}; c['rb'] = c['nb'] + 2.4
+    if from_meadow: c['rf'] = max(cliff_foot(th), c['rb'] + 4.4); c['rh'] = c['rf'] + CASC_N * CASC_RUN
+    return c
+
+
+CASC = [cascade(TH_R, 3.0, False, sunk=FLOOR - RL - 0.12)] + [cascade(th, 1.9, True) for th in SIDE]      # the river, the east brook, the west brook (half: half the width of the pools on its steps)
+RIVER_MOUTH = polar(TH_R, CASC[0]['nb'] + 4.0)                       # the river's line ends here, 4 m short of the head of its steps (the lip itself is found from the land, in 6)
 _rows = np.nonzero(floor.any(1))[0]; _xw = WX[0, floor[_rows].argmax(1)]; _sd = d_out - d_in
 
 
@@ -355,9 +381,32 @@ RAMP_TOP, RAMP_FOOT = RAMP[0], RAMP[-1]
 _lx = np.arange(XV + 8.0, XV + 44.0, 0.2); _lzz = np.full(len(_lx), ZH + 16.0)
 _cut = sample(H_before, np.c_[_lx, _lzz]) - sample(H, np.c_[_lx, _lzz]) > 0.3
 LOOKOUT = (float(_lx[len(_cut) - 1 - _cut[::-1].argmax()]) + 2.4, ZH + 16.0)
-RING_R = PIT_BRINK + 6.0                                              # the way round the pit: this far from its middle
-RING = [polar(TH_R + math.radians(a_), RING_R) for a_ in range(14, 347, 11)]
-PIT_SOUTH = polar(math.radians(97), RING_R)                          # a spot on the far side of the pit from the valley
+RING_R = PIT_BRINK + 6.0                                              # the way round the pit: this far from its middle; at each water it swings out to the bridge
+_turn = lambda a_: (a_ + math.pi) % (2 * math.pi) - math.pi          # an angle brought to -pi..pi
+ring_r = lambda th: RING_R + sum(max(0.0, c['rb'] - RING_R) * (1 - float(sm(5.0, 14.0, abs(_turn(th - c['th'])) * RING_R))) for c in CASC)
+ring_at = lambda th: polar(th, ring_r(th))
+# a plank bridge over each of the three waters, on the strip of floor above its steps: across the water, square to it (a:
+# its end on the side the angle round the pit is less, b: the other)
+PLANKS = []
+for c, hw_ in zip(CASC, (3.4, 1.6, 1.6)):
+    mid = np.array(polar(c['th'], c['rb'])); t_ = np.array([-math.sin(c['th']), math.cos(c['th'])]); L_ = round(2 * hw_ + 4.6, 1)
+    PLANKS.append({'mid': mid, 'a': mid - t_ * L_ / 2, 'b': mid + t_ * L_ / 2, 'len': L_, 'yaw': math.atan2(-t_[1], t_[0]), 'th': c['th'], 'reach': (L_ / 2 + 2.0) / c['rb']})
+    even_ends(PLANKS[-1]['a'], PLANKS[-1]['b'], 1.6, 1.6)
+J_E, J_W = ring_at(TH_R + math.radians(14)), ring_at(TH_R - math.radians(14))      # where the ways down the valley's two banks come to it
+RING = []                                                             # the way round, in three arcs: each from one bridge's end to the next bridge
+_order = sorted(PLANKS, key=lambda p_: (p_['th'] - TH_R) % (2 * math.pi))
+for p_, q_ in zip(_order, _order[1:] + _order[:1]):
+    a0 = p_['th'] + p_['reach']; a1 = a0 + (q_['th'] - q_['reach'] - a0) % (2 * math.pi)
+    angs = list(np.linspace(a0, a1, max(2, int(math.degrees(a1 - a0) / 9) + 1)))
+    for j_ in (TH_R + math.radians(14), TH_R - math.radians(14)):
+        jj = a0 + (j_ - a0) % (2 * math.pi)
+        if jj < a1: angs = sorted([a_ for a_ in angs if abs(a_ - jj) > math.radians(3.5)] + [jj])
+    RING.append([tuple(p_['b'])] + [ring_at(a_) for a_ in angs] + [tuple(q_['a'])])
+PIT_SOUTH = ring_at(math.radians(97))                                # a spot on the far side of the pit from the valley
+PIT_NORTH = ring_at(TH_R - math.radians(27))                         # and one on the near side, west of the river
+# a spot at the end of the west brook's bridge, to look up its steps from (the steps let into the floor are seen from the
+# bridges, looking down, and from across the pit)
+_p, _c = PLANKS[2], CASC[2]; CASCADE_VIEW = tuple(_p['a'] + (_p['a'] - _p['mid']) / np.linalg.norm(_p['a'] - _p['mid']) * 1.2); CASCADE_MID = polar(_c['th'], _c['rf'] + CASC_RUN)
 _ar = np.arange(BOWL_R + 16, BOWL_R - 2, -0.2); _ap = np.array([polar(math.radians(150), r_) for r_ in _ar])
 PIT_ABOVE = polar(math.radians(150), float(_ar[(sample(H_before, _ap) - sample(H, _ap) > 0.3).argmax()]) + 2.2)      # and one up on the meadow, at the bowl's brink (2.2 m back from where the land breaks off)
 east_bank = lambda s, out=4.0: (riv_x(ZH + s) + riv_h(ZH + s) + out, ZH + s)
@@ -389,11 +438,11 @@ PATHS = {   # name: (half-width, points in the plan's u, v)
     'valley_ramp': (1.1, [uvm(*p) for p in RAMP]),
     'valley_floor': (1.0, [uvm(*RAMP_FOOT), uvm((RAMP_FOOT[0] + PW[0]) / 2 - 1.0, (RAMP_FOOT[1] + PW[1]) / 2 + 0.5), uvm(*PW)]),
     'valley_east': (0.9, [uvm(*PE), uvm(*east_bank(78)), uvm(*east_bank(68)), uvm(*east_bank(58)), uvm(*east_bank(48)), uvm(*east_bank(38)), uvm(*east_bank(29, 3.5)), uvm(*east_bank(22, 3.5)), uvm(*FALL_FOOT)]),
-    # and on to the pit: down each bank to the bowl, and round the pit's brink from the river's east bank to its west bank (the
-    # river is not crossed there: the plank bridge is the way over; the two side brooks are shallow, and waded)
-    'valley_south': (0.9, [uvm(*PW), uvm(*west_bank(92)), uvm(*west_bank(98)), uvm(*RING[-1])]),
-    'valley_east_south': (0.9, [uvm(*PE), uvm(*east_bank(92)), uvm(*east_bank(98)), uvm(*RING[0])]),
-    'pit_ring': (1.0, [uvm(*p_) for p_ in RING]),
+    # and on to the pit: down each bank to the bowl, and all the way round the pit's brink, over a plank bridge at each of the
+    # three waters (the river, and the two side brooks)
+    'valley_south': (0.9, [uvm(*PW), uvm(*west_bank(92)), uvm(*west_bank(98)), uvm(*J_W)]),
+    'valley_east_south': (0.9, [uvm(*PE), uvm(*east_bank(92)), uvm(*east_bank(98)), uvm(*J_E)]),
+    **{f'pit_ring_{i_ + 1}': (1.0, [uvm(*p_) for p_ in arc_]) for i_, arc_ in enumerate(RING)},
 }
 YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(M(.385, .158)), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0],
          [*R2(LOOKOUT), 2.2, 0], [*R2(PIT_SOUTH), 2.4, 0], [*R2(PIT_ABOVE), 2.4, 0], [*R2(FALL_FOOT), 2.6, 0]]     # x, z, radius, paved?
@@ -434,6 +483,45 @@ for name, (half, pts_uv) in PATHS.items():
 path_d = path_d.reshape(NZ, NX)
 for x, z, r, _ in YARDS: path_d = np.minimum(path_d, np.hypot(WX - x, WZ - z) - r)
 
+# ------------------------------------------------------------------ 5b. the steps of the three cascades, cut into the land
+# (after the ways, so no way's grading blurs their edges; before the water, which is then laid on them as on any terrace)
+_cr = np.random.default_rng(57)                                      # (dice of its own: the rest of the land is thrown as before)
+_lumps = lambda cell: ndi.zoom(_cr.random((int(NZ * MPP / cell) + 4, int(NX * MPP / cell) + 4)), cell / MPP, order=3)[:NZ, :NX]
+crag_a, crag_b = _lumps(3.0), _lumps(6.5)
+
+
+def steps_down(rho, lat, r0, grounds, low, half):
+    """the land cut to a stair along one line from the pit's middle: rho metres out along it, lat metres to its side. From r0
+    outward: a bench at each of `grounds` (lowest first), each CASC_RUN long with its face; inside r0 the ground is `low`
+    (None: left as it is). Each bench is as wide as the water's pool and 1.5 m of rock either side; from there its sides
+    stand back as they rise, as a gully's do (steep, and craggy), so it is widest at the top and toward its foot"""
+    global H
+    n = len(grounds); head = r0 + n * CASC_RUN
+    rr = rho + 0.22 * np.sin(lat * 1.9 + r0) + 0.12 * np.sin(lat * 4.3 + 1.0)      # (the faces' lines wander a little)
+    step_at = lambda k: sm(r0 + k * CASC_RUN - CASC_FACE, r0 + k * CASC_RUN, rr)      # 0 below the face that stands k steps out, 1 above it
+    T = np.full(H.shape, grounds[0]) if low is None else low + (grounds[0] - low) * step_at(0)
+    for k in range(1, n): T = T + (grounds[k] - grounds[k - 1]) * step_at(k)
+    T = T + (H - grounds[-1]) * step_at(n)                           # past its head: the land as it is
+    W = half + 1.5 + (crag_b - .5) * 1.6
+    cut = T + np.clip(np.abs(lat) - W, 0, None) * (2.2 + 1.6 * crag_a)      # the sides: two to four metres up for each metre out
+    at = (rho < head + 1.0) & (rho > r0 - (6.0 if low is None else 2.4)) & (np.abs(lat) < W + 9.0)
+    H = np.where(at, np.minimum(H, cut), H)
+
+
+for c in CASC:
+    th = c['th']; rho = (WX - BOWL[0]) * math.cos(th) + (WZ - BOWL[1]) * math.sin(th); lat = -(WX - BOWL[0]) * math.sin(th) + (WZ - BOWL[1]) * math.cos(th)
+    g_floor = float(sample(H, polar(th, c['nb'] + 1.5))[0])
+    g_shelf = float(np.median(sample(H, np.array([polar(th, r_) for r_ in np.arange(c['b'] - 3.4, c['b'] - 1.5, 0.2)]))))
+    g_from = g_floor - c['sunk']                                      # (the river stands well under the floor: its steps are measured from its own bed's edge, so its falls come out even)
+    c['grounds'] = [g_from + (g_shelf - g_from) * k / (CASC_N + 1) for k in range(CASC_N, 0, -1)]      # the benches' ground, lowest first
+    steps_down(rho, lat, c['b'], c['grounds'], None, c['half'])
+    if 'rf' in c:                                                     # and a side brook's steps down the bowl's cliff, from the meadow
+        g_meadow = float(sample(H, polar(th, c['rh'] + 2.0))[0])
+        c['grounds_up'] = [g_meadow + (g_floor - g_meadow) * k / (CASC_N + 1) for k in range(CASC_N, 0, -1)]
+        steps_down(rho, lat, c['rf'], c['grounds_up'], g_floor + 0.05, c['half'])
+    print(f"  cascade at {math.degrees(th):.0f} deg: brink {c['b']:.1f} -> {c['nb']:.1f} m, bridge at {c['rb']:.1f}, steps at {', '.join(f'{g_:.1f}' for g_ in c['grounds'][::-1])} m"
+          + (f"; from the meadow: cliff cut back to {c['rf']:.1f}..{c['rh']:.1f}, steps at {', '.join(f'{g_:.1f}' for g_ in c['grounds_up'][::-1])} m" if 'rf' in c else ''))
+
 # ------------------------------------------------------------------ 6. the water laid on the land: beds, and falls where a terrace ends
 H0 = H.copy()
 # each stretch: its level, how deep its bed, its line; next: the stretch its water falls into (None: none); deep_end: it ends by
@@ -444,9 +532,9 @@ for name, terrace, under, deep, line in WATER:
 tiers[-1]['next'] = None
 
 
-def shelf_runs(th):
-    """walking in toward the pit's middle along th, from the bowl's floor: the level runs met (the floor, then each shelf): (outer r, inner r, height)"""
-    rr = np.arange(brink_at(th) + 8, 9.0, -0.2); g = sample(H0, np.array([polar(th, r) for r in rr])); level = np.abs(np.gradient(g, 0.2)) < 0.6
+def shelf_runs(th, r_from):
+    """walking in toward the pit's middle along th, from r_from on the bowl's floor: the level runs met (the floor, then each step and shelf): (outer r, inner r, height)"""
+    rr = np.arange(r_from, 9.0, -0.2); g = sample(H0, np.array([polar(th, r) for r in rr])); level = np.abs(np.gradient(g, 0.2)) < 0.6
     runs = []; i = 0
     while i < len(rr):
         j = i
@@ -462,20 +550,28 @@ def stretch(name, pts, half, under=0.35, deep=0.3):
     return len(tiers) - 1
 
 
-def down_the_pit(th, half, name, feeder):
-    """the water of stretch `feeder`, which reaches the pit's brink at th, goes on down the pit: a stretch on each of the first three shelves, and from the third into the mist"""
-    runs = shelf_runs(th); assert len(runs) >= 4 and all(a_[2] - b_[2] > 3 for a_, b_ in zip(runs, runs[1:4])), (name, runs)
-    for k, (r_out, r_in, h_) in enumerate(runs[1:4]):
-        i = stretch(f'{name}_shelf_{k + 1}', [polar(th, r_out - min(1.0, (r_out - r_in) * 0.25)), polar(th, r_in + 0.5)], [half, half], under=0.12)
+def down_the_pit(c, half, name, feeder):
+    """the water of stretch `feeder`, which comes to the head of the steps of cascade c, goes on down the pit: a pool on each
+    step, a stretch on each of the first three shelves, and from the third into the mist"""
+    th = c['th']; runs = shelf_runs(th, c['nb'] + 2.5); n = CASC_N + 3
+    assert len(runs) > n and all(a_[2] - b_[2] > 3 for a_, b_ in zip(runs, runs[1:n + 1])), (name, runs)
+    for k, (r_out, r_in, h_) in enumerate(runs[1:n + 1]):
+        step = k < CASC_N
+        i = stretch(f'{name}_step_{k + 1}' if step else f'{name}_shelf_{k + 1 - CASC_N}', [polar(th, r_out - min(1.0, (r_out - r_in) * 0.25)), polar(th, r_in + 0.5)], [c['half'] if step else half] * 2, under=0.12)
         tiers[feeder]['next'] = i; feeder = i
     tiers[feeder]['deep_end'] = True
 
 
-down_the_pit(TH_R, 2.6, 'river', len(tiers) - 1)
-for n_, th in enumerate(SIDE):                                        # the side brooks: a spring on the meadow, over the bowl's cliff, across its floor, down the shelves
-    i_m = stretch(f'brook_{n_ + 1}_meadow', [polar(th + 0.07, BOWL_R + 29), polar(th + 0.085, BOWL_R + 23), polar(th + 0.02, BOWL_R + 16.5), polar(th, BOWL_R + 10.5)], [2.4, 1.5, 1.6, 1.6])      # (a spring's pool, and a bend on its way to the cliff)
-    i_b = stretch(f'brook_{n_ + 1}_bowl', [polar(th, BOWL_R - 3.0), polar(th, brink_at(th) + 3.0)], [1.6, 1.6], deep=0.2)      # (shallow: the way round the pit fords it)
-    tiers[i_m]['next'] = i_b; down_the_pit(th, 1.5, f'brook_{n_ + 1}', i_b)
+down_the_pit(CASC[0], 2.6, 'river', len(tiers) - 1)
+for n_, c in enumerate(CASC[1:]):                                     # the side brooks: a spring on the meadow, down the bowl's cliff in steps, across its floor (under the bridge), down the pit
+    th = c['th']
+    i_ = stretch(f'brook_{n_ + 1}_meadow', [polar(th + 0.07, c['rh'] + 21), polar(th + 0.085, c['rh'] + 15), polar(th + 0.02, c['rh'] + 8.5), polar(th, c['rh'] + 2.5)], [2.4, 1.5, 1.6, 1.6])      # (a spring's pool, and a bend on its way to the cliff)
+    for k in range(CASC_N):                                           # the pools on its steps down the cliff, the highest first
+        r_in = c['rh'] - (k + 1) * CASC_RUN; r_out = r_in + CASC_RUN - CASC_FACE
+        j_ = stretch(f'brook_{n_ + 1}_cliff_step_{k + 1}', [polar(th, r_out - 0.8), polar(th, r_in + 0.5)], [c['half']] * 2, under=0.12)
+        tiers[i_]['next'] = j_; i_ = j_
+    i_b = stretch(f'brook_{n_ + 1}_bowl', [polar(th, c['rf'] - 1.2), polar(th, c['nb'] + 3.0)], [1.6, 1.6], deep=0.2)
+    tiers[i_]['next'] = i_b; down_the_pit(c, 1.5, f'brook_{n_ + 1}', i_b)
 for t_ in tiers: t_['fed'] = False
 for t_ in tiers:
     if t_['next'] is not None: tiers[t_['next']]['fed'] = True
@@ -549,6 +645,10 @@ mk = Image.new('L', (NX, NZ), 0); md = ImageDraw.Draw(mk)
 P2 = lambda p: ((p[0] + XH) / MPP, (p[1] - Z0) / MPP)
 PXX = lambda u: ((u - .5) * SIZE + XH) / MPP; PXZ = lambda v: ((v - .5) * SIZE - Z0) / MPP
 md.line([P2(BS), P2(BN)], fill=255, width=px_m(6)); md.line([P2(PW), P2(PE)], fill=255, width=px_m(5))
+for p_ in PLANKS: md.line([P2(p_['a']), P2(p_['b'])], fill=255, width=px_m(5))
+for c in CASC:                                                        # nor before a cascade, down the pit or beside its bridge: its steps are to be seen from across the pit
+    th = c['th']; rho_ = (WX - BOWL[0]) * math.cos(th) + (WZ - BOWL[1]) * math.sin(th); lat_ = -(WX - BOWL[0]) * math.sin(th) + (WZ - BOWL[1]) * math.cos(th)
+    blocked |= (np.abs(lat_) < 8.0) & (rho_ > 10) & (rho_ < c.get('rh', c['nb']) + 3)
 for f in FENCES: md.polygon([P2(p) for p in f['points']], fill=255); md.line([P2(p) for p in f['points'] + f['points'][:1]], fill=255, width=px_m(3))
 blocked |= np.array(mk) > 0
 e = px_m(2.5); blocked[:e] = blocked[-e:] = True; blocked[:, :e] = blocked[:, -e:] = True
@@ -660,7 +760,7 @@ PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, y
     # the valley: a signpost where the way to it comes down onto the meadow, another at the foot of the way down; a bench at the lookout
     ['signpost', 7.6, 65.5, 2.6], ['signpost', RAMP_FOOT[0] + 2.4, RAMP_FOOT[1] - 1.0, 1.2], ['bench', LOOKOUT[0] + 0.3, LOOKOUT[1] + 2.0, -2.0],
     # the pit: a signpost where the west bank's way comes to it, a bench on its far side
-    ['signpost', RING[-1][0] - 2.0, RING[-1][1] - 1.4, 0.6], ['bench', PIT_SOUTH[0] + 6.0, PIT_SOUTH[1] + 2.6, round(face(PIT_SOUTH, tuple(BOWL)), 2)],
+    ['signpost', J_W[0] - 2.0, J_W[1] - 1.4, 0.6], ['bench', PIT_SOUTH[0] + 6.0, PIT_SOUTH[1] + 2.6, round(face(PIT_SOUTH, tuple(BOWL)), 2)],
 ]
 PROPS = [[k, round(float(x), 2), round(float(z), 2), round(float(y), 2)] for k, x, z, y in PROPS]
 for k, x, z, _ in PROPS:
@@ -679,7 +779,7 @@ VIEWS = {
     'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)],
     'vl-eastwood': [*R2(M(.88, .60)), round(face(M(.88, .60), M(.92, .66)), 2)],
     'vl-brink': [*R2(LOOKOUT), round(face(LOOKOUT, FALL), 2)], 'vl-rim': [*R2(rim), round(face(rim, (riv_x(ZH + 70), ZH + 70)), 2)],
-    'vl-pit': [*R2(RING[-2]), round(face(RING[-2], tuple(BOWL)), 2)], 'vl-pit-south': [*R2(PIT_SOUTH), round(face(PIT_SOUTH, tuple(BOWL)), 2)],
+    'vl-pit': [*R2(PIT_NORTH), round(face(PIT_NORTH, tuple(BOWL)), 2)], 'vl-cascade': [*R2(CASCADE_VIEW), round(face(CASCADE_VIEW, CASCADE_MID), 2)], 'vl-pit-south': [*R2(PIT_SOUTH), round(face(PIT_SOUTH, tuple(BOWL)), 2)],
     'vl-pit-above': [*R2(PIT_ABOVE), round(face(PIT_ABOVE, tuple(BOWL)), 2)],
     'vl-fallfoot': [*R2(FALL_FOOT), round(face(FALL_FOOT, FALL), 2)], 'vl-valley': [*R2((PW[0] - 2.5, PW[1] + 0.4)), round(face(PW, (riv_x(ZH + 40), ZH + 40)), 2)],
 }
@@ -699,6 +799,7 @@ plan = {
     'buildings': B, 'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': 0.0},
+    'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit
     'paths': plan_paths, 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
     # the pit: its middle, about how far its brink is from that, how far its picture's heights were moved to stand in the bowl (the
     # abyss's clouds and the land's fading into mist are set by height), and its shelves (metres in from the brink)
