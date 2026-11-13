@@ -144,3 +144,42 @@ export async function loadProp(source, { height = 10, yaw = 0, spin = null } = {
     dispose() { model.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); },
   };
 }
+
+// One turning part of a model on its own: a windmill's sails, to hang on a tower built of something else. The part whose
+// name matches `part` is taken out of the file, its middle put at the holder's middle and its flattest side square to the
+// holder's own z (so it turns about z and faces +z), and made `span` metres across. recolor(r, g, b) -> [r, g, b] may give
+// each corner a new colour (0..1, as shown).
+//   const sails = await loadSpinner(url, { part: /sails/, span: 10, speed: 0.12 });   scene.add(sails.object);   every frame: sails.update(dt)
+export async function loadSpinner(source, { part, span = 10, speed = 0.1, recolor = null } = {}) {
+  const gltf = await new GLTFLoader().loadAsync(source);
+  let src = null;
+  gltf.scene.traverse(o => { if (!src && o.isMesh && part.test(o.name)) src = o; });
+  if (!src) throw new Error('no part ' + part + ' in ' + source);
+  const from = src.geometry, p = from.attributes.position, n = p.count, g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(Float32Array.from({ length: n * 3 }, (_, i) => p.getComponent(Math.floor(i / 3), i % 3)), 3));
+  if (from.index) g.setIndex(from.index.clone());
+  // its middle, and the direction it is thinnest along (found as loadProp finds a spinning part's axis)
+  const c = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) c.add(v.fromBufferAttribute(p, i));
+  c.multiplyScalar(1 / n);
+  const m = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < n; i++) { v.fromBufferAttribute(p, i).sub(c); const d = [v.x, v.y, v.z]; for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) m[a * 3 + b] += d[a] * d[b]; }
+  const tr = m[0] + m[4] + m[8], axis = new THREE.Vector3(0.31, 0.27, 0.91);
+  for (let k = 0; k < 80; k++) axis.set(tr * axis.x - (m[0] * axis.x + m[1] * axis.y + m[2] * axis.z), tr * axis.y - (m[3] * axis.x + m[4] * axis.y + m[5] * axis.z), tr * axis.z - (m[6] * axis.x + m[7] * axis.y + m[8] * axis.z)).normalize();
+  g.translate(-c.x, -c.y, -c.z);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(axis, new THREE.Vector3(0, 0, 1)));
+  g.computeBoundingBox();
+  const k = span / Math.max(g.boundingBox.max.x - g.boundingBox.min.x, g.boundingBox.max.y - g.boundingBox.min.y);
+  g.scale(k, k, k);
+  g.computeVertexNormals();
+  const cf = from.attributes.color, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const was = cf ? [cf.getX(i), cf.getY(i), cf.getZ(i)] : [1, 1, 1];
+    col.set(recolor ? recolor(...was) : was, i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, propMaterial()), holder = new THREE.Group();
+  mesh.name = 'spinner'; holder.name = 'prop'; holder.add(mesh);
+  return { object: holder, update(dt) { mesh.rotation.z += speed * Math.PI * 2 * dt; }, dispose() { g.dispose(); } };
+}

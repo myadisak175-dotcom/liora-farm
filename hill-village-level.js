@@ -34,7 +34,7 @@ import { createWaterDroplets } from './water-droplets.js';
 import { waterLookup, createLandWater } from './land-water.js';
 import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
 import { createPaths, loadPathTextures } from './ground-paths.js';
-import { loadProp, propMaterial } from './stylized-props.js';
+import { loadSpinner, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
 import { fieldGeometry } from './village-fields.js';
 
@@ -48,7 +48,7 @@ export const HILL_VILLAGE_MAP = {
   cells: 852,                     // the ground's own grid (0.5 m)
   pieces: [3, 6],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
   grove: 80,
-  sails: /^polySurface142_/,      // the part of the windmill that turns
+  sails: /^polySurface142_/,      // the part of the windmill model that is used: its sails (the rest of the mill is of the kit)
 };
 const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.5, pine: 7.5, birch: 8, sapling: 4 };
 const ROCK_R = { boulder: 1.0, stones: 0.8, river: 0.7, pebbles: 0 }, ROCK_SINK = { boulder: 0.18, stones: 0.05, river: 0.12, pebbles: 0 };
@@ -127,16 +127,23 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     builds.push(BD.place(K.done(), b.x, y, b.z, b.yaw));
     solid(b.x, b.z, w + 0.5, l + 0.5, b.yaw, floors * 3 + (b.spec.tower ? 6 : w * 0.45 + 1));
   }
-  // the windmill: the model supplied for the game, its sails turning
+  // the windmill: its tower and the miller's house are two of the plan's kit houses (above). Its sails are the supplied
+  // model's (stylized-props.js takes them out of the file), in the kit's own wood and a linen that sits with its plaster, on
+  // an axle out of the tower's wall
   let mill = null;
-  const wm = P.buildings.find(b => b.kind === 'windmill');
+  const wm = P.buildings.find(b => b.kind === 'sails');
   if (wm) try {
-    mill = await loadProp(url(M.windmill), { height: wm.height, yaw: wm.yaw, spin: { part: M.sails, speed: 0.12 } });
-    mill.object.position.set(wm.x, H(wm.x, wm.z) - 0.2, wm.z); mill.object.name = 'windmill';
+    const foot = Math.max(...corners(wm.x, wm.z, 4, 4, wm.yaw)) + 0.03, fx = Math.sin(wm.yaw), fz = Math.cos(wm.yaw);
+    const WOOD = [0.545, 0.369, 0.212], LINEN = [0.87, 0.82, 0.69];        // (the kit's wood trim; the kit's plaster, a shade paler)
+    mill = await loadSpinner(url(M.windmill), { part: M.sails, span: wm.span, speed: 0.12, recolor: (r, g, b) => (r - b > 0.23 ? WOOD : LINEN) });
+    mill.object.position.set(wm.x + fx * wm.out, foot + wm.hub, wm.z + fz * wm.out); mill.object.rotation.y = wm.yaw; mill.object.name = 'windmillSails';
     group.add(mill.object);
-    for (const [x, z] of mill.footprint(1)) { colliders.push([x, z, 0.62]); bare.push([x, z, 0.85]); }
-    casters.push([wm.x, wm.z, wm.height * 0.75, 2.4, 0.85]);
-  } catch (e) { console.warn('[hill-village] windmill', e); mill = null; }
+    const K = BD.kit(31);
+    K.box(0, wm.hub - 0.2, (2 + wm.out) / 2 + 0.1, 0.4, 0.4, wm.out - 2 + 0.6, C.timberDark);      // the axle
+    K.box(0, wm.hub - 0.45, 2.12, 0.9, 0.9, 0.24, C.timber);                                       // and the block it comes out of
+    builds.push(BD.place(K.done(), wm.x, foot, wm.z, wm.yaw));
+    casters.push([wm.x + fx * wm.out, wm.z + fz * wm.out, wm.hub, wm.span * 0.3, 0.5]);
+  } catch (e) { console.warn('[hill-village] windmill sails', e); mill = null; }
   for (const b of P.buildings) if (b.kind === 'well') {                    // the fountain's stand-in: a well in the middle of the market
     builds.push(BD.place(BD.wellGeometry({ seed: 22 }), b.x, H(b.x, b.z), b.z, b.yaw));
     colliders.push([b.x, b.z, 1.15]); bare.push([b.x, b.z, 2.2]); casters.push([b.x, b.z, 2.4, 1.3, 0.8]);
