@@ -29,7 +29,6 @@ Prop_Chimney Prop_Chimney2 Prop_Crate Prop_Wagon Prop_Support
 Prop_WoodenFence_Single Prop_WoodenFence_Extension1 Prop_WoodenFence_Extension2
 Prop_Vine1 Prop_Vine2 Prop_Vine5 Prop_Vine6 Prop_ExteriorBorder_Straight1 Prop_ExteriorBorder_Corner
 Stairs_Exterior_Straight Stairs_Exterior_Platform Balcony_Cross_Straight
-Stairs_Exterior_SingleSideThick
 """.split()
 
 src = Path(sys.argv[1])
