@@ -44,6 +44,7 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
+  map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
   pieces: [3, 6],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
@@ -358,6 +359,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
+    map: url(M.map),
     horizon: { center: [0, CZ], scale: Math.hypot(HX, FR) / 170 * 1.08 },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out past this land's corners
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },

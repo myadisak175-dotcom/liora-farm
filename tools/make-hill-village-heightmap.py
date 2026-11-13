@@ -847,3 +847,7 @@ for q in FENCES:
     if rise_ > 1.0: print(f"  ! fence {q['id']} climbs a cliff: its ground is {lo_:.1f} .. {hi_:.1f} m, {rise_:.1f} m up in a metre at the steepest")
 print(f'land {H.min():.1f} .. {H.max():.1f} m, {nx} x {nz} heights; {len(B)} buildings, {len(plan_paths)} ways, {sum(len(b_) for b_ in brooks)} water rows, {len(falls)} falls')
 print(f'plants {kinds} (trees she never comes near: {far_trees}); rocks {len(rocks)}')
+
+# the map shown in the game is painted from what was just written, so it is never a map of an older land
+import runpy
+runpy.run_path(str(Path(__file__).with_name('make-hill-village-map.py')), run_name='__main__')

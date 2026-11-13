@@ -72,7 +72,7 @@
   "./blockout-level.js": "./blockout-level.js?v=3",
   "./pit-level.js": "./pit-level.js?v=3",
   "./village-level.js": "./village-level.js?v=1",
-  "./hill-village-level.js": "./hill-village-level.js?v=11",
+  "./hill-village-level.js": "./hill-village-level.js?v=12",
   "./land-water.js": "./land-water.js?v=3",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
@@ -94,7 +94,8 @@
   "./hills-level.js": "./hills-level.js?v=rocks1",
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1",
-  "./teleport-menu.js": "./teleport-menu.js?v=13",
+  "./teleport-menu.js": "./teleport-menu.js?v=14",
+  "./game-map.js": "./game-map.js?v=1",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
@@ -183,7 +184,8 @@ import DEER_GLB from './deer-glb.js';
 import { createForestForage } from './forest-forage.js?v=5';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
-import { createTeleportMenu } from './teleport-menu.js';
+import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
+import { createGameMap } from './game-map.js';
 import { createWarpUI } from './warp-ui.js';
 
 const HAZE = '#cde6f2';
@@ -382,6 +384,12 @@ if (rockEditor) {
 }
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
 const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0)) });
+// ---- 🗺 the map: a small round one at the top that follows her; a tap opens the whole map, where a pin takes her to a place
+let gameMap = null;
+if (level.map) try {
+  gameMap = await createGameMap({ url: level.map, player, places: teleportPlaces(level) });
+  document.getElementById('credit').style.maxWidth = 'calc(50vw - 70px)';     // (the small map sits in the middle of the top edge)
+} catch (err) { console.warn('[map]', err); }
 // ---- 🌀 warp stones: by one, a button offers the others (the rim of the abyss and the stones down it)
 const warpUI = createWarpUI({ level, player });
 const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;
@@ -400,6 +408,7 @@ const frame = (dt = clock.getDelta()) => {
   if (forage) forage.update(dt, player.position);
   level.follow(rockEditing ? rockEditor.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
   if (warpUI) warpUI.update();
+  if (gameMap) gameMap.update();
   if (farHills && (level.zone ?? -1) !== lastZone) { lastZone = level.zone ?? -1; farHills.visible = lastZone < 0; }      // no far hills from down in the abyss
   {
     // the level knows the sun its own shadows are drawn for; a map without them goes by the sky
@@ -430,7 +439,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI };
+window.__game = { sceneEditor, rockEditor, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
