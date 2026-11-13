@@ -47,7 +47,7 @@ export async function loadPathTextures(style = 'grit') {
 
 export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   const soft = style === 'soft';
-  const lines = paths.map(p => ({ pts: densify(p.points, 0.5), half: p.half || 1.1, square: p.square || [false, false] }));      // (square: [at its start, at its end] the way stops there against stone - a stair's foot or head)
+  const lines = paths.map(p => ({ pts: densify(p.points, 0.5), half: p.half || 1.1 }));
   for (const l of lines) {
     l.box = [Math.min(...l.pts.map(q => q[0])) - l.half * 2 - 1, Math.max(...l.pts.map(q => q[0])) + l.half * 2 + 1, Math.min(...l.pts.map(q => q[1])) - l.half * 2 - 1, Math.max(...l.pts.map(q => q[1])) + l.half * 2 + 1];
     l.len = [0]; for (let i = 1; i < l.pts.length; i++) l.len.push(l.len[i - 1] + Math.hypot(l.pts[i][0] - l.pts[i - 1][0], l.pts[i][1] - l.pts[i - 1][1]));
@@ -115,10 +115,9 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       const mat = soft ? softPathMaterial(map, tex, distTex) : pathMaterial(map, tex, distTex);
       for (const l of lines) {
         const ACROSS = 12, W = soft ? l.half + 1.5 : l.half * 1.45, pos = [], acr = [], idx = [];
-        // (the ribbon runs on a little past both ends of the line: the worn earth there is round, not cut square - but for an end
-        // marked square, where the way meets a stair: its paint would lie over the steps)
+        // (the ribbon runs on a little past both ends of the line: the worn earth there is round, not cut square)
         const P = l.pts, n = P.length, ext = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1; return [b[0] + dx / dl * W, b[1] + dz / dl * W]; };
-        const rows = [...(l.square[0] ? [] : [ext(P[1], P[0])]), ...P, ...(l.square[1] ? [] : [ext(P[n - 2], P[n - 1])])];
+        const rows = [ext(P[1], P[0]), ...P, ext(P[n - 2], P[n - 1])];
         for (let k = 0; k < rows.length; k++) {
           const a = rows[Math.max(0, k - 1)], b = rows[Math.min(rows.length - 1, k + 1)], p = rows[k];
           let tx = b[0] - a[0], tz = b[1] - a[1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
