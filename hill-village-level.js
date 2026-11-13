@@ -1,4 +1,4 @@
-// hill-village-level.js  —  the hill village and the valley below it, on land drawn as a heightmap  (?map=hillvillage)
+// hill-village-level.js  —  the hill village, the valley below it and the pit at the valley's end, on land drawn as a heightmap  (?map=hillvillage)
 //
 // One job: to lay a village out on the land of assets/heightmaps/hill-village.bin as its plan (hill-village.json beside it)
 // says. Both come from tools/make-hill-village-heightmap.py, which is where the land and every place on it are decided: plateaus stepping
@@ -32,6 +32,7 @@ import * as BD from './stylized-buildings.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { waterLookup, createLandWater } from './land-water.js';
+import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
 import { createPaths, loadPathTextures } from './ground-paths.js';
 import { loadProp, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
@@ -43,8 +44,8 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
-  cells: 700,                     // the ground's own grid (0.5 m)
-  pieces: [3, 5],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
+  cells: 852,                     // the ground's own grid (0.5 m)
+  pieces: [3, 6],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
   grove: 80,
   sails: /^polySurface142_/,      // the part of the windmill that turns
 };
@@ -248,6 +249,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       cliffPaint.wrapS = cliffPaint.wrapT = THREE.RepeatWrapping; cliffPaint.anisotropy = 4; cliffPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
     } catch (err) { console.warn('[hill-village] cliff paint', err); }
     const mat = T._terrain.terrainMaterial(far, [HX + 1, FR], CZ, { cliffPaint });
+    if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     const [pa, pd] = M.pieces, own = [whole, mat];
     for (let pj = 0; pj < pd; pj++) for (let pi = 0; pi < pa; pi++) {
       const i0 = Math.round(pi * (cols - 1) / pa), i1 = Math.round((pi + 1) * (cols - 1) / pa), j0 = Math.round(pj * (n - 1) / pd), j1 = Math.round((pj + 1) * (n - 1) / pd);
@@ -300,12 +302,21 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const WL = (P.waters.find(w => w.id === 'river') || P.waters[0]).level;      // (the waves are worked out on one level: the river's, by the bridge)
   const sim = W.createWaterSim({ rect: [P.spawn.x - 24, P.spawn.z - 24, 48], size: 512, field, foamTexture, level: WL, follow: true });
   const optics = W.createWaterOptics({ level: WL });
-  const waterMat = W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, fadeA: Z1 - 30, fadeB: Z1 - 2 });      // (it fades with the land where the valley's river runs out of the map to the south)
+  const waterMat = W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, fadeA: 1e4, fadeB: 2e4 });      // (no water runs out to the land's edge: none of it fades)
   // each stretch's surface, and a fall wherever one runs off an edge, are worked out from the land itself (land-water.js): the
   // sheet lies only where the ground holds it, the fall hangs from the sheet's own edge and its foam is where it lands
-  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length });
+  // (from its third shelf each stream goes into the pit's mist: the abyss's long fall, abyss-scene.js)
+  const deepFall = f => createAbyssFalls({ falls: [f], centre: [f.x + Math.sin(f.yaw), f.z + Math.cos(f.yaw)], bottom: f.top - 42, optics: null, foamTexture });
+  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length, deep: P.deep || [], deepFall });
   water.group.userData.dispose = water.dispose;
   group.add(water.group);
+  // the pit's clouds, on its shelves and over its eye (the abyss's: their heights are the first pit's, so all are moved by shift)
+  if (P.pit) {
+    const clouds = createAbyssClouds({ centre: [P.pit.x, P.pit.z], rimR: () => P.pit.brink, ledges: P.pit.shelves, falls: [], count: 120 });
+    clouds.group.traverse(o => { if (o.material && o.material.uniforms && o.material.uniforms.uCentre) { o.material.uniforms.uCentre.value.y = P.pit.shift; if (o.geometry.boundingSphere) o.geometry.boundingSphere.center.y += P.pit.shift; } });
+    clouds.group.userData = { dispose: clouds.dispose };
+    group.add(clouds.group);
+  }
   const ripple = (x, z, strength = 1, radius = 0.26, mode = null) => {      // something touches the water (as on the other maps)
     const kk = W.WATER_TUNE.ripple.value, foam = W.WATER_TUNE.splashFoam.value, drop = W.WATER_TUNE.drops.value;
     if (mode === 'plain') sim.impulse(x, z, radius, -0.03 * strength * kk);
