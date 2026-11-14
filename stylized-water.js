@@ -785,7 +785,13 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float white = 0.0;
 
         // Swash carries broken painted wisps towards the beach; backwash leaves short-lived foam.
-        float shoreMask = (1.0 - smoothstep(0.22, 0.42, restDepth)) * smoothstep(-0.012, 0.022, depth);
+        // The foam's bands are laid out in metres of DEPTH. On a gentle beach a few centimetres of depth are a wide strip of
+        // ground; on a steep bank they are a few centimetres of ground, and the foam shrank to a white hairline hugging the bank
+        // like a drawn outline, too thin for its wobble and its swell to show. So the depth is measured as if the bed sloped no
+        // steeper than a beach (0.12): the foam is then as wide on a steep bank as on a beach, and moves as much.
+        float shoreK = clamp(0.12 / max(length(vec2(bedX, bedZ)), 0.001), 0.22, 1.0);
+        float shoreDepth = restDepth * shoreK;
+        float shoreMask = (1.0 - smoothstep(0.22, 0.42, shoreDepth)) * smoothstep(-0.012, 0.022, depth);
         if (shoreMask > 0.001) {
           vec2 fw = xz - T * t * 0.045;
           float broad = noise2(fw * 1.7 + vec2(t * 0.04, 2.0));
@@ -793,7 +799,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           float broken = smoothstep(0.24, 0.47, broad * 0.72 + detail * 0.28);
           float wob = (broad - 0.5) * 0.024 + (detail - 0.5) * 0.008;
           float surge = 0.5 + 0.5 * sin(t * 1.3 + noise2(xz * 0.25) * 2.0);
-          float edgeDepth = restDepth + wob;
+          float edgeDepth = shoreDepth + wob;
           float aa = max(fwidth(edgeDepth), 0.0015);
           float contactCenter = 0.018 + 0.012 * surge;
           // The wave tip is a soft, uneven lip: its width changes along the shore and it breaks into pieces,
