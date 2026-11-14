@@ -1708,15 +1708,24 @@ export function createTree({ type = 'broadleaf', seed = 7, detail = 1 } = {}) {
 // bushes
 // --------------------------------------------------------------------------
 const BLOSSOM_COLORS = ['#f6f2e6', '#f4b8c8', '#c8b4ec', '#f39aae'];
+const BUSH_MASK = 'leafy';      // the same leaf sprays as the broadleaf trees
 
 function bushParts(type, seed, blossom) {
   const rng = mulberry32(seed * 104729 + 11);
   const sx = range(rng, 0.85, 1.2);
-  const tiers = [{ c: [0, 0.72, 0], r: [1.3 * sx, 0.85, 1.2 * sx], clumpR: 0.55, n: 20, openBelow: -0.55, coreBottom: 0.4, taper: 0.25 }];
-  if (rng() < 0.6) tiers.push({ c: [range(rng, -1, 1) * 0.9, 0.5, range(rng, -1, 1) * 0.6], r: [0.75, 0.55, 0.7], clumpR: 0.4, n: 10, openBelow: -0.4, coreBottom: 0.4 });
+  // a mound of lobes: a main one and two or three lower ones leaning out of it at different heights, so the outline is a
+  // clump of leafy humps and never one dome. Leaves all through (heart leaves, no ball inside): bushes are seen from above.
+  const lobe = (c, r, clumpR, n) => ({ c, r, clumpR, n, openBelow: -0.5, coreScale: 0, heart: 6, taper: 0.2, rough: 0.4, noise: 0.1, stray: 0.25, tint: 0.06,
+    cardScale: 1.1, shade: [0.42, 0.42, 0.16], mass: [c[1] - r[1] * 0.7, c[1] + r[1]], span: [0, 1.7] });
+  const tiers = [lobe([0, 0.84, 0], [1.2 * sx, 1.12, 1.1 * sx], 0.52, 18)];
+  const k = 2 + Math.floor(rng() * 2), a0 = rng() * 6.28;
+  for (let i = 0; i < k; i++) {
+    const a = a0 + i / k * 6.28 + (rng() - 0.5) * 0.9, d = range(rng, 0.8, 1.15), w = range(rng, 0.6, 0.85);
+    tiers.push(lobe([Math.cos(a) * d * sx, range(rng, 0.45, 0.7), Math.sin(a) * d * sx], [w, w * range(rng, 0.85, 1.1), w * range(rng, 0.85, 1.1)], 0.36, 8));
+  }
   const spots = (type === 'flowering' || type === 'berry') ? [] : null;
   const core = buildCore(tiers);
-  const cards = buildCanopy(rng, tiers, 'broad', 1, spots, BUSH_QUANTILES);
+  const cards = buildCanopy(rng, tiers, 'broad', 0.6, spots, BUSH_QUANTILES);
   let flowers = null;
   if (spots && type === 'flowering') {
     const col = rgb(blossom || BLOSSOM_COLORS[Math.floor(rng() * BLOSSOM_COLORS.length)]);
@@ -1748,8 +1757,8 @@ export function sampleBushSurface({ seed = 3 } = {}) {
 export function createBush({ type = 'round', seed = 3, blossom = null } = {}) {
   const { core: cg, cards, flowers } = bushParts(type, seed, blossom);
   const group = new THREE.Group();
-  const core = new THREE.Mesh(withBase(cg), coreMaterial('broad'));
-  const leaves = new THREE.Mesh(cardGeometry(cards), leafMaterial('broad'));
+  const core = new THREE.Mesh(withBase(cg), coreMaterial('broad'));        // (empty now: the bush is leaves all through)
+  const leaves = new THREE.Mesh(cardGeometry(cards), leafMaterial(BUSH_MASK));
   core.frustumCulled = leaves.frustumCulled = false;
   group.add(core, leaves);
   if (flowers) group.add(flowerCards(flowers.pos, flowers.par, flowers.pet, flowers.cen));
@@ -1786,8 +1795,9 @@ export function createForest(list) {
     M.compose(T.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S.set(s, s, s));
     if (e.kind === 'bush') {
       const { core, cards, flowers } = bushParts(e.type || 'round', e.seed ?? 1, e.blossom || null);
-      (coreB.broad || (coreB.broad = [])).push(withBase(core.applyMatrix4(M), e.x, e.y, e.z, s));
-      addCards('broad', cards, e, s);
+      if (core.attributes.position.count) (coreB.broad || (coreB.broad = [])).push(withBase(core.applyMatrix4(M), e.x, e.y, e.z, s));
+      else core.dispose();
+      addCards(BUSH_MASK, cards, e, s);
       if (flowers) for (let i = 0; i < flowers.pos.length / 3; i++) {
         V.set(flowers.pos[i * 3], flowers.pos[i * 3 + 1], flowers.pos[i * 3 + 2]).applyMatrix4(M);
         flowersB.pos.push(V.x, V.y, V.z);
