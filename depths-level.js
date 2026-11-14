@@ -29,7 +29,7 @@ import * as RB from './rocks.js';
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
-const CROWN_Y = { broadleaf: 6.2, oak: 5.3, pine: 6.1, birch: 7.0, sapling: 3.4 }, CROWN_R = { broadleaf: 4.4, oak: 5.0, pine: 2.1, birch: 2.4, sapling: 1.9 };
+const CROWN_Y = { broadleaf: 6.7, oak: 5.3, pine: 6.1, birch: 7.0, sapling: 3.4 }, CROWN_R = { broadleaf: 3.9, oak: 5.0, pine: 2.1, birch: 2.4, sapling: 1.9 };
 const TRUNK = { broadleaf: 0.6, oak: 0.7, pine: 0.38, birch: 0.26, sapling: 0.2 }, CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
 const ROCK_R = { boulder: 1.0, slab: 1.3, standing: 0.5, crag: 1.5, stones: 0.8, river: 0.7, pebbles: 0 };
 const PALS = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee'], ['#f6f2e6', '#f7d84a'], ['#93b8ee', '#f6f2e6']];

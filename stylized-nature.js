@@ -569,6 +569,12 @@ function barkMaterial(spec) {
       uShadeY: { value: spec.shadeY ?? 99 },
       uRings: { value: spec.rings || 0 }, uRingCol: { value: rgb(spec.ringCol || '#4a5a28') },    // bamboo nodes (0 = none)
       uMoss: { value: spec.moss || 0 }, uMossA: { value: rgb('#a9bd3c') }, uMossB: { value: rgb('#6c8a35') },  // old wood (0 = none)
+      // the painted look, each 'off' at its default: how much the sun moves the tones (the strokes still break the edge, so
+      // there is never a clean light half and dark half), how dark the crown's shade is on the limbs, how bold the strokes
+      // are (below 1: fewer, longer, wider), and how far the foot sinks into the colour of the ground it stands in
+      uLitK: { value: spec.barkLit ?? 0.08 }, uShadeK: { value: spec.barkShade ?? 0.3 }, uStroke: { value: spec.barkStroke ?? 1 },
+      uFoot: { value: spec.barkFoot ?? 0 }, uFootCol: { value: rgb(spec.barkFootCol || '#4f5a2a') },
+      uContrast: { value: spec.barkContrast ?? 1.9 },     // how far apart the strokes' tones stand
     },
     vertexShader: /* glsl */`
       ${VCOMMON}
@@ -604,7 +610,8 @@ function barkMaterial(spec) {
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLight, uA, uB, uC, uH, uMarkCol, uRingCol, uMossA, uMossB;
-      uniform float uShadeY, uMarks, uDebug, uRings, uMoss;
+      uniform float uShadeY, uMarks, uDebug, uRings, uMoss, uLitK, uShadeK, uStroke, uFoot, uContrast;
+      uniform vec3 uFootCol;
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
@@ -633,20 +640,24 @@ function barkMaterial(spec) {
         // centre-line (fine across) plus the centre-line position itself (slow along), so strokes run lengthways, follow every
         // bend, and a limb's strokes begin exactly where the trunk's are: no seam where the wood forks. The sun only nudges
         // which tone wins, so the trunk never splits into a light and a dark half.
-        vec2 st = strokes(vOP - vCtr, vCtr);
+        vec2 st = strokes((vOP - vCtr) * uStroke, vCtr * uStroke);
         if (vJoin > 0.001) {                       // foot of a limb: paint it as the trunk is painted, then ease into its own strokes
           vec3 ct = vec3(vAx.x, vOP.y, vAx.z);
-          st = mix(st, strokes(vOP - ct, ct), vJoin);
+          st = mix(st, strokes((vOP - ct) * uStroke, ct * uStroke), vJoin);
         }
         float lit = dot(normalize(vN), uLight);
-        float t = 0.52 + (st.x - 0.5) * 1.9 + (lit - 0.3) * 0.08;
-        t -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * 0.3;    // crown shades the branches
+        float t = 0.52 + (st.x - 0.5) * uContrast + (lit - 0.3) * uLitK;
+        t -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * uShadeK;    // crown shades the branches
         vec3 col = mix(uC, uB, smoothstep(0.37, 0.43, t));
         col = mix(col, uA, smoothstep(0.58, 0.64, t));
         col = mix(col, uH, smoothstep(0.72, 0.77, t) * smoothstep(0.0, 0.5, lit) * 0.85);   // dry-brush light on the sunny side
         float crack = smoothstep(0.78, 0.86, st.y);
         col = mix(col, uC * 0.75, crack * 0.4);                                                  // thin dark strokes in the grooves
         col = mix(col, uC * 0.85, clamp(vCrev, 0.0, 1.0) * 0.4);                                 // hollows and crotches sit in soft shade (smooth, never blotchy)
+        if (uFoot > 0.0) {                                            // the foot stands in the grass: its colour creeps up the roots, ragged
+          float f = 1.0 - smoothstep(0.05, 0.75, vOP.y + (noise3(vOP * 4.0) - 0.5) * 0.55);
+          col = mix(col, mix(uFootCol * 0.8, uFootCol, smoothstep(0.0, 0.5, lit)), f * uFoot);
+        }
         if (uMarks > 0.5) {                                           // birch bark dashes
           float ang = atan(vON.z, vON.x);
           vec2 cell = floor(vec2(vOP.y * 4.0, ang * 1.4));
@@ -1128,6 +1139,7 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
     const E = T.env || null;      // grown crowns: every clump is lit as part of the one whole crown, not as its own ball
     const M = T.mass || null;     // [y0, y1] of the bough this tier belongs to: light on top of the bough, shade under it
     const rough = T.rough ?? 0, noise = T.noise ?? 0, stray = T.stray ?? 0, lumpFlat = T.lumpFlat ?? 1;   // lumpFlat < 1: lumps are pads, not balls
+    const displace = T.displace ?? 0;      // metres a slow noise pushes each card off its lump: the lumps lose their ball shape
     // heart leaves: big leaf cards in the middle of the tier, a tone or two darker than what surrounds them. They fill the
     // crown from every side, so a gap between the outer leaves shows more leaves in shade, never a smooth ball.
     for (let j = 0; j < (T.heart ?? 0); j++) {
@@ -1169,7 +1181,15 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
         const yy = far ? rng() * 1.5 - 0.5 : 1 - 2 * (j + 0.5) / m, r2 = Math.sqrt(Math.max(0, 1 - yy * yy)), ph = j * 2.39996 + rng();
         e.set(Math.cos(ph) * r2, Math.min(yy, 1), Math.sin(ph) * r2);
         v.copy(e); v.y *= lumpFlat;
-        v.multiplyScalar(cr * (far ? 1.0 + rng() * 0.3 : 0.5 + rng() * 0.45)).add(cc);
+        v.multiplyScalar(cr * (far ? (T.tidy ? 0.92 + rng() * 0.2 : 1.0 + rng() * 0.3) : 0.5 + rng() * 0.45)).add(cc);
+        if (displace) {
+          const f = 0.55, dx = fbm3(v.x * f, v.y * f, v.z * f, 11, 2) - 0.5, dy = fbm3(v.x * f + 40, v.y * f, v.z * f, 12, 2) - 0.5, dz = fbm3(v.x * f, v.y * f + 40, v.z * f, 13, 2) - 0.5;
+          v.x += dx * 2 * displace; v.y += dy * 2 * displace * 0.7; v.z += dz * 2 * displace;
+        }
+        if (E && T.tidy) {         // nothing stands out past the crown's outline: no tuft above the top, no spray off to one side
+          const ql = qe.copy(v).sub(E.c).divide(E.r).length(), lim = T.tidy * (0.97 + 0.06 * fbm3(v.x * 0.5, v.y * 0.5, v.z * 0.5, 21, 2));
+          if (ql > lim) v.copy(qe).multiplyScalar(lim / ql).multiply(E.r).add(E.c);
+        }
         q.copy(v).sub(c).divide(r);
         const ql = q.length();
         if (ql < 0.55) continue;
@@ -1197,8 +1217,42 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
       }
     }
   }
+  if (tiers.some(T => T.tidy)) dropLoneCards(C, P, K, A, SS);
   toneCards(SS, palName, quantiles, TC, BC);
   return { C, P, K, A, TC, BC, SS };
+}
+
+// A leaf card that touches no other card floats in the air by itself. Find them (a grid of cells keeps this quick) and take
+// them out; twice over, since removing one can leave its only neighbour alone.
+function dropLoneCards(C, P, K, A, SS) {
+  for (let pass = 0; pass < 2; pass++) {
+    const n = C.length / 3, cell = 0.9, grid = new Map();
+    const key = (x, y, z) => (Math.floor(x / cell) + 512) * 1048576 + (Math.floor(y / cell) + 512) * 1024 + (Math.floor(z / cell) + 512);
+    for (let i = 0; i < n; i++) { const k = key(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]); (grid.get(k) || grid.set(k, []).get(k)).push(i); }
+    const keep = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = C[i * 3], y = C[i * 3 + 1], z = C[i * 3 + 2], reach = Math.min(K[i * 3 + 1] * 0.6, cell), r2 = reach * reach;
+      let near = 0;
+      for (let dx = -1; dx <= 1 && near < 3; dx++) for (let dy = -1; dy <= 1 && near < 3; dy++) for (let dz = -1; dz <= 1 && near < 3; dz++) {
+        const list = grid.get(key(x + dx * cell, y + dy * cell, z + dz * cell));
+        if (!list) continue;
+        for (const j of list) { if (j === i) continue; const a = C[j * 3] - x, b = C[j * 3 + 1] - y, c = C[j * 3 + 2] - z; if (a * a + b * b + c * c < r2 && ++near >= 3) break; }
+      }
+      keep[i] = near >= 3 ? 1 : 0;       // it needs three others close by: one or two would be a floating scrap of their own
+    }
+    let w = 0;
+    for (let i = 0; i < n; i++) {
+      if (!keep[i]) continue;
+      if (w !== i) {
+        for (let k = 0; k < 3; k++) { C[w * 3 + k] = C[i * 3 + k]; K[w * 3 + k] = K[i * 3 + k]; }
+        for (let k = 0; k < 4; k++) P[w * 4 + k] = P[i * 4 + k];
+        A[w] = A[i]; SS[w] = SS[i];
+      }
+      w++;
+    }
+    if (w === n) break;
+    C.length = w * 3; K.length = w * 3; P.length = w * 4; A.length = w; SS.length = w;
+  }
 }
 
 // tone steps from this crown's own distribution -> every shape gets the same look
@@ -1269,7 +1323,7 @@ function placeFruit(rng, F, spots) {
 //   limbs: { n, t, elev | lift, reach, r, bend }  t along the trunk; elev = where on the crown the tip lands, or
 //                                                  lift = how far above its own start (tall crowns)
 //   subs:  { n, t, elev, reach, r }               side branches off each limb (optional)
-//   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint }   the leaf clump on each tip (vary: size
+//   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint, displace, tidy }   the leaf clump on each tip (vary: size
 //          spread on limbs / side branches, shade: its own SHADE_WEIGHTS, taper: smaller toward the top); top: clump size on the leader
 function buildGrown(rng, spec) {
   const G = spec.grow, tiers = [];
@@ -1292,7 +1346,7 @@ function buildGrown(rng, spec) {
     c.y += cr * (K.lift ?? 0.1);
     tiers.push({ c: [c.x, c.y, c.z], r: [cr, cr * (K.flat ?? 0.8), cr], clumpR: cr * (K.clump ?? 0.5), n: K.n ?? 8,
       openBelow: K.openBelow ?? -0.7, coreScale: K.core ?? 0.5, coreBottom: 0.7, coreDetail: 1, env, shade: K.shade,
-      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint,
+      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint, displace: K.displace, tidy: K.tidy,
       coreTone: K.bough ? (hc => hc > 0.6 ? 2 : hc > 0.33 ? 1 : 0)((c.y - env.c.y + env.r.y) / (2 * env.r.y)) : undefined });
   };
   // K.bough: the clumps of one limb (its own and its side branches') are lit together as one bough
@@ -1313,6 +1367,10 @@ function buildGrown(rng, spec) {
       start.clone().addScaledVector(Dh, a2).addScaledVector(up, D.y * b2).addScaledVector(side, (rng() - 0.5) * crook * len),
       tip.clone()];
   };
+  // G.floor: no bough points lower than this (so none hangs under the crown like a growth); G.tuck: boughs below the crown's
+  // middle stop short of its edge, drawn in under it, the more the lower they point
+  const low = el => G.floor === undefined ? el : Math.max(el, G.floor);
+  const tuck = el => el < 0 ? 1 + el * (G.tuck ?? 0) : 1;
   const trunk = buildTrunk(rng, spec, ({ curve, trunkR, addTube }) => {
     const L = G.limbs, S = G.subs;
     const nL = Math.round(range(rng, L.n[0], L.n[1])), ph = rng() * 6.28;
@@ -1320,9 +1378,9 @@ function buildGrown(rng, spec) {
       const az = ph + i * 2.39996 + (rng() - 0.5) * 0.5;
       const t0 = lerp(L.t[0], L.t[1], (i + rng()) / nL);                 // spiral up the trunk
       const start = curve.getPointAt(t0);
-      const el = L.lift ? THREE.MathUtils.clamp((start.y - env.c.y) / env.r.y + range(rng, L.lift[0], L.lift[1]), -0.85, 0.92)
-                        : range(rng, L.elev[0], L.elev[1]);
-      const tip = onCrown(dirAt(az, el), range(rng, L.reach[0], L.reach[1]));
+      const el = low(L.lift ? THREE.MathUtils.clamp((start.y - env.c.y) / env.r.y + range(rng, L.lift[0], L.lift[1]), -0.85, 0.92)
+                            : range(rng, L.elev[0], L.elev[1]));
+      const tip = onCrown(dirAt(az, el), range(rng, L.reach[0], L.reach[1]) * tuck(el));
       const r0 = L.r * range(rng, 0.85, 1.15) * 1.3;
       const limb = addTube(bend(start, tip, L), r0, trunkR(t0), start, 0.26);
       const first = tiers.length;
@@ -1332,8 +1390,8 @@ function buildGrown(rng, spec) {
       for (let k = 0; k < nS; k++) {
         const tt = lerp(S.t[0], S.t[1], (k + rng()) / nS);
         const s0 = limb.getPointAt(tt), rAt = r0 * (1 - 0.72 * tt);
-        const el2 = THREE.MathUtils.clamp(el + range(rng, S.elev[0], S.elev[1]), -0.85, 0.95);
-        const tip2 = onCrown(dirAt(az + (k % 2 ? 1 : -1) * range(rng, 0.5, 1.05), el2), range(rng, S.reach[0], S.reach[1]));
+        const el2 = low(THREE.MathUtils.clamp(el + range(rng, S.elev[0], S.elev[1]), -0.85, 0.95));
+        const tip2 = onCrown(dirAt(az + (k % 2 ? 1 : -1) * range(rng, 0.5, 1.05), el2), range(rng, S.reach[0], S.reach[1]) * tuck(el2));
         addTube(bend(s0, tip2, S), Math.max(rAt * (S.r ?? 0.7), 0.02), rAt, s0, 0.4);
         clump(tip2, K.varySub ? range(rng, K.varySub[0], K.varySub[1]) : range(rng, 0.75, 1.0));
       }
@@ -1427,19 +1485,20 @@ const TREE_TYPES = {
   // the everyday meadow tree. Grown: a stout trunk with a flared foot forks under the crown, and every limb carries a leaf mass
   // of its own size, so the outline is uneven with hollows (it used to be two balls stacked on a pole)
   broadleaf: {
-    palette: 'broad', mask: 'leafy', height: 10, custom: buildGrown, detailMul: 0.5,
+    palette: 'broad', mask: 'oaky', height: 10, custom: buildGrown, detailMul: 0.7,
     trunk: {
       pts: [[0, -0.05, 0], [0.04, 1.1, 0], [0.12, 2.2, 0.04], [0.1, 3.3, 0], [0.02, 4.5, 0.03], [0, 5.9, 0], [0.08, 7.3, 0], [0.12, 8.4, 0]],
       radius: t => 0.3 * Math.pow(1 - t, 1.1) + 0.03 + 0.2 * Math.exp(-t * 24), lean: 0.2, sway: 0.2, roots: 5,
     },
     grow: {
       crown: { c: [0.1, 6.5, 0], r: [3.6, 3.0, 3.4], taper: 0.3, taperLow: 0.25, egg: 0.1 },
-      limbs: { n: [5, 6], t: [0.36, 0.7], elev: [-0.55, 0.6], reach: [0.6, 0.9], r: 0.1 },
-      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.4, 0.45], reach: [0.8, 1.0], r: 0.7 },
-      clump: { r: 1.5, flat: 0.72, n: 9, vary: [0.85, 1.35], varySub: [0.55, 1.0], shade: [0.42, 0.42, 0.16], bough: true, rough: 0.4, noise: 0.1, stray: 0.2, tint: 0.06, card: 1.12, heart: 8, core: 0 },
+      limbs: { n: [5, 6], t: [0.36, 0.7], elev: [-0.25, 0.62], reach: [0.6, 0.9], r: 0.1 },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.2, 0.45], reach: [0.8, 1.0], r: 0.7 },
+      floor: -0.24, tuck: 1.1,
+      clump: { r: 1.5, flat: 0.72, n: 9, vary: [0.85, 1.35], varySub: [0.55, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.8, heart: 8, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
       top: 1.45,
     },
-    bark: ['#7a5443', '#583a30', '#3c2a2a'], shadeY: 3.6,
+    bark: ['#a67c58', '#7c5a42', '#553d33'], barkHi: '#e6c79c', barkLit: 0.2, barkShade: 0.42, barkStroke: 0.85, barkContrast: 2.9, barkFoot: 0.7, shadeY: 3.6,
   },
   // big, wide, irregular single crown on a stout trunk
   oak: {
