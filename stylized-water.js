@@ -81,7 +81,6 @@ export const WATER_TUNE = {
   drops: { value: 1 },             // drops of water thrown into the air (water-droplets.js); 0 = none
   ring: { value: 1 },              // how brightly the crests of the simulated rings catch the light
   stepRing: { value: 1 },          // anime foam rings thrown out by footsteps, splashes and the falls (0 = none)
-  lace: { value: 1 },              // foam islands drifting on the surface
   anime: { value: 0 },             // 1 = anime water (flat colour bands, hard-edged foam, drawn strokes, hardly any mirror); 0 = the clear, realistic water (the default)
 };
 const TUNE_UNIFORMS = () => ({
@@ -567,7 +566,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
     uSim: S.texture, uSimRect: { value: S.rect }, uSimPx: { value: S.enabled ? S.rect.z / S.size : 1 },
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
-    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uLace: WATER_TUNE.lace, uRing: WATER_TUNE.ring,
+    uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uRing: WATER_TUNE.ring,
     uStepRing: WATER_TUNE.stepRing, ...Object.fromEntries(WATER_RINGS.uniforms.map((u, i) => ['uRg' + i, u])),
     uChurn: WATER_CHURN, uWakeHead: WATER_WAKE.head, uWakeOn: WATER_WAKE.on, ...Object.fromEntries(WATER_WAKE.uniforms.map((u, i) => ['uWk' + i, u])),
     uFoamMap: { value: foamMap },
@@ -615,7 +614,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       ${SHORE_WAVES}
       ${SIM_PARS}
       uniform sampler2D uHeight, uThrough, uMirror, uFoamMap, uAnimeCells;
-      uniform float uAnimeOn, uLace, uRing, uToon;
+      uniform float uAnimeOn, uRing, uToon;
       uniform float uFoamMapOn, uBrushScale;
       uniform mat4 uMirrorMatrix;
       uniform vec2 uInvRes;
@@ -816,11 +815,14 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
                      + pulse * shoreBrush * 0.25 * (1.0 - uSimRect.w)
                      + wash * (0.06 + 0.10 * broken) * (0.4 + 0.6 * surge);
           if (uToon > 0.5) {
-            // anime shore: a solid white line where the water meets the sand, and a second broken line a little way out
-            // that slides in and out with the swell
-            float line1 = 1.0 - smoothstep(0.022 + 0.014 * surge, 0.028 + 0.014 * surge, edgeDepth);
+            // anime shore: a white band where the water meets the sand, its outer edge gently scalloped, and a second line
+            // a little way out that slides in and out with the swell, in long dashes that taper to a point at both ends (no
+            // square ends). Both edges are one pixel soft (aa): drawn, but never stair-stepped
+            float c1 = 0.025 + 0.014 * surge + (noise2(fw * 2.3 + vec2(3.0, t * 0.1)) - 0.5) * 0.016;
+            float line1 = 1.0 - smoothstep(c1 - aa, c1 + aa, edgeDepth);
             float out2 = 0.11 + 0.07 * (1.0 - surge);
-            float line2 = (1.0 - smoothstep(0.012, 0.018, abs(edgeDepth - out2))) * step(0.5, broken);
+            float w2 = 0.016 * smoothstep(0.40, 0.66, broad * 0.72 + detail * 0.28);
+            float line2 = (1.0 - smoothstep(w2 - aa, w2 + aa, abs(edgeDepth - out2))) * smoothstep(0.002, 0.006, w2);
             foam = max(foam, max(line1, line2));
           }
           white = max(white, min(0.9, foam * shoreMask * uFoamAmt));
@@ -831,13 +833,8 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         float inState = smoothstep(0.0, 0.08, min(foamEdge.x, foamEdge.y));
         float movingFoam = texture2D(uSim, clamp(foamStateUV, 0.0, 1.0)).b * inState * uSimRect.w;
         white = max(white, smoothstep(0.025, 0.55, movingFoam) * 0.9 * uFoamAmt * smoothstep(0.0, 0.04, depth));
-        // Baked cells add sparse anime-style foam islands to the existing painted, advected foam.
-        // UVs ride with the flow; depth keeps the larger shapes close to the shore.
-        vec2 animeCell = texture2D(uAnimeCells, q * vec2(0.26, 0.21)).rg;
-        float animeLace = smoothstep(0.16, 0.26, animeCell.r) * (1.0 - smoothstep(0.12, 0.26, animeCell.g));
-        float animeShore = (1.0 - smoothstep(0.10, 0.38, restDepth)) * smoothstep(0.0, 0.04, depth);
-        float animePulse = smoothstep(0.35, 0.75, 0.5 + 0.5 * sin(restDepth * 16.0 - t * 1.8 + noise2(q * 0.6) * 1.6));
-        white = max(white, min(0.45, animeLace * animeShore * animePulse * uFoamAmt * uLace) * uAnimeOn);
+        // (No foam islands from the baked cells along the shore any more: a cell's edges are straight, and by the shore they
+        // lined up into a ladder of white bars across the foam line.)
         // Crown meshes and droplets accompany physical impulses; the simulation still bends the view.
 
         // Rounded sun glints, not large four-point stars or long white scratches.
@@ -883,7 +880,9 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         }
         if (uToon > 0.5) {
           white = max(white, smoothstep(0.035, 0.04, s0) * min(uRing, 1.0) * 0.9 * smoothstep(0.0, 0.06, depth));
-          white = smoothstep(0.28, 0.4, white);          // foam has a drawn edge: white or not
+          // foam has a drawn edge: white or not, the step one pixel soft so the edge is smooth and not stair-stepped
+          float fwW = max(fwidth(white) * 0.5, 0.06);
+          white = smoothstep(0.34 - fwW, 0.34 + fwW, white);
         }
         col = mix(col, uFoam, clamp(white, 0.0, 1.0));
         col = mix(col, uHaze, vHaze);
