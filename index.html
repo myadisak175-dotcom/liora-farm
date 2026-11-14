@@ -431,6 +431,8 @@ if (farHills && level.horizon) { farHills.position.set(level.horizon.center[0], 
 
 const clock = new THREE.Clock();
 let moved = false;
+// an editor is open (the scene's, the rocks', move-things, the path brush): its own camera, and its own pace (below)
+const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (pathBrush && pathBrush.active));
 const frame = (dt = clock.getDelta()) => {
   dt = Math.min(Math.max(dt, 0), 0.05);
   N.update(dt);
@@ -459,14 +461,24 @@ const frame = (dt = clock.getDelta()) => {
   if (shadows) shadows.update();
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
-  tune(dt);
+  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(dt);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
 // phone turns into heat, not into anything the eye needs here: frames that come too soon are skipped (?fps=120 keeps them all).
 const frameGap = 1000 / targetFPS - 2;               // ms between frames; the 2 forgives a tick that arrives a hair early
 let lastFrameAt = -1e9;
-const animate = t => { if (t - lastFrameAt < frameGap) return; lastFrameAt = t; frame(); };
+// In an editor the view looks down on far more ground than a walk does, and nothing in it has to move smoothly: 30 frames a
+// second while a finger is on the screen (and a moment after), 15 when it is left alone. Half and a quarter of the work, so of
+// the heat; the picture itself is the same. (Painting by walking, 🚶, is the game: it keeps the game's pace.)
+const EDIT_GAP = 1000 / 30 - 2, EDIT_IDLE_GAP = 1000 / 15 - 2, EDIT_LINGER = 1200;
+let touchedAt = -1e9;
+for (const type of ['pointerdown', 'pointermove', 'wheel']) addEventListener(type, () => { touchedAt = performance.now(); }, { capture: true, passive: true });
+const animate = t => {
+  const gap = editing() ? (performance.now() - touchedAt < EDIT_LINGER ? EDIT_GAP : EDIT_IDLE_GAP) : frameGap;
+  if (t - lastFrameAt < gap) return;
+  lastFrameAt = t; frame();
+};
 const syncVisibility = () => {
   clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0;
   renderer.setAnimationLoop(!document.hidden && !Q.get('still') ? animate : null);
