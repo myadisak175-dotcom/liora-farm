@@ -1129,7 +1129,7 @@ function buildCore(tiers) {
 
 // crown = lumps spread over ellipsoid "tiers", each lump = a ball of camera-facing leaf cards
 function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantiles = null) {
-  const C = [], P = [], K = [], A = [], SS = [], TC = [], BC = [];
+  const C = [], P = [], K = [], A = [], SS = [], TC = [], BC = [], AN = [];      // AN: 1 = this card's clump sits on wood that is drawn
   const v = new THREE.Vector3(), e = new THREE.Vector3(), nT = new THREE.Vector3(), q = new THREE.Vector3();
   const qe = new THREE.Vector3(), nE = new THREE.Vector3();
   for (const T of tiers) {
@@ -1157,6 +1157,7 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
       P.push(hT, 0, cardTint, Math.floor(rng() * 4));
       K.push(T.upright ? (rng() - 0.5) * T.upright : rng() * Math.PI * 2, T.clumpR * (2.3 + rng() * 0.5) * (T.cardScale ?? 1), e.y);
       A.push(1 + rng() * 0.32);
+      AN.push(T.anchor === false ? 0 : 1);
     }
     for (let i = 0; i < T.n; i++) {
       const y0 = 1 - 2 * (i + 0.5) / T.n;
@@ -1214,45 +1215,56 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
         const spin = rng();
         K.push(T.upright ? (spin - 0.5) * T.upright : spin * Math.PI * 2, cr * (1.7 + rng() * 0.45) * (T.cardScale ?? 1) * (far ? 0.62 : 1), e.y);   // upright: hanging sprays keep hanging
         A.push(1 + rng() * 0.32);
+        AN.push(T.anchor === false ? 0 : 1);
       }
     }
   }
-  if (tiers.some(T => T.tidy)) dropLoneCards(C, P, K, A, SS);
+  if (tiers.some(T => T.tidy)) dropFloatingCards(C, P, K, A, SS, AN);
   toneCards(SS, palName, quantiles, TC, BC);
   return { C, P, K, A, TC, BC, SS };
 }
 
-// A leaf card that touches no other card floats in the air by itself. Find them (a grid of cells keeps this quick) and take
-// them out; twice over, since removing one can leave its only neighbour alone.
-function dropLoneCards(C, P, K, A, SS) {
-  for (let pass = 0; pass < 2; pass++) {
-    const n = C.length / 3, cell = 0.9, grid = new Map();
-    const key = (x, y, z) => (Math.floor(x / cell) + 512) * 1048576 + (Math.floor(y / cell) + 512) * 1024 + (Math.floor(z / cell) + 512);
-    for (let i = 0; i < n; i++) { const k = key(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]); (grid.get(k) || grid.set(k, []).get(k)).push(i); }
-    const keep = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      const x = C[i * 3], y = C[i * 3 + 1], z = C[i * 3 + 2], reach = Math.min(K[i * 3 + 1] * 0.6, cell), r2 = reach * reach;
-      let near = 0;
-      for (let dx = -1; dx <= 1 && near < 3; dx++) for (let dy = -1; dy <= 1 && near < 3; dy++) for (let dz = -1; dz <= 1 && near < 3; dz++) {
-        const list = grid.get(key(x + dx * cell, y + dy * cell, z + dz * cell));
-        if (!list) continue;
-        for (const j of list) { if (j === i) continue; const a = C[j * 3] - x, b = C[j * 3 + 1] - y, c = C[j * 3 + 2] - z; if (a * a + b * b + c * c < r2 && ++near >= 3) break; }
+// No leaves floating in the air. Cards that overlap are joined into groups; a group stays only if it holds a real piece of a
+// clump whose wood is drawn (a limb's tip, the leader's top). So a lone card goes, a scrap of a few cards goes, and so does a
+// whole clump from a side branch whose wood is hidden when it does not reach the rest of the crown.
+function dropFloatingCards(C, P, K, A, SS, AN) {
+  const n = C.length / 3;
+  if (!n) return;
+  const sizes = Array.from({ length: n }, (_, i) => K[i * 3 + 1]).sort((a, b) => a - b);
+  const cell = Math.max(0.2, sizes[Math.floor(n * 0.6)] * 0.7);          // two cards touch within about a third of their sizes added
+  const key = (x, y, z) => (Math.floor(x / cell) + 512) * 1048576 + (Math.floor(y / cell) + 512) * 1024 + (Math.floor(z / cell) + 512);
+  const grid = new Map();
+  for (let i = 0; i < n; i++) { const k = key(C[i * 3], C[i * 3 + 1], C[i * 3 + 2]); const l = grid.get(k); l ? l.push(i) : grid.set(k, [i]); }
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = a => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  for (let i = 0; i < n; i++) {
+    const x = C[i * 3], y = C[i * 3 + 1], z = C[i * 3 + 2], si = K[i * 3 + 1];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const list = grid.get(key(x + dx * cell, y + dy * cell, z + dz * cell));
+      if (!list) continue;
+      for (const j of list) {
+        if (j <= i) continue;
+        const ri = find(i), rj = find(j);
+        if (ri === rj) continue;
+        const a = C[j * 3] - x, b = C[j * 3 + 1] - y, c = C[j * 3 + 2] - z, r = Math.min((si + K[j * 3 + 1]) * 0.33, cell);
+        if (a * a + b * b + c * c < r * r) parent[rj] = ri;
       }
-      keep[i] = near >= 3 ? 1 : 0;       // it needs three others close by: one or two would be a floating scrap of their own
     }
-    let w = 0;
-    for (let i = 0; i < n; i++) {
-      if (!keep[i]) continue;
-      if (w !== i) {
-        for (let k = 0; k < 3; k++) { C[w * 3 + k] = C[i * 3 + k]; K[w * 3 + k] = K[i * 3 + k]; }
-        for (let k = 0; k < 4; k++) P[w * 4 + k] = P[i * 4 + k];
-        A[w] = A[i]; SS[w] = SS[i];
-      }
-      w++;
-    }
-    if (w === n) break;
-    C.length = w * 3; K.length = w * 3; P.length = w * 4; A.length = w; SS.length = w;
   }
+  const held = new Int32Array(n);                 // per group: how many of its cards sit on drawn wood
+  for (let i = 0; i < n; i++) if (AN[i]) held[find(i)]++;
+  let w = 0;
+  for (let i = 0; i < n; i++) {
+    if (held[find(i)] < 10) continue;
+    if (w !== i) {
+      for (let k = 0; k < 3; k++) { C[w * 3 + k] = C[i * 3 + k]; K[w * 3 + k] = K[i * 3 + k]; }
+      for (let k = 0; k < 4; k++) P[w * 4 + k] = P[i * 4 + k];
+      A[w] = A[i]; SS[w] = SS[i];
+    }
+    w++;
+  }
+  C.length = w * 3; K.length = w * 3; P.length = w * 4; A.length = w; SS.length = w;
 }
 
 // tone steps from this crown's own distribution -> every shape gets the same look
@@ -1323,6 +1335,7 @@ function placeFruit(rng, F, spots) {
 //   limbs: { n, t, elev | lift, reach, r, bend }  t along the trunk; elev = where on the crown the tip lands, or
 //                                                  lift = how far above its own start (tall crowns)
 //   subs:  { n, t, elev, reach, r }               side branches off each limb (optional)
+//   fill: [n, spread, scale] extra clumps round the leader's top (wide crowns)
 //   subs.hidden: the side branches' wood is not drawn (their leaf clumps are): a clean fork of a few limbs from below
 //   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint, displace, tidy }   the leaf clump on each tip (vary: size
 //          spread on limbs / side branches, shade: its own SHADE_WEIGHTS, taper: smaller toward the top); top: clump size on the leader
@@ -1339,7 +1352,7 @@ function buildGrown(rng, spec) {
     return S.add(env.c);
   };
   const K = G.clump;
-  const clump = (p, scale) => {
+  const clump = (p, scale, anchor = true) => {
     const hk = K.taper ? 1 - K.taper * THREE.MathUtils.clamp((p.y - env.c.y + env.r.y) / (2 * env.r.y), 0, 1) : 1;   // smaller up high
     const cr = K.r * scale * hk, out = p.clone().sub(env.c).setY(0);
     if (out.lengthSq() > 1e-4) out.normalize();
@@ -1347,7 +1360,7 @@ function buildGrown(rng, spec) {
     c.y += cr * (K.lift ?? 0.1);
     tiers.push({ c: [c.x, c.y, c.z], r: [cr, cr * (K.flat ?? 0.8), cr], clumpR: cr * (K.clump ?? 0.5), n: K.n ?? 8,
       openBelow: K.openBelow ?? -0.7, coreScale: K.core ?? 0.5, coreBottom: 0.7, coreDetail: 1, env, shade: K.shade,
-      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint, displace: K.displace, tidy: K.tidy,
+      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint, displace: K.displace, tidy: K.tidy, anchor,
       coreTone: K.bough ? (hc => hc > 0.6 ? 2 : hc > 0.33 ? 1 : 0)((c.y - env.c.y + env.r.y) / (2 * env.r.y)) : undefined });
   };
   // K.bough: the clumps of one limb (its own and its side branches') are lit together as one bough
@@ -1395,13 +1408,20 @@ function buildGrown(rng, spec) {
         const tip2 = onCrown(dirAt(az + (k % 2 ? 1 : -1) * range(rng, 0.5, 1.05), el2), range(rng, S.reach[0], S.reach[1]) * tuck(el2));
         const bp = bend(s0, tip2, S);
         if (!S.hidden) addTube(bp, Math.max(rAt * (S.r ?? 0.7), 0.02), rAt, s0, 0.4);      // hidden: only its leaves, no thin wood under the crown
-        clump(tip2, K.varySub ? range(rng, K.varySub[0], K.varySub[1]) : range(rng, 0.75, 1.0));
+        clump(tip2, K.varySub ? range(rng, K.varySub[0], K.varySub[1]) : range(rng, 0.75, 1.0), !S.hidden);
       }
       bough(first);
     }
     const last = tiers.length;
     clump(curve.getPointAt(1), G.top ?? 1);                               // the leader ends inside the top of the crown
     bough(last);
+    // G.fill [n, spread, scale]: more clumps round the leader's top, inside the ring the limbs' tips make, so a wide crown
+    // is not a ring with a hole in the middle when seen from above (same size as the others: one big clump has big leaves)
+    for (let i = 0; i < (G.fill ? G.fill[0] : 0); i++) {
+      const a = ph + i * 2.39996 + rng(), d = G.fill[1] * (0.45 + 0.55 * rng()), first = tiers.length;
+      clump(new THREE.Vector3(env.c.x + Math.cos(a) * d * env.r.x, env.c.y + env.r.y * range(rng, 0.15, 0.5), env.c.z + Math.sin(a) * d * env.r.z), (G.fill[2] ?? 1) * range(rng, 0.85, 1.15));
+      bough(first);
+    }
   });
   return { trunk, tiers };
 }
@@ -1504,7 +1524,7 @@ const TREE_TYPES = {
   },
   // big, wide, irregular single crown on a stout trunk
   oak: {
-    palette: 'broad', mask: 'oaky', height: 8.6, custom: buildGrown, detailMul: 0.6,
+    palette: 'broad', mask: 'oaky', height: 8.6, custom: buildGrown, detailMul: 0.8,
     trunk: {
       pts: [[0, -0.05, 0], [0.03, 0.8, 0], [0.08, 1.6, 0.03], [0.05, 2.5, 0], [0.1, 3.5, 0.03], [0.1, 4.6, 0], [0.14, 5.8, 0], [0.1, 6.9, 0]],
       radius: t => 0.4 * Math.pow(1 - t, 1.1) + 0.03 + 0.3 * Math.exp(-t * 20), lean: 0.12, sway: 0.2, roots: 6,
@@ -1516,9 +1536,11 @@ const TREE_TYPES = {
       limbs: { n: [5, 6], t: [0.3, 0.62], elev: [-0.3, 0.45], reach: [0.55, 0.85], r: 0.15, bend: [0.45, 0.15, 0.8, 0.5] },
       subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.25, 0.4], reach: [0.8, 1.0], r: 0.65, hidden: true },
       floor: -0.26, tuck: 1.0,
-      // leaves the template's way (the broadleaf's): many small cards, displaced, lit by height in the crown, kept tidy
-      clump: { r: 1.55, flat: 0.7, n: 8, vary: [0.85, 1.3], varySub: [0.55, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.82, heart: 8, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
-      top: 1.5,
+      // leaves the template's way (the broadleaf's): many small cards, displaced, lit by height in the crown, kept tidy.
+      // The crown hangs low, near the eye, so its leaf cards are smaller than the broadleaf's (card): they read as fine from
+      // under this tree as the broadleaf's do from under that one.
+      clump: { r: 1.55, flat: 0.7, n: 8, vary: [0.85, 1.3], varySub: [0.55, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.58, heart: 10, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
+      top: 1.3, fill: [4, 0.42, 1.0],
     },
     quantiles: [0.14, 0.36, 0.62, 0.78, 0.92],       // deeper green than the broadleaf: less of the bright top tones
     // painted bark, a darker and greyer brown than the broadleaf's
@@ -1569,19 +1591,21 @@ const TREE_TYPES = {
   },
   // young tree: thin stem, one small round crown
   sapling: {
-    palette: 'broad', mask: 'leafy', height: 4.6, custom: buildGrown, detailMul: 0.5,
+    palette: 'broad', mask: 'oaky', height: 4.6, custom: buildGrown, detailMul: 1.05,
     trunk: {
       pts: [[0, -0.05, 0], [0.02, 0.9, 0], [0.06, 1.8, 0], [0.05, 2.7, 0], [0.09, 3.7, 0]],
       radius: t => 0.08 * Math.pow(1 - t, 1.1) + 0.015 + 0.05 * Math.exp(-t * 30), lean: 0.2, sway: 0.15, roots: 3,
     },
+    // a young broadleaf, the template's way at its own size: small leaf cards, displaced, lit by height in the crown, tidy
     grow: {
       crown: { c: [0.05, 3.2, 0], r: [1.55, 1.3, 1.45], taper: 0.25, taperLow: 0.25 },
-      limbs: { n: [3, 4], t: [0.42, 0.72], elev: [-0.4, 0.5], reach: [0.6, 0.9], r: 0.035 },
-      subs: { n: [1, 2], t: [0.4, 0.8], elev: [-0.3, 0.4], reach: [0.85, 1.0], r: 0.7 },
-      clump: { r: 0.72, flat: 0.74, n: 7, vary: [0.85, 1.25], varySub: [0.6, 0.95], shade: [0.42, 0.42, 0.16], bough: true, rough: 0.4, noise: 0.1, stray: 0.2, tint: 0.06, card: 1.2, heart: 7, core: 0 },
-      top: 0.85,
+      limbs: { n: [4, 5], t: [0.42, 0.72], elev: [-0.2, 0.55], reach: [0.55, 0.85], r: 0.035 },
+      subs: { n: [1, 2], t: [0.4, 0.8], elev: [-0.2, 0.4], reach: [0.85, 1.0], r: 0.7, hidden: true },
+      floor: -0.24, tuck: 1.0,
+      clump: { r: 0.82, flat: 0.74, n: 8, vary: [0.9, 1.25], varySub: [0.7, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.3, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.68, heart: 9, heartTint: -0.06, core: 0, displace: 0.22, tidy: 1.0 },
+      top: 1.0,
     },
-    bark: ['#7a5443', '#583a30', '#3c2a2a'], shadeY: 2.4,
+    bark: ['#a67c58', '#7c5a42', '#553d33'], barkHi: '#e6c79c', barkLit: 0.2, barkShade: 0.42, barkStroke: 0.85, barkContrast: 2.9, barkFoot: 0.7, shadeY: 2.4,
   },
 
   // ---- accent crowns -----------------------------------------------------------------------
