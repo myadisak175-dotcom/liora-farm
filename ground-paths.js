@@ -121,10 +121,14 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       distTex.magFilter = distTex.minFilter = THREE.LinearFilter; distTex.unpackAlignment = 1; distTex.needsUpdate = true;
       const mat = soft ? softPathMaterial(map, tex, distTex) : pathMaterial(map, tex, distTex);
       const meshOf = l => {
-        const ACROSS = 12, W = soft ? l.half + 1.5 : l.half * 1.45, pos = [], acr = [], idx = [];
+        // Its points are never more than about half a metre apart, along it and across it, so it lies on the ground everywhere.
+        // (A long piece takes its height only at its corners and is flat between them: by a cliff it stood off the land as a
+        // slanted sheet through the air, in front of her. The ends past the line and a wide yard were made of such pieces.)
+        const W = soft ? l.half + 1.5 : l.half * 1.45, ACROSS = Math.max(12, Math.ceil(2 * W / 0.5)), pos = [], acr = [], idx = [];
         // (the ribbon runs on a little past both ends of the line: the worn earth there is round, not cut square)
-        const P = l.pts, n = P.length, ext = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1; return [b[0] + dx / dl * W, b[1] + dz / dl * W]; };
-        const rows = [ext(P[1], P[0]), ...P, ext(P[n - 2], P[n - 1])];
+        const P = l.pts, n = P.length, steps = Math.ceil(W / 0.5);
+        const ext = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1; return Array.from({ length: steps }, (_, k) => [b[0] + dx / dl * W * (k + 1) / steps, b[1] + dz / dl * W * (k + 1) / steps]); };
+        const rows = [...ext(P[1], P[0]).reverse(), ...P, ...ext(P[n - 2], P[n - 1])];
         for (let k = 0; k < rows.length; k++) {
           const a = rows[Math.max(0, k - 1)], b = rows[Math.min(rows.length - 1, k + 1)], p = rows[k];
           let tx = b[0] - a[0], tz = b[1] - a[1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
@@ -321,6 +325,9 @@ function softPathMaterial(map, tex, distTex) {
         // out over bare ground
         float grass = m.a + (noise2(vWP.xz * 5.0) - 0.5) * 0.22 + (noise2(vWP.xz * 13.0) - 0.5) * 0.10;
         float a = (1.0 - smoothstep(0.10, 0.70, grass)) * (1.0 - smoothstep(0.15, 0.95, out_ + (n2 - 0.5) * 0.5));
+        // a way is trodden ground: none of it on a cliff's face (a way that ends at a cliff's foot, or is painted across one,
+        // does not colour the rock). Full on a slope of 45 degrees, gone by 65
+        a *= smoothstep(0.42, 0.68, abs(normalize(cross(dFdx(vWP), dFdy(vWP))).y));
         if (a < 0.01) discard;
       #ifdef TEX
         vec2 p = vWP.xz / 4.1, q = mat2(0.8, -0.6, 0.6, 0.8) * vWP.xz / 6.3;
