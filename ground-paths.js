@@ -16,7 +16,8 @@
 //   heightFn: h += P.sink(x, z)                    the path lies a few centimetres below the grass
 //   paint:    [earth, sand, mow] from P.paint(x, z)  bare earth on the path, clumps of grass at its edges, short grass beside it
 //   const tex = await loadPathTextures(style)       the earth pictures for that look (grit: sand and dirt; soft: the paint), once
-//   group.add(P.ribbon(heightAt, map, tex))        the painted path itself (after the ground map is made)
+//   group.add(P.ribbon(heightAt, map, tex, bankAt))  the painted path itself (after the ground map is made; bankAt, if given:
+//                                                  how high a spot stands above the water, so the soft look is wet toward it)
 //   P.stones(heightAt)                             [{ type, seed, x, z, ry, s, y }] flat stones and pebbles to set into it
 //   const h = P.add({ points, half })              after ribbon(): one more path, drawn at once (a way painted by hand)
 //   P.remove(h)                                    and taken away again
@@ -30,7 +31,8 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 const COLORS = { light: '#e9d4a3', mid: '#d7ba82', dark: '#bb9a63', damp: '#a98b57', rim: '#94824f', speckLight: '#f4e8c8', speckDark: '#9b8253', cream: '#ead7a6' };
 // the soft look's: the pale worn middle, the deeper tone of its broad patches (a tint over the earth), the browner earth toward
 // its sides, and the dry grass it goes to where the meadow begins
-const SOFT = { earth: '#dcc07c', cream: '#f5e3ac', deep: '#c9a45e', side: '#c6a25c', hay: '#b9b25a' };
+const SOFT = { earth: '#dcc07c', cream: '#f5e3ac', deep: '#c9a45e', side: '#c6a25c', hay: '#b9b25a',
+  wet: '#cdbda8' };      // what the earth is multiplied by where it is wet, toward the water (the banks' wet sand too: stylized-terrain.js sandWet)
 
 // the two pictures of earth the path is painted with (seamless, from the old Liora Farm ground set): warm sand for the worn
 // middle, browner dirt with grit for the edges and damp spots
@@ -97,8 +99,10 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       const mow = (1 - ss(half * 1.0, half * 1.7, e)) * 0.85;                // the grass right beside it is short, trodden
       return [earth, 0, mow];
     },
-    // the painted path: a ribbon over the ground, as wide as the path and a little more (the ground map decides where it shows)
-    ribbon(heightAt, map, tex = null) {
+    // the painted path: a ribbon over the ground, as wide as the path and a little more (the ground map decides where it shows).
+    // bankAt(x, z): how high a spot stands above the water beside it (10: no water near), for the soft look to be wet toward
+    // the water; without it no way is ever wet
+    ribbon(heightAt, map, tex = null, bankAt = null) {
       const group = new THREE.Group(); group.name = 'paths';
       // how far each point of the map is from the middle of the nearest path (in path widths): one picture for all the ribbons,
       // so where two paths meet they agree on what is middle and what is edge
@@ -124,7 +128,7 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
         // Its points are never more than about half a metre apart, along it and across it, so it lies on the ground everywhere.
         // (A long piece takes its height only at its corners and is flat between them: by a cliff it stood off the land as a
         // slanted sheet through the air, in front of her. The ends past the line and a wide yard were made of such pieces.)
-        const W = soft ? l.half + 1.5 : l.half * 1.45, ACROSS = Math.max(12, Math.ceil(2 * W / 0.5)), pos = [], acr = [], idx = [];
+        const W = soft ? l.half + 1.5 : l.half * 1.45, ACROSS = Math.max(12, Math.ceil(2 * W / 0.5)), pos = [], acr = [], bank = [], idx = [];
         // (the ribbon runs on a little past both ends of the line: the worn earth there is round, not cut square)
         const P = l.pts, n = P.length, steps = Math.ceil(W / 0.5);
         const ext = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1; return Array.from({ length: steps }, (_, k) => [b[0] + dx / dl * W * (k + 1) / steps, b[1] + dz / dl * W * (k + 1) / steps]); };
@@ -134,13 +138,14 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
           let tx = b[0] - a[0], tz = b[1] - a[1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
           for (let i = 0; i <= ACROSS; i++) {
             const u = -1 + 2 * i / ACROSS, x = p[0] - tz * u * W, z = p[1] + tx * u * W;
-            pos.push(x, heightAt(x, z) + 0.03, z); acr.push(u * W / l.half);
+            pos.push(x, heightAt(x, z) + 0.03, z); acr.push(u * W / l.half); bank.push(bankAt ? bankAt(x, z) : 10);
           }
         }
         for (let k = 0; k < rows.length - 1; k++) for (let i = 0; i < ACROSS; i++) { const a = k * (ACROSS + 1) + i, b = a + ACROSS + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.setAttribute('aAcross', new THREE.Float32BufferAttribute(acr, 1));
+        g.setAttribute('aBank', new THREE.Float32BufferAttribute(bank, 1));
         g.setIndex(idx); g.computeBoundingSphere();
         const m = new THREE.Mesh(g, mat); m.renderOrder = soft ? -10 : 0; m.name = 'path';      // (soft: see-through, so drawn after the land and grass, and before the water and all else that is)
         m.userData = { kind: 'path', dispose: () => g.dispose() };
@@ -286,7 +291,9 @@ function pathMaterial(map, tex, distTex) {
 // show), paler and creamier down the worn middle, with broad soft patches of deeper tone, browner toward the sides. There is
 // no line at the edge: as the ground map says more grass grows, the earth goes to the colour of dry grass and fades out, so
 // the meadow's own green shows through it and the short grass stands on it. Beside bare ground (a cliff's foot, a beach) it
-// fades out in under a metre. Without the picture: the same, over one flat earth colour.
+// fades out in under a metre. Without the picture: the same, over one flat earth colour. Toward the water it is wet: darker,
+// by how high each point of the ribbon stands above the water (aBank: the level's bankAt, the same measure the banks' sand is
+// wet by, so a way running down onto the beach is wet just where the sand beside it is).
 function softPathMaterial(map, tex, distTex) {
   const paint = tex && tex.paint ? tex.paint : null;
   return new THREE.ShaderMaterial({
@@ -295,13 +302,17 @@ function softPathMaterial(map, tex, distTex) {
       uPaint: { value: paint }, uPathD: { value: distTex },
       uMap: { value: map.texture }, uMapRect: { value: map.rect }, uCast: { value: map.cast || null }, uCastTint: { value: new THREE.Vector3(...(map.castTint || [0.5, 0.6, 0.76])) },
       uEarth: { value: rgb(SOFT.earth) }, uCream: { value: rgb(SOFT.cream) }, uDeep: { value: rgb(SOFT.deep) }, uSide: { value: rgb(SOFT.side) }, uHay: { value: rgb(SOFT.hay) },
+      uWet: { value: rgb(SOFT.wet) },
       uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
     },
     vertexShader: /* glsl */`
       uniform float uHazeNear, uHazeFar, uHazeMax;
+      attribute float aBank;   // how high it stands above the water beside it (10: no water near)
       varying vec3 vWP;
       varying float vHaze;
+      varying float vBank;
       void main() {
+        vBank = aBank;
         vec4 wp = modelMatrix * vec4(position, 1.0); vWP = wp.xyz;
         vec4 mv = viewMatrix * wp;
         vHaze = uHazeMax * smoothstep(uHazeNear, uHazeFar, length(mv.xyz));
@@ -312,8 +323,9 @@ function softPathMaterial(map, tex, distTex) {
       ${NOISE}
       ${HAZEF}
       uniform sampler2D uMap, uCast, uPaint, uPathD;
-      uniform vec3 uMapRect, uCastTint, uEarth, uCream, uDeep, uSide, uHay;
+      uniform vec3 uMapRect, uCastTint, uEarth, uCream, uDeep, uSide, uHay, uWet;
       varying vec3 vWP;
+      varying float vBank;
       void main() {
         vec2 uv = (vWP.xz - uMapRect.xy) * uMapRect.z + 0.5;
         vec4 m = texture2D(uMap, uv);
@@ -342,6 +354,9 @@ function softPathMaterial(map, tex, distTex) {
         col = mix(col, uCream, smoothstep(0.42, 0.20, broad) * 0.22);
         col = mix(col, uSide, smoothstep(-0.55, 0.15, out_ + (n1 - 0.5) * 0.5) * 0.5);      // browner toward its sides
         col = mix(col, uHay, smoothstep(0.08, 0.5, grass) * 0.8);                  // and to dry grass where the meadow begins
+        // wet toward the water: the banks' sand is wet by the same measure, with the same ragged edge (stylized-terrain.js)
+        float sb = vBank + (noise2(vWP.xz * 0.9) - 0.5) * 0.24 + (noise2(vWP.xz * 3.1 + 5.0) - 0.5) * 0.08;
+        col = mix(col, col * uWet, 1.0 - smoothstep(0.02, 0.40, sb + (noise2(vWP.xz * 1.7 + 9.0) - 0.5) * 0.14));
         col *= mix(vec3(1.0), uCastTint, texture2D(uCast, uv).r);                // the sun's shadows
         gl_FragColor = vec4(mix(col, uHaze, vHaze), a);
       }`,

@@ -94,6 +94,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
 
   // the water: where it lies and how high it stands (land-water.js)
   const brookAt = waterLookup(P.brooks, { x0: X0, z0: Z0, x1: X1, z1: Z1 }).at;
+  // how high a spot stands above the water beside it (and a quarter of how far out from the water's edge it is), or 10 with no
+  // water near: the land's sand and the ways' wet earth both go by it, so they agree on where the ground is wet
+  const bankAt = (x, z, y = H(x, z)) => { const b = brookAt(x, z); return b ? y - b.level + b.d * 0.25 : 10; };
   // the bridges' decks: where each lies (u along it, v across) and how high its boards are. On one she is over the water, not in it
   const decks = [];
   const deckUV = (d, x, z) => { const c = Math.cos(d.yaw), s = Math.sin(d.yaw); return [(x - d.x) * c - (z - d.z) * s, (x - d.x) * s + (z - d.z) * c]; };
@@ -302,7 +305,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const dxz = Math.hypot(L.x, L.z) || 1, ly = Math.max(0.3, L.y), ux = -L.x / dxz, uz = -L.z / dxz, len = dxz / ly;
     return casters.map(([x, z, h, rr, st]) => [x + ux * len * h / 2, z + uz * len * h / 2, len * h / 2 + rr, rr * 1.1, ux, uz, st, 0]);
   };
-  const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, paint, cast: sunShadows(L.clone()) });
+  // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
+  const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
   const fade = { far, fadeA: FR * 0.93, fadeB: FR };
   // the banks' sand: painted with the ways' own brush, so the beach and the ways read as one ground (?sand=flat: as it was)
   let sandPaint = null;
@@ -318,9 +322,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const { n, step, heights } = field, cA = Math.max(0, Math.floor((X0 + FR) / step)), cB = Math.min(n - 1, Math.ceil((X1 + FR) / step)), cols = cB - cA + 1;
     const pos = new Float32Array(cols * n * 3), bank = new Float32Array(cols * n).fill(10), soil = new Float32Array(cols * n);
     for (let j = 0; j < n; j++) for (let i = 0; i < cols; i++) {
-      const o = j * cols + i, x = -FR + (cA + i) * step, z = CZ - FR + j * step, y = heights[j * n + cA + i], b = brookAt(x, z);
+      const o = j * cols + i, x = -FR + (cA + i) * step, z = CZ - FR + j * step, y = heights[j * n + cA + i];
       pos[o * 3] = x; pos[o * 3 + 1] = y; pos[o * 3 + 2] = z;
-      if (b) bank[o] = y - b.level + b.d * 0.25;
+      bank[o] = bankAt(x, z, y);
       if (inField(x, z, 0.4)) soil[o] = 1;
     }
     const whole = new THREE.BufferGeometry(), all = new Uint32Array((cols - 1) * (n - 1) * 6);
@@ -352,7 +356,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   group.add(terrain);
   let pathTex = null;
   try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
-  const ways = paths.ribbon(H, map, pathTex);
+  const ways = paths.ribbon(H, map, pathTex, bankAt);      // (bankAt: the ways are wet toward the water, as the sand beside them is)
   if (pathTex) ways.userData.dispose = (d => () => { d(); pathTex.dispose(); })(ways.userData.dispose);
   group.add(ways);
   await onStep('ปลูกหญ้า');
