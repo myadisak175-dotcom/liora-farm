@@ -291,8 +291,8 @@ export async function buildValleyLevel({ seed = 1, far = '#cde6f2', deer = null,
   const casters = [];
   const castBall = (x, z, h, r, st = 0.9, dap = 0) => casters.push([0, x, z, h, r, st, dap]);
   const castStick = (x, z, h, w, st = 0.75) => casters.push([1, x, z, h, w, st, 0]);
-  const CROWN_Y = { broadleaf: 5.7, oak: 5.2, pine: 5.6, birch: 6.6, sapling: 3.4 }, CROWN_R = { broadleaf: 2.9, oak: 3.5, pine: 2.3, birch: 2.0, sapling: 1.3 };
-  const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 };
+  const CROWN_Y = { broadleaf: 6.2, oak: 5.2, pine: 6.1, birch: 7.0, sapling: 3.4 }, CROWN_R = { broadleaf: 4.4, oak: 3.5, pine: 2.1, birch: 2.4, sapling: 1.9 };
+  const TRUNK = { broadleaf: 0.6, oak: 0.55, pine: 0.38, birch: 0.26, sapling: 0.2 };
   const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
   const clear = (x, z, r) => placed.every(p => Math.hypot(p[0] - x, p[1] - z) > p[2] + r);
   let ps = seed * 100;

@@ -39,7 +39,7 @@ export const PIT_MAP = {
   shelves: [{ u0: 0.6, u1: 7.0 }, { u0: 7.6, u1: 14.0 }, { u0: 14.6, u1: 20.8 }, { u0: 21.4, u1: 27.2 }],
   spawn: { x: 8, z: 47, yaw: Math.PI + 0.15 },
 };
-const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.5, pine: 7.5, birch: 8, sapling: 4 };
+const TRUNK = { broadleaf: 0.6, oak: 0.55, pine: 0.38, birch: 0.26, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.5, pine: 7.9, birch: 8.4, sapling: 4 };
 
 export async function buildPitLevel({ seed = 5, far = '#cde6f2', grassCount = 150000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
   const M = PIT_MAP, half = M.size / 2, FR = half, n = M.cells;
