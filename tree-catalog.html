@@ -72,11 +72,11 @@ controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49; controls
 
 // name, set, and how wide the tree stands (for the row and for where Vivi waits)
 const TREES = [
-  { key: 'sakura', name: 'ซากุระ', set: 'new', w: 7 },
-  { key: 'maple', name: 'เมเปิลใบแดง', set: 'new', w: 6 },
+  { key: 'sakura', name: 'ซากุระ', set: 'new', w: 7.6 },
+  { key: 'maple', name: 'เมเปิลใบแดง', set: 'new', w: 6.8 },
   { key: 'apple', name: 'ต้นแอปเปิล', set: 'new', w: 4.6 },
   { key: 'orange', name: 'ต้นส้ม', set: 'new', w: 4.2 },
-  { key: 'giant', name: 'ต้นยักษ์โบราณ', set: 'new', w: 22 },
+  { key: 'giant', name: 'ต้นยักษ์โบราณ', set: 'new', w: 25 },
   { key: 'willow', name: 'หลิวกิ่งย้อย', set: 'new', w: 7.5 },
   { key: 'bamboo', name: 'กอไผ่', set: 'new', w: 6 },
   { key: 'cypress', name: 'สนทรงสูง', set: 'new', w: 3 },
@@ -137,8 +137,11 @@ function build() {
     tree.position.y = H(0, 0) - 0.05; shown.add(tree);
     const g = inSet(), h = tree.userData.height, extra = tree.userData.fruit ? ` · ผล ${tree.userData.fruit} ลูก` : '';
     nameEl.innerHTML = `${t.name} <small>${g.indexOf(t) + 1} / ${g.length} · สูง ~${Math.round(h)} ม.${extra} · ชุดที่ ${seed}</small>`;
-    const d = Math.max(h * 1.8, t.w * 1.6);
-    controls.target.set(0, h * 0.48, 0); camera.position.set(d * 0.42, h * 0.42, d * 0.92);
+    // far enough back that the whole tree (and Vivi beside it) fits both ways, on a tall phone screen too
+    const vt = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), ht = vt * camera.aspect;
+    const d = Math.max(h * 1.7 / 2 / vt, (t.w * 1.25 + (Q.has('novivi') ? 0 : 3)) / 2 / ht);   // room for the name and the buttons
+    controls.target.set(Q.has('novivi') ? 0 : 0.9, h * 0.48, 0);
+    camera.position.set(controls.target.x + d * 0.4, h * 0.42, d * 0.92);
   }
   placeVivi();
   document.getElementById('all').classList.toggle('on', showAll);
@@ -153,7 +156,7 @@ document.getElementById('dice').onclick = () => { seed++; build(); };
 document.getElementById('all').onclick = () => { showAll = !showAll; build(); };
 build();
 
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); build(); });
 const clock = new THREE.Clock();
 const frame = () => { const dt = clock.getDelta(); N.update(dt); if (vivi) vivi.update(dt); controls.update(); renderer.render(scene, camera); };
 window.__cat = { frame, renderer, scene, camera, controls, build, TREES, set: (o) => { if ('index' in o) index = o.index; if ('seed' in o) seed = o.seed; if ('all' in o) showAll = o.all; build(); } };
