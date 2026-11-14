@@ -34,6 +34,7 @@ import * as W from './stylized-water.js';
 import * as BD from './stylized-buildings.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createAnimeForest, setAnimeSun } from './anime-tree.js';
+import { pathStones } from './path-stones.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { waterLookup, createLandWater } from './land-water.js';
 import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
@@ -285,6 +286,27 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const wet = createRockKit(wetRocks, { world: false, paint: rockPaint, moss: { boulder: 0, stone: 0, pebbles: 0 } });
   rocks.name = 'rocks'; wet.name = 'wetRocks';
   group.add(rocks, wet);
+  // small stones along the ways (path-stones.js: heaps of pebbles kicked to the edges, more at bends, where ways meet, on steep
+  // stretches and by the water; now and then a flat stone worn into the middle), painted like the other rocks, no moss (trodden)
+  const inBuilding = (x, z) => P.buildings.some(b => Math.hypot(x - b.x, z - b.z) < (b.pad || 1) * 0.9);
+  const stoneList = pathStones({
+    ways: [...P.paths.map(p => ({ points: p.points, half: p.half })), ...pathOps.filter(o => o.k === 'way').map(o => ({ points: o.pts, half: o.half }))],
+    near: paths.near, slopeAt: slope, seed,
+    nearWater: (x, z) => { const b = brookAt(x, z); return b ? Math.max(0, b.d) : 1e9; },
+    skip: (x, z) => waterDepthAt(x, z) > 0.02 || !!deckAt(x, z) || inBuilding(x, z) || inField(x, z, 0.5),
+  });
+  // in pieces 30 m square, each drawn only when in view and within 40 m (they are small: further off they cannot be told apart)
+  const stoneChunks = [];
+  {
+    const by = new Map(), CH = 30;
+    for (const st of stoneList) { const k = Math.floor(st.x / CH) + ',' + Math.floor(st.z / CH); if (!by.has(k)) by.set(k, []); by.get(k).push({ ...st, y: H(st.x, st.z) + 0.03 }); }      // (lifted a little: the way's paint lies over the land)
+    for (const list of by.values()) {
+      const obj = createRockKit(list, { world: false, paint: rockPaint, moss: { flagstone: 0, stone: 0.12 } });
+      obj.name = 'pathStones'; group.add(obj);
+      const box = new THREE.Box3(); for (const it of list) box.expandByPoint(new THREE.Vector3(it.x, it.y, it.z));
+      stoneChunks.push({ obj, box: box.expandByScalar(0.6), far: 40 });
+    }
+  }
   // the meadow's grass on the boulders' tops (as on the other maps: rock-world.js), so a mossy top is not bald. Worked out from
   // the rocks' real shapes, on the land's own grid: a point of the grid that lies on a top that faces up is given the top's
   // height (in a copy of the land's heights kept for the grass alone: the water reads the land's own), and a cell with all four
@@ -415,7 +437,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   group.add(grass);
   // the woods (anime-tree.js: the plan's plants are placed by the land's own rules, in the map's tool), in groves, and the beds
   // of flowers: each is drawn only when it is in view (see update)
-  const groves = [], inView = [];
+  const groves = [], inView = [...stoneChunks];
   {
     const by = new Map(), v = new THREE.Vector3(), grove = +new URLSearchParams(location.search).get('grove') || M.grove;
     for (const p of plants) { const k = Math.floor((p.x - X0) / grove) + ',' + Math.floor((p.z - Z0) / grove); if (!by.has(k)) by.set(k, []); by.get(k).push(p); }
@@ -480,7 +502,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const inMap = (x, z) => x > play[0] + 1 && x < play[1] - 1 && z > play[2] + 1 && z < play[3] - 1;
   const walkable = (x, z) => inMap(x, z) && (!!deckAt(x, z) || (slope(x, z) < 0.9 && waterDepthAt(x, z) < 1.05));      // off the cliffs, out of deep water
   const standAt = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
-  console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
+  console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length, '· stones along the ways', stoneList.length, 'in', stoneChunks.length, 'pieces');
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};
   for (const [name, [x, z, yaw]] of Object.entries(P.views)) views[name] = { x, z, yaw };
@@ -625,7 +647,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       sim.step(renderer, dt);
       droplets.update(renderer);
       if (mill) mill.update(dt);
-      if (camera) { rocks.userData.update(camera); wet.userData.update(camera); }      // (each rock as finely as its distance calls for)
+      if (camera) { rocks.userData.update(camera); wet.userData.update(camera); for (const c of stoneChunks) if (c.obj.visible) c.obj.userData.update(camera); }      // (each rock as finely as its distance calls for)
       wheel.rotation.x += dt * 0.5;
       if (scene && camera) {
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
