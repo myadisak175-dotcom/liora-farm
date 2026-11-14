@@ -110,6 +110,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
 
   const tmp = new THREE.Vector3(), look = new THREE.Vector3(), camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
   let camReady = false, camReach = camDist, wade = 0, stepSide = 1;
+  let wasDepth = 0, wetH = 0, wetAmt = 0;      // the water she stood in a frame ago; how high up she is wet (m above her feet) and how wet still
   const WALK = 1.45, RUN = 3.3, DEEP = 0.5;      // DEEP: water she will not wade into
   // her two feet, followed bone by bone, so the water is touched exactly when and where a foot comes down
   const feet = [];
@@ -155,9 +156,16 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
         let d = want - heading; d = Math.atan2(Math.sin(d), Math.cos(d));
         heading += d * Math.min(1, dt * 11);
       }
-      // wading slows you down; deep water stops you
+      // wading slows you down, the more the deeper it is (ankle-deep hardly at all, knee-deep she cannot run); deep water stops you
       const depthHere = level.waterDepthAt(pos.x, pos.z);
-      if (depthHere > 0.15) target *= 0.72;
+      const heavy = Math.min(1, Math.max(0, (depthHere - 0.1) / 0.4)), drag = heavy * heavy * (3 - 2 * heavy);
+      target *= 1 - 0.52 * drag;
+      // running into the water: one splash where she breaks the surface
+      if (depthHere > 0.06 && wasDepth <= 0.06 && speed > 2.2 && level.ripple) level.ripple(pos.x + Math.sin(heading) * 0.25, pos.z + Math.cos(heading) * 0.25, 0.9, 0.3, 'splash');
+      wasDepth = depthHere;
+      // what has been in the water is wet (a run splashes her higher), and dries in a quarter of a minute once she is out
+      if (depthHere > 0.03) { wetH = Math.max(wetH, depthHere + 0.05 + 0.12 * Math.min(1, speed / RUN)); wetAmt = 1; }
+      else { wetAmt = Math.max(0, wetAmt - dt / 15); if (wetAmt === 0) wetH = 0; }
       // standing in water: a slow ring now and then. Walking is handled further down, where each foot's own landing makes the ring
       if (depthHere > 0.04 && level.ripple) {
         wade -= dt;
@@ -171,7 +179,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           wade = moving ? 0.17 + Math.random() * 0.09 : 1.2 + Math.random() * 0.8;      // never quite in time, like real steps
         }
       } else wade = 0;
-      speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 : 10));
+      speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 - 4 * drag : 10 + 5 * drag));      // water is slow to get going in and quick to stop her
       if (speed > 0.02) {
         tmp.set(pos.x + Math.sin(heading) * speed * dt, 0, pos.z + Math.cos(heading) * speed * dt);
         if (level.waterDepthAt(tmp.x, tmp.z) > DEEP && level.waterDepthAt(tmp.x, tmp.z) > depthHere) {
@@ -195,6 +203,11 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       character.update(dt);
       root.position.copy(pos);
       character.object.rotation.y = heading;
+      // tell her materials where the water's surface is (far below when she is on land) and how high she is wet
+      if (character.water) {
+        character.water.level.value = depthHere > 0.02 ? level.heightAt(pos.x, pos.z) + depthHere : -1e5;
+        character.water.wet.value.set(pos.y + wetH, wetAmt);
+      }
       // ---- footsteps in water: each foot swings between a low and a high point of its own; the moment it comes back down to the
       // low point is the step. The range is learnt as she moves, so walk and run (and any other clip) need no numbers of their own.
       if (feet.length && level.ripple) {

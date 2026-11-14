@@ -335,7 +335,8 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
 
 // ==========================================================================
 // OPTICS: what you see THROUGH the water and what is MIRRORED on it, drawn each frame into two small pictures
-//   through : the scene's underwater things only (objects on layer UNDERWATER: terrain, rocks, the player), same camera
+//   through : the scene's underwater things only (objects on layer UNDERWATER: terrain, rocks, the player), same camera;
+//             its alpha is 1, but for someone standing in the water, who writes there how far under the surface she is
 //   mirror  : the scene seen from a camera flipped under the water plane (trees, sky, hills...), clipped at the surface
 // ==========================================================================
 export const UNDERWATER = 2;
@@ -720,7 +721,16 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
 
         // ---- what lies under the water, seen through a surface that bends the view
         vec2 suv = gl_FragCoord.xy * uInvRes;
-        vec3 under = texture2D(uThrough, suv + N.xz * (0.012 + 0.035 * smoothstep(0.0, 0.9, depth)) * uOptics * uRefract * (1.0 - 0.75 * uToon)).rgb;
+        // someone standing in the water: her picture says in its alpha how far under the surface each part of her is
+        // (stylized-character.js; everything else is 1 there). Looked at straight first: where she is, the view bends less the
+        // nearer the surface that part of her is, so her legs join the rest of her at the waterline instead of swimming loose.
+        vec4 straight = texture2D(uThrough, suv);
+        float herHere = 1.0 - smoothstep(0.5, 0.8, straight.a);
+        float bend = mix(1.0, 0.45 * smoothstep(0.0, 0.8, straight.a * 2.0), herHere);
+        vec4 seen = texture2D(uThrough, suv + N.xz * (0.012 + 0.035 * smoothstep(0.0, 0.9, depth)) * uOptics * uRefract * (1.0 - 0.75 * uToon) * bend);
+        vec3 under = seen.rgb;
+        // her: how much of this pixel is her (and not a bent picture of her beside where she is); herDepth: metres under
+        float her = (1.0 - smoothstep(0.5, 0.8, seen.a)) * herHere, herDepth = seen.a * 2.0;
         // sunlight netting on the bottom: two soft layers of cells sliding over each other (glow, not drawn lines)
         vec2 cp = q * uCausticScale + (vec2(noise2(q * 0.5 + 2.0), noise2(q * 0.5 + 9.0)) - 0.5) * 1.6 + N.xz * 0.5;
         float net = ridge(cp * 0.9) * ridge(cp * 1.5 + vec2(4.7, -t * 0.1));
@@ -747,6 +757,9 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           cover = mix(0.5, 0.96, smoothstep(0.0, 0.22, depth));
         }
         body += uCell * caustic * uCaustic * mix(0.3, 0.45, uToon);
+        // her legs are seen through the water that lies over THEM, not over the bed: clear just under the surface, fading into
+        // the water's colour further down, so she stands in the water and is not cut off by it
+        cover = mix(cover, mix(0.08, 0.92, smoothstep(0.0, mix(0.95, 0.45, uToon), herDepth)), her);
         vec3 col = mix(under, body, cover);
         // faces of the waves turned to the sun are a little lighter, the others a little darker: soft, no outlines
         float waveLight = clamp(dot(sl, -normalize(uSun.xz)) * 2.2 + vLift * 3.0, -0.13, 0.16);
@@ -871,6 +884,8 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           col = mix(col, mix(uShallow * 1.2, uFoam, 0.6), churn.y);
           white = max(white, churn.x * 0.96);
         }
+        // where she comes up out of the water: a line of foam drawn on her at the surface, wobbling with the waves
+        white = max(white, her * (1.0 - smoothstep(0.035, 0.085, herDepth + (noise2(xz * 9.0 + t * 0.8) - 0.5) * 0.04)) * 0.9);
         // the foam wake of someone wading: cells pinned to the water, their gaps widening as the wake's foam runs out
         if (uWakeOn > 0.5) {
           float wk = wakeField(xz) * uAnimeOn * smoothstep(0.0, 0.04, depth) * min(uStepRing, 1.5);

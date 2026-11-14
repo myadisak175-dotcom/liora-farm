@@ -190,6 +190,7 @@ export async function buildPitLevel({ seed = 5, far = '#cde6f2', grassCount = 15
       const st = mode === 'step';
       if (st) W.WATER_WAKE.add(x, z, Math.min(1.3, 0.9 * strength));
       sim.impulse(x, z, radius, (st ? -0.042 : -0.03) * strength * kk, -Math.min(st ? 0.15 : 0.55, (st ? 0.18 : 0.75) * strength) * foam);
+      if (st && drop > 0 && sim.inside(x, z)) droplets.emit(x, H(x, z) + waterDepthAt(x, z), z, 0.16 * drop * strength, strength > 1.2 ? 3 : 2);      // a footstep flicks up two or three drops
     }
   };
   const hidden = [...waters, grass, droplets.points];
