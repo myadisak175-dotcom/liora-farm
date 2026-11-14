@@ -394,7 +394,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // sheet lies only where the ground holds it, the fall hangs from the sheet's own edge and its foam is where it lands
   // (from its third shelf each stream goes into the pit's mist: the abyss's long fall, abyss-scene.js)
   const deepFall = f => createAbyssFalls({ falls: [f], centre: [f.x + Math.sin(f.yaw), f.z + Math.cos(f.yaw)], bottom: f.top - 42, optics: null, foamTexture });
-  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length, deep: P.deep || [], deepFall });
+  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length, deep: P.deep || [], deepFall, split: P.split || [] });
   water.group.userData.dispose = water.dispose;
   group.add(water.group);
   // the pit's clouds, on its shelves and over its eye (the abyss's: their heights are the first pit's, so all are moved by shift)

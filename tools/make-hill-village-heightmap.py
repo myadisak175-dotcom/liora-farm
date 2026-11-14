@@ -10,7 +10,8 @@
 # South of the village the land goes on, and the valley of the first map lies in it, made again here to its measure, its head
 # right under the village's terrace: the river goes over the terrace's edge in one great fall to the valley's floor (no pool
 # between: that was one step of falls too many), and winds down a floor some forty metres wide between stepped cliffs. A way
-# cut along the west cliff goes down to it; a plank bridge crosses the river. At its end the valley opens into a round bowl,
+# cut along the west cliff goes down to it; a plank bridge crosses the river in the valley's middle. (The great fall is parted by
+# two rocks standing in its lip: it comes down in three strands, with a rib of the cliff between each two: SPLIT, in 6.) At its end the valley opens into a round bowl,
 # and in the bowl's floor lies the pit: the hand-drawn one of ?map=pit (assets/heightmaps/abyss-pit.bin, read as pit-level.js
 # reads it), its rim set at the floor's height. The river runs to the pit's brink and goes down its shelves in falls, and two
 # brooks from the meadow fall into the bowl and follow it down, each from the third shelf into the mist. The top of each
@@ -26,6 +27,7 @@
 #   hill-village.json   the plan: where the land lies and the part she walks on, the water (brooks and falls, as for ?map=pit),
 #                       the buildings, the bridges, the ways, yards, fences, fields, small things, plants, rocks, and the
 #                       places to start from
+#   hill-village-scatter.json   the plants and the valley's rocks as first thrown (written once, then read: see 7)
 # Places are metres from the middle of the village: x east, z south. A yaw is the way a thing faces: 0 south (+z), pi/2 east.
 import json, math
 from pathlib import Path
@@ -407,9 +409,12 @@ for f in FIELDS:
 BRIDGE_C = np.array(M(.4625, .6375)); BRIDGE_DIR = np.array([1.0, -1.0]) / math.sqrt(2); BRIDGE_LEN = 13.0
 BS, BN = BRIDGE_C - BRIDGE_DIR * BRIDGE_LEN / 2, BRIDGE_C + BRIDGE_DIR * BRIDGE_LEN / 2
 even_ends(BS, BN)                                                     # the stone bridge: both its ends stand at one height
-# the plank bridge over the valley's river (it lies east-west), a little below where the way down reaches the floor
-PLANK_Z = ZH + 86.0; PLANK_X = riv_x(PLANK_Z); PLANK_LEN = round(2 * riv_h(PLANK_Z) + 4.6, 1)
-PW, PE = np.array([PLANK_X - PLANK_LEN / 2, PLANK_Z]), np.array([PLANK_X + PLANK_LEN / 2, PLANK_Z])
+# the plank bridge over the valley's river: about the middle of the valley's floor, halfway between the great fall and the
+# bridge at the pit's brink (it stood at ZH + 86, twenty metres from that one: too near it), and square to the river there
+PLANK_S = 54.0; PLANK_Z = ZH + PLANK_S; PLANK_X = riv_x(PLANK_Z); PLANK_LEN = round(2 * riv_h(PLANK_Z) + 4.6, 1)
+_pt = np.array([1.0, -(riv_x(PLANK_Z + 2) - riv_x(PLANK_Z - 2)) / 4]); _pt /= np.linalg.norm(_pt)      # across the river: toward its east bank
+PLANK_YAW = math.atan2(-_pt[1], _pt[0])                               # (a bridge lies along its own x: toward (cos yaw, -sin yaw))
+PW, PE = np.array([PLANK_X, PLANK_Z]) - _pt * PLANK_LEN / 2, np.array([PLANK_X, PLANK_Z]) + _pt * PLANK_LEN / 2
 even_ends(PW, PE, 1.6, 1.6)
 uv = lambda p: (p[0] / SIZE + .5, p[1] / SIZE + .5)
 door_of = lambda id, out=1.2: (lambda b_: (b_['x'] + math.sin(b_['yaw']) * (b_['spec']['l'] / 2 + out), b_['z'] + math.cos(b_['yaw']) * (b_['spec']['l'] / 2 + out)))(by_id[id])
@@ -476,15 +481,15 @@ PATHS = {   # name: (half-width, points in the plan's u, v)
     'to_west_wood': (1.0, [(.54, .375), (.48, .385), (.43, .385), (.38, .375), (.32, .36), (.26, .35), (.20, .335), (.14, .345), (.125, .345)]),
     'to_valley': (1.0, [(.39, .685), (.45, .73), (.50, .765), (.545, .79), uvm(6.5, 55.0), uvm(5.5, 64.0), uvm(RAMP_TOP[0] - 3.5, RAMP_TOP[1] - 6.0), uvm(*RAMP_TOP)]),
     'to_lookout': (1.0, [(.74, .56), (.77, .555), (.83, .57), (.88, .60), (.92, .66), (.915, .72), uvm(LOOKOUT[0] - 1.0, LOOKOUT[1] - 15.0), uvm(LOOKOUT[0] + 1.0, LOOKOUT[1] - 7.0), uvm(*LOOKOUT)]),
-    # and in the valley: down the cliff, over the floor to the plank bridge; up the east bank to the foot of the great fall, and
-    # down the west bank to the map's end
+    # and in the valley: down the cliff to the floor, and back up the west bank to the plank bridge in the valley's middle; from
+    # the bridge up the east bank to the foot of the great fall, and down both banks to the pit
     'valley_ramp': (1.1, [uvm(*p) for p in RAMP]),
-    'valley_floor': (1.0, [uvm(*RAMP_FOOT), uvm((RAMP_FOOT[0] + PW[0]) / 2 - 1.0, (RAMP_FOOT[1] + PW[1]) / 2 + 0.5), uvm(*PW)]),
-    'valley_east': (0.9, [uvm(*PE), uvm(*east_bank(78)), uvm(*east_bank(68)), uvm(*east_bank(58)), uvm(*east_bank(48)), uvm(*east_bank(38)), uvm(*east_bank(29, 3.5)), uvm(*east_bank(22, 3.5)), uvm(*FALL_FOOT)]),
+    'valley_floor': (1.0, [uvm(*RAMP_FOOT), uvm(*west_bank(RAMP_B - 7)), uvm(*west_bank((RAMP_B + PLANK_S) / 2)), uvm(*west_bank(PLANK_S + 7)), uvm(*PW)]),
+    'valley_east': (0.9, [uvm(*PE)] + [uvm(*east_bank(s_)) for s_ in (PLANK_S - 6, 38)] + [uvm(*east_bank(29, 3.5)), uvm(*east_bank(22, 3.5)), uvm(*FALL_FOOT)]),
     # and on to the pit: down each bank to the bowl, and all the way round the pit's brink, over a plank bridge at each of the
     # three waters (the river, and the two side brooks)
-    'valley_south': (0.9, [uvm(*PW), uvm(*west_bank(92)), uvm(*west_bank(98)), uvm(*J_W)]),
-    'valley_east_south': (0.9, [uvm(*PE), uvm(*east_bank(92)), uvm(*east_bank(98)), uvm(*J_E)]),
+    'valley_south': (0.9, [uvm(*RAMP_FOOT), uvm(*west_bank(RAMP_B + 6)), uvm(*west_bank(92)), uvm(*west_bank(98)), uvm(*J_W)]),
+    'valley_east_south': (0.9, [uvm(*PE)] + [uvm(*east_bank(s_)) for s_ in (PLANK_S + 7, 70, 78, 86, 92, 98)] + [uvm(*J_E)]),
     **{f'pit_ring_{i_ + 1}': (1.0, [uvm(*p_) for p_ in arc_]) for i_, arc_ in enumerate(RING)},
 }
 YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(M(.385, .158)), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0],
@@ -657,6 +662,10 @@ for n_, c in enumerate(CASC[1:]):                                     # the side
         tiers[i_]['next'] = j_; i_ = j_
     i_b = stretch(f'brook_{n_ + 1}_bowl', [polar(th, c['rf'] - 1.2), polar(th, c['nb'] + 3.0)], [1.6, 1.6], deep=0.2)
     tiers[i_]['next'] = i_b; down_the_pit(c, 1.5, f'brook_{n_ + 1}', i_b)
+# A fall parted by rocks: where a river goes over a ledge, rocks standing in its lip part the water into strands, and the cliff
+# under each rock is left standing as a rib between them (so a wide fall is not one flat sheet). For each stretch named: the
+# rocks across its lip: (where across the water: -1 one bank .. 1 the other; how wide the rock is, metres; how big its boulder)
+SPLIT = {'river': [(-0.27, 1.3, 1.15), (0.48, 1.0, 0.95)]}
 for t_ in tiers: t_['fed'] = False
 for t_ in tiers:
     if t_['next'] is not None: tiers[t_['next']]['fed'] = True
@@ -672,6 +681,7 @@ for i_, up in enumerate(tiers):
         up['pts'][-1] = tuple(lip); low['pts'][0] = tuple(ft + dirn * 0.5); low['half'][0] = low['half'][0] * 1.15
         falls.append({'x': round(float(lip[0]), 2), 'z': round(float(lip[1]), 2), 'top': round(up['level'], 2), 'bottom': round(low['level'], 2), 'width': round(2 * up['half'][-1] + 0.4, 2),
                       'yaw': round(float(math.atan2(dirn[0], dirn[1])), 3), 'deep': 0, 'from': i_, 'out': round(float(np.linalg.norm(ft - lip)), 2)})
+        if up['name'] in SPLIT: falls[-1]['rocks'] = [[round(u_ * up['half'][-1], 2), w_, b_] for u_, w_, b_ in SPLIT[up['name']]]      # (metres across from the lip's middle, width, boulder)
         print(f"  fall {up['name']} -> {low['name']}: {up['level']:.1f} -> {low['level']:.1f} m, {np.linalg.norm(ft - lip):.1f} m out from the lip")
     elif up['deep_end']:                                              # into the mist: the lip is where its own shelf ends, along its own line
         a_ = np.array(up['pts'][-1]); dirn = a_ - np.array(up['pts'][-2]); dirn /= np.linalg.norm(dirn)
@@ -685,8 +695,9 @@ for f_ in falls:                                                      # under ea
     if f_['deep']: continue
     low = tiers[tiers[f_['from']]['next']]
     dx_, dz_ = math.sin(f_['yaw']), math.cos(f_['yaw']); rx, rz = WX - f_['x'], WZ - f_['z']
-    along = rx * dx_ + rz * dz_; across = np.abs(rx * dz_ - rz * dx_)
+    along = rx * dx_ + rz * dz_; side = rx * dz_ - rz * dx_; across = np.abs(side)
     w = np.clip((along - 0.25) / 0.5, 0, 1) * np.clip((f_['out'] + 1.2 - along) / 1.0, 0, 1) * np.clip((f_['width'] / 2 + 0.3 - across) / 0.6, 0, 1)
+    for u_, w_, _ in f_.get('rocks', []): w = w * sm(w_ / 2 - 0.1, w_ / 2 + 0.5, np.abs(side - u_))      # (under a rock in its lip the cliff is left as it is: a rib between two strands)
     H = np.where(w > 0, np.minimum(H, H * (1 - w) + (low['level'] - 0.4) * w), H)
 brooks = []; water_d = np.full(NZ * NX, 1e9)
 flat = H.ravel().copy(); g0 = H0.ravel()
@@ -718,6 +729,15 @@ for k_, tr in enumerate(tiers):
     rows = np.vstack([P[:-1:4], P[-1:]]); hw = np.concatenate([A[:-1:4, 0], A[-1:, 0]])
     brooks.append([[round(float(p[0]), 2), round(float(p[1]), 2), round(lvl, 2), round(float(h_), 2)] for p, h_ in zip(rows, hw)])
 H = flat.reshape(NZ, NX); water_d = water_d.reshape(NZ, NX)
+ROCKS_IN_LIPS = []                                                    # the boulders that stand on them (put with the valley's rocks, in 7)
+for f_ in falls:                                                      # the rocks in a parted fall's lip: each a hump standing out of the water, rounded upstream, from above the sill out to the lip
+    dx_, dz_ = math.sin(f_['yaw']), math.cos(f_['yaw']); rx, rz = WX - f_['x'], WZ - f_['z']
+    along = rx * dx_ + rz * dz_; side = rx * dz_ - rz * dx_
+    for u_, w_, b_ in f_.get('rocks', []):
+        L_ = 1.7 * w_; q_ = ((side - u_) / (w_ / 2 + 0.15)) ** 2 + (np.clip(-(along + 0.5), 0, None) / (L_ - 0.5)) ** 2
+        hump = f_['top'] + 0.15 + 0.85 * np.sqrt(np.clip(1 - q_, 0, 1))
+        H = np.where((q_ < 1) & (along < 0.5), np.maximum(H, hump), H)
+        ROCKS_IN_LIPS.append(['boulder', f_['x'] + dz_ * u_ - dx_ * (0.55 * L_), f_['z'] - dx_ * u_ - dz_ * (0.55 * L_), b_, f_['yaw'] + 1.2 * u_])
 H = ndi.gaussian_filter(H, 0.6)
 
 # ------------------------------------------------------------------ 7. plants: woods where the painting has them, bushes at the cliffs' feet, flowers by the houses
@@ -761,9 +781,16 @@ WOODS = [   # where the trees stand thick: polygon (u, v), metres between trees,
     ([uvm(71, ZH + 24), uvm(80, ZH + 24), uvm(80, PLAY[3]), uvm(72, PLAY[3])], 7.0, 0.6),
 ]
 vr = np.random.default_rng(21); plants = []
+# The plants and the valley's rocks are kept where they were first thrown: hill-village-scatter.json beside the plan, written
+# the first time and read ever after. (Each throw of the dice depends on all those before it, so a change to the land in one
+# place would otherwise move every tree on the map; and a thing she has moved by hand is found by where it stood.) Those now in
+# the way of something (a way, a bridge, water, a cliff's edge) are left out. To throw them all afresh: delete that file.
+_sc_file = OUT / 'hill-village-scatter.json'
+KEPT = json.loads(_sc_file.read_text()) if _sc_file.exists() else None
 
 
 def scatter(mask, spacing, pick, tries=0.25, keep=1.0):
+    if KEPT: return
     ys, xs = np.nonzero(mask & ~blocked)
     for i in vr.integers(0, max(1, len(ys)), int(len(ys) * MPP * MPP * tries)):
         x, z = (xs[i] + vr.random()) * MPP - XH, (ys[i] + vr.random()) * MPP + Z0
@@ -827,6 +854,15 @@ for i in vr.integers(0, len(ys_), 90):
     if len([q for q in rocks if q[0] in ('boulder', 'stones')]) < 30 and clear(x_, zz_, 4.0) and all(math.hypot(x_ - p[1], zz_ - p[2]) > 2.2 for p in plants if p[0] != 'flower'):
         rocks.append(['boulder' if vr.random() < 0.55 else 'stones', x_, zz_, float(vr.uniform(0.8, 1.5)), float(vr.uniform(0, 6.28))])
 rocks = [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, z, sc_, rot in rocks]
+if KEPT:                                                              # as first thrown, but for those now in the way
+    _span = lambda x, z: float(np.linalg.norm(np.array([x, z]) - (PW + (PE - PW) * np.clip(((np.array([x, z]) - PW) @ (PE - PW)) / ((PE - PW) @ (PE - PW)), 0, 1))))      # metres from the plank bridge's line
+    _free = lambda x, z, r: sample(path_d, (x, z))[0] > r and _span(x, z) > r + 1.6      # (not on a way, nor at the bridge)
+    out_plants = [r_ for r_ in KEPT['plants'] if _free(r_[1], r_[2], 1.0)]
+    rocks = [r_ for r_ in KEPT['rocks'] if _free(r_[1], r_[2], 0.6 + 0.5 * r_[3] * (r_[0] != 'pebbles'))]
+    _left = [r_ for r_ in KEPT['plants'] if r_ not in out_plants] + [r_ for r_ in KEPT['rocks'] if r_ not in rocks]
+    print(f"  kept as first thrown: {len(out_plants)} plants, {len(rocks)} rocks; now in the way and left out: {', '.join(f'{r_[0]} ({r_[1]:.0f}, {r_[2]:.0f})' for r_ in _left) or 'none'}")
+else: _sc_file.write_text(json.dumps({'plants': out_plants, 'rocks': rocks}, separators=(',', ':')))
+rocks += [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, z, sc_, rot in ROCKS_IN_LIPS]      # and the boulders in a parted fall's lip
 
 # ------------------------------------------------------------------ 8. the small things: a market round the fountain, and what a farm leaves lying about
 px_, pz_ = PLAZA; ty = TREE_YARD; barn = by_id['barn']; wmill = by_id['windmill']; fr = M(.835, .36)
@@ -889,13 +925,14 @@ plan = {
     'brooks': brooks, 'falls': falls, 'waters': [{'id': t_['name'], 'level': round(t_['level'], 2)} for t_ in tiers],
     'buildings': B, 'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
-    'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': 0.0},
+    'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': round(PLANK_YAW, 3)},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit
     'paths': plan_paths, **({'pathOps': PATH_OPS} if PATH_OPS else {}), 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
     # the pit: its middle, about how far its brink is from that, how far its picture's heights were moved to stand in the bowl (the
     # abyss's clouds and the land's fading into mist are set by height), and its shelves (metres in from the brink)
     'pit': {'x': round(float(BOWL[0]), 2), 'z': round(float(BOWL[1]), 2), 'brink': 39.2, 'shift': round(PIT_SHIFT, 2), 'turn': round(PIT_TURN, 3),
             'shelves': [{'u0': 0.6, 'u1': 7.0, 'y': 1.6}, {'u0': 7.6, 'u1': 14.0, 'y': -8.8}, {'u0': 14.6, 'u1': 20.8, 'y': -17.7}, {'u0': 21.4, 'u1': 27.2, 'y': -26.0}]},      # (y: as the pit's own picture has them, before the shift)
+    'split': [f_['from'] for f_ in falls if f_.get('rocks')],            # the stretches whose fall is parted by rocks in its lip: one strand between each two
     'deep': [f_['from'] for f_ in falls if f_['deep']],              # the stretches that end by falling into the pit's mist
     'spawn': {'x': round(SPAWN[0], 2), 'z': round(SPAWN[1], 2), 'yaw': VIEWS['start'][2]}, 'views': VIEWS,
 }
