@@ -33,7 +33,9 @@ Foam transport uses a damped wave-pressure velocity potential stored in the simu
 
 Splashes and wading are made by the water's own wave simulation, in the same painted style as the rest of the water: a tap or jump heaps the surface up (the simulated height lifts the water mesh) and throws painted-brush foam onto it, which the flow then carries and wears away; a footstep presses a dip that rings outward and leaves a little foam behind. There are no separate splash meshes. The sliders are in **ปรับน้ำ** (น้ำนูนขึ้นตรงจุดกระเซ็น, ฟองที่ติดค้างตามรอยเท้า / จุดกระเซ็น). `anime-cells.js` bakes the 256x256 cellular mask the surface samples for its sparse foam islands.
 
-Use **ไปดูน้ำ** to move to a nearby clear shallow bank, then **ทดสอบน้ำกระเซ็น** or tap the water. `?view=water` starts at the bank, including on the default valley map. `?map=meadow&view=water` and `?map=hills&view=water` select the other maps.
+**The screen.** Only what is played with is on it: the map in the top right corner (tap it for the whole map, tap a pin to go there), the clock (☀ day / dusk / night, ⏸ stop time) and full screen under it, and on the hill village the two hand tools top left (🏠 ย้ายของ, 🖌 ทาทาง). The credits are on the loading screen. `?dev=1` puts the testing buttons back as well (fps, grass look, ปรับน้ำ, ปรับฟ้า, the water buttons below, 📍 ไปที่…, the forage bag and 🌿 ไปดูของป่า, 🛠 แก้ฉาก and 🪨 แก้หิน where a map has them).
+
+Use **ไปดูน้ำ** (with `?dev=1`) to move to a nearby clear shallow bank, then **ทดสอบน้ำกระเซ็น** or tap the water. `?view=water` starts at the bank, including on the default valley map. `?map=meadow&view=water` and `?map=hills&view=water` select the other maps.
 
 Footsteps follow the character's foot bones: the water is touched at the moment and the place each foot comes down, harder when she runs. Every footstep, splash and the foot of the waterfall also throws out an anime foam ring (`WATER_RINGS` in `stylized-water.js`): a cell-patterned ring of white foam that spreads, opens in the middle and breaks up at the rim. Slider: **วงฟองอนิเมะตอนเหยียบน้ำ / น้ำกระเซ็น / น้ำตก**.
 
