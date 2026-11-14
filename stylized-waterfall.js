@@ -1,11 +1,15 @@
 /* ==========================================================================
    stylized-waterfall.js  —  a waterfall made of the same water as stylized-water.js
 
-   One job: draw a falling body of water, the churn where it lands, the spray and the mist.
+   One job: draw a falling body of water, the churn where it lands, the water it throws up, the spray and the mist.
    It borrows the river's tools so the two read as one water:
      - the river's see-through picture (optics): the cliff behind the fall is seen bent through it
      - the river's palette (WATER_LOOK) and its painted foam texture, stretched into falling white streaks
      - a rounded cross-section, so light, rim brightening and refraction change across the fall (not a flat card)
+   And three things drawn the way an anime fall is drawn (each with its own slider in FALL_TUNE, 0 = not there):
+     - a pale band of light down each side of the sheet and long pale cells sliding down inside it
+     - cones of white lace thrown up along the line where it lands (createSplashCones)
+     - bubbles that drift up out of the foam and pop
 
      const fall = createWaterfall({ x, z, top, bottom, width, optics, foamTexture, cells });      // cells: the anime cell texture, for the anime churn
      scene.add(fall.group);
@@ -31,7 +35,7 @@ float paintedFoam(vec2 uv) {
   return max(texture2D(uFoamMap, a).r * ea.x * ea.y, texture2D(uFoamMap, b).r * eb.x * eb.y * 0.55);
 }`;
 
-function commonUniforms({ optics, foamTexture, sun }) {
+function commonUniforms({ optics, foamTexture, sun, cells = null }) {
   return {
     uTime: shared.uTime, uToon: WATER_TUNE.anime,
     uThrough: optics ? optics.uniforms.uThrough : { value: BLANK([200, 190, 160, 255]) },
@@ -39,6 +43,8 @@ function commonUniforms({ optics, foamTexture, sun }) {
     uOptics: { value: optics ? 1 : 0 },
     uFoamMap: { value: foamTexture || BLANK([0, 0, 0, 255]) },
     uFoamOn: { value: foamTexture ? 1 : 0 },
+    uCells: { value: cells || BLANK([255, 255, 0, 255]) }, uCellsOn: { value: cells ? 1 : 0 },      // the anime cell texture (anime-cells.js)
+    uRimAmt: FALL_TUNE.fallRim, uCellAmt: FALL_TUNE.fallCells,
     uShallow: { value: rgb(WATER_LOOK.shallow) }, uMid: { value: rgb(WATER_LOOK.mid) }, uDeep: { value: rgb(WATER_LOOK.deep) },
     uSky: { value: rgb(WATER_LOOK.sky) }, uWhite: { value: rgb('#f6fdff') },
     uSun: { value: new THREE.Vector3(...sun).normalize() },
@@ -66,9 +72,9 @@ function fallMaterial(common, { layer = 0, speed = 1, white = 0, opacity = 1, wi
       }`,
     fragmentShader: /* glsl */`
       ${NOISE}
-      uniform sampler2D uThrough, uFoamMap;
+      uniform sampler2D uThrough, uFoamMap, uCells;
       uniform vec2 uInvRes, uSize;
-      uniform float uTime, uOptics, uFoamOn, uLayer, uSpeedF, uWhiteAmt, uOpacity, uToon;
+      uniform float uTime, uOptics, uFoamOn, uLayer, uSpeedF, uWhiteAmt, uOpacity, uToon, uCellsOn, uRimAmt, uCellAmt;
       uniform vec3 uShallow, uMid, uDeep, uSky, uWhite, uSun, uHaze;
       varying vec2 vUv;          // x: across 0..1, y: 0 at the lip .. 1 at the foot
       varying vec3 vWP, vN;
@@ -104,7 +110,14 @@ function fallMaterial(common, { layer = 0, speed = 1, white = 0, opacity = 1, wi
         // light: the face turned to the sun is lighter, the rims catch the sky
         col *= mix(0.9 + 0.22 * max(dot(N, uSun), 0.0), 1.0, uToon);
         col = mix(col, uSky, pow(1.0 - facing, 3.0) * 0.55 * (1.0 - uToon));
-        // ---- white water: the river's painted foam, stretched into falling streaks, more of it as the water breaks up
+        // ---- drawn the way an anime fall is: long pale cells sliding down inside the water (a cell pattern pulled out
+        // lengthways, each cell one flat paler blue with a clean edge), and a band of light down each side, where a round
+        // column of water turns away from the eye. Under the white water, so the streaks still lie over both.
+        vec2 cs = texture2D(uCells, vec2(fp.x * 0.11 + uLayer * 0.37, fp.y * 0.012 - t * 0.14)).rg;
+        float cell = (1.0 - smoothstep(0.24, 0.29, cs.r + (s2 - 0.5) * 0.06)) * uCellsOn * (1.0 - uLayer);      // (the veil in front stays plain)
+        col = mix(col, mix(col, uShallow * 1.12, 0.6) + 0.05, cell * uCellAmt * smoothstep(0.02, 0.2, y));
+        float band = smoothstep(0.6, 0.66, edge - wob * 0.7 + (s1 - 0.5) * 0.14) * (1.0 - uLayer);
+        col = mix(col, mix(uShallow * 1.1, uWhite, 0.5), band * uRimAmt * 0.8);
         float wv = (s1 - 0.5) * 0.08;                                              // let the streaks sway a little
         float brush = paintedFoam(vec2(fp.x * 0.55 + uLayer * 0.37 + wv, fp.y * 0.016 - t * 0.16));
         brush = max(brush, paintedFoam(vec2(fp.x * 0.9 + 0.23 + uLayer, fp.y * 0.024 - t * 0.27)) * 0.8);
@@ -351,6 +364,13 @@ export const FALL_TUNE = {
   fallWaves: { value: 1 },          // how hard the falling water heaves the pool into waves (0 = calm)
   fallWaveSize: { value: 1 },       // how broad each heave is (bigger = longer, slower-looking waves)
   fallWaveRate: { value: 1 },       // how often a heave comes
+  // drawn the way an anime fall is (the "น้ำตกแบบอนิเมะ" sliders); 0 = not there
+  coneAmount: { value: 0.9 },       // the cones of white lace thrown up where the water lands: how solid they are
+  coneHeight: { value: 1 },         // how high they are thrown
+  coneSpeed: { value: 1 },          // how quickly one follows another
+  fallRim: { value: 0.7 },          // the pale band of light down each side of the falling sheet
+  fallCells: { value: 0.6 },        // the long pale cells sliding down inside it
+  bubbles: { value: 0.7 },          // bubbles drifting up out of the foam (0..1 of the most there can be)
 };
 
 export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, time = shared.uTime, tune = FALL_TUNE, white = '#ffffff', shade = '#d3edf8' } = {}) {
@@ -440,6 +460,117 @@ export function createBillows({ x = 0, z = 0, y = 0, width = 4.6, count = 0, tim
   return mesh;
 }
 
+// ---------------------------------------------------------------- splash cones: the water thrown up where the fall lands
+// A fall does not land quietly: all along its foot the water is thrown back up as small cones, narrow where they leave the
+// pool and opening as they rise. Each is a sheet of white foam with round gaps in it (the cells of the churn on the pool, here
+// running upwards), the gaps wider towards the lip and wider as the cone ages, until the sheet is threads and flecks; its far
+// wall, seen through the gaps, is a pale blue. A cone is thrown up fast, sinks back slower, and the next is already rising
+// beside it. The wall is never round: it swells and leans as it goes (what a Displace modifier does to a cone in Blender).
+//   const cones = createSplashCones({ x, z, y, width, height, cells });      // the line where the water lands, the water's level, how high the fall is
+export function createSplashCones({ x = 0, z = 0, y = 0, width = 4.6, height = 8, scale = 1, cells, time = shared.uTime, tune = FALL_TUNE, white = '#f6fdff', shade = '#bfe4f4' } = {}) {
+  const S = Math.min(1.25, Math.max(0.3, 0.2 + height * 0.09)) * (0.5 + 0.5 * scale);      // a cone's size, metres: a high fall throws its water higher, a step of a cascade hardly at all
+  const n = Math.max(2, Math.round(width / (0.8 * S)));
+  const tube = new THREE.CylinderGeometry(1, 1, 1, 20, 6, true);
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.index = tube.index;
+  geo.setAttribute('position', tube.attributes.position);
+  geo.setAttribute('uv', tube.attributes.uv);
+  const base = new Float32Array(n * 4), seed = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const u = (i + 0.5 + (Math.random() - 0.5) * 0.6) / n - 0.5, ends = 1 - 0.45 * (2 * u) * (2 * u);                // smaller toward the ends
+    base.set([x + u * width * 0.92, y, z + (Math.random() - 0.5) * 0.3, S * (0.75 + 0.5 * Math.random()) * ends], i * 4);
+    // phase (neighbours half a beat apart, so the line never rises as one), life in seconds, a number of its own, which way it leans
+    seed.set([(i * 0.53 + Math.random() * 0.2) % 1, 1.15 + 0.5 * Math.random(), Math.random() * 6.2831853, 0.5 + 0.5 * Math.random()], i * 4);
+  }
+  geo.setAttribute('aBase', new THREE.InstancedBufferAttribute(base, 4));
+  geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4));
+  geo.instanceCount = n;
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, y + 1, z + 0.5), width + 4);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: time, uCells: { value: cells }, uWhite: { value: rgb(white) }, uShade: { value: rgb(shade) },      // (raw numbers, as the churn's white is)
+      coneAmount: tune.coneAmount, coneHeight: tune.coneHeight, coneSpeed: tune.coneSpeed },
+    vertexShader: /* glsl */`
+      attribute vec4 aBase, aSeed;
+      uniform float uTime, coneAmount, coneHeight, coneSpeed;
+      varying vec4 vQ;            // angle 0..1, height 0..1, age 0..1, a number of this cone's own
+      void main() {
+        float a = uv.x, v = position.y + 0.5, S = aBase.w, ang = a * 6.2831853, sd = aSeed.z;
+        float k = fract(uTime * coneSpeed / aSeed.y + aSeed.x);                // 0 leaving the water .. 1 sunk back
+        float up = sin(3.14159265 * pow(k, 0.55));                             // thrown up fast, sinking back slower
+        // the wall swells and sways (whole numbers of waves round it, so they meet at the seam), more towards the lip
+        float wob = 1.0 + v * (0.16 * sin(ang * 3.0 + sd + uTime * 2.1) + 0.09 * sin(ang * 5.0 - sd * 1.7 - uTime * 3.2));
+        float r = S * (0.36 + 0.2 * k + (0.24 + 0.4 * k) * v * v) * wob;       // narrow at the water, opening as it rises and as it ages
+        float h = S * 2.3 * coneHeight * up * (0.78 + 0.22 * sin(ang * 2.0 + sd * 3.0));      // the lip is never level
+        vec3 p = vec3(sin(ang) * r, v * h - 0.04, cos(ang) * r + aSeed.w * v * h * 0.3);      // thrown forward, the way the water was going
+        vQ = vec4(a, v, k, sd);
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(aBase.xyz + p, 1.0);
+        if (coneAmount < 0.01) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uCells;
+      uniform vec3 uWhite, uShade;
+      uniform float uTime, coneAmount;
+      varying vec4 vQ;
+      void main() {
+        float a = vQ.x, v = vQ.y, k = vQ.z, sd = vQ.w;
+        // the cells run up the wall with the water (one turn of the pattern round the cone: no seam)
+        vec2 c = texture2D(uCells, vec2(a + sd * 0.159, v * 0.75 - k * 0.7 + sd)).rg;
+        float gap = 0.04 + 0.32 * smoothstep(0.1, 1.0, v) + 0.22 * k;           // the gaps: wider towards the lip, wider as it ages
+        float foam = smoothstep(gap - 0.035, gap + 0.035, c.r);
+        foam = max(foam, 1.0 - smoothstep(0.04, 0.2, v + (c.g - 0.3) * 0.2));                 // whole where it stands in the churn
+        foam *= 1.0 - smoothstep(0.62, 0.96, v + (c.g - 0.3) * 0.5);                           // a torn lip
+        float alpha = foam * smoothstep(0.0, 0.07, k) * (1.0 - smoothstep(0.78, 1.0, k)) * coneAmount;
+        if (alpha < 0.02) discard;
+        // white where we look at its outside; its far wall, seen through the gaps, and the foot of the near one, a pale blue
+        vec3 col = gl_FrontFacing ? mix(uShade, uWhite, smoothstep(0.1, 0.34, v + (c.g - 0.3) * 0.25)) : uShade;
+        gl_FragColor = vec4(col, alpha);
+      }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'waterfallCones';
+  mesh.userData.dispose = () => { geo.dispose(); tube.dispose(); mat.dispose(); };
+  return mesh;
+}
+
+// ---------------------------------------------------------------- bubbles: drifting up out of the foam at the foot of the fall
+// Drawn, not lit: a thin white ring, a faint pale fill and one small window of light. Each rises slowly (nothing pulls it
+// down), swaying as it goes and drifting out over the pool, swells a little, and pops: the ring opens out and is gone.
+function bubbleMaterial(common) {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...common, uH: { value: 720 }, uAmount: FALL_TUNE.bubbles },
+    vertexShader: /* glsl */`
+      attribute vec4 aSeed;          // x: phase, y: a number of its own, z: rise (m/s), w: size (m)
+      attribute float aOrder;        // its place in the order: the first uAmount of them are out
+      uniform float uTime, uH, uAmount;
+      varying vec2 vK;               // fade, how far through its pop
+      void main() {
+        float life = 2.2 + 1.6 * fract(aSeed.y * 7.31);
+        float k = fract(uTime / life + aSeed.x), tt = k * life;
+        vec3 p = position + vec3(sin(tt * 2.3 + aSeed.y * 6.28) * 0.12 + sin(aSeed.y * 40.0) * 0.35 * k, aSeed.z * tt * (1.0 - 0.3 * k), 0.25 * tt);
+        vK = vec2(smoothstep(0.0, 0.1, k), smoothstep(0.9, 1.0, k));
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = aSeed.w * (0.6 + 0.6 * k + 0.5 * vK.y) * projectionMatrix[1][1] * uH * 0.5 / max(-mv.z, 0.1);
+        gl_Position = projectionMatrix * mv;
+        if (aOrder > uAmount) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uWhite, uShallow;
+      varying vec2 vK;
+      void main() {
+        vec2 c = (gl_PointCoord - 0.5) * 2.0;
+        float d = length(c);
+        if (d > 1.0) discard;
+        float w = mix(0.2, 0.07, vK.y);                                        // the ring thins as it pops
+        float ring = smoothstep(1.0 - w - 0.06, 1.0 - w, d) * (1.0 - smoothstep(0.94, 1.0, d));
+        float shine = 1.0 - smoothstep(0.1, 0.2, length(c - vec2(-0.36, -0.38)));       // the window of light, upper left
+        float a = max(ring * 0.95, max(shine * 0.9, 0.16)) * vK.x * (1.0 - vK.y);
+        gl_FragColor = vec4(mix(mix(uShallow * 1.25, uWhite, 0.6), uWhite, max(ring, shine)), a);
+      }`,
+    transparent: true, depthWrite: false,
+  });
+}
+
 // scale: below 1 for a small cascade: less spray and mist, smaller puffs at its foot (those take their size from FALL_TUNE
 // once, when the cascade is made; only the big falls follow the sliders live)
 // lip: the edge the water goes over as points [x, z] (see fallGeometry); the fall then hangs from that line, x and z are the
@@ -451,7 +582,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   }
   const group = new THREE.Group();
   group.name = 'waterfallClear';
-  const common = commonUniforms({ optics, foamTexture, sun });
+  const common = commonUniforms({ optics, foamTexture, sun, cells });
   const H = top - bottom, owned = [];
   const add = (mesh, order) => { mesh.renderOrder = order; group.add(mesh); owned.push(mesh); return mesh; };
   // the body and a faster veil in front of it
@@ -471,6 +602,8 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   // billows: soft white mounds boiling up along the line where the water lands
   const small = scale < 1 ? { ...FALL_TUNE, puffSize: { value: FALL_TUNE.puffSize.value * (0.35 + 0.65 * scale) }, puffSpread: { value: FALL_TUNE.puffSpread.value * scale }, puffRise: { value: FALL_TUNE.puffRise.value * scale } } : FALL_TUNE;
   add(createBillows({ x, z: footZ - 0.3, y: bottom + 0.25, width, tune: small }), 6);
+  // the water thrown back up along the line where the sheet lands, behind the billows (only with the cell texture to draw it with)
+  if (cells) add(createSplashCones({ x, z: footZ - 0.45, y: bottom + 0.22, width, height: H, scale, cells }), 5);
   // spray
   const N = Math.round(220 * scale), pos = new Float32Array(N * 3), seed = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {
@@ -494,6 +627,19 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   fg.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, bottom + 0.3, footZ), width * 2 + 4);
   const flecks = add(new THREE.Points(fg, fleckMaterial(common)), 4);
   flecks.renderOrder = 4;
+  // bubbles drifting up out of the foam
+  const BN = Math.round(30 * scale), bpos = new Float32Array(BN * 3), bseed = new Float32Array(BN * 4), border = new Float32Array(BN);
+  for (let i = 0; i < BN; i++) {
+    bpos[i * 3] = x + (Math.random() - 0.5) * width * 1.15; bpos[i * 3 + 1] = bottom + 0.3; bpos[i * 3 + 2] = footZ + (Math.random() - 0.2) * 1.3;
+    bseed.set([Math.random(), Math.random(), 0.3 + Math.random() * 0.45, 0.06 + Math.random() * 0.09], i * 4);
+    border[i] = (i + 0.5) / BN;                                            // (their places are random, so the first few are spread along the whole foot)
+  }
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.BufferAttribute(bpos, 3));
+  bg.setAttribute('aSeed', new THREE.BufferAttribute(bseed, 4));
+  bg.setAttribute('aOrder', new THREE.BufferAttribute(border, 1));
+  bg.boundingSphere = new THREE.Sphere(new THREE.Vector3(x, bottom + 1.5, footZ + 0.6), width * 2 + 4);
+  const bubbles = add(new THREE.Points(bg, bubbleMaterial(common)), 7);
   // a faint veil of mist drifting up from the pool
   const tex = mistTexture();
   const mists = [];
@@ -508,7 +654,7 @@ export function createWaterfall({ x = 0, z = 0, top = 10, bottom = 0, width = 4.
   return {
     group,
     update(renderer = null) {
-      if (renderer) { const px = renderer.getPixelRatio(); spray.material.uniforms.uPx.value = px; flecks.material.uniforms.uPx.value = px; }
+      if (renderer) { const px = renderer.getPixelRatio(); spray.material.uniforms.uPx.value = px; flecks.material.uniforms.uPx.value = px; bubbles.material.uniforms.uH.value = renderer.domElement.height; }
       const now = shared.uTime.value;
       for (const m of mists) {
         const k = (now / LIFE + m.userData.phase) % 1;             // 0 born .. 1 gone

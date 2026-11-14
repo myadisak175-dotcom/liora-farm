@@ -1,6 +1,6 @@
 // water-tuner.js
 // Which sliders the water gets (WATER_TUNE in stylized-water.js, and FALL_TUNE in stylized-waterfall.js for the foam
-// puffs and the waves at the foot of the falls), plus the mirror-quality switch.
+// puffs, the waves at the foot of the falls and the anime-drawn parts of a fall), plus the mirror-quality switch.
 // The panel itself lives in tuner-panel.js.
 //
 //   createWaterTuner({ tune: { ...WATER_TUNE, ...FALL_TUNE }, optics: level.optics, button: document.getElementById('tune'), panel: document.getElementById('tuner') });
@@ -51,6 +51,13 @@ const CONTROLS = [
   ['fallWaves', 'แรงคลื่น (0 = น้ำนิ่ง)', 0, 3, 0.05],
   ['fallWaveSize', 'ขนาดคลื่น (มาก = คลื่นยาวกว้าง)', 0.3, 2.5, 0.05],
   ['fallWaveRate', 'ความถี่ (มาก = มาถี่)', 0.2, 3, 0.05],
+  ['น้ำตกแบบอนิเมะ (น้ำพุ่งขึ้นตรงตีนน้ำตก ขอบสว่าง ลายเซลล์ ฟองอากาศ)'],
+  ['coneAmount', 'น้ำพุ่งขึ้นเป็นกรวยตรงตีนน้ำตก (0 = ไม่มี)', 0, 1, 0.05],
+  ['coneHeight', 'น้ำพุ่งสูงแค่ไหน', 0.3, 2.5, 0.05],
+  ['coneSpeed', 'พุ่งถี่แค่ไหน', 0.3, 2.5, 0.05],
+  ['fallRim', 'ขอบสว่างสองข้างสายน้ำตก (0 = ไม่มี)', 0, 1.2, 0.05],
+  ['fallCells', 'ลายเซลล์สีอ่อนไหลลงในสายน้ำ (0 = ไม่มี)', 0, 1.2, 0.05],
+  ['bubbles', 'ฟองอากาศลอยขึ้น (0 = ไม่มี)', 0, 1, 0.05],
 ];
 const KEY = 'meadow.water.tune.v2';
 

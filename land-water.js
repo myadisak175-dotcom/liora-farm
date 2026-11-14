@@ -211,10 +211,10 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
       fall.group.userData = { kind: 'waterfall' };
       group.add(fall.group);
       // a low fall (one step of a cascade) raises no mist, and from far off is drawn without its veil; the small things at any
-      // fall's foot (spray, flecks, billows, mist) are too small to see from far off
+      // fall's foot (spray, flecks, billows, splash cones, bubbles, mist) are too small to see from far off
       const step = lv - bottom < 5.5, parts = fall.group.children;
       if (step) for (const o of parts) if (o.isSprite) o.visible = false;
-      const spray = parts.filter(o => o.isPoints || o.name === 'waterfallBillows' || (o.isSprite && !step));
+      const spray = parts.filter(o => o.isPoints || o.name === 'waterfallBillows' || o.name === 'waterfallCones' || (o.isSprite && !step));
       falls.push({ fall, foot, spray, veil: step ? parts[1] : null, ball: new THREE.Sphere(new THREE.Vector3(O[0], (lv + bottom) / 2, O[1]), (lv - bottom) / 2 + width + 3) });
       small.push(...spray);
       if (told) { told.strands = (told.strands || 1) + 1; told.width = +(told.width + width).toFixed(1); told.onWater = told.onWater && onWater; }
