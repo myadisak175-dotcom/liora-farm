@@ -209,6 +209,9 @@ const LEAF_STYLES = {
   // a conifer bough seen hanging: fingers of needles sweeping down and out from a shoulder. Cards using it stay upright
   // (tier.upright), so a skirt of them ends in a fringe of downward points, never in round tufts.
   fir: { draw: 'bough', seed: 53 },
+  // round leaves: a painted cluster of soft, rounded leaves round one big one (Quaternius' Stylized Nature MegaKit, CC0),
+  // drawn into the four cells turned a quarter each way, so neighbouring cards never repeat the same outline
+  round: { image: 'assets/nature/leaves-round.png' },
 };
 // one leaf blade along +x: from the stalk (0, 0) to the tip (L, 0), W wide
 function bladePath(g, L, W, bend = 0) {
@@ -308,6 +311,26 @@ function leafMask(style) {
   const key = 'leaf_' + style;
   if (cache[key]) return cache[key];
   const P = LEAF_STYLES[style];
+  if (P.image) {        // a picture: white leaves on black. Until it has loaded the cards are empty (a moment, at most)
+    const S = 1024, C = 512, M = 14;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+    const tex = canvasTex(cv), img = new Image();
+    img.onload = () => {
+      for (let v = 0; v < 4; v++) {
+        g.save();
+        g.translate((v % 2) * C + C / 2, Math.floor(v / 2) * C + C / 2);
+        g.rotate(v * Math.PI / 2); if (v % 2) g.scale(-1, 1);
+        g.drawImage(img, -C / 2 + M, -C / 2 + M, C - 2 * M, C - 2 * M);
+        g.restore();
+      }
+      tex.needsUpdate = true;
+    };
+    img.src = new URL(P.image, import.meta.url).href;
+    return (cache[key] = tex);
+  }
   const S = 512, C = 256;
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
@@ -1140,6 +1163,7 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
     const M = T.mass || null;     // [y0, y1] of the bough this tier belongs to: light on top of the bough, shade under it
     const rough = T.rough ?? 0, noise = T.noise ?? 0, stray = T.stray ?? 0, lumpFlat = T.lumpFlat ?? 1;   // lumpFlat < 1: lumps are pads, not balls
     const displace = T.displace ?? 0;      // metres a slow noise pushes each card off its lump: the lumps lose their ball shape
+    const ball = T.ball ?? 0;              // weight of the clump's own light: lit on its top and sun side, shaded under, so each clump reads as one puff
     // heart leaves: big leaf cards in the middle of the tier, a tone or two darker than what surrounds them. They fill the
     // crown from every side, so a gap between the outer leaves shows more leaves in shade, never a smooth ball.
     for (let j = 0; j < (T.heart ?? 0); j++) {
@@ -1152,7 +1176,7 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
       const hL = M ? THREE.MathUtils.clamp((v.y - M[0]) / (M[1] - M[0]), 0, 1) : e.y * 0.5 + 0.5;
       nT.copy(v).sub(Ec).divide(Er).divide(Er).normalize();
       const cardTint = (T.heartTint ?? -0.2) + (rng() - 0.5) * 0.05;      // how much darker than the leaves around them
-      SS.push(W[0] * hT + W[1] * hL + W[2] * (nT.dot(SUN) * 0.5 + 0.5) + (T.bright || 0) + cardTint);
+      SS.push(W[0] * hT + W[1] * hL + W[2] * (nT.dot(SUN) * 0.5 + 0.5) + ball * 0.12 + (T.bright || 0) + cardTint);   // heart leaves: in the clump's shade
       C.push(v.x, v.y, v.z);
       P.push(hT, 0, cardTint, Math.floor(rng() * 4));
       K.push(T.upright ? (rng() - 0.5) * T.upright : rng() * Math.PI * 2, T.clumpR * (2.3 + rng() * 0.5) * (T.cardScale ?? 1), e.y);
@@ -1209,7 +1233,9 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
         const lam = nT.dot(SUN) * 0.5 + 0.5;
         const hL = M ? THREE.MathUtils.clamp((v.y - M[0]) / (M[1] - M[0]), 0, 1) : e.y * 0.5 + 0.5;
         const nz = noise ? (fbm3(v.x * 0.8 + 31, v.y * 0.8, v.z * 0.8 + 7, 5, 2) - 0.5) * 2 * noise : 0;   // tone edges wander
-        SS.push(W[0] * hT + W[1] * hL + W[2] * lam + clumpTint + cardTint + nz);
+        let lb = 0;
+        if (ball) { qe.copy(v).sub(c).divide(r).normalize(); lb = THREE.MathUtils.clamp(qe.y * 0.7 + qe.dot(SUN) * 0.3, -1, 1) * 0.5 + 0.5; }
+        SS.push(W[0] * hT + W[1] * hL + W[2] * lam + ball * lb + clumpTint + cardTint + nz);
         C.push(v.x, v.y, v.z);
         P.push(hT, clumpTint, cardTint, Math.floor(rng() * 4));
         const spin = rng();
@@ -1337,7 +1363,7 @@ function placeFruit(rng, F, spots) {
 //   subs:  { n, t, elev, reach, r }               side branches off each limb (optional)
 //   fill: [n, spread, scale] extra clumps round the leader's top (wide crowns)
 //   subs.hidden: the side branches' wood is not drawn (their leaf clumps are): a clean fork of a few limbs from below
-//   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint, displace, tidy }   the leaf clump on each tip (vary: size
+//   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint, displace, tidy, ball }   the leaf clump on each tip (vary: size
 //          spread on limbs / side branches, shade: its own SHADE_WEIGHTS, taper: smaller toward the top); top: clump size on the leader
 function buildGrown(rng, spec) {
   const G = spec.grow, tiers = [];
@@ -1360,7 +1386,7 @@ function buildGrown(rng, spec) {
     c.y += cr * (K.lift ?? 0.1);
     tiers.push({ c: [c.x, c.y, c.z], r: [cr, cr * (K.flat ?? 0.8), cr], clumpR: cr * (K.clump ?? 0.5), n: K.n ?? 8,
       openBelow: K.openBelow ?? -0.7, coreScale: K.core ?? 0.5, coreBottom: 0.7, coreDetail: 1, env, shade: K.shade,
-      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint, displace: K.displace, tidy: K.tidy, anchor,
+      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint, displace: K.displace, tidy: K.tidy, ball: K.ball, anchor,
       coreTone: K.bough ? (hc => hc > 0.6 ? 2 : hc > 0.33 ? 1 : 0)((c.y - env.c.y + env.r.y) / (2 * env.r.y)) : undefined });
   };
   // K.bough: the clumps of one limb (its own and its side branches') are lit together as one bough
@@ -1507,7 +1533,7 @@ const TREE_TYPES = {
   // the everyday meadow tree. Grown: a stout trunk with a flared foot forks under the crown, and every limb carries a leaf mass
   // of its own size, so the outline is uneven with hollows (it used to be two balls stacked on a pole)
   broadleaf: {
-    palette: 'broad', mask: 'oaky', height: 10, custom: buildGrown, detailMul: 0.7,
+    palette: 'broad', mask: 'round', height: 10, custom: buildGrown, detailMul: 0.8,
     trunk: {
       pts: [[0, -0.05, 0], [0.04, 1.1, 0], [0.12, 2.2, 0.04], [0.1, 3.3, 0], [0.02, 4.5, 0.03], [0, 5.9, 0], [0.08, 7.3, 0], [0.12, 8.4, 0]],
       radius: t => 0.3 * Math.pow(1 - t, 1.1) + 0.03 + 0.2 * Math.exp(-t * 24), lean: 0.2, sway: 0.2, roots: 5,
@@ -1517,7 +1543,8 @@ const TREE_TYPES = {
       limbs: { n: [5, 6], t: [0.36, 0.7], elev: [-0.25, 0.62], reach: [0.6, 0.9], r: 0.1 },
       subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.2, 0.45], reach: [0.8, 1.0], r: 0.7, hidden: true },
       floor: -0.24, tuck: 1.1,
-      clump: { r: 1.5, flat: 0.72, n: 9, vary: [0.85, 1.35], varySub: [0.55, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.8, heart: 8, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
+      // round leaves (from the kit), lit by height in the crown and a little per clump, so the leaves gather into puffs
+      clump: { r: 1.5, flat: 0.72, n: 9, vary: [0.85, 1.35], varySub: [0.55, 1.0], shade: [0.48, 0.16, 0.16], ball: 0.28, bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.68, heart: 8, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
       top: 1.45,
     },
     bark: ['#a67c58', '#7c5a42', '#553d33'], barkHi: '#e6c79c', barkLit: 0.2, barkShade: 0.42, barkStroke: 0.85, barkContrast: 2.9, barkFoot: 0.7, shadeY: 3.6,
