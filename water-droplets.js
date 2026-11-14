@@ -18,6 +18,7 @@
 //   drops.update(renderer);                                        // once a frame
 import * as THREE from 'three';
 import { WATER_TUNE, WATER_LOOK } from './stylized-water.js';
+import { _internal } from './stylized-nature.js';
 
 const GRAVITY = 7;        // m/s2: a little floatier than real water, so the arc can be read
 const FINGERS = 11;       // fingers round the lip of a crown
@@ -33,13 +34,14 @@ const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h
 const WATER_GLSL = /* glsl */`
   uniform vec3 uShallow, uMid, uSky, uWhite, uSun;
   uniform float uToon, uSolid;
-  float hash1(float n) { return fract(sin(n * 127.1 + 3.7) * 43758.5453); }
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  // value noise that joins up round the ring (period px along x)
+  float hash1(float n) { return fract(sin(n * 127.1 + 3.7) * 43758.5453); }      // (one number for a whole drop: nothing has to agree with a neighbour)
+  ${_internal.NOISE}
+  // value noise that joins up round the ring (period px along x), on the library's exact numbers: the same on every chip
+  // (the half keeps the floor clear of a whole number, so the last column wraps to the first on any chip)
   float wnoise(vec2 p, float px) {
     vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-    float x0 = mod(i.x, px), x1 = mod(i.x + 1.0, px);
-    return mix(mix(hash(vec2(x0, i.y)), hash(vec2(x1, i.y)), f.x), mix(hash(vec2(x0, i.y + 1.0)), hash(vec2(x1, i.y + 1.0)), f.x), f.y);
+    float x0 = i.x - px * floor((i.x + 0.5) / px), x1 = i.x + 1.0 - px * floor((i.x + 1.5) / px);
+    return mix(mix(hash2(vec2(x0, i.y)), hash2(vec2(x1, i.y)), f.x), mix(hash2(vec2(x0, i.y + 1.0)), hash2(vec2(x1, i.y + 1.0)), f.x), f.y);
   }
   // thick: 0 a film .. 1 a solid body of water.  white: 0 clear .. 1 foam.  see: how see-through the clear part is (0..1)
   // shine: strength of the window of light

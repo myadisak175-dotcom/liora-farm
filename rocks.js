@@ -505,7 +505,7 @@ export function rockLandMaterial({ far = '#cde6f2' } = {}) {
       varying vec3 vWP;
       varying vec3 vN;
       varying float vBank, vPath, vTop;
-      float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float h1(vec2 p) { return hash2(p); }                               // (the library's: neighbouring cells must agree on each stone, on every chip)
       // cells: x = distance to the nearest cell's heart, y = how far from the border between two cells, z = which cell
       vec3 cells(vec2 p) {
         vec2 i = floor(p), f = fract(p);

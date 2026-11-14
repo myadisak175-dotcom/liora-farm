@@ -105,12 +105,26 @@ vec3 windOffset(vec3 p, float ph) {
 const HAZEF = /* glsl */`
 uniform vec3 uHaze;
 varying float vHaze;`;
+// The shaders' noise. Its random numbers come from whole-number arithmetic that a 32-bit float does exactly (nothing over
+// 83 000), so they are the same numbers on every graphics chip, however it rounds. (They used to be fract(sin(x) * 43758.5): a
+// phone's chip may round x differently in two places of one shader, the sine blows that up into a different number, and two
+// neighbouring squares of the noise no longer agree on the corner they share: straight seams where a tone made of noise
+// jumps, seen on Android on the dirt paths. A computer drew it smooth.)
+//   noise2(p)   smooth noise 0..1, one square to a unit of p
+//   hash2(p)    a random number 0..1 for a square: p is a whole number, or one plus a fixed offset (told apart to 1/16)
+// m289, perm289: the arithmetic under them, for a shader's own noise (the bark's noise3 below).
 const NOISE = /* glsl */`
-float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float m289(float x) { return x - floor((x + 0.5) * (1.0 / 289.0)) * 289.0; }      // a whole number's remainder by 289 (the half keeps the floor clear of a whole number)
+vec4 m289(vec4 x) { return x - floor((x + 0.5) * (1.0 / 289.0)) * 289.0; }
+float perm289(float x) { return m289(m289(x * 34.0 + 1.0) * x); }                  // 0..288 shuffled
+vec4 perm289(vec4 x) { return m289(m289(x * 34.0 + 1.0) * x); }
+float hash2(vec2 p) { p = floor(p * 16.0 + 0.5); return perm289(m289(perm289(m289(p.x)) + m289(p.y))) * (1.0 / 289.0); }
 float noise2(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
+  vec4 c = m289(vec4(i.x, i.x + 1.0, i.y, i.y + 1.0));                             // the square's two columns and two rows
+  vec4 h = perm289(m289(perm289(c.xyxy) + c.zzww)) * (1.0 / 289.0);                // its four corners, all at once
+  return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
 }`;
 
 // --------------------------------------------------------------------------
@@ -446,12 +460,14 @@ function barkMaterial(spec) {
       varying vec3 vAx;
       varying float vJoin;
       varying float vCrev;
-      float hash3(vec3 p) { p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-      float noise3(vec3 x) {
+      float noise3(vec3 x) {                                              // noise2 with a third number (NOISE's exact arithmetic: the same on every chip)
         vec3 i = floor(x), f = fract(x);
         f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
-                   mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+        vec4 c = m289(vec4(i.x, i.x + 1.0, i.y, i.y + 1.0));
+        vec4 h = perm289(m289(perm289(c.xyxy) + c.zzww));                 // the cube's four upright edges
+        vec4 lo = perm289(m289(h + m289(i.z))), hi = perm289(m289(h + m289(i.z + 1.0)));      // their lower and upper ends
+        vec4 v = mix(lo, hi, f.z) * (1.0 / 289.0);
+        return mix(mix(v.x, v.y, f.x), mix(v.z, v.w, f.x), f.y);
       }
       // brush strokes at a point: x = tone, y = groove. 'across' = offset from the wood's centre-line, 'c' = centre-line position
       vec2 strokes(vec3 across, vec3 c) {

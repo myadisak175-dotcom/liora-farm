@@ -25,23 +25,7 @@
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
 
-const { fbm3, mulberry32, HAZEF, rgb, shared } = _internal;
-
-// The paths' own noise, in place of the library's (stylized-nature.js, NOISE: same names, same use). The library's takes its
-// random numbers from fract(sin(x) * 43758.5): a phone's graphics chip may round x differently in two places of one shader, the
-// sine blows that up into a different number, and two neighbouring squares of the noise no longer agree on the corner they
-// share. On a path that shows as straight seams a few metres apart, where the broad patches of tone and the paint's mixing
-// jump (seen on Android; a computer draws it smooth). Here every random number comes from whole-number arithmetic that a
-// 32-bit float does exactly (nothing over 83 000), so it is the same number however it is rounded, on every chip.
-const NOISE = /* glsl */`
-float m289(float x) { return x - floor((x + 0.5) * (1.0 / 289.0)) * 289.0; }      // a whole number's remainder by 289 (the half keeps the floor clear of a whole number)
-float perm289(float x) { return m289(m289(x * 34.0 + 1.0) * x); }                  // 0..288 shuffled
-float hash2(vec2 p) { return perm289(m289(perm289(m289(p.x)) + m289(p.y))) * (1.0 / 289.0); }      // p: whole numbers
-float noise2(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
-}`;
+const { fbm3, mulberry32, NOISE, HAZEF, rgb, shared } = _internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const COLORS = { light: '#e9d4a3', mid: '#d7ba82', dark: '#bb9a63', damp: '#a98b57', rim: '#94824f', speckLight: '#f4e8c8', speckDark: '#9b8253', cream: '#ead7a6' };
 // the soft look's: the pale worn middle, the deeper tone of its broad patches (a tint over the earth), the browner earth toward

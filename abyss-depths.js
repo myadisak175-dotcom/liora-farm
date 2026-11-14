@@ -35,7 +35,7 @@ import { _internal } from './stylized-nature.js';
 import { kit, BUILD_COLORS } from './stylized-buildings.js';
 import { propMaterial } from './stylized-props.js';
 
-const { fbm3, shared } = _internal;
+const { fbm3, shared, NOISE } = _internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 const STEP = 0.5;
@@ -496,9 +496,8 @@ export function createCloudSea({ x, z, y, radius, veil = 0, tint = '#dbe9f1', li
       uniform float uTime, uR, uVeil;
       uniform vec3 uTint, uLight, uHaze;
       varying vec2 vP; varying vec2 vW; varying float vHaze;
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float noise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+      ${NOISE}
+      float noise(vec2 p) { return noise2(p); }                             // (the library's: the same on every graphics chip)
       void main() {
         float r = length(vP) / uR;
         vec2 q = vW + vec2(uTime * 0.35, uTime * 0.12);

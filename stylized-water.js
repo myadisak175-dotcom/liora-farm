@@ -194,11 +194,8 @@ export function createWaterSim({ rect = [0, 0, 50], size = 512, mask = null, fie
       float poke(vec4 i, vec2 xz) { vec2 d = xz - i.xy; return i.w * exp(-dot(d, d) / (i.z * i.z)); }
       // foam thrown by a touch, torn into flecks by noise so no two touches leave the same mark and none of them is a clean
       // stamp. f > 0: a splash = loose flecks in the middle and a broken, uneven ring round them. f < 0: a footstep = a few flecks.
-      float fleckHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float fleckNoise(vec2 p) {
-        vec2 c = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(fleckHash(c), fleckHash(c + vec2(1.0, 0.0)), f.x), mix(fleckHash(c + vec2(0.0, 1.0)), fleckHash(c + vec2(1.0, 1.0)), f.x), f.y);
-      }
+      ${NOISE}
+      float fleckNoise(vec2 p) { return noise2(p); }                        // (the library's: the same on every graphics chip)
       float foamPoke(vec4 i, float f, vec2 xz) {
         vec2 d = xz - i.xy;
         float broad = fleckNoise(xz * 2.3 + i.xy * 0.7), fine = fleckNoise(xz * 6.0 - i.yx * 1.3);
