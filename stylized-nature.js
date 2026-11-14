@@ -593,7 +593,7 @@ function barkMaterial(spec) {
           col = mix(col, uRingCol, 1.0 - smoothstep(0.025, 0.06, fr));
         }
         if (uMoss > 0.0) {                                            // moss on what faces up (roots, limb tops) and low on the trunk
-          float m = (normalize(vN).y * 0.55 + (noise3(vOP * 3.4) - 0.5) * 1.5 + (noise3(vOP * 9.0) - 0.5) * 0.25 - 0.52) * uMoss;
+          float m = (normalize(vN).y * 0.75 + (noise3(vOP * 3.4) - 0.5) * 1.2 + (noise3(vOP * 9.0) - 0.5) * 0.25 - 0.66) * uMoss;   // tops of roots and limbs, rarely the upright bark
           col = mix(col, mix(uMossB, uMossA, smoothstep(0.1, 0.45, lit)), smoothstep(0.0, 0.06, m));   // patches, lit like the wood
         }
         gl_FragColor = vec4(uDebug > 0.5 ? vec3(0.0, 0.0, 1.0) : mix(col, uHaze, vHaze), 1.0);
@@ -663,24 +663,33 @@ function flowerMaterial() {
   }));
 }
 
-// fruit hanging in a crown: little toon balls (three flat bands + a glint), swaying with the leaves round them
+// fruit hanging in a crown: a round ball that turns softly from shade to light, a small glint, a stalk and one leaf;
+// each fruit sways with the leaves round it and is turned its own way
 function fruitMaterial() {
   if (cache.fruitMat) return cache.fruitMat;
   return (cache.fruitMat = new THREE.ShaderMaterial({
     uniforms: { ...shared, uLight: { value: new THREE.Vector3(-0.4, 0.9, 0.5).normalize() } },
+    side: THREE.DoubleSide,
     vertexShader: /* glsl */`
       ${VCOMMON}
       attribute vec3 iCenter;
       attribute vec4 iFruit;    // xyz: colour, w: radius (already scaled)
       attribute vec4 iBase;     // plant foot + scale; (0,0,0,1) for a single tree
+      attribute float aPart;    // 0 fruit, 1 stalk, 2 leaf
       varying vec3 vN;
       varying vec3 vCol;
+      varying float vPart;
       void main() {
         float ph = objPhase() + iBase.x * 0.37 + iBase.z * 0.23;
         vec3 c = iCenter + windOffset((iCenter - iBase.xyz) / iBase.w, ph) * iBase.w;
-        vec4 mv = modelViewMatrix * vec4(c + position * iFruit.w, 1.0);
-        vN = normalize(mat3(modelMatrix) * normal);
+        float a = fract(sin(dot(iCenter.xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+        mat2 R = mat2(cos(a), -sin(a), sin(a), cos(a));
+        vec3 p = position, nn = normal;
+        p.xz = R * p.xz; nn.xz = R * nn.xz;
+        vec4 mv = modelViewMatrix * vec4(c + p * iFruit.w, 1.0);
+        vN = normalize(mat3(modelMatrix) * nn);
         vCol = iFruit.xyz;
+        vPart = aPart;
         vHaze = hazeAt(mv.xyz);
         gl_Position = projectionMatrix * mv;
       }`,
@@ -689,20 +698,52 @@ function fruitMaterial() {
       uniform vec3 uLight;
       varying vec3 vN;
       varying vec3 vCol;
+      varying float vPart;
       void main() {
-        float d = dot(normalize(vN), uLight);
-        vec3 col = d > 0.0 ? vCol * 1.06 + 0.03 : vCol * vec3(0.66, 0.55, 0.68);     // one clean terminator: no stripes on a small ball
-        col = mix(col, vec3(1.0, 0.97, 0.88), smoothstep(0.86, 0.9, d) * 0.6);      // the glint
+        vec3 n = normalize(vN);
+        if (!gl_FrontFacing) n = -n;
+        float d = dot(n, uLight);
+        vec3 col;
+        if (vPart < 0.5) {
+          col = mix(vCol * vec3(0.62, 0.5, 0.62), vCol * 1.08 + 0.02, smoothstep(-0.35, 0.55, d));
+          col = mix(col, vec3(1.0, 0.97, 0.9), smoothstep(0.88, 0.93, d) * 0.7);
+        } else if (vPart < 1.5) col = vec3(0.34, 0.23, 0.15);
+        else col = d > 0.0 ? vec3(0.42, 0.6, 0.2) : vec3(0.22, 0.38, 0.15);
         gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
       }`,
   }));
 }
+function fruitGeometry() {
+  if (cache.fruitGeo) return cache.fruitGeo;
+  const tag = (g, part) => {
+    g.deleteAttribute('uv');
+    g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Array(g.attributes.position.count).fill(part), 1));
+    return g;
+  };
+  const ball = new THREE.IcosahedronGeometry(1, 1);      // 80 faces: the soft shading hides the facets, an orchard stays light
+  ball.scale(1, 0.92, 1);
+  const stalk = new THREE.CylinderGeometry(0.06, 0.08, 0.42, 5, 1, true).toNonIndexed();
+  stalk.rotateZ(0.25); stalk.translate(0.04, 1.02, 0);
+  const pos = [], nor = [];                              // one leaf: a fan from the stalk top, tipped up a little
+  const L = 0.8, W = 0.3, base = new THREE.Vector3(0.08, 1.16, 0);
+  const at = u => new THREE.Vector3(base.x + u * L, base.y + u * 0.22 - u * u * 0.12, 0);
+  const steps = 6;
+  for (let i = 0; i < steps; i++) for (const side of [1, -1]) {
+    const u0 = i / steps, u1 = (i + 1) / steps;
+    const w0 = Math.sin(u0 * Math.PI) * W * side, w1 = Math.sin(u1 * Math.PI) * W * side;
+    const a = at(u0), b = at(u0).setZ(w0), c2 = at(u1).setZ(w1), d = at(u1);
+    for (const q of side > 0 ? [a, b, c2, a, c2, d] : [a, c2, b, a, d, c2]) { pos.push(q.x, q.y, q.z); nor.push(0, 1, 0); }
+  }
+  const leaf = new THREE.BufferGeometry();
+  leaf.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  leaf.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  leaf.setAttribute('uv', new THREE.Float32BufferAttribute(new Array(pos.length / 3 * 2).fill(0), 2));
+  return (cache.fruitGeo = mergeGeometries([tag(ball, 0), tag(stalk, 1), tag(leaf, 2)]));
+}
 function fruitMesh({ pos, col, base = null }) {
-  const ball = new THREE.IcosahedronGeometry(1, 1);     // 80 faces: a forest of fruit trees stays light
-  ball.scale(1, 0.9, 1);
+  const src = fruitGeometry();
   const g = new THREE.InstancedBufferGeometry();
-  g.setAttribute('position', ball.attributes.position);
-  g.setAttribute('normal', ball.attributes.normal);
+  for (const k of ['position', 'normal', 'aPart']) g.setAttribute(k, src.attributes[k]);
   const n = pos.length / 3;
   if (!base) { base = new Float32Array(n * 4); for (let i = 3; i < base.length; i += 4) base[i] = 1; }
   g.setAttribute('iCenter', new THREE.InstancedBufferAttribute(new Float32Array(pos), 3));
@@ -900,7 +941,7 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
 
 // trunk + roots + branches, grown as one piece of wood. spec.trunk: { pts:[[x,y,z]..], radius:t=>r, lean, roots },
 // spec.branches: [{ t:[a,b], n, rise:[a,b], out:[a,b], r, twig }]
-function buildTrunk(rng, spec) {
+function buildTrunk(rng, spec, grow = null) {
   const parts = [];
   const lean = (rng() - 0.5) * (spec.trunk.lean ?? 0.14);
   const sway = (rng() - 0.5) * 2, lph = rng() * 6.28;        // slow S-bend of the stem, and where the root lobes sit
@@ -931,6 +972,10 @@ function buildTrunk(rng, spec) {
       start.clone().addScaledVector(d, out * 0.74).addScaledVector(up, rise * 0.58),
       start.clone().addScaledVector(d, out).addScaledVector(up, rise),
     ];
+    return addTube(bp, r0, rParent, axisPt, blend);
+  };
+  // any limb by its own control points (grown crowns use this directly)
+  const addTube = (bp, r0, rParent = r0, axisPt = null, blend = 0.26) => {
     const collar = Math.max(r0, rParent * 0.7);
     const tube = taperedTube(bp, t => {
       const k = Math.min(1, t / 0.3), e = k * k * (3 - 2 * k);
@@ -966,6 +1011,7 @@ function buildTrunk(rng, spec) {
       }
     }
   }
+  if (grow) grow({ curve: trunk.curve, trunkR, addTube });
   const g = mergeGeometries(parts);
   parts.forEach(p => p.dispose());
   return g;
@@ -982,7 +1028,7 @@ function withBase(geo, x = 0, y = 0, z = 0, s = 1) {
 function buildCore(tiers) {
   const pos = [], hh = [];
   for (const T of tiers) {
-    const g = new THREE.IcosahedronGeometry(1, TREE_LOD.coreDetail);
+    const g = new THREE.IcosahedronGeometry(1, T.coreDetail ?? TREE_LOD.coreDetail);
     const p = g.attributes.position;
     const cs = T.coreScale ?? 0.68, cb = T.coreBottom ?? 0.75;
     for (let i = 0; i < p.count; i++) {
@@ -1007,9 +1053,11 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
   const C = [], P = [], K = [], A = [], SS = [], TC = [], BC = [];
   const v = new THREE.Vector3(), e = new THREE.Vector3(), nT = new THREE.Vector3(), q = new THREE.Vector3();
   const W = SHADE_WEIGHTS;
+  const qe = new THREE.Vector3(), nE = new THREE.Vector3();
   for (const T of tiers) {
     const c = new THREE.Vector3(...T.c), r = new THREE.Vector3(...T.r);
     const openBelow = T.openBelow ?? -0.8, taper = T.taper ?? 0, taperLow = T.taperLow ?? 0, egg = T.egg ?? 0;
+    const E = T.env || null;      // grown crowns: every clump is lit as part of the one whole crown, not as its own ball
     for (let i = 0; i < T.n; i++) {
       const y0 = 1 - 2 * (i + 0.5) / T.n;
       if (y0 < openBelow) continue;
@@ -1025,7 +1073,7 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
       const surf = S.clone().add(c);
       const cc = S.addScaledVector(nS, -cr * 1.15).add(c);
       const clumpTint = (rng() - 0.5) * 0.16 + (T.bright || 0);
-      if (blossomOut && d.y > -0.15) blossomOut.push({ p: surf, n: nS.clone(), r: cr });
+      if (blossomOut && d.y > -0.15 && (!E || qe.copy(surf).sub(E.c).divide(E.r).length() > 0.8)) blossomOut.push({ p: surf, n: nS.clone(), r: cr });
       const m = Math.max(4, Math.round(30 * detail * Math.pow(cr / T.clumpR, 2)));
       for (let j = 0; j < m; j++) {
         const yy = 1 - 2 * (j + 0.5) / m, r2 = Math.sqrt(1 - yy * yy), ph = j * 2.39996 + rng();
@@ -1034,9 +1082,16 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
         q.copy(v).sub(c).divide(r);
         const ql = q.length();
         if (ql < 0.55) continue;
-        const ao = -(1 - THREE.MathUtils.smoothstep(ql, 0.6, 0.95)) * 0.12;
+        let ao = -(1 - THREE.MathUtils.smoothstep(ql, 0.6, 0.95)) * 0.12;
         nT.copy(v).sub(c).divide(r).divide(r).normalize();
-        const hT = THREE.MathUtils.clamp((v.y - (T.c[1] - T.r[1] * 0.8)) / (T.r[1] * 1.8), 0, 1);
+        let hT = THREE.MathUtils.clamp((v.y - (T.c[1] - T.r[1] * 0.8)) / (T.r[1] * 1.8), 0, 1);
+        if (E) {
+          const qel = qe.copy(v).sub(E.c).divide(E.r).length();
+          if (qel < 0.45) continue;                                                    // buried in the crown: never seen
+          ao = ao * 0.4 - (1 - THREE.MathUtils.smoothstep(qel, 0.6, 0.98)) * 0.16;    // deep in the crown is darker
+          nT.lerp(nE.copy(v).sub(E.c).divide(E.r).divide(E.r).normalize(), 0.65).normalize();
+          hT = THREE.MathUtils.clamp((v.y - (E.c.y - E.r.y * 0.8)) / (E.r.y * 1.8), 0, 1);
+        }
         const cardTint = (rng() - 0.5) * 0.035 + ao;
         const lam = nT.dot(SUN) * 0.5 + 0.5;
         SS.push(W[0] * hT + W[1] * (e.y * 0.5 + 0.5) + W[2] * lam + clumpTint + cardTint);
@@ -1112,6 +1167,74 @@ function placeFruit(rng, F, spots) {
     col.push(cc.x * sh, cc.y * sh, cc.z * sh, rad);
   }
   return { pos, col };
+}
+
+// grown crowns: the wood is grown first (trunk -> limbs -> side branches), then a leaf clump on every branch tip,
+// so each leaf mass sits on wood and no limb ends in the air or stops short of the leaves. spec.grow:
+//   crown: { c, r, taper, taperLow, egg }        the envelope the branch tips reach to (the crown's silhouette)
+//   limbs: { n, t, elev | lift, reach, r, bend }  t along the trunk; elev = where on the crown the tip lands, or
+//                                                  lift = how far above its own start (tall crowns)
+//   subs:  { n, t, elev, reach, r }               side branches off each limb (optional)
+//   clump: { r, flat, push, lift, clump, n, openBelow }   the leaf clump on each tip; top: clump size on the leader
+function buildGrown(rng, spec) {
+  const G = spec.grow, tiers = [];
+  const env = { c: new THREE.Vector3(...G.crown.c), r: new THREE.Vector3(...G.crown.r) };
+  const tp = G.crown.taper ?? 0, tpl = G.crown.taperLow ?? 0, egg = G.crown.egg ?? 0;
+  const up = new THREE.Vector3(0, 1, 0);
+  const dirAt = (az, el) => { const rr = Math.sqrt(Math.max(0, 1 - el * el)); return new THREE.Vector3(Math.cos(az) * rr, el, Math.sin(az) * rr); };
+  const onCrown = (d, reach) => {                           // a point on the envelope, the same shape the leaves make
+    const S = d.clone().multiply(env.r).multiplyScalar(reach);
+    const k = 1 - tp * Math.max(d.y, 0) - tpl * Math.max(-d.y, 0);
+    S.x *= k; S.z *= k; S.y *= 1 + egg * Math.max(d.y, 0);
+    return S.add(env.c);
+  };
+  const K = G.clump;
+  const clump = (p, scale) => {
+    const cr = K.r * scale, out = p.clone().sub(env.c).setY(0);
+    if (out.lengthSq() > 1e-4) out.normalize();
+    const c = p.clone().addScaledVector(out, cr * (K.push ?? 0.2));
+    c.y += cr * (K.lift ?? 0.1);
+    tiers.push({ c: [c.x, c.y, c.z], r: [cr, cr * (K.flat ?? 0.8), cr], clumpR: cr * (K.clump ?? 0.5), n: K.n ?? 8,
+      openBelow: K.openBelow ?? -0.7, coreScale: K.core ?? 0.5, coreBottom: 0.7, coreDetail: 1, env });
+  };
+  // a branch from start to tip: leaves at its own angle, bends up toward the light, a little crooked
+  const bend = (start, tip, B) => {
+    const D = tip.clone().sub(start), Dh = D.clone().setY(0), len = D.length();
+    const side = Dh.lengthSq() > 1e-6 ? new THREE.Vector3(-Dh.z, 0, Dh.x).normalize() : new THREE.Vector3(1, 0, 0);
+    const [a1, b1, a2, b2] = B.bend ?? [0.33, 0.26, 0.7, 0.66];      // how far out vs up the two middle points sit
+    const crook = B.crook ?? 0.1;
+    return [start.clone(),
+      start.clone().addScaledVector(Dh, a1).addScaledVector(up, D.y * b1 + 0.04 * len).addScaledVector(side, (rng() - 0.5) * crook * len),
+      start.clone().addScaledVector(Dh, a2).addScaledVector(up, D.y * b2).addScaledVector(side, (rng() - 0.5) * crook * len),
+      tip.clone()];
+  };
+  const trunk = buildTrunk(rng, spec, ({ curve, trunkR, addTube }) => {
+    const L = G.limbs, S = G.subs;
+    const nL = Math.round(range(rng, L.n[0], L.n[1])), ph = rng() * 6.28;
+    for (let i = 0; i < nL; i++) {
+      const az = ph + i * 2.39996 + (rng() - 0.5) * 0.5;
+      const t0 = lerp(L.t[0], L.t[1], (i + rng()) / nL);                 // spiral up the trunk
+      const start = curve.getPointAt(t0);
+      const el = L.lift ? THREE.MathUtils.clamp((start.y - env.c.y) / env.r.y + range(rng, L.lift[0], L.lift[1]), -0.85, 0.92)
+                        : range(rng, L.elev[0], L.elev[1]);
+      const tip = onCrown(dirAt(az, el), range(rng, L.reach[0], L.reach[1]));
+      const r0 = L.r * range(rng, 0.85, 1.15) * 1.3;
+      const limb = addTube(bend(start, tip, L), r0, trunkR(t0), start, 0.26);
+      clump(tip, range(rng, 0.9, 1.15));
+      if (!S) continue;
+      const nS = Math.round(range(rng, S.n[0], S.n[1]));
+      for (let k = 0; k < nS; k++) {
+        const tt = lerp(S.t[0], S.t[1], (k + rng()) / nS);
+        const s0 = limb.getPointAt(tt), rAt = r0 * (1 - 0.72 * tt);
+        const el2 = THREE.MathUtils.clamp(el + range(rng, S.elev[0], S.elev[1]), -0.85, 0.95);
+        const tip2 = onCrown(dirAt(az + (k % 2 ? 1 : -1) * range(rng, 0.5, 1.05), el2), range(rng, S.reach[0], S.reach[1]));
+        addTube(bend(s0, tip2, S), Math.max(rAt * (S.r ?? 0.7), 0.02), rAt, s0, 0.4);
+        clump(tip2, range(rng, 0.75, 1.0));
+      }
+    }
+    clump(curve.getPointAt(1), G.top ?? 1);                               // the leader ends inside the top of the crown
+  });
+  return { trunk, tiers };
 }
 
 // bamboo: a clump of thin culms leaning out from one foot, leaf sprays on their upper half
@@ -1281,95 +1404,90 @@ const TREE_TYPES = {
   },
 
   // ---- accent crowns -----------------------------------------------------------------------
-  // cherry in bloom: short leaning trunk, limbs spreading wide, a low puffy pink crown
+  // cherry in bloom: short leaning trunk, limbs spreading wide and low, a puffy pink crown on their tips
   sakura: {
-    palette: 'sakura', mask: 'blossom', height: 7.2,
+    palette: 'sakura', mask: 'blossom', height: 7.2, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.05, 0.9, 0], [0.2, 1.8, 0.05], [0.3, 2.7, 0]],
-      radius: t => 0.25 - 0.11 * t + 0.16 * Math.exp(-t * 30), lean: 0.3, sway: 0.2, roots: 4,
+      pts: [[0, -0.05, 0], [0.05, 0.9, 0], [0.2, 1.8, 0.05], [0.3, 2.7, 0], [0.3, 3.9, 0], [0.25, 5.3, 0]],
+      radius: t => 0.25 * (1 - t) + 0.025 + 0.16 * Math.exp(-t * 30), lean: 0.3, sway: 0.2, roots: 4,
     },
-    branches: [
-      { t: [0.62, 0.95], n: 5, rise: [1.5, 2.4], out: [1.9, 3.0], r: 0.1, twig: 1 },
-    ],
-    tiers: [
-      { c: [0.3, 4.8, 0], r: [3.2, 1.55, 3.0], clumpR: 1.0, n: 32, openBelow: -0.72, taper: 0.3, taperLow: 0.25, egg: -0.1 },
-      { c: [-2.7, 4.1, 0.8], r: [1.6, 1.1, 1.5], clumpR: 0.78, n: 12, openBelow: -0.6, taper: 0.2 },
-      { c: [3.0, 4.3, -0.7], r: [1.6, 1.1, 1.5], clumpR: 0.78, n: 12, openBelow: -0.6, taper: 0.2 },
-      { c: [0.5, 6.1, 0.3], r: [1.9, 1.0, 1.8], clumpR: 0.8, n: 14, bright: 0.06, openBelow: -0.5, taper: 0.3 },
-    ],
+    grow: {
+      crown: { c: [0.3, 4.6, 0], r: [3.6, 1.7, 3.4], taper: 0.3, taperLow: 0.2, egg: -0.05 },
+      limbs: { n: [5, 6], t: [0.35, 0.6], elev: [-0.45, 0.4], reach: [0.6, 0.85], r: 0.085, bend: [0.42, 0.18, 0.78, 0.55] },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.4, 0.35], reach: [0.82, 1.0], r: 0.7 },
+      clump: { r: 1.2, flat: 0.75, n: 8 },
+      top: 1.1,
+    },
     quantiles: [0.08, 0.22, 0.45, 0.62, 0.82],       // a lighter crown than the greens
-    bark: ['#6b4a48', '#4b3336', '#33252c'], barkHi: '#d9b8a8', marks: true, markCol: '#664845', shadeY: 3.4,
+    bark: ['#6b4a48', '#4b3336', '#33252c'], barkHi: '#d9b8a8', marks: true, markCol: '#664845', shadeY: 3.2,
   },
-  // autumn maple: a round crown in reds, oranges and gold
+  // autumn maple: a round crown in reds, oranges and gold. Grown: limbs and side branches each end in a clump
   maple: {
-    palette: 'maple', mask: 'maple', height: 8,
+    palette: 'maple', mask: 'maple', height: 8, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.02, 1.0, 0], [0.05, 2.2, 0], [0.1, 3.4, 0], [0.12, 4.6, 0]],
-      radius: t => 0.2 - 0.12 * t + 0.14 * Math.exp(-t * 35), lean: 0.14, roots: 4,
+      pts: [[0, -0.05, 0], [0.02, 1.0, 0], [0.05, 2.0, 0], [0.1, 2.9, 0], [0.08, 4.2, 0], [0.02, 5.6, 0], [0, 6.9, 0]],
+      radius: t => 0.21 * Math.pow(1 - t, 1.1) + 0.025 + 0.14 * Math.exp(-t * 30), lean: 0.14, roots: 4,
     },
-    branches: [
-      { t: [0.45, 0.6], n: 5, rise: [1.5, 2.1], out: [1.4, 2.2], r: 0.085, twig: 0.8 },
-      { t: [0.8, 0.95], n: 3, rise: [1.0, 1.5], out: [0.8, 1.3], r: 0.06 },
-    ],
-    tiers: [
-      { c: [0, 5.3, 0], r: [3.0, 2.1, 2.9], clumpR: 1.1, n: 34, openBelow: -0.8, taper: 0.2, taperLow: 0.3, egg: 0.05 },
-      { c: [0.2, 6.7, 0.1], r: [2.0, 1.15, 1.9], clumpR: 0.85, n: 14, bright: 0.08, openBelow: -0.6, taper: 0.3 },
-      { c: [-2.3, 4.7, 1.0], r: [1.4, 1.1, 1.3], clumpR: 0.75, n: 10, openBelow: -0.6, taper: 0.2 },
-    ],
+    grow: {
+      crown: { c: [0, 4.9, 0], r: [3.2, 2.4, 3.1], taper: 0.2, taperLow: 0.3 },
+      limbs: { n: [5, 6], t: [0.3, 0.55], elev: [-0.5, 0.5], reach: [0.6, 0.85], r: 0.075 },
+      subs: { n: [2, 3], t: [0.4, 0.85], elev: [-0.4, 0.4], reach: [0.82, 1.0], r: 0.7 },
+      clump: { r: 1.25, flat: 0.8, n: 8 },
+      top: 1.2,
+    },
     quantiles: [0.1, 0.25, 0.48, 0.64, 0.84],
-    bark: ['#6f5a52', '#4d3f3b', '#342b2c'], shadeY: 3.6,
+    bark: ['#6f5a52', '#4d3f3b', '#342b2c'], shadeY: 3.4,
   },
-  // orchard trees: low fork, a round dense crown, fruit hung on the outside of it
+  // orchard trees: low limbs spreading into a round crown, fruit hung on the outside of it
   apple: {
-    palette: 'broad', mask: 'broad', height: 5.4,
+    palette: 'broad', mask: 'broad', height: 5.4, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.03, 0.7, 0], [0.08, 1.4, 0], [0.1, 2.1, 0]],
-      radius: t => 0.15 - 0.07 * t + 0.1 * Math.exp(-t * 35), lean: 0.2, roots: 3,
+      pts: [[0, -0.05, 0], [0.03, 0.7, 0], [0.07, 1.4, 0], [0.06, 2.4, 0], [0.02, 3.5, 0], [0, 4.5, 0]],
+      radius: t => 0.15 * Math.pow(1 - t, 1.2) + 0.02 + 0.1 * Math.exp(-t * 35), lean: 0.2, roots: 3,
     },
-    branches: [{ t: [0.55, 0.95], n: 5, rise: [1.0, 1.6], out: [1.0, 1.6], r: 0.07, twig: 0.9 }],
-    tiers: [
-      { c: [0, 3.4, 0], r: [2.2, 1.5, 2.1], clumpR: 0.85, n: 30, openBelow: -0.7, coreBottom: 0.6, taper: 0.25, taperLow: 0.35 },
-      { c: [0.1, 4.6, 0], r: [1.4, 0.9, 1.3], clumpR: 0.7, n: 12, bright: 0.06, openBelow: -0.5, taper: 0.3 },
-    ],
+    grow: {
+      crown: { c: [0, 3.3, 0], r: [2.3, 1.75, 2.2], taper: 0.2, taperLow: 0.25 },
+      limbs: { n: [4, 5], t: [0.24, 0.42], elev: [-0.6, 0.35], reach: [0.6, 0.85], r: 0.065, bend: [0.4, 0.2, 0.75, 0.6] },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.45, 0.4], reach: [0.85, 1.0], r: 0.7 },
+      clump: { r: 1.0, flat: 0.9, n: 8, openBelow: -0.85 },
+      top: 1.0,
+    },
     quantiles: [0.16, 0.4, 0.64, 0.78, 0.92],        // deeper green so the fruit stands out
-    fruit: { colors: ['#d63a2f', '#c4302c', '#e0552e'], r: [0.1, 0.13], count: 48 },
-    shadeY: 2.4,
+    fruit: { colors: ['#d63a2f', '#c4302c', '#e0552e'], r: [0.1, 0.13], count: 44 },
+    shadeY: 2.2,
   },
   orange: {
-    palette: 'pine', mask: 'broad', height: 5.2,
+    palette: 'pine', mask: 'broad', height: 5.2, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.02, 0.7, 0], [0.05, 1.3, 0], [0.06, 1.9, 0]],
-      radius: t => 0.14 - 0.07 * t + 0.1 * Math.exp(-t * 35), lean: 0.12, roots: 3,
+      pts: [[0, -0.05, 0], [0.02, 0.7, 0], [0.04, 1.3, 0], [0.03, 2.3, 0], [0, 3.4, 0], [0, 4.5, 0]],
+      radius: t => 0.14 * Math.pow(1 - t, 1.2) + 0.02 + 0.1 * Math.exp(-t * 35), lean: 0.12, roots: 3,
     },
-    branches: [{ t: [0.55, 0.95], n: 5, rise: [1.0, 1.5], out: [0.9, 1.4], r: 0.065, twig: 0.8 }],
-    tiers: [
-      { c: [0, 3.3, 0], r: [2.0, 1.8, 1.95], clumpR: 0.8, n: 32, openBelow: -0.75, coreBottom: 0.6, taper: 0.2, taperLow: 0.3, egg: 0.1 },
-      { c: [0.05, 4.7, 0], r: [1.1, 0.8, 1.05], clumpR: 0.6, n: 10, bright: 0.05, openBelow: -0.4, taper: 0.3 },
-    ],
+    grow: {
+      crown: { c: [0, 3.3, 0], r: [2.05, 1.85, 2.0], taper: 0.18, taperLow: 0.3, egg: 0.08 },
+      limbs: { n: [5, 6], t: [0.25, 0.45], elev: [-0.45, 0.6], reach: [0.6, 0.85], r: 0.06 },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.25, 0.45], reach: [0.85, 1.0], r: 0.7 },
+      clump: { r: 0.9, flat: 0.9, n: 8 },
+      top: 0.95,
+    },
     quantiles: [0.12, 0.34, 0.6, 0.74, 0.9],
-    fruit: { colors: ['#f39a1e', '#f7ad2b', '#ec8a17'], r: [0.1, 0.12], count: 44 },
-    shadeY: 2.3,
+    fruit: { colors: ['#f39a1e', '#f7ad2b', '#ec8a17'], r: [0.1, 0.12], count: 40 },
+    shadeY: 2.1,
   },
-  // the old giant at the heart of a village: built at a normal size, stood up spec.scale times bigger
+  // the old giant at the heart of a village: massive limbs spreading wide, built at a normal size, stood up spec.scale times bigger
   giant: {
-    palette: 'broad', mask: 'broad', height: 10, scale: 2.2,
+    palette: 'broad', mask: 'broad', height: 10, scale: 2.2, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.05, 1.0, 0], [0.15, 2.0, 0.05], [0.1, 3.0, 0], [0.2, 3.9, 0.05], [0.3, 4.6, 0]],
-      radius: t => 0.72 - 0.34 * t + 0.5 * Math.exp(-t * 12), lean: 0.1, sway: 0.25, roots: 7,
+      pts: [[0, -0.05, 0], [0.05, 1.0, 0], [0.15, 2.0, 0.05], [0.1, 3.0, 0], [0.2, 3.9, 0.05], [0.25, 5.4, 0], [0.2, 7.2, 0], [0.1, 8.6, 0]],
+      radius: t => 0.72 * Math.pow(1 - t, 1.1) + 0.04 + 0.5 * Math.exp(-t * 12), lean: 0.1, sway: 0.25, roots: 7,
     },
-    branches: [
-      { t: [0.5, 0.72], n: 6, rise: [1.3, 2.0], out: [3.0, 4.2], r: 0.26, twig: 1 },
-      { t: [0.86, 0.98], n: 3, rise: [1.4, 2.0], out: [1.4, 2.2], r: 0.18, twig: 0.5 },
-    ],
-    tiers: [
-      { c: [0, 6.8, 0], r: [4.6, 2.0, 4.4], clumpR: 1.3, n: 48, openBelow: -0.75, coreBottom: 0.55, taper: 0.3, taperLow: 0.2, egg: -0.05 },
-      { c: [-4.3, 5.9, 1.3], r: [2.4, 1.4, 2.3], clumpR: 1.0, n: 16, openBelow: -0.62, taper: 0.2 },
-      { c: [4.2, 6.1, -1.5], r: [2.5, 1.5, 2.4], clumpR: 1.0, n: 16, openBelow: -0.62, taper: 0.2 },
-      { c: [1.1, 5.8, 4.1], r: [2.2, 1.3, 2.1], clumpR: 0.95, n: 14, openBelow: -0.62, taper: 0.2 },
-      { c: [-1.0, 5.9, -4.2], r: [2.3, 1.3, 2.2], clumpR: 0.95, n: 14, openBelow: -0.62, taper: 0.2 },
-      { c: [0.4, 8.5, 0.2], r: [2.8, 1.2, 2.6], clumpR: 1.0, n: 20, bright: 0.04, openBelow: -0.5, taper: 0.35 },
-    ],
-    quantiles: [0.14, 0.36, 0.6, 0.74, 0.9],         // an old, deep green
+    grow: {
+      crown: { c: [0, 6.6, 0], r: [5.6, 2.4, 5.4], taper: 0.3, taperLow: 0.2 },
+      limbs: { n: [6, 7], t: [0.4, 0.62], elev: [-0.45, 0.35], reach: [0.55, 0.8], r: 0.26, bend: [0.45, 0.15, 0.8, 0.5] },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.35, 0.4], reach: [0.8, 1.0], r: 0.6 },
+      clump: { r: 1.9, flat: 0.75, n: 9 },
+      top: 1.6,
+    },
+    quantiles: [0.18, 0.42, 0.68, 0.82, 0.95],       // an old, deep green: little of the bright top tone
     bark: ['#6e5146', '#4a3632', '#30242a'], moss: 1, shadeY: 4.4,
   },
 
@@ -1396,37 +1514,38 @@ const TREE_TYPES = {
     quantiles: [0.12, 0.32, 0.56, 0.72, 0.88],
     bark: ['#b9c65c', '#86a03c', '#5a7230'], barkHi: '#f4f3b8', rings: 0.42, ringCol: '#4a5a28',
   },
-  // a tall dark flame of a tree, for ridges and lining a path
+  // a tall dark flame of a tree, for ridges and lining a path: a leader to the top, short limbs climbing it steeply
   cypress: {
-    palette: 'cypress', mask: 'soft', height: 12,
+    palette: 'cypress', mask: 'soft', height: 12, custom: buildGrown, detailMul: 0.4,
     trunk: {
-      pts: [[0, -0.05, 0], [0, 1.5, 0], [0.02, 3.5, 0], [0, 6, 0], [0.02, 9, 0]],
-      radius: t => 0.2 - 0.15 * t + 0.1 * Math.exp(-t * 40), lean: 0.03, roots: 3,
+      pts: [[0, -0.05, 0], [0, 1.5, 0], [0.02, 3.5, 0], [0, 6, 0], [0.02, 9, 0], [0, 11.6, 0]],
+      radius: t => 0.2 * Math.pow(1 - t, 1.1) + 0.02 + 0.1 * Math.exp(-t * 40), lean: 0.03, roots: 3,
     },
-    branches: [],
-    tiers: [
-      { c: [0, 6.0, 0], r: [1.45, 4.6, 1.45], clumpR: 0.6, n: 64, openBelow: -0.92, coreScale: 0.6, coreBottom: 0.85, taper: 0.62, taperLow: 0.25, egg: 0.12 },
-      { c: [0, 11.0, 0], r: [0.42, 1.0, 0.42], clumpR: 0.32, n: 7, openBelow: -0.6, egg: 0.5, bright: 0.05 },
-    ],
+    grow: {
+      crown: { c: [0, 6.4, 0], r: [1.4, 5.6, 1.4], taper: 0.55, taperLow: 0.15, egg: 0.05 },
+      limbs: { n: [28, 32], t: [0.08, 0.92], lift: [0.1, 0.28], reach: [0.45, 0.8], r: 0.035, bend: [0.5, 0.3, 0.85, 0.75] },
+      clump: { r: 0.9, flat: 1.35, push: 0.05, lift: 0.15, clump: 0.48, n: 8, openBelow: -0.85, core: 0.62 },
+      top: 0.65,
+    },
     quantiles: [0.2, 0.44, 0.68, 0.8, 0.93],
-    shadeY: 1.6,
+    shadeY: 1.4,
   },
-  // umbrella pine: a long bare leaning trunk, limbs splaying at the top, a flat wide crown
+  // umbrella pine: a long bare leaning trunk; limbs rise from its top and splay out under a flat crown of pads
   umbrella: {
-    palette: 'pine', mask: 'needle', height: 9.6,
+    palette: 'pine', mask: 'needle', height: 10.2, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.1, 1.8, 0], [0.35, 3.6, 0], [0.55, 5.2, 0], [0.5, 6.5, 0]],
-      radius: t => 0.2 - 0.1 * t + 0.15 * Math.exp(-t * 35), lean: 0.25, sway: 0.15, roots: 4,
+      pts: [[0, -0.05, 0], [0.1, 1.8, 0], [0.35, 3.6, 0], [0.55, 5.2, 0], [0.55, 6.6, 0], [0.5, 7.8, 0]],
+      radius: t => 0.2 * Math.pow(1 - t, 0.9) + 0.025 + 0.15 * Math.exp(-t * 35), lean: 0.25, sway: 0.15, roots: 4,
     },
-    branches: [{ t: [0.72, 0.92], n: 5, rise: [1.0, 1.7], out: [1.6, 2.6], r: 0.09, twig: 0.8 }],
-    tiers: [
-      { c: [0.5, 8.2, 0], r: [3.9, 1.1, 3.7], clumpR: 1.05, n: 38, openBelow: -0.3, coreBottom: 0.35, taper: 0.12 },
-      { c: [-2.4, 7.7, 1.5], r: [1.8, 0.75, 1.7], clumpR: 0.75, n: 12, openBelow: -0.3, coreBottom: 0.4 },
-      { c: [3.3, 7.8, -1.2], r: [1.7, 0.75, 1.6], clumpR: 0.75, n: 12, openBelow: -0.3, coreBottom: 0.4 },
-      { c: [0.7, 8.9, -0.2], r: [2.3, 0.7, 2.1], clumpR: 0.75, n: 14, bright: 0.06, openBelow: -0.3 },
-    ],
+    grow: {
+      crown: { c: [0.5, 8.3, 0], r: [4.0, 1.0, 3.8], taper: 0.1 },
+      limbs: { n: [5, 6], t: [0.6, 0.86], elev: [-0.35, 0.15], reach: [0.7, 0.95], r: 0.085, bend: [0.15, 0.45, 0.55, 0.88] },
+      subs: { n: [1, 2], t: [0.5, 0.85], elev: [-0.2, 0.2], reach: [0.85, 1.0], r: 0.7 },
+      clump: { r: 1.45, flat: 0.42, push: 0.1, lift: 0.35, n: 9, openBelow: -0.4 },
+      top: 1.05,
+    },
     quantiles: [0.17, 0.4, 0.66, 0.76, 0.9],
-    shadeY: 7.2,
+    shadeY: 7.0,
   },
 };
 export const TREE_TYPE_NAMES = Object.keys(TREE_TYPES);
