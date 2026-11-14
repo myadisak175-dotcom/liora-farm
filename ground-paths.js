@@ -18,6 +18,8 @@
 //   const tex = await loadPathTextures(style)       the earth pictures for that look (grit: sand and dirt; soft: the paint), once
 //   group.add(P.ribbon(heightAt, map, tex))        the painted path itself (after the ground map is made)
 //   P.stones(heightAt)                             [{ type, seed, x, z, ry, s, y }] flat stones and pebbles to set into it
+//   const h = P.add({ points, half })              after ribbon(): one more path, drawn at once (a way painted by hand)
+//   P.remove(h)                                    and taken away again
 //   P.flowers                                      [x, z, radius] places beside the path for a few flowers
 
 import * as THREE from 'three';
@@ -47,11 +49,14 @@ export async function loadPathTextures(style = 'grit') {
 
 export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   const soft = style === 'soft';
-  const lines = paths.map(p => ({ pts: densify(p.points, 0.5), half: p.half || 1.1 }));
-  for (const l of lines) {
+  const makeLine = p => {
+    const l = { pts: densify(p.points, 0.5), half: p.half || 1.1 };
     l.box = [Math.min(...l.pts.map(q => q[0])) - l.half * 2 - 1, Math.max(...l.pts.map(q => q[0])) + l.half * 2 + 1, Math.min(...l.pts.map(q => q[1])) - l.half * 2 - 1, Math.max(...l.pts.map(q => q[1])) + l.half * 2 + 1];
     l.len = [0]; for (let i = 1; i < l.pts.length; i++) l.len.push(l.len[i - 1] + Math.hypot(l.pts[i][0] - l.pts[i - 1][0], l.pts[i][1] - l.pts[i - 1][1]));
-  }
+    return l;
+  };
+  const lines = paths.map(makeLine);
+  let rib = null;                                                           // the ribbons, once made: what add() draws one more into
   // the nearest path: how far from its middle, and how wide it is there
   const near = (x, z) => {
     let best = 1e9, half = 1;
@@ -99,21 +104,23 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       // so where two paths meet they agree on what is middle and what is edge
       // (the soft look also wants to know how many metres outside the path's edge a point is: a second number, -2 .. 2 m)
       const S = map.size, R = map.radius, [mx, mz] = map.center, C = soft ? 2 : 1, dd = new Uint8Array(S * S * C).fill(255);
-      for (const l of lines) {
-        const [x0, x1, z0, z1] = l.box;
+      const fill = ([x0, x1, z0, z1], fresh = false) => {                    // (fresh: worked out again from all the paths, not only lowered)
         const i0 = Math.max(0, Math.floor((x0 - mx + R) / (2 * R) * S)), i1 = Math.min(S - 1, Math.ceil((x1 - mx + R) / (2 * R) * S));
         const j0 = Math.max(0, Math.floor((z0 - mz + R) / (2 * R) * S)), j1 = Math.min(S - 1, Math.ceil((z1 - mz + R) / (2 * R) * S));
         for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
           const q = near(mx - R + (i + 0.5) / S * 2 * R, mz - R + (j + 0.5) / S * 2 * R);
           const o = (j * S + i) * C;
+          if (fresh) { dd[o] = 255; if (soft) dd[o + 1] = 255; }
+          if (q.d > 1e8) continue;
           dd[o] = Math.min(dd[o], Math.round(Math.min(1, q.d / q.half / 4) * 255));
           if (soft) dd[o + 1] = Math.min(dd[o + 1], Math.round(Math.min(1, Math.max(0, (q.d - q.half + 2) / 4)) * 255));
         }
-      }
+      };
+      for (const l of lines) fill(l.box);
       const distTex = new THREE.DataTexture(dd, S, S, soft ? THREE.RGFormat : THREE.RedFormat, THREE.UnsignedByteType);
       distTex.magFilter = distTex.minFilter = THREE.LinearFilter; distTex.unpackAlignment = 1; distTex.needsUpdate = true;
       const mat = soft ? softPathMaterial(map, tex, distTex) : pathMaterial(map, tex, distTex);
-      for (const l of lines) {
+      const meshOf = l => {
         const ACROSS = 12, W = soft ? l.half + 1.5 : l.half * 1.45, pos = [], acr = [], idx = [];
         // (the ribbon runs on a little past both ends of the line: the worn earth there is round, not cut square)
         const P = l.pts, n = P.length, ext = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1; return [b[0] + dx / dl * W, b[1] + dz / dl * W]; };
@@ -133,10 +140,26 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
         g.setIndex(idx); g.computeBoundingSphere();
         const m = new THREE.Mesh(g, mat); m.renderOrder = soft ? -10 : 0; m.name = 'path';      // (soft: see-through, so drawn after the land and grass, and before the water and all else that is)
         m.userData = { kind: 'path', dispose: () => g.dispose() };
-        group.add(m);
-      }
+        return m;
+      };
+      for (const l of lines) group.add(meshOf(l));
       group.userData.dispose = () => { mat.dispose(); distTex.dispose(); };
+      rib = { group, fill, meshOf, distTex };
       return group;
+    },
+    // one more path, after the ribbons are made: it is in near() and paint() from now on, and drawn at once
+    add(path) {
+      const l = makeLine(path);
+      if (l.pts.length < 2) return null;
+      lines.push(l);
+      if (rib) { rib.fill(l.box); rib.distTex.needsUpdate = true; l.mesh = rib.meshOf(l); rib.group.add(l.mesh); }
+      return l;
+    },
+    remove(l) {
+      const k = lines.indexOf(l);
+      if (k < 0) return;
+      lines.splice(k, 1);
+      if (rib && l.mesh) { rib.group.remove(l.mesh); l.mesh.userData.dispose(); rib.fill(l.box, true); rib.distTex.needsUpdate = true; }
     },
     // flat stones worn into the path (alone or in twos and threes) and pebbles at its sides
     stones() {

@@ -556,6 +556,16 @@ for name, (half, pts_uv) in PATHS.items():
     path_d[at] = np.minimum(path_d[at], dd - half)
     plan_paths.append({'id': name, 'half': half, 'points': [R2(p) for p in pts]})
 path_d = path_d.reshape(NZ, NX)
+# the ways painted by hand in the game (path-brush.js: the strokes sent from there are kept in hill-village-paths.json beside the
+# plan): the plan carries them as they are (the game paints them on the ground, the map's picture draws them), and nothing is
+# planted on a painted way. (Grass painted over a way in the game only hides it: the land under it is left as the way made it.)
+_po_file = OUT / 'hill-village-paths.json'
+PATH_OPS = json.loads(_po_file.read_text())['ops'] if _po_file.exists() else []
+for o_ in PATH_OPS:
+    if o_['k'] != 'way' or len(o_['pts']) < 2: continue
+    P_ = densify([tuple(p_) for p_ in o_['pts']]); at_, dd_, _ = nearest(P_, o_['half'] + 0.5)
+    pd_ = path_d.ravel(); pd_[at_] = np.minimum(pd_[at_], dd_ - o_['half']); path_d = pd_.reshape(NZ, NX)
+if PATH_OPS: print(f'  painted by hand: {sum(o_["k"] == "way" for o_ in PATH_OPS)} ways, {sum(o_["k"] == "grass" for o_ in PATH_OPS)} strokes of grass')
 for x, z, r, _ in YARDS: path_d = np.minimum(path_d, np.hypot(WX - x, WZ - z) - r)
 
 # ------------------------------------------------------------------ 5b. the steps of the three cascades, cut into the land
@@ -881,7 +891,7 @@ plan = {
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': 0.0},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit
-    'paths': plan_paths, 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
+    'paths': plan_paths, **({'pathOps': PATH_OPS} if PATH_OPS else {}), 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
     # the pit: its middle, about how far its brink is from that, how far its picture's heights were moved to stand in the bowl (the
     # abyss's clouds and the land's fading into mist are set by height), and its shelves (metres in from the brink)
     'pit': {'x': round(float(BOWL[0]), 2), 'z': round(float(BOWL[1]), 2), 'brink': 39.2, 'shift': round(PIT_SHIFT, 2), 'turn': round(PIT_TURN, 3),
