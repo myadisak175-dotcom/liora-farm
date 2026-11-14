@@ -40,7 +40,7 @@ import { createPaths, loadPathTextures } from './ground-paths.js';
 import { loadSpinner, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
 import { fieldGeometry } from './village-fields.js';
-import { createRockKit } from './rocks.js';
+import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 import { pathKey, loadPathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 
@@ -284,6 +284,45 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const wet = createRockKit(wetRocks, { world: false, paint: rockPaint, moss: { boulder: 0, stone: 0, pebbles: 0 } });
   rocks.name = 'rocks'; wet.name = 'wetRocks';
   group.add(rocks, wet);
+  // the meadow's grass on the boulders' tops (as on the other maps: rock-world.js), so a mossy top is not bald. Worked out from
+  // the rocks' real shapes, on the land's own grid: a point of the grid that lies on a top that faces up is given the top's
+  // height (in a copy of the land's heights kept for the grass alone: the water reads the land's own), and a cell with all four
+  // corners on one top, or three, grows grass (grow). The cells round those are bare: between a top and the ground the grass's
+  // height is a slope through the air beside the rock, and no blade may stand on it
+  const grow = [], grassTop = new Map();
+  {
+    const st = field.step, n = field.n, gx0 = field.center[0] - field.radius, gz0 = field.center[1] - field.radius, near = new Map();
+    const pts = sampleKitSurface(rocks, { step: 0.1, seed, filter: it => it.type === 'boulder' });
+    for (let q = 0; q < pts.length; q += 4) {
+      if (pts[q + 3] < 0.5) continue;                                       // (only a face that looks up: where the moss is)
+      const fi = (pts[q] - gx0) / st, fj = (pts[q + 2] - gz0) / st, i = Math.round(fi), j = Math.round(fj);
+      if (i < 2 || j < 2 || i > n - 3 || j > n - 3 || Math.hypot(fi - i, fj - j) * st > 0.2) continue;      // (close by the grid's point: the top's height just there)
+      const k = j * n + i, e = near.get(k);
+      if (e) { e[0] = Math.max(e[0], pts[q + 1]); e[1]++; } else near.set(k, [pts[q + 1], 1]);
+    }
+    const top = new Map();
+    for (const [k, [y, c]] of near) if (c >= 2 && y > field.heights[k] + 0.3) top.set(k, y - 0.05);
+    const at = k => [gx0 + (k % n) * st, gz0 + Math.floor(k / n) * st], rim = new Set(), grassy = new Set(), CORN = [0, 1, n, n + 1], OPP = [n + 1, n, 1, 0];
+    const raise = (k, y) => { if (!(grassTop.get(k) >= y)) grassTop.set(k, y); };
+    for (const k of new Set([...top.keys()].flatMap(q => OPP.map(o => q - o)))) {      // every cell with a corner on a top
+      const c = CORN.map(q => top.get(k + q)), on = c.filter(v => v !== undefined);
+      if (on.length < 3 || Math.max(...on) - Math.min(...on) > 0.75) continue;
+      const [x, z] = at(k);
+      if (on.length === 4) grow.push([x + st / 2, z + st / 2, 0.38]);
+      else {
+        // three corners on the top: the top's edge runs through this cell. The grass comes to it: on the three corners' side,
+        // and the fourth corner's height is the top's own slope carried on (so the blades by the edge stand at the top's height)
+        const m = c.indexOf(undefined), o = 3 - m;
+        raise(k + CORN[m], c[m === 0 || m === 3 ? 1 : 0] + c[m === 0 || m === 3 ? 2 : 3] - c[o]);
+        grow.push([x + st / 2 + (m % 2 ? -1 : 1) * st * 0.24, z + st / 2 + (m > 1 ? -1 : 1) * st * 0.24, 0.3]);
+      }
+      CORN.forEach((q, i) => { if (c[i] !== undefined) raise(k + q, c[i]); });
+      grassy.add(k);
+      for (const a of [-1, 0, 1]) for (const b of [-1, 0, 1]) if (a || b) rim.add(k + a + b * n);
+    }
+    for (const k of grassy) if (grassy.has(k - 1) && grassy.has(k - n) && grassy.has(k - n - 1)) grow.push([...at(k), 0.38]);      // (and where four such cells meet)
+    for (const k of rim) if (!grassy.has(k)) { const [x, z] = at(k); bare.push([x + st / 2, z + st / 2, 0.5]); }
+  }
 
   // ------------------------------------------------------------------ the ground picture, the land, the grass
   await onStep('ระบายสีพื้น');
@@ -306,7 +345,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return casters.map(([x, z, h, rr, st]) => [x + ux * len * h / 2, z + uz * len * h / 2, len * h / 2 + rr, rr * 1.1, ux, uz, st, 0]);
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
-  const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
+  const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
   const fade = { far, fadeA: FR * 0.93, fadeB: FR };
   // the banks' sand: painted with the ways' own brush, so the beach and the ways read as one ground (?sand=flat: as it was)
   let sandPaint = null;
@@ -360,7 +399,17 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   if (pathTex) ways.userData.dispose = (d => () => { d(); pathTex.dispose(); })(ways.userData.dispose);
   group.add(ways);
   await onStep('ปลูกหญ้า');
-  const grass = G.createFollowGrass({ map, field, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
+  let grassField = field;                                                  // the land's heights as the grass has them: the boulders' grassy tops raised into them
+  if (grassTop.size) {
+    const half = new Uint16Array(field.texture.image.data);
+    for (const [k, y] of grassTop) half[k] = THREE.DataUtils.toHalfFloat(y);
+    const texture = new THREE.DataTexture(half, field.n, field.n, THREE.RedFormat, THREE.HalfFloatType);
+    texture.magFilter = texture.minFilter = THREE.LinearFilter; texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping; texture.needsUpdate = true;
+    grassField = { ...field, texture };
+  }
+  const grass = G.createFollowGrass({ map, field: grassField, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
+  if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
+  console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
   group.add(grass);
   // the woods, in groves, and the beds of flowers: each is drawn only when it is in view (see update)
   const groves = [], inView = [];
