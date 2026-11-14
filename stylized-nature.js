@@ -1504,7 +1504,7 @@ const TREE_TYPES = {
   },
   // big, wide, irregular single crown on a stout trunk
   oak: {
-    palette: 'broad', mask: 'oaky', height: 8.6, custom: buildGrown, detailMul: 0.5,
+    palette: 'broad', mask: 'oaky', height: 8.6, custom: buildGrown, detailMul: 0.6,
     trunk: {
       pts: [[0, -0.05, 0], [0.03, 0.8, 0], [0.08, 1.6, 0.03], [0.05, 2.5, 0], [0.1, 3.5, 0.03], [0.1, 4.6, 0], [0.14, 5.8, 0], [0.1, 6.9, 0]],
       radius: t => 0.4 * Math.pow(1 - t, 1.1) + 0.03 + 0.3 * Math.exp(-t * 20), lean: 0.12, sway: 0.2, roots: 6,
@@ -1513,13 +1513,16 @@ const TREE_TYPES = {
     // boughs: a crown much wider than it is tall, deep green (the broadleaf is the tall light one, this the broad dark one)
     grow: {
       crown: { c: [0, 5.4, 0], r: [4.3, 2.4, 4.1], taper: 0.3, taperLow: 0.25 },
-      limbs: { n: [5, 6], t: [0.3, 0.62], elev: [-0.5, 0.4], reach: [0.55, 0.85], r: 0.15, bend: [0.45, 0.15, 0.8, 0.5] },
-      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.35, 0.4], reach: [0.8, 1.0], r: 0.65 },
-      clump: { r: 1.55, flat: 0.7, n: 8, vary: [0.85, 1.3], varySub: [0.55, 1.0], shade: [0.42, 0.42, 0.16], bough: true, rough: 0.4, noise: 0.1, stray: 0.14, tint: 0.06, card: 1.15, heart: 7, heartTint: -0.12, core: 0 },
+      limbs: { n: [5, 6], t: [0.3, 0.62], elev: [-0.3, 0.45], reach: [0.55, 0.85], r: 0.15, bend: [0.45, 0.15, 0.8, 0.5] },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.25, 0.4], reach: [0.8, 1.0], r: 0.65, hidden: true },
+      floor: -0.26, tuck: 1.0,
+      // leaves the template's way (the broadleaf's): many small cards, displaced, lit by height in the crown, kept tidy
+      clump: { r: 1.55, flat: 0.7, n: 8, vary: [0.85, 1.3], varySub: [0.55, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.82, heart: 8, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
       top: 1.5,
     },
     quantiles: [0.14, 0.36, 0.62, 0.78, 0.92],       // deeper green than the broadleaf: less of the bright top tones
-    bark: ['#6e5146', '#4a3632', '#30242a'], shadeY: 3.2,
+    // painted bark, a darker and greyer brown than the broadleaf's
+    bark: ['#94715a', '#6b5143', '#463732'], barkHi: '#d9bd98', barkLit: 0.2, barkShade: 0.42, barkStroke: 0.85, barkContrast: 2.9, barkFoot: 0.7, shadeY: 3.2,
   },
   // a conifer: whorls of level limbs up a straight leader, each ending in a flat pad of needles, the pads shrinking toward the tip
   pine: {

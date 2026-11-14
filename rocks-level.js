@@ -70,7 +70,7 @@ const LOOSE = [
 // shallow, so they stand on the bed and break the surface
 const IN_WATER = [['boulder', 3, 200, 0.55, 20, 1.2, 0.25], ['stone', 3, 70, 0.4, 80, 1.5, 0.15], ['stone', 2, 135, 0.35, 10, 1.1, 0.1],
   ['ledge', 1, -20, 0.5, -30, 0.85, 0.2], ['boulder', 1, 250, 0.9, 50, 1.4, 0.3]];
-const TRUNK = { broadleaf: 0.6, oak: 0.7, pine: 0.38, birch: 0.26 }, TREE_H = { broadleaf: 7.5, oak: 7.8, pine: 7.9, birch: 8.4 };
+const TRUNK = { broadleaf: 0.6, oak: 0.7, pine: 0.38, birch: 0.26 }, TREE_H = { broadleaf: 7.5, oak: 7.4, pine: 7.9, birch: 8.4 };
 
 export async function buildRocksLevel({ seed = 6, far = '#cde6f2', grassCount = 160000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
   const M = ROCKS_MAP, C = M.cliff, FR = M.fieldRadius, CELLS = 304, STEP = FR * 2 / CELLS, NV = CELLS + 1;
