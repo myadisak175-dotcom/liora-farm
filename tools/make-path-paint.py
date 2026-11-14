@@ -1,4 +1,5 @@
-# make-path-paint.py  —  the soft paths' painted look: trodden sandy earth laid in with a brush, smooth and warm
+# make-path-paint.py  —  the soft paths' painted look: trodden sandy earth laid in with a brush, smooth and warm; and, with
+# the same brush, the sand of the water's banks
 #
 # Writes assets/ground/path-paint.webp: 768 x 768, seamless both ways, to be laid on the ways about 4 m to a repeat
 # (ground-paths.js, style 'soft': hill-village-level.js asks for it). It is the earth's own colour only; what makes a path
@@ -11,22 +12,42 @@
 #      not as gravel;
 #   5. a little grain of the paper.
 #
-#   python3 tools/make-path-paint.py            (Termux: pip install numpy scipy pillow)
+# `sand` writes assets/ground/sand-paint.webp instead: the banks' sand (stylized-terrain.js lays it on them, at the ways' own
+# size, when hill-village-level.js hands it over). The same brush and the same colours a step paler, quieter dabs, few
+# pebbles and many fine grains, light and dark: so the beach and the ways read as one ground. Wet sand is not painted here:
+# the game darkens the sand toward the water, wherever the water is.
 #
-# To change the colours: PALETTE, dark to light. To change how it is laid on: DABS, DAMP, PEBBLES, GRAINS.
+#   python3 tools/make-path-paint.py            (Termux: pip install numpy scipy pillow)
+#   python3 tools/make-path-paint.py sand
+#
+# To change the colours: PALETTE, dark to light. To change how it is laid on: DABS, DAMP, PEBBLES, GRAINS (each look's own, in LOOKS).
+import sys
 from pathlib import Path
 import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
 N = 768
-OUT = Path(__file__).resolve().parent.parent / 'assets/ground/path-paint.webp'
-rng = np.random.default_rng(23)
-PALETTE = ['#a5874f', '#c4a360', '#dcc07c', '#ead292', '#f4e2ac']      # a pebble's shadow, damp earth, the earth itself, dry and trodden, the palest grains
-DABS = (260, (36, 150), (16, 46), (0.08, 0.20))                       # how many dabs, how long, how wide (px), how much lighter or darker (of the palette's whole range)
-DAMP = (9, (110, 220), 0.09)                                          # how many damp patches, how big (px), how much darker
-PEBBLES = (30, (4.0, 9.5))                                            # how many pebbles, how big (px across: 192 px is a metre)
-GRAINS = (110, (1.2, 2.4))                                            # how many pale grains, how big
+LOOKS = {
+    'path': dict(                                                     # the ways' earth
+        out='path-paint.webp', seed=23,
+        PALETTE=['#a5874f', '#c4a360', '#dcc07c', '#ead292', '#f4e2ac'],      # a pebble's shadow, damp earth, the earth itself, dry and trodden, the palest grains
+        DABS=(260, (36, 150), (16, 46), (0.08, 0.20)),                       # how many dabs, how long, how wide (px), how much lighter or darker (of the palette's whole range)
+        DAMP=(9, (110, 220), 0.09),                                          # how many damp patches, how big (px), how much darker
+        PEBBLES=(30, (4.0, 9.5)),                                            # how many pebbles, how big (px across: 192 px is a metre)
+        GRAINS=[(110, (1.2, 2.4), 0.2)]),                                    # how many grains, how big, how much lighter (under 0: darker)
+    'sand': dict(                                                     # the banks' sand
+        out='sand-paint.webp', seed=41,
+        PALETTE=['#b89a64', '#d4b97c', '#e4cc90', '#eedba6', '#f7ebc6'],      # a pebble's shadow, damp sand, the sand itself, dry and pale, the palest grains
+        DABS=(250, (40, 160), (16, 46), (0.09, 0.20)),
+        DAMP=(5, (120, 240), 0.06),
+        PEBBLES=(10, (3.5, 7.5)),
+        GRAINS=[(280, (1.2, 2.2), 0.18), (150, (1.0, 1.8), -0.2)]),
+}
+look = LOOKS[sys.argv[1] if len(sys.argv) > 1 else 'path']
+OUT = Path(__file__).resolve().parent.parent / 'assets/ground' / look['out']
+rng = np.random.default_rng(look['seed'])
+PALETTE, DABS, DAMP, PEBBLES, GRAINS = (look[k] for k in ('PALETTE', 'DABS', 'DAMP', 'PEBBLES', 'GRAINS'))
 pal = np.array([[int(c[i:i + 2], 16) for i in (1, 3, 5)] for c in PALETTE], float) / 255
 sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 0, 1))
 
@@ -82,10 +103,10 @@ for _ in range(n):
     t = t * (1 - body) + body * (0.12 + 0.5 * lit)
     shadow = (1 - sm(0.6, 1.3, blob(cx + a * 0.7, cy + a * 0.8, a * 1.3, a * 1.0, ang))) * (1 - body)
     t -= 0.10 * shadow
-n, size = GRAINS
-for _ in range(n):
-    a = rng.uniform(*size)
-    t += 0.2 * (1 - sm(0.4, 1.0, blob(rng.uniform(0, N), rng.uniform(0, N), a, a, 0)))
+for n, size, tone in GRAINS:
+    for _ in range(n):
+        a = rng.uniform(*size)
+        t += tone * (1 - sm(0.4, 1.0, blob(rng.uniform(0, N), rng.uniform(0, N), a, a, 0)))
 # ---- 5. the paper's grain
 t += (rng.random((N, N)) - .5) * 0.02
 img = colour(t)

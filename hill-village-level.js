@@ -15,7 +15,8 @@
 // village, x east and z south. To change the land or move anything: edit the tool, run it, reload. The houses and the small
 // things can also be moved by hand in the game (place-editor.js): the moves are kept in the browser and put onto the plan as
 // it loads (place-edits.js), until they go into the tool. ?look=flat draws the kit's
-// houses in flat colour patches instead of the kit's own painted pictures; ?cliff=strata the cliffs as they were before the brush.
+// houses in flat colour patches instead of the kit's own painted pictures; ?cliff=strata the cliffs as they were before the brush;
+// ?sand=flat the banks' sand in the valley's flat patches, as it was before it was painted with the ways' brush.
 //
 // The land is longer than it is wide, and big: the ground is drawn in pieces and the woods in groves, so what lies behind her
 // is not drawn at all.
@@ -49,6 +50,7 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
+  sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
@@ -302,8 +304,15 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, paint, cast: sunShadows(L.clone()) });
   const fade = { far, fadeA: FR * 0.93, fadeB: FR };
+  // the banks' sand: painted with the ways' own brush, so the beach and the ways read as one ground (?sand=flat: as it was)
+  let sandPaint = null;
+  if (new URLSearchParams(location.search).get('sand') !== 'flat') try {
+    sandPaint = await new THREE.TextureLoader().loadAsync(url(M.sand));
+    sandPaint.wrapS = sandPaint.wrapT = THREE.RepeatWrapping; sandPaint.anisotropy = 4; sandPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
+  } catch (err) { console.warn('[hill-village] sand paint', err); }
   // the land itself: only the columns of the ground's grid that lie on the land, in pieces (each drawn only when it is in view),
-  // in the valley's land paint: grass on the flat, rock on the cliffs, sand by the water, earth in the fields
+  // in the valley's land paint: grass on the flat, rock on the cliffs, sand by the water (painted, wet toward the water, and
+  // going through dry grass into the meadow where the blades stand thick), earth in the fields
   const terrain = new THREE.Group(); terrain.name = 'terrain';
   {
     const { n, step, heights } = field, cA = Math.max(0, Math.floor((X0 + FR) / step)), cB = Math.min(n - 1, Math.ceil((X1 + FR) / step)), cols = cB - cA + 1;
@@ -321,7 +330,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
-    const mat = T._terrain.terrainMaterial(far, [HX + 1, FR], CZ, { cliffPaint });
+    const mat = T._terrain.terrainMaterial(far, [HX + 1, FR], CZ, { cliffPaint, sandPaint, ground: map });
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     const [pa, pd] = M.pieces, own = [whole, mat];
     for (let pj = 0; pj < pd; pj++) for (let pi = 0; pi < pa; pi++) {
@@ -337,6 +346,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       terrain.add(m); own.push(g);
     }
     if (cliffPaint) own.push(cliffPaint);
+    if (sandPaint) own.push(sandPaint);
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };
   }
   group.add(terrain);

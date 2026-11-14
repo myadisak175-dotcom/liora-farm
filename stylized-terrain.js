@@ -75,6 +75,8 @@ const TERRAIN_COLORS = {
   grass: ['#7a9b3c', '#86a640', '#93b145', '#a5c04b'],
   rock: ['#e2d6b4', '#c2b38f', '#9a8b6c', '#6b604c'],      // sunlit top .. deep seams
   sand: ['#efe1b6', '#e4cf9a', '#cbb07c'],               // dry light, dry, wet (at the water)
+  sandWet: '#cdbda8',                                    // painted sand (sandPaint) is multiplied by this where it is wet: darker, a touch richer
+  hay: '#b9b25a',                                        // dry grass, where painted sand gives way to the meadow (the soft ways' own: ground-paths.js)
   path: ['#e3cc98', '#c4a76f'],
   worn: '#eedcae',                                       // the middle of a way, where feet fall most
   verge: '#a2b24c',                                      // grass beside a way: trodden short, a little yellowed
@@ -90,12 +92,22 @@ BLANK_WAYS.needsUpdate = true;
 
 // cliffPaint: a seamless painted picture of rock (a THREE.Texture) to lay on the cliffs in place of the strata, covering
 // cliffTile metres along a cliff and up it. Without it nothing changes.
-function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10] } = {}) {
+// sandPaint: a seamless painted picture of sand (tools/make-path-paint.py sand) to lay on the banks in place of the flat
+// patches of sand, at the soft ways' own size, so the beach and the ways read as one ground. ground: the ground map the
+// grass grows by ({ texture, rect }: stylized-grassfield.js), so no sand shows under a thick meadow: it goes through dry
+// grass into it where the blades stand thick. Without them nothing changes.
+function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null } = {}) {
   const C = TERRAIN_COLORS;
+  const defines = {};
+  if (cliffPaint) defines.CLIFF_PAINT = 1;
+  if (sandPaint) defines.SAND_PAINT = 1;
+  if (sandPaint && ground) defines.SAND_GROUND = 1;
   return new THREE.ShaderMaterial({
-    defines: cliffPaint ? { CLIFF_PAINT: 1 } : {},
+    defines,
     uniforms: {
       uCliffPaint: { value: cliffPaint }, uCliffTile: { value: new THREE.Vector2(1 / cliffTile[0], 1 / cliffTile[1]) },
+      uSandPaint: { value: sandPaint }, uSandWet: { value: rgb(C.sandWet) }, uHay: { value: rgb(C.hay) },
+      uGround: { value: ground ? ground.texture : null }, uGroundRect: { value: ground ? ground.rect : new THREE.Vector3(0, 0, 1) },
       uG0: { value: rgb(C.grass[0]) }, uG1: { value: rgb(C.grass[1]) }, uG2: { value: rgb(C.grass[2]) }, uG3: { value: rgb(C.grass[3]) },
       uR0: { value: rgb(C.rock[0]) }, uR1: { value: rgb(C.rock[1]) }, uR2: { value: rgb(C.rock[2]) }, uR3: { value: rgb(C.rock[3]) },
       uB0: { value: rgb(C.sand[0]) }, uB1: { value: rgb(C.sand[1]) }, uB2: { value: rgb(C.sand[2]) },
@@ -141,6 +153,14 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         uniform sampler2D uCliffPaint;
         uniform vec2 uCliffTile;
       #endif
+      #ifdef SAND_PAINT
+        uniform sampler2D uSandPaint;
+        uniform vec3 uSandWet, uHay;
+      #endif
+      #ifdef SAND_GROUND
+        uniform sampler2D uGround;    // a: how much grass grows there (the map the blades read)
+        uniform vec3 uGroundRect;     // its middle x, z and 1 / its width
+      #endif
       varying vec4 vRock;
       uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
       uniform vec4 uWaysRect;       // centre x, centre z, 1 / width, 1 / depth of the ground the picture covers
@@ -174,7 +194,35 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
           float g = s * 0.6 + (lit - 0.9) * 2.6 + 0.2;
           col = g > 0.6 ? uG3 : (g > 0.45 ? uG2 : (g > 0.3 ? uG1 : uG0));
           float b = vBank + (j - 0.37) * 0.5;
-          if (b < 0.62) col = b < 0.16 ? uB2 : (noise2(vWP.xz * 0.35) > 0.55 ? uB0 : uB1);   // sand beach, wet at the water
+          #ifdef SAND_PAINT
+            // the banks' sand, painted with the ways' own brush and laid as they are (twice, at two sizes, turned, so the repeat
+            // does not show). No line anywhere: darker and wet toward the water, and where the grass begins it goes to dry grass
+            // and fades into the meadow, as the soft ways do
+            float sb = vBank + (noise2(vWP.xz * 0.9) - 0.5) * 0.24 + (noise2(vWP.xz * 3.1 + 5.0) - 0.5) * 0.08;    // ragged, but soft
+            float sand = 1.0 - smoothstep(0.48, 0.80, sb);                  // the beach, until the land rises out of the water's reach
+            #ifdef SAND_GROUND
+              // and none under a thick meadow: where the blades stand thick the sand has given way to dry grass
+              float grass = texture2D(uGround, (vWP.xz - uGroundRect.xy) * uGroundRect.z + 0.5).a
+                          + (noise2(vWP.xz * 5.0) - 0.5) * 0.22 + (noise2(vWP.xz * 13.0) - 0.5) * 0.10;
+              sand *= 1.0 - smoothstep(0.55, 0.95, grass);
+            #else
+              float grass = 1.0 - sand;
+            #endif
+            if (sand > 0.001) {
+              vec2 sp = vWP.xz / 4.1, sq = mat2(0.8, -0.6, 0.6, 0.8) * vWP.xz / 6.3;
+              vec3 sc = mix(texture2D(uSandPaint, sp).rgb, texture2D(uSandPaint, sq).rgb, 0.35 + 0.3 * noise2(vWP.xz * 0.3));
+              // broad soft patches of deeper and of paler tone, as on the ways
+              float broad = noise2(vWP.xz * 0.36 + 7.0), n2 = noise2(vWP.xz * 2.4 + 3.0);
+              sc = mix(sc, sc * vec3(0.93, 0.89, 0.81), smoothstep(0.50, 0.74, broad) * (0.55 + 0.45 * n2));
+              sc = mix(sc, vec3(0.96, 0.89, 0.71), smoothstep(0.42, 0.20, broad) * 0.25);
+              float wet = 1.0 - smoothstep(0.02, 0.40, sb + (noise2(vWP.xz * 1.7 + 9.0) - 0.5) * 0.14);
+              sc = mix(sc, sc * uSandWet, wet);                            // wet toward the water (and under it)
+              sc = mix(sc, uHay, smoothstep(0.30, 0.85, max(grass, 1.0 - sand)) * 0.7);      // dry grass where the meadow begins
+              col = mix(col, sc, sand);
+            }
+          #else
+            if (b < 0.62) col = b < 0.16 ? uB2 : (noise2(vWP.xz * 0.35) > 0.55 ? uB0 : uB1);   // sand beach, wet at the water
+          #endif
           float p = vPath + (j - 0.37) * 0.45;
           if (p > 0.5) col = p > 0.72 ? uP0 : uP1;                          // dirt path, darker rim
           // WAYS: trodden ways between the houses. From the grass inwards: a verge of short yellowed grass, a rim of darker
