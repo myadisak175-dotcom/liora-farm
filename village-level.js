@@ -89,7 +89,7 @@ const VILLAGE = {
     [-23.5, 55], [-9.5, 53], [0, 53], [5, 37], [-32, 51], [-43, -46], [-36, -33]],
   flowers: [[-17, 40, 1.4], [-11, 46, 1.3], [-6.5, -9, 1.3], [-1, -44, 1.3], [-56, 16, 1.4], [44, 4, 1.3]],
 };
-const TRUNK = { broadleaf: 0.6, oak: 0.55, pine: 0.38, birch: 0.26, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.5, pine: 7.9, birch: 8.4, sapling: 4 };
+const TRUNK = { broadleaf: 0.6, oak: 0.7, pine: 0.38, birch: 0.26, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.8, pine: 7.9, birch: 8.4, sapling: 4 };
 
 export async function buildVillageLevel({ seed = 7, far = '#cde6f2', grassCount = 150000, sun = [-0.45, 0.62, 0.64], windmill = './assets/models/windmill.glb', onStep = async () => {} } = {}) {
   const M = VILLAGE_MAP, half = M.size / 2, FR = half, n = M.cells;

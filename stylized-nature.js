@@ -199,8 +199,8 @@ const LEAF_STYLES = {
   willow: { draw: 'tassel', seed: 64 },
   bamboo: { draw: 'spray', seed: 18 },
   // sprays: a handful of separate pointed leaves fanning out from a small heart, so a card's outline is leaf tips, never a
-  // disc. leaves [count a-b], len: how far the tips reach (of the cell radius), wide: leaf width / length, body: the heart
-  leafy:   { draw: 'leaves', leaves: [24, 30], len: [0.5, 1.0], wide: [0.26, 0.36], body: 0.4, leaf: 0.5, seed: 31 },
+  // disc (leafy: few, long leaves reaching to very different lengths and a small heart: a ragged star). leaves [count a-b], len: how far the tips reach (of the cell radius), wide: leaf width / length, body: the heart
+  leafy:   { draw: 'leaves', leaves: [15, 20], len: [0.3, 1.0], wide: [0.3, 0.44], body: 0.28, leaf: 0.66, seed: 8 },
   leaflet: { draw: 'leaves', leaves: [30, 38], len: [0.4, 1.0], wide: [0.36, 0.52], body: 0.27, leaf: 0.36, seed: 12 },    // small leaves (birch)
   needles: { draw: 'leaves', leaves: [40, 52], len: [0.45, 1.0], wide: [0.13, 0.2], body: 0.24, seed: 77 },              // conifer tufts
   // a conifer bough seen hanging: fingers of needles sweeping down and out from a shoulder. Cards using it stay upright
@@ -1136,7 +1136,7 @@ function buildCanopy(rng, tiers, palName, detail = 1, blossomOut = null, quantil
       if (T.span) hT = THREE.MathUtils.clamp((v.y - T.span[0]) / (T.span[1] - T.span[0]), 0, 1);
       const hL = M ? THREE.MathUtils.clamp((v.y - M[0]) / (M[1] - M[0]), 0, 1) : e.y * 0.5 + 0.5;
       nT.copy(v).sub(Ec).divide(Er).divide(Er).normalize();
-      const cardTint = -0.2 + (rng() - 0.5) * 0.05;
+      const cardTint = (T.heartTint ?? -0.2) + (rng() - 0.5) * 0.05;      // how much darker than the leaves around them
       SS.push(W[0] * hT + W[1] * hL + W[2] * (nT.dot(SUN) * 0.5 + 0.5) + (T.bright || 0) + cardTint);
       C.push(v.x, v.y, v.z);
       P.push(hT, 0, cardTint, Math.floor(rng() * 4));
@@ -1266,7 +1266,7 @@ function placeFruit(rng, F, spots) {
 //   limbs: { n, t, elev | lift, reach, r, bend }  t along the trunk; elev = where on the crown the tip lands, or
 //                                                  lift = how far above its own start (tall crowns)
 //   subs:  { n, t, elev, reach, r }               side branches off each limb (optional)
-//   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart }   the leaf clump on each tip (vary: size
+//   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint }   the leaf clump on each tip (vary: size
 //          spread on limbs / side branches, shade: its own SHADE_WEIGHTS, taper: smaller toward the top); top: clump size on the leader
 function buildGrown(rng, spec) {
   const G = spec.grow, tiers = [];
@@ -1289,7 +1289,7 @@ function buildGrown(rng, spec) {
     c.y += cr * (K.lift ?? 0.1);
     tiers.push({ c: [c.x, c.y, c.z], r: [cr, cr * (K.flat ?? 0.8), cr], clumpR: cr * (K.clump ?? 0.5), n: K.n ?? 8,
       openBelow: K.openBelow ?? -0.7, coreScale: K.core ?? 0.5, coreBottom: 0.7, coreDetail: 1, env, shade: K.shade,
-      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart,
+      rough: K.rough, noise: K.noise, stray: K.stray, tint: K.tint, cardScale: K.card, lumpFlat: K.pad, heart: K.heart, heartTint: K.heartTint,
       coreTone: K.bough ? (hc => hc > 0.6 ? 2 : hc > 0.33 ? 1 : 0)((c.y - env.c.y + env.r.y) / (2 * env.r.y)) : undefined });
   };
   // K.bough: the clumps of one limb (its own and its side branches') are lit together as one bough
@@ -1440,22 +1440,22 @@ const TREE_TYPES = {
   },
   // big, wide, irregular single crown on a stout trunk
   oak: {
-    palette: 'broad', mask: 'broad', height: 8.6,
+    palette: 'broad', mask: 'leafy', height: 8.6, custom: buildGrown, detailMul: 0.5,
     trunk: {
-      pts: [[0, -0.05, 0], [0.02, 0.8, 0], [0, 1.7, 0], [0.05, 2.6, 0], [0.1, 3.6, 0], [0.1, 4.8, 0]],
-      radius: t => 0.3 - 0.17 * t + 0.24 * Math.exp(-t * 28), lean: 0.1,
+      pts: [[0, -0.05, 0], [0.03, 0.8, 0], [0.08, 1.6, 0.03], [0.05, 2.5, 0], [0.1, 3.5, 0.03], [0.1, 4.6, 0], [0.14, 5.8, 0], [0.1, 6.9, 0]],
+      radius: t => 0.4 * Math.pow(1 - t, 1.1) + 0.03 + 0.3 * Math.exp(-t * 20), lean: 0.12, sway: 0.2, roots: 6,
     },
-    branches: [
-      { t: [0.4, 0.52], n: 6, rise: [1.8, 2.5], out: [1.9, 2.8], r: 0.13, twig: 0.9 },
-      { t: [0.8, 0.95], n: 3, rise: [1.2, 1.6], out: [1.0, 1.5], r: 0.08 },
-    ],
-    tiers: [
-      { c: [0, 5.3, 0], r: [3.4, 1.95, 3.2], clumpR: 1.3, n: 40, openBelow: -0.84, taper: 0.32, taperLow: 0.3, egg: -0.05 },
-      { c: [-2.3, 4.7, 0.6], r: [1.5, 1.15, 1.5], clumpR: 0.9, n: 14, openBelow: -0.7, taper: 0.3, taperLow: 0.2 },
-      { c: [2.2, 4.9, -0.7], r: [1.45, 1.1, 1.45], clumpR: 0.9, n: 14, openBelow: -0.7, taper: 0.3, taperLow: 0.2 },
-      { c: [0.4, 6.75, 0.2], r: [1.9, 1.15, 1.8], clumpR: 1.0, n: 16, bright: 0.05, openBelow: -0.6, taper: 0.35 },
-    ],
-    shadeY: 3.2,
+    // grown: a short massive trunk that forks low into heavy limbs reaching far out, nearly level, each carrying its own
+    // boughs: a crown much wider than it is tall, deep green (the broadleaf is the tall light one, this the broad dark one)
+    grow: {
+      crown: { c: [0, 5.4, 0], r: [4.3, 2.4, 4.1], taper: 0.3, taperLow: 0.25 },
+      limbs: { n: [5, 6], t: [0.3, 0.62], elev: [-0.5, 0.4], reach: [0.55, 0.85], r: 0.15, bend: [0.45, 0.15, 0.8, 0.5] },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.35, 0.4], reach: [0.8, 1.0], r: 0.65 },
+      clump: { r: 1.55, flat: 0.7, n: 8, vary: [0.85, 1.3], varySub: [0.55, 1.0], shade: [0.42, 0.42, 0.16], bough: true, rough: 0.4, noise: 0.1, stray: 0.14, tint: 0.06, card: 1.15, heart: 7, heartTint: -0.12, core: 0 },
+      top: 1.5,
+    },
+    quantiles: [0.14, 0.36, 0.62, 0.78, 0.92],       // deeper green than the broadleaf: less of the bright top tones
+    bark: ['#6e5146', '#4a3632', '#30242a'], shadeY: 3.2,
   },
   // a conifer: whorls of level limbs up a straight leader, each ending in a flat pad of needles, the pads shrinking toward the tip
   pine: {

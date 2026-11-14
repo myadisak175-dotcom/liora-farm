@@ -149,8 +149,8 @@ export async function buildMeadowLevel({ seed = 4, far = '#cde6f2', deer = null,
   const colliders = [];
   const shade = [], bare = [], press = [];
   const crowns = [];              // [x, y, z, r] rough leaf masses: the camera keeps out of them
-  const CROWN_Y = { broadleaf: 6.2, oak: 5.2, pine: 6.1, birch: 7.0, sapling: 3.4 }, CROWN_R = { broadleaf: 4.4, oak: 3.5, pine: 2.1, birch: 2.4, sapling: 1.9 };
-  const TRUNK = { broadleaf: 0.6, oak: 0.55, pine: 0.38, birch: 0.26, sapling: 0.2 };
+  const CROWN_Y = { broadleaf: 6.2, oak: 5.3, pine: 6.1, birch: 7.0, sapling: 3.4 }, CROWN_R = { broadleaf: 4.4, oak: 5.0, pine: 2.1, birch: 2.4, sapling: 1.9 };
+  const TRUNK = { broadleaf: 0.6, oak: 0.7, pine: 0.38, birch: 0.26, sapling: 0.2 };
   const CROWN = { broadleaf: 4.2, oak: 5.2, pine: 3.0, birch: 2.6, sapling: 2.0 };
   let ps = seed * 100;
   const cameraTrunks = [];
