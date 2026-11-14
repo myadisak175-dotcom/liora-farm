@@ -108,6 +108,8 @@ vec3 windOffset(vec3 p, float ph) {
 const HAZEF = /* glsl */`
 uniform vec3 uHaze;
 varying float vHaze;`;
+// for kits that write their own plant shaders on the same wind and haze (anime-tree.js)
+export { VCOMMON as NATURE_VCOMMON, HAZEF as NATURE_HAZEF };
 // The shaders' noise. Its random numbers come from whole-number arithmetic that a 32-bit float does exactly (nothing over
 // 83 000), so they are the same numbers on every graphics chip, however it rounds. (They used to be fract(sin(x) * 43758.5): a
 // phone's chip may round x differently in two places of one shader, the sine blows that up into a different number, and two
@@ -1781,6 +1783,20 @@ const TREE_TYPES = {
   },
 };
 export const TREE_TYPE_NAMES = Object.keys(TREE_TYPES);
+export const treeSpec = type => TREE_TYPES[type];
+
+// The wood and the leaf masses of a tree from a spec shaped like the TREE_TYPES ones (trunk, grow or tiers, bark ...), for a
+// kit that dresses the crown its own way (anime-tree.js). trunk: bark mesh, ready to add; tiers: one leaf mass per limb tip
+// (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space.
+export function growTreeFrame(spec, seed = 1) {
+  const rng = mulberry32(seed * 7919 + 5);
+  let trunk, tiers;
+  if (spec.custom || spec.grow) ({ trunk, tiers } = (spec.custom || buildGrown)(rng, spec));
+  else { tiers = typeof spec.tiers === 'function' ? spec.tiers(rng) : spec.tiers; trunk = buildTrunk(rng, spec); }
+  const mesh = new THREE.Mesh(withBase(trunk), barkMaterial(spec));
+  mesh.frustumCulled = false;
+  return { trunk: mesh, tiers, rng };
+}
 export const treeSpecScale = type => TREE_TYPES[type]?.scale ?? 1;
 
 function treeParts(type, seed, detail) {

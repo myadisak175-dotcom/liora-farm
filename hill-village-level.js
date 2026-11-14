@@ -33,6 +33,7 @@ import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import * as BD from './stylized-buildings.js';
 import { createAnimeCells } from './anime-cells.js';
+import { createAnimeForest, setAnimeSun } from './anime-tree.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { waterLookup, createLandWater } from './land-water.js';
 import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
@@ -58,7 +59,7 @@ export const HILL_VILLAGE_MAP = {
   grove: 80,
   sails: /^polySurface142_/,      // the part of the windmill model that is used: its sails (the rest of the mill is of the kit)
 };
-const TRUNK = { broadleaf: 0.6, oak: 0.7, pine: 0.38, birch: 0.26, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.4, pine: 7.9, birch: 8.4, sapling: 4 };
+const TRUNK = { broadleaf: 0.45, oak: 0.7, pine: 0.38, birch: 0.26, sapling: 0.2 }, TREE_H = { broadleaf: 9.4, oak: 7.4, pine: 7.9, birch: 8.4, sapling: 4 };      // (the anime trees of anime-tree.js)
 const ROCK_R = { boulder: 1.0, stones: 0.8, river: 0.7, pebbles: 0 };      // (how far round a rock of the plan she cannot walk, times its size)
 
 export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCount = 150000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
@@ -237,7 +238,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   }
   // the great tree: a forest of one
   for (const { b, plant } of bigTrees) {
-    const obj = N.createForest([plant]); obj.name = 'greatTree';
+    const obj = createAnimeForest([plant]); obj.name = 'greatTree';
     group.add(obj);
     addThing(b.id, b, (x, z) => ({ y: H(x, z) - 0.05, deep: 0 }), null, { obj, y0: plant.y + 0.05 });
   }
@@ -339,6 +340,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return [earth, sand, mow];
   };
   const L = new THREE.Vector3(...sun).normalize();
+  setAnimeSun(L);                                                          // (until the time of day says otherwise)
   const sunShadows = dir => {
     L.copy(dir).normalize();
     const dxz = Math.hypot(L.x, L.z) || 1, ly = Math.max(0.3, L.y), ux = -L.x / dxz, uz = -L.z / dxz, len = dxz / ly;
@@ -411,7 +413,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
   console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
   group.add(grass);
-  // the woods, in groves, and the beds of flowers: each is drawn only when it is in view (see update)
+  // the woods (anime-tree.js: the plan's plants are placed by the land's own rules, in the map's tool), in groves, and the beds
+  // of flowers: each is drawn only when it is in view (see update)
   const groves = [], inView = [];
   {
     const by = new Map(), v = new THREE.Vector3(), grove = +new URLSearchParams(location.search).get('grove') || M.grove;
@@ -419,7 +422,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     for (const list of by.values()) {
       const box = new THREE.Box3();
       for (const p of list) { const sc = p.scale || 1, w = (p.kind === 'bush' ? 1.6 : 5.5) * sc; box.expandByPoint(v.set(p.x - w, p.y - 1, p.z - w)); box.expandByPoint(v.set(p.x + w, p.y + (p.kind === 'bush' ? 2.2 : 11.5) * sc, p.z + w)); }
-      const obj = N.createForest(list);
+      const obj = createAnimeForest(list);
       group.add(obj); groves.push({ obj, box }); inView.push({ obj, box });
     }
     let fs = seed * 71; const pal = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee']];
@@ -649,7 +652,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); },
+    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); },      // (the anime crowns are lit by it live)
     get sunCast() { return cast; },
     follow(pos, lookDir) { grass.userData.follow(pos, lookDir); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };

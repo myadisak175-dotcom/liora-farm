@@ -740,12 +740,29 @@ for f_ in falls:                                                      # the rock
         ROCKS_IN_LIPS.append(['boulder', f_['x'] + dz_ * u_ - dx_ * (0.55 * L_), f_['z'] - dx_ * u_ - dz_ * (0.55 * L_), b_, f_['yaw'] + 1.2 * u_])
 H = ndi.gaussian_filter(H, 0.6)
 
-# ------------------------------------------------------------------ 7. plants: woods where the painting has them, bushes at the cliffs' feet, flowers by the houses
+# ------------------------------------------------------------------ 7. plants: the land itself decides what grows where
+# Nothing is drawn by hand: every spot is put in one zone by what the land is there (how steep, how high, how near water, a
+# way, a house or a cliff, inside the part she walks on or out in the margin), and each zone has its own plants. Change the
+# land and the plants follow it. The rules:
+#   never        on a way or within 1.5 m of one, in water or within 2 m of it, on ground steeper than 30 degrees, on a
+#                building's ground, a field, a pen or a fence, a bridge, a cascade's steps, the map's edge, the line she cannot
+#                cross; and no tree in front of a place to look from (a narrow wedge before each view, in 10)
+#   the pit      pines and a few birches on its upper shelves
+#   the village  (within 14 m of a house) small trees and beds of flowers by the houses: no big tree to hide a house
+#   the water    (2 to 8 m from it) birches, bushes, flowers
+#   a cliff's foot   bushes thick, broadleaf trees in clumps
+#   a cliff's top    a few bushes (no tree to hang over the brink)
+#   a slope (15 to 30 degrees)   pines and bushes only
+#   the margin   thick wood: broadleaf and oak low down, the higher the more pines; at its edge bushes and small trees
+#                first, so the wood never ends in a straight line
+#   open ground  trees gather in groves (a slow noise): big trees in a grove's heart, small trees and bushes round its
+#                edge; between the groves now and then a lone oak or broadleaf
 gy, gx = np.gradient(H, MPP); slope = np.hypot(gx, gy)
 px_m = lambda m: max(1, int(round(m / MPP)))
-blocked = (water_d < 2.0) | (path_d < 1.3) | ndi.binary_dilation(slope > 0.55, iterations=px_m(1.2))
+STEEP, MIDSLOPE = math.tan(math.radians(30)), math.tan(math.radians(15))
+blocked = (water_d < 2.0) | (path_d < 1.5) | ndi.binary_dilation(slope > STEEP, iterations=px_m(1.0))
 for b_ in B:
-    blocked |= np.hypot(WX - b_['x'], WZ - b_['z']) < (b_['pad'] + 0.8 if b_['kind'] != 'tree' else 3.0)
+    if b_['kind'] != 'tree': blocked |= np.hypot(WX - b_['x'], WZ - b_['z']) < b_['pad'] + 0.8
 mk = Image.new('L', (NX, NZ), 0); md = ImageDraw.Draw(mk)
 P2 = lambda p: ((p[0] + XH) / MPP, (p[1] - Z0) / MPP)
 PXX = lambda u: ((u - .5) * SIZE + XH) / MPP; PXZ = lambda v: ((v - .5) * SIZE - Z0) / MPP
@@ -755,82 +772,125 @@ for c in CASC:                                                        # nor befo
     th = c['th']; rho_ = (WX - BOWL[0]) * math.cos(th) + (WZ - BOWL[1]) * math.sin(th); lat_ = -(WX - BOWL[0]) * math.sin(th) + (WZ - BOWL[1]) * math.cos(th)
     blocked |= (np.abs(lat_) < 8.0) & (rho_ > 10) & (rho_ < c.get('rh', c['nb']) + 3)
 for f in FENCES: md.polygon([P2(p) for p in f['points']], fill=255); md.line([P2(p) for p in f['points'] + f['points'][:1]], fill=255, width=px_m(3))
+for f in FIELDS:                                                      # the fields, and a metre and a half round them
+    c_, s_ = math.cos(f['yaw']), math.sin(f['yaw']); hw_, hd_ = f['w'] / 2 + 1.5, f['d'] / 2 + 1.5
+    md.polygon([P2((f['x'] + a * c_ + b * s_, f['z'] - a * s_ + b * c_)) for a, b in ((-hw_, -hd_), (hw_, -hd_), (hw_, hd_), (-hw_, hd_))], fill=255)
 blocked |= np.array(mk) > 0
 e = px_m(2.5); blocked[:e] = blocked[-e:] = True; blocked[:, :e] = blocked[:, -e:] = True
 blocked |= (np.abs(OUTSIDE) < 1.2)                                    # (nothing on the line she cannot cross: a trunk there would look like a wall)
-near_cliff = ndi.gaussian_filter((slope > 0.8).astype(float), px_m(3.5)) > 0.06
+blocked |= d_basin < BASIN_R + 6                                      # (nor in the spray round the plunge pool)
+free = ~blocked
 seen = np.maximum(np.abs(WX) / XH, np.abs(WZ - (Z0 + Z1) / 2) / ((Z1 - Z0) / 2)) < 0.94      # (past this the land is lost in the haze)
-south = WZ > PLAY[1] + 4
+
+# what the land is at every spot
+bld_d = np.full((NZ, NX), 1e9)                                        # metres from the nearest house's ground
+for b_ in B:
+    if b_['kind'] in ('house', 'well'): bld_d = np.minimum(bld_d, np.hypot(WX - b_['x'], WZ - b_['z']) - b_['pad'])
+Hs = ndi.gaussian_filter(H, px_m(4.0))                                # the land smoothed: a cliff's foot lies below it, its top above it
+cliffy = ndi.gaussian_filter((slope > 0.8).astype(float), px_m(3.5)) > 0.06
+inside_ = OUTSIDE < 0
+pit_zone = pit_in & (H > FLOOR - 36) & (r_bowl > 14)
+village = inside_ & ~pit_in & (bld_d < 14) & ~floor
+river = inside_ & ~pit_in & ~village & (water_d >= 2) & (water_d < 8)
+foot = inside_ & ~pit_in & ~village & ~river & cliffy & (H < Hs - 0.25) & (slope < MIDSLOPE)
+brink = inside_ & ~pit_in & ~village & ~river & cliffy & (H > Hs + 0.25)
+slope_z = inside_ & ~pit_in & ~village & ~river & ~foot & ~brink & (slope >= MIDSLOPE)
+open_ = inside_ & ~pit_in & ~village & ~river & ~foot & ~brink & ~slope_z
+margin = OUTSIDE > 0
+pn = np.random.default_rng(611)                                       # the plants' own dice (the rest of the plan's are thrown as before)
 
 
-def zone(poly):
-    m = Image.new('L', (NX, NZ), 0); ImageDraw.Draw(m).polygon([(PXX(u), PXZ(v)) for u, v in poly], fill=255); return np.array(m) > 0
+def noise(cell, octaves=3, gain=0.5):
+    """the plants' own slow noise over the whole land, 0..1; cell: metres across its broadest lumps"""
+    out = np.zeros((NZ, NX)); amp = 1.0; tot = 0.0
+    for o in range(octaves):
+        k = cell / 2 ** o / MPP
+        z = ndi.zoom(pn.random((int(NZ / k) + 4, int(NX / k) + 4)), k, order=3)[:NZ, :NX]
+        out += amp * z; tot += amp; amp *= gain
+    out /= tot
+    return (out - out.min()) / (out.max() - out.min())
 
 
-WOODS = [   # where the trees stand thick: polygon (u, v), metres between trees, share of pines
-    ([(0, .01), (.22, .01), (.235, .24), (.19, .34), (0, .345)], 6.5, 0.10), ([(0, .41), (.17, .44), (.11, .525), (0, .545)], 6.5, 0.10),
-    ([(.44, 0), (.66, 0), (.66, .05), (.44, .05)], 6.0, 0.6), ([(.66, 0), (1, 0), (1, .15), (.90, .115), (.68, .135)], 5.6, 0.75),
-    ([(.935, .19), (1, .19), (1, .43), (.935, .43)], 6.0, 0.6), ([(.80, .45), (1, .45), (1, .675), (.87, .685)], 5.6, 0.85),
-    ([(.93, .70), (1, .70), (1, .97), (.95, .97)], 6.0, 0.7),
-    ([(.30, .915), (.57, .875), (.57, 1), (.30, 1)], 5.6, 0.6), ([(0, .965), (.30, .93), (.30, 1), (0, 1)], 6.5, 0.2),
-    ([(.41, .33), (.455, .33), (.455, .45), (.41, .45)], 7.5, 0.0), ([(.615, .385), (.675, .37), (.675, .44), (.615, .465)], 7.5, 0.0),
-    ([(.235, .30), (.40, .30), (.40, .385), (.235, .40)], 7.0, 0.3),
-    # the meadow above the valley: a wood along its west side, a copse nearer the brink, and trees along the east brink
-    ([uvm(-80, 84), uvm(-42, 84), uvm(-36, 115), uvm(-44, PLAY[3]), uvm(-80, PLAY[3])], 9.5, 0.35),
-    ([uvm(-24, 104), uvm(-7, 99), uvm(1, 116), (uvm(-9, 134)), uvm(-26, 127)], 7.0, 0.1),
-    ([uvm(71, ZH + 24), uvm(80, ZH + 24), uvm(80, PLAY[3]), uvm(72, PLAY[3])], 7.0, 0.6),
-]
-vr = np.random.default_rng(21); plants = []
-# The plants and the valley's rocks are kept where they were first thrown: hill-village-scatter.json beside the plan, written
-# the first time and read ever after. (Each throw of the dice depends on all those before it, so a change to the land in one
-# place would otherwise move every tree on the map; and a thing she has moved by hand is found by where it stood.) Those now in
-# the way of something (a way, a bridge, water, a cliff's edge) are left out. To throw them all afresh: delete that file.
-_sc_file = OUT / 'hill-village-scatter.json'
-KEPT = json.loads(_sc_file.read_text()) if _sc_file.exists() else None
+groves = noise(26, 3)                                                 # where trees gather
+_m = margin & seen
+H_LO, H_HI = float(np.percentile(H[_m], 15)), float(np.percentile(H[_m], 92))
+height01 = np.clip((H - H_LO) / (H_HI - H_LO), 0, 1)                   # how high up the margin's hills a spot is
+grove_core, grove_edge = open_ & (groves > 0.64), open_ & (groves > 0.55) & (groves <= 0.64)
+meadow = open_ & (groves <= 0.55)
+
+plants = []; _grid = {}; GRID = 8.0                                   # (kind, x, z, radius): no two closer than their radii added
+
+
+def _crowded(x, z, rad):
+    gx_, gz_ = int(x // GRID), int(z // GRID)
+    for i_ in range(gx_ - 2, gx_ + 3):
+        for j_ in range(gz_ - 2, gz_ + 3):
+            for q in _grid.get((i_, j_), ()):
+                if math.hypot(q[1] - x, q[2] - z) < rad + q[3]: return True
+    return False
 
 
 def scatter(mask, spacing, pick, tries=0.25, keep=1.0):
-    if KEPT: return
-    ys, xs = np.nonzero(mask & ~blocked)
-    for i in vr.integers(0, max(1, len(ys)), int(len(ys) * MPP * MPP * tries)):
-        x, z = (xs[i] + vr.random()) * MPP - XH, (ys[i] + vr.random()) * MPP + Z0
-        if vr.random() > keep: continue
-        if plants and min(math.hypot(p[1] - x, p[2] - z) - (spacing if p[0] != 'flower' else 1.5) for p in plants) < 0: continue
-        plants.append(pick() + (x, z))
+    ys, xs = np.nonzero(mask & free)
+    if not len(ys): return
+    for i in pn.integers(0, len(ys), int(len(ys) * MPP * MPP * tries)):
+        x, z = (xs[i] + pn.random()) * MPP - XH, (ys[i] + pn.random()) * MPP + Z0
+        if pn.random() > keep: continue
+        kind = pick(x, z)
+        rad = 0.75 if kind == 'flower' else spacing / 2
+        if _crowded(x, z, rad): continue
+        p_ = (kind, x, z, rad); plants.append(p_); _grid.setdefault((int(x // GRID), int(z // GRID)), []).append(p_)
 
 
-def tree(pine):
-    def pick():
-        if vr.random() < pine: return ('pine',)
-        r_ = vr.random(); return ('oak',) if r_ < 0.4 else ('broadleaf',) if r_ < 0.78 else ('birch',)
+one = lambda k: (lambda x, z: k)
+def mix(*kw):                                                         # mix(('oak', 0.4), ('broadleaf', 0.45), ...): one at random, by weight
+    tot = sum(w for _, w in kw)
+    def pick(x, z):
+        r_ = pn.random() * tot
+        for k, w in kw:
+            r_ -= w
+            if r_ <= 0: return k
+        return kw[-1][0]
     return pick
+def margin_tree(x, z):                                                # the margin's wood: the higher up its hills, the more pines
+    h01 = float(sample(height01, (x, z))[0]); pine = sm(0.3, 0.75, h01)
+    if pn.random() < pine: return 'pine'
+    r_ = pn.random(); return 'oak' if r_ < 0.45 else 'broadleaf' if r_ < 0.9 else 'birch'
 
 
-wood_area = np.zeros((NZ, NX), bool)
-for poly, spacing, pine in WOODS:
-    m = zone(poly) & (OUTSIDE < 0); wood_area |= m; scatter(m, spacing, tree(pine))
-# the valley's floor: trees in clumps at the cliffs' feet, a few out on the grass
-clumps = floor & ~pit_in & (d_in > 1.5) & (d_in < 8.5) & (d_basin > BASIN_R + 8) & (OUTSIDE < 0) & (fbm_big(16, 2) > 0.5)
-wood_area |= clumps; scatter(clumps, 5.5, tree(0.15), keep=0.8)
-scatter(floor & ~pit_in & (d_in >= 8.5) & (r_bowl > BOWL_R + 4) & (OUTSIDE < 0), 13.0, lambda: ('broadleaf',) if vr.random() < 0.6 else ('birch',), tries=0.05, keep=0.5)
-wood_area |= floor
-# the pit's shelves (seen, not walked): pines and a few birches on the first three
-scatter(pit_in & (H > FLOOR - 36) & (r_bowl > 14), 6.5, lambda: ('pine',) if vr.random() < 0.7 else ('birch',), tries=0.12, keep=0.6)
-ring = OUTSIDE > 0; wood_area |= ring                                # the margin: woods all round, thickest just past the line
-scatter(ring & (OUTSIDE < 10), 8.0, tree(0.45)); scatter(ring & (OUTSIDE >= 10) & seen, 12.5, tree(0.6))
-scatter(~wood_area, 15.0, lambda: ('broadleaf',) if vr.random() < 0.6 else ('birch',), tries=0.02, keep=0.5)       # lone trees in the open
-scatter(near_cliff & (OUTSIDE < 0) & ~south, 4.0, lambda: ('bush',), tries=0.08, keep=0.6)
-scatter(near_cliff & (OUTSIDE < 0) & south, 4.5, lambda: ('bush',), tries=0.08, keep=0.35)
-scatter(~near_cliff & (OUTSIDE < 4), 8.0, lambda: ('bush',), tries=0.02, keep=0.4)
-flower_at = zone([(.14, .64), (.40, .64), (.52, .76), (.50, .86), (.22, .87), (.14, .80)]) | zone([(.46, .28), (.66, .26), (.67, .42), (.47, .46)])
-scatter(flower_at, 5.0, lambda: ('flower',), tries=0.05, keep=0.5)
-scatter(floor & ~pit_in & (d_in > 4) & (d_basin > BASIN_R + 6) & (OUTSIDE < 0), 6.5, lambda: ('flower',), tries=0.04, keep=0.5)      # and on the valley's floor
+scatter(pit_zone, 6.5, mix(('pine', 0.7), ('birch', 0.3)), tries=0.12, keep=0.6)
+scatter(village & (bld_d > 2) & (bld_d < 7), 5.0, one('flower'), tries=0.05, keep=0.5)
+scatter(village & (bld_d > 4), 9.0, one('sapling'), tries=0.04, keep=0.35)
+scatter(river, 7.0, one('birch'), tries=0.1, keep=0.45)
+scatter(river, 3.6, one('bush'), tries=0.08, keep=0.4)
+scatter(river, 6.0, one('flower'), tries=0.03, keep=0.3)
+scatter(foot & (groves > 0.45), 6.0, one('broadleaf'), tries=0.2, keep=0.75)
+scatter(foot, 3.4, one('bush'), tries=0.1, keep=0.6)
+scatter(slope_z, 7.0, one('pine'), tries=0.1, keep=0.5)
+scatter(slope_z, 4.2, one('bush'), tries=0.06, keep=0.35)
+scatter(brink, 5.0, one('bush'), tries=0.05, keep=0.3)
+scatter(grove_core, 6.2, mix(('oak', 0.4), ('broadleaf', 0.45), ('birch', 0.15)), tries=0.25)
+scatter(grove_edge, 4.6, one('sapling'), tries=0.15, keep=0.6)
+scatter(grove_edge, 3.2, one('bush'), tries=0.12, keep=0.6)
+scatter(margin & (OUTSIDE < 4), 4.8, one('sapling'), tries=0.15, keep=0.55)       # the wood's edge: small first
+scatter(margin & (OUTSIDE < 4), 3.2, one('bush'), tries=0.12, keep=0.6)
+scatter(margin & (OUTSIDE >= 4) & (OUTSIDE < 10), 7.5, margin_tree)
+scatter(margin & (OUTSIDE >= 10) & seen, 11.0, margin_tree)
+scatter(meadow, 18.0, mix(('oak', 0.55), ('broadleaf', 0.45)), tries=0.02, keep=0.5)      # a lone tree in the open now and then
+scatter(meadow, 9.0, one('bush'), tries=0.02, keep=0.3)
 out_plants = []
-for kind, x, z in plants:
-    sc = {'pine': (0.9, 1.4), 'oak': (0.9, 1.35), 'broadleaf': (0.85, 1.3), 'birch': (0.9, 1.2), 'bush': (0.7, 1.15), 'flower': (1.1, 1.8)}[kind]
-    row = [kind, round(x, 2), round(z, 2), round(float(vr.uniform(*sc)), 2)]
-    if kind not in ('bush', 'flower') and (sample(OUTSIDE, (x, z))[0] > 6 or math.hypot(x - BOWL[0], z - BOWL[1]) < PIT_BRINK + 1): row.append(0.5)      # (trees she never comes near, in the margin and down the pit: drawn with half the leaves)
+SCALE = {'pine': (0.9, 1.35), 'oak': (0.85, 1.25), 'broadleaf': (0.8, 1.15), 'birch': (0.9, 1.2), 'sapling': (0.85, 1.25), 'bush': (0.75, 1.15), 'flower': (1.1, 1.8)}
+for kind, x, z, _r in plants:
+    row = [kind, round(x, 2), round(z, 2), round(float(pn.uniform(*SCALE[kind])), 2)]
+    if kind not in ('bush', 'flower') and (sample(OUTSIDE, (x, z))[0] > 6 or math.hypot(x - BOWL[0], z - BOWL[1]) < PIT_BRINK + 1): row.append(0.5)      # (trees she never comes near, in the margin and down the pit: drawn with fewer leaves)
     out_plants.append(row)
+
+# The valley's rocks are kept where they were first thrown: hill-village-scatter.json beside the plan, written the first time
+# and read ever after (a thing she has moved by hand is found by where it stood). Those now in the way of something (a way, a
+# bridge) are left out. To throw them afresh: delete that file. (The plants used to be kept there too; now the rules place them.)
+vr = np.random.default_rng(21)
+_sc_file = OUT / 'hill-village-scatter.json'
+KEPT = json.loads(_sc_file.read_text()) if _sc_file.exists() else None
 
 # rocks in the valley: water-worn stones and pebbles along the river's banks, boulders round the plunge pool and at the cliffs' feet
 rocks = []
@@ -857,10 +917,9 @@ rocks = [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, z
 if KEPT:                                                              # as first thrown, but for those now in the way
     _span = lambda x, z: float(np.linalg.norm(np.array([x, z]) - (PW + (PE - PW) * np.clip(((np.array([x, z]) - PW) @ (PE - PW)) / ((PE - PW) @ (PE - PW)), 0, 1))))      # metres from the plank bridge's line
     _free = lambda x, z, r: sample(path_d, (x, z))[0] > r and _span(x, z) > r + 1.6      # (not on a way, nor at the bridge)
-    out_plants = [r_ for r_ in KEPT['plants'] if _free(r_[1], r_[2], 1.0)]
-    rocks = [r_ for r_ in KEPT['rocks'] if _free(r_[1], r_[2], 0.6 + 0.5 * r_[3] * (r_[0] != 'pebbles'))]
-    _left = [r_ for r_ in KEPT['plants'] if r_ not in out_plants] + [r_ for r_ in KEPT['rocks'] if r_ not in rocks]
-    print(f"  kept as first thrown: {len(out_plants)} plants, {len(rocks)} rocks; now in the way and left out: {', '.join(f'{r_[0]} ({r_[1]:.0f}, {r_[2]:.0f})' for r_ in _left) or 'none'}")
+    rocks = [r_ for r_ in KEPT['rocks'] if _free(r_[1], r_[2], 0.6 + 0.5 * r_[3] * (r_[0] != 'pebbles'))]      # (the plants are not kept: the rules above place them afresh)
+    _left = [r_ for r_ in KEPT['rocks'] if r_ not in rocks]
+    print(f"  rocks kept as first thrown: {len(rocks)}; now in the way and left out: {', '.join(f'{r_[0]} ({r_[1]:.0f}, {r_[2]:.0f})' for r_ in _left) or 'none'}")
 else: _sc_file.write_text(json.dumps({'plants': out_plants, 'rocks': rocks}, separators=(',', ':')))
 rocks += [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, z, sc_, rot in ROCKS_IN_LIPS]      # and the boulders in a parted fall's lip
 
@@ -912,6 +971,12 @@ VIEWS = {
 }
 
 # ------------------------------------------------------------------ 10. write it all out
+def _before_view(x, z):                                              # in the wedge before a place to look from (30 m out, about 17 degrees each side),
+    for vx, vz, yaw in VIEWS.values():                                # or within 7 m of it all round (the camera stands behind her there)
+        dx, dz = x - vx, z - vz; f_ = dx * math.sin(yaw) + dz * math.cos(yaw); s_ = dx * math.cos(yaw) - dz * math.sin(yaw)
+        if (0 < f_ < 30 and abs(s_) < 2.5 + f_ * 0.3) or math.hypot(dx, dz) < 7: return True
+    return False
+out_plants = [p_ for p_ in out_plants if p_[0] in ('bush', 'flower') or not _before_view(p_[1], p_[2])]
 assert H.min() > BASE and H.max() < BASE + RANGE, (H.min(), H.max())
 OUT.mkdir(parents=True, exist_ok=True)
 v16 = np.clip((H - BASE) / RANGE, 0, 1)
@@ -923,7 +988,7 @@ np.clip((small - BASE) / RANGE * 65535, 0, 65535).round().astype('<u2').tofile(O
 plan = {
     'land': {'x0': -XH, 'z0': round(Z0, 4), 'cell': CELL, 'nx': nx, 'nz': nz, 'base': BASE, 'range': RANGE, 'play': list(PLAY)},
     'brooks': brooks, 'falls': falls, 'waters': [{'id': t_['name'], 'level': round(t_['level'], 2)} for t_ in tiers],
-    'buildings': B, 'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
+    'buildings': [b_ for b_ in B if b_['kind'] != 'tree'], 'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': round(PLANK_YAW, 3)},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit

@@ -31,8 +31,9 @@ COL = {
     'way': '#ecd9a0', 'way_edge': '#b99c62', 'soil': '#a67844', 'fence': '#7a4c2b', 'stone': '#d3c7ae', 'stone_edge': '#8d8270', 'plank': '#b07b45',
     'roof_lit': '#e06a3e', 'roof_dark': '#b44c2f', 'roof_edge': '#6b2f20', 'sail': '#f1e6c8', 'sail_edge': '#7a5233',
     'crop': {'wheat': '#e6bd4c', 'cabbage': '#86c060', 'carrot': '#6ea84e'},
-    'tree': {'oak': ('#5fa63c', '#8fcb52'), 'broadleaf': ('#6db340', '#9bd45a'), 'birch': ('#86c24a', '#b4dd66'), 'pine': ('#3d8a4b', '#5aa85a'), 'bush': ('#7fbd47', '#a6d65e')},
-    'tree_r': {'oak': 2.5, 'broadleaf': 2.3, 'birch': 1.5, 'pine': 1.6, 'bush': 0.75}, 'rock': '#bdb7aa', 'rock_edge': '#857f74', 'shadow': (40, 60, 40, 70),
+    'tree': {'oak': ('#5fa63c', '#8fcb52'), 'broadleaf': ('#6db340', '#9bd45a'), 'birch': ('#86c24a', '#b4dd66'), 'pine': ('#3d8a4b', '#5aa85a'), 'bush': ('#7fbd47', '#a6d65e'),
+             'sapling': ('#78bb44', '#a5d75f')},
+    'tree_r': {'oak': 2.5, 'broadleaf': 2.3, 'birch': 1.5, 'pine': 1.6, 'bush': 0.75, 'sapling': 1.2}, 'rock': '#bdb7aa', 'rock_edge': '#857f74', 'shadow': (40, 60, 40, 70),
 }
 rgb = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], float)
 sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 0, 1))
