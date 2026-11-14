@@ -1323,6 +1323,7 @@ function placeFruit(rng, F, spots) {
 //   limbs: { n, t, elev | lift, reach, r, bend }  t along the trunk; elev = where on the crown the tip lands, or
 //                                                  lift = how far above its own start (tall crowns)
 //   subs:  { n, t, elev, reach, r }               side branches off each limb (optional)
+//   subs.hidden: the side branches' wood is not drawn (their leaf clumps are): a clean fork of a few limbs from below
 //   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint, displace, tidy }   the leaf clump on each tip (vary: size
 //          spread on limbs / side branches, shade: its own SHADE_WEIGHTS, taper: smaller toward the top); top: clump size on the leader
 function buildGrown(rng, spec) {
@@ -1392,7 +1393,8 @@ function buildGrown(rng, spec) {
         const s0 = limb.getPointAt(tt), rAt = r0 * (1 - 0.72 * tt);
         const el2 = low(THREE.MathUtils.clamp(el + range(rng, S.elev[0], S.elev[1]), -0.85, 0.95));
         const tip2 = onCrown(dirAt(az + (k % 2 ? 1 : -1) * range(rng, 0.5, 1.05), el2), range(rng, S.reach[0], S.reach[1]) * tuck(el2));
-        addTube(bend(s0, tip2, S), Math.max(rAt * (S.r ?? 0.7), 0.02), rAt, s0, 0.4);
+        const bp = bend(s0, tip2, S);
+        if (!S.hidden) addTube(bp, Math.max(rAt * (S.r ?? 0.7), 0.02), rAt, s0, 0.4);      // hidden: only its leaves, no thin wood under the crown
         clump(tip2, K.varySub ? range(rng, K.varySub[0], K.varySub[1]) : range(rng, 0.75, 1.0));
       }
       bough(first);
@@ -1493,7 +1495,7 @@ const TREE_TYPES = {
     grow: {
       crown: { c: [0.1, 6.5, 0], r: [3.6, 3.0, 3.4], taper: 0.3, taperLow: 0.25, egg: 0.1 },
       limbs: { n: [5, 6], t: [0.36, 0.7], elev: [-0.25, 0.62], reach: [0.6, 0.9], r: 0.1 },
-      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.2, 0.45], reach: [0.8, 1.0], r: 0.7 },
+      subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.2, 0.45], reach: [0.8, 1.0], r: 0.7, hidden: true },
       floor: -0.24, tuck: 1.1,
       clump: { r: 1.5, flat: 0.72, n: 9, vary: [0.85, 1.35], varySub: [0.55, 1.0], shade: [0.56, 0.24, 0.2], bough: true, rough: 0.35, noise: 0.08, stray: 0.2, tint: 0.04, card: 0.8, heart: 8, heartTint: -0.06, core: 0, displace: 0.5, tidy: 1.0 },
       top: 1.45,
