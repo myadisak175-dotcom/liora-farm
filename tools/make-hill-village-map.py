@@ -110,11 +110,21 @@ for f in plan['falls']:                                               # foam alo
     stroke(d, [(f['x'], f['z']), (f['x'] + s * 1.6, f['z'] + c * 1.6)], max(0.8, half * 0.9), COL['foam'])
 
 # ---- 4. ways, yards, fields, fences, bridges
+before_ways = canvas.copy()                                           # (grass painted over a way by hand: the land as it was before the ways)
 ways = [(catmull(p['points']), p['half']) for p in plan['paths']]
 for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])):
     for pts, half in ways: stroke(d, pts, 2 * half + 2 * grow, colour)
     for x, z, r, *_ in plan['yards']:
         cx, cy = P(x, z); rr = (r + grow) * K; d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=colour)
+# the ways painted by hand in the game (path-brush.js; kept in hill-village-paths.json and written into the plan as pathOps), in
+# the order they were painted: a way drawn as the others are, grass by laying the land as it was before the ways back over
+for o in plan.get('pathOps', []):
+    pts = catmull(o['pts']) if len(o['pts']) > 1 else [tuple(o['pts'][0]), (o['pts'][0][0] + 0.3, o['pts'][0][1])]
+    if o['k'] == 'way':
+        for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])): stroke(d, pts, 2 * o['half'] + 2 * grow, colour)
+    else:
+        mask = Image.new('L', canvas.size, 0); stroke(ImageDraw.Draw(mask), pts, 2 * o['r'], 255)
+        canvas.paste(before_ways, (0, 0), mask); d = ImageDraw.Draw(canvas)
 for f in plan['fields']:
     d.polygon(box(f['x'], f['z'], f['w'], f['d'], f['yaw']), fill=COL['soil'])
     n = max(3, int(f['d'] / 1.1))

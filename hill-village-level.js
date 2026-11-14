@@ -40,6 +40,7 @@ import { loadSpinner, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
 import { fieldGeometry } from './village-fields.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
+import { pathKey, loadPathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -71,7 +72,13 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
   const onLand = (x, z, in_ = 0) => x > X0 + in_ && x < X1 - in_ && z > Z0 + in_ && z < Z1 - in_;
   const pathStyle = new URLSearchParams(location.search).get('paths') === 'grit' ? 'grit' : M.paths;
-  const paths = createPaths({ paths: [...P.paths.map(p => ({ points: p.points, half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))], seed, style: pathStyle });      // (a yard: a short way as wide as the yard)
+  const toolWays = [...P.paths.map(p => ({ points: p.points, half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))];      // (a yard: a short way as wide as the yard)
+  // the ways painted by hand (path-brush.js): those the map's tool has taken in (P.pathOps), then those kept in this browser,
+  // in the order they were painted (path-edits.js). Each painted way is a way like the others; grass painted over a way hides it
+  const pathOps = [...(P.pathOps || []), ...loadPathOps(pathKey('hillvillage'))].filter(o => o.k === 'grass' || o.pts.length >= 2);
+  const paths = createPaths({ paths: [...toolWays, ...pathOps.filter(o => o.k === 'way').map(o => ({ points: o.pts, half: o.half }))], seed, style: pathStyle });
+  const wayPaint = o => o.paint || (o.paint = createPaths({ paths: [{ points: o.pts, half: o.half }], seed, style: pathStyle }).paint);
+  const pathPaint = foldPathOps(pathOps.length ? createPaths({ paths: toolWays, seed, style: pathStyle }).paint : paths.paint, pathOps, wayPaint);      // (a yard: a short way as wide as the yard)
   const px = (i, j) => base + raw[Math.min(nz - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))] / 65535 * range;
   const heightFn = (x, z) => {                                             // bilinear between the picture's points; the ways lie a little below the grass
     const fx = (x - X0) / cell, fz = (z - Z0) / cell, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
@@ -261,7 +268,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (!onLand(x, z, 0.5)) return [1, 0, 0];                              // off the land: nothing grows
     let earth = ss(0.7, 1.1, slope(x, z)), mow = 0;                        // the cliffs: bare (no grass grows on them)
     const b = brookAt(x, z), sand = b ? 1 - ss(0.2, 1.4, b.d) : 0;        // the water's beds and banks: sand, no grass
-    const pp = paths.paint(x, z);
+    const pp = pathPaint(x, z);
     if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }               // the ways: trodden earth, short grass beside them
     if (inField(x, z, 0.5)) earth = 1; else if (inField(x, z, 1.6)) mow = Math.max(mow, 0.7);
     return [earth, sand, mow];
@@ -429,6 +436,42 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     houses.visible = true; if (builtThings) builtThings.visible = true;
   };
   const wayAt = (x, z) => { const n = paths.near(x, z); return n.d < n.half - 0.2; };
+
+  // ------------------------------------------------------------------ painting ways by hand (path-brush.js asks; path-edits.js keeps the strokes)
+  // A stroke shows at once: a way is one more ribbon of the ways' own (ground-paths.js) and the grass under it is laid low in the
+  // ground picture; grass is let back up over whatever way is there. Only the grass's amount is changed now (the ground picture's
+  // colour, the paths' little dip in the land and the map are made again when the scene loads with the strokes saved)
+  const { data: mapData, size: MS, radius: MR, center: [MCX, MCZ] } = map;
+  const texels = ([x0, x1, z0, z1]) => {
+    const s = MS / (2 * MR);
+    return [Math.max(0, Math.floor((x0 - MCX + MR) * s)), Math.min(MS - 1, Math.ceil((x1 - MCX + MR) * s)), Math.max(0, Math.floor((z0 - MCZ + MR) * s)), Math.min(MS - 1, Math.ceil((z1 - MCZ + MR) * s))];
+  };
+  const eachTexel = (box, fn) => {
+    const [i0, i1, j0, j1] = texels(box), span = 2 * MR;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn((j * MS + i) * 4 + 3, MCX - MR + (i + 0.5) / MS * span, MCZ - MR + (j + 0.5) / MS * span);
+  };
+  const stampOp = o => {
+    if (o.k === 'way') { const pp = wayPaint(o); eachTexel(opBox(o), (a, x, z) => { const q = pp(x, z); if (q) mapData[a] = Math.round(mapData[a] * (1 - q[0]) * (1 - 0.5 * q[2])); }); }
+    else eachTexel(opBox(o), (a, x, z) => { const f = grassOver(o, x, z); if (f > 0) mapData[a] = Math.max(mapData[a], Math.round(255 * f)); });
+  };
+  const liveOps = [];                                                      // this visit's strokes (laid again after the sun's shadows are drawn anew)
+  const pathEdit = {
+    key: pathKey('hillvillage'), heightAt: H, inMap, baked: (P.pathOps || []).length, grassAt: map.grassAt,      // (how much grass grows at a spot, 0..1: for tests)
+    ops: () => loadPathOps(pathKey('hillvillage')),                       // the strokes kept in this browser (already drawn)
+    apply(op) {                                                            // one stroke, drawn now; gives back its undoing
+      const box = opBox(op), [i0, i1, j0, j1] = texels(box), w = i1 - i0 + 1, before = new Uint8Array(w * (j1 - j0 + 1));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) before[(j - j0) * w + (i - i0)] = mapData[(j * MS + i) * 4 + 3];
+      const line = op.k === 'way' ? paths.add({ points: op.pts, half: op.half }) : null;
+      stampOp(op); liveOps.push(op);
+      map.texture.needsUpdate = true;
+      return () => {
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) mapData[(j * MS + i) * 4 + 3] = before[(j - j0) * w + (i - i0)];
+        if (line) paths.remove(line);
+        const k = liveOps.lastIndexOf(op); if (k >= 0) liveOps.splice(k, 1);
+        map.texture.needsUpdate = true;
+      };
+    },
+  };
   const placeEdit = {
     key: placeKey('hillvillage'), report: placed,
     heightAt: H,
@@ -473,7 +516,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     },
   };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
     map: url(M.map),
@@ -522,7 +565,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       }
       else water.update(renderer);
       const nowT = N._internal.shared.uTime.value;
-      if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); } }
+      if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
     setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); },
