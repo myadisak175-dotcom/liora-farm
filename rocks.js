@@ -1010,7 +1010,7 @@ export function moveKitRock(inst) {
 // does the work only when the camera has moved a little).
 //   const kit = createRockKit([{ type, seed, x, y, z, ry, rx, rz, s, sy }, ...]);      // angles in degrees; sy: stretched up (1 = not)
 //   kit.userData.instances: [{ geometry (the full one), matrix, item, mesh, index, lod }]; .triangles (all in full), .drawn() (as drawn now)
-export function createRockKit(list, { world = true, tone = null, lod = 1 } = {}) {      // tone: 'warm' | 'pale' for every rock of the kit (null: each kind's own); lod: < 1 drops to the coarser versions sooner
+export function createRockKit(list, { world = true, tone = null, lod = 1, paint = null, moss = null } = {}) {      // tone: 'warm' | 'pale' for every rock of the kit (null: each kind's own); lod: < 1 drops to the coarser versions sooner; paint: { texture, tile } (propRockMaterial); moss: { type: how mossy } in place of the kit's own
   const group = new THREE.Group(), sets = new Map(), instances = [];
   group.name = 'rockKit';
   for (const it of list) {
@@ -1023,7 +1023,7 @@ export function createRockKit(list, { world = true, tone = null, lod = 1 } = {})
   }
   let triangles = 0;
   for (const set of sets.values()) {
-    const { type, seed, insts } = set, mat = propRockMaterial({ moss: PROP_MOSS[type], world, mossLow: PROP_MOSS_LOW[type], tone: tone || PROP_TONE[type], flat: PROP_FLAT[type] || 0 });
+    const { type, seed, insts } = set, mat = propRockMaterial({ moss: moss && moss[type] !== undefined ? moss[type] : PROP_MOSS[type], world, mossLow: PROP_MOSS_LOW[type], tone: tone || PROP_TONE[type], flat: PROP_FLAT[type] || 0, paint });
     for (let l = 0; l < ROCK_LOD.detail.length; l++) {
       const geo = propRockGeometry(type, seed, l);
       if (l && geo === set.meshes[l - 1].geometry) { set.meshes.push(set.meshes[l - 1]); continue; }      // (no coarser version: the same group)
@@ -1087,13 +1087,18 @@ export function createPropRock({ type = 'boulder', seed = 1, world = false } = {
 }
 
 const propMats = {};
-export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone = 'pale', flat = 0 } = {}) {
+// paint: { texture, tile: [metres across, metres up] } - the stone is a painted picture laid on from the three sides a face
+// can look to (a map's own cliff paint, so its rocks are of the same stone as its cliffs), lit in the same few soft steps;
+// without it each face is one of the tone's flat colours
+export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone = 'pale', flat = 0, paint = null } = {}) {
   tone = TONES[tone] ? tone : 'pale';
-  const key = 'm' + moss + (world ? 'w' : '') + 'l' + mossLow + tone + 'f' + flat;
+  const key = 'm' + moss + (world ? 'w' : '') + 'l' + mossLow + tone + 'f' + flat + (paint ? 'p' + paint.texture.uuid + paint.tile : '');
   if (propMats[key]) return propMats[key];
   const T = TONES[tone];
   return (propMats[key] = new THREE.ShaderMaterial({
+    defines: paint ? { PAINT: 1 } : {},
     uniforms: {
+      uPaint: { value: paint ? paint.texture : null }, uPaintTile: { value: new THREE.Vector2(...(paint ? paint.tile : [1, 1]).map(v => 1 / v)) },
       uLit: { value: rgb(T.lit) }, uMid: { value: rgb(T.mid) }, uShade: { value: rgb(T.shade) }, uDeep: { value: rgb(T.deep) }, uRim: { value: rgb(T.rim) }, uSky: { value: rgb(T.sky) },
       uM0: { value: rgb(T.moss[0]) }, uM1: { value: rgb(T.moss[1]) }, uM2: { value: rgb(T.moss[2]) }, uMoss: { value: moss }, uMossLow: { value: mossLow }, uFlat: { value: flat }, uSun: { value: PROP_SUN }, uWorld: { value: world ? 2.6 : 0 }, ...GROUND_U,
       uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
@@ -1123,7 +1128,8 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone 
       uniform vec3 uLit, uMid, uShade, uDeep, uRim, uSky, uM0, uM1, uM2, uSun;
       uniform float uMoss, uMossLow, uWorld, uGOn, uGHas, uGBlend, uWOn, uLOn, uFlat, uDpOn;
       uniform vec3 uDpMist, uDpBlue, uDpVoid;
-      uniform sampler2D uGCol, uGH, uWLev, uLawn;
+      uniform sampler2D uGCol, uGH, uWLev, uLawn, uPaint;
+      uniform vec2 uPaintTile;
       uniform vec4 uGRect, uWRect;
       uniform vec3 uLRect, uLTip;
       varying vec3 vWN, vWP;
@@ -1139,13 +1145,25 @@ export function propRockMaterial({ moss = 1, world = false, mossLow = 0.8, tone 
         float hg = uWorld > 0.0 ? clamp((vWP.y - groundY) / uWorld, 0.0, 1.0) : vHgt;     // how high up: on its own foot, or above the ground
         // the light, painted in a few soft steps; the brush wobbles a little
         float t = dot(n, uSun) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.03 + (vFacet - 0.5) * 0.3;   // each face its own tone
+      #ifdef PAINT
+        // the painted stone, from the side each face looks to (across, along, or down on a top), in the same steps of light
+        vec3 aw = pow(abs(n), vec3(4.0)); aw /= aw.x + aw.y + aw.z;
+        vec3 pc = texture2D(uPaint, vWP.zy * uPaintTile).rgb * aw.x + texture2D(uPaint, vWP.xy * uPaintTile).rgb * aw.z + texture2D(uPaint, vWP.xz * uPaintTile.x).rgb * aw.y;
+        vec3 col = pc * 0.6;
+        col = mix(col, pc * 0.74, smoothstep(0.28, 0.38, t));
+        col = mix(col, pc * 0.9, smoothstep(0.5, 0.6, t));
+        col = mix(col, pc * 1.04, smoothstep(0.7, 0.78, t));
+        vec3 rim = min(pc * 1.2 + 0.04, vec3(1.0));
+      #else
         vec3 col = mix(uDeep, uShade, smoothstep(0.28, 0.38, t));
         col = mix(col, uMid, smoothstep(0.5, 0.6, t));
         col = mix(col, uLit, smoothstep(0.7, 0.78, t));
+        vec3 rim = uRim;
+      #endif
         col = mix(col, col * uSky * 1.25, (1.0 - smoothstep(0.4, 0.65, t)) * clamp(n.y * 0.5 + 0.5, 0.0, 1.0) * 0.35);   // sky in the shade
         // edges catch the light, creases hold the dark
         float edge = clamp(-vCurv * 5.0 - 0.08, 0.0, 1.0), crease = clamp(vCurv * 5.0 - 0.05, 0.0, 1.0);
-        col = mix(col, uRim, edge * mix(0.25, 0.65, smoothstep(0.35, 0.75, t)));
+        col = mix(col, rim, edge * mix(0.25, 0.65, smoothstep(0.35, 0.75, t)));
         col *= 1.0 - crease * 0.38;
         col *= 0.96 + 0.08 * noise2(vWP.xz * 0.3 + vWP.y * 0.2);                        // a broad, soft change of tone across the rock; no other pattern: a face is one flat colour
         col *= mix(0.8, 1.06, vHgt);                                                   // each piece a little darker at its foot, lighter at its head

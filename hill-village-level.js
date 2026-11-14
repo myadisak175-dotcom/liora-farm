@@ -39,6 +39,7 @@ import { createPaths, loadPathTextures } from './ground-paths.js';
 import { loadSpinner, propMaterial } from './stylized-props.js';
 import { loadVillageKit } from './village-kit.js';
 import { fieldGeometry } from './village-fields.js';
+import { createRockKit } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 import { pathKey, loadPathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 
@@ -56,7 +57,7 @@ export const HILL_VILLAGE_MAP = {
   sails: /^polySurface142_/,      // the part of the windmill model that is used: its sails (the rest of the mill is of the kit)
 };
 const TRUNK = { broadleaf: 0.42, oak: 0.55, pine: 0.38, birch: 0.24, sapling: 0.2 }, TREE_H = { broadleaf: 7.5, oak: 7.5, pine: 7.5, birch: 8, sapling: 4 };
-const ROCK_R = { boulder: 1.0, stones: 0.8, river: 0.7, pebbles: 0 }, ROCK_SINK = { boulder: 0.18, stones: 0.05, river: 0.12, pebbles: 0 };
+const ROCK_R = { boulder: 1.0, stones: 0.8, river: 0.7, pebbles: 0 };      // (how far round a rock of the plan she cannot walk, times its size)
 
 export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCount = 150000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
   const M = HILL_VILLAGE_MAP, look = new URLSearchParams(location.search).get('look') === 'flat' ? 'flat' : 'kit';
@@ -248,16 +249,36 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   merged(builds, 'hillVillageBuilt');
   const builtThings = thingBuilds.length ? merged(thingBuilds, 'hillVillageThings') : null;
-  // the valley's rocks: water-worn stones and pebbles along the river, boulders round the plunge pool and under the cliffs
-  const rocks = new THREE.Group(); rocks.name = 'rocks';
-  for (const [k, [type, x, z, scale, rot]] of (P.rocks || []).entries()) {
-    const m = N.createRock({ type, seed: seed * 31 + k });
-    m.position.set(x, H(x, z) - ROCK_SINK[type] * scale, z); m.rotation.y = rot; m.scale.setScalar(scale);
-    rocks.add(m);
-    const rad = ROCK_R[type] * scale;
+  // the valley's rocks: water-worn stones and pebbles along the river, boulders round the plunge pool and under the cliffs. They
+  // are the rock kit's (rocks.js: big, middling and small, chiselled), painted with the cliffs' own brush-painted stone, so they
+  // read as fallen from the cliffs (?cliff=strata: the kit's own pale stone)
+  let cliffPaint = null;
+  if (new URLSearchParams(location.search).get('cliff') !== 'strata') try {
+    cliffPaint = await new THREE.TextureLoader().loadAsync(url(M.cliff));
+    cliffPaint.wrapS = cliffPaint.wrapT = THREE.RepeatWrapping; cliffPaint.anisotropy = 4; cliffPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
+  } catch (err) { console.warn('[hill-village] cliff paint', err); }
+  const kitRocks = [], rr = mulberry32(seed * 977);
+  const wetRocks = [];                                                     // (those in the water: no moss on them)
+  const sitRock = (type, x, z, s, ry, rad, sy = 1) => {                  // on the lowest ground under it, sunk a little
+    let low = H(x, z); for (let a = 0; a < 6; a++) low = Math.min(low, H(x + Math.cos(a) * rad, z + Math.sin(a) * rad));
+    (waterDepthAt(x, z) > 0.05 ? wetRocks : kitRocks).push({ type, seed: 1 + Math.floor(rr() * 4), x, y: low - 0.06 * s, z, ry, s, sy });
+  };
+  for (const [type, x, z, scale, rot] of P.rocks || []) {
+    const ry = rot * 180 / Math.PI, rad = ROCK_R[type] * scale;
+    if (type === 'boulder') sitRock('boulder', x, z, scale * 1.2, ry, rad);                       // a big one
+    else if (type === 'river') sitRock('stone', x, z, scale * 1.9, ry, rad, 0.75);                 // a middling one, worn flatter by the water
+    else if (type === 'stones') for (let k = 0; k < 3; k++) {                                    // a few middling ones together
+      const a = rot + k * 2.1, d = k ? 0.55 * scale : 0;
+      sitRock('stone', x + Math.cos(a) * d, z + Math.sin(a) * d, scale * (k ? 0.95 + rr() * 0.35 : 1.45), ry + k * 70, 0.5 * scale);
+    }
+    else sitRock('pebbles', x, z, scale * 1.05, ry, 0.6 * scale);                                  // small ones
     if (rad > 0) { colliders.push([x, z, rad]); press.push([x, z, rad * 1.6]); shade.push([x, z, rad * 2.0, 0.3]); casters.push([x, z, rad, rad * 0.95, 0.85]); }
   }
-  group.add(rocks);
+  const rockPaint = cliffPaint ? { texture: cliffPaint, tile: [8, 4] } : null;
+  const rocks = createRockKit(kitRocks, { world: false, paint: rockPaint, moss: { boulder: 0.45, stone: 0.25 } });      // (a little moss on what faces up: not a cap of it)
+  const wet = createRockKit(wetRocks, { world: false, paint: rockPaint, moss: { boulder: 0, stone: 0, pebbles: 0 } });
+  rocks.name = 'rocks'; wet.name = 'wetRocks';
+  group.add(rocks, wet);
 
   // ------------------------------------------------------------------ the ground picture, the land, the grass
   await onStep('ระบายสีพื้น');
@@ -299,12 +320,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('position', new THREE.BufferAttribute(pos, 3)); whole.setIndex(new THREE.BufferAttribute(all, 1));
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
-    // the cliffs: rock painted with a brush (tools/make-cliff-paint.py), in place of the valley's strata. ?cliff=strata: as before
-    let cliffPaint = null;
-    if (new URLSearchParams(location.search).get('cliff') !== 'strata') try {
-      cliffPaint = await new THREE.TextureLoader().loadAsync(url(M.cliff));
-      cliffPaint.wrapS = cliffPaint.wrapT = THREE.RepeatWrapping; cliffPaint.anisotropy = 4; cliffPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
-    } catch (err) { console.warn('[hill-village] cliff paint', err); }
+    // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
     const mat = T._terrain.terrainMaterial(far, [HX + 1, FR], CZ, { cliffPaint });
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     const [pa, pd] = M.pieces, own = [whole, mat];
@@ -397,7 +413,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const inMap = (x, z) => x > play[0] + 1 && x < play[1] - 1 && z > play[2] + 1 && z < play[3] - 1;
   const walkable = (x, z) => inMap(x, z) && (!!deckAt(x, z) || (slope(x, z) < 0.9 && waterDepthAt(x, z) < 1.05));      // off the cliffs, out of deep water
   const standAt = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
-  console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.children.length);
+  console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};
   for (const [name, [x, z, yaw]] of Object.entries(P.views)) views[name] = { x, z, yaw };
@@ -542,6 +558,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       sim.step(renderer, dt);
       droplets.update(renderer);
       if (mill) mill.update(dt);
+      if (camera) { rocks.userData.update(camera); wet.userData.update(camera); }      // (each rock as finely as its distance calls for)
       wheel.rotation.x += dt * 0.5;
       if (scene && camera) {
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
