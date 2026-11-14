@@ -199,8 +199,11 @@ const LEAF_STYLES = {
   willow: { draw: 'tassel', seed: 64 },
   bamboo: { draw: 'spray', seed: 18 },
   // sprays: a handful of separate pointed leaves fanning out from a small heart, so a card's outline is leaf tips, never a
-  // disc (leafy: few, long leaves reaching to very different lengths and a small heart: a ragged star). leaves [count a-b], len: how far the tips reach (of the cell radius), wide: leaf width / length, body: the heart
-  leafy:   { draw: 'leaves', leaves: [15, 20], len: [0.3, 1.0], wide: [0.3, 0.44], body: 0.28, leaf: 0.66, seed: 8 },
+  // disc. leaves [count a-b], len: how far the tips reach (of the cell radius), wide: leaf width / length, body: the heart
+  leafy:   { draw: 'leaves', leaves: [24, 30], len: [0.5, 1.0], wide: [0.26, 0.36], body: 0.4, leaf: 0.5, seed: 31 },
+  // the oak's: many small leaves on twigs that reach to very different lengths around a small heart: a ragged spray of
+  // little leaves, never a disc and never a few big ones
+  oaky:    { draw: 'leaves', leaves: [30, 38], len: [0.3, 1.0], wide: [0.3, 0.42], body: 0.3, leaf: 0.36, seed: 8 },
   leaflet: { draw: 'leaves', leaves: [30, 38], len: [0.4, 1.0], wide: [0.36, 0.52], body: 0.27, leaf: 0.36, seed: 12 },    // small leaves (birch)
   needles: { draw: 'leaves', leaves: [40, 52], len: [0.45, 1.0], wide: [0.13, 0.2], body: 0.24, seed: 77 },              // conifer tufts
   // a conifer bough seen hanging: fingers of needles sweeping down and out from a shoulder. Cards using it stay upright
@@ -1440,7 +1443,7 @@ const TREE_TYPES = {
   },
   // big, wide, irregular single crown on a stout trunk
   oak: {
-    palette: 'broad', mask: 'leafy', height: 8.6, custom: buildGrown, detailMul: 0.5,
+    palette: 'broad', mask: 'oaky', height: 8.6, custom: buildGrown, detailMul: 0.5,
     trunk: {
       pts: [[0, -0.05, 0], [0.03, 0.8, 0], [0.08, 1.6, 0.03], [0.05, 2.5, 0], [0.1, 3.5, 0.03], [0.1, 4.6, 0], [0.14, 5.8, 0], [0.1, 6.9, 0]],
       radius: t => 0.4 * Math.pow(1 - t, 1.1) + 0.03 + 0.3 * Math.exp(-t * 20), lean: 0.12, sway: 0.2, roots: 6,
