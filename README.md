@@ -8,6 +8,8 @@ A static Three.js game with mobile movement, a third-person camera, meadow veget
 
 Serve this directory over HTTP. Open `index.html`. GitHub Pages serves the same entry point. Three.js 0.170.0 and its addons load from jsDelivr.
 
+The game opens on its map, the hill village (the same as `?map=hillvillage`). `?map=valley` opens the first map's valley, which used to be what the plain link opened; the other maps each have their own `?map=` (below).
+
 Touch: left side to move, right side to rotate the camera; tap water to make ripples.
 
 ## The shaders' noise
@@ -39,7 +41,7 @@ Splashes and wading are made by the water's own wave simulation, in the same pai
 
 **The screen.** Only what is played with is on it: the map in the top right corner (tap it for the whole map, tap a pin to go there), the clock (☀ day / dusk / night, ⏸ stop time) and full screen under it, and on the hill village the two hand tools top left (🏠 ย้ายของ, 🖌 ทาทาง). The deer's credit is on the loading screen (its licence, CC BY-NC 4.0, asks for it); the other credits are in this README. `?dev=1` puts the testing buttons back as well (fps, grass look, ปรับน้ำ, ปรับฟ้า, the water buttons below, 📍 ไปที่…, the forage bag and 🌿 ไปดูของป่า, 🛠 แก้ฉาก and 🪨 แก้หิน where a map has them).
 
-Use **ไปดูน้ำ** (with `?dev=1`) to move to a nearby clear shallow bank, then **ทดสอบน้ำกระเซ็น** or tap the water. `?view=water` starts at the bank, including on the default valley map. `?map=meadow&view=water` and `?map=hills&view=water` select the other maps.
+Use **ไปดูน้ำ** (with `?dev=1`) to move to a nearby clear shallow bank, then **ทดสอบน้ำกระเซ็น** or tap the water. `?view=water` starts at the bank, on the hill village or on any other map: `?map=valley&view=water`, `?map=meadow&view=water` and `?map=hills&view=water` select the others.
 
 Footsteps follow the character's foot bones: the water is touched at the moment and the place each foot comes down, harder when she runs. Every footstep, splash and the foot of the waterfall also throws out an anime foam ring (`WATER_RINGS` in `stylized-water.js`): a cell-patterned ring of white foam that spreads, opens in the middle and breaks up at the rim. Slider: **วงฟองอนิเมะตอนเหยียบน้ำ / น้ำกระเซ็น / น้ำตก**.
 
