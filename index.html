@@ -55,6 +55,14 @@
   #waterView, #splashTest { position:fixed; left:max(10px,env(safe-area-inset-left)); top:calc(38px + env(safe-area-inset-top)); z-index:4; border:1px solid #ffffff88; border-radius:999px; padding:9px 14px; background:#205f70dc; color:white; font:600 12px system-ui; touch-action:manipulation; }
   #splashTest { top:calc(80px + env(safe-area-inset-top)); background:#f6fcfff0; color:#205f70; }
   #animeBtn { position:fixed; left:max(10px,env(safe-area-inset-left)); top:calc(122px + env(safe-area-inset-top)); z-index:4; border:1px solid #ffffff88; border-radius:999px; padding:9px 14px; background:#2d7fd0dc; color:white; font:600 12px system-ui; touch-action:manipulation; }
+  /* the game's own screen: only what is played with. The map in the top right corner, the clock and full screen under it; the
+     two hand tools (move things, paint ways) top left. ?dev=1 shows the testing buttons as well (water, grass, sky, fps, ...) */
+  body:not(.dev) :is(#style, #tune, #skyBtn, #fps, #credit, #waterView, #splashTest, #animeBtn, #forage-view, #forage-bag, #tpBtn, #editBtn, #rockEditBtn, #hint) { display:none !important; }
+  body:not(.dev) #gmMini { left:auto; margin-left:0; right:max(8px, env(safe-area-inset-right)); top:calc(8px + env(safe-area-inset-top)); }
+  body:not(.dev) #timeBtn { top:114px; }
+  body:not(.dev) #timeRun { top:156px; }
+  body:not(.dev) #fullscreen { top:198px; }
+  #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -158,7 +166,7 @@
 <div id="skyTuner" class="tuner"></div>
 <div id="credit">v24 · Anime Water · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
 <div id="hint"><span id="hintText">แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง</span></div>
-<div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span></div>
+<div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span><small>Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT) · บ้าน: Quaternius Medieval Village MegaKit (CC0)</small></div>
 <script type="module">
 import * as THREE from 'three';
 import * as N from './stylized-nature.js';
@@ -231,6 +239,7 @@ const b64ToBuffer = b64 => { const bin = atob(b64), u = new Uint8Array(bin.lengt
 N.setHaze({ color: HAZE, near: 45, far: 230, max: 0.6 });
 await onStep('วาดท้องฟ้า');
 const Q = new URLSearchParams(location.search);          // ?grass=120000 to force a blade count, ?still=1 to render on demand (tests), ?sky=1024 panorama width
+if (Q.has('dev')) document.body.classList.add('dev');      // ?dev=1: the testing buttons on screen too
 const skyW = +Q.get('sky') || (fastMode ? 1024 : IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
@@ -389,11 +398,12 @@ if (rockEditor) {
   if (rockEditor.resume) rockEditor.open(rockEditor.resume);                  // back from "save": the same view, the same rock
 }
 // ---- the place editor: move the houses and the small things by hand (only where the level offers it: the hill village)
+const LEFT_TOP = document.body.classList.contains('dev') ? 164 : 8;     // (the hand tools: top left, or under the testing buttons with ?dev=1)
 const placeEditor = createPlaceEditor({ level, camera, player });
 if (placeEditor) {
   const b = document.createElement('button'); b.id = 'placeEditBtn'; b.textContent = '🏠 ย้ายของ';
   b.onpointerdown = e => e.stopPropagation(); b.onclick = () => placeEditor.open();
-  b.style.top = `calc(${164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0))}px + env(safe-area-inset-top))`;
+  b.style.top = `calc(${LEFT_TOP + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0))}px + env(safe-area-inset-top))`;
   document.body.append(b);
   if (placeEditor.resume) placeEditor.open(placeEditor.resume);              // back from "save": the same view, the same thing
 }
@@ -402,7 +412,7 @@ const pathBrush = createPathBrush({ level, camera, player });
 if (pathBrush) {
   const b = document.createElement('button'); b.id = 'pathBrushBtn'; b.textContent = '🖌 ทาทาง';
   b.onpointerdown = e => e.stopPropagation(); b.onclick = () => pathBrush.open();
-  b.style.top = `calc(${164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0))}px + env(safe-area-inset-top))`;
+  b.style.top = `calc(${LEFT_TOP + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0))}px + env(safe-area-inset-top))`;
   document.body.append(b);
   if (pathBrush.resume) pathBrush.open(pathBrush.resume);                    // back from "save": the same view
 }
