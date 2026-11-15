@@ -62,6 +62,9 @@
   body:not(.dev) #timeBtn { top:114px; }
   body:not(.dev) #timeRun { top:156px; }
   body:not(.dev) #fullscreen { top:198px; }
+  #camBtn { position:fixed; right:max(8px, env(safe-area-inset-right)); top:calc(264px + env(safe-area-inset-top)); z-index:4; font:inherit; font-size:12px; color:#fff;
+    background:rgba(176, 108, 40, .82); border:0; padding:9px 13px; border-radius:999px; touch-action:manipulation; }
+  body:not(.dev) #camBtn { top:calc(240px + env(safe-area-inset-top)); }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
@@ -122,7 +125,8 @@
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
-  "./character-shadow.js": "./character-shadow.js?v=shadow2"
+  "./character-shadow.js": "./character-shadow.js?v=shadow2",
+  "./iso-camera.js": "./iso-camera.js?v=1"
 } }
 </script>
 </head>
@@ -203,6 +207,7 @@ import { createPathBrush } from './path-brush.js';
 import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
 import { createGameMap } from './game-map.js';
 import { createWarpUI } from './warp-ui.js';
+import { createIsoCamera } from './iso-camera.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -278,6 +283,16 @@ if (!shadowOnGrass) console.warn('[shadow] the grass could not take her shadow; 
 if (level.useRealShadow) level.useRealShadow(true, shadowOnGrass);
 const NOON = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();
 fit();
+// ---- trial: the high, slanted camera of an isometric game. One button: normal → high → high (far) → normal
+const iso = createIsoCamera({ camera, player, character: vivi, restore: fit });
+{
+  const camBtn = document.createElement('button'); camBtn.id = 'camBtn';
+  const paint = () => { camBtn.textContent = '📷 ' + iso.name; };
+  camBtn.onpointerdown = e => e.stopPropagation();
+  camBtn.onclick = () => { iso.cycle(); paint(); };
+  document.body.append(camBtn); paint();
+  if (Q.get('cam') === 'iso') { iso.cycle(); paint(); }
+}
 
 // Find a collision-free shallow bank on whichever map is active.
 const waterView = document.createElement('button'); waterView.id = 'waterView'; waterView.textContent = 'ไปดูน้ำ'; document.body.append(waterView);
@@ -441,6 +456,7 @@ const frame = (dt = clock.getDelta()) => {
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  if (iso.active && !editing()) iso.apply(dt);                            // (trial) the high, slanted camera instead of hers
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   const rockEditing = rockEditor && rockEditor.active;
   if (rockEditing) rockEditor.apply(camera);                              // the rock editor's camera flies free of her
@@ -492,7 +508,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, placeEditor, pathBrush, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { sceneEditor, rockEditor, placeEditor, pathBrush, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap, iso };
 </script>
 </body>
 </html>
