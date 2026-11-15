@@ -84,10 +84,12 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=31",
+  "./hill-village-level.js": "./hill-village-level.js?v=32",
   "./path-brush.js": "./path-brush.js?v=1",
   "./path-edits.js": "./path-edits.js?v=1",
   "./place-editor.js": "./place-editor.js?v=1",
+  "./foliage-editor.js": "./foliage-editor.js?v=1",
+  "./foliage-edits.js": "./foliage-edits.js?v=1",
   "./place-edits.js": "./place-edits.js?v=1",
   "./land-water.js": "./land-water.js?v=5",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
@@ -201,6 +203,7 @@ import { createForestForage } from './forest-forage.js?v=5';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
 import { createPlaceEditor } from './place-editor.js';
+import { createFoliageEditor } from './foliage-editor.js';
 import { createPathBrush } from './path-brush.js';
 import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
 import { createGameMap } from './game-map.js';
@@ -262,7 +265,7 @@ const VIVI_HEIGHT = 1.6;
 vivi.setSize(VIVI_HEIGHT / vivi.baseHeight);
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
-  if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (pathBrush && pathBrush.active)) return;     // while editing, a tap belongs to the editor
+  if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active)) return;     // while editing, a tap belongs to the editor
   ray.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
@@ -425,6 +428,15 @@ if (pathBrush) {
   document.body.append(b);
   if (pathBrush.resume) pathBrush.open(pathBrush.resume);                    // back from "save": the same view
 }
+// ---- the foliage editor: arrange the plants by hand (only where the level offers it: the hill village)
+const foliageEditor = createFoliageEditor({ level, camera, player });
+if (foliageEditor) {
+  const b = document.createElement('button'); b.id = 'foliageEditBtn'; b.textContent = '🌿 จัดต้นไม้';
+  b.onpointerdown = e => e.stopPropagation(); b.onclick = () => foliageEditor.open();
+  b.style.top = `calc(${LEFT_TOP + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0) + (pathBrush ? 1 : 0))}px + env(safe-area-inset-top))`;
+  document.body.append(b);
+  if (foliageEditor.resume) foliageEditor.open(foliageEditor.resume);        // back from "save": the same view
+}
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
 const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0) + (pathBrush ? 1 : 0)) });
 // ---- 🗺 the map: a small round one at the top that follows her; a tap opens the whole map, where a pin takes her to a place
@@ -441,7 +453,7 @@ if (farHills && level.horizon) { farHills.position.set(level.horizon.center[0], 
 const clock = new THREE.Clock();
 let moved = false;
 // an editor is open (the scene's, the rocks', move-things, the path brush): its own camera, and its own pace (below)
-const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (pathBrush && pathBrush.active));
+const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active));
 const frame = (dt = clock.getDelta()) => {
   dt = Math.min(Math.max(dt, 0), 0.05);
   N.update(dt);
@@ -454,8 +466,10 @@ const frame = (dt = clock.getDelta()) => {
   if (placing) placeEditor.apply(camera);                                 // and the place editor's
   const painting = pathBrush && pathBrush.active;
   if (pathBrush) pathBrush.apply(camera);                                 // and the path brush's (or, walking, the brush following her feet)
+  const planting = foliageEditor && foliageEditor.active;
+  if (planting) foliageEditor.apply(camera);                              // and the foliage editor's
   if (forage) forage.update(dt, player.position);
-  level.follow(rockEditing ? rockEditor.focus : placing ? placeEditor.focus : painting ? pathBrush.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
+  level.follow(rockEditing ? rockEditor.focus : placing ? placeEditor.focus : painting ? pathBrush.focus : planting ? foliageEditor.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
   if (warpUI) warpUI.update();
   if (gameMap) gameMap.update();
   if (farHills && (level.zone ?? -1) !== lastZone) { lastZone = level.zone ?? -1; farHills.visible = lastZone < 0; }      // no far hills from down in the abyss
@@ -498,7 +512,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, placeEditor, pathBrush, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

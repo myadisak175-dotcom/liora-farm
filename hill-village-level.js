@@ -46,6 +46,7 @@ import { loadVillageKit } from './village-kit.js';
 import { fieldGeometry } from './village-fields.js';
 import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
+import { foliageKey, applyFoliage } from './foliage-edits.js';
 import { pathKey, loadPathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 
 const { mulberry32 } = N._internal;
@@ -75,6 +76,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const fresh = { cache: 'no-cache' };                                    // (the land and the plan change together: never one from the browser's cache and one new)
   const [raw, P] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json())]);
   const placeBase = placeables(P), placed = applyPlaceEdits(P, placeKey('hillvillage'));      // the things moved by hand, kept in this browser
+  const foliage = applyFoliage(P, foliageKey('hillvillage'));              // and the plants arranged by hand (the foliage editor): while kept here they are the map's, all of them
   const { x0: X0, z0: Z0, cell, nx, nz, base, range, play } = P.land;     // (she walks inside play: x0, x1, z0, z1; the rest is wooded hills to look at)
   const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
   const onLand = (x, z, in_ = 0) => x > X0 + in_ && x < X1 - in_ && z > Z0 + in_ && z < Z1 - in_;
@@ -112,54 +114,48 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // ------------------------------------------------------------------ the woods, bushes and flowers, where the plan has them
   await onStep('ปลูกต้นไม้');
   const r = mulberry32(seed * 31);
-  const tree = (x, z, type, scale, detail = 0.8) => {                      // (detail under 0.8: a tree out in the margin, never come near: fewer leaves, nothing to walk into)
-    const y = H(x, z), rad = TRUNK[type] * scale;
-    plants.push({ kind: 'tree', type, seed: 100 + plants.length, detail, x, y: y - 0.05, z, rotY: r() * 6.28, scale });
-    if (detail >= 0.8) { colliders.push([x, z, rad + 0.22]); cameraTrunks.push([x, z, rad + 0.12, y, y + TREE_H[type] * scale]); bare.push([x, z, rad * 1.5]); }
-    shade.push([x, z, 4 * scale, 0.4]); casters.push([x, z, TREE_H[type] * scale, 2.4 * scale, 0.7]);
+  // a tree where she walks: solid, its trunk kept out of the camera's way, bare ground at its foot, its shade and its shadow
+  const stands = e => {
+    const rad = TRUNK[e.type] * e.scale, y = e.y + 0.05;
+    if (e.detail >= 0.8) { colliders.push([e.x, e.z, rad + 0.22]); cameraTrunks.push([e.x, e.z, rad + 0.12, y, y + TREE_H[e.type] * e.scale]); bare.push([e.x, e.z, rad * 1.5]); }
+    shade.push([e.x, e.z, 4 * e.scale, 0.4]); casters.push([e.x, e.z, TREE_H[e.type] * e.scale, 2.4 * e.scale, 0.7]);
   };
-  const flowerBeds = [], cover = [];                                       // (cover: the ferns and tall tufts of grass, ground-cover.js: nothing solid)
-  // (a plan row's fifth: for a tree, how many leaves (0.5: one she never comes near); for a bush of a group, the colour of its
-  // flowers or 'green' for none (a bush strewn in the margin has none: the dice decide); for a bed of flowers, its colour)
-  for (const [kind, x, z, scale, detail] of P.plants) {
-    if (kind === 'bush') {
-      const dice = r(), rotY = r() * 6.28, bloom = typeof detail === 'string' ? (detail === 'green' ? '' : detail) : null;
-      plants.push({ kind: 'bush', type: (bloom === null ? dice < 0.35 : bloom) ? 'flowering' : 'round', bloom: bloom || undefined, seed: 100 + plants.length, x, y: H(x, z), z, rotY, scale });
-      colliders.push([x, z, 0.7 * BUSH_SIZE * scale]);
+  // The foliage: the plan's rows made into what the forests are given. Used as the level is built, and again by the foliage
+  // editor, which has the groves a plant was taken from or put in built anew.
+  //   plants   kind, x, z, scale, a fifth by its kind (a tree: how many leaves, 0.5 for one she never comes near; a bush:
+  //            'green'; a bed of flowers: its colour), its group, its turn in degrees, which of its kind's shapes
+  //   clumps   (flowering clumps: walked through, nothing solid)  x, z, scale, colour, group, turn, shape
+  //   cover    (ferns and tall tufts of grass: ground-cover.js)  kind, x, z, scale, which colony
+  const BEDS = ['pink', 'yellow', 'blue'];
+  const turnOf = d => d * Math.PI / 180, dice = (i, k) => mulberry32(seed * 131 + i * 977 + k)();      // (a row from an older plan has no turn or shape: the dice give it one, the same every time)
+  const plantOf = ([kind, x, z, scale, fifth, , turn, shape], i) => {
+    const rotY = turn == null ? dice(i, 1) * 6.28 : turnOf(turn), sd = shape == null ? 100 + i : shape, y = H(x, z);
+    if (kind === 'flower') return { kind: 'flower', x, y, z, rad: scale, bed: BEDS.includes(fifth) ? fifth : BEDS[i % 3], seed: sd };
+    if (kind === 'bush') return { kind: 'bush', type: 'round', seed: sd, x, y, z, rotY, scale };      // (plain green: the flowers are the beds' and the clumps')
+    return { kind: 'tree', type: kind, seed: sd, detail: typeof fifth === 'number' ? fifth : 0.8, x, y: y - 0.05, z, rotY, scale };
+  };
+  const clumpOf = ([x, z, scale, bloom, , turn, shape], i) => ({ kind: 'bush', type: 'clump', bloom, seed: shape == null ? 300 + i : shape, x, y: H(x, z), z, rotY: turn == null ? dice(i, 3) * 6.28 : turnOf(turn), scale });
+  const entriesOf = rows => {                                               // -> { plants: trees, bushes and clumps; beds; cover }
+    const out = { plants: [], beds: [], cover: [] }, nth = new Map();
+    (rows.plants || []).forEach((row, i) => { const e = plantOf(row, i); (e.kind === 'flower' ? out.beds : out.plants).push(e); });
+    (rows.clumps || []).forEach((row, i) => out.plants.push(clumpOf(row, i)));
+    for (const [kind, x, z, scale, colony = 0] of rows.cover || []) {       // (a fern's or a tuft's own shape: by its colony and its place in it, so it keeps it when another colony is moved)
+      const k = nth.get(colony) || 0; nth.set(colony, k + 1);
+      out.cover.push({ kind, x, y: H(x, z), z, seed: colony * 37 + k + 1, scale });
     }
-    else if (kind === 'flower') flowerBeds.push([x, z, scale, typeof detail === 'string' ? detail : null]);
-    else tree(x, z, kind, scale, detail);
+    return out;
+  };
+  const grown = entriesOf(P);
+  for (const e of grown.plants) {
+    plants.push(e);
+    if (e.kind === 'tree') stands(e); else if (e.type !== 'clump') colliders.push([e.x, e.z, 0.7 * BUSH_SIZE * e.scale]);
   }
-  for (const [kind, x, z, scale] of P.cover || []) cover.push({ kind, x, y: H(x, z), z, seed: cover.length + 1, scale });
   const bigTrees = [];                                                     // the great tree: a forest of its own, so it can be moved by hand
-  for (const b of P.buildings) if (b.kind === 'tree') { const n = plants.length; tree(b.x, b.z, b.type, b.scale); bigTrees.push({ b, plant: plants.splice(n, 1)[0] }); }
-  // the beds of flowers: each a drift of low flowers in the grass (meadow-flowers.js, planted with the groves below), in the
-  // colour its group has in the plan; some with a flowering clump standing in it (a small flowering bush of anime-tree.js,
-  // in the bed's colours). Their own dice, and added after every other plant, so the trees and bushes are the ones they were.
-  const BEDS = ['pink', 'yellow', 'blue'], BED_BLOOM = { pink: ['pink', 'pink', 'white'], yellow: ['yellow', 'yellow', 'white'], blue: ['lilac', 'blue', 'lilac'] };
-  const offWay = (x, z, pad) => { const n = paths.near(x, z); return n.d > n.half + pad; };
-  {
-    const fr = mulberry32(seed * 977 + 5);
-    flowerBeds.forEach((bed, i) => {
-      const [bx, bz, rad] = bed, kind = bed.pop() || BEDS[(seed * 71 + i + 1) % 3], clumps = [];
-      const n = fr() < 0.35 ? 1 : 0;                                       // (the low flowers are the bed; a clump is its accent: the groups bring more of their own)
-      for (let k = 0, tries = 0; k < n && tries < 24; tries++) {
-        const a = fr() * 6.28, d = rad * (0.2 + 0.55 * fr()), x = bx + Math.cos(a) * d, z = bz + Math.sin(a) * d, scale = 0.5 + 0.22 * fr();
-        if (!offWay(x, z, 0.5) || waterDepthAt(x, z) > 0 || colliders.some(([cx, cz, cr]) => Math.hypot(cx - x, cz - z) < cr + 0.55)) continue;
-        if (clumps.some(c => Math.hypot(c[0] - x, c[1] - z) < 0.75)) continue;
-        const bloom = BED_BLOOM[kind][Math.floor(fr() * 3)];
-        plants.push({ kind: 'bush', type: 'clump', bloom, seed: Math.floor(fr() * 1000), x, y: H(x, z), z, rotY: fr() * 6.28, scale });      // (nothing solid: she walks through it, its leaves parting round her)
-        clumps.push([x, z, 0.75 * scale + 0.1]);                           // (no low flower stands inside a clump)
-        k++;
-      }
-      bed.push(kind, clumps);
-    });
-    // the flowering clumps the plan's groups stand about (walked through, like those in the beds)
-    for (const [x, z, scale, bloom] of P.clumps || []) {
-      if (!offWay(x, z, 0.4) || waterDepthAt(x, z) > 0) continue;
-      plants.push({ kind: 'bush', type: 'clump', bloom, seed: Math.floor(fr() * 1000), x, y: H(x, z), z, rotY: fr() * 6.28, scale });
-    }
+  for (const b of P.buildings) if (b.kind === 'tree') {
+    const e = { kind: 'tree', type: b.type, seed: b.shape ?? 100, detail: 0.8, x: b.x, y: H(b.x, b.z) - 0.05, z: b.z, rotY: b.turn ?? r() * 6.28, scale: b.scale };      // (its shape and its turn: the plan's)
+    stands(e); bigTrees.push({ b, plant: e });
   }
+  const offWay = (x, z, pad) => { const n = paths.near(x, z); return n.d > n.half + pad; };
 
   // ------------------------------------------------------------------ the village
   await onStep('สร้างหมู่บ้าน');
@@ -450,43 +446,66 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
   console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
   group.add(grass);
-  // the woods (anime-tree.js, and the pines of frond-pine.js: the plan's plants are placed by the land's own rules, in the
-  // map's tool), in groves, and the beds of flowers: each is drawn only when it is in view (see update)
-  const groves = [], inView = [];
-  {
-    const by = new Map(), v = new THREE.Vector3(), grove = +new URLSearchParams(location.search).get('grove') || M.grove;
-    for (const p of plants) { const k = Math.floor((p.x - X0) / grove) + ',' + Math.floor((p.z - Z0) / grove); if (!by.has(k)) by.set(k, []); by.get(k).push(p); }
-    for (const list of by.values()) {
-      const box = new THREE.Box3();
-      for (const p of list) { const sc = p.scale || 1, w = (p.kind === 'bush' ? 1.6 * BUSH_SIZE : 5.5) * sc; box.expandByPoint(v.set(p.x - w, p.y - 1, p.z - w)); box.expandByPoint(v.set(p.x + w, p.y + (p.kind === 'bush' ? 2.2 * BUSH_SIZE : 12.2) * sc, p.z + w)); }
-      // a grove: its pines drawn by frond-pine.js, the rest of its plants by anime-tree.js
-      const isPine = p => p.kind === 'tree' && p.type === 'pine', pines = list.filter(isPine), rest = list.filter(p => !isPine(p));
-      const obj = new THREE.Group(); obj.name = 'grove';
-      if (rest.length) obj.add(createAnimeForest(rest));
-      if (pines.length) obj.add(createFrondPineForest(pines));
-      group.add(obj); groves.push({ obj, box }); inView.push({ obj, box });
+  // the woods (anime-tree.js, and the pines of frond-pine.js), in groves, with the beds of flowers that lie in each; and the
+  // ferns and tufts in squares of their own (smaller: they are only seen from near; from further off a square is drawn
+  // thinner, then not at all). Each is drawn only when it is in view (see update). plantGroves and plantCover build what
+  // they are told to and take away what stood there before: all of it as the level is built, a few when the foliage editor
+  // has moved a plant.
+  const groves = [], inView = [], grovesAt = new Map(), squaresAt = new Map();
+  const GROVE = +new URLSearchParams(location.search).get('grove') || M.grove, SQUARE = 40, v3g = new THREE.Vector3();
+  const groveOf = (x, z) => Math.floor((x - X0) / GROVE) + ',' + Math.floor((z - Z0) / GROVE), squareOf = (x, z) => Math.floor((x - X0) / SQUARE) + ',' + Math.floor((z - Z0) / SQUARE);
+  const uproot = (at, key) => {
+    for (const rec of at.get(key) || []) {
+      group.remove(rec.obj); rec.obj.traverse(m => { if (m.geometry) m.geometry.dispose(); });
+      inView.splice(inView.indexOf(rec), 1); if (groves.includes(rec)) groves.splice(groves.indexOf(rec), 1);
     }
-    let fs = seed * 71;
-    for (const [x, z, rad, bed, clumps] of flowerBeds) {
-      // no flower on a way, in the water, or in anything solid (a wall, a trunk, a rock, a bush)
-      const reach = rad * 1.2, solid = colliders.filter(([cx, cz, cr]) => Math.hypot(cx - x, cz - z) < reach * 1.15 + cr + 0.2);
-      const grows = (fx, fz) => offWay(fx, fz, 0.12) && waterDepthAt(fx, fz) === 0 && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08);
-      const obj = createFlowerDrift({ center: [x, z], radius: reach, seed: ++fs, heightAt: H, bed, allow: grows, avoid: clumps }), y = H(x, z), far = reach * 1.15 + 0.5;
-      group.add(obj); inView.push({ obj, far: 110, box: new THREE.Box3(v.set(x - far, y - 2, z - far).clone(), v.set(x + far, y + 3, z + far).clone()) });      // (from further off than that a bed of flowers is too small to see)
+    at.delete(key);
+  };
+  const sorted = (list, keyOf, only) => { const by = new Map(); for (const e of list) { const k = keyOf(e.x, e.z); if (only && !only.has(k)) continue; if (!by.has(k)) by.set(k, []); by.get(k).push(e); } return by; };
+  const isPine = p => p.kind === 'tree' && p.type === 'pine';
+  const woodOf = list => {                                                 // a grove's trees and bushes: its pines drawn by frond-pine.js, the rest by anime-tree.js
+    const obj = new THREE.Group(), pines = list.filter(isPine), rest = list.filter(p => !isPine(p)); obj.name = 'grove';
+    if (rest.length) obj.add(createAnimeForest(rest));
+    if (pines.length) obj.add(createFrondPineForest(pines));
+    return obj;
+  };
+  const bedOf = (b, clumps, heightAt = H, allow = null) => {                // a bed's low flowers: none on a way, in the water, in anything solid (a wall, a trunk, a rock, a bush), or inside a clump
+    const reach = b.rad * 1.2, solid = allow ? [] : colliders.filter(([cx, cz, cr]) => Math.hypot(cx - b.x, cz - b.z) < reach * 1.15 + cr + 0.2);
+    const grows = allow || ((fx, fz) => offWay(fx, fz, 0.12) && waterDepthAt(fx, fz) === 0 && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08));
+    const avoid = clumps.filter(c => Math.hypot(c.x - b.x, c.z - b.z) < reach + 1).map(c => [c.x, c.z, 0.75 * c.scale + 0.1]);
+    return createFlowerDrift({ center: [b.x, b.z], radius: reach, seed: b.seed, heightAt, bed: b.bed, allow: grows, avoid });
+  };
+  const plantGroves = (F, only = null) => {
+    const trees = sorted(F.plants, groveOf, only), beds = sorted(F.beds, groveOf, only), clumps = F.plants.filter(p => p.type === 'clump');
+    for (const key of only || new Set([...trees.keys(), ...beds.keys()])) {
+      uproot(grovesAt, key);
+      const recs = [], list = trees.get(key) || [];
+      if (list.length) {
+        const box = new THREE.Box3();
+        for (const p of list) { const sc = p.scale || 1, w = (p.kind === 'bush' ? 1.6 * BUSH_SIZE : 5.5) * sc; box.expandByPoint(v3g.set(p.x - w, p.y - 1, p.z - w)); box.expandByPoint(v3g.set(p.x + w, p.y + (p.kind === 'bush' ? 2.2 * BUSH_SIZE : 12.2) * sc, p.z + w)); }
+        const rec = { obj: woodOf(list), box }; groves.push(rec); recs.push(rec);
+      }
+      for (const b of beds.get(key) || []) {
+        const far = b.rad * 1.38 + 0.5;                                    // (from further off than 110 m a bed of flowers is too small to see)
+        recs.push({ obj: bedOf(b, clumps), far: 110, box: new THREE.Box3(v3g.set(b.x - far, b.y - 2, b.z - far).clone(), v3g.set(b.x + far, b.y + 3, b.z + far).clone()) });
+      }
+      for (const rec of recs) { group.add(rec.obj); inView.push(rec); }
+      if (recs.length) grovesAt.set(key, recs);
     }
-    // the ferns and tufts, in squares of their own (smaller than a grove: they are only seen from near). None in the water
-    // or on a way; from further off a square is drawn thinner, then not at all
-    const squares = new Map(), SQ = 40;
-    for (const c of cover) {
-      if (waterDepthAt(c.x, c.z) > 0 || !offWay(c.x, c.z, 0.1)) continue;
-      const k = Math.floor((c.x - X0) / SQ) + ',' + Math.floor((c.z - Z0) / SQ); if (!squares.has(k)) squares.set(k, []); squares.get(k).push(c);
+  };
+  const plantCover = (list, only = null) => {
+    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && offWay(c.x, c.z, 0.1)), squareOf, only);      // (none in the water or on a way)
+    for (const key of only || by.keys()) {
+      uproot(squaresAt, key);
+      const here = by.get(key);
+      if (!here) continue;
+      const box = new THREE.Box3(), obj = createGroundCover(here);
+      for (const c of here) { box.expandByPoint(v3g.set(c.x - 1.6, c.y - 0.5, c.z - 1.6)); box.expandByPoint(v3g.set(c.x + 1.6, c.y + 2, c.z + 1.6)); }
+      const rec = { obj, box, far: 95, thin: obj.userData.thin };
+      group.add(obj); inView.push(rec); squaresAt.set(key, [rec]);
     }
-    for (const list of squares.values()) {
-      const box = new THREE.Box3(), obj = createGroundCover(list);
-      for (const c of list) { box.expandByPoint(v.set(c.x - 1.6, c.y - 0.5, c.z - 1.6)); box.expandByPoint(v.set(c.x + 1.6, c.y + 2, c.z + 1.6)); }
-      group.add(obj); inView.push({ obj, box, far: 95, thin: obj.userData.thin });
-    }
-  }
+  };
+  plantGroves(grown); plantCover(grown.cover);
 
   // ------------------------------------------------------------------ the water: the valley's clear water lying in each stretch's bed, a fall where a terrace ends
   await onStep('เติมน้ำ');
@@ -654,8 +673,32 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       return '';
     },
   };
+  // ---- the foliage arranged by hand (foliage-editor.js; the arrangement itself, as data: foliage-edits.js). The editor holds
+  // the rows; here they are made into the scene again where they changed, and what is picked up gets a small scene of its
+  // own to be carried about in. (Her way round a moved tree, the bare ground at its foot and its shadow are worked out when
+  // the map loads again.)
+  const foliageEdit = {
+    key: foliageKey('hillvillage'), map: 'hillvillage', report: foliage, heightAt: H, groveOf, squareOf,
+    rows: () => ({ plants: P.plants.map(r => r.slice()), clumps: (P.clumps || []).map(r => r.slice()), cover: (P.cover || []).map(r => r.slice()) }),
+    plant(rows, dirty = null) {                                            // the scene from these rows: all of it, or only the groves and squares named ({ groves, squares }: sets of groveOf's and squareOf's keys)
+      const F = entriesOf(rows);
+      plantGroves(F, dirty && dirty.groves); plantCover(F.cover, dirty && dirty.squares);
+    },
+    sprig(rows, cx, cz) {                                                  // a few rows as a small scene of their own: an Object3D standing at (cx, 0, cz), to be moved and turned
+      const F = entriesOf(rows), holder = new THREE.Group(), near = e => ({ ...e, x: e.x - cx, z: e.z - cz });
+      holder.name = 'sprig'; holder.position.set(cx, 0, cz);
+      if (F.plants.length) holder.add(woodOf(F.plants.map(near)));
+      const clumps = F.plants.filter(e => e.type === 'clump').map(near);
+      for (const b of F.beds) holder.add(bedOf(near(b), clumps, (x, z) => H(x + cx, z + cz), () => true));
+      if (F.cover.length) holder.add(createGroundCover(F.cover.map(near)));
+      holder.traverse(o => { o.frustumCulled = false; });
+      group.add(holder);
+      return holder;
+    },
+    drop(holder) { group.remove(holder); holder.traverse(m => { if (m.geometry) m.geometry.dispose(); }); },
+  };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
     map: url(M.map),
