@@ -18,6 +18,8 @@
 //                                               //          not laid over (the map's own are used); they are in kept
 //                                               //          (made on the foliage stamped keptBase), to send
 //                                               //   src    for each row now, which of the map's own it was (-1: a new one)
+//                                               // An arrangement made on the foliage just before the map's (plan.foliageWas: when
+//                                               // the map's only had plants taken out) has the same taken out, and stands.
 //   keepFoliage(key, base, lists, src)          // keep these lists (made on the map's foliage with the stamp `base`)
 //   dropFoliage(key)                            // back to the map's own
 //   foliageEdits(map, report, lists, src)       // what changed, to send: { map, v, base, plants: { set, del, add }, ... }, or
@@ -37,6 +39,10 @@ export function applyFoliage(plan, key) {
   let kept = null;
   try { kept = JSON.parse(localStorage.getItem(key) || 'null'); } catch { /* nothing kept, or nowhere to keep it */ }
   if (!kept || kept.v !== 1 || !Array.isArray(kept.plants)) return report;
+  if (plan.foliageWas && kept.base === plan.foliageWas.base) {             // made on the foliage just before this one, which differs only by what was taken out: the same taken out here, and it stands as before
+    kept = carriedOver(kept, plan.foliageWas, report.stamp);
+    try { localStorage.setItem(key, JSON.stringify(kept)); } catch { /* used this once all the same */ }
+  }
   if (FOLIAGE_LISTS.every(n => same(kept[n] || [], own[n]))) {              // the map has caught up with what was arranged here
     try { localStorage.removeItem(key); } catch { /* no matter */ }
     report.baked = true; return report;
@@ -50,6 +56,22 @@ export function applyFoliage(plan, key) {
   report.used = true; report.base = kept.base;
   report.src = kept.src || null;
   return report;
+}
+
+// An arrangement made on the map's foliage before some plants were taken out of it (plan.foliageWas: the stamp of that
+// foliage; gone: for each list, which of its rows went, by where they stood, or 'all'; kinds: which kinds go from this
+// browser's rows too, the ones added here included, or 'all'): those rows out, the rest as arranged, now on the stamp `base`.
+function carriedOver(kept, was, base) {
+  const out = { v: 1, base, src: kept.src ? {} : null };
+  for (const n of FOLIAGE_LISTS) {
+    const gone = was.gone && was.gone[n], kinds = was.kinds && was.kinds[n], rows = kept[n] || [], src = kept.src && kept.src[n];
+    const goneSet = new Set(Array.isArray(gone) ? gone : []);
+    const shift = j => { let k = 0; for (const g of goneSet) if (g < j) k++; return j - k; };      // where a row of the old foliage stands in the new
+    const keep = rows.map((row, i) => !(gone === 'all' || kinds === 'all' || (Array.isArray(kinds) && kinds.includes(row[0])) || (src && src[i] >= 0 && goneSet.has(src[i]))));
+    out[n] = rows.filter((_, i) => keep[i]);
+    if (out.src) out.src[n] = src ? src.filter((_, i) => keep[i]).map(j => (j >= 0 ? shift(j) : j)) : out[n].map(() => -1);
+  }
+  return out;
 }
 
 export function keepFoliage(key, base, lists, src) {
