@@ -25,9 +25,9 @@
 #   hill-village.bin    the land as raw 16-bit numbers, little-endian, land.nx across by land.nz down, one every land.cell
 #                       metres from (land.x0, land.z0)  (what the game reads)
 #   hill-village.json   the plan: where the land lies and the part she walks on, the water (brooks and falls, as for ?map=pit),
-#                       the buildings, the bridges, the ways, yards, fences, fields, small things, plants, rocks, and the
-#                       places to start from
-#   hill-village-scatter.json   the plants and the valley's rocks as first thrown (written once, then read: see 7)
+#                       the buildings, the bridges, the ways, yards, fences, fields, small things, plants (and the flowering
+#                       clumps and the ground cover, each a list of its own), rocks, and the places to start from
+#   hill-village-scatter.json   the plants and the valley's rocks as first thrown (written once, then read: see 9)
 # Places are metres from the middle of the village: x east, z south. A yaw is the way a thing faces: 0 south (+z), pi/2 east.
 import json, math
 from pathlib import Path
@@ -729,7 +729,7 @@ for k_, tr in enumerate(tiers):
     rows = np.vstack([P[:-1:4], P[-1:]]); hw = np.concatenate([A[:-1:4, 0], A[-1:, 0]])
     brooks.append([[round(float(p[0]), 2), round(float(p[1]), 2), round(lvl, 2), round(float(h_), 2)] for p, h_ in zip(rows, hw)])
 H = flat.reshape(NZ, NX); water_d = water_d.reshape(NZ, NX)
-ROCKS_IN_LIPS = []                                                    # the boulders that stand on them (put with the valley's rocks, in 7)
+ROCKS_IN_LIPS = []                                                    # the boulders that stand on them (put with the valley's rocks, in 9)
 for f_ in falls:                                                      # the rocks in a parted fall's lip: each a hump standing out of the water, rounded upstream, from above the sill out to the lip
     dx_, dz_ = math.sin(f_['yaw']), math.cos(f_['yaw']); rx, rz = WX - f_['x'], WZ - f_['z']
     along = rx * dx_ + rz * dz_; side = rx * dz_ - rz * dx_
@@ -740,47 +740,122 @@ for f_ in falls:                                                      # the rock
         ROCKS_IN_LIPS.append(['boulder', f_['x'] + dz_ * u_ - dx_ * (0.55 * L_), f_['z'] - dx_ * u_ - dz_ * (0.55 * L_), b_, f_['yaw'] + 1.2 * u_])
 H = ndi.gaussian_filter(H, 0.6)
 
-# ------------------------------------------------------------------ 7. plants: the land itself decides what grows where
+# ------------------------------------------------------------------ 7. the small things: a market round the fountain, and what a farm leaves lying about
+px_, pz_ = PLAZA; ty = TREE_YARD; barn = by_id['barn']; wmill = by_id['windmill']; fr = M(.835, .36)
+PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, yaw
+    ['stall', px_ - 7.5, pz_ - 5.0, 0.9], ['stall', px_ + 2.5, pz_ - 8.0, -0.2], ['stall', px_ + 8.0, pz_ + 3.5, -1.9], ['stall', px_ - 3.0, pz_ + 8.5, 2.9],
+    ['barrels', px_ - 9.4, pz_ - 2.4, 0.3], ['crates', px_ + 5.6, pz_ - 7.4, 1.0], ['crates', px_ + 10.2, pz_ + 4.6, 2.0], ['kit:Prop_Wagon', px_ + 13.0, pz_ + 8.0, 2.4], ['bench', px_ - 2.6, pz_ - 3.6, 0.6], ['bench', px_ + 3.4, pz_ + 2.6, -2.4], ['lamp', px_ - 4.4, pz_ + 3.4, 0], ['lamp', px_ + 4.6, pz_ - 3.2, 0],
+    ['table', *M(.47, .775), 0.3], ['bench', M(.47, .775)[0], M(.47, .775)[1] + 1.6, 0.3], ['table', M(.47, .775)[0] + 4, M(.47, .775)[1] + 0.8, 0.2], ['signpost', *M(.19, .835), 0.8],
+    ['stall', ty[0] + 8.0, ty[1] - 6.5, -2.3], ['barrels', ty[0] + 10.5, ty[1] - 4.6, 0.4], ['bench', ty[0] - 3.4, ty[1] + 4.6, 2.4], ['lamp', ty[0] + 4.6, ty[1] + 2.6, 0],
+    ['hay', barn['x'] + 5.0, barn['z'] + 4.0, 0.4], ['hay', barn['x'] + 5.6, barn['z'] + 6.2, 1.9], ['woodpile', barn['x'] - 4.6, barn['z'] + 2.0, 1.57], ['cart', barn['x'] - 6.0, barn['z'] + 8.5, 0.5],
+    ['sheep', fr[0] - 5, fr[1] - 2, 0.6], ['sheep', fr[0] + 1, fr[1] + 2.4, 2.4], ['sheep', fr[0] + 5.5, fr[1] - 1.5, 4.0], ['sheep', fr[0] - 1.5, fr[1] + 4.6, 5.2], ['sheep', fr[0] + 8, fr[1] + 3, 1.6],
+    ['hay', fr[0] - 8.5, fr[1] - 4.5, 1.0], ['hay', wmill['x'] + 5.5, wmill['z'] - 4.0, 0.3], ['barrels', wmill['x'] + 6.2, wmill['z'] + 3.2, 1.0], ['cart', wmill['x'] - 4.0, wmill['z'] + 6.0, 2.0],
+    ['woodpile', MILL[0] + nrm[0] * 3.6 - t[0] * 2, MILL[1] + nrm[1] * 3.6 - t[1] * 2, mill_yaw], ['barrels', MILL[0] + t[0] * 4.6 + nrm[0] * 2.6, MILL[1] + t[1] * 4.6 + nrm[1] * 2.6, 0.2],
+    ['crates', by_id['castle_hall']['x'] + 2.5, by_id['castle_hall']['z'] + 4.2, 0.5], ['lamp', M(.385, .158)[0] + 2.6, M(.385, .158)[1] + 1.2, 0],
+    ['barrels', by_id['manor']['x'] - 5.0, by_id['manor']['z'] + 5.6, 0], ['bench', by_id['manor']['x'] + 4.0, by_id['manor']['z'] + 5.6, 3.14], ['lamp', M(.565, .158)[0] - 2.4, M(.565, .158)[1] + 0.6, 0],
+    ['signpost', *M(.535, .40), 2.0], ['signpost', BS[0] - 2.2, BS[1] + 2.4, 0.4], ['woodpile', by_id['ledge_house']['x'] + 4.0, by_id['ledge_house']['z'] - 1.5, 1.57],
+    # the valley: a signpost where the way to it comes down onto the meadow, another at the foot of the way down; a bench at the lookout
+    ['signpost', 7.6, 65.5, 2.6], ['signpost', RAMP_FOOT[0] + 2.4, RAMP_FOOT[1] - 1.0, 1.2], ['bench', LOOKOUT[0] + 0.3, LOOKOUT[1] + 2.0, -2.0],
+    # the pit: a signpost where the west bank's way comes to it, a bench on its far side
+    ['signpost', J_W[0] - 2.0, J_W[1] - 1.4, 0.6], ['bench', PIT_SOUTH[0] + 6.0, PIT_SOUTH[1] + 2.6, round(face(PIT_SOUTH, tuple(BOWL)), 2)],
+]
+PROPS = [[k, round(float(x), 2), round(float(z), 2), round(float(y), 2)] for k, x, z, y in PROPS]
+for m in MOVES:                                                          # the small things moved by hand: the nearest of its kind_ to where it was
+    if '@' not in m['id']: continue
+    kind_ = m['id'].split('@')[0]; (fx_, fz_, _), (tx_, tz_, ty_) = m['from'], m['to']
+    p_ = min((q for q in PROPS if q[0] == kind_), key=lambda q: math.hypot(q[1] - fx_, q[2] - fz_), default=None)
+    if p_ is None or math.hypot(p_[1] - fx_, p_[2] - fz_) > 0.3: print(f"  ! the move of {m['id']} is out of date"); continue
+    p_[1:] = [tx_, tz_, ty_]; print(f"  moved by hand: {m['id']} to {tx_}, {tz_}")
+# ------------------------------------------------------------------ 8. the places to start from (name, spot, the way she faces)
+SPAWN = M(.04, .868); FALL = tuple(LIP + RIVER_DIR * 2.0); above = M(.60, .80); rim = (RAMP_TOP[0] - 1.2, RAMP_TOP[1] - 4.0)
+VIEWS = {
+    'start': [*R2(SPAWN), round(face(SPAWN, M(.12, .895)), 2)], 'vl-plaza': [*R2((px_ + 1.5, pz_ + 5.0)), 3.0], 'vl-bridge': [*R2(BS - BRIDGE_DIR * 3), round(face(BS, BN), 2)],
+    'vl-tree': [*R2((ty[0] - 2.5, ty[1] + 3.5)), round(face(ty, (by_id['great_tree']['x'], by_id['great_tree']['z'])), 2)],
+    'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
+    'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.60, .535)), round(face(M(.60, .535), (wmill['x'], wmill['z'])), 2)],
+    'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-falltop': [*R2(above), round(face(above, tuple(BASIN)), 2)],
+    'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)],
+    'vl-eastwood': [*R2(M(.88, .60)), round(face(M(.88, .60), M(.92, .66)), 2)],
+    'vl-brink': [*R2(LOOKOUT), round(face(LOOKOUT, FALL), 2)], 'vl-rim': [*R2(rim), round(face(rim, (riv_x(ZH + 70), ZH + 70)), 2)],
+    'vl-pit': [*R2(PIT_NORTH), round(face(PIT_NORTH, tuple(BOWL)), 2)], 'vl-cascade': [*R2(CASCADE_VIEW), round(face(CASCADE_VIEW, CASCADE_MID), 2)], 'vl-pit-south': [*R2(PIT_SOUTH), round(face(PIT_SOUTH, tuple(BOWL)), 2)],
+    'vl-pit-above': [*R2(PIT_ABOVE), round(face(PIT_ABOVE, tuple(BOWL)), 2)],
+    'vl-fallfoot': [*R2(FALL_FOOT), round(face(FALL_FOOT, FALL), 2)], 'vl-valley': [*R2((PW[0] - 2.5, PW[1] + 0.4)), round(face(PW, (riv_x(ZH + 40), ZH + 40)), 2)],
+}
+
+
+def _before_view(x, z):                                              # in the wedge before a place to look from (30 m out, about 17 degrees each side),
+    for vx, vz, yaw in VIEWS.values():                                # or within 7 m of it all round (the camera stands behind her there)
+        dx, dz = x - vx, z - vz; f_ = dx * math.sin(yaw) + dz * math.cos(yaw); s_ = dx * math.cos(yaw) - dz * math.sin(yaw)
+        if (0 < f_ < 30 and abs(s_) < 2.5 + f_ * 0.3) or math.hypot(dx, dz) < 7: return True
+    return False
+
+# ------------------------------------------------------------------ 9. plants: the land decides what grows where, in groups
 # Nothing is drawn by hand: every spot is put in one zone by what the land is there (how steep, how high, how near water, a
-# way, a house or a cliff, inside the part she walks on or out in the margin), and each zone has its own plants. Change the
-# land and the plants follow it. The rules:
-#   never        on a way or within 1.5 m of one, in water or within 2 m of it, on ground steeper than 30 degrees, on a
-#                building's ground, a field, a pen or a fence, a bridge, a cascade's steps, the map's edge, the line she cannot
-#                cross; and no tree in front of a place to look from (a narrow wedge before each view, in 10)
-#   the pit      pines and a few birches on its upper shelves
-#   the village  (within 14 m of a house) small trees and beds of flowers by the houses: no big tree to hide a house
-#   the water    (2 to 8 m from it) birches, bushes, flowers
-#   a cliff's foot   bushes thick, broadleaf trees in clumps
-#   a cliff's top    a few bushes (no tree to hang over the brink)
-#   a slope (15 to 30 degrees)   pines and bushes only
-#   the margin   thick wood: broadleaf and oak low down, the higher the more pines; at its edge bushes and small trees
-#                first, so the wood never ends in a straight line
-#   open ground  trees gather in groves (a slow noise): big trees in a grove's heart, small trees and bushes round its
-#                edge; between the groves now and then a lone oak or broadleaf
+# way, a house or a cliff, inside the part she walks on or out in the margin). Change the land and the plants follow it.
+#   never        on a way, in water, on ground steeper than 30 degrees, on a house, a field, a pen, a bridge, a cascade's
+#                steps, the map's edge, the line she cannot cross, a small thing (7) or a rock; and no tree in front of a
+#                place to look from (8), under the windmill's sails or on a cliff's brink
+#   the pit      pines and a few birches on its upper shelves, strewn
+#   the margin   thick wood, strewn: broadleaf and oak low down, the higher the more pines; at its edge bushes and small
+#                trees first, so the wood never ends in a straight line
+# Inside, where she walks, nothing stands alone: everything is planted in groups, each put where the village or the land
+# gives it a reason, with clear grass between one group and the next. A group has its tall thing in the middle or at the
+# back, lower things round it (small trees, then bushes in twos and threes, then flowering clumps), flowers at its sunny
+# edge, and one colour of flowers throughout (pink, yellow or blue beds, with bushes and clumps to match).
+#   a house      beds of flowers either side of its door and along its walls, bushes at its corners, a small tree or two
+#                behind it so the roof stands against green; here and there a big tree beside one
+#   the market   a big tree at its rim, beds and bushes between the ways that leave it; the great tree's yard the same
+#   a fence      a hedge along it in runs, flowers in the gaps
+#   where ways meet   a tree with flowers at its foot
+#   a bridge     a group of birches either side of each end
+#   a way        every so often a small tree, bushes and flowers beside it, and flowers along its very edge
+#   the water    birches in twos and threes along the bank, bushes and flowers toward the water
+#   a cliff's foot   a thicket along it: broadleaf trees in a line, bushes on the open side
+#   a cliff's top    bushes in a group (no tree to hang over the brink);  a slope (15 to 30 degrees): pines in a group
+#   open ground  copses where a slow noise says trees gather (big ones in its heart: an oak or a broadleaf, more trees
+#                round it, saplings at the rim), and between them stands of young trees, drifts of flowers and groups
+#                of bushes
 gy, gx = np.gradient(H, MPP); slope = np.hypot(gx, gy)
 px_m = lambda m: max(1, int(round(m / MPP)))
 STEEP, MIDSLOPE = math.tan(math.radians(30)), math.tan(math.radians(15))
-blocked = (water_d < 2.0) | (path_d < 1.5) | ndi.binary_dilation(slope > STEEP, iterations=px_m(1.0))
-for b_ in B:
-    if b_['kind'] != 'tree': blocked |= np.hypot(WX - b_['x'], WZ - b_['z']) < b_['pad'] + 0.8
-mk = Image.new('L', (NX, NZ), 0); md = ImageDraw.Draw(mk)
 P2 = lambda p: ((p[0] + XH) / MPP, (p[1] - Z0) / MPP)
 PXX = lambda u: ((u - .5) * SIZE + XH) / MPP; PXZ = lambda v: ((v - .5) * SIZE - Z0) / MPP
-md.line([P2(BS), P2(BN)], fill=255, width=px_m(6)); md.line([P2(PW), P2(PE)], fill=255, width=px_m(5))
-for p_ in PLANKS: md.line([P2(p_['a']), P2(p_['b'])], fill=255, width=px_m(5))
+blocked = ndi.binary_dilation(slope > STEEP, iterations=px_m(1.0))
 for c in CASC:                                                        # nor before a cascade, down the pit or beside its bridge: its steps are to be seen from across the pit
     th = c['th']; rho_ = (WX - BOWL[0]) * math.cos(th) + (WZ - BOWL[1]) * math.sin(th); lat_ = -(WX - BOWL[0]) * math.sin(th) + (WZ - BOWL[1]) * math.cos(th)
     blocked |= (np.abs(lat_) < 8.0) & (rho_ > 10) & (rho_ < c.get('rh', c['nb']) + 3)
-for f in FENCES: md.polygon([P2(p) for p in f['points']], fill=255); md.line([P2(p) for p in f['points'] + f['points'][:1]], fill=255, width=px_m(3))
-for f in FIELDS:                                                      # the fields, and a metre and a half round them
-    c_, s_ = math.cos(f['yaw']), math.sin(f['yaw']); hw_, hd_ = f['w'] / 2 + 1.5, f['d'] / 2 + 1.5
-    md.polygon([P2((f['x'] + a * c_ + b * s_, f['z'] - a * s_ + b * c_)) for a, b in ((-hw_, -hd_), (hw_, -hd_), (hw_, hd_), (-hw_, hd_))], fill=255)
-blocked |= np.array(mk) > 0
 e = px_m(2.5); blocked[:e] = blocked[-e:] = True; blocked[:, :e] = blocked[:, -e:] = True
 blocked |= (np.abs(OUTSIDE) < 1.2)                                    # (nothing on the line she cannot cross: a trunk there would look like a wall)
 blocked |= d_basin < BASIN_R + 6                                      # (nor in the spray round the plunge pool)
+
+
+def _made(fence_w, field_pad):
+    """what is built on the ground, as a mask: the bridges, a pen with its fence (fence_w metres wide), a field and field_pad metres round it"""
+    mk = Image.new('L', (NX, NZ), 0); md = ImageDraw.Draw(mk)
+    md.line([P2(BS), P2(BN)], fill=255, width=px_m(6)); md.line([P2(PW), P2(PE)], fill=255, width=px_m(5))
+    for p_ in PLANKS: md.line([P2(p_['a']), P2(p_['b'])], fill=255, width=px_m(5))
+    for f in FENCES: md.polygon([P2(p) for p in f['points']], fill=255); md.line([P2(p) for p in f['points'] + f['points'][:1]], fill=255, width=px_m(fence_w))
+    for f in FIELDS:
+        c_, s_ = math.cos(f['yaw']), math.sin(f['yaw']); hw_, hd_ = f['w'] / 2 + field_pad, f['d'] / 2 + field_pad
+        md.polygon([P2((f['x'] + a * c_ + b * s_, f['z'] - a * s_ + b * c_)) for a, b in ((-hw_, -hd_), (hw_, -hd_), (hw_, hd_), (-hw_, hd_))], fill=255)
+    return np.array(mk) > 0
+
+
+off_low = blocked | _made(1.0, 0.6)                                   # where not even a flower grows (a hedge may stand right against a fence)
+blocked |= _made(3.0, 1.5)                                            # a tree keeps a metre and a half from a fence or a field
+off_tree = blocked.copy()                                             # where no tree grows (the houses apart: wall_d below)
+for b_ in B:
+    if b_['kind'] != 'tree': blocked |= np.hypot(WX - b_['x'], WZ - b_['z']) < b_['pad'] + 0.8
+hard = blocked.copy()                                                 # (where nothing strewn grows; the ground cover may come nearer a way and the water than the rest)
+blocked |= (water_d < 2.0) | (path_d < 1.5)
 free = ~blocked
 seen = np.maximum(np.abs(WX) / XH, np.abs(WZ - (Z0 + Z1) / 2) / ((Z1 - Z0) / 2)) < 0.94      # (past this the land is lost in the haze)
+_wm = Image.new('L', (NX, NZ), 0); _wd = ImageDraw.Draw(_wm)           # the houses as they stand (w across, l along the ridge, turned by yaw), and the well
+for b_ in B:
+    if 'spec' in b_: _wd.polygon([P2(q) for q in rect(b_['x'], b_['z'], b_['spec']['w'], b_['spec']['l'], b_['yaw'])], fill=255)
+    elif b_['kind'] == 'well': _wd.ellipse([P2((b_['x'] - 1.4, b_['z'] - 1.4)), P2((b_['x'] + 1.4, b_['z'] + 1.4))], fill=255)
+wall_d = ndi.distance_transform_edt(np.array(_wm) == 0) * MPP          # metres from the nearest wall
+way_d = ndi.distance_transform_edt(path_d > 0) * MPP                  # metres from the nearest way, however far (path_d is only kept near one)
 
 # what the land is at every spot
 bld_d = np.full((NZ, NX), 1e9)                                        # metres from the nearest house's ground
@@ -818,7 +893,7 @@ height01 = np.clip((H - H_LO) / (H_HI - H_LO), 0, 1)                   # how hig
 grove_core, grove_edge = open_ & (groves > 0.64), open_ & (groves > 0.55) & (groves <= 0.64)
 meadow = open_ & (groves <= 0.55)
 
-plants = []; _grid = {}; GRID = 8.0                                   # (kind, x, z, radius): no two closer than their radii added
+plants = []; _grid = {}; GRID = 8.0                                   # the strewn ones (kind, x, z, radius): no two closer than their radii added
 
 
 def _crowded(x, z, rad):
@@ -837,9 +912,8 @@ def scatter(mask, spacing, pick, tries=0.25, keep=1.0):
         x, z = (xs[i] + pn.random()) * MPP - XH, (ys[i] + pn.random()) * MPP + Z0
         if pn.random() > keep: continue
         kind = pick(x, z)
-        rad = 0.75 if kind == 'flower' else spacing / 2
-        if _crowded(x, z, rad): continue
-        p_ = (kind, x, z, rad); plants.append(p_); _grid.setdefault((int(x // GRID), int(z // GRID)), []).append(p_)
+        if _crowded(x, z, spacing / 2): continue
+        p_ = (kind, x, z, spacing / 2); plants.append(p_); _grid.setdefault((int(x // GRID), int(z // GRID)), []).append(p_)
 
 
 one = lambda k: (lambda x, z: k)
@@ -855,106 +929,552 @@ def mix(*kw):                                                         # mix(('oa
 def margin_tree(x, z):                                                # the margin's wood: the higher up its hills, the more pines
     h01 = float(sample(height01, (x, z))[0]); pine = sm(0.3, 0.75, h01)
     if pn.random() < pine: return 'pine'
-    r_ = pn.random(); return 'oak' if r_ < 0.45 else 'broadleaf' if r_ < 0.9 else 'birch'
+    r_ = pn.random(); return 'oak' if r_ < 0.25 else 'broadleaf' if r_ < 0.9 else 'birch'      # (few oaks out there: seen from far off a broadleaf does as well, with half the leaves)
 
 
+# the pit and the margin: strewn
 scatter(pit_zone, 6.5, mix(('pine', 0.7), ('birch', 0.3)), tries=0.12, keep=0.6)
-scatter(village & (bld_d > 2) & (bld_d < 7), 5.0, one('flower'), tries=0.05, keep=0.5)
-_n0 = len(plants)
-scatter(village & (bld_d > 4), 9.0, one('sapling'), tries=0.04, keep=0.35)
-VILLAGE_SAPLINGS = plants[_n0:]                                       # (grown into clumps below, 6b)
-scatter(river, 7.0, one('birch'), tries=0.1, keep=0.45)
-scatter(river, 3.6, one('bush'), tries=0.08, keep=0.4)
-scatter(river, 6.0, one('flower'), tries=0.03, keep=0.3)
-scatter(foot & (groves > 0.45), 6.0, one('broadleaf'), tries=0.2, keep=0.75)
-scatter(foot, 3.4, one('bush'), tries=0.1, keep=0.6)
-scatter(slope_z, 7.0, one('pine'), tries=0.1, keep=0.5)
-scatter(slope_z, 4.2, one('bush'), tries=0.06, keep=0.35)
-scatter(brink, 5.0, one('bush'), tries=0.05, keep=0.3)
-scatter(grove_core, 6.2, mix(('oak', 0.4), ('broadleaf', 0.45), ('birch', 0.15)), tries=0.25)
-scatter(grove_edge, 4.6, one('sapling'), tries=0.15, keep=0.6)
-scatter(grove_edge, 3.2, one('bush'), tries=0.12, keep=0.6)
 scatter(margin & (OUTSIDE < 4), 4.8, one('sapling'), tries=0.15, keep=0.55)       # the wood's edge: small first
 scatter(margin & (OUTSIDE < 4), 3.2, one('bush'), tries=0.12, keep=0.6)
 scatter(margin & (OUTSIDE >= 4) & (OUTSIDE < 10), 7.5, margin_tree)
 scatter(margin & (OUTSIDE >= 10) & seen, 11.0, margin_tree)
-scatter(meadow, 18.0, mix(('oak', 0.55), ('broadleaf', 0.45)), tries=0.02, keep=0.5)      # a lone tree in the open now and then
-scatter(meadow, 9.0, one('bush'), tries=0.02, keep=0.3)
-out_plants = []
 TREES_K = 0.87                                                        # every tree 87% of the size it was first given: beside Vivi (1.6 m) the woods stood 7 to 9 times her height
 SCALE = {'pine': (0.85, 1.05), 'oak': (0.85, 1.25), 'broadleaf': (0.8, 1.15), 'birch': (0.9, 1.2), 'sapling': (0.85, 1.25)}      # (pines were 0.9 .. 1.35: up to 15 m, far over the rest)
 SCALE = {k: (lo * TREES_K, hi * TREES_K) for k, (lo, hi) in SCALE.items()}
-SCALE.update({'bush': (0.75, 1.15), 'flower': (1.1, 1.8)})
+SCALE['bush'] = (0.75, 1.15)
+TREE_KINDS = ('oak', 'broadleaf', 'birch', 'pine', 'sapling')
+plants = [p_ for p_ in plants if p_[0] == 'bush' or not _before_view(p_[1], p_[2])]      # (no tree in front of a place to look from)
+out_plants = []                                                       # the plan's rows: kind, x, z, scale, and for a tree she never comes near 0.5 (fewer leaves), for a bush its flowers' colour or 'green', for a bed of flowers its colour
 for kind, x, z, _r in plants:
     row = [kind, round(x, 2), round(z, 2), round(float(pn.uniform(*SCALE[kind])), 2)]
-    if kind not in ('bush', 'flower') and (sample(OUTSIDE, (x, z))[0] > 6 or math.hypot(x - BOWL[0], z - BOWL[1]) < PIT_BRINK + 1): row.append(0.5)      # (trees she never comes near, in the margin and down the pit: drawn with fewer leaves)
+    if kind != 'bush' and (sample(OUTSIDE, (x, z))[0] > 6 or math.hypot(x - BOWL[0], z - BOWL[1]) < PIT_BRINK + 1): row.append(0.5)      # (trees she never comes near, in the margin and down the pit: drawn with fewer leaves)
     out_plants.append(row)
 
-# 6b. The village's small trees in clumps. A sapling standing alone on the grass by a house looks lost, so each one the rules
-# put there grows a clump round it: now and then one or two more saplings, smaller, in a loose triangle (never in a row);
-# always bushes at their feet; often a bed of flowers. One round which nothing can be grown (too close to a way, a wall,
-# water, another plant or a rock) is taken out: no sapling stands alone in the village. The clumps have dice of their own, so
-# every other plant on the map stays where it was, at the size it was.
-cr = np.random.default_rng(612)
-REACH = {'sapling': 1.1, 'bush': 0.6, 'flower': 0.9, 'broadleaf': 2.0, 'oak': 2.4, 'birch': 1.3, 'pine': 1.3}      # metres a plant takes up on the ground (trunk and the foot of its crown)
+# ---- inside: the groups. Their own dice, so the pit and the margin stay as they are whatever is changed here.
+gr = np.random.default_rng(614)
+U = lambda a_, b_: float(gr.uniform(a_, b_)); N = lambda a_, b_: int(gr.integers(a_, b_ + 1)); chance = lambda p_: bool(gr.random() < p_)
+pick = lambda seq: seq[int(gr.integers(0, len(seq)))]
+BEDS = ('pink', 'yellow', 'blue')                                     # a bed's colour (meadow-flowers.js), and the bushes' and clumps' flowers that go with it
+BLOOM = {'pink': ('pink', 'pink', 'white'), 'yellow': ('yellow', 'yellow', 'white'), 'blue': ('lilac', 'blue', 'lilac')}
+REACH = {'oak': 2.4, 'broadleaf': 2.0, 'birch': 1.3, 'pine': 1.3, 'sapling': 1.1, 'bush': 0.62, 'flower': 1.0, 'clump': 0.66}      # metres a plant takes up on the ground, at scale 1
+NEAR_WAY = {'oak': 2.4, 'broadleaf': 2.2, 'birch': 1.8, 'pine': 1.8, 'sapling': 1.6, 'bush': 1.15, 'flower': 0.7, 'clump': 0.75}      # how near a way each may stand,
+NEAR_WALL = {'oak': 5.0, 'broadleaf': 4.4, 'birch': 3.0, 'pine': 3.2, 'sapling': 2.4, 'bush': 1.35, 'flower': 1.3, 'clump': 1.1}      # a house's wall,
+NEAR_WATER = {'oak': 2.4, 'broadleaf': 2.2, 'birch': 2.0, 'pine': 2.0, 'sapling': 2.0, 'bush': 1.7, 'flower': 1.3, 'clump': 1.3}      # the water
+PROP_R = {'stall': 2.2, 'kit:Prop_Wagon': 2.2, 'cart': 2.0, 'hay': 1.3, 'table': 1.3, 'woodpile': 1.2, 'bench': 1.1, 'barrels': 1.0, 'crates': 1.0, 'signpost': 0.6, 'lamp': 0.5, 'sheep': 0.0}
 _sc_path = OUT / 'hill-village-scatter.json'
-_rocks0 = json.loads(_sc_path.read_text())['rocks'] if _sc_path.exists() else []
+_rocks0 = json.loads(_sc_path.read_text())['rocks'] if _sc_path.exists() else []      # the valley's rocks, where they were first thrown (see below)
 _ij = lambda x, z: (int((z - Z0) / MPP), int((x + XH) / MPP))
+_things = [(x, z, PROP_R.get(k, 1.0)) for k, x, z, _ in PROPS] + [(rk[1], rk[2], 0.5 + 0.5 * rk[3]) for rk in _rocks0 if rk[0] != 'pebbles']
+_gt = by_id['great_tree']; _pit_ground = (r_bowl < PIT_BRINK + 1) & pit_in
+_gz, _gx = np.gradient(ndi.gaussian_filter(H, px_m(1.5)), MPP)         # which way the land falls (its contours run across this)
+_cz, _cx = np.gradient(Hs, MPP)                                       # the same, of the land smoothed: which way a cliff faces
+_wz, _wx = np.gradient(np.minimum(water_d, 30.0), MPP); _pz, _px = np.gradient(np.minimum(path_d, 30.0), MPP)      # away from the water, away from a way
 
 
-def _room(x, z, kind, mine):
-    """may a plant of this kind grow at (x, z): free ground in the village, clear of the plants and rocks already there"""
+def _line(fx, fz, x, z, dice):
+    """the way the land's line runs at (x, z): across the slope of a field (fx, fz: its gradient); any way where it is flat"""
+    i, j = _ij(x, z); g_ = (float(fx[i, j]), float(fz[i, j]))
+    return math.atan2(g_[0], -g_[1]) if math.hypot(*g_) > 0.03 else float(dice.uniform(0, math.pi))
+
+
+def _ground(kind, x, z):
+    """may a plant of this kind stand at (x, z), for what the ground is there (the other plants apart)"""
     i, j = _ij(x, z)
-    if not (0 <= i < NZ and 0 <= j < NX) or not (free[i, j] and inside_[i, j] and not pit_in[i, j]): return False
-    if bld_d[i, j] < (3.0 if kind == 'sapling' else 1.6) or path_d[i, j] < (2.2 if kind == 'sapling' else 1.6): return False
-    r = REACH[kind]
-    for q in out_plants:
-        if q is not mine['anchor'] and math.hypot(q[1] - x, q[2] - z) < r + REACH[q[0]] * 0.8: return False
-    for q in mine['added']:                                           # (inside the clump they may stand closer)
-        if math.hypot(q[1] - x, q[2] - z) < r + REACH[q[0]] * 0.6: return False
-    if math.hypot(mine['anchor'][1] - x, mine['anchor'][2] - z) < r + REACH['sapling'] * 0.6: return False
-    return all(math.hypot(rk[1] - x, rk[2] - z) > r + 0.5 + 0.5 * rk[3] for rk in _rocks0 if rk[0] != 'pebbles')
+    if not (0 <= i < NZ and 0 <= j < NX): return False
+    tree = kind in TREE_KINDS
+    if (off_tree if tree else off_low)[i, j] or OUTSIDE[i, j] > -1.3 or _pit_ground[i, j]: return False
+    if path_d[i, j] < NEAR_WAY[kind] or water_d[i, j] < NEAR_WATER[kind] or wall_d[i, j] < NEAR_WALL[kind]: return False
+    d_gt = math.hypot(x - _gt['x'], z - _gt['z'])
+    if tree and (brink[i, j] or _before_view(x, z) or math.hypot(x - WMILL[0], z - WMILL[1]) < 9.5 or d_gt < (12.0 if kind in ('oak', 'broadleaf') else 8.5)): return False
+    if d_gt < 2.2: return False
+    r_ = 0.9 if tree else 0.5
+    return all(math.hypot(q[0] - x, q[1] - z) > q[2] + r_ for q in _things)
 
 
-_anchors = {(k, round(x, 2), round(z, 2)) for k, x, z, _r in VILLAGE_SAPLINGS}
-clumps, lone = [], []
-for row in [r_ for r_ in out_plants if (r_[0], r_[1], r_[2]) in _anchors]:
-    mine = {'anchor': row, 'added': []}
-    ax, az, s0 = row[1], row[2], row[3]
-    trunks = [(ax, az)]
-    # one or two more saplings, smaller than the first and each a different height: a loose triangle
-    extra = int(cr.choice([0, 1, 2], p=[0.35, 0.4, 0.25]))
-    a0 = cr.uniform(0, 2 * math.pi)
-    for n in range(extra):
-        for _try in range(8):
-            ang, d = a0 + n * cr.uniform(1.7, 2.6) + cr.uniform(-0.4, 0.4), cr.uniform(2.0, 3.0)
-            x, z = ax + math.cos(ang) * d, az + math.sin(ang) * d
-            if _room(x, z, 'sapling', mine):
-                sc_ = round(float(s0 * (cr.uniform(0.62, 0.82) if n == 0 else cr.uniform(0.5, 0.66))), 2)
-                mine['added'].append(['sapling', round(x, 2), round(z, 2), sc_]); trunks.append((x, z)); break
-    # bushes at the trees' feet, thicker on one side so the clump leans one way and is not a ring
-    cx, cz = sum(t[0] for t in trunks) / len(trunks), sum(t[1] for t in trunks) / len(trunks)
-    lean = cr.uniform(0, 2 * math.pi)
-    want = int(cr.integers(3, 6))                                     # (the bushes are small now, about a metre high: three to five to a clump)
-    for _try in range(want * 6):
-        if sum(q[0] == 'bush' for q in mine['added']) >= want: break
-        tx, tz = trunks[int(cr.integers(0, len(trunks)))]
-        ang = lean + cr.normal(0, 1.1); d = cr.uniform(0.9, 1.8)
-        x, z = tx + math.cos(ang) * d, tz + math.sin(ang) * d
-        if math.hypot(x - cx, z - cz) < math.hypot(tx - cx, tz - cz) - 0.3: continue      # (round the clump's edge, not between its trunks)
-        if _room(x, z, 'bush', mine): mine['added'].append(['bush', round(x, 2), round(z, 2), round(float(cr.uniform(0.7, 1.15)), 2)])
-    # often a bed of flowers just outside it, on the side away from the bushes' weight
-    if cr.random() < 0.6:
-        for _try in range(6):
-            ang = lean + math.pi + cr.uniform(-0.9, 0.9); d = cr.uniform(2.6, 3.6)
-            x, z = cx + math.cos(ang) * d, cz + math.sin(ang) * d
-            if _room(x, z, 'flower', mine): mine['added'].append(['flower', round(x, 2), round(z, 2), round(float(cr.uniform(1.0, 1.45)), 2)]); break
-    if any(q[0] != 'flower' for q in mine['added']): clumps.append(mine); out_plants.extend(mine['added'])
-    else: lone.append(row)
-out_plants = [r_ for r_ in out_plants if not any(r_ is l_ for l_ in lone)]
-print(f"  the village's saplings: {len(clumps)} clumps ({sum(len(c['added']) for c in clumps)} plants grown round them: "
-      f"{sum(q[0] == 'sapling' for c in clumps for q in c['added'])} saplings, {sum(q[0] == 'bush' for c in clumps for q in c['added'])} bushes, "
-      f"{sum(q[0] == 'flower' for c in clumps for q in c['added'])} beds of flowers); taken out, alone: {len(lone)}")
+def _apart(ka, ra, kb, rb, same):
+    """how far apart two plants must stand (ra, rb: what each takes up); nearer in one group than in two"""
+    fa, fb = ka == 'flower', kb == 'flower'
+    if fa and fb: return (ra + rb) * (0.8 if same else 1.05)          # the beds of one drift run into each other
+    if fa or fb:                                                      # a bed lies up to a trunk's foot, and half under a bush
+        rf, ko, ro = (ra, kb, rb) if fa else (rb, ka, ra)
+        return rf * 0.55 + (0.5 if ko in TREE_KINDS else ro * 0.9)
+    return (ra + rb) * (0.62 if same else 0.85)
+
+
+_pg = {}; PG = 6.0; planted = []; _groups = []; _tally = {}           # every plant by where it stands; the groups' plants; (x, z, radius) of each group
+for kind, x, z, _r in plants: _pg.setdefault((int(x // PG), int(z // PG)), []).append((x, z, kind, REACH[kind], -1))
+_room = lambda x, z, R, gap=2.5: all(math.hypot(q[0] - x, q[1] - z) > q[2] + R + gap for q in _groups)      # may a group R metres across stand at (x, z): clear grass between it and the rest
+
+
+class Group:
+    """plants put in together. u, v: metres from its middle, along the way it faces and to the left of that"""
+    count = 0
+
+    def __init__(self, x, z, ang):
+        Group.count += 1; self.id = Group.count; self.x, self.z, self.c, self.s = x, z, math.cos(ang), math.sin(ang); self.items = []; self.bed = pick(BEDS)
+
+    def add(self, kind, u, v, size, extra=None):
+        """a plant, if it has room. size: 0..1 through the kind's own sizes for a tree; the scale itself for a bush or a clump; a bed's radius"""
+        x, z = self.x + self.c * u - self.s * v, self.z + self.s * u + self.c * v
+        sc_ = SCALE[kind][0] + (SCALE[kind][1] - SCALE[kind][0]) * min(1.0, max(0.0, size)) if kind in TREE_KINDS else size
+        rr = REACH[kind] * (sc_ / 0.9 if kind in TREE_KINDS else sc_)
+        if not _ground(kind, x, z): return False
+        gx_, gz_ = int(x // PG), int(z // PG)
+        for a_ in range(gx_ - 1, gx_ + 2):
+            for b_ in range(gz_ - 1, gz_ + 2):
+                for q in _pg.get((a_, b_), ()):
+                    if math.hypot(q[0] - x, q[1] - z) < _apart(kind, rr, q[2], q[3], False): return False
+        if any(math.hypot(q[1] - x, q[2] - z) < _apart(kind, rr, q[0], q[5], True) for q in self.items): return False
+        self.items.append((kind, x, z, sc_, extra, rr)); return True
+
+    def n(self, *kinds): return sum(q[0] in kinds for q in self.items)
+    def bloom(self, p_=0.4): return pick(BLOOM[self.bed]) if chance(p_) else 'green'      # a bush's colour: now and then in flower
+
+    def keep(self, name, discs=None):
+        """plant it: its plants take their places, and the ground it covers is kept clear of other groups"""
+        for q in self.items: _pg.setdefault((int(q[1] // PG), int(q[2] // PG)), []).append((q[1], q[2], q[0], q[5], self.id)); planted.append(q)
+        if discs is None:
+            cx_, cz_ = sum(q[1] for q in self.items) / len(self.items), sum(q[2] for q in self.items) / len(self.items)
+            discs = [(cx_, cz_, max(math.hypot(q[1] - cx_, q[2] - cz_) + q[5] * 0.6 for q in self.items))]
+        _groups.extend(discs); t_ = _tally.setdefault(name, [0, 0]); t_[0] += 1; t_[1] += len(self.items)
+
+    # the pieces a group is put together from
+    def bushes(self, cu, cv, n, r0, r1, lean, spread=1.0, flowering=0.4):
+        """n bushes round (cu, cv), r0 to r1 metres from it, gathered toward lean; most with a smaller one right beside"""
+        got = 0
+        for _t in range(n * 6):
+            if got >= n: break
+            a = lean + float(gr.normal(0, spread)); d = U(r0, r1); u, v = cu + math.cos(a) * d, cv + math.sin(a) * d
+            if self.add('bush', u, v, U(0.82, 1.15), self.bloom(flowering)):
+                got += 1
+                if got < n and chance(0.6):
+                    a = U(0, 6.28); d = U(0.75, 1.0); got += self.add('bush', u + math.cos(a) * d, v + math.sin(a) * d, U(0.6, 0.85), self.bloom(flowering))
+        return got
+
+    def clumps(self, cu, cv, n, r0, r1, lean, spread=1.0):
+        got = 0
+        for _t in range(n * 6):
+            if got >= n: break
+            a = lean + float(gr.normal(0, spread)); d = U(r0, r1)
+            got += self.add('clump', cu + math.cos(a) * d, cv + math.sin(a) * d, U(0.5, 0.74), pick(BLOOM[self.bed]))
+        return got
+
+    def beds(self, cu, cv, n, ang, la, lc, sizes=(1.0, 1.7)):
+        """n beds of flowers in one drift round (cu, cv), la metres long along ang and lc across"""
+        got = 0; c_, s_ = math.cos(ang), math.sin(ang)
+        for _t in range(n * 6):
+            if got >= n: break
+            a, b = float(gr.normal(0, 0.6)) * la, float(gr.normal(0, 0.6)) * lc
+            got += self.add('flower', cu + c_ * a - s_ * b, cv + s_ * a + c_ * b, U(*sizes), self.bed)
+        return got
+
+
+def _side(fx, fz, x, z, ang, toward):
+    """+1 or -1: which side of a group facing ang lies down a field's slope (toward = -1) or up it (+1)"""
+    i, j = _ij(x, z); d_ = -math.sin(ang) * float(fx[i, j]) + math.cos(ang) * float(fz[i, j])
+    return (1 if d_ >= 0 else -1) * toward
+
+
+def copse(x, z, big, lead=None):
+    """trees together: a big one, two or three more round it of other kinds and heights (a loose triangle, never a row),
+    saplings at the rim, bushes on one side, flowers out in the sun beyond them"""
+    g = Group(x, z, U(0, 6.28))
+    if not g.add(lead or (pick(('oak', 'oak', 'broadleaf')) if big else pick(('broadleaf', 'broadleaf', 'birch'))), 0, 0, U(0.55, 1.0) if big else U(0.3, 0.8)): return None
+    a0 = U(0, 6.28)
+    for n in range(N(3, 4) if big else N(1, 2)):
+        for _t in range(6):
+            a = a0 + n * U(1.3, 2.0) + U(-0.3, 0.3); d = U(3.8, 6.2) if big else U(3.0, 4.4)
+            if g.add(pick(('broadleaf', 'birch', 'birch')) if big else pick(('birch', 'sapling', 'sapling')), math.cos(a) * d, math.sin(a) * d, U(0.0, 0.6)): break
+    for n in range(N(2, 4) if big else N(1, 2)):
+        for _t in range(5):
+            a = U(0, 6.28); d = U(5.8, 8.4) if big else U(4.2, 5.8)
+            if g.add('sapling', math.cos(a) * d, math.sin(a) * d, U(0.0, 0.8)): break
+    if g.n(*TREE_KINDS) < (3 if big else 2): return None
+    lean = U(0, 6.28); out = 6.5 if big else 5.0
+    g.bushes(0, 0, N(2, 3) if big else N(1, 2), 2.8, out, lean)
+    g.clumps(0, 0, N(1, 3) if big else N(1, 2), 3.5, out + 1.0, lean + U(-1, 1))
+    g.beds(math.cos(lean) * (out + 0.8), math.sin(lean) * (out + 0.8), N(2, 3) if big else N(1, 2), lean + math.pi / 2, 2.4, 1.0)
+    return g
+
+
+def shade_tree(x, z, kind, size):
+    """one tree with flowers at its foot and a few bushes: for the market's rim, a meeting of ways, beside a house"""
+    g = Group(x, z, U(0, 6.28))
+    if not g.add(kind, 0, 0, size): return None
+    g.beds(0, 0, N(1, 2), U(0, 3.14), 1.5, 1.0, sizes=(1.1, 1.5))
+    g.bushes(0, 0, N(2, 3), 1.8, 3.2, U(0, 6.28), spread=0.9)
+    g.clumps(0, 0, N(1, 2), 1.8, 3.6, U(0, 6.28), spread=3)
+    return g
+
+
+def thicket(x, z):
+    """along a cliff's foot: broadleaf trees in a line, bushes and clumps on the open side"""
+    ang = _line(_cx, _cz, x, z, gr); g = Group(x, z, ang); side = _side(_cx, _cz, x, z, ang, -1); n = N(2, 3); u = -(n - 1) * 2.0
+    for k in range(n): g.add('broadleaf' if chance(0.7) else 'birch', u + U(-0.6, 0.6), U(-0.7, 0.7), U(0.1, 0.9)); u += U(3.4, 4.6)
+    if g.n(*TREE_KINDS) < 1: return None
+    for k in range(N(2, 3)): g.add('bush', U(-5.5, 5.5), side * U(1.6, 3.6), U(0.75, 1.15), g.bloom(0.3))
+    for k in range(N(1, 2)): g.add('clump', U(-5.5, 5.5), side * U(3.0, 4.8), U(0.5, 0.74), pick(BLOOM[g.bed]))
+    if chance(0.5): g.beds(U(-3, 3), side * 4.6, 1, 0, 1.5, 0.6)
+    return g if len(g.items) >= 4 else None
+
+
+def bank(x, z):
+    """by the water: birches in twos and threes along the bank, bushes and flowers on the water's side"""
+    ang = _line(_wx, _wz, x, z, gr); g = Group(x, z, ang); side = _side(_wx, _wz, x, z, ang, -1)
+    if not g.add('birch', 0, 0, U(0.3, 1.0)): return None
+    if chance(0.75): g.add(pick(('birch', 'sapling')), pick((-1, 1)) * U(2.6, 3.6), -side * U(0.2, 1.4), U(0.0, 0.6))
+    if chance(0.45): g.add('sapling', pick((-1, 1)) * U(3.6, 5.0), -side * U(0.5, 2.0), U(0.0, 0.7))
+    for k in range(N(1, 3)): g.add('bush', U(-5, 5), side * U(0.2, 1.8), U(0.75, 1.1), g.bloom(0.45))
+    g.beds(0, side * 1.8, N(1, 2), 0, 2.6, 0.5, sizes=(1.0, 1.4))
+    for k in range(N(1, 2)): g.add('clump', U(-5, 5), side * U(0.8, 2.6), U(0.5, 0.74), pick(BLOOM[g.bed]))
+    return g if len(g.items) >= 4 else None
+
+
+def wayside(x, z, tree):
+    """beside a way: a small tree (none where one may not stand: before a place to look from), bushes and flowers between it and the way"""
+    ang = _line(_px, _pz, x, z, gr); g = Group(x, z, ang); side = _side(_px, _pz, x, z, ang, -1)
+    tree = tree and g.add(tree, 0, 0, U(0.1, 0.8))
+    for k in range(N(0, 2) if tree else N(1, 2)): g.add('bush', U(-3.2, 3.2), side * U(0.2, 1.5) if tree else U(-0.8, 0.8), U(0.75, 1.1), g.bloom(0.5))
+    g.beds(0, side * 1.7, N(1, 2), 0, 2.2, 0.5, sizes=(1.0, 1.35))
+    for k in range(N(1, 2)): g.add('clump', U(-3.2, 3.2), side * U(1.0, 2.4), U(0.5, 0.74), pick(BLOOM[g.bed]))
+    return g if len(g.items) >= 3 else None
+
+
+def verge(x, z):
+    """right at a way's edge: flowers along it, a clump or two behind them"""
+    ang = _line(_px, _pz, x, z, gr); g = Group(x, z, ang); side = _side(_px, _pz, x, z, ang, -1)
+    if g.beds(0, 0, N(2, 3), 0, 2.4, 0.3, sizes=(0.9, 1.25)) < 2: return None
+    for k in range(N(1, 2)): g.add('clump', U(-3, 3), -side * U(0.5, 1.4), U(0.5, 0.74), pick(BLOOM[g.bed]))
+    if chance(0.3): g.add('bush', U(-3, 3), -side * U(1.0, 1.8), U(0.75, 1.05), g.bloom(0.6))
+    return g
+
+
+def flowers(x, z):
+    """a drift of flowers in the open, along the land's contour, flowering clumps standing in it"""
+    g = Group(x, z, _line(_gx, _gz, x, z, gr))
+    if g.beds(0, 0, N(3, 6), 0, 3.2, 1.3) < 3: return None
+    g.clumps(0, 0, N(1, 3), 0.4, 4.2, 0, spread=3)
+    if chance(0.35): g.bushes(pick((-1, 1)) * U(3.2, 4.6), U(-1, 1), N(1, 2), 0.0, 1.2, 0, spread=3, flowering=0.9)
+    return g
+
+
+def bush_group(x, z):
+    """bushes together, three to five, clumps at their feet"""
+    g = Group(x, z, U(0, 6.28))
+    if g.bushes(0, 0, N(3, 4), 0.2, 2.4, 0, spread=3, flowering=0.5) < 3: return None
+    g.clumps(0, 0, N(1, 2), 1.6, 3.6, 0, spread=3)
+    if chance(0.4): g.beds(U(-2, 2), U(-2, 2), 1, 0, 1, 1, sizes=(1.0, 1.4))
+    return g
+
+
+def stand(x, z):
+    """young trees coming up together in the open: three to five saplings of all heights, a bush or two, flowers"""
+    g = Group(x, z, U(0, 6.28))
+    if not g.add('sapling', 0, 0, U(0.6, 1.0)): return None
+    for k in range(N(2, 4)):
+        for _t in range(6):
+            a = U(0, 6.28); d = U(2.0, 3.8)
+            if g.add('sapling', math.cos(a) * d, math.sin(a) * d, U(0.0, 0.8)): break
+    if g.n('sapling') < 3: return None
+    g.bushes(0, 0, N(1, 2), 1.5, 3.5, U(0, 6.28), spread=1.2)
+    g.beds(0, 0, N(0, 2), U(0, 3.14), 3.0, 1.5)
+    g.clumps(0, 0, N(0, 2), 1.5, 4.0, 0, spread=3)
+    return g
+
+
+def pines(x, z):
+    """on a slope: pines in twos and threes, a bush or two below them"""
+    g = Group(x, z, U(0, 6.28))
+    if not g.add('pine', 0, 0, U(0.3, 1.0)): return None
+    for k in range(N(1, 2)):
+        for _t in range(8):
+            a = U(0, 6.28); d = U(2.8, 4.4)
+            if g.add('pine', math.cos(a) * d, math.sin(a) * d, U(0.0, 0.7)): break
+    if g.n('pine') < 2: return None
+    g.bushes(0, 0, N(1, 3), 1.6, 4.0, 0, spread=3, flowering=0.15)
+    return g
+
+
+def garden(b_):
+    """round a house: flowers either side of its door and along its walls, bushes at its corners, a small tree or two behind"""
+    sp = b_['spec']; hw, hl = sp['w'] / 2, sp['l'] / 2
+    g = Group(b_['x'], b_['z'], math.pi / 2 - b_['yaw'])                 # (u: out of the front gable; v: toward the house's left)
+    put = lambda kind, lx, lz, size, extra=None: g.add(kind, lz, -lx, size, extra)      # by the house's own measure: lx across, lz along its ridge
+    plain = b_['id'] in ('barn', 'stable_shed', 'castle_keep', 'castle_hall', 'mill_tower')      # a working building: bushes, no flower beds
+    dx, dz, nx, nz = {'front': (0, hl, 0, 1), 'back': (0, -hl, 0, -1), 'right': (hw, 0, 1, 0), 'left': (-hw, 0, -1, 0)}[sp.get('door', 'front')]
+    tx, tz = -nz, nx                                                   # (the door, the way it faces, and along its wall)
+    if not plain:
+        for sgn in (-1, 1): d = sgn * U(1.8, 2.4); put('flower', dx + nx * 1.7 + tx * d, dz + nz * 1.7 + tz * d, U(1.0, 1.3), g.bed)
+    for cx_, cz_ in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        if chance(0.85) and put('bush', cx_ * (hw + U(1.0, 1.5)), cz_ * (hl + U(1.0, 1.5)), U(0.82, 1.12), g.bloom(0.5)) and chance(0.55):
+            put('bush', cx_ * (hw + U(1.1, 1.5)), cz_ * (hl - U(0.3, 1.1)), U(0.6, 0.85), g.bloom(0.5))
+    for sgn in (-1, 1):                                                # along the two long walls: a bed or two, or clumps
+        if not plain and chance(0.7):
+            for k in range(N(1, 2)): put('flower', sgn * (hw + 1.7), U(-hl * 0.6, hl * 0.6), U(1.0, 1.35), g.bed)
+        else:
+            for k in range(N(1, 3)): put('clump', sgn * (hw + U(1.15, 1.6)), U(-hl * 0.8, hl * 0.8), U(0.5, 0.74), pick(BLOOM[g.bed]))
+    far = hl if nz else hw; wide = (hw if nz else hl) + 2.0             # behind it (away from the door)
+    for _t in range(10):
+        d = far + U(3.4, 5.8); s_ = U(-1, 1) * wide; lx, lz = -nx * d + tx * s_, -nz * d + tz * s_
+        if put(pick(('birch', 'sapling', 'sapling')), lx, lz, U(0.2, 0.9)):
+            a = U(0, 6.28); d = U(2.2, 3.0); put('sapling', lx + math.cos(a) * d, lz + math.sin(a) * d, U(0.0, 0.5))
+            for k in range(N(2, 3)): a = U(0, 6.28); d = U(1.3, 2.3); put('bush', lx + math.cos(a) * d, lz + math.sin(a) * d, U(0.7, 1.05), g.bloom(0.4))
+            break
+    return g if len(g.items) >= 3 else None
+
+
+def garden_ground(b_, g):
+    """the ground a garden keeps to itself: round the house, and round each tree behind it"""
+    return [(b_['x'], b_['z'], math.hypot(b_['spec']['w'], b_['spec']['l']) / 2 + 1.8)] + [(q[1], q[2], 2.6) for q in g.items if q[0] in TREE_KINDS]
+
+
+_low_ok = ~off_low & (path_d > 0.7) & (water_d > 1.3) & (wall_d > 1.3)   # where a group with no tree in it may have its middle
+
+
+def grow(name, mask, one_per_m2, build, R, gap=2.5, low=False):
+    """groups over the mask, about one to every one_per_m2 of it; build(x, z) -> a group or None; R: about how far one reaches"""
+    ys, xs = np.nonzero(mask & (_low_ok if low else free) & inside_ & ~_pit_ground); want = int(round(len(ys) * MPP * MPP / one_per_m2)); got = 0
+    for i in (gr.permutation(len(ys))[:want * 30] if len(ys) else ()):
+        if got >= want: break
+        x, z = (xs[i] + 0.5) * MPP - XH, (ys[i] + 0.5) * MPP + Z0
+        if not _room(x, z, R, gap): continue
+        g = build(x, z)
+        if g: g.keep(name); got += 1
+
+
+def best_spot(cx, cz, r0, r1, kind, apart=(), n=24):
+    """round (cx, cz), r0 to r1 metres from it: the spot where a plant of this kind has most room from the ways (None if nowhere)"""
+    best = None
+    for k in range(n):
+        a = (k + U(0, 1)) / n * 2 * math.pi; d = U(r0, r1); x, z = cx + math.cos(a) * d, cz + math.sin(a) * d
+        if not _ground(kind, x, z) or not _room(x, z, 2.0, 0.5) or any(math.hypot(x - q[0], z - q[1]) < q[2] for q in apart): continue
+        sc_ = min(float(sample(path_d, (x, z))[0]), 6.0) + U(0, 0.5)
+        if best is None or sc_ > best[0]: best = (sc_, x, z)
+    return best and best[1:]
+
+
+# 1. the houses
+for b_ in B:
+    if 'spec' in b_:
+        g = garden(b_)
+        if g: g.keep('gardens', discs=garden_ground(b_, g))
+# 2. the market and the great tree's yard: a big tree at the market's rim, beds and bushes between the ways that leave them
+for (yx, yz, yr, _paved), tree in zip(YARDS[:2], (('oak', 'broadleaf'), ())):
+    took = []
+    for kind in tree:
+        at = best_spot(yx, yz, yr + 3.6, yr + 5.5, kind, apart=took)
+        g = at and shade_tree(*at, kind, U(0.6, 0.95))
+        if g: g.keep('market trees'); took.append((*at, 14.0))
+    for k in range(5):
+        at = best_spot(yx, yz, yr + 1.4, yr + 2.4, 'flower', apart=took, n=18)
+        if not at: break
+        g = Group(*at, U(0, 6.28)); g.beds(0, 0, N(1, 2), U(0, 3.14), 1.2, 0.8, sizes=(1.0, 1.35)); g.bushes(0, 0, N(1, 2), 0.6, 1.8, 0, spread=3, flowering=0.7); g.clumps(0, 0, N(1, 2), 0.6, 2.0, 0, spread=3)
+        if len(g.items) >= 2: g.keep('market beds'); took.append((*at, 6.0))
+# 3. here and there a big tree beside a house (never before its door)
+_shade = 0
+for id_ in ('manor', 'village_house_2', 'barn', 'cottage_upper_1', 'village_house_4', 'cottage_upper_3', 'watermill', 'ledge_house', 'village_house_3'):
+    if _shade >= 5: break
+    b_ = by_id[id_]; fx_, fz_ = math.sin(b_['yaw']), math.cos(b_['yaw']); r_ = math.hypot(b_['spec']['w'], b_['spec']['l']) / 2
+    front = [(b_['x'] + fx_ * (r_ + 4), b_['z'] + fz_ * (r_ + 4), r_ + 5.5)]
+    at = best_spot(b_['x'], b_['z'], r_ + 4.5, r_ + 7.5, 'broadleaf', apart=front)
+    g = at and shade_tree(*at, pick(('broadleaf', 'broadleaf', 'oak')), U(0.5, 0.9))
+    if g: g.keep('house trees'); _shade += 1
+# 4. the fences: a hedge along each side in runs of bushes, flowers in the gaps (none before the gate)
+for f in FENCES:
+    pts_ = [np.array(q, float) for q in f['points']]; mid = sum(pts_) / len(pts_)
+    for k, (a_, b_) in enumerate(zip(pts_, pts_[1:] + pts_[:1])):
+        L_ = float(np.linalg.norm(b_ - a_)); t_ = (b_ - a_) / L_; n_ = np.array([t_[1], -t_[0]])
+        if n_ @ (a_ - mid) < 0: n_ = -n_
+        o_ = a_ + n_ * 1.25; g = Group(float(o_[0]), float(o_[1]), math.atan2(t_[1], t_[0])); u = U(0.4, 2.0)
+        while u < L_ - 0.4:
+            for r_ in range(N(2, 4)):
+                if u > L_ - 0.4: break
+                if not (k == f.get('gate') and abs(u - L_ / 2) < 2.8): g.add('bush', u, U(-0.2, 0.2), U(0.75, 1.05), g.bloom(0.35))
+                u += U(1.2, 1.65)
+            gap_ = U(3.2, 6.0)
+            if not (k == f.get('gate') and abs(u + gap_ / 2 - L_ / 2) < 2.8):
+                if chance(0.65): g.add('flower', u + gap_ / 2 - 0.6, U(0.2, 0.7), U(1.0, 1.3), g.bed)
+                else:
+                    for c_ in range(N(1, 2)): g.add('clump', u + U(0.3, gap_ - 0.9), U(0.0, 0.5), U(0.5, 0.74), pick(BLOOM[g.bed]))
+            u += gap_
+        if len(g.items) >= 3: g.keep('hedges', discs=[(float(o_[0] + t_[0] * d), float(o_[1] + t_[1] * d), 1.6) for d in np.arange(1.5, L_, 3.0)])
+# 5. where ways meet: a tree with flowers at its foot
+_ways = {name: densify([M(*p) for p in pts_uv]) for name, (half, pts_uv) in PATHS.items()}
+_meet = []
+for name, P_ in _ways.items():
+    for end in (P_[0], P_[-1]):
+        if any(n2 != name and float(np.min(np.hypot(Q_[:, 0] - end[0], Q_[:, 1] - end[1]))) < 1.6 for n2, Q_ in _ways.items()) \
+           and all(math.hypot(end[0] - q[0], end[1] - q[1]) > 9 for q in _meet) and all(math.hypot(end[0] - yx, end[1] - yz) > yr + 6 for yx, yz, yr, _p in YARDS):
+            _meet.append((float(end[0]), float(end[1])))
+for mx, mz in _meet:
+    if not (PLAY[0] < mx < PLAY[1] and PLAY[2] < mz < PLAY[3]): continue
+    kind = pick(('broadleaf', 'birch', 'birch', 'broadleaf', 'oak'))
+    at = best_spot(mx, mz, 4.2, 6.5, kind)
+    g = at and shade_tree(*at, kind, U(0.3, 0.8))
+    if g: g.keep('meetings of ways')
+# 6. the bridges: birches either side of each end
+for a_, b_ in [(BS, BN), (PW, PE)] + [(np.array(p_['a'], float), np.array(p_['b'], float)) for p_ in PLANKS]:
+    d_ = (b_ - a_) / np.linalg.norm(b_ - a_); n_ = np.array([d_[1], -d_[0]])
+    for end, out_ in ((a_, -d_), (b_, d_)):
+        for sgn in (-1, 1):
+            for _t in range(24):
+                at = end + out_ * U(2.0, 9.0) + n_ * sgn * U(3.2, 7.5)
+                g = _room(float(at[0]), float(at[1]), 3.0, 0.5) and bank(float(at[0]), float(at[1]))
+                if g: g.keep('bridge ends'); break
+# 7. the land's own groups, the tallest first
+grow("cliff feet: thickets", foot, 140, thicket, 6.0)
+grow('the water: birches', inside_ & (water_d > 3.2) & (water_d < 5.2), 50, bank, 5.0)
+# along every way, so no stretch of it is bare: every so many metres a group beside it, now on one side and now on the other
+# (a small tree, most often, with bushes and flowers; nearer together in the village than out on the land), and between two
+# of them, across the way, flowers at its very edge
+for name, P_ in _ways.items():
+    half = PATHS[name][0]; L_ = len(P_) * STEP; at_ = U(3, 7); side = pick((-1, 1))
+    while at_ < L_ - 3:
+        i_ = int(at_ / STEP); q_ = P_[i_]; t_ = P_[min(len(P_) - 1, i_ + 8)] - P_[max(0, i_ - 8)]; t_ = t_ / (np.linalg.norm(t_) + 1e-9); n_ = np.array([-t_[1], t_[0]])
+        near = bool(sample(bld_d, (q_[0], q_[1]))[0] < 30); step = U(9, 13) if near else U(14, 20); g = None
+        for sd, off, slip in ((side, 3.3, 0), (-side, 3.3, 0), (side, 3.3, 2.5), (-side, 3.3, -2.5), (side, 5.0, 0), (-side, 5.0, 0)):      # (the other side, a little along, or further out, where the first spot has no room)
+            x_, z_ = (float(v_) for v_ in q_ + t_ * slip + n_ * sd * (half + off + U(-0.5, 0.5)))
+            g = _room(x_, z_, 3.0, 1.2) and wayside(x_, z_, pick(('sapling', 'sapling', 'sapling', 'sapling', 'birch', None, None, None, 'broadleaf')))
+            if g: g.keep('waysides'); break
+        if not g or chance(0.7 if near else 0.4):
+            i2 = min(len(P_) - 1, int((at_ + (step / 2 if g else 0)) / STEP))
+            for sd in (-side, side):
+                x_, z_ = (float(v_) for v_ in P_[i2] + n_ * sd * (half + 1.25))
+                g2 = _room(x_, z_, 2.0, 0.8) and verge(x_, z_)
+                if g2: g2.keep('verges'); break
+        at_ += step; side = -side
+# (the big copses stand thickest where they are seen from a way, near enough each other to make a wood; further off fewer, and small ones)
+grow('copses, big', open_ & (groves > 0.5) & (way_d > 5) & (way_d < 36), 210, lambda x, z: copse(x, z, True), 8.5, gap=2.2)
+grow('copses, big', open_ & (groves > 0.6) & (way_d >= 36), 420, lambda x, z: copse(x, z, True), 8.5, gap=3.5)
+grow('copses, small', (open_ & (groves > 0.42)) | (village & (wall_d > 7)), 330, lambda x, z: copse(x, z, False), 6.0, gap=3.5)
+grow('drifts of flowers', (open_ & (groves <= 0.5)) | river | (village & (wall_d > 4)), 300, flowers, 5.0, gap=3.0, low=True)
+grow('young trees', (open_ & (groves <= 0.6)) | river, 480, stand, 4.0, gap=3.0)
+grow('slopes: pines', slope_z, 60, pines, 4.5)
+grow('brinks: bushes', brink, 420, bush_group, 3.2, low=True)
+grow('bushes', open_ | village | slope_z, 1400, bush_group, 3.2, gap=3.0, low=True)
+
+# the plan's rows, and the flowering clumps (walked through, like the flowers): a list of their own
+clumps = []
+for kind, x, z, sc_, extra, _rr in planted:
+    if kind == 'clump': clumps.append([round(x, 2), round(z, 2), round(sc_, 2), extra])
+    else: out_plants.append([kind, round(x, 2), round(z, 2), round(sc_, 2)] + ([extra] if extra else []))
+    if kind not in ('clump', 'flower'): plants.append((kind, x, z, REACH[kind]))
+_n = {}
+for q in planted: _n[q[0]] = _n.get(q[0], 0) + 1
+CARDS = {'oak': 3576, 'broadleaf': 1894, 'birch': 1677, 'sapling': 280, 'bush': 410, 'clump': 221, 'flower': 80}      # leaf cards each is drawn with (anime-tree.js; a bed: the clumps that stand in it)
+print(f"  groups: {len(_groups)} ({'; '.join(f'{k} {v[0]} ({v[1]})' for k, v in _tally.items())})")
+print(f"    their plants: {_n}; about {sum(CARDS.get(k, 0) * v for k, v in _n.items()) // 1000}k leaf cards")
+
+# Ground cover: ferns and tall tufts of grass, the layer between the grass and the bushes (ground-cover.js). Nothing
+# here is solid, so it may stand close to a trunk, a way or the water. Never one alone, and never strewn evenly: they grow
+# in colonies (some five to fifteen together, the biggest in the middle, small ones at the rim). A colony lies where the
+# land gives it a reason, is stretched along the land's own line there, and has clear grass between it and the next.
+#   ferns (shade, damp)   along a cliff's foot, following the cliff (on the valley's floor too) · between two trees of a
+#                         wood, or in a crescent at the foot of one · against a boulder down in the valley
+#   tufts (sun)           along the water's edge, following the bank · along the foot and the top of a bank in the open,
+#                         following it · in a hollow of the meadow · along a cliff's brink · across a slope, on its
+#                         contour · a bunch by the wayside · a few big islands out on the flat meadow
+# Their own dice, and a list of their own in the plan ('cover': rows of kind, x, z, scale): the plants are as they were.
+gc = np.random.default_rng(613)
+cover = []; _cg = {}; CG = 3.0
+_cover_free = ~hard & (path_d > 0.3) & (water_d > 0.8) & (OUTSIDE < 6) & (bld_d > 0.2) & ~((r_bowl < PIT_BRINK + 1) & pit_in)
+_solid = [(q[1], q[2], {'bush': 0.45, 'flower': 0.75}.get(q[0], 0.3) * q[3]) for q in out_plants if not (len(q) > 4 and q[4] == 0.5)] \
+       + [(c_[0], c_[1], 0.6 * c_[2]) for c_ in clumps] + [(rk[1], rk[2], 0.3 + 0.45 * rk[3]) for rk in _rocks0 if rk[0] != 'pebbles']
+_sg = {}
+for q in _solid: _sg.setdefault((int(q[0] // CG), int(q[1] // CG)), []).append(q)
+
+
+def _fits(x, z, rad, mine):
+    """may a fern or a tuft stand at (x, z): free ground, nothing solid there, clear of the cover already placed"""
+    i, j = _ij(x, z)
+    if not (0 <= i < NZ and 0 <= j < NX) or not _cover_free[i, j]: return False
+    gx_, gz_ = int(x // CG), int(z // CG)
+    for a_ in range(gx_ - 1, gx_ + 2):
+        for b_ in range(gz_ - 1, gz_ + 2):
+            if any(math.hypot(q[0] - x, q[1] - z) < q[2] + 0.25 for q in _sg.get((a_, b_), ())): return False
+            if any(math.hypot(q[0] - x, q[1] - z) < q[2] + rad for q in _cg.get((a_, b_), ())): return False
+    return all(math.hypot(q[1] - x, q[2] - z) > q[4] + rad for q in mine)
+
+
+_colonies = []; CLEAR = 2.2                                            # (x, z, reach) of each; metres of open grass between two
+
+
+def _colony(kind, x, z, ang, n, la, lc, big=1.35, small=0.75, least=4, mix=None):
+    """a colony at (x, z): up to n plants, spread la metres along ang and lc across it, the biggest in the middle. Nothing
+    is planted if it would touch another colony or fewer than `least` find room. -> how many were planted"""
+    reach = 1.3 * max(la, lc)
+    if any(math.hypot(q[0] - x, q[1] - z) < q[2] + reach + CLEAR for q in _colonies): return 0
+    ca, sa = math.cos(ang), math.sin(ang); mine = []
+    for _try in range(n * 8):
+        if len(mine) >= n: break
+        u, v = gc.normal(0, 0.7), gc.normal(0, 0.7); r = math.hypot(u, v)
+        if r > 1.5: continue
+        k = mix if (mix and r > 0.85 and gc.random() < 0.3) else kind
+        sc_ = float((big + (small - big) * min(1.0, r / 1.2)) * gc.uniform(0.9, 1.1))
+        px, pz = x + ca * u * la - sa * v * lc, z + sa * u * la + ca * v * lc
+        if _fits(px, pz, (0.36 if k == 'fern' else 0.28) * sc_, mine): mine.append((k, px, pz, sc_, (0.36 if k == 'fern' else 0.28) * sc_))
+    if len(mine) < least: return 0
+    for k, px, pz, sc_, rad in mine:
+        cover.append([k, round(px, 1), round(pz, 1), round(sc_, 2)]); _cg.setdefault((int(px // CG), int(pz // CG)), []).append((px, pz, rad))
+    _colonies.append((x, z, reach)); return len(mine)
+
+
+_tally = {}
+def _grow(name, mask, one_per_m2, plant):
+    """colonies over the mask, about one to every one_per_m2 of it; plant(x, z) -> how many it planted"""
+    ys, xs = np.nonzero(mask & _cover_free); want = int(round(len(ys) * MPP * MPP / one_per_m2)); got = [0, 0]
+    for i in (gc.permutation(len(ys))[:want * 25] if len(ys) else ()):
+        if got[0] >= want: break
+        n_ = plant((xs[i] + 0.5) * MPP - XH, (ys[i] + 0.5) * MPP + Z0)
+        if n_: got[0] += 1; got[1] += n_
+    _tally[name] = got
+
+
+U = lambda a_, b_: float(gc.uniform(a_, b_)); N_ = lambda a_, b_: int(gc.integers(a_, b_ + 1))
+# ferns along a cliff's foot
+_grow('ferns: cliff feet', foot | (floor & ~pit_in & (d_in > 0.6) & (d_in < 3.5)), 42,
+      lambda x, z: _colony('fern', x, z, _line(_cx, _cz, x, z, gc), N_(8, 15), U(2.0, 3.2), U(0.7, 1.0)))
+# ferns in the woods: between a tree and its neighbour, or a crescent at its foot on the side the land falls
+_near = [r_ for r_ in out_plants if r_[0] in ('oak', 'broadleaf', 'birch', 'pine') and len(r_) <= 4]
+_tally['ferns: woods'] = [0, 0]
+for t_ in gc.permutation(len(_near)):
+    row = _near[t_]
+    if gc.random() > {'oak': 0.75, 'broadleaf': 0.7, 'birch': 0.35, 'pine': 0.4}[row[0]]: continue
+    i, j = _ij(row[1], row[2])
+    if not (0 <= i < NZ and 0 <= j < NX) or sample(OUTSIDE, (row[1], row[2]))[0] > 5: continue
+    d_, nb = min(((math.hypot(q[1] - row[1], q[2] - row[2]), q) for q in _near if q is not row), key=lambda e_: e_[0])
+    if d_ < 8.5:                                                      # a drift from this trunk toward the next
+        ang = math.atan2(nb[2] - row[2], nb[1] - row[1]); k_ = U(0.3, 0.45)
+        n_ = _colony('fern', row[1] + math.cos(ang) * d_ * k_, row[2] + math.sin(ang) * d_ * k_, ang, N_(7, 13), d_ * U(0.26, 0.34), U(0.8, 1.1))
+    else:                                                             # one standing alone: a crescent round its foot
+        ang = math.atan2(-float(_gz[i, j]), -float(_gx[i, j])) if math.hypot(_gx[i, j], _gz[i, j]) > 0.04 else U(0, 6.28)
+        d0 = 0.9 * row[3] + 0.5
+        n_ = _colony('fern', row[1] + math.cos(ang) * d0, row[2] + math.sin(ang) * d0, ang + math.pi / 2, N_(5, 8), U(1.2, 1.6), U(0.5, 0.7), big=1.2)
+    if n_: _tally['ferns: woods'][0] += 1; _tally['ferns: woods'][1] += n_
+# against a boulder: ferns down in the valley (damp), tufts up in the open
+_tally['boulders'] = [0, 0]
+for rk in [r_ for r_ in _rocks0 if r_[0] in ('boulder', 'stones')]:
+    i, j = _ij(rk[1], rk[2]); ang = U(0, 6.28); d0 = 0.5 + 0.5 * rk[3] + 0.45
+    n_ = _colony('fern' if floor[i, j] else 'tuft', rk[1] + math.cos(ang) * d0, rk[2] + math.sin(ang) * d0, ang + math.pi / 2, N_(3, 6), U(0.8, 1.2), U(0.4, 0.55), big=1.15, small=0.8, least=3)
+    if n_: _tally['boulders'][0] += 1; _tally['boulders'][1] += n_
+# tufts along the water's edge
+_grow("tufts: water's edge", inside_ & (water_d > 0.9) & (water_d < 1.7), 11,
+      lambda x, z: _colony('tuft', x, z, _line(_wx, _wz, x, z, gc), N_(5, 10), U(1.6, 2.8), U(0.45, 0.7), big=1.4, small=0.85))
+# tufts where the open ground breaks: along the foot and the top of a bank, and in a hollow
+_rough = ndi.gaussian_filter(slope, px_m(2.5)); _H7 = ndi.gaussian_filter(H, px_m(7.0)); _open = open_ | river
+_bank = _open & (slope < 0.24) & (_rough > 0.15) & (np.abs(H - Hs) > 0.07)
+_hollow = _open & (slope < 0.16) & (_H7 - H > 0.16) & ~_bank
+_grow('tufts: banks', _bank, 55, lambda x, z: _colony('tuft', x, z, _line(_gx, _gz, x, z, gc), N_(9, 16), U(2.2, 3.4), U(0.6, 0.95), mix='fern' if gc.random() < 0.3 else None))
+_grow('tufts: hollows', _hollow, 70, lambda x, z: _colony('tuft', x, z, _line(_gx, _gz, x, z, gc), N_(11, 18), U(1.8, 2.6), U(1.1, 1.5), big=1.4))
+_grow('tufts: brinks', brink, 70, lambda x, z: _colony('tuft', x, z, _line(_cx, _cz, x, z, gc), N_(4, 8), U(1.8, 2.6), U(0.45, 0.6), big=1.2))
+_grow('tufts: slopes', slope_z, 90, lambda x, z: _colony('tuft', x, z, _line(_gx, _gz, x, z, gc), N_(5, 9), U(2.2, 3.0), U(0.45, 0.6), big=1.2, mix='fern'))
+_grow('tufts: wayside', inside_ & (path_d > 0.45) & (path_d < 0.9), 15,
+      lambda x, z: _colony('tuft', x, z, _line(_px, _pz, x, z, gc), N_(3, 6), U(1.0, 1.8), U(0.3, 0.4), big=1.1, small=0.7, least=3))
+_grow('tufts: meadow islands', (meadow | grove_edge) & (slope < 0.12) & ~_bank & ~_hollow, 420,
+      lambda x, z: _colony('tuft', x, z, _line(_gx, _gz, x, z, gc), N_(14, 24), U(2.4, 3.4), U(1.4, 2.0), big=1.45, small=0.8, least=8))
+_ferns = sum(c_[0] == 'fern' for c_ in cover)
+print(f"  ground cover: {len(_colonies)} colonies, {_ferns} ferns and {len(cover) - _ferns} tufts ({'; '.join(f'{k} {v[0]} ({v[1]})' for k, v in _tally.items())})")
+print(f"    (the land: banks {int(_bank.sum() * MPP * MPP)} m2, hollows {int(_hollow.sum() * MPP * MPP)} m2, cliff feet {int(foot.sum() * MPP * MPP)} m2, brinks {int(brink.sum() * MPP * MPP)} m2, slopes {int(slope_z.sum() * MPP * MPP)} m2, meadow {int(meadow.sum() * MPP * MPP)} m2)")
 
 # The valley's rocks are kept where they were first thrown: hill-village-scatter.json beside the plan, written the first time
 # and read ever after (a thing she has moved by hand is found by where it stood). Those now in the way of something (a way, a
@@ -994,60 +1514,13 @@ if KEPT:                                                              # as first
 else: _sc_file.write_text(json.dumps({'plants': out_plants, 'rocks': rocks}, separators=(',', ':')))
 rocks += [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, z, sc_, rot in ROCKS_IN_LIPS]      # and the boulders in a parted fall's lip
 
-# ------------------------------------------------------------------ 8. the small things: a market round the fountain, and what a farm leaves lying about
-px_, pz_ = PLAZA; ty = TREE_YARD; barn = by_id['barn']; wmill = by_id['windmill']; fr = M(.835, .36)
-PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, yaw
-    ['stall', px_ - 7.5, pz_ - 5.0, 0.9], ['stall', px_ + 2.5, pz_ - 8.0, -0.2], ['stall', px_ + 8.0, pz_ + 3.5, -1.9], ['stall', px_ - 3.0, pz_ + 8.5, 2.9],
-    ['barrels', px_ - 9.4, pz_ - 2.4, 0.3], ['crates', px_ + 5.6, pz_ - 7.4, 1.0], ['crates', px_ + 10.2, pz_ + 4.6, 2.0], ['kit:Prop_Wagon', px_ + 13.0, pz_ + 8.0, 2.4], ['bench', px_ - 2.6, pz_ - 3.6, 0.6], ['bench', px_ + 3.4, pz_ + 2.6, -2.4], ['lamp', px_ - 4.4, pz_ + 3.4, 0], ['lamp', px_ + 4.6, pz_ - 3.2, 0],
-    ['table', *M(.47, .775), 0.3], ['bench', M(.47, .775)[0], M(.47, .775)[1] + 1.6, 0.3], ['table', M(.47, .775)[0] + 4, M(.47, .775)[1] + 0.8, 0.2], ['signpost', *M(.19, .835), 0.8],
-    ['stall', ty[0] + 8.0, ty[1] - 6.5, -2.3], ['barrels', ty[0] + 10.5, ty[1] - 4.6, 0.4], ['bench', ty[0] - 3.4, ty[1] + 4.6, 2.4], ['lamp', ty[0] + 4.6, ty[1] + 2.6, 0],
-    ['hay', barn['x'] + 5.0, barn['z'] + 4.0, 0.4], ['hay', barn['x'] + 5.6, barn['z'] + 6.2, 1.9], ['woodpile', barn['x'] - 4.6, barn['z'] + 2.0, 1.57], ['cart', barn['x'] - 6.0, barn['z'] + 8.5, 0.5],
-    ['sheep', fr[0] - 5, fr[1] - 2, 0.6], ['sheep', fr[0] + 1, fr[1] + 2.4, 2.4], ['sheep', fr[0] + 5.5, fr[1] - 1.5, 4.0], ['sheep', fr[0] - 1.5, fr[1] + 4.6, 5.2], ['sheep', fr[0] + 8, fr[1] + 3, 1.6],
-    ['hay', fr[0] - 8.5, fr[1] - 4.5, 1.0], ['hay', wmill['x'] + 5.5, wmill['z'] - 4.0, 0.3], ['barrels', wmill['x'] + 6.2, wmill['z'] + 3.2, 1.0], ['cart', wmill['x'] - 4.0, wmill['z'] + 6.0, 2.0],
-    ['woodpile', MILL[0] + nrm[0] * 3.6 - t[0] * 2, MILL[1] + nrm[1] * 3.6 - t[1] * 2, mill_yaw], ['barrels', MILL[0] + t[0] * 4.6 + nrm[0] * 2.6, MILL[1] + t[1] * 4.6 + nrm[1] * 2.6, 0.2],
-    ['crates', by_id['castle_hall']['x'] + 2.5, by_id['castle_hall']['z'] + 4.2, 0.5], ['lamp', M(.385, .158)[0] + 2.6, M(.385, .158)[1] + 1.2, 0],
-    ['barrels', by_id['manor']['x'] - 5.0, by_id['manor']['z'] + 5.6, 0], ['bench', by_id['manor']['x'] + 4.0, by_id['manor']['z'] + 5.6, 3.14], ['lamp', M(.565, .158)[0] - 2.4, M(.565, .158)[1] + 0.6, 0],
-    ['signpost', *M(.535, .40), 2.0], ['signpost', BS[0] - 2.2, BS[1] + 2.4, 0.4], ['woodpile', by_id['ledge_house']['x'] + 4.0, by_id['ledge_house']['z'] - 1.5, 1.57],
-    # the valley: a signpost where the way to it comes down onto the meadow, another at the foot of the way down; a bench at the lookout
-    ['signpost', 7.6, 65.5, 2.6], ['signpost', RAMP_FOOT[0] + 2.4, RAMP_FOOT[1] - 1.0, 1.2], ['bench', LOOKOUT[0] + 0.3, LOOKOUT[1] + 2.0, -2.0],
-    # the pit: a signpost where the west bank's way comes to it, a bench on its far side
-    ['signpost', J_W[0] - 2.0, J_W[1] - 1.4, 0.6], ['bench', PIT_SOUTH[0] + 6.0, PIT_SOUTH[1] + 2.6, round(face(PIT_SOUTH, tuple(BOWL)), 2)],
-]
-PROPS = [[k, round(float(x), 2), round(float(z), 2), round(float(y), 2)] for k, x, z, y in PROPS]
-for m in MOVES:                                                          # the small things moved by hand: the nearest of its kind_ to where it was
-    if '@' not in m['id']: continue
-    kind_ = m['id'].split('@')[0]; (fx_, fz_, _), (tx_, tz_, ty_) = m['from'], m['to']
-    p_ = min((q for q in PROPS if q[0] == kind_), key=lambda q: math.hypot(q[1] - fx_, q[2] - fz_), default=None)
-    if p_ is None or math.hypot(p_[1] - fx_, p_[2] - fz_) > 0.3: print(f"  ! the move of {m['id']} is out of date"); continue
-    p_[1:] = [tx_, tz_, ty_]; print(f"  moved by hand: {m['id']} to {tx_}, {tz_}")
+# the small things again: none on a way, in the water or on a cliff
 for k, x, z, _ in PROPS:
     i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
     if k not in ('lamp', 'signpost') and path_d[i, j] < 0.6 and not any(math.hypot(x - yx, z - yz) < yr for yx, yz, yr, _p in YARDS): print(f'  ! {k} at {x:.1f}, {z:.1f} stands on a way')
     if water_d[i, j] < 0.5 or slope[i, j] > 0.5: print(f'  ! {k} at {x:.1f}, {z:.1f} is in water or on a cliff')
 
-# ------------------------------------------------------------------ 9. the places to start from (name, spot, the way she faces)
-SPAWN = M(.04, .868); FALL = tuple(LIP + RIVER_DIR * 2.0); above = M(.60, .80); rim = (RAMP_TOP[0] - 1.2, RAMP_TOP[1] - 4.0)
-VIEWS = {
-    'start': [*R2(SPAWN), round(face(SPAWN, M(.12, .895)), 2)], 'vl-plaza': [*R2((px_ + 1.5, pz_ + 5.0)), 3.0], 'vl-bridge': [*R2(BS - BRIDGE_DIR * 3), round(face(BS, BN), 2)],
-    'vl-tree': [*R2((ty[0] - 2.5, ty[1] + 3.5)), round(face(ty, (by_id['great_tree']['x'], by_id['great_tree']['z'])), 2)],
-    'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
-    'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.60, .535)), round(face(M(.60, .535), (wmill['x'], wmill['z'])), 2)],
-    'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-falltop': [*R2(above), round(face(above, tuple(BASIN)), 2)],
-    'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)],
-    'vl-eastwood': [*R2(M(.88, .60)), round(face(M(.88, .60), M(.92, .66)), 2)],
-    'vl-brink': [*R2(LOOKOUT), round(face(LOOKOUT, FALL), 2)], 'vl-rim': [*R2(rim), round(face(rim, (riv_x(ZH + 70), ZH + 70)), 2)],
-    'vl-pit': [*R2(PIT_NORTH), round(face(PIT_NORTH, tuple(BOWL)), 2)], 'vl-cascade': [*R2(CASCADE_VIEW), round(face(CASCADE_VIEW, CASCADE_MID), 2)], 'vl-pit-south': [*R2(PIT_SOUTH), round(face(PIT_SOUTH, tuple(BOWL)), 2)],
-    'vl-pit-above': [*R2(PIT_ABOVE), round(face(PIT_ABOVE, tuple(BOWL)), 2)],
-    'vl-fallfoot': [*R2(FALL_FOOT), round(face(FALL_FOOT, FALL), 2)], 'vl-valley': [*R2((PW[0] - 2.5, PW[1] + 0.4)), round(face(PW, (riv_x(ZH + 40), ZH + 40)), 2)],
-}
-
 # ------------------------------------------------------------------ 10. write it all out
-def _before_view(x, z):                                              # in the wedge before a place to look from (30 m out, about 17 degrees each side),
-    for vx, vz, yaw in VIEWS.values():                                # or within 7 m of it all round (the camera stands behind her there)
-        dx, dz = x - vx, z - vz; f_ = dx * math.sin(yaw) + dz * math.cos(yaw); s_ = dx * math.cos(yaw) - dz * math.sin(yaw)
-        if (0 < f_ < 30 and abs(s_) < 2.5 + f_ * 0.3) or math.hypot(dx, dz) < 7: return True
-    return False
-out_plants = [p_ for p_ in out_plants if p_[0] in ('bush', 'flower') or not _before_view(p_[1], p_[2])]
 assert H.min() > BASE and H.max() < BASE + RANGE, (H.min(), H.max())
 OUT.mkdir(parents=True, exist_ok=True)
 v16 = np.clip((H - BASE) / RANGE, 0, 1)
@@ -1063,7 +1536,7 @@ plan = {
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': round(PLANK_YAW, 3)},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit
-    'paths': plan_paths, **({'pathOps': PATH_OPS} if PATH_OPS else {}), 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'rocks': rocks,
+    'paths': plan_paths, **({'pathOps': PATH_OPS} if PATH_OPS else {}), 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'clumps': clumps, 'cover': cover, 'rocks': rocks,
     # the pit: its middle, about how far its brink is from that, how far its picture's heights were moved to stand in the bowl (the
     # abyss's clouds and the land's fading into mist are set by height), and its shelves (metres in from the brink)
     'pit': {'x': round(float(BOWL[0]), 2), 'z': round(float(BOWL[1]), 2), 'brink': 39.2, 'shift': round(PIT_SHIFT, 2), 'turn': round(PIT_TURN, 3),
@@ -1075,7 +1548,7 @@ plan = {
 json.dump(plan, open(OUT / 'hill-village.json', 'w'), separators=(',', ':'))
 kinds = {}
 for p in out_plants: kinds[p[0]] = kinds.get(p[0], 0) + 1
-far_trees = sum(1 for p in out_plants if len(p) > 4)
+far_trees = sum(1 for p in out_plants if len(p) > 4 and p[4] == 0.5)
 for f in FIELDS:                                                       # (the check of section 4 again, on the land as it is written)
     lo_, hi_, _ = lie(rect(f['x'], f['z'], f['w'], f['d'], f['yaw']))
     if hi_ - lo_ > 1.2: print(f"  ! field {f['id']} is not on level ground: {lo_:.1f} .. {hi_:.1f} m")

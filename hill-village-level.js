@@ -35,6 +35,8 @@ import * as BD from './stylized-buildings.js';
 import { createAnimeCells } from './anime-cells.js';
 import { createAnimeForest, setAnimeSun, BUSH_SIZE } from './anime-tree.js';
 import { createFrondPineForest, setFrondPineSun } from './frond-pine.js';
+import { createFlowerDrift, setFlowerSun } from './meadow-flowers.js';
+import { createGroundCover, setGroundCoverSun } from './ground-cover.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { waterLookup, createLandWater } from './land-water.js';
 import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
@@ -116,14 +118,48 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (detail >= 0.8) { colliders.push([x, z, rad + 0.22]); cameraTrunks.push([x, z, rad + 0.12, y, y + TREE_H[type] * scale]); bare.push([x, z, rad * 1.5]); }
     shade.push([x, z, 4 * scale, 0.4]); casters.push([x, z, TREE_H[type] * scale, 2.4 * scale, 0.7]);
   };
-  const flowerBeds = [];
+  const flowerBeds = [], cover = [];                                       // (cover: the ferns and tall tufts of grass, ground-cover.js: nothing solid)
+  // (a plan row's fifth: for a tree, how many leaves (0.5: one she never comes near); for a bush of a group, the colour of its
+  // flowers or 'green' for none (a bush strewn in the margin has none: the dice decide); for a bed of flowers, its colour)
   for (const [kind, x, z, scale, detail] of P.plants) {
-    if (kind === 'bush') { plants.push({ kind: 'bush', type: r() < 0.35 ? 'flowering' : 'round', seed: 100 + plants.length, x, y: H(x, z), z, rotY: r() * 6.28, scale }); colliders.push([x, z, 0.7 * BUSH_SIZE * scale]); }
-    else if (kind === 'flower') flowerBeds.push([x, z, scale]);
+    if (kind === 'bush') {
+      const dice = r(), rotY = r() * 6.28, bloom = typeof detail === 'string' ? (detail === 'green' ? '' : detail) : null;
+      plants.push({ kind: 'bush', type: (bloom === null ? dice < 0.35 : bloom) ? 'flowering' : 'round', bloom: bloom || undefined, seed: 100 + plants.length, x, y: H(x, z), z, rotY, scale });
+      colliders.push([x, z, 0.7 * BUSH_SIZE * scale]);
+    }
+    else if (kind === 'flower') flowerBeds.push([x, z, scale, typeof detail === 'string' ? detail : null]);
     else tree(x, z, kind, scale, detail);
   }
+  for (const [kind, x, z, scale] of P.cover || []) cover.push({ kind, x, y: H(x, z), z, seed: cover.length + 1, scale });
   const bigTrees = [];                                                     // the great tree: a forest of its own, so it can be moved by hand
   for (const b of P.buildings) if (b.kind === 'tree') { const n = plants.length; tree(b.x, b.z, b.type, b.scale); bigTrees.push({ b, plant: plants.splice(n, 1)[0] }); }
+  // the beds of flowers: each a drift of low flowers in the grass (meadow-flowers.js, planted with the groves below), in the
+  // colour its group has in the plan; some with a flowering clump standing in it (a small flowering bush of anime-tree.js,
+  // in the bed's colours). Their own dice, and added after every other plant, so the trees and bushes are the ones they were.
+  const BEDS = ['pink', 'yellow', 'blue'], BED_BLOOM = { pink: ['pink', 'pink', 'white'], yellow: ['yellow', 'yellow', 'white'], blue: ['lilac', 'blue', 'lilac'] };
+  const offWay = (x, z, pad) => { const n = paths.near(x, z); return n.d > n.half + pad; };
+  {
+    const fr = mulberry32(seed * 977 + 5);
+    flowerBeds.forEach((bed, i) => {
+      const [bx, bz, rad] = bed, kind = bed.pop() || BEDS[(seed * 71 + i + 1) % 3], clumps = [];
+      const n = fr() < 0.35 ? 1 : 0;                                       // (the low flowers are the bed; a clump is its accent: the groups bring more of their own)
+      for (let k = 0, tries = 0; k < n && tries < 24; tries++) {
+        const a = fr() * 6.28, d = rad * (0.2 + 0.55 * fr()), x = bx + Math.cos(a) * d, z = bz + Math.sin(a) * d, scale = 0.5 + 0.22 * fr();
+        if (!offWay(x, z, 0.5) || waterDepthAt(x, z) > 0 || colliders.some(([cx, cz, cr]) => Math.hypot(cx - x, cz - z) < cr + 0.55)) continue;
+        if (clumps.some(c => Math.hypot(c[0] - x, c[1] - z) < 0.75)) continue;
+        const bloom = BED_BLOOM[kind][Math.floor(fr() * 3)];
+        plants.push({ kind: 'bush', type: 'clump', bloom, seed: Math.floor(fr() * 1000), x, y: H(x, z), z, rotY: fr() * 6.28, scale });      // (nothing solid: she walks through it, its leaves parting round her)
+        clumps.push([x, z, 0.75 * scale + 0.1]);                           // (no low flower stands inside a clump)
+        k++;
+      }
+      bed.push(kind, clumps);
+    });
+    // the flowering clumps the plan's groups stand about (walked through, like those in the beds)
+    for (const [x, z, scale, bloom] of P.clumps || []) {
+      if (!offWay(x, z, 0.4) || waterDepthAt(x, z) > 0) continue;
+      plants.push({ kind: 'bush', type: 'clump', bloom, seed: Math.floor(fr() * 1000), x, y: H(x, z), z, rotY: fr() * 6.28, scale });
+    }
+  }
 
   // ------------------------------------------------------------------ the village
   await onStep('สร้างหมู่บ้าน');
@@ -341,7 +377,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return [earth, sand, mow];
   };
   const L = new THREE.Vector3(...sun).normalize();
-  setAnimeSun(L); setFrondPineSun(L);                                      // (until the time of day says otherwise)
+  setAnimeSun(L); setFrondPineSun(L); setFlowerSun(L); setGroundCoverSun(L);                     // (until the time of day says otherwise)
   const sunShadows = dir => {
     L.copy(dir).normalize();
     const dxz = Math.hypot(L.x, L.z) || 1, ly = Math.max(0.3, L.y), ux = -L.x / dxz, uz = -L.z / dxz, len = dxz / ly;
@@ -430,10 +466,25 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (pines.length) obj.add(createFrondPineForest(pines));
       group.add(obj); groves.push({ obj, box }); inView.push({ obj, box });
     }
-    let fs = seed * 71; const pal = [['#f4a6bc', '#f6f2e6'], ['#f7d84a', '#f6f2e6'], ['#b9a3e8', '#93b8ee']];
-    for (const [x, z, rad] of flowerBeds) {
-      const obj = N.createFlowers({ count: Math.round(26 * rad), radius: rad, seed: ++fs, heightAt: H, center: [x, z], colors: pal[fs % 3] }), y = H(x, z);
-      group.add(obj); inView.push({ obj, far: 110, box: new THREE.Box3(v.set(x - rad - 0.5, y - 1.5, z - rad - 0.5).clone(), v.set(x + rad + 0.5, y + 2.5, z + rad + 0.5).clone()) });      // (from further off than that a bed of flowers is too small to see)
+    let fs = seed * 71;
+    for (const [x, z, rad, bed, clumps] of flowerBeds) {
+      // no flower on a way, in the water, or in anything solid (a wall, a trunk, a rock, a bush)
+      const reach = rad * 1.2, solid = colliders.filter(([cx, cz, cr]) => Math.hypot(cx - x, cz - z) < reach * 1.15 + cr + 0.2);
+      const grows = (fx, fz) => offWay(fx, fz, 0.12) && waterDepthAt(fx, fz) === 0 && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08);
+      const obj = createFlowerDrift({ center: [x, z], radius: reach, seed: ++fs, heightAt: H, bed, allow: grows, avoid: clumps }), y = H(x, z), far = reach * 1.15 + 0.5;
+      group.add(obj); inView.push({ obj, far: 110, box: new THREE.Box3(v.set(x - far, y - 2, z - far).clone(), v.set(x + far, y + 3, z + far).clone()) });      // (from further off than that a bed of flowers is too small to see)
+    }
+    // the ferns and tufts, in squares of their own (smaller than a grove: they are only seen from near). None in the water
+    // or on a way; from further off a square is drawn thinner, then not at all
+    const squares = new Map(), SQ = 40;
+    for (const c of cover) {
+      if (waterDepthAt(c.x, c.z) > 0 || !offWay(c.x, c.z, 0.1)) continue;
+      const k = Math.floor((c.x - X0) / SQ) + ',' + Math.floor((c.z - Z0) / SQ); if (!squares.has(k)) squares.set(k, []); squares.get(k).push(c);
+    }
+    for (const list of squares.values()) {
+      const box = new THREE.Box3(), obj = createGroundCover(list);
+      for (const c of list) { box.expandByPoint(v.set(c.x - 1.6, c.y - 0.5, c.z - 1.6)); box.expandByPoint(v.set(c.x + 1.6, c.y + 2, c.z + 1.6)); }
+      group.add(obj); inView.push({ obj, box, far: 95, thin: obj.userData.thin });
     }
   }
 
@@ -636,7 +687,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         camWorld.setFromMatrixPosition(camera.matrixWorld);
         // what is out of view is not drawn: a grove, a bed of flowers (nor one too far off to see)
-        for (const g of inView) g.obj.visible = frustum.intersectsBox(g.box) && (!g.far || g.box.distanceToPoint(camWorld) < g.far);
+        for (const g of inView) {
+          const d = g.far ? g.box.distanceToPoint(camWorld) : 0;
+          g.obj.visible = frustum.intersectsBox(g.box) && (!g.far || d < g.far);
+          if (g.thin && g.obj.visible) g.thin(d < 38 ? 1 : d < 65 ? 0.6 : 0.35);
+        }
         water.update(renderer, frustum, camWorld);                           // (a fall out of view or far away is not drawn either)
         // the water's two pictures (what lies under it, what is mirrored on it): only when water is on screen and near, made
         // for the height of the stretch she is nearest (the waters lie at several heights), and without the far groves
@@ -657,8 +712,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); },      // (the trees' crowns are lit by it live)
+    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); },      // (the trees' crowns are lit by it live)
     get sunCast() { return cast; },
-    follow(pos, lookDir) { grass.userData.follow(pos, lookDir); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
+    follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };
 }

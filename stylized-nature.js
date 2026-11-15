@@ -18,6 +18,8 @@
      createGround({ radius, seed, flat })  -> mesh.userData.heightAt(x, z)
 
    setHaze({ color, near, far, max })    aerial perspective: far things fade toward the haze colour
+   setWalker(pos, radius)                who walks among the plants: kits whose low plants part round her legs read it
+                                         (uniforms.uWalker: anime-tree.js's leaves, meadow-flowers.js's flowers)
    Setup (once per scene)
      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
      scene.add(createAlphaFix())          // keeps soft leaf edges from showing the page through
@@ -67,16 +69,18 @@ function fbm3(x, y, z, s, oct = 3) {
 }
 
 // --------------------------------------------------------------------------
-// shared time / wind
+// shared time / wind / who walks among the plants
 // --------------------------------------------------------------------------
 const shared = {
   uTime: { value: 0 }, uWind: { value: 1 }, uDebug: { value: 0 },
+  uWalker: { value: new THREE.Vector4(0, -999, 0, 0.55) },      // x, y, z of her feet, w = how far round her the plants part (nobody: far below)
   // aerial perspective: far things fade toward the haze colour (off by default: uHazeMax = 0)
   uHaze: { value: rgb('#cde6f2') }, uHazeNear: { value: 60 }, uHazeFar: { value: 240 }, uHazeMax: { value: 0 },
 };
 let windTarget = 1;
 export const uniforms = shared;
 export function setWind(v) { windTarget = typeof v === 'number' ? v : (v ? 1 : 0); }
+export function setWalker(pos, radius = 0.55) { shared.uWalker.value.set(pos.x, pos.y, pos.z, radius); }
 export function setHaze({ color, near, far, max } = {}) {
   if (color) shared.uHaze.value.copy(rgb(color));
   if (near !== undefined) shared.uHazeNear.value = near;

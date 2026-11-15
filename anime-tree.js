@@ -22,17 +22,20 @@
    Leaf size follows how near the eye the leaves hang: the lower the crown, the smaller and denser the leaves.
 
    createAnimeTree({ type: 'broadleaf' | 'oak' | 'sapling' | 'birch' | 'pine', seed, falling: true }) -> Group
-   createAnimeBush({ seed, bloom }) -> Group       its shape (one of BUSH_SHAPES) from the seed;
+   createAnimeBush({ seed, bloom, clump }) -> Group       its shape (one of BUSH_SHAPES) from the seed; clump: a flowering clump;
                                                     bloom: 'pink' | 'white' | 'yellow' | 'lilac' | 'blue' (a flowering bush:
                                                     the same bush, with heads of small flowers sitting in its leaves) or none
-   createAnimeForest([{ kind: 'tree' | 'bush', type, seed, detail, x, y, z, rotY, scale }, ...]) -> Group
-        a bush of type 'flowering' flowers, in one of BLOOM_COLORS: the same for every bush of a neighbourhood
+   createAnimeForest([{ kind: 'tree' | 'bush', type, seed, detail, x, y, z, rotY, scale, bloom }, ...]) -> Group
+        a bush of type 'flowering' flowers, in one of BLOOM_COLORS: its own (bloom), or the same for every bush of a
+        neighbourhood; of type 'clump' it is a flowering clump (a low leafy mound, larger leaves, flowers all over its
+        top: planted small, among the meadow's flowers)
         many plants in a few draw calls (one per leaf look, one per bark, one for the falling leaves). Each kind is built
         in VARIANTS shapes (picked by seed) and copied into place, turned and sized; detail under 0.8 (trees she never
         comes near) uses fewer, bigger leaf cards.
    setAnimeSun(vec3)       world direction toward the sun: every anime plant's leaves and bark follow it live
                            (never from below the horizon: at night the plants keep a low light)
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
+   Low leaves part round whoever walks through them (stylized-nature's setWalker): a flowering clump is walked through.
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -302,6 +305,7 @@ function clusterMask(style) {
 const LEAF_VS = /* glsl */`
 ${NATURE_VCOMMON}
 uniform vec3 uSun;
+uniform vec4 uWalker;     // her feet (world) + how far round her low leaves part (stylized-nature's setWalker)
 attribute vec3 iCenter;
 attribute vec4 iPuff;     // the puff's ball: centre (mesh space) + radius
 attribute vec4 iCard;     // x: rotation, y: size, z: aspect, w: atlas cell
@@ -322,7 +326,15 @@ void main() {
   float sc = objScale();
   vec3 c = iCenter + windOffset((iCenter - iBase.xyz) / iBase.w, ph) * iBase.w;
   vec3 pc = iPuff.xyz + windOffset((iPuff.xyz - iBase.xyz) / iBase.w, ph) * iBase.w;
-  vec4 mv = modelViewMatrix * vec4(c, 1.0);
+  // someone walking through a low plant (a flowering clump, a bush's edge): its leaves and flowers part round her legs and
+  // sink a little, as the grass does. Leaves higher than her waist (every tree's) stay as they are.
+  vec4 wc = modelMatrix * vec4(c, 1.0);
+  vec2 away = wc.xz - uWalker.xz;
+  float wd = length(away), wy = wc.y - uWalker.y;
+  float push = (1.0 - smoothstep(0.1, uWalker.w * 1.1, wd)) * (1.0 - smoothstep(0.9, 1.5, wy)) * step(-0.6, wy);
+  wc.xz += away / max(wd, 0.05) * push * 0.3;
+  wc.y -= push * clamp(wy * 0.4, 0.0, 0.14);
+  vec4 mv = viewMatrix * wc;
   float fl = uWind * (0.25 + iShade.x) * 0.02 * iBase.w;
   mv.xy += vec2(sin(uTime * 2.1 + iShade.w * 140.0 + ph), sin(uTime * 2.7 + iShade.w * 90.0) * 0.5) * fl * sc;
   float cs = cos(iCard.x), sn = sin(iCard.x);
@@ -701,9 +713,11 @@ function bushPuffs(shape, rng) {
   }
   return P;
 }
-function bushParts(seed, far = false, bloom = false) {
+const CLUMP_SHAPES = ['dome', 'spread', 'cluster', 'spread'], CLUMP_LEAF = 1.45;      // a clump: low shapes only; its leaves larger for its size (and so fewer)
+function bushParts(seed, far = false, bloom = false, clump = false) {
   const rng = mulberry32(seed * 104729 + 11), K = BUSH_SIZE;
-  const shape = BUSH_SHAPES[((seed % BUSH_SHAPES.length) + BUSH_SHAPES.length) % BUSH_SHAPES.length];
+  const set = clump ? CLUMP_SHAPES : BUSH_SHAPES;
+  const shape = set[((seed % set.length) + set.length) % set.length];
   const puffs = bushPuffs(shape, rng);
   for (const P of puffs) { P.c.multiplyScalar(K); P.r *= K; }
   // the whole bush's ellipsoid: the box round its puffs (each leaf leans a little toward its normal)
@@ -713,22 +727,23 @@ function bushParts(seed, far = false, bloom = false) {
     hi.max(new THREE.Vector3(P.c.x + P.r, P.c.y + P.r * P.f, P.c.z + P.r));
   }
   const env = { c: lo.clone().add(hi).multiplyScalar(0.5), r: hi.clone().sub(lo).multiplyScalar(0.5) };
-  const leaf = BUSH_LEAF * K * (far ? FAR_LEAF : 1);
+  const leaf = BUSH_LEAF * K * (clump ? CLUMP_LEAF : 1) * (far ? FAR_LEAF : 1);
   const cards = buildPuffs(rng, puffs, env, { leaf, density: densityFor(leaf), floorY: 0, hRange: [0.25, 0.7], rough: BUSH_ROUGH, aoMul: 0.8 });
   // lit as one mass more than puff by puff: the ball each leaf takes its light from is drawn toward the bush's middle, low
   // down, so the bush has one sunlit side and one shaded side, and its puffs only ripple that
   const mass = new THREE.Vector3(env.c.x, env.c.y * 0.35, env.c.z);
   const asOne = c => { for (let i = 0; i < c.PF.length; i += 4) { c.PF[i] += (mass.x - c.PF[i]) * BUSH_UNITY; c.PF[i + 1] += (mass.y - c.PF[i + 1]) * BUSH_UNITY; c.PF[i + 2] += (mass.z - c.PF[i + 2]) * BUSH_UNITY; } return c; };
-  return { cards: asOne(cards), leaf, shape, height: hi.y + leaf * 0.5, bloom: bloom ? asOne(bloomParts(seed, puffs, env, far)) : null };
+  return { cards: asOne(cards), leaf, shape, height: hi.y + leaf * 0.5, bloom: bloom || clump ? asOne(bloomParts(seed, puffs, env, far, clump)) : null };
 }
 
 // a flowering bush's flowers: open flowers about two leaves across (one to three to a card, now and then a bud), sitting on
 // its outer leaves and lit as the leaves round them are. They gather in a few drifts over the bush's upper part, as a shrub
 // in flower has them, with the leaves plain between; never under it or down in a crevice. Their own dice, so the bush under
 // them is the same bush as the plain one of that seed
-const BLOOM = { card: 0.44, per: 2.4, drifts: [3, 5], most: 28 };      // card size (m) and cards per m² of a puff's upper half, at the first bush's measure
-function bloomParts(seed, puffs, env, far = false) {
-  const rng = mulberry32(seed * 7919 + 5), K = BUSH_SIZE;
+const BLOOM_PLAIN = { card: 0.44, per: 2.4, drifts: [3, 5], most: 28 };
+const BLOOM_RICH = { card: 0.6, per: 6.5, drifts: [5, 7], most: 56 };      // a flowering clump: in flower all over its top      // card size (m) and cards per m² of a puff's upper half, at the first bush's measure
+function bloomParts(seed, puffs, env, far = false, rich = false) {
+  const rng = mulberry32(seed * 7919 + 5), K = BUSH_SIZE, BLOOM = rich ? BLOOM_RICH : BLOOM_PLAIN;
   const inside = (x, y, z, P, k) => { const dx = (x - P.c.x) / P.r, dy = (y - P.c.y) / (P.r * P.f), dz = (z - P.c.z) / P.r; return dx * dx + dy * dy + dz * dz < k * k; };
   const drifts = [], nd = Math.round(range(rng, ...BLOOM.drifts));
   for (let i = 0; i < nd; i++) { const y = range(rng, 0.25, 1), rr = Math.sqrt(1 - y * y), a = rng() * 6.28; drifts.push(new THREE.Vector3(Math.cos(a) * rr, y, Math.sin(a) * rr)); }
@@ -748,7 +763,7 @@ function bloomParts(seed, puffs, env, far = false) {
       if (puffs.some(Q => Q !== P && inside(p.x, p.y, p.z, Q, 0.98))) continue;     // in a crevice: hidden
       w.copy(p).sub(env.c).normalize();
       const near = Math.max(...drifts.map(D => D.dot(w)));                         // in a drift, or (rarely) between them
-      if (rng() > 0.05 + 0.95 * THREE.MathUtils.smoothstep(near, 0.5, 0.9)) continue;
+      if (rng() > 0.05 + 0.95 * THREE.MathUtils.smoothstep(near, rich ? 0.1 : 0.5, rich ? 0.6 : 0.9)) continue;
       let close = false;
       for (let q = 0; q < C.length; q += 3) if (Math.hypot(C[q] - p.x, C[q + 1] - p.y, C[q + 2] - p.z) < gap) { close = true; break; }
       if (close) continue;                                                         // not one on another
@@ -795,9 +810,10 @@ export function createAnimeTree({ type = 'broadleaf', seed = 1, falling = true }
   return group;
 }
 
-export function createAnimeBush({ seed = 3, bloom = null } = {}) {
-  const { cards, leaf, shape, height, bloom: flowers } = bushParts(seed, false, !!bloom);
-  const { leaves } = leafMeshes(mulberry32(seed), cards, 'game', 'leaf', false, 0, leaf);
+export function createAnimeBush({ seed = 3, bloom = null, clump = false } = {}) {
+  if (clump && !bloom) bloom = 'pink';
+  const { cards, leaf, shape, height, bloom: flowers } = bushParts(seed, false, !!bloom, clump);
+  const { leaves } = leafMeshes(mulberry32(seed), cards, clump ? 'tree' : 'game', 'leaf', false, 0, leaf);      // (a clump: the trees' quieter greens)
   const group = new THREE.Group();
   group.add(leaves);
   let heads = null;
@@ -807,7 +823,7 @@ export function createAnimeBush({ seed = 3, bloom = null } = {}) {
     group.add(heads);
   }
   group.name = 'anime_bush';
-  group.userData = { kind: 'bush', type: bloom ? 'flowering' : 'anime', bloom, shape, height, cards: leaves.geometry.instanceCount + (heads ? heads.geometry.instanceCount : 0),
+  group.userData = { kind: 'bush', type: clump ? 'clump' : bloom ? 'flowering' : 'anime', bloom, shape, height, cards: leaves.geometry.instanceCount + (heads ? heads.geometry.instanceCount : 0),
     setFalling() {}, dispose() { leaves.geometry.dispose(); if (heads) heads.geometry.dispose(); } };
   return group;
 }
@@ -818,7 +834,7 @@ export function createAnimeBush({ seed = 3, bloom = null } = {}) {
 const shapes = {};
 const shapeOf = (kind, type, v, far) => {
   const key = kind + '/' + type + '/' + v + (far ? '/far' : '');
-  return shapes[key] || (shapes[key] = kind === 'bush' ? bushParts(v + 1, far, type === 'flowering') : treeParts(type, v + 1, far));
+  return shapes[key] || (shapes[key] = kind === 'bush' ? bushParts(v + 1, far, type === 'flowering', type === 'clump') : treeParts(type, v + 1, far));
 };
 
 export function createAnimeForest(list) {
@@ -828,9 +844,9 @@ export function createAnimeForest(list) {
   const rng = mulberry32(list.length * 7 + 3);
   for (const e of list) {
     const bush = e.kind === 'bush', s = e.scale ?? 1, far = (e.detail ?? 1) < 0.8, v = Math.abs(Math.round(e.seed ?? 0)) % (bush ? BUSH_VARIANTS : VARIANTS);
-    const type = bush ? (e.type === 'flowering' ? 'flowering' : 'bush') : (KINDS[e.type] ? e.type : 'broadleaf');
+    const type = bush ? (e.type === 'flowering' || e.type === 'clump' ? e.type : 'bush') : (KINDS[e.type] ? e.type : 'broadleaf');
     const part = shapeOf(bush ? 'bush' : 'tree', type, v, far);
-    const palette = bush ? 'game' : part.kind.palette, mask = bush ? 'leaf' : (part.kind.mask || 'leaf');
+    const palette = bush ? (type === 'clump' ? 'tree' : 'game') : part.kind.palette, mask = bush ? 'leaf' : (part.kind.mask || 'leaf');
     M.compose(T3.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S3.set(s, s, s));
     const key = palette + '/' + mask;
     const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], B: [] });
@@ -844,7 +860,8 @@ export function createAnimeForest(list) {
       b.B.push(e.x, e.y, e.z, s);
     }
     if (bush && part.bloom) {                                         // its flowers, in the colour its seed picks
-      const col = BLOOM_COLORS[Math.abs((Math.floor(e.x / 18) * 73856093) ^ (Math.floor(e.z / 18) * 19349663)) % BLOOM_COLORS.length];   // (a neighbourhood, 18 m, flowers in one colour)
+      const col = BLOOM_COLORS.includes(e.bloom) ? e.bloom      // its own colour, or its neighbourhood's (18 m: bushes side by side flower alike)
+        : BLOOM_COLORS[Math.abs((Math.floor(e.x / 18) * 73856093) ^ (Math.floor(e.z / 18) * 19349663)) % BLOOM_COLORS.length];
       const fk = 'bloom-' + col + '/blossom';
       const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [] });
       const f = part.bloom, nf = f.C.length / 3;
