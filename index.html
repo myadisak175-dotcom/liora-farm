@@ -71,7 +71,7 @@
   "./water-droplets.js": "./water-droplets.js?v=crown6",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=walk1",
-  "./anime-tree.js": "./anime-tree.js?v=clump1",
+  "./anime-tree.js": "./anime-tree.js?v=far1",
   "./frond-pine.js": "./frond-pine.js?v=1",
   "./meadow-flowers.js": "./meadow-flowers.js?v=1",
   "./ground-cover.js": "./ground-cover.js?v=1",
@@ -338,6 +338,18 @@ splashTest.onclick = () => {
 if (Q.get('view') === 'water') visitWater();
 // ?view=climb (the foot of the cliff path) or ?view=mill (the meadow by the windmill): start there
 if (level.views && level.views[Q.get('view')]) { const v = level.views[Q.get('view')]; player.teleport(v.x, v.z, v.yaw); }
+// ---- an editor's "save" loads the map again: she comes back where she stood, not at the map's start. The page going away while
+// an editor is open notes her spot (this tab only); the map loading again puts her back on it, once
+const SPOT_KEY = 'liora.player.spot';
+addEventListener('pagehide', () => {
+  if (!editing()) return;                                                   // (editing: below; a plain reload still starts at the start)
+  try { sessionStorage.setItem(SPOT_KEY, JSON.stringify({ map: MAP, x: player.position.x, z: player.position.z, yaw: player.heading })); } catch (e) { /* not remembered */ }
+});
+try {
+  const s = JSON.parse(sessionStorage.getItem(SPOT_KEY) || 'null');
+  sessionStorage.removeItem(SPOT_KEY);
+  if (s && s.map === MAP && Number.isFinite(s.x) && Number.isFinite(s.z)) player.teleport(s.x, s.z, Number.isFinite(s.yaw) ? s.yaw : undefined);
+} catch (e) { /* nothing noted */ }
 
 // ---- grass look: painterly dabs or smooth blades, to compare on the device
 const styleBtn = document.getElementById('style');
@@ -369,32 +381,38 @@ if (tod) {
   setInterval(showTime, 1000);
 } else { timeBtn.remove(); timeRun.remove(); }
 
-// ---- keep it smooth: thin the grass when the phone struggles, thicken it again when there is room
+// ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
+// it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
+// is not tried again for a while: without that the picture went coarse and fine, and the grass thin and thick, over and
+// over wherever the phone was near its limit.
 const fpsEl = document.getElementById('fps');
-let fpsN = 0, fpsT = 0, warm = 0, good = 0;
+let fpsN = 0, fpsT = 0, warm = 0, good = 0, played = 0, gaveBackAt = -1e9, holdUntil = 0, dprDue = false, mirrorWas = -1;      // (played: seconds of play the tuner has seen; mirrorWas: the mirror's quality before the tuner first lowered it)
+const setDPR = v => { renderDPR = v; dprDue = true; };      // (the picture's size changes as the next frame begins: changed after a frame is drawn, the screen would show one empty frame, a blink)
+const tookAway = () => { if (played - gaveBackAt < 8) holdUntil = played + 45; };
+const gaveBack = () => { gaveBackAt = played; };
+const mayGiveBack = () => played >= holdUntil;
 function tune(dt) {
-  fpsN++; fpsT += dt; warm += dt;
+  fpsN++; fpsT += dt; warm += dt; played += dt;
   if (fpsT < 1) return;
   const fps = fpsN / fpsT; fpsN = 0; fpsT = 0;
-  const g = level.grass.userData;
+  const g = level.grass.userData, slow = fps < targetFPS * 0.78, easy = fps > targetFPS * 0.93;
   if (warm > 4) {
-    if (fps < targetFPS * 0.78 && renderDPR > 1) {
-      renderDPR = Math.max(1, renderDPR - 0.125); renderer.setPixelRatio(renderDPR); fit();
-      warm = 2; good = 0; return;
+    if (slow && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; }
+    else if (easy && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
+      if (mayGiveBack() && ++good >= 4) { setDPR(Math.min(maxDPR, renderDPR + 0.125)); gaveBack(); warm = 2; good = 0; }
     }
-    if (fps > targetFPS * 0.97 && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
-      if (++good >= 8) { renderDPR = Math.min(maxDPR, renderDPR + 0.125); renderer.setPixelRatio(renderDPR); fit(); warm = 2; good = 0; }
-      return;
+    // still too slow: the clouds redrawn less often (the cheapest saving), then the mirror on the water, only then thinner grass
+    else if (slow && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); tookAway(); warm = 2; good = 0; }
+    else if (slow && level.optics.quality > 0) { if (mirrorWas < 0) mirrorWas = level.optics.quality; level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); tookAway(); warm = 2; good = 0; }
+    else if (slow && g.density > 0.3) { g.setDensity(g.density * 0.8); tookAway(); good = 0; }
+    else if (easy && g.density < 1) { if (mayGiveBack() && ++good >= 3) { g.setDensity(g.density * 1.12); gaveBack(); good = 0; } }
+    else if (easy && sky.userData.rate < 1) { if (mayGiveBack() && ++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); gaveBack(); good = 0; } }
+    else if (easy && level.optics.quality < mirrorWas) {      // last of all (the picture is whole again by now): the mirror on the water, which used to stay off for good once it had been lowered
+      if (mayGiveBack() && ++good >= 5) { level.optics.setQuality(level.optics.quality + 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); gaveBack(); warm = 2; good = 0; }
     }
-    // too slow: first give up mirror quality (the costliest thing on screen), only then thin the grass
-    if (fps < targetFPS * 0.78 && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); warm = 2; good = 0; }       // cheapest saving first: redraw the clouds less often
-    else if (fps < targetFPS * 0.78 && level.optics.quality > 0) { level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); warm = 2; good = 0; }
-    else if (fps < targetFPS * 0.78 && g.density > 0.3) { g.setDensity(g.density * 0.8); good = 0; }
-    else if (fps > targetFPS * 0.93 && g.density < 1) { if (++good >= 3) { g.setDensity(g.density * 1.12); good = 0; } }
-    else if (fps > targetFPS * 0.93 && sky.userData.rate < 1) { if (++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); good = 0; } }
     else good = 0;
   }
-  fpsEl.textContent = Math.round(fps) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
+  fpsEl.textContent = Math.round(fps) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
 }
 
 // ---- the scene editor: fix the ways and the plants by hand (only where the level can be edited)
@@ -462,6 +480,7 @@ let moved = false;
 const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active));
 const frame = (dt = clock.getDelta()) => {
   dt = Math.min(Math.max(dt, 0), 0.05);
+  if (dprDue) { dprDue = false; renderer.setPixelRatio(renderDPR); fit(); }
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);

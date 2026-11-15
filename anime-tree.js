@@ -34,6 +34,8 @@
         comes near) uses fewer, bigger leaf cards.
    setAnimeSun(vec3)       world direction toward the sun: every anime plant's leaves and bark follow it live
                            (never from below the horizon: at night the plants keep a low light)
+   setAnimeFarLeaves(on)   away from the eye, leaves that lie behind others are not drawn, and far off fewer are (on, as it
+                           starts); off: every leaf of every plant is drawn at any distance (see FAR_LEAVES)
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    Low leaves part round whoever walks through them (stylized-nature's setWalker): a flowering clump is walked through.
    ========================================================================== */
@@ -73,6 +75,20 @@ export function setAnimeSun(v) {
   if (SUN.value.y < 0.12) SUN.value.y = 0.12;                       // (lit from below the horizon, a crown would glow underneath)
   SUN.value.normalize();
 }
+
+// Leaves that cannot be seen are not drawn. A crown is some thirty leaf cards deep wherever it is looked at, and a phone
+// shades every one of them, the hidden ones too (a card has holes, so the phone cannot skip what lies behind it): a wood
+// seen from a hill, tree behind tree, was by far the costliest thing on screen. Two savings, both by how far off a plant
+// is for its size (metres per unit of its size: a tree twice as big is treated alike twice as far off):
+//   x..y   the cards that lie behind enough others, seen from where the eye is, shrink away (hiddenFrom: worked out for
+//          every card as a tree is built, from sixteen sides round it). Nothing that is seen goes: a birch, whose far
+//          side shows between its boughs, keeps it.
+//   z..w   of the rest, fewer are drawn, each a little larger (FAR_KEEP: the share still drawn at w and beyond, and how
+//          much larger): far off, a leaf is smaller than a dot of the screen
+// Nearer than x every leaf is drawn (under a crown, looking up, too). setAnimeFarLeaves(false) draws every leaf anywhere.
+const FAR_ON = [8, 13, 16, 48];
+const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
+export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
 
 // Every tree's crown is made of boughs, not of balls: each limb's tip carries a canopy (a puff wider than it is tall), beside
 // it one or two smaller ones a little lower, and sprays hanging round its lower outer edge (taller than they are wide), so
@@ -306,12 +322,15 @@ const LEAF_VS = /* glsl */`
 ${NATURE_VCOMMON}
 uniform vec3 uSun;
 uniform vec4 uWalker;     // her feet (world) + how far round her low leaves part (stylized-nature's setWalker)
+uniform vec4 uFarLeaves;  // a far crown's leaves: x..y the hidden ones go, z..w the rest are fewer (see FAR_LEAVES)
+uniform vec2 uFarKeep;    // x: the share still drawn far off, y: how much larger those are
 attribute vec3 iCenter;
 attribute vec4 iPuff;     // the puff's ball: centre (mesh space) + radius
 attribute vec4 iCard;     // x: rotation, y: size, z: aspect, w: atlas cell
 attribute vec4 iShade;    // x: height in the plant 0..1, y: AO 0..1, z: tint, w: seed
 attribute vec4 iCN;       // xyz: the whole crown's normal here, w: the puff's height / width
 attribute vec4 iBase;     // plant foot + scale; (0,0,0,1) for a single plant
+attribute float iHid;     // from which eighths of the compass this card lies behind others: a bit each (hiddenFrom)
 varying vec2 vUv;
 varying vec3 vCard;
 varying vec4 vPuff;
@@ -337,8 +356,19 @@ void main() {
   vec4 mv = viewMatrix * wc;
   float fl = uWind * (0.25 + iShade.x) * 0.02 * iBase.w;
   mv.xy += vec2(sin(uTime * 2.1 + iShade.w * 140.0 + ph), sin(uTime * 2.7 + iShade.w * 90.0) * 0.5) * fl * sc;
+  // away from the eye: a card that lies behind others from where the eye is shrinks to nothing (iHid: yes or no for eight
+  // sides round the plant, blended between the two the eye is between, so a card comes and goes softly as she walks round;
+  // only for an eye about level with the crown, as it was worked out), and far off some of the rest do too (which: by
+  // each card's own number), the others a little larger
+  float span = length(mv.xyz) / max(iBase.w * sc, 1.0);
+  vec3 eye = normalize((cameraPosition - wc.xyz) * mat3(modelMatrix));
+  float side = fract(atan(eye.x, eye.z) / 6.2831853 + 1.0) * 8.0, s0 = floor(side);
+  float hid = mix(mod(floor(iHid * exp2(-s0) + 0.001), 2.0), mod(floor(iHid * exp2(-mod(s0 + 1.0, 8.0)) + 0.001), 2.0), side - s0);
+  hid *= smoothstep(uFarLeaves.x, uFarLeaves.y, span) * (smoothstep(-0.5, -0.4, eye.y) - smoothstep(0.6, 0.7, eye.y));
+  float few = smoothstep(uFarLeaves.z, uFarLeaves.w, span), kept = mix(1.0, uFarKeep.x, few);
+  float lod = (1.0 - hid) * (1.0 - smoothstep(kept, kept + 0.08, iShade.w)) * mix(1.0, uFarKeep.y, few);
   float cs = cos(iCard.x), sn = sin(iCard.x);
-  vec2 hs = vec2(iCard.z, 1.0 / iCard.z) * iCard.y;
+  vec2 hs = vec2(iCard.z, 1.0 / iCard.z) * iCard.y * lod;
   vec2 q = position.xy * hs * sc;
   mv.xy += vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);          // camera-facing card
   vHaze = hazeAt(mv.xyz);
@@ -460,7 +490,7 @@ function materials(palette, mask = 'leaf') {
   const pk = ANIME_PALETTES[palette] ? palette : 'game', key = pk + '/' + mask;
   if (mats[key]) return mats[key];
   const pal = ANIME_PALETTES[pk].tones.map(rgb), st = ANIME_PALETTES[pk].steps, W = ANIME_PALETTES[pk].weights || {};      // weights: how much the sun, the height in the plant and the shade among the puffs move a leaf's tone
-  const U = { ...natureUniforms, uSun: SUN, uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] } };
+  const U = { ...natureUniforms, uSun: SUN, uFarLeaves: FAR_LEAVES, uFarKeep: FAR_KEEP, uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] } };
   const leaf = new THREE.ShaderMaterial({
     uniforms: {
       ...U, uMask: { value: clusterMask(mask) },
@@ -554,7 +584,74 @@ function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange
   return { C, PF, K, SH, CN, drop };
 }
 
-function cardGeometry({ C, PF, K, SH, CN, B = null }) {
+// Which of a crown's leaf cards lie behind enough others not to be drawn, by where the crown is looked at from.
+// The crown is looked at from HID_AZ sides round it, from each at three heights (a little under level, level, well above:
+// where an eye away from the tree is), as a flat picture: the cards are laid into it nearest first, each adding what a
+// card covers of its square (a third: HID_COVER) to the cells it lies on; a card whose every cell has leaves HID_DEEP
+// deep before it (one part in ten still showing through) is hidden from there. Hidden cards add nothing, so what
+// hides a card is always drawn. -> for each card, a bit per side: hidden from that side at all three heights.
+const HID_AZ = 16, HID_EL = [-0.3, 0.1, 0.5], HID_COVER = 0.35, HID_DEEP = 2.2;
+function hiddenFrom({ C, K }) {
+  const n = C.length / 3, out = new Uint16Array(n);
+  if (n < 60) return out;
+  let size = 0;
+  for (let i = 0; i < n; i++) size += K[i * 4 + 1];
+  const cell = size / n * 0.3, SL = 40;
+  const a = new Float32Array(n), b = new Float32Array(n), d = new Float32Array(n), slab = new Uint8Array(n), order = new Uint32Array(n), at = new Uint32Array(SL + 1), put = new Uint32Array(SL);
+  const shown = new Uint8Array(n), lays = new Uint8Array(n);
+  for (let az = 0; az < HID_AZ; az++) {
+    const th = az / HID_AZ * Math.PI * 2, ux = Math.cos(th), uz = -Math.sin(th);
+    shown.fill(0);
+    for (const el of HID_EL) {
+      const ce = Math.cos(el), vx = ce * Math.sin(th), vy = Math.sin(el), vz = ce * Math.cos(th);      // toward the eye
+      const wx = vy * uz, wy = vz * ux - vx * uz, wz = -vy * ux;                                    // up, in the picture
+      let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity, d0 = Infinity, d1 = -Infinity;
+      for (let i = 0; i < n; i++) {
+        const x = C[i * 3], y = C[i * 3 + 1], z = C[i * 3 + 2];
+        const pa = a[i] = x * ux + z * uz, pb = b[i] = x * wx + y * wy + z * wz, pd = d[i] = x * vx + y * vy + z * vz;
+        if (pa < a0) a0 = pa; if (pa > a1) a1 = pa; if (pb < b0) b0 = pb; if (pb > b1) b1 = pb; if (pd < d0) d0 = pd; if (pd > d1) d1 = pd;
+      }
+      const gw = Math.ceil((a1 - a0) / cell) + 1, gh = Math.ceil((b1 - b0) / cell) + 1, deep = new Float32Array(gw * gh);
+      // nearest the eye first, a slab of depth at a time (cards of one slab do not hide one another)
+      const ds = (d1 - d0) / SL || 1;
+      at.fill(0);
+      for (let i = 0; i < n; i++) { const k = Math.min(SL - 1, Math.floor((d1 - d[i]) / ds)); slab[i] = k; at[k + 1]++; }
+      for (let k = 0; k < SL; k++) { at[k + 1] += at[k]; put[k] = at[k]; }
+      for (let i = 0; i < n; i++) order[put[slab[i]]++] = i;
+      for (let k = 0; k < SL; k++) {
+        for (let q = at[k]; q < at[k + 1]; q++) {
+          const i = order[q], r = K[i * 4 + 1] * 0.45;
+          const i0 = Math.max(0, Math.round((a[i] - r - a0) / cell)), i1 = Math.min(gw - 1, Math.round((a[i] + r - a0) / cell));
+          const j0 = Math.max(0, Math.round((b[i] - r - b0) / cell)), j1 = Math.min(gh - 1, Math.round((b[i] + r - b0) / cell));
+          let seen = false;
+          for (let j = j0; j <= j1 && !seen; j++) for (let ii = i0; ii <= i1; ii++) if (deep[j * gw + ii] < HID_DEEP) { seen = true; break; }
+          lays[i] = seen ? 1 : 0;
+          if (seen) shown[i] = 1;
+        }
+        for (let q = at[k]; q < at[k + 1]; q++) {
+          const i = order[q];
+          if (!lays[i]) continue;
+          const r = K[i * 4 + 1] * 0.5;
+          const i0 = Math.max(0, Math.round((a[i] - r - a0) / cell)), i1 = Math.min(gw - 1, Math.round((a[i] + r - a0) / cell) - 1);
+          const j0 = Math.max(0, Math.round((b[i] - r - b0) / cell)), j1 = Math.min(gh - 1, Math.round((b[i] + r - b0) / cell) - 1);
+          for (let j = j0; j <= j1; j++) for (let ii = i0; ii <= i1; ii++) deep[j * gw + ii] += HID_COVER;
+        }
+      }
+    }
+    for (let i = 0; i < n; i++) if (!shown[i]) out[i] |= 1 << az;
+  }
+  return out;
+}
+// a card's sixteen sides round its own plant -> the eight of the compass, for a plant turned by rotY: hidden from a side of
+// the compass when it is hidden from the plant's side nearest to it and from the two beside that one
+const compassSides = (rotY = 0) => [0, 1, 2, 3, 4, 5, 6, 7].map(j => ((Math.round((j * Math.PI / 4 - rotY) / (Math.PI * 2) * HID_AZ) % HID_AZ) + HID_AZ) % HID_AZ);
+function hiddenByCompass(bits, sides) {
+  let out = 0;
+  for (let j = 0; j < 8; j++) { const k = sides[j]; if ((bits >> k) & (bits >> ((k + 1) % HID_AZ)) & (bits >> ((k + HID_AZ - 1) % HID_AZ)) & 1) out |= 1 << j; }
+  return out;
+}
+
+function cardGeometry({ C, PF, K, SH, CN, B = null, HD = null }) {
   const quad = new THREE.PlaneGeometry(1, 1);
   const g = new THREE.InstancedBufferGeometry();
   g.index = quad.index;
@@ -569,6 +666,7 @@ function cardGeometry({ C, PF, K, SH, CN, B = null }) {
   g.setAttribute('iShade', new THREE.InstancedBufferAttribute(new Float32Array(SH), 4));
   g.setAttribute('iCN', new THREE.InstancedBufferAttribute(new Float32Array(CN), 4));
   g.setAttribute('iBase', new THREE.InstancedBufferAttribute(base, 4));
+  g.setAttribute('iHid', new THREE.InstancedBufferAttribute(HD ? new Float32Array(HD) : new Float32Array(n), 1));
   g.instanceCount = n;
   return g;
 }
@@ -651,6 +749,9 @@ function treeParts(type, seed, far = false) {
     const m = new THREE.Vector3(crown.c.x, crown.c.y - crown.r.y * 0.25, crown.c.z), u = kind.unity, PF = cards.PF;
     for (let i = 0; i < PF.length; i += 4) { PF[i] += (m.x - PF[i]) * u; PF[i + 1] += (m.y - PF[i + 1]) * u; PF[i + 2] += (m.z - PF[i + 2]) * u; }
   }
+  cards.HID = hiddenFrom(cards);                                   // (by the tree's own sides: a forest turns them to the compass's)
+  const sides = compassSides();
+  cards.HD = Array.from(cards.HID, bits => hiddenByCompass(bits, sides));
   return { kind, spec, trunk, cards, leaf, rng };
 }
 // a bush: puffs of small leaves, leaves all through (it is seen from above), smallest leaves of all. Small puffs, so the
@@ -849,9 +950,10 @@ export function createAnimeForest(list) {
     const palette = bush ? (type === 'clump' ? 'tree' : 'game') : part.kind.palette, mask = bush ? 'leaf' : (part.kind.mask || 'leaf');
     M.compose(T3.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S3.set(s, s, s));
     const key = palette + '/' + mask;
-    const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], B: [] });
-    const c = part.cards, n = c.C.length / 3;
+    const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [] });
+    const c = part.cards, n = c.C.length / 3, sides = c.HID ? compassSides(e.rotY ?? 0) : null;
     for (let i = 0; i < n; i++) {
+      b.HD.push(sides ? hiddenByCompass(c.HID[i], sides) : 0);
       V.set(c.C[i * 3], c.C[i * 3 + 1], c.C[i * 3 + 2]).applyMatrix4(M); b.C.push(V.x, V.y, V.z);
       V.set(c.PF[i * 4], c.PF[i * 4 + 1], c.PF[i * 4 + 2]).applyMatrix4(M); b.PF.push(V.x, V.y, V.z, c.PF[i * 4 + 3] * s);
       b.K.push(c.K[i * 4], c.K[i * 4 + 1] * s, c.K[i * 4 + 2], c.K[i * 4 + 3]);
@@ -863,9 +965,10 @@ export function createAnimeForest(list) {
       const col = BLOOM_COLORS.includes(e.bloom) ? e.bloom      // its own colour, or its neighbourhood's (18 m: bushes side by side flower alike)
         : BLOOM_COLORS[Math.abs((Math.floor(e.x / 18) * 73856093) ^ (Math.floor(e.z / 18) * 19349663)) % BLOOM_COLORS.length];
       const fk = 'bloom-' + col + '/blossom';
-      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [] });
+      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [] });
       const f = part.bloom, nf = f.C.length / 3;
       for (let i = 0; i < nf; i++) {
+        fb.HD.push(0);
         V.set(f.C[i * 3], f.C[i * 3 + 1], f.C[i * 3 + 2]).applyMatrix4(M); fb.C.push(V.x, V.y, V.z);
         V.set(f.PF[i * 4], f.PF[i * 4 + 1], f.PF[i * 4 + 2]).applyMatrix4(M); fb.PF.push(V.x, V.y, V.z, f.PF[i * 4 + 3] * s);
         fb.K.push(f.K[i * 4], f.K[i * 4 + 1] * s, f.K[i * 4 + 2], f.K[i * 4 + 3]);
