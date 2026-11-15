@@ -860,7 +860,9 @@ def margin_tree(x, z):                                                # the marg
 
 scatter(pit_zone, 6.5, mix(('pine', 0.7), ('birch', 0.3)), tries=0.12, keep=0.6)
 scatter(village & (bld_d > 2) & (bld_d < 7), 5.0, one('flower'), tries=0.05, keep=0.5)
+_n0 = len(plants)
 scatter(village & (bld_d > 4), 9.0, one('sapling'), tries=0.04, keep=0.35)
+VILLAGE_SAPLINGS = plants[_n0:]                                       # (grown into clumps below, 6b)
 scatter(river, 7.0, one('birch'), tries=0.1, keep=0.45)
 scatter(river, 3.6, one('bush'), tries=0.08, keep=0.4)
 scatter(river, 6.0, one('flower'), tries=0.03, keep=0.3)
@@ -879,11 +881,80 @@ scatter(margin & (OUTSIDE >= 10) & seen, 11.0, margin_tree)
 scatter(meadow, 18.0, mix(('oak', 0.55), ('broadleaf', 0.45)), tries=0.02, keep=0.5)      # a lone tree in the open now and then
 scatter(meadow, 9.0, one('bush'), tries=0.02, keep=0.3)
 out_plants = []
-SCALE = {'pine': (0.9, 1.35), 'oak': (0.85, 1.25), 'broadleaf': (0.8, 1.15), 'birch': (0.9, 1.2), 'sapling': (0.85, 1.25), 'bush': (0.75, 1.15), 'flower': (1.1, 1.8)}
+TREES_K = 0.87                                                        # every tree 87% of the size it was first given: beside Vivi (1.6 m) the woods stood 7 to 9 times her height
+SCALE = {'pine': (0.85, 1.05), 'oak': (0.85, 1.25), 'broadleaf': (0.8, 1.15), 'birch': (0.9, 1.2), 'sapling': (0.85, 1.25)}      # (pines were 0.9 .. 1.35: up to 15 m, far over the rest)
+SCALE = {k: (lo * TREES_K, hi * TREES_K) for k, (lo, hi) in SCALE.items()}
+SCALE.update({'bush': (0.75, 1.15), 'flower': (1.1, 1.8)})
 for kind, x, z, _r in plants:
     row = [kind, round(x, 2), round(z, 2), round(float(pn.uniform(*SCALE[kind])), 2)]
     if kind not in ('bush', 'flower') and (sample(OUTSIDE, (x, z))[0] > 6 or math.hypot(x - BOWL[0], z - BOWL[1]) < PIT_BRINK + 1): row.append(0.5)      # (trees she never comes near, in the margin and down the pit: drawn with fewer leaves)
     out_plants.append(row)
+
+# 6b. The village's small trees in clumps. A sapling standing alone on the grass by a house looks lost, so each one the rules
+# put there grows a clump round it: now and then one or two more saplings, smaller, in a loose triangle (never in a row);
+# always bushes at their feet; often a bed of flowers. One round which nothing can be grown (too close to a way, a wall,
+# water, another plant or a rock) is taken out: no sapling stands alone in the village. The clumps have dice of their own, so
+# every other plant on the map stays where it was, at the size it was.
+cr = np.random.default_rng(612)
+REACH = {'sapling': 1.1, 'bush': 0.6, 'flower': 0.9, 'broadleaf': 2.0, 'oak': 2.4, 'birch': 1.3, 'pine': 1.3}      # metres a plant takes up on the ground (trunk and the foot of its crown)
+_sc_path = OUT / 'hill-village-scatter.json'
+_rocks0 = json.loads(_sc_path.read_text())['rocks'] if _sc_path.exists() else []
+_ij = lambda x, z: (int((z - Z0) / MPP), int((x + XH) / MPP))
+
+
+def _room(x, z, kind, mine):
+    """may a plant of this kind grow at (x, z): free ground in the village, clear of the plants and rocks already there"""
+    i, j = _ij(x, z)
+    if not (0 <= i < NZ and 0 <= j < NX) or not (free[i, j] and inside_[i, j] and not pit_in[i, j]): return False
+    if bld_d[i, j] < (3.0 if kind == 'sapling' else 1.6) or path_d[i, j] < (2.2 if kind == 'sapling' else 1.6): return False
+    r = REACH[kind]
+    for q in out_plants:
+        if q is not mine['anchor'] and math.hypot(q[1] - x, q[2] - z) < r + REACH[q[0]] * 0.8: return False
+    for q in mine['added']:                                           # (inside the clump they may stand closer)
+        if math.hypot(q[1] - x, q[2] - z) < r + REACH[q[0]] * 0.6: return False
+    if math.hypot(mine['anchor'][1] - x, mine['anchor'][2] - z) < r + REACH['sapling'] * 0.6: return False
+    return all(math.hypot(rk[1] - x, rk[2] - z) > r + 0.5 + 0.5 * rk[3] for rk in _rocks0 if rk[0] != 'pebbles')
+
+
+_anchors = {(k, round(x, 2), round(z, 2)) for k, x, z, _r in VILLAGE_SAPLINGS}
+clumps, lone = [], []
+for row in [r_ for r_ in out_plants if (r_[0], r_[1], r_[2]) in _anchors]:
+    mine = {'anchor': row, 'added': []}
+    ax, az, s0 = row[1], row[2], row[3]
+    trunks = [(ax, az)]
+    # one or two more saplings, smaller than the first and each a different height: a loose triangle
+    extra = int(cr.choice([0, 1, 2], p=[0.35, 0.4, 0.25]))
+    a0 = cr.uniform(0, 2 * math.pi)
+    for n in range(extra):
+        for _try in range(8):
+            ang, d = a0 + n * cr.uniform(1.7, 2.6) + cr.uniform(-0.4, 0.4), cr.uniform(2.0, 3.0)
+            x, z = ax + math.cos(ang) * d, az + math.sin(ang) * d
+            if _room(x, z, 'sapling', mine):
+                sc_ = round(float(s0 * (cr.uniform(0.62, 0.82) if n == 0 else cr.uniform(0.5, 0.66))), 2)
+                mine['added'].append(['sapling', round(x, 2), round(z, 2), sc_]); trunks.append((x, z)); break
+    # bushes at the trees' feet, thicker on one side so the clump leans one way and is not a ring
+    cx, cz = sum(t[0] for t in trunks) / len(trunks), sum(t[1] for t in trunks) / len(trunks)
+    lean = cr.uniform(0, 2 * math.pi)
+    want = int(cr.integers(3, 6))                                     # (the bushes are small now, about a metre high: three to five to a clump)
+    for _try in range(want * 6):
+        if sum(q[0] == 'bush' for q in mine['added']) >= want: break
+        tx, tz = trunks[int(cr.integers(0, len(trunks)))]
+        ang = lean + cr.normal(0, 1.1); d = cr.uniform(0.9, 1.8)
+        x, z = tx + math.cos(ang) * d, tz + math.sin(ang) * d
+        if math.hypot(x - cx, z - cz) < math.hypot(tx - cx, tz - cz) - 0.3: continue      # (round the clump's edge, not between its trunks)
+        if _room(x, z, 'bush', mine): mine['added'].append(['bush', round(x, 2), round(z, 2), round(float(cr.uniform(0.7, 1.15)), 2)])
+    # often a bed of flowers just outside it, on the side away from the bushes' weight
+    if cr.random() < 0.6:
+        for _try in range(6):
+            ang = lean + math.pi + cr.uniform(-0.9, 0.9); d = cr.uniform(2.6, 3.6)
+            x, z = cx + math.cos(ang) * d, cz + math.sin(ang) * d
+            if _room(x, z, 'flower', mine): mine['added'].append(['flower', round(x, 2), round(z, 2), round(float(cr.uniform(1.0, 1.45)), 2)]); break
+    if any(q[0] != 'flower' for q in mine['added']): clumps.append(mine); out_plants.extend(mine['added'])
+    else: lone.append(row)
+out_plants = [r_ for r_ in out_plants if not any(r_ is l_ for l_ in lone)]
+print(f"  the village's saplings: {len(clumps)} clumps ({sum(len(c['added']) for c in clumps)} plants grown round them: "
+      f"{sum(q[0] == 'sapling' for c in clumps for q in c['added'])} saplings, {sum(q[0] == 'bush' for c in clumps for q in c['added'])} bushes, "
+      f"{sum(q[0] == 'flower' for c in clumps for q in c['added'])} beds of flowers); taken out, alone: {len(lone)}")
 
 # The valley's rocks are kept where they were first thrown: hill-village-scatter.json beside the plan, written the first time
 # and read ever after (a thing she has moved by hand is found by where it stood). Those now in the way of something (a way, a

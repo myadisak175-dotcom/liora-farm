@@ -71,7 +71,7 @@
   "./water-droplets.js": "./water-droplets.js?v=crown6",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=anime1",
-  "./anime-tree.js": "./anime-tree.js?v=1",
+  "./anime-tree.js": "./anime-tree.js?v=bush2",
   "./frond-pine.js": "./frond-pine.js?v=1",
   "./rocks.js": "./rocks.js?v=paint2",
   "./ground-paths.js": "./ground-paths.js?v=soft6wet1",
@@ -82,7 +82,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=26",
+  "./hill-village-level.js": "./hill-village-level.js?v=27",
   "./path-brush.js": "./path-brush.js?v=1",
   "./path-edits.js": "./path-edits.js?v=1",
   "./place-editor.js": "./place-editor.js?v=1",
@@ -97,7 +97,7 @@
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=grow1",
-  "./stylized-character.js": "./stylized-character.js?v=wade1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
   "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1",
   "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
@@ -117,7 +117,7 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1",
+  "./player.js": "./player.js?v=stand1wade1size1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -254,6 +254,10 @@ let forage = null;
 try { forage = await createForestForage({ level, onStep }); } catch (e) { console.error('Forest forage failed to load', e); }
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
+// her height: 1.6 m, to stand right beside the building kit's doors and the trees (as modelled she is ~1.41 m: a child next to
+// a 3 m storey). Set before her shadow is made, so its picture is sized for her
+const VIVI_HEIGHT = 1.6;
+vivi.setSize(VIVI_HEIGHT / vivi.baseHeight);
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
   if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (pathBrush && pathBrush.active)) return;     // while editing, a tap belongs to the editor

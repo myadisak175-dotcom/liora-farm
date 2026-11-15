@@ -10,6 +10,8 @@
   version of the same plant. One job: compare them. Nothing here goes into the game.
     ?type=oak   open on that plant      ?all=1   open on the whole set      ?old=1   open on the game's current versions
     ?seed=3     which dice              ?novivi=1   no Vivi beside the plant (she is there for scale)
+    #bushes     open on the bushes, plain and flowering, side by side ("ดูทั้งชุด" shows the trees, or the bushes: the set
+                of the plant shown)
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #9cc7ea; font-family: system-ui, sans-serif; touch-action: none; }
@@ -92,11 +94,17 @@ const PLANTS = [
     make: s => createAnimeTree({ type: 'birch', seed: s }), old: s => N.createTree({ type: 'birch', seed: s }) },
   { key: 'pine', name: 'ต้นสน', w: 6, h: 12,
     make: s => createAnimeTree({ type: 'pine', seed: s }), old: s => N.createTree({ type: 'pine', seed: s }) },
-  { key: 'bush', name: 'พุ่มไม้', w: 3.4, h: 1.9,
-    make: s => createAnimeBush({ seed: s + 2 }), old: s => N.createBush({ type: 'round', seed: s + 2 }) },
+  // the bushes: each its own seed (and so its own shape: seed % 5), turned on with the dice
+  { key: 'bush', name: 'พุ่มไม้', w: 2.4, h: 1.4, set: 'bush',
+    make: s => createAnimeBush({ seed: s * 6 + 1 }), old: s => N.createBush({ type: 'round', seed: s + 2 }) },
+  // the flowering bushes: the same bush with heads of florets; "แบบเดิม" is the plain bush the game draws now
+  ...[['pink', 'ชมพู'], ['white', 'ขาว'], ['yellow', 'เหลือง'], ['lilac', 'ม่วงอ่อน'], ['blue', 'ฟ้า']].map(([c, th], i) => (
+    { key: 'bloom-' + c, name: 'พุ่มดอก' + th, w: 2.4, h: 1.4, set: 'bush',
+      make: s => createAnimeBush({ seed: s * 6 + 2 + i, bloom: c }), old: s => createAnimeBush({ seed: s * 6 + 2 + i }) })),
 ];
-let index = Math.max(0, PLANTS.findIndex(p => p.key === Q.get('type')));
-let seed = +Q.get('seed') || 1, showAll = Q.has('all'), old = Q.has('old'), falling = true, wind = true;
+const setOf = p => p.set || 'tree', inSet = () => PLANTS.filter(p => setOf(p) === setOf(PLANTS[index]));
+let index = Math.max(0, PLANTS.findIndex(p => p.key === (location.hash === '#bushes' ? 'bush' : Q.get('type'))));
+let seed = +Q.get('seed') || 1, showAll = Q.has('all') || location.hash === '#bushes', old = Q.has('old'), falling = true, wind = true;
 const shown = new THREE.Group(); scene.add(shown);
 const nameEl = document.getElementById('name');
 const sunDir = new THREE.Vector3();
@@ -106,7 +114,7 @@ let vivi = null;
 const placeVivi = () => {
   if (!vivi) return;
   const p = PLANTS[index];
-  const x = showAll ? 0 : p.w * 0.5 + 1.0, z = showAll ? 5 : 1.6;
+  const x = showAll ? 0 : p.w * 0.5 + 1.0, z = showAll ? (setOf(p) === 'bush' ? 2.6 : 5) : 1.6;
   vivi.object.position.set(x, H(x, z), z);
   vivi.object.rotation.y = -0.5;
 };
@@ -114,6 +122,7 @@ if (!Q.has('novivi')) (async () => {
   try {
     const [{ loadCharacter }, { VIVI_GLB, VIVI_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js')]);
     vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
+    if (vivi.setSize) vivi.setSize(1.6 / vivi.baseHeight);              // her height in the game
     vivi.play('idle');
     scene.add(vivi.object);
     placeVivi();
@@ -132,31 +141,52 @@ function setSun(s) {
 function clear() { for (const m of [...shown.children]) { m.userData.dispose && m.userData.dispose(); shown.remove(m); } }
 function build() {
   clear();
-  const list = showAll ? PLANTS : [PLANTS[index]];
-  let x = 0, cards = 0;
-  for (const p of list) {
-    const plant = old ? p.old(seed) : p.make(seed);
-    plant.userData.setFalling && plant.userData.setFalling(falling);
-    x += p.w / 2; plant.position.x = x; x += p.w / 2 + 1.0;
-    cards += plant.userData.cards || 0;
-    shown.add(plant);
+  const list = showAll ? inSet() : [PLANTS[index]];
+  // a row; on a tall (portrait) screen a set of more than four in rows of three, the second row behind the first
+  cols = showAll && camera.aspect < 1 && list.length > 4 ? 3 : list.length;
+  let cards = 0, width = 0;
+  for (let r0 = 0; r0 < list.length; r0 += cols) {
+    const row = [];
+    let x = 0;
+    for (const p of list.slice(r0, r0 + cols)) {
+      const plant = old ? p.old(seed) : p.make(seed);
+      plant.userData.setFalling && plant.userData.setFalling(falling);
+      x += p.w / 2; plant.position.x = x; plant.position.z = -(r0 / cols) * ROW_GAP; x += p.w / 2 + 1.0;
+      cards += plant.userData.cards || 0;
+      shown.add(plant); row.push(plant);
+    }
+    const off = -(x - 1.0) / 2;                                            // each row centred
+    for (const pl of row) { pl.position.x += off; pl.position.y = H(pl.position.x, pl.position.z) - 0.05; }
+    width = Math.max(width, x - 1.0);
   }
-  const off = -(x - 1.0) / 2;                                              // the row centred
-  for (const pl of shown.children) { pl.position.x += off; pl.position.y = H(pl.position.x, 0) - 0.05; }
   setSun(+document.getElementById('sun').value);
   placeVivi();
   const which = old ? 'แบบเดิมในเกม' : 'แบบอนิเมะ (ใหม่)';
-  const what = showAll ? 'ทั้งชุด' : PLANTS[index].name;
-  nameEl.innerHTML = `${what} · ${which} <small>${showAll ? '' : (index + 1) + ' / ' + PLANTS.length + ' · '}ใบการ์ด ${cards.toLocaleString()} · ทรงที่ ${seed} · ลากหมุนดู</small>`;
+  const bush = setOf(PLANTS[index]) === 'bush', what = showAll ? (bush ? 'พุ่มไม้ทั้งชุด' : 'ต้นไม้ทั้งชุด') : PLANTS[index].name;
+  const at = inSet().indexOf(PLANTS[index]) + 1;
+  const SHAPE_TH = { dome: 'โดม', spread: 'เตี้ยแผ่', upright: 'ตั้งสูง', leaning: 'เอียง', cluster: 'หลายกอ' };
+  const shp = !showAll && shown.children[0] && shown.children[0].userData.shape;
+  nameEl.innerHTML = `${what}${shp ? ' · ทรง' + SHAPE_TH[shp] : ''} · ${which} <small>${showAll ? '' : at + ' / ' + inSet().length + ' · '}ใบการ์ด ${cards.toLocaleString()} · ทรงที่ ${seed} · ลากหมุนดู</small>`;
   document.getElementById('swap').textContent = old ? '🔁 ดูแบบใหม่' : '🔁 ดูแบบเดิม';
   document.getElementById('swap').classList.toggle('on', old);
   document.getElementById('all').textContent = showAll ? 'ดูทีละต้น' : 'ดูทั้งชุด';
-  return x - 1.0;
+  return width;
 }
+let cols = 1;
+const ROW_GAP = 4;
 // far enough back that what is shown fits both ways, on a tall phone screen too
 function frame(width) {
   const vHalf = THREE.MathUtils.degToRad(camera.fov / 2), hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
-  const h = showAll ? 12 : PLANTS[index].h, w = showAll ? width : PLANTS[index].w + 2.6;
+  const h = showAll ? Math.max(...inSet().map(p => p.h)) + (setOf(PLANTS[index]) === 'bush' ? 0.6 : 0.4) : PLANTS[index].h, w = showAll ? width : PLANTS[index].w + 2.6;
+  const rows = showAll ? Math.ceil(inSet().length / cols) : 1, deep = (rows - 1) * ROW_GAP;
+  if (rows > 1) {                                                          // rows behind each other: look down on them
+    const dir = new THREE.Vector3(0.08, 0.62, 1).normalize();
+    const d = Math.max((h + deep * 0.62) / 2 / Math.tan(vHalf), (w / 2) / Math.tan(hHalf)) * 1.08 + 1.5;
+    controls.target.set(0, h * 0.3, -deep * 0.5);
+    camera.position.copy(controls.target).addScaledVector(dir, d);
+    controls.update();
+    return;
+  }
   const d = Math.max((h / 2) / Math.tan(vHalf), (w / 2) / Math.tan(hHalf)) * 1.1 + 1.5;
   controls.target.set(showAll ? 0 : 0.6, h * 0.47, 0);
   camera.position.set(d * 0.1, h * 0.42 + 0.4, d);
@@ -166,8 +196,9 @@ const rebuild = (reframe = true) => { const w = build(); if (reframe) frame(w); 
 
 const btn = id => document.getElementById(id);
 btn('sun').addEventListener('input', e => setSun(+e.target.value));
-btn('prev').onclick = () => { showAll = false; index = (index + PLANTS.length - 1) % PLANTS.length; rebuild(); };
-btn('next').onclick = () => { showAll = false; index = (index + 1) % PLANTS.length; rebuild(); };
+const step = d => { const g = inSet(), i = g.indexOf(PLANTS[index]); index = PLANTS.indexOf(g[(i + d + g.length) % g.length]); showAll = false; rebuild(); };
+btn('prev').onclick = () => step(-1);      // (through the set shown: the trees, or the bushes)
+btn('next').onclick = () => step(1);
 btn('swap').onclick = () => { old = !old; rebuild(false); };
 btn('all').onclick = () => { showAll = !showAll; rebuild(); };
 btn('dice').onclick = () => { seed++; rebuild(false); };

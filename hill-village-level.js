@@ -33,7 +33,7 @@ import * as G from './stylized-grassfield.js';
 import * as W from './stylized-water.js';
 import * as BD from './stylized-buildings.js';
 import { createAnimeCells } from './anime-cells.js';
-import { createAnimeForest, setAnimeSun } from './anime-tree.js';
+import { createAnimeForest, setAnimeSun, BUSH_SIZE } from './anime-tree.js';
 import { createFrondPineForest, setFrondPineSun } from './frond-pine.js';
 import { createWaterDroplets } from './water-droplets.js';
 import { waterLookup, createLandWater } from './land-water.js';
@@ -118,7 +118,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   const flowerBeds = [];
   for (const [kind, x, z, scale, detail] of P.plants) {
-    if (kind === 'bush') { plants.push({ kind: 'bush', type: r() < 0.35 ? 'flowering' : 'round', seed: 100 + plants.length, x, y: H(x, z), z, rotY: r() * 6.28, scale }); colliders.push([x, z, 0.7 * scale]); }
+    if (kind === 'bush') { plants.push({ kind: 'bush', type: r() < 0.35 ? 'flowering' : 'round', seed: 100 + plants.length, x, y: H(x, z), z, rotY: r() * 6.28, scale }); colliders.push([x, z, 0.7 * BUSH_SIZE * scale]); }
     else if (kind === 'flower') flowerBeds.push([x, z, scale]);
     else tree(x, z, kind, scale, detail);
   }
@@ -422,7 +422,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     for (const p of plants) { const k = Math.floor((p.x - X0) / grove) + ',' + Math.floor((p.z - Z0) / grove); if (!by.has(k)) by.set(k, []); by.get(k).push(p); }
     for (const list of by.values()) {
       const box = new THREE.Box3();
-      for (const p of list) { const sc = p.scale || 1, w = (p.kind === 'bush' ? 1.6 : 5.5) * sc; box.expandByPoint(v.set(p.x - w, p.y - 1, p.z - w)); box.expandByPoint(v.set(p.x + w, p.y + (p.kind === 'bush' ? 2.2 : 12.2) * sc, p.z + w)); }
+      for (const p of list) { const sc = p.scale || 1, w = (p.kind === 'bush' ? 1.6 * BUSH_SIZE : 5.5) * sc; box.expandByPoint(v.set(p.x - w, p.y - 1, p.z - w)); box.expandByPoint(v.set(p.x + w, p.y + (p.kind === 'bush' ? 2.2 * BUSH_SIZE : 12.2) * sc, p.z + w)); }
       // a grove: its pines drawn by frond-pine.js, the rest of its plants by anime-tree.js
       const isPine = p => p.kind === 'tree' && p.type === 'pine', pines = list.filter(isPine), rest = list.filter(p => !isPine(p));
       const obj = new THREE.Group(); obj.name = 'grove';

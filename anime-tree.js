@@ -22,8 +22,11 @@
    Leaf size follows how near the eye the leaves hang: the lower the crown, the smaller and denser the leaves.
 
    createAnimeTree({ type: 'broadleaf' | 'oak' | 'sapling' | 'birch' | 'pine', seed, falling: true }) -> Group
-   createAnimeBush({ seed }) -> Group
+   createAnimeBush({ seed, bloom }) -> Group       its shape (one of BUSH_SHAPES) from the seed;
+                                                    bloom: 'pink' | 'white' | 'yellow' | 'lilac' | 'blue' (a flowering bush:
+                                                    the same bush, with heads of small flowers sitting in its leaves) or none
    createAnimeForest([{ kind: 'tree' | 'bush', type, seed, detail, x, y, z, rotY, scale }, ...]) -> Group
+        a bush of type 'flowering' flowers, in one of BLOOM_COLORS: the same for every bush of a neighbourhood
         many plants in a few draw calls (one per leaf look, one per bark, one for the falling leaves). Each kind is built
         in VARIANTS shapes (picked by seed) and copied into place, turned and sized; detail under 0.8 (trees she never
         comes near) uses fewer, bigger leaf cards.
@@ -40,13 +43,21 @@ const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h
 
 // five flat tones, deep shade -> sunlit tips, and where each tone starts (the game's top tones are yellow, so they
 // start late: only the brightest tips turn yellow). game / pine / birch: the game's own crown colours for those trees
-const GAME_STEPS = [0.32, 0.54, 0.76, 1.0];
+const GAME_STEPS = [0.32, 0.54, 0.76, 1.0], BLOOM_STEPS = [0.2, 0.38, 0.62, 0.95];
 export const ANIME_PALETTES = {
   game: { tones: ['#273a1b', '#466533', '#728e3e', '#a6b822', '#dde43a'], steps: GAME_STEPS },
   pine: { tones: ['#1b2d1e', '#2e4d2f', '#4b7339', '#7b9b39', '#c3d447'], steps: GAME_STEPS },
   birch: { tones: ['#2e431e', '#4f6f33', '#7f9b3e', '#b4c42b', '#e9ed5c'], steps: GAME_STEPS },
   video: { tones: ['#1c4637', '#2c6a40', '#4c9737', '#86c23c', '#c6e055'], steps: [0.3, 0.5, 0.69, 0.93] },   // the tutorial's
+  // flowers on the flowering bushes: the game's flower colours (stylized-nature's FLOWER_COLORS) as the fourth tone, deep shade
+  // to sunlit; the top tone only on the brightest florets
+  'bloom-pink': { tones: ['#8a3f5e', '#c2678a', '#e68aa8', '#f7b3c8', '#ffe3ec'], steps: BLOOM_STEPS, centre: '#f7d24a' },
+  'bloom-white': { tones: ['#7d8672', '#b3baa6', '#dfe1d2', '#f6f3e8', '#ffffff'], steps: BLOOM_STEPS, centre: '#f2c33c' },
+  'bloom-yellow': { tones: ['#8a5a14', '#c4821c', '#eda62c', '#f9c63e', '#ffe796'], steps: BLOOM_STEPS, centre: '#b85c1c' },
+  'bloom-lilac': { tones: ['#4a3a86', '#6c56b8', '#8f76dc', '#b099f2', '#ded2ff'], steps: BLOOM_STEPS, centre: '#f7d24a' },
+  'bloom-blue': { tones: ['#2f4f86', '#4a74b8', '#709bdc', '#9bbff2', '#d9e9ff'], steps: BLOOM_STEPS, centre: '#f7e9a0' },
 };
+export const BLOOM_COLORS = ['pink', 'white', 'yellow', 'lilac', 'blue'];
 
 // one sun for every anime plant (leaves and bark)
 const SUN = { value: new THREE.Vector3(-0.55, 0.7, 0.45).normalize() };
@@ -87,9 +98,16 @@ const KINDS = {
   pine: { spec: () => treeSpec('pine'), leaf: 0.7, fall: 0, palette: 'pine', mask: 'needle', upright: 0.7, thick: 1.1, wide: 1.15, ao: 0.5, hRange: [0.15, 1.15] },
 };
 const BUSH_LEAF = 0.46;
+// a bush's size: as first drawn it stood ~1.9 m and ~3.4 m across, taller than Vivi (1.6 m). Now about waist to chest high
+// on her (~1.15 m, ~2 m across). Everything shrinks with it, the leaves too (so the same number of leaf cards); the flower
+// sprays a little less, so they still read as flowers
+export const BUSH_SIZE = 0.6;
+const BLOOM_SIZE = 0.72;
+const BUSH_ROUGH = 0.17, BUSH_UNITY = 0.55;
 const DENSITY = 7.5;              // cards per m² of puff at the broadleaf's leaf size; smaller leaves -> more cards
 const densityFor = leaf => DENSITY * (0.8 / leaf) * (0.8 / leaf);
-const VARIANTS = 4;               // shapes of each kind in a forest
+const VARIANTS = 4;               // shapes of each kind of tree in a forest
+const BUSH_VARIANTS = 10;         // and of bushes: every one of the five shapes twice
 const FAR_LEAF = 1.45;            // a far tree's leaf cards are this much bigger (and so about half as many)
 // surface of an ellipsoid (Knud Thomsen's formula, within ~1%)
 const ellipsoidArea = (a, b, c) => { const p = 1.6075; return 4 * Math.PI * Math.pow((Math.pow(a * b, p) + Math.pow(a * c, p) + Math.pow(b * c, p)) / 3, 1 / p); };
@@ -99,6 +117,8 @@ const ellipsoidArea = (a, b, c) => { const p = 1.6075; return 4 * Math.PI * Math
 // (0..1, times coverage: they blur the right way into mipmaps)
 //   leaf:   a loose round cluster of small pointed leaves
 //   needle: a fan of thin needles hanging down and out from one twig (pine)
+//   blossom: one to three open five-petalled flowers and now and then a bud (the flowering bushes' flowers); a second
+//            picture (masks['blossom/centre']) says where each flower's middle is, drawn in its own colour
 // --------------------------------------------------------------------------
 const masks = {};
 function leafPath(g, L, W) {
@@ -115,13 +135,24 @@ function needlePath(g, L, W) {
   g.quadraticCurveTo(L * 0.45, -W, 0, 0);
   g.closePath();
 }
+function floretPath(g, R, turn) {                                   // five round petals about a middle, as one shape
+  g.beginPath();
+  for (let k = 0; k < 5; k++) {
+    const a = turn + k * Math.PI * 0.4;
+    g.moveTo(Math.cos(a) * R, Math.sin(a) * R);
+    g.ellipse(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, R * 0.5, R * 0.37, a, 0, Math.PI * 2);
+  }
+  g.moveTo(R * 0.3, 0); g.arc(0, 0, R * 0.3, 0, Math.PI * 2);
+}
 function clusterMask(style) {
   if (masks[style]) return masks[style];
-  const S = 1024, C = 512, rng = mulberry32(style === 'needle' ? 977 : 4211);
+  const S = 1024, C = 512, rng = mulberry32(style === 'needle' ? 977 : style === 'blossom' ? 733 : 4211);
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const g = cv.getContext('2d');
   g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+  let g2 = null, cv2 = null;                                        // (blossom: where each flower's middle is)
+  if (style === 'blossom') { cv2 = document.createElement('canvas'); cv2.width = cv2.height = S; g2 = cv2.getContext('2d'); g2.fillStyle = '#000'; g2.fillRect(0, 0, S, S); }
   const draw = (ox, oy, bx, by, dir, L, W, cx, cy, path) => {
     g.save();
     g.translate(ox + bx, oy + by); g.rotate(dir);
@@ -133,7 +164,29 @@ function clusterMask(style) {
   for (let v = 0; v < 4; v++) {
     const ox = (v % 2) * C, oy = Math.floor(v / 2) * C, mid = C / 2;
     g.save(); g.beginPath(); g.rect(ox + 4, oy + 4, C - 8, C - 8); g.clip();
-    if (style === 'needle') {
+    if (style === 'blossom') {
+      // one to three open flowers and now and then a bud, with air between them (the leaves show through a card)
+      const placed = [];
+      const put = (R, bud) => {
+        for (let tries = 0; tries < 200; tries++) {
+          const rr = C * 0.3 * Math.sqrt(rng()), a = rng() * Math.PI * 2;
+          const bx = mid + Math.cos(a) * rr, by = mid + Math.sin(a) * rr;
+          if (rr + R > C * 0.46) continue;
+          if (placed.some(p => Math.hypot(p[0] - bx, p[1] - by) < (p[2] + R) * 1.08)) continue;
+          placed.push([bx, by, R]);
+          g.save();
+          g.translate(ox + bx, oy + by);
+          if (bud) { g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); } else floretPath(g, R, rng() * 6.28);
+          g.fillStyle = `rgb(255, ${Math.round(bx / C * 255)}, ${Math.round((1 - by / C) * 255)})`;
+          g.fill();
+          g.restore();
+          if (!bud) { g2.beginPath(); g2.arc(ox + bx, oy + by, R * 0.27, 0, Math.PI * 2); g2.fillStyle = '#fff'; g2.fill(); }
+          return;
+        }
+      };
+      for (let i = 0; i < [1, 2, 3, 2][v]; i++) put(C * range(rng, 0.16, 0.2), false);
+      for (let i = 0; i < [1, 0, 0, 1][v]; i++) put(C * range(rng, 0.07, 0.09), true);
+    } else if (style === 'needle') {
       // a twig across the top third; needles fan from it, down and out (canvas y is down)
       const n = 60;
       for (let i = 0; i < n; i++) {
@@ -165,6 +218,7 @@ function clusterMask(style) {
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
   t.anisotropy = 4;
+  if (cv2) { const t2 = new THREE.CanvasTexture(cv2); t2.minFilter = THREE.LinearMipmapLinearFilter; t2.magFilter = THREE.LinearFilter; masks['blossom/centre'] = t2; }
   return (masks[style] = t);
 }
 
@@ -221,6 +275,10 @@ uniform sampler2D uMask;
 uniform vec3 uC0, uC1, uC2, uC3, uC4;
 uniform vec4 uStep;       // where each flat tone starts
 uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint;
+#ifdef BLOSSOM
+uniform sampler2D uCentre;
+uniform vec3 uCentreCol;
+#endif
 varying vec2 vUv;
 varying vec3 vCard;
 varying vec4 vPuff;
@@ -251,6 +309,9 @@ void main() {
   col = mix(col, uC2, step(uStep.y, v));
   col = mix(col, uC3, step(uStep.z, v));
   col = mix(col, uC4, step(uStep.w, v));
+#ifdef BLOSSOM
+  col = mix(col, uCentreCol * (0.72 + 0.28 * step(uStep.y, v)), smoothstep(0.35, 0.6, texture2D(uCentre, vUv).r));
+#endif
   gl_FragColor = vec4(mix(col, uHaze, vHaze), alpha);
 }`;
 
@@ -322,6 +383,11 @@ function materials(palette, mask = 'leaf') {
     },
     vertexShader: LEAF_VS, fragmentShader: LEAF_FS, alphaToCoverage: true, side: THREE.DoubleSide,
   });
+  if (mask === 'blossom') {
+    leaf.defines = { BLOSSOM: 1 };
+    leaf.uniforms.uCentre = { value: masks['blossom/centre'] };
+    leaf.uniforms.uCentreCol = { value: rgb(ANIME_PALETTES[pk].centre || '#f7d24a') };
+  }
   const fall = new THREE.ShaderMaterial({ uniforms: { ...U }, vertexShader: FALL_VS, fragmentShader: FALL_FS, alphaToCoverage: true, side: THREE.DoubleSide });
   return (mats[key] = { leaf, fall });
 }
@@ -331,7 +397,9 @@ function materials(palette, mask = 'leaf') {
 // puffs: [{ c: Vector3, r, f, taper, egg }] (f: height / width; taper: narrower toward its top, egg: its top drawn up into
 // a cone — the pine's skirts); env: the whole crown's ellipsoid { c, r } (Vector3s)
 // --------------------------------------------------------------------------
-function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange = [0, 1], upright = 0, aoMul = 1 }) {
+// a puff's outline broken further (rough > 0): a second, tighter wave over its ball, the same for its leaves and its flowers
+const roughAt = (d, pi) => Math.sin(d.x * 7.3 + pi * 2.1 + d.y * 4.1) * Math.sin(d.z * 6.9 + pi * 1.3 - d.y * 3.7);
+function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange = [0, 1], upright = 0, aoMul = 1, rough = 0 }) {
   const top = P => P.c.y + P.r * P.f * (1 + (P.egg || 0));
   const yLo = Math.max(floorY, Math.min(...puffs.map(P => P.c.y - P.r * P.f))), yHi = Math.max(...puffs.map(top));
   // inside a puff's ball (k < 1 = shrunk toward its middle)
@@ -376,7 +444,7 @@ function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange
       d.set(Math.cos(phi) * rr + (rng() - 0.5) * 0.25, y0 + (rng() - 0.5) * 0.2, Math.sin(phi) * rr + (rng() - 0.5) * 0.25).normalize();
       // the ball's outline broken into bumps: a slow wave pushes leaves out or in
       const bump = Math.sin(d.x * 4.1 + pi * 1.7) * Math.sin(d.y * 3.7 + pi) * Math.sin(d.z * 4.3 + pi * 2.3);
-      const depth = deep ? range(rng, 0.3, 0.62) : range(rng, 0.8, 1.02) + bump * 0.12;
+      const depth = deep ? range(rng, 0.3, 0.62) : range(rng, 0.8, 1.02) + bump * 0.12 + rough * roughAt(d, pi);
       const up01 = Math.max(d.y, 0), k = 1 - taper * up01;
       p.set(d.x * P.r * depth * k, d.y * P.r * P.f * depth * (1 + egg * up01), d.z * P.r * depth * k).add(P.c);
       if (p.y < floorY + leaf * 0.3) continue;                                     // nothing under the ground
@@ -470,24 +538,128 @@ function treeParts(type, seed, far = false) {
     aoMul: kind.ao ?? 1, hRange: kind.hRange || [0, 1] });
   return { kind, spec, trunk, cards, leaf, rng };
 }
-// a bush: two puffs on top in a ring of lower ones, leaves all through (it is seen from above), smallest leaves of all.
-// Small puffs, so the crevices between them show; the light up the bush is gentler than up a tree (it is short)
-function bushParts(seed, far = false) {
-  const rng = mulberry32(seed * 104729 + 11);
-  const sx = range(rng, 0.9, 1.15), a0 = rng() * 6.28;
-  const puffs = [
-    { c: new THREE.Vector3(Math.cos(a0) * 0.22 * sx, 1.08, Math.sin(a0) * 0.22 * sx), r: 0.62 * sx, f: 0.86 },
-    { c: new THREE.Vector3(-Math.cos(a0) * 0.38 * sx, 0.92, -Math.sin(a0) * 0.38 * sx), r: 0.54 * sx, f: 0.86 },
-  ];
-  const k = 4 + (rng() < 0.5 ? 1 : 0);
-  for (let i = 0; i < k; i++) {
-    const a = a0 + 0.6 + i / k * Math.PI * 2 + (rng() - 0.5) * 0.6, d = range(rng, 0.75, 1.0) * sx, r = range(rng, 0.46, 0.6) * sx;
-    puffs.push({ c: new THREE.Vector3(Math.cos(a) * d, range(rng, 0.45, 0.6), Math.sin(a) * d), r, f: 0.86 });
+// a bush: puffs of small leaves, leaves all through (it is seen from above), smallest leaves of all. Small puffs, so the
+// crevices between them show; the light up the bush is gentler than up a tree (it is short). Five shapes, so bushes side
+// by side never read as one lump copied (the seed picks the shape, seed % 5, and throws its sizes):
+//   dome      two puffs on top in a ring of lower ones (the first bush)
+//   spread    low and wide: one flat middle in a wide ring, a few small ones trailing out at its foot
+//   upright   tall and narrow: a ring at the foot, a middle tier, an uneven top of one or two puffs
+//   leaning   lopsided: its mass on one side, falling away in smaller and lower puffs to the other
+//   cluster   two or three small mounds side by side, ground showing between them
+// Drawn at the first bush's measure (about 1.8 m) and shrunk by BUSH_SIZE.
+export const BUSH_SHAPES = ['dome', 'spread', 'upright', 'leaning', 'cluster'];
+function bushPuffs(shape, rng) {
+  const P = [], add = (x, y, z, r, f = 0.86) => P.push({ c: new THREE.Vector3(x, y, z), r, f });
+  const a0 = rng() * 6.28, s = range(rng, 0.9, 1.12), j = (v, k = 0.15) => v * range(rng, 1 - k, 1 + k);
+  const ring = (n, d0, d1, y0, y1, r0, r1, f = 0.86, a = a0 + 0.6) => {
+    for (let i = 0; i < n; i++) {
+      const t = a + i / n * Math.PI * 2 + (rng() - 0.5) * 0.6, d = range(rng, d0, d1) * s;
+      add(Math.cos(t) * d, range(rng, y0, y1), Math.sin(t) * d, range(rng, r0, r1) * s, f);
+    }
+  };
+  if (shape === 'spread') {
+    add(0, j(0.6), 0, j(0.62) * s, 0.68);
+    ring(6 + (rng() < 0.5 ? 1 : 0), 0.95, 1.3, 0.34, 0.46, 0.42, 0.56, 0.72);
+    ring(2 + (rng() < 0.5 ? 1 : 0), 1.55, 1.85, 0.2, 0.28, 0.28, 0.36, 0.75, a0 + 2);
+  } else if (shape === 'upright') {
+    // its puffs drawn up taller than wide and overlapping deep, tier into tier, so it reads as one column, not balls stacked
+    ring(3 + (rng() < 0.5 ? 1 : 0), 0.36, 0.48, 0.5, 0.62, 0.46, 0.56, 1.05);
+    add(0, j(0.98, 0.06), 0, j(0.5, 0.08) * s, 1.3);                          // a core through the middle: no waist
+    ring(3, 0.14, 0.3, 0.95, 1.25, 0.44, 0.52, 1.25, a0 + 1.3);
+    add(Math.cos(a0) * 0.14 * s, j(1.72, 0.06), Math.sin(a0) * 0.14 * s, j(0.38) * s, 1.25);
+    if (rng() < 0.7) add(-Math.cos(a0) * 0.26 * s, j(1.48, 0.06), -Math.sin(a0) * 0.26 * s, j(0.34) * s, 1.2);     // a lower second top: never level
+  } else if (shape === 'leaning') {
+    const ux = Math.cos(a0), uz = Math.sin(a0), vx = -uz, vz = ux;            // u: the way it leans out of; v: across
+    add(ux * 0.45 * s, j(1.02, 0.08), uz * 0.45 * s, j(0.64) * s);
+    add(ux * 0.05 * s + vx * 0.3 * s, j(0.8, 0.08), uz * 0.05 * s + vz * 0.3 * s, j(0.54) * s);
+    add(ux * 0.2 * s - vx * 0.4 * s, j(0.62, 0.08), uz * 0.2 * s - vz * 0.4 * s, j(0.48) * s);
+    let d = 0.45, y = 0.58, r = 0.48;
+    for (let i = 0; i < 3; i++) {                                              // falling away to the other side
+      d += range(rng, 0.38, 0.48); y *= range(rng, 0.68, 0.8); r *= range(rng, 0.76, 0.86);
+      const w = (rng() - 0.5) * 0.5;
+      add(-ux * d * s + vx * w * s, y, -uz * d * s + vz * w * s, r * s, 0.82);
+    }
+    add(ux * 0.85 * s, 0.42, uz * 0.85 * s, j(0.42) * s);                      // and its foot on the heavy side
+  } else if (shape === 'cluster') {
+    const n = 2 + (rng() < 0.55 ? 1 : 0);
+    for (let m = 0; m < n; m++) {
+      const t = a0 + m / n * Math.PI * 2 + (rng() - 0.5) * 0.5, d = (n === 2 ? 0.62 : 0.78) * s;
+      const cx = Math.cos(t) * d, cz = Math.sin(t) * d, big = m === 0 ? 1 : range(rng, 0.68, 0.85);
+      add(cx, j(0.74) * big, cz, j(0.5) * s * big);
+      for (let i = 0; i < 2 + (rng() < 0.5 ? 1 : 0); i++) {
+        const u = rng() * 6.28, e = range(rng, 0.32, 0.44) * s * big;
+        add(cx + Math.cos(u) * e, j(0.38) * big, cz + Math.sin(u) * e, j(0.36) * s * big);
+      }
+    }
+  } else {                                                                     // dome
+    add(Math.cos(a0) * 0.22 * s, 1.08, Math.sin(a0) * 0.22 * s, 0.62 * s);
+    add(-Math.cos(a0) * 0.38 * s, 0.92, -Math.sin(a0) * 0.38 * s, 0.54 * s);
+    ring(4 + (rng() < 0.5 ? 1 : 0), 0.75, 1.0, 0.45, 0.6, 0.46, 0.6);
   }
-  const env = { c: new THREE.Vector3(0, 0.6, 0), r: new THREE.Vector3(1.55 * sx, 1.0, 1.55 * sx) };
-  const leaf = BUSH_LEAF * (far ? FAR_LEAF : 1);
-  const cards = buildPuffs(rng, puffs, env, { leaf, density: densityFor(leaf), floorY: 0, hRange: [0.25, 0.7] });
-  return { cards, leaf };
+  return P;
+}
+function bushParts(seed, far = false, bloom = false) {
+  const rng = mulberry32(seed * 104729 + 11), K = BUSH_SIZE;
+  const shape = BUSH_SHAPES[((seed % BUSH_SHAPES.length) + BUSH_SHAPES.length) % BUSH_SHAPES.length];
+  const puffs = bushPuffs(shape, rng);
+  for (const P of puffs) { P.c.multiplyScalar(K); P.r *= K; }
+  // the whole bush's ellipsoid: the box round its puffs (each leaf leans a little toward its normal)
+  const lo = new THREE.Vector3(Infinity, 0, Infinity), hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  for (const P of puffs) {
+    lo.min(new THREE.Vector3(P.c.x - P.r, 0, P.c.z - P.r));
+    hi.max(new THREE.Vector3(P.c.x + P.r, P.c.y + P.r * P.f, P.c.z + P.r));
+  }
+  const env = { c: lo.clone().add(hi).multiplyScalar(0.5), r: hi.clone().sub(lo).multiplyScalar(0.5) };
+  const leaf = BUSH_LEAF * K * (far ? FAR_LEAF : 1);
+  const cards = buildPuffs(rng, puffs, env, { leaf, density: densityFor(leaf), floorY: 0, hRange: [0.25, 0.7], rough: BUSH_ROUGH, aoMul: 0.8 });
+  // lit as one mass more than puff by puff: the ball each leaf takes its light from is drawn toward the bush's middle, low
+  // down, so the bush has one sunlit side and one shaded side, and its puffs only ripple that
+  const mass = new THREE.Vector3(env.c.x, env.c.y * 0.35, env.c.z);
+  const asOne = c => { for (let i = 0; i < c.PF.length; i += 4) { c.PF[i] += (mass.x - c.PF[i]) * BUSH_UNITY; c.PF[i + 1] += (mass.y - c.PF[i + 1]) * BUSH_UNITY; c.PF[i + 2] += (mass.z - c.PF[i + 2]) * BUSH_UNITY; } return c; };
+  return { cards: asOne(cards), leaf, shape, height: hi.y + leaf * 0.5, bloom: bloom ? asOne(bloomParts(seed, puffs, env, far)) : null };
+}
+
+// a flowering bush's flowers: open flowers about two leaves across (one to three to a card, now and then a bud), sitting on
+// its outer leaves and lit as the leaves round them are. They gather in a few drifts over the bush's upper part, as a shrub
+// in flower has them, with the leaves plain between; never under it or down in a crevice. Their own dice, so the bush under
+// them is the same bush as the plain one of that seed
+const BLOOM = { card: 0.44, per: 2.4, drifts: [3, 5], most: 28 };      // card size (m) and cards per m² of a puff's upper half, at the first bush's measure
+function bloomParts(seed, puffs, env, far = false) {
+  const rng = mulberry32(seed * 7919 + 5), K = BUSH_SIZE;
+  const inside = (x, y, z, P, k) => { const dx = (x - P.c.x) / P.r, dy = (y - P.c.y) / (P.r * P.f), dz = (z - P.c.z) / P.r; return dx * dx + dy * dy + dz * dz < k * k; };
+  const drifts = [], nd = Math.round(range(rng, ...BLOOM.drifts));
+  for (let i = 0; i < nd; i++) { const y = range(rng, 0.25, 1), rr = Math.sqrt(1 - y * y), a = rng() * 6.28; drifts.push(new THREE.Vector3(Math.cos(a) * rr, y, Math.sin(a) * rr)); }
+  const yHi = Math.max(...puffs.map(P => P.c.y + P.r * P.f));
+  const card = BLOOM.card * BLOOM_SIZE * (far ? FAR_LEAF : 1), gap = card * 0.62;
+  const C = [], PF = [], KK = [], SH = [], CN = [];
+  const d = new THREE.Vector3(), p = new THREE.Vector3(), w = new THREE.Vector3();
+  puffs.forEach((P, pi) => {
+    const n = Math.round(2 * Math.PI * (P.r / K) ** 2 * BLOOM.per * range(rng, 0.7, 1.2) * (far ? 0.6 : 1));
+    for (let j = 0, got = 0; j < n * 40 && got < n; j++) {
+      if (C.length / 3 >= BLOOM.most) break;
+      const y = range(rng, 0, 1), rr = Math.sqrt(1 - y * y), a = rng() * Math.PI * 2;
+      d.set(Math.cos(a) * rr, y, Math.sin(a) * rr);
+      const depth = 1.05 + BUSH_ROUGH * roughAt(d, pi);                           // on the leaves, wherever the outline has them
+      p.set(d.x * P.r * depth, d.y * P.r * P.f * depth, d.z * P.r * depth).add(P.c);
+      if (p.y < 0.35 * K) continue;
+      if (puffs.some(Q => Q !== P && inside(p.x, p.y, p.z, Q, 0.98))) continue;     // in a crevice: hidden
+      w.copy(p).sub(env.c).normalize();
+      const near = Math.max(...drifts.map(D => D.dot(w)));                         // in a drift, or (rarely) between them
+      if (rng() > 0.05 + 0.95 * THREE.MathUtils.smoothstep(near, 0.5, 0.9)) continue;
+      let close = false;
+      for (let q = 0; q < C.length; q += 3) if (Math.hypot(C[q] - p.x, C[q + 1] - p.y, C[q + 2] - p.z) < gap) { close = true; break; }
+      if (close) continue;                                                         // not one on another
+      got++;
+      const h = 0.4 + 0.4 * THREE.MathUtils.clamp(p.y / yHi, 0, 1);
+      C.push(p.x, p.y, p.z);
+      PF.push(P.c.x, P.c.y, P.c.z, P.r);
+      KK.push(rng() * Math.PI * 2, card * range(rng, 0.78, 1.12), 1, Math.floor(rng() * 4));
+      SH.push(h, 0.25 * (1 - Math.max(d.y, 0)), (rng() - 0.5) * 0.06, rng());
+      w.copy(p).sub(env.c).divide(env.r).divide(env.r).normalize();
+      CN.push(w.x, w.y, w.z, P.f);
+    }
+  });
+  return { C, PF, K: KK, SH, CN, drop: [] };
 }
 
 function leafMeshes(rng, cards, palette, mask, falling, fallCount, leaf) {
@@ -520,13 +692,20 @@ export function createAnimeTree({ type = 'broadleaf', seed = 1, falling = true }
   return group;
 }
 
-export function createAnimeBush({ seed = 3 } = {}) {
-  const { cards, leaf } = bushParts(seed);
+export function createAnimeBush({ seed = 3, bloom = null } = {}) {
+  const { cards, leaf, shape, height, bloom: flowers } = bushParts(seed, false, !!bloom);
   const { leaves } = leafMeshes(mulberry32(seed), cards, 'game', 'leaf', false, 0, leaf);
   const group = new THREE.Group();
   group.add(leaves);
+  let heads = null;
+  if (flowers) {
+    heads = new THREE.Mesh(cardGeometry(flowers), materials('bloom-' + (BLOOM_COLORS.includes(bloom) ? bloom : 'pink'), 'blossom').leaf);
+    heads.frustumCulled = false; heads.name = 'anime_blossoms';
+    group.add(heads);
+  }
   group.name = 'anime_bush';
-  group.userData = { kind: 'bush', type: 'anime', height: 1.7, cards: leaves.geometry.instanceCount, setFalling() {}, dispose() { leaves.geometry.dispose(); } };
+  group.userData = { kind: 'bush', type: bloom ? 'flowering' : 'anime', bloom, shape, height, cards: leaves.geometry.instanceCount + (heads ? heads.geometry.instanceCount : 0),
+    setFalling() {}, dispose() { leaves.geometry.dispose(); if (heads) heads.geometry.dispose(); } };
   return group;
 }
 
@@ -536,7 +715,7 @@ export function createAnimeBush({ seed = 3 } = {}) {
 const shapes = {};
 const shapeOf = (kind, type, v, far) => {
   const key = kind + '/' + type + '/' + v + (far ? '/far' : '');
-  return shapes[key] || (shapes[key] = kind === 'bush' ? bushParts(v + 1, far) : treeParts(type, v + 1, far));
+  return shapes[key] || (shapes[key] = kind === 'bush' ? bushParts(v + 1, far, type === 'flowering') : treeParts(type, v + 1, far));
 };
 
 export function createAnimeForest(list) {
@@ -545,8 +724,8 @@ export function createAnimeForest(list) {
   const leafB = {}, barkB = {}, fallB = {};
   const rng = mulberry32(list.length * 7 + 3);
   for (const e of list) {
-    const s = e.scale ?? 1, far = (e.detail ?? 1) < 0.8, v = Math.abs(Math.round(e.seed ?? 0)) % VARIANTS, bush = e.kind === 'bush';
-    const type = bush ? 'bush' : (KINDS[e.type] ? e.type : 'broadleaf');
+    const bush = e.kind === 'bush', s = e.scale ?? 1, far = (e.detail ?? 1) < 0.8, v = Math.abs(Math.round(e.seed ?? 0)) % (bush ? BUSH_VARIANTS : VARIANTS);
+    const type = bush ? (e.type === 'flowering' ? 'flowering' : 'bush') : (KINDS[e.type] ? e.type : 'broadleaf');
     const part = shapeOf(bush ? 'bush' : 'tree', type, v, far);
     const palette = bush ? 'game' : part.kind.palette, mask = bush ? 'leaf' : (part.kind.mask || 'leaf');
     M.compose(T3.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S3.set(s, s, s));
@@ -560,6 +739,20 @@ export function createAnimeForest(list) {
       b.SH.push(c.SH[i * 4], c.SH[i * 4 + 1], c.SH[i * 4 + 2], c.SH[i * 4 + 3]);
       V.set(c.CN[i * 4], c.CN[i * 4 + 1], c.CN[i * 4 + 2]).applyQuaternion(Q); b.CN.push(V.x, V.y, V.z, c.CN[i * 4 + 3]);
       b.B.push(e.x, e.y, e.z, s);
+    }
+    if (bush && part.bloom) {                                         // its flowers, in the colour its seed picks
+      const col = BLOOM_COLORS[Math.abs((Math.floor(e.x / 18) * 73856093) ^ (Math.floor(e.z / 18) * 19349663)) % BLOOM_COLORS.length];   // (a neighbourhood, 18 m, flowers in one colour)
+      const fk = 'bloom-' + col + '/blossom';
+      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [] });
+      const f = part.bloom, nf = f.C.length / 3;
+      for (let i = 0; i < nf; i++) {
+        V.set(f.C[i * 3], f.C[i * 3 + 1], f.C[i * 3 + 2]).applyMatrix4(M); fb.C.push(V.x, V.y, V.z);
+        V.set(f.PF[i * 4], f.PF[i * 4 + 1], f.PF[i * 4 + 2]).applyMatrix4(M); fb.PF.push(V.x, V.y, V.z, f.PF[i * 4 + 3] * s);
+        fb.K.push(f.K[i * 4], f.K[i * 4 + 1] * s, f.K[i * 4 + 2], f.K[i * 4 + 3]);
+        fb.SH.push(f.SH[i * 4], f.SH[i * 4 + 1], f.SH[i * 4 + 2], f.SH[i * 4 + 3]);
+        V.set(f.CN[i * 4], f.CN[i * 4 + 1], f.CN[i * 4 + 2]).applyQuaternion(Q); fb.CN.push(V.x, V.y, V.z, f.CN[i * 4 + 3]);
+        fb.B.push(e.x, e.y, e.z, s);
+      }
     }
     if (bush) continue;
     const g = part.trunk.geometry.clone();

@@ -6,6 +6,9 @@
 //
 //   const player = createPlayer({ character, level, camera, dom: renderer.domElement, ui: document.getElementById('stick') });
 //   every frame: player.update(dt)
+//
+// Her size (character.size, set by character.setSize) scales what goes with her body: walk and run speeds, the water she
+// will wade into, how close she comes to a trunk, the blob under her feet and how far back the camera sits.
 
 import * as THREE from 'three';
 
@@ -111,16 +114,16 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   const tmp = new THREE.Vector3(), look = new THREE.Vector3(), camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
   let camReady = false, camReach = camDist, wade = 0, stepSide = 1;
   let wasDepth = 0, wetH = 0, wetAmt = 0;      // the water she stood in a frame ago; how high up she is wet (m above her feet) and how wet still
-  const WALK = 1.45, RUN = 3.3, DEEP = 0.5;      // DEEP: water she will not wade into
+  const WALK0 = 1.45, RUN0 = 3.3, DEEP0 = 0.5;      // at her modelled size (DEEP: water she will not wade into); update() scales them with her
   // her two feet, followed bone by bone, so the water is touched exactly when and where a foot comes down
   const feet = [];
   character.object.traverse(o => { if (o.isBone && /_(L|R)_Foot$/.test(o.name)) feet.push({ bone: o, lo: 0, hi: 0, up: false, seen: false, since: 1 }); });
   const footPos = new THREE.Vector3();
 
   // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
-  function collide(p) {
+  function collide(p, k = 1) {
     for (const [cx, cz, cr] of level.colliders) {
-      const dx = p.x - cx, dz = p.z - cz, r = cr + 0.28, d2 = dx * dx + dz * dz;
+      const dx = p.x - cx, dz = p.z - cz, r = cr + 0.28 * k, d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * r; p.z = cz + dz / d * r; }
     }
     const rr = Math.hypot(p.x, p.z);
@@ -136,6 +139,8 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
     setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
     update(dt) {
       dt = Math.min(dt, 0.05);
+      const k = character.size || 1, WALK = WALK0 * k, RUN = RUN0 * k, DEEP = DEEP0 * k, camD = camDist * k;
+      shadow.scale.setScalar(k);
       // ---- input -> wish direction in the world, relative to the camera
       let mx = move.x, mz = move.y;
       if (stickId === null) {
@@ -158,10 +163,10 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       }
       // wading slows you down, the more the deeper it is (ankle-deep hardly at all, knee-deep she cannot run); deep water stops you
       const depthHere = level.waterDepthAt(pos.x, pos.z);
-      const heavy = Math.min(1, Math.max(0, (depthHere - 0.1) / 0.4)), drag = heavy * heavy * (3 - 2 * heavy);
+      const heavy = Math.min(1, Math.max(0, (depthHere - 0.1 * k) / (0.4 * k))), drag = heavy * heavy * (3 - 2 * heavy);
       target *= 1 - 0.52 * drag;
       // running into the water: one splash where she breaks the surface
-      if (depthHere > 0.06 && wasDepth <= 0.06 && speed > 2.2 && level.ripple) level.ripple(pos.x + Math.sin(heading) * 0.25, pos.z + Math.cos(heading) * 0.25, 0.9, 0.3, 'splash');
+      if (depthHere > 0.06 && wasDepth <= 0.06 && speed > 2.2 * k && level.ripple) level.ripple(pos.x + Math.sin(heading) * 0.25, pos.z + Math.cos(heading) * 0.25, 0.9, 0.3, 'splash');
       wasDepth = depthHere;
       // what has been in the water is wet (a run splashes her higher), and dries in a quarter of a minute once she is out
       if (depthHere > 0.03) { wetH = Math.max(wetH, depthHere + 0.05 + 0.12 * Math.min(1, speed / RUN)); wetAmt = 1; }
@@ -189,7 +194,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           const da = level.waterDepthAt(ax, az), db = level.waterDepthAt(bx, bz);
           if (Math.min(da, db) > DEEP) tmp.set(pos.x, 0, pos.z); else if (da < db) tmp.set(ax, 0, az); else tmp.set(bx, 0, bz);
         }
-        collide(tmp);
+        collide(tmp, k);
         const went = Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt;
         pos.x = tmp.x; pos.z = tmp.z;
         speed = Math.min(speed, went * 1.15 + 0.05);          // pushing against something: stop walking on the spot
@@ -240,10 +245,10 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       // tree crowns: if the line from her shoulders to the camera runs into a leaf mass, the camera comes closer and stays
       // under the canopy instead of diving into the leaves
       const dx = Math.sin(camYaw) * cp, dy = sp, dz = Math.cos(camYaw) * cp;
-      let reach = camDist;
+      let reach = camD;
       for (const [cx, cy, cz, cr] of level.crowns || []) {
         const ox = look.x - cx, oy = look.y - cy, oz = look.z - cz, r = cr + 0.5;
-        if (Math.abs(ox) > r + camDist || Math.abs(oz) > r + camDist) continue;
+        if (Math.abs(ox) > r + camD || Math.abs(oz) > r + camD) continue;
         const b = ox * dx + oy * dy + oz * dz, c = ox * ox + oy * oy + oz * oz - r * r;
         if (c <= 0) continue;                              // she is standing inside the sphere: ignore it
         const disc = b * b - c;

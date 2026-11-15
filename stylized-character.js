@@ -5,6 +5,7 @@
 //   scene.add(vivi.object);            // feet at y = 0, facing +Z
 //   vivi.play('walk');                 // 'idle' | 'walk' | 'run'
 //   every frame: vivi.update(dt)
+//   vivi.setSize(k)                    // k times her modelled size: height and the clips' ground speeds go with it
 //
 // In water (player.js tells her: vivi.water.level, vivi.water.wet): what is under the surface says how deep it is in the
 // picture's alpha, for the water drawn over it (stylized-water.js), and what has been under stays darker until it dries.
@@ -124,9 +125,18 @@ export async function loadCharacter(source, anim) {
   const clips = buildClips(anim), actions = {};
   for (const [k, c] of Object.entries(clips)) actions[k] = mixer.clipAction(c);
   let current = null;
+  const baseHeight = box.max.y - box.min.y;
+  const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
   const ch = {
-    object, mixer, actions, height: box.max.y - box.min.y, water,
-    speeds: Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed])),
+    object, mixer, actions, height: baseHeight, water, baseHeight, size: 1,
+    speeds: { ...baseSpeeds },
+    // k times her modelled size (1 = as the GLB is, ~1.41 m). A bigger step covers more ground: the clips' speeds grow with her
+    setSize(k) {
+      ch.size = k;
+      object.scale.setScalar(k);
+      ch.height = baseHeight * k;
+      for (const name in baseSpeeds) ch.speeds[name] = baseSpeeds[name] * k;
+    },
     play(name, fade = 0.22) {
       const next = actions[name];
       if (!next || next === current) return;
