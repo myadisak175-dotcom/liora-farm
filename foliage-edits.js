@@ -14,9 +14,10 @@
 //                                               //   own    the map's own three lists, as the plan had them
 //                                               //   used   this browser's lists were laid over the plan
 //                                               //   baked  this browser's were the same as the map's own: let go
-//                                               //   stale  this browser's were made on an earlier foliage of the map's
-//                                               //   src    for each row now, which of the map's own it was (-1: a new one);
-//                                               //          null when stale (then nothing says which is which)
+//                                               //   stale  this browser's were made on an earlier foliage of the map's:
+//                                               //          not laid over (the map's own are used); they are in kept
+//                                               //          (made on the foliage stamped keptBase), to send
+//                                               //   src    for each row now, which of the map's own it was (-1: a new one)
 //   keepFoliage(key, base, lists, src)          // keep these lists (made on the map's foliage with the stamp `base`)
 //   dropFoliage(key)                            // back to the map's own
 //   foliageEdits(map, report, lists, src)       // what changed, to send: { map, v, base, plants: { set, del, add }, ... }, or
@@ -40,9 +41,14 @@ export function applyFoliage(plan, key) {
     try { localStorage.removeItem(key); } catch { /* no matter */ }
     report.baked = true; return report;
   }
+  if (kept.base !== report.stamp) {                                        // made on an earlier foliage: the map's own stand (its trees may have been grown since), this browser's are kept to send
+    report.stale = true; report.keptBase = kept.base; report.kept = {};
+    for (const n of FOLIAGE_LISTS) report.kept[n] = copy(kept[n]);
+    return report;
+  }
   for (const n of FOLIAGE_LISTS) plan[n] = copy(kept[n]);
-  report.used = true; report.base = kept.base; report.stale = kept.base !== report.stamp;
-  report.src = report.stale || !kept.src ? null : kept.src;
+  report.used = true; report.base = kept.base;
+  report.src = kept.src || null;
   return report;
 }
 

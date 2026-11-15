@@ -84,12 +84,12 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=33",
+  "./hill-village-level.js": "./hill-village-level.js?v=34",
   "./path-brush.js": "./path-brush.js?v=1",
   "./path-edits.js": "./path-edits.js?v=1",
   "./place-editor.js": "./place-editor.js?v=1",
-  "./foliage-editor.js": "./foliage-editor.js?v=1",
-  "./foliage-edits.js": "./foliage-edits.js?v=1",
+  "./foliage-editor.js": "./foliage-editor.js?v=2",
+  "./foliage-edits.js": "./foliage-edits.js?v=2",
   "./place-edits.js": "./place-edits.js?v=1",
   "./land-water.js": "./land-water.js?v=5",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
@@ -261,7 +261,7 @@ await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
 // her height: 1.6 m, to stand right beside the building kit's doors and the trees (as modelled she is ~1.41 m: a child next to
 // a 3 m storey). Set before her shadow is made, so its picture is sized for her
-const VIVI_HEIGHT = 1.6;
+const VIVI_HEIGHT = 1.75;
 vivi.setSize(VIVI_HEIGHT / vivi.baseHeight);
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash

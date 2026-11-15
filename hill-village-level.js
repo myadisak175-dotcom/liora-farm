@@ -63,7 +63,9 @@ export const HILL_VILLAGE_MAP = {
   grove: 80,
   sails: /^polySurface142_/,      // the part of the windmill model that is used: its sails (the rest of the mill is of the kit)
 };
-const TRUNK = { broadleaf: 0.45, oak: 0.7, pine: 0.38, birch: 0.22, sapling: 0.2 }, TREE_H = { broadleaf: 9.4, oak: 7.4, pine: 7.9, birch: 9.6, sapling: 4 };      // (the anime trees of anime-tree.js; the pines are frond-pine.js's)
+const TRUNK = { broadleaf: 0.45, oak: 0.7, pine: 0.38, birch: 0.22, sapling: 0.2 }, TREE_H = { broadleaf: 8.6, oak: 7.1, pine: 10.8, birch: 9.3, sapling: 4.5 };
+// a tree's leaves as balls the camera keeps out of (player.js: it comes in under the canopy instead of diving into the leaves): [height of the middle, radius], at size 1 (measured off anime-tree.js's trees)
+const CROWN = { oak: [[3.9, 3.2]], broadleaf: [[6.2, 2.4], [4.4, 1.9]], birch: [[7.8, 1.5], [5.6, 1.3]], pine: [[6.5, 1.6]], sapling: [[3.4, 1.05]] };      // (the anime trees of anime-tree.js; the pines are frond-pine.js's)
 const ROCK_R = { boulder: 1.0, stones: 0.8, river: 0.7, pebbles: 0 };      // (how far round a rock of the plan she cannot walk, times its size)
 
 export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCount = 150000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
@@ -116,7 +118,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const field = G.createHeightField({ radius: FR, center: [0, CZ], cells: M.cells, heightFn });      // (a square as long as the land: wider than it, and only the land's part is drawn)
   const H = field.heightAt;
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
-  const colliders = [], cameraTrunks = [], shade = [], bare = [], press = [], casters = [], plants = [];
+  const colliders = [], cameraTrunks = [], crowns = [], shade = [], bare = [], press = [], casters = [], plants = [];
 
   // the water: where it lies and how high it stands (land-water.js)
   const brookAt = waterLookup(P.brooks, { x0: X0, z0: Z0, x1: X1, z1: Z1 }).at;
@@ -137,7 +139,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // a tree where she walks: solid, its trunk kept out of the camera's way, bare ground at its foot, its shade and its shadow
   const stands = e => {
     const rad = TRUNK[e.type] * e.scale, y = e.y + 0.05;
-    if (e.detail >= 0.8) { colliders.push([e.x, e.z, rad + 0.22]); cameraTrunks.push([e.x, e.z, rad + 0.12, y, y + TREE_H[e.type] * e.scale]); bare.push([e.x, e.z, rad * 1.5]); }
+    if (e.detail >= 0.8) {
+      colliders.push([e.x, e.z, rad + 0.22]); cameraTrunks.push([e.x, e.z, rad + 0.12, y, y + TREE_H[e.type] * e.scale]); bare.push([e.x, e.z, rad * 1.5]);
+      for (const [cy, cr] of CROWN[e.type] || []) crowns.push([e.x, y + cy * e.scale, e.z, cr * e.scale]);
+    }
     shade.push([e.x, e.z, 4 * e.scale, 0.4]); casters.push([e.x, e.z, TREE_H[e.type] * e.scale, 2.4 * e.scale, 0.7]);
   };
   // The foliage: the plan's rows made into what the forests are given. Used as the level is built, and again by the foliage
@@ -718,7 +723,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     drop(holder) { group.remove(holder); holder.traverse(m => { if (m.geometry) m.geometry.dispose(); }); },
   };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns: [], cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
     map: url(M.map),

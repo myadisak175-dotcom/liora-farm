@@ -315,7 +315,7 @@ house('mill_tower', WMILL, dict(w=4, l=4, floors=3, wall='brick', upper='plaster
 house('mill_house', (WMILL[0] + 2.0, WMILL[1] + 4.0), dict(w=4, l=6, floors=1, wall='plaster', door='front', seed=32, windows=0.6), WM_YAW, pad=1)
 B.append({'id': 'windmill', 'kind': 'sails', 'x': WMILL[0], 'z': WMILL[1], 'yaw': round(WM_YAW, 3), 'hub': 7.6, 'span': 10.4, 'out': 2.8, 'pad': 1})
 B.append({'id': 'fountain', 'kind': 'well', 'x': PLAZA[0] - 0.8, 'z': PLAZA[1] - 3.0, 'yaw': 0.4, 'pad': 3.2})      # (beside the road through the market, not on it)
-B.append({'id': 'great_tree', 'kind': 'tree', 'x': M(.55, .345)[0], 'z': M(.55, .345)[1], 'type': 'oak', 'scale': 2.3, 'pad': 4.5, 'shape': 1162, 'turn': 3.83863})      # (shape, turn: which oak it is and how it is turned, as it has always stood)
+B.append({'id': 'great_tree', 'kind': 'tree', 'x': M(.55, .345)[0], 'z': M(.55, .345)[1], 'type': 'oak', 'scale': 2.3, 'pad': 4.5, 'shape': 1162, 'turn': 3.83863})      # (not in the written plan: its yard and the ways round it are laid out by it. shape, turn: which oak, how turned, should it stand again)
 
 # ------------------------------------------------------------------ 3. the water, as planned: stretches, each on its own level
 # (name, the terrace it lies on, how far under that terrace the water stands, how deep its bed is pressed, the line: (u, v,
@@ -945,6 +945,8 @@ scatter(margin & (OUTSIDE >= 10) & seen, 11.0, margin_tree)
 TREES_K = 0.87                                                        # every tree 87% of the size it was first given: beside Vivi (1.6 m) the woods stood 7 to 9 times her height
 SCALE = {'pine': (0.85, 1.05), 'oak': (0.85, 1.25), 'broadleaf': (0.8, 1.15), 'birch': (0.9, 1.2), 'sapling': (0.85, 1.25)}      # (pines were 0.9 .. 1.35: up to 15 m, far over the rest)
 SCALE = {k: (lo * TREES_K, hi * TREES_K) for k, (lo, hi) in SCALE.items()}
+GROWN = {'oak': 2.35, 'broadleaf': 1.95, 'birch': 1.6, 'pine': 1.8, 'sapling': 1.25}      # and then grown to a tree's real size beside the houses (a two-storey house is some 10 m to its ridge): oaks 13..18 m, broadleaf 12..17, birches 12..15, pines 14..18, saplings 4..6
+SCALE = {k: (lo * GROWN[k], hi * GROWN[k]) for k, (lo, hi) in SCALE.items()}
 SCALE['bush'] = (0.75, 1.15)
 TREE_KINDS = ('oak', 'broadleaf', 'birch', 'pine', 'sapling')
 plants = [p_ for p_ in plants if p_[0] == 'bush' or not _before_view(p_[1], p_[2])]      # (no tree in front of a place to look from)

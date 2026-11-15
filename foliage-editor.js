@@ -35,8 +35,8 @@ const TREES = ['oak', 'broadleaf', 'birch', 'sapling', 'pine'];
 // each kind: how tall it stands and how far it reaches on the ground (metres at size 1: for picking it and marking it), its
 // sizes (the slider's least and most, and between which two the dice throw), the colours it may have
 const KINDS = {
-  oak: { h: 8.5, r: 2.4, size: [0.4, 1.6, 0.74, 1.09] }, broadleaf: { h: 7.5, r: 2.0, size: [0.4, 1.6, 0.7, 1.0] }, birch: { h: 8, r: 1.3, size: [0.4, 1.6, 0.78, 1.04] },
-  sapling: { h: 3.2, r: 1.0, size: [0.4, 1.8, 0.74, 1.09] }, pine: { h: 10, r: 1.4, size: [0.4, 1.5, 0.74, 0.91] },
+  oak: { h: 7.1, r: 3.2, size: [0.8, 3.5, 1.75, 2.55] }, broadleaf: { h: 8.6, r: 2.4, size: [0.7, 2.8, 1.35, 1.95] }, birch: { h: 9.3, r: 1.4, size: [0.6, 2.4, 1.25, 1.65] },
+  sapling: { h: 4.5, r: 0.7, size: [0.5, 2.0, 0.92, 1.36] }, pine: { h: 10.8, r: 1.4, size: [0.7, 2.6, 1.33, 1.64] },      // (trees: as tall as they really are beside the houses)
   bush: { h: 1.0, r: 0.6, size: [0.4, 1.8, 0.75, 1.15] },
   clump: { h: 0.6, r: 0.45, size: [0.3, 1.2, 0.5, 0.74], colours: ['pink', 'white', 'yellow', 'lilac', 'blue'] },
   flower: { h: 0.3, r: 1.2, size: [0.7, 2.6, 1.0, 1.7], colours: ['pink', 'yellow', 'blue'], flat: true },
@@ -473,6 +473,9 @@ export function createFoliageEditor({ level, camera, player = null }) {
         if (!got) return say('ข้อความนี้ไม่ใช่ข้อมูลการจัดต้นไม้');
         remember(); closeSheet(); restore(itemsOf(got.lists, got.src), 'ใส่ข้อมูลแล้ว กดบันทึกเพื่อใช้จริง');
       }),
+      ...(R.report.stale && R.report.kept ? [btn('ใช้ชุดเก่าที่จัดไว้ในเครื่องนี้', () => {      // (made on an earlier foliage of the map's: shown as text, to send)
+        out.value = JSON.stringify(foliageEdits(R.map, { base: R.report.keptBase }, R.report.kept, null)); say('นี่คือชุดเก่าที่จัดไว้ คัดลอกส่งให้ Claude ได้เลย');
+      })] : []),
       btn('กลับเป็นแบบในแมพทั้งหมด', () => {
         const own = R.report.own, ident = { plants: own.plants.map((_, i) => i), clumps: own.clumps.map((_, i) => i), cover: own.cover.map((_, i) => i) };
         remember(); closeSheet(); restore(itemsOf(own, ident), 'กลับเป็นแบบในแมพแล้ว กดบันทึกเพื่อใช้จริง');
@@ -536,7 +539,7 @@ export function createFoliageEditor({ level, camera, player = null }) {
     fit(); active = true; panel();
     const rep = R.report;
     if (!at && rep.baked) say('ที่จัดไว้ในเครื่องนี้ อยู่ในแมพถาวรแล้ว');
-    else if (!at && rep.stale) say('ที่จัดไว้ในเครื่องนี้ทำบนแมพชุดก่อน: แมพมีต้นไม้ชุดใหม่กว่า (⋯ เพื่อกลับไปใช้ของแมพ)');
+    else if (!at && rep.stale) say('ที่จัดไว้ในเครื่องนี้ทำบนแมพชุดเก่า จึงยังไม่ได้ใช้ · ⋯ เพื่อคัดลอกส่งให้ Claude รวมเข้าแมพ');
     else if (!at && rep.used) say('ใช้การจัดต้นไม้ที่เก็บไว้ในเครื่องนี้');
   };
   const close = () => {
