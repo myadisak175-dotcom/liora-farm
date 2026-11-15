@@ -430,9 +430,13 @@ const RIDGES = [   // near -> far: forested blue-green hills, then mountains mel
   { r: 400, h: [32, 82], top: '#a7c6df', lit: '#bad3e7', base: '#d3e8f2', trees: 0, seg: 380, f: 1.7 },
 ];
 
+// A layer may be a range of mountains instead of hills: sharp (0..1) draws its ridge line up into peaks, and snow: [from, to,
+// ragged] lays snow on whatever stands above that height (metres, as the layer is made: from none to all, the line ragged)
 function ridgeMaterial(L) {
+  const snow = L.snow || [1e9, 2e9, 0];
   return new THREE.ShaderMaterial({
-    uniforms: { uTop: { value: rgb(L.top) }, uLit: { value: rgb(L.lit) }, uBase: { value: rgb(L.base) }, uTrees: { value: L.trees > 0 ? 1 : 0 } },
+    uniforms: { uTop: { value: rgb(L.top) }, uLit: { value: rgb(L.lit) }, uBase: { value: rgb(L.base) }, uTrees: { value: L.trees > 0 ? 1 : 0 },
+      uSnow: { value: new THREE.Vector3(...snow) }, uSnowLit: { value: rgb(L.snowLit || '#f6f9fc') }, uSnowShade: { value: rgb(L.snowShade || '#c9d9ea') } },
     vertexShader: /* glsl */`
       attribute float aT;      // 0 at the foot .. 1 on the ridge line
       attribute float aA;      // angle around the ring
@@ -442,7 +446,7 @@ function ridgeMaterial(L) {
       void main() { vT = aT; vA = aA; vY = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */`
       ${NOISE}
-      uniform vec3 uTop, uLit, uBase;
+      uniform vec3 uTop, uLit, uBase, uSnow, uSnowLit, uSnowShade;
       uniform float uTrees;
       varying float vT;
       varying float vA;
@@ -453,6 +457,9 @@ function ridgeMaterial(L) {
         vec3 col = slope > 0.55 ? uLit : uTop;
         // forest texture on the near ridges: soft blobs of tree crowns
         if (uTrees > 0.5 && noise2(vec2(vA * 140.0, vY * 0.9)) > 0.6) col *= 0.9;
+        // snow on what stands above the snow line: it comes down further in the gullies, and is blue in the shade
+        float sn = smoothstep(uSnow.x, uSnow.y, vY + (noise2(vec2(vA * 55.0, vY * 0.07)) - 0.5) * uSnow.z + (noise2(vec2(vA * 190.0, vY * 0.3)) - 0.5) * uSnow.z * 0.35);
+        if (sn > 0.5) col = slope > 0.5 ? uSnowLit : uSnowShade;
         // haze gathers low in the valleys
         col = mix(uBase, col, smoothstep(0.05, 0.75, vT));
         gl_FragColor = vec4(col, 1.0);
@@ -473,6 +480,10 @@ export function createDistantMountains({ center = [0, -20], seed = 2, foot = -35
       // periodic ridge profile: noise sampled on a circle so there is no seam
       let n = fbm3(c * L.f + li * 7.1, s * L.f, seed + li * 3.3, seed + li, 4);
       n = Math.pow(Math.min(1, Math.max(0, (n - 0.25) / 0.6)), 1.4);
+      if (L.sharp) {                                                   // peaks: the ridge line folded sharp, the high ground more than the low
+        const r = 1 - Math.abs(2 * fbm3(c * L.f * 2.6 + li * 3.7, s * L.f * 2.6, seed + 5.5, seed + li + 20, 3) - 1), j = fbm3(c * L.f * 11, s * L.f * 11, seed + 1.5, seed + li + 40, 2) - 0.5;
+        n = Math.max(0, n * (1 - L.sharp) + L.sharp * Math.pow(r, 1.8) * (0.3 + 0.7 * n) + j * 0.12 * L.sharp);
+      }
       let y = L.h[0] + (L.h[1] - L.h[0]) * n;
       if (L.trees) y += (fbm3(c * 60, s * 60, li + 0.5, seed + 9, 2) - 0.5) * L.trees * 2 + Math.abs(Math.sin(a * L.r * 1.7)) * L.trees * 0.6;  // treeline bumps
       const x = center[0] + c * L.r, z = center[1] + s * L.r;

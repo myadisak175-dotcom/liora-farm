@@ -1564,6 +1564,29 @@ CELL = 0.4; nx = int(2 * XH / CELL) + 1; nz = int((Z1 - Z0) / CELL) + 1      # t
 gz, gx_ = np.mgrid[0:nz, 0:nx].astype(np.float64)
 small = ndi.map_coordinates(H, [gz * CELL / MPP, gx_ * CELL / MPP], order=1, mode='nearest')
 np.clip((small - BASE) / RANGE * 65535, 0, 65535).round().astype('<u2').tofile(OUT / 'hill-village.bin')
+# ------------------------------------------------------------------ 10. where the waters come from
+# No water rises at a spot she can look at: the upper stream and the two meadow brooks each come in from the margin, out of a
+# small valley through its hills and round the foot of a knoll that hides where the water begins. Those stretches are NOT laid
+# on the land here: the land, and so every plant the rules put on it, stays as it was. The plan only says where each runs
+# (inflows: the stretch it flows into, rows of x, z, half-width from its hidden head down to that stretch's own head, and its
+# knoll: x, z, height, radius); the game cuts the valley and the bed as it loads and lays the water on as part of that stretch
+# (hill-village-level.js, VALLEY), and the map's picture draws it.
+INFLOWS = [   # (the stretch, its line: x, z, half-width in metres, its knoll)
+    ('upper_stream', [(-105.2, -57.0, 1.0), (-105.2, -48.5, 1.1), (-103.8, -41.0, 1.2), (-99.0, -34.0, 1.25), (-93.0, -30.2, 1.3), (-85.0, -26.8, 1.4), (-76.0, -23.8, 1.7)], (-91.0, -44.0, 3.4, 7.5)),
+    ('brook_2_meadow', [(-104.5, 157.0, 0.9), (-103.4, 166.0, 1.0), (-99.5, 173.5, 1.1), (-93.0, 178.6, 1.15), (-85.5, 181.3, 1.2)], (-90.5, 168.0, 3.0, 7.0)),
+    ('brook_1_meadow', [(104.8, 247.5, 0.9), (105.0, 239.0, 1.0), (104.6, 232.5, 1.05), (100.8, 227.0, 1.1), (94.0, 224.2, 1.2), (88.5, 222.8, 1.5)], (91.0, 238.0, 3.0, 7.0)),
+]
+inflows = []
+for name_, line_, knoll_ in INFLOWS:
+    i_ = next(k for k, t_ in enumerate(tiers) if t_['name'] == name_); head_ = brooks[i_][0]
+    pts_ = [tuple(q) for q in line_] + [(head_[0], head_[1], head_[3])]; g_ = lambda k: pts_[min(len(pts_) - 1, max(0, k))]; rows_ = []
+    for k in range(len(pts_) - 1):                                    # a smooth curve through them (Catmull-Rom), a row a metre
+        a_, b_, c_, d_ = g_(k - 1), g_(k), g_(k + 1), g_(k + 2); n_ = max(2, int(math.hypot(c_[0] - b_[0], c_[1] - b_[1])))
+        for q in range(n_):
+            t_ = q / n_; rows_.append([round(0.5 * (2 * b_[j] + (-a_[j] + c_[j]) * t_ + (2 * a_[j] - 5 * b_[j] + 4 * c_[j] - d_[j]) * t_ * t_ + (-a_[j] + 3 * b_[j] - 3 * c_[j] + d_[j]) * t_ ** 3), 2) for j in (0, 1, 2)])
+    inflows.append({'stretch': i_, 'level': round(tiers[i_]['level'], 2), 'rows': rows_, 'knoll': list(knoll_)})
+    print(f"  inflow into {name_}: {len(rows_)} m, from ({rows_[0][0]}, {rows_[0][1]}), at {tiers[i_]['level']:.2f} m")
+
 plan = {
     'land': {'x0': -XH, 'z0': round(Z0, 4), 'cell': CELL, 'nx': nx, 'nz': nz, 'base': BASE, 'range': RANGE, 'play': list(PLAY)},
     'brooks': brooks, 'falls': falls, 'waters': [{'id': t_['name'], 'level': round(t_['level'], 2)} for t_ in tiers],
@@ -1578,6 +1601,7 @@ plan = {
             'shelves': [{'u0': 0.6, 'u1': 7.0, 'y': 1.6}, {'u0': 7.6, 'u1': 14.0, 'y': -8.8}, {'u0': 14.6, 'u1': 20.8, 'y': -17.7}, {'u0': 21.4, 'u1': 27.2, 'y': -26.0}]},      # (y: as the pit's own picture has them, before the shift)
     'split': [f_['from'] for f_ in falls if f_.get('rocks')],            # the stretches whose fall is parted by rocks in its lip: one strand between each two
     'deep': [f_['from'] for f_ in falls if f_['deep']],              # the stretches that end by falling into the pit's mist
+    'inflows': inflows,                                              # where each water comes in from the margin (10)
     'spawn': {'x': round(SPAWN[0], 2), 'z': round(SPAWN[1], 2), 'yaw': VIEWS['start'][2]}, 'views': VIEWS,
 }
 json.dump(plan, open(OUT / 'hill-village.json', 'w'), separators=(',', ':'))

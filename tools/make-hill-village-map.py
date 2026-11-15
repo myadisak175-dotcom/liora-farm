@@ -103,7 +103,7 @@ def catmull(pts, step=1.0):
 # ---- 3. the water
 d = ImageDraw.Draw(canvas)
 for grow, part, colour in ((0.35, 1.0, COL['water_edge']), (0.0, 1.0, COL['water']), (0.0, 0.45, COL['water_mid'])):      # its bank's line, the water, its pale middle
-    for rows in plan['brooks']:                                       # (a row: x, z, the water's height, half its width)
+    for rows in plan['brooks'] + [[[x, z, i['level'], hw] for x, z, hw in i['rows']] + [plan['brooks'][i['stretch']][0]] for i in plan.get('inflows', [])]:      # (a row: x, z, the water's height, half its width; and where each water comes in from the margin)
         for a, b in zip(rows, rows[1:]): stroke(d, [a[:2], b[:2]], (a[3] + b[3]) * part + 2 * grow, colour)
 for f in plan['falls']:                                               # foam along the lip, and a streak down the way it falls
     c, s = math.cos(f['yaw']), math.sin(f['yaw']); half = f['width'] / 2

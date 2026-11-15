@@ -84,7 +84,8 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=34",
+  "./hill-village-level.js": "./hill-village-level.js?v=35",
+  "./map-rim.js": "./map-rim.js?v=1",
   "./path-brush.js": "./path-brush.js?v=1",
   "./path-edits.js": "./path-edits.js?v=1",
   "./place-editor.js": "./place-editor.js?v=1",
@@ -97,7 +98,7 @@
   "./rock-editor.js": "./rock-editor.js?v=3",
   "./rocks-layout.js": "./rocks-layout.js?v=2",
   "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1",
-  "./stylized-sky.js": "./stylized-sky.js?v=foamphysics1",
+  "./stylized-sky.js": "./stylized-sky.js?v=alps1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=grow1",
@@ -255,6 +256,11 @@ const MAP = Q.get('map') || 'hillvillage';      // the game's map is the hill vi
 const buildLevel = { valley: buildValleyLevel, meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel, rocks: buildRocksLevel, blockout: buildBlockoutLevel, pit: buildPitLevel, village: buildVillageLevel, hillvillage: buildHillVillageLevel }[MAP] || buildHillVillageLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone); ?map=rocks: the rock test map; ?map=village: the terraced village island; ?map=hillvillage: the hill village on a heightmap, its houses from the building kit (&look=flat: in flat colours; &cliff=strata: its cliffs in the valley's strata, not painted)
 const level = await buildLevel({ layer: +Q.get('layer') || 1, far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000, sun: sky.userData.sun ? sky.userData.sun.toArray() : undefined });
 scene.add(level.group);
+if (level.horizon && level.horizon.layers) {             // a map with far hills of its own (the hill village: mountains with snow on them) in place of the usual ones
+  const old = scene.getObjectByName('distantMountains');
+  if (old) { scene.remove(old); old.userData.dispose(); }
+  scene.add(Sky.createDistantMountains({ center: [0, 0], seed: 5, layers: level.horizon.layers }));
+}
 let forage = null;
 try { forage = await createForestForage({ level, onStep }); } catch (e) { console.error('Forest forage failed to load', e); }
 await onStep('ปลุก Vivi');

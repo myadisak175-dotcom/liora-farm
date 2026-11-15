@@ -48,6 +48,7 @@ import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 import { foliageKey, applyFoliage } from './foliage-edits.js';
 import { pathKey, loadPathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
+import { createMapRim } from './map-rim.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -61,6 +62,16 @@ export const HILL_VILLAGE_MAP = {
   cells: 852,                     // the ground's own grid (0.5 m)
   pieces: [3, 6],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
   grove: 80,
+  valley: { floor: 0.45, flat: 3, side: 0.42, reach: 48 },      // the valley a water comes in by (the plan's inflows): its floor above the water, half the floor's width, how its sides rise, how far they can reach
+  rim: 120,                       // past the land's edge it runs on into meadow hills with woods on them (map-rim.js): the far hills stand at least this many metres past the land's corners
+  // the far hills of this map (stylized-sky.js, in place of its own; near -> far, sizes as there, before they are moved out):
+  // green foothills with pasture and wood, wooded mountain sides, then two ranges of bare rock with snow on their peaks
+  alps: [
+    { r: 170, h: [8, 30], top: '#7ba463', lit: '#9cc078', base: '#c2ddc6', trees: 1.4, seg: 900, f: 3.4 },
+    { r: 232, h: [22, 64], top: '#5d9079', lit: '#7fae8c', base: '#bcd9e0', trees: 0.9, seg: 700, f: 2.9, sharp: 0.25 },
+    { r: 315, h: [40, 128], top: '#7c9bbd', lit: '#9cb7d2', base: '#c9e1ee', trees: 0, seg: 620, f: 2.4, sharp: 0.6, snow: [84, 100, 26] },
+    { r: 410, h: [55, 190], top: '#9ab5d3', lit: '#b6cce3', base: '#d3e8f2', trees: 0, seg: 560, f: 2.0, sharp: 0.7, snow: [100, 120, 34] },
+  ],
   sails: /^polySurface142_/,      // the part of the windmill model that is used: its sails (the rest of the mill is of the kit)
 };
 const TRUNK = { broadleaf: 0.45, oak: 0.7, pine: 0.38, birch: 0.22, sapling: 0.2 }, TREE_H = { broadleaf: 8.6, oak: 7.1, pine: 10.8, birch: 9.3, sapling: 4.5 };
@@ -103,18 +114,73 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (r) levelGround(m.to[0], m.to[1], r);
   }
   const pathStyle = new URLSearchParams(location.search).get('paths') === 'grit' ? 'grit' : M.paths;
-  const toolWays = [...P.paths.map(p => ({ points: p.points, half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))];      // (a yard: a short way as wide as the yard)
+  const px = (i, j) => base + raw[Math.min(nz - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))] / 65535 * range;
+  const landAt = (x, z) => {                                               // the picture's own height: bilinear between its points
+    const fx = (x - X0) / cell, fz = (z - Z0) / cell, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+    return (px(i, j) * (1 - u) + px(i + 1, j) * u) * (1 - v) + (px(i, j + 1) * (1 - u) + px(i + 1, j + 1) * u) * v;
+  };
+  // where the waters come from (the plan's inflows: the map's tool, 10). No water rises at a spot she can look at: the upper
+  // stream and the two meadow brooks each come in from the margin, out of a small valley through its hills and round the foot
+  // of a knoll that hides where the water begins. The land is cut for each here, as it is read (the picture itself is left as
+  // it was, so the tool's plants stand where they stood): the knoll, a valley with a floor a little above the water and sides
+  // of grass that lie back at about 40%, and the water's bed with its banks. The water is laid on as part of the stretch it
+  // flows into (its rows put before that stretch's own), so sheet, shore, sand and wading are worked out as for any water
+  const inflows = (P.inflows || []).map(f => {
+    const head = P.brooks[f.stretch][0], rows = [...f.rows, [head[0], head[1], head[3]]], xs = rows.map(q => q[0]), zs = rows.map(q => q[1]);
+    P.brooks[f.stretch] = [...f.rows.map(([x, z, hw]) => [x, z, f.level, hw]), ...P.brooks[f.stretch]];
+    return { ...f, rows, box: [Math.min(...xs) - M.valley.reach, Math.max(...xs) + M.valley.reach, Math.min(...zs) - M.valley.reach, Math.max(...zs) + M.valley.reach] };
+  });
+  const nearInflow = (f, x, z) => {                                        // metres from its line, and half the water's width there
+    let best = 1e9, hw = 1;
+    for (let i = 0, q = f.rows; i < q.length - 1; i++) {
+      const ax = q[i][0], az = q[i][1], bx = q[i + 1][0] - ax, bz = q[i + 1][1] - az, t = Math.min(1, Math.max(0, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1))), d = Math.hypot(x - ax - bx * t, z - az - bz * t);
+      if (d < best) { best = d; hw = q[i][2] + (q[i + 1][2] - q[i][2]) * t; }
+    }
+    return [best, hw];
+  };
+  const inflowCut = (x, z, y) => {
+    for (const f of inflows) {
+      if (x < f.box[0] || x > f.box[1] || z < f.box[2] || z > f.box[3]) continue;
+      const [kx, kz, kh, kr] = f.knoll, V = M.valley, [d, hw] = nearInflow(f, x, z);
+      y += kh * Math.exp(-((x - kx) ** 2 + (z - kz) ** 2) / (2 * kr * kr));
+      y = Math.min(y, f.level + V.floor + V.side * (1 + 0.22 * Math.sin(x * 0.21 + z * 0.13)) * Math.pow(Math.max(0, d - V.flat), 1.06));      // (no two metres of its sides alike)
+      if (d < hw) y = Math.min(y, f.level - 0.12 - 0.3 * (1 - (d / hw) ** 2));                                    // the bed
+      else if (d < hw + 2.2) { const k = ss(0, 1, (d - hw) / 2.2); y = Math.min(y, (f.level + 0.22) * (1 - k) + y * k); }      // its banks come down to the water's edge
+    }
+    return y;
+  };
+  const toolWays = [...P.paths.map(p => ({ points: p.points.slice(), half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))];      // (a yard: a short way as wide as the yard)
+  const pathOps = [...(P.pathOps || []), ...loadPathOps(pathKey('hillvillage'))].filter(o => o.k === 'grass' || o.pts.length >= 2);
+  // a way that ends out in the margin (the road in) does not stop there: it runs on to the land's edge, and from there the
+  // rim takes it into its wood (map-rim.js)
+  const waysOut = [];
+  for (const w of toolWays) for (const last of [false, true]) {
+    const pts = w.points, a = last ? pts[pts.length - 1] : pts[0], b = last ? pts[pts.length - 2] : pts[1];
+    if (a[0] > play[0] && a[0] < play[1] && a[1] > play[2] && a[1] < play[3]) continue;
+    if (pathOps.some(o => o.k === 'grass' && grassOver(o, a[0], a[1]) > 0.5)) continue;      // (grass painted over its end by hand: that way is gone)
+    const len = Math.hypot(a[0] - b[0], a[1] - b[1]), dx = (a[0] - b[0]) / len, dz = (a[1] - b[1]) / len;
+    const t = Math.min(dx > 0 ? (X1 - a[0]) / dx : dx < 0 ? (X0 - a[0]) / dx : 1e9, dz > 0 ? (Z1 - a[1]) / dz : dz < 0 ? (Z0 - a[1]) / dz : 1e9);      // metres on to the edge, the way it is going
+    if (t > 45) continue;                                                // (it is not on its way out)
+    const e = [a[0] + dx * t, a[1] + dz * t];
+    if (last) pts.push(e); else pts.unshift(e);
+    waysOut.push({ x: e[0], z: e[1], dx, dz, half: w.half, run: t, y0: inflowCut(a[0], a[1], landAt(a[0], a[1])) });
+  }
+  // the land under those last metres is laid for the way: the tool's way ends against the margin's hill, so from there on it
+  // climbs gently (16%) through a cutting with soft banks of earth and grass, and goes out over a dip in the hill's crest
+  const cutting = (x, z, y) => {
+    for (const w of waysOut) {
+      const rx = x - w.x, rz = z - w.z, u = rx * w.dx + rz * w.dz + w.run, v = Math.abs(rx * w.dz - rz * w.dx);      // u: metres past the tool's end of the way
+      if (u < -5 || v > w.half + 11) continue;
+      y = Math.min(y, y + (w.y0 + 0.16 * Math.max(0, u) - y) * ss(-5, 0, u) * (1 - ss(w.half + 0.8, w.half + 11, v)));
+    }
+    return y;
+  };
   // the ways painted by hand (path-brush.js): those the map's tool has taken in (P.pathOps), then those kept in this browser,
   // in the order they were painted (path-edits.js). Each painted way is a way like the others; grass painted over a way hides it
-  const pathOps = [...(P.pathOps || []), ...loadPathOps(pathKey('hillvillage'))].filter(o => o.k === 'grass' || o.pts.length >= 2);
   const paths = createPaths({ paths: [...toolWays, ...pathOps.filter(o => o.k === 'way').map(o => ({ points: o.pts, half: o.half }))], seed, style: pathStyle });
   const wayPaint = o => o.paint || (o.paint = createPaths({ paths: [{ points: o.pts, half: o.half }], seed, style: pathStyle }).paint);
   const pathPaint = foldPathOps(pathOps.length ? createPaths({ paths: toolWays, seed, style: pathStyle }).paint : paths.paint, pathOps, wayPaint);      // (a yard: a short way as wide as the yard)
-  const px = (i, j) => base + raw[Math.min(nz - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))] / 65535 * range;
-  const heightFn = (x, z) => {                                             // bilinear between the picture's points; the ways lie a little below the grass
-    const fx = (x - X0) / cell, fz = (z - Z0) / cell, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
-    return (px(i, j) * (1 - u) + px(i + 1, j) * u) * (1 - v) + (px(i, j + 1) * (1 - u) + px(i + 1, j + 1) * u) * v + (Math.abs(x) < HX + 2 ? paths.sink(x, z) : 0);
-  };
+  const heightFn = (x, z) => cutting(x, z, inflowCut(x, z, landAt(x, z))) + (Math.abs(x) < HX + 2 ? paths.sink(x, z) : 0);      // (the ways lie a little below the grass)
   const field = G.createHeightField({ radius: FR, center: [0, CZ], cells: M.cells, heightFn });      // (a square as long as the land: wider than it, and only the land's part is drawn)
   const H = field.heightAt;
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
@@ -406,7 +472,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
   const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
-  const fade = { far, fadeA: FR * 0.93, fadeB: FR };
+  const fade = { far, fadeA: 1e5, fadeB: 2e5 };      // (the blades do not fade into the far colour toward the land's edge either: the land runs on past it, see the rim below)
   // the banks' sand: painted with the ways' own brush, so the beach and the ways read as one ground (?sand=flat: as it was)
   let sandPaint = null;
   if (new URLSearchParams(location.search).get('sand') !== 'flat') try {
@@ -433,7 +499,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
-    const mat = T._terrain.terrainMaterial(far, [HX + 1, FR], CZ, { cliffPaint, sandPaint, ground: map });
+    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     const [pa, pd] = M.pieces, own = [whole, mat];
     for (let pj = 0; pj < pd; pj++) for (let pi = 0; pi < pa; pi++) {
@@ -453,6 +519,19 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };
   }
   group.add(terrain);
+  // past the land's edge nothing ends: the land runs on into wooded hills, out to the foot of the far hills (map-rim.js). In
+  // the land's own last metres, where she never comes, crowns of that wood stand among its trees: not on a way, in the water,
+  // on a cliff or in another tree
+  await onStep('ปลูกป่ารอบแผนที่');
+  const horizonR = Math.hypot(HX, FR) + M.rim;                              // where the nearest ring of far hills stands (see horizon below)
+  const rim = createMapRim({
+    rect: [-FR + Math.max(0, Math.floor((X0 + FR) / field.step)) * field.step, CZ - FR, -FR + Math.min(field.n - 1, Math.ceil((X1 + FR) / field.step)) * field.step, CZ + FR],      // the land as it is drawn
+    heightAt: H, terrainMaterial: T._terrain.terrainMaterial, far, zc: CZ, cliffPaint, horizon: { center: [0, CZ], radius: horizonR }, ways: waysOut, seed,
+    clear: (x, z) => { const w = paths.near(x, z); return slope(x, z) < 0.6 && !brookAt(x, z) && w.d > w.half + 2.5 && !plants.some(p => Math.hypot(p.x - x, p.z - z) < 3.4); },
+  });
+  rim.userData.setSun(L);
+  group.add(rim);
+  console.info('[hill-village] the rim:', rim.userData.crowns, 'crowns,', rim.userData.triangles, 'triangles');
   let pathTex = null;
   try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
   const ways = paths.ribbon(H, map, pathTex, bankAt);      // (bankAt: the ways are wet toward the water, as the sand beside them is)
@@ -570,7 +649,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (st && drop > 0 && sim.inside(x, z)) droplets.emit(x, H(x, z) + waterDepthAt(x, z), z, 0.16 * drop * strength, strength > 1.2 ? 3 : 2);      // a footstep flicks up two or three drops
     }
   };
-  const hidden = [...water.surfaces, grass, droplets.points], stretches = water.stretches;
+  const hidden = [...water.surfaces, grass, droplets.points, rim], stretches = water.stretches;      // (not drawn into the water's own pictures: the rim is too far off to be mirrored)
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
   let frameNo = 0;
 
@@ -727,7 +806,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
     map: url(M.map),
-    horizon: { center: [0, CZ], scale: Math.hypot(HX, FR) / 170 * 1.08 },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out past this land's corners
+    horizon: { center: [0, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     tapWater(origin, dir) {
@@ -780,7 +859,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); },      // (the trees' crowns are lit by it live)
+    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir); },      // (the trees' crowns are lit by it live)
     get sunCast() { return cast; },
     follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };
