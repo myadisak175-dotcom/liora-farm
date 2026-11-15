@@ -743,6 +743,7 @@ H = ndi.gaussian_filter(H, 0.6)
 
 # ------------------------------------------------------------------ 7. the small things: a market round the fountain, and what a farm leaves lying about
 px_, pz_ = PLAZA; ty = TREE_YARD; barn = by_id['barn']; wmill = by_id['windmill']; fr = M(.835, .36)
+PROP_R = {'stall': 2.2, 'kit:Prop_Wagon': 2.2, 'cart': 2.0, 'hay': 1.3, 'table': 1.3, 'woodpile': 1.2, 'bench': 1.1, 'barrels': 1.0, 'crates': 1.0, 'signpost': 0.6, 'lamp': 0.5, 'sheep': 0.0}      # metres of ground each takes up (the plants keep off it; the game's level has the same for the ground it makes even: hill-village-level.js PADS)
 PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, yaw
     ['stall', px_ - 7.5, pz_ - 5.0, 0.9], ['stall', px_ + 2.5, pz_ - 8.0, -0.2], ['stall', px_ + 8.0, pz_ + 3.5, -1.9], ['stall', px_ - 3.0, pz_ + 8.5, 2.9],
     ['barrels', px_ - 9.4, pz_ - 2.4, 0.3], ['crates', px_ + 5.6, pz_ - 7.4, 1.0], ['crates', px_ + 10.2, pz_ + 4.6, 2.0], ['kit:Prop_Wagon', px_ + 13.0, pz_ + 8.0, 2.4], ['bench', px_ - 2.6, pz_ - 3.6, 0.6], ['bench', px_ + 3.4, pz_ + 2.6, -2.4], ['lamp', px_ - 4.4, pz_ + 3.4, 0], ['lamp', px_ + 4.6, pz_ - 3.2, 0],
@@ -767,6 +768,7 @@ for m in MOVES:                                                          # the s
     p_ = min((q for q in PROPS if q[0] == kind_), key=lambda q: math.hypot(q[1] - fx_, q[2] - fz_), default=None)
     if p_ is None or math.hypot(p_[1] - fx_, p_[2] - fz_) > 0.3: print(f"  ! the move of {m['id']} is out of date"); continue
     p_[1:] = [tx_, tz_, ty_]; print(f"  moved by hand: {m['id']} to {tx_}, {tz_}")
+    if PROP_R.get(kind_, 0) >= 1.0: level_ground(tx_, tz_, PROP_R[kind_])      # (the ground made even under it, as under a moved house: a stall is not left half sunk in a slope. A lamp, a signpost, a sheep stand on the ground as it is)
 # ------------------------------------------------------------------ 8. the places to start from (name, spot, the way she faces)
 SPAWN = M(.04, .868); FALL = tuple(LIP + RIVER_DIR * 2.0); above = M(.60, .80); rim = (RAMP_TOP[0] - 1.2, RAMP_TOP[1] - 4.0)
 VIEWS = {
@@ -964,7 +966,6 @@ REACH = {'oak': 2.4, 'broadleaf': 2.0, 'birch': 1.3, 'pine': 1.3, 'sapling': 1.1
 NEAR_WAY = {'oak': 2.4, 'broadleaf': 2.2, 'birch': 1.8, 'pine': 1.8, 'sapling': 1.6, 'bush': 1.15, 'flower': 0.7, 'clump': 0.75}      # how near a way each may stand,
 NEAR_WALL = {'oak': 5.0, 'broadleaf': 4.4, 'birch': 3.0, 'pine': 3.2, 'sapling': 2.4, 'bush': 1.35, 'flower': 1.3, 'clump': 1.1}      # a house's wall,
 NEAR_WATER = {'oak': 2.4, 'broadleaf': 2.2, 'birch': 2.0, 'pine': 2.0, 'sapling': 2.0, 'bush': 1.7, 'flower': 1.3, 'clump': 1.3}      # the water
-PROP_R = {'stall': 2.2, 'kit:Prop_Wagon': 2.2, 'cart': 2.0, 'hay': 1.3, 'table': 1.3, 'woodpile': 1.2, 'bench': 1.1, 'barrels': 1.0, 'crates': 1.0, 'signpost': 0.6, 'lamp': 0.5, 'sheep': 0.0}
 _sc_path = OUT / 'hill-village-scatter.json'
 _rocks0 = json.loads(_sc_path.read_text())['rocks'] if _sc_path.exists() else []      # the valley's rocks, where they were first thrown (see below)
 _ij = lambda x, z: (int((z - Z0) / MPP), int((x + XH) / MPP))

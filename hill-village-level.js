@@ -80,6 +80,26 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const { x0: X0, z0: Z0, cell, nx, nz, base, range, play } = P.land;     // (she walks inside play: x0, x1, z0, z1; the rest is wooded hills to look at)
   const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
   const onLand = (x, z, in_ = 0) => x > X0 + in_ && x < X1 - in_ && z > Z0 + in_ && z < Z1 - in_;
+  // The ground made even under what was moved by hand in this browser, as the map's tool makes it when the move goes into the
+  // map for everyone (level_ground there: the middle height of the ground in a circle, feathered out into the land round it).
+  // So a moved house or market stall stands on a floor of its own, and is not half sunk in a slope. (The land's heights
+  // themselves are changed, before anything is made from them: the ground, the grass, her feet all follow.)
+  const PADS = { stall: 2.2, 'kit:Prop_Wagon': 2.2, cart: 2.0, hay: 1.3, table: 1.3, woodpile: 1.2, bench: 1.1, barrels: 1.0, crates: 1.0 };      // metres round a small thing (the tool's own; a lamp, a signpost, a sheep stand on the ground as it is)
+  const levelGround = (x, z, r, feather = 0.6) => {
+    const out = r * (1 + feather), i0 = Math.max(0, Math.floor((x - out - X0) / cell)), i1 = Math.min(nx - 1, Math.ceil((x + out - X0) / cell)), j0 = Math.max(0, Math.floor((z - out - Z0) / cell)), j1 = Math.min(nz - 1, Math.ceil((z + out - Z0) / cell));
+    const far = (i, j) => Math.hypot(X0 + i * cell - x, Z0 + j * cell - z), inside = [];
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (far(i, j) < r) inside.push(raw[j * nx + i]);
+    if (!inside.length) return;
+    const level = inside.sort((a, b) => a - b)[inside.length >> 1];
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      let w = Math.min(1, Math.max(0, 1 - (far(i, j) - r) / (r * feather))); w = w * w * (3 - 2 * w);
+      if (w > 0) raw[j * nx + i] = Math.round(raw[j * nx + i] * (1 - w) + level * w);
+    }
+  };
+  for (const m of placed.used) {
+    const b = P.buildings.find(q => q.id === m.id), r = b ? (b.pad > 1.5 ? b.pad : 0) : PADS[m.id.split('@')[0]] || 0;
+    if (r) levelGround(m.to[0], m.to[1], r);
+  }
   const pathStyle = new URLSearchParams(location.search).get('paths') === 'grit' ? 'grit' : M.paths;
   const toolWays = [...P.paths.map(p => ({ points: p.points, half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))];      // (a yard: a short way as wide as the yard)
   // the ways painted by hand (path-brush.js): those the map's tool has taken in (P.pathOps), then those kept in this browser,
