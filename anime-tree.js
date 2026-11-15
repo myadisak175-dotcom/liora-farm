@@ -47,7 +47,11 @@ const GAME_STEPS = [0.32, 0.54, 0.76, 1.0], BLOOM_STEPS = [0.2, 0.38, 0.62, 0.95
 export const ANIME_PALETTES = {
   game: { tones: ['#273a1b', '#466533', '#728e3e', '#a6b822', '#dde43a'], steps: GAME_STEPS },
   pine: { tones: ['#1b2d1e', '#2e4d2f', '#4b7339', '#7b9b39', '#c3d447'], steps: GAME_STEPS },
-  birch: { tones: ['#2e431e', '#4f6f33', '#7f9b3e', '#b4c42b', '#e9ed5c'], steps: GAME_STEPS },
+  // the trees' crowns: the game's own tones, the yellow kept for the sunlit tips; lit as one crown with a little light from
+  // the sky on what faces up. oak: the same tones, deeper (less of the bright ones)
+  tree: { tones: ['#2c4520', '#466533', '#728e3e', '#a6b822', '#dde43a'], steps: [0.26, 0.48, 0.76, 1.0], weights: { light: 0.66, height: 0.2, ao: 0.42, sky: 0.2, tint: 0.12 } },
+  oak: { tones: ['#28401e', '#42602f', '#6c8839', '#9db024', '#d6de38'], steps: [0.3, 0.54, 0.84, 1.08], weights: { light: 0.66, height: 0.2, ao: 0.45, sky: 0.2, tint: 0.12 } },
+  birch: { tones: ['#3a582c', '#4f6f33', '#7f9b3e', '#b4c42b', '#e9ed5c'], steps: [0.26, 0.48, 0.76, 1.0], weights: { light: 0.66, height: 0.2, ao: 0.42, sky: 0.2, tint: 0.12 } },      // (the yellow only on the sunlit tips)
   video: { tones: ['#1c4637', '#2c6a40', '#4c9737', '#86c23c', '#c6e055'], steps: [0.3, 0.5, 0.69, 0.93] },   // the tutorial's
   // flowers on the flowering bushes: the game's flower colours (stylized-nature's FLOWER_COLORS) as the fourth tone, deep shade
   // to sunlit; the top tone only on the brightest florets
@@ -67,32 +71,102 @@ export function setAnimeSun(v) {
   SUN.value.normalize();
 }
 
-// the broadleaf: a slim trunk, a tall oval crown of puffs (the grown limbs end in the puffs)
+// Every tree's crown is made of boughs, not of balls: each limb's tip carries a canopy (a puff wider than it is tall), beside
+// it one or two smaller ones a little lower, and sprays hanging round its lower outer edge (taller than they are wide), so
+// the outline is lobed and ends in drooping points, with hollows between the boughs. A spec's boughs says how:
+//   canopy: [a, b] the tip puff's height / width;  side: { n: [a, b], size, out, drop } the puffs beside it (size, how far out
+//   and how far down, in tip radii);  sprays: { n: [a, b], r, f, drop, out } the hanging sprays (radius in tip radii, height /
+//   width, how far below the tip and how far out round its edge)
+
+// the broadleaf: the meadow's shade tree. A trunk forking into rising limbs, a tall crown of full boughs with a lobed outline
 const BROADLEAF = {
-  height: 10.6,
+  height: 10.4,
   trunk: {
     pts: [[0, -0.05, 0], [0.04, 1.2, 0], [0.12, 2.4, 0.04], [0.1, 3.5, 0], [0.03, 4.7, 0.03], [0, 6.0, 0], [0.06, 7.3, 0], [0.1, 8.6, 0]],
     radius: t => 0.24 * Math.pow(1 - t, 1.1) + 0.03 + 0.16 * Math.exp(-t * 24), lean: 0.22, sway: 0.25, roots: 4,
   },
   grow: {
-    crown: { c: [0.1, 6.0, 0], r: [2.6, 4.1, 2.5], taper: 0.22, taperLow: 0.25, egg: 0.0 },
-    limbs: { n: [7, 8], t: [0.3, 0.72], elev: [-0.6, 0.75], reach: [0.58, 0.88], r: 0.085 },
-    subs: { n: [2, 3], t: [0.35, 0.85], elev: [-0.25, 0.45], reach: [0.78, 1.0], r: 0.7, hidden: true },
-    floor: -0.6, tuck: 0.45,
-    clump: { r: 1.15, flat: 0.86, vary: [0.9, 1.25], varySub: [0.62, 0.95], push: 0.15, lift: 0.1 },
-    top: 1.3, fill: [4, 0.4, 0.9],
+    crown: { c: [0.1, 6.2, 0], r: [2.9, 3.6, 2.8], taper: 0.3, taperLow: 0.2, egg: 0.05 },
+    limbs: { n: [10, 12], t: [0.3, 0.82], elev: [-0.55, 0.8], reach: [0.62, 0.97], r: 0.08 },
+    floor: -0.55, tuck: 0.5,
+    clump: { r: 0.86, flat: 0.75, vary: [0.72, 1.3], push: 0.12, lift: 0.08 },
+    top: 1.05, fill: [5, 0.45, 0.9],
   },
-  // the game broadleaf's painted bark
-  bark: ['#a67c58', '#7c5a42', '#553d33'], barkHi: '#e6c79c', barkLit: 0.2, barkShade: 0.42, barkStroke: 0.85, barkContrast: 2.9, barkFoot: 0.7,
-  shadeY: 3.8,
+  boughs: { canopy: [0.62, 0.8], side: { n: [1, 2], size: [0.6, 0.86], out: [0.8, 1.15], drop: [0.15, 0.5] },
+    sprays: { n: [2, 3], r: [0.34, 0.48], f: [1.15, 1.6], drop: [0.55, 0.95], out: [0.5, 0.9] } },
+  // warm brown bark in long furrowed plates
+  bark: ['#b48d68', '#8a684d', '#5b4237'], barkHi: '#ecd3aa', furrow: 0.75, furrowN: 3.4, furrowW: 0.03, markCol: '#44312b',
+  barkShade: 0.3, barkStroke: 0.9, barkFoot: 0.7, shadeY: 3.9,
+};
+// the oak: a short massive trunk forking low into heavy limbs that reach far out, nearly level: a crown much wider than it
+// is tall, in broad full layers, deeper green than the broadleaf
+const OAK = {
+  height: 8.8,
+  trunk: {
+    pts: [[0, -0.05, 0], [0.03, 0.8, 0], [0.08, 1.6, 0.03], [0.05, 2.5, 0], [0.1, 3.5, 0.03], [0.1, 4.6, 0], [0.14, 5.8, 0], [0.1, 7.0, 0]],
+    radius: t => 0.4 * Math.pow(1 - t, 1.1) + 0.03 + 0.3 * Math.exp(-t * 20), lean: 0.12, sway: 0.2, roots: 6,
+  },
+  grow: {
+    crown: { c: [0, 5.5, 0], r: [4.5, 3.2, 4.3], taper: 0.55, taperLow: 0.12 },      // a low wide dome: broadest low down, drawn in toward its top
+    limbs: { n: [8, 9], t: [0.3, 0.72], elev: [-0.5, 0.6], reach: [0.55, 0.98], r: 0.14, bend: [0.45, 0.15, 0.8, 0.5] },
+    floor: -0.46, tuck: 0.6,
+    clump: { r: 1.08, flat: 0.7, vary: [0.62, 1.45], push: 0.12, lift: 0.08 },
+    top: 1.3, fill: [5, 0.5, 1.0],
+  },
+  boughs: { canopy: [0.6, 0.82], side: { n: [1, 2], size: [0.6, 0.9], out: [0.85, 1.2], drop: [0.1, 0.5] },
+    sprays: { n: [2, 3], r: [0.3, 0.44], f: [1.2, 1.8], drop: [0.55, 1.05], out: [0.55, 0.95] } },
+  // old grey-brown bark, its plates broad and its furrows deep; moss on the roots and on the tops of the great limbs
+  bark: ['#a48a74', '#786352', '#4e403a'], barkHi: '#e0cba8', furrow: 0.9, furrowN: 2.7, furrowW: 0.032, markCol: '#30272a',
+  barkShade: 0.32, barkStroke: 0.7, barkFoot: 0.7, moss: 0.5, shadeY: 3.4,
+};
+// the sapling: a young tree. A thin smooth stem, a few short limbs rising steeply, a small loose crown that narrows upward,
+// the stem showing through it
+const SAPLING = {
+  height: 4.9,
+  trunk: {
+    pts: [[0, -0.05, 0], [0.02, 0.9, 0], [0.06, 1.8, 0], [0.05, 2.7, 0], [0.09, 3.6, 0], [0.07, 4.45, 0]],
+    radius: t => 0.07 * Math.pow(1 - t, 1.1) + 0.014 + 0.045 * Math.exp(-t * 30), lean: 0.26, sway: 0.18, roots: 3,
+  },
+  grow: {
+    crown: { c: [0.05, 3.2, 0], r: [0.92, 1.6, 0.88], taper: 0.4, taperLow: 0.2, egg: 0.1 },
+    limbs: { n: [6, 7], t: [0.4, 0.93], lift: [0.1, 0.4], reach: [0.62, 1.0], r: 0.026, bend: [0.36, 0.34, 0.74, 0.74] },
+    floor: -0.55, tuck: 0.5,
+    clump: { r: 0.34, flat: 0.85, vary: [0.7, 1.3], push: 0.1, lift: 0.05 },
+    top: 0.9,
+  },
+  boughs: { canopy: [0.72, 0.9], side: { n: [0, 1], p: 0.6, size: [0.6, 0.82], out: [0.8, 1.1], drop: [0.15, 0.5] },
+    sprays: { n: [1, 2], r: [0.34, 0.46], f: [1.5, 2.1], drop: [0.7, 1.15], out: [0.4, 0.8] } },
+  // young bark: smooth, olive grey, fine lenticels across it (the birch's way of painting, in its own colours)
+  bark: ['#b3ad88', '#878264', '#5f5b49'], birch: true, markCol: '#4a4236', twig: '#6b5c48', barkShade: 0.2, barkFoot: 0.6, shadeY: 2.3,
+};
+// the birch: a slender white stem, slim limbs rising steeply from it, and a tall airy crown of small boughs with long hanging
+// sprays, sky and white wood showing between them
+const BIRCH = {
+  height: 10,
+  trunk: {
+    pts: [[0, -0.05, 0], [0.05, 1.5, 0], [-0.06, 3, 0.05], [0.05, 4.5, 0], [0.13, 6, 0], [0.1, 7.6, 0], [0.14, 9.3, 0]],
+    radius: t => 0.13 * Math.pow(1 - t, 1.05) + 0.016 + 0.06 * Math.exp(-t * 35), lean: 0.24, sway: 0.16, roots: 3,
+  },
+  grow: {
+    crown: { c: [0.1, 6.3, 0], r: [1.9, 3.7, 1.8], taper: 0.4, taperLow: 0.25, egg: 0.1 },
+    limbs: { n: [12, 14], t: [0.3, 0.94], lift: [0.1, 0.36], reach: [0.62, 1.0], r: 0.03, bend: [0.36, 0.34, 0.74, 0.74] },
+    floor: -0.7, tuck: 0.55,
+    clump: { r: 0.58, flat: 0.8, vary: [0.7, 1.35], push: 0.1, lift: 0.05 },
+    top: 0.85,
+  },
+  boughs: { canopy: [0.7, 0.85], side: { n: [0, 1], p: 0.85, size: [0.6, 0.85], out: [0.8, 1.1], drop: [0.2, 0.55] },
+    sprays: { n: [2, 3], p: 0.4, r: [0.3, 0.44], f: [1.9, 2.7], drop: [0.75, 1.3], out: [0.45, 0.85] } },
+  // white bark painted as one form (stylized-nature's bark shader, spec.birch): white to the sun, a cool shade away from it
+  bark: ['#f5f2e8', '#cfd3d6', '#a3a9b6'], birch: true, markCol: '#3a332e', twig: '#6e5c50', barkShade: 0.22, barkFoot: 0.55, shadeY: 4.6,
 };
 // leaf: card size (m), from how low the crown hangs; fall: falling leaves; mask: leaf clusters or needle tufts;
-// upright: cards keep (about) upright, so needle tufts hang down
+// upright: cards keep (about) upright, so needle tufts hang down; unity: 0..1 how much the crown is lit as one mass
+// (each leaf's light comes from a ball drawn toward the crown's middle) and not puff by puff; rough: puffs' outlines broken
 const KINDS = {
-  broadleaf: { spec: () => BROADLEAF, leaf: 0.8, fall: 36, palette: 'game' },
-  oak: { spec: () => treeSpec('oak'), leaf: 0.7, fall: 40, palette: 'game' },      // the game oak's shape and bark; its crown hangs low
-  sapling: { spec: () => treeSpec('sapling'), leaf: 0.52, fall: 10, palette: 'game' },
-  birch: { spec: () => treeSpec('birch'), leaf: 0.6, fall: 20, palette: 'birch' },  // the game birch's white trunk, small puffs
+  broadleaf: { spec: () => BROADLEAF, leaf: 0.8, fall: 36, palette: 'tree', unity: 0.45, rough: 0.22 },
+  oak: { spec: () => OAK, leaf: 0.7, fall: 40, palette: 'oak', unity: 0.45, rough: 0.22 },      // its crown hangs low: smaller leaves
+  sapling: { spec: () => SAPLING, leaf: 0.52, fall: 10, palette: 'tree', unity: 0.4, rough: 0.22 },
+  birch: { spec: () => BIRCH, leaf: 0.56, fall: 20, palette: 'birch', unity: 0.4, rough: 0.24 },
   // skirts, low down: each a wide flat puff (sunlit top, shaded underside), so the layers read one by one. The skirts
   // shade each other a lot, so their AO is gentler, and the light climbs more strongly up the spire
   pine: { spec: () => treeSpec('pine'), leaf: 0.7, fall: 0, palette: 'pine', mask: 'needle', upright: 0.7, thick: 1.1, wide: 1.15, ao: 0.5, hRange: [0.15, 1.15] },
@@ -274,7 +348,7 @@ ${NATURE_HAZEF}
 uniform sampler2D uMask;
 uniform vec3 uC0, uC1, uC2, uC3, uC4;
 uniform vec4 uStep;       // where each flat tone starts
-uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint;
+uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint, uSkyW;
 #ifdef BLOSSOM
 uniform sampler2D uCentre;
 uniform vec3 uCentreCol;
@@ -303,7 +377,7 @@ void main() {
   n = normalize(mix(n, normalize(vCN.xyz), uCrownMix));
   float lam = dot(n, vSun) * 0.5 + 0.5;
   float leaf = fract(dot(lc, vec2(17.31, 31.73)) + vShade.w * 7.0) - 0.5;
-  float v = lam * uLightW + vShade.x * uHeightW - vShade.y * uAOW + vShade.z + leaf * uLeafTint;
+  float v = lam * uLightW + vShade.x * uHeightW - vShade.y * uAOW + vShade.z + leaf * uLeafTint + max(n.y, 0.0) * uSkyW;   // (uSkyW: light from the sky on what faces up, in the shade too)
   vec3 col = uC0;                                                   // Color Ramp, constant
   col = mix(col, uC1, step(uStep.x, v));
   col = mix(col, uC2, step(uStep.y, v));
@@ -373,13 +447,13 @@ const mats = {};
 function materials(palette, mask = 'leaf') {
   const pk = ANIME_PALETTES[palette] ? palette : 'game', key = pk + '/' + mask;
   if (mats[key]) return mats[key];
-  const pal = ANIME_PALETTES[pk].tones.map(rgb), st = ANIME_PALETTES[pk].steps;
+  const pal = ANIME_PALETTES[pk].tones.map(rgb), st = ANIME_PALETTES[pk].steps, W = ANIME_PALETTES[pk].weights || {};      // weights: how much the sun, the height in the plant and the shade among the puffs move a leaf's tone
   const U = { ...natureUniforms, uSun: SUN, uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] } };
   const leaf = new THREE.ShaderMaterial({
     uniforms: {
       ...U, uMask: { value: clusterMask(mask) },
       uStep: { value: new THREE.Vector4(...st) },
-      uCrownMix: { value: 0.3 }, uLightW: { value: 0.85 }, uHeightW: { value: 0.28 }, uAOW: { value: 0.5 }, uLeafTint: { value: 0.08 },
+      uCrownMix: { value: 0.3 }, uLightW: { value: W.light ?? 0.85 }, uHeightW: { value: W.height ?? 0.28 }, uAOW: { value: W.ao ?? 0.5 }, uLeafTint: { value: W.tint ?? 0.08 }, uSkyW: { value: W.sky ?? 0 },
     },
     vertexShader: LEAF_VS, fragmentShader: LEAF_FS, alphaToCoverage: true, side: THREE.DoubleSide,
   });
@@ -525,6 +599,29 @@ function crownOf(spec, puffs) {
   return { c: lo.clone().add(hi).multiplyScalar(0.5), r: hi.clone().sub(lo).multiplyScalar(0.5), hollow: false };   // a spire: no hollow middle
 }
 
+// each limb's tip puff grown into a bough, as the spec's boughs says (see above the specs). Nothing is added toward the stem:
+// the wood shows between the boughs.
+function boughsOf(rng, tips, crown, B) {
+  const out = [], pick = (n, p) => n[0] + (n[1] > n[0] && rng() < (p ?? 0.5) ? n[1] - n[0] : 0);
+  for (const P of tips) {
+    P.f = range(rng, ...B.canopy);                                  // the tip's own puff: a canopy over its sprays
+    out.push(P);
+    const dx = P.c.x - crown.c.x, dz = P.c.z - crown.c.z, d = Math.hypot(dx, dz) || 1, ux = dx / d, uz = dz / d;
+    let side = rng() < 0.5 ? 1 : -1;
+    for (let j = 0, n = pick(B.side.n, B.side.p); j < n; j++, side = -side) {      // beside it, along the crown, a little lower and nearer the stem
+      const o = P.r * range(rng, ...B.side.out);
+      out.push({ c: new THREE.Vector3(P.c.x - uz * side * o - ux * P.r * 0.2, P.c.y - P.r * range(rng, ...B.side.drop), P.c.z + ux * side * o - uz * P.r * 0.2),
+        r: P.r * range(rng, ...B.side.size), f: range(rng, B.canopy[0], B.canopy[1] + 0.1) });
+    }
+    for (let j = 0, n = pick(B.sprays.n, B.sprays.p); j < n; j++) {               // sprays hang round its outer, lower edge
+      const a = Math.atan2(uz, ux) + (rng() - 0.5) * 3.6, o = P.r * range(rng, ...B.sprays.out);
+      out.push({ c: new THREE.Vector3(P.c.x + Math.cos(a) * o, P.c.y - P.r * range(rng, ...B.sprays.drop), P.c.z + Math.sin(a) * o),
+        r: P.r * range(rng, ...B.sprays.r), f: range(rng, ...B.sprays.f) });
+    }
+  }
+  return out;
+}
+
 // one tree's wood and leaf cards (far: fewer, bigger cards)
 function treeParts(type, seed, far = false) {
   const kind = KINDS[type] || KINDS.broadleaf, spec = kind.spec();
@@ -534,8 +631,14 @@ function treeParts(type, seed, far = false) {
   const puffs = tiers.map(T => ({ c: new THREE.Vector3(...T.c), r: T.r[0] * (kind.wide || 1), f: T.r[1] / T.r[0] * (kind.thick || 1) / (kind.wide || 1),
     taper: T.taper || 0, egg: T.egg || 0 }));
   const leaf = kind.leaf * (far ? FAR_LEAF : 1);
-  const cards = buildPuffs(rng, puffs, crownOf(spec, puffs), { leaf, density: densityFor(leaf), upright: kind.upright || 0,
-    aoMul: kind.ao ?? 1, hRange: kind.hRange || [0, 1] });
+  const crown = crownOf(spec, puffs);
+  if (spec.boughs) puffs.splice(0, puffs.length, ...boughsOf(rng, puffs, crown, spec.boughs));
+  const cards = buildPuffs(rng, puffs, crown, { leaf, density: densityFor(leaf), upright: kind.upright || 0,
+    aoMul: kind.ao ?? 1, hRange: kind.hRange || [0, 1], rough: kind.rough || 0 });
+  if (kind.unity) {                                                  // lit as one crown more than puff by puff
+    const m = new THREE.Vector3(crown.c.x, crown.c.y - crown.r.y * 0.25, crown.c.z), u = kind.unity, PF = cards.PF;
+    for (let i = 0; i < PF.length; i += 4) { PF[i] += (m.x - PF[i]) * u; PF[i + 1] += (m.y - PF[i + 1]) * u; PF[i + 2] += (m.z - PF[i + 2]) * u; }
+  }
   return { kind, spec, trunk, cards, leaf, rng };
 }
 // a bush: puffs of small leaves, leaves all through (it is seen from above), smallest leaves of all. Small puffs, so the

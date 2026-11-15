@@ -591,6 +591,11 @@ function barkMaterial(spec) {
       uA: { value: rgb(b[0]) }, uB: { value: rgb(b[1]) }, uC: { value: rgb(b[2]) }, uH: { value: hi },
       uMarkCol: { value: rgb(spec.markCol || '#2e2a26') },
       uMarks: { value: spec.marks ? 1 : 0 },
+      // spec.birch: a birch's bark, painted as one form (see the fragment shader); twig: what its thin wood turns to
+      uBirch: { value: spec.birch ? 1 : 0 }, uTwig: { value: rgb(spec.twig || '#6b5a50') },
+      // spec.furrow (0..1): furrowed bark, painted as one form with long plates over it (see the fragment shader); furrowN:
+      // how many furrows round the wood (more = narrower plates), furrowW: how wide a furrow is drawn; markCol: their colour
+      uFurrow: { value: spec.furrow ?? 0 }, uFurrowN: { value: spec.furrowN ?? 3.2 }, uFurrowW: { value: spec.furrowW ?? 0.035 },
       uShadeY: { value: spec.shadeY ?? 99 },
       uRings: { value: spec.rings || 0 }, uRingCol: { value: rgb(spec.ringCol || '#4a5a28') },    // bamboo nodes (0 = none)
       uMoss: { value: spec.moss || 0 }, uMossA: { value: rgb('#a9bd3c') }, uMossB: { value: rgb('#6c8a35') },  // old wood (0 = none)
@@ -635,8 +640,8 @@ function barkMaterial(spec) {
       ${NOISE}
       ${HAZEF}
       uniform vec3 uLight, uA, uB, uC, uH, uMarkCol, uRingCol, uMossA, uMossB;
-      uniform float uShadeY, uMarks, uDebug, uRings, uMoss, uLitK, uShadeK, uStroke, uFoot, uContrast;
-      uniform vec3 uFootCol;
+      uniform float uShadeY, uMarks, uDebug, uRings, uMoss, uLitK, uShadeK, uStroke, uFoot, uContrast, uBirch, uFurrow, uFurrowN, uFurrowW;
+      uniform vec3 uFootCol, uTwig;
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
@@ -660,6 +665,13 @@ function barkMaterial(spec) {
         float fine = noise3(across * 24.0 + c * 2.5 + 3.1);
         return vec2(big * 0.46 + mid * 0.38 + fine * 0.16, noise3(across * 17.0 + c * 2.8 + 9.0));
       }
+      // furrowed bark's field: read by the direction out from the wood's centre-line only (not how far out), drifting slowly
+      // along the wood. So its level lines are furrows that run lengthways, waver, now and then fork or end, never close into
+      // rings; thick wood and thin carry as many, and they run on down the roots
+      float furrows(vec3 across, vec3 c) {
+        vec3 d = across / max(length(across), 1e-4);
+        return noise3(d * uFurrowN + c * 0.55 + 9.0) * 0.66 + noise3(d * uFurrowN * 2.3 + c * 1.5 + 4.0) * 0.34;
+      }
       void main() {
         // hand-painted bark: long brush strokes laid along the wood. A 3D field is read from the ring around the wood's own
         // centre-line (fine across) plus the centre-line position itself (slow along), so strokes run lengthways, follow every
@@ -677,6 +689,59 @@ function barkMaterial(spec) {
         col = mix(col, uA, smoothstep(0.58, 0.64, t));
         col = mix(col, uH, smoothstep(0.72, 0.77, t) * smoothstep(0.0, 0.5, lit) * 0.85);   // dry-brush light on the sunny side
         float crack = smoothstep(0.78, 0.86, st.y);
+        if (uBirch > 0.5) {
+          // a birch: white bark painted as one form. The side to the sun is white and the side away from it a cool shade,
+          // the edge between them ragged with the long strokes (no blotches of grey over the white); the thin wood away
+          // in the crown turns dark; fine dark lenticels lie across the trunk, each a thin lens of its own length; here
+          // and there an old branch's scar (a dark eye under a brow); and the foot is dark, cracked old bark
+          float tb = lit * 0.5 + 0.5 + (st.x - 0.5) * 0.42;
+          tb -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * uShadeK;
+          col = mix(uC, uB, smoothstep(0.3, 0.35, tb));
+          col = mix(col, uA, smoothstep(0.5, 0.55, tb));
+          float away = length(vOP.xz - vAx.xz);                           // metres out from the trunk's own line: the limbs
+          float onTrunk = 1.0 - smoothstep(0.2, 0.45, away);
+          float y = vOP.y, ang = atan(vON.z, vON.x);
+          float rowH = 0.085, row = floor(y / rowH), ro = hash2(vec2(row, 3.0));
+          float aa = ang * 1.11408 + ro * 7.0;                           // seven arcs round the trunk, each row turned its own way
+          vec2 cell = vec2(row, mod(floor(aa), 7.0));
+          float h1 = hash2(cell), h2 = hash2(cell + vec2(0.25, 0.5)), h3 = hash2(cell + vec2(0.5, 0.25));
+          float u = (fract(aa) - 0.5) / (0.14 + 0.3 * h3);               // -1 .. 1 along the dash
+          float thick = (0.05 + 0.09 * h1) * max(0.0, 1.0 - u * u);      // a lens: thickest in its middle (in rows)
+          float dash = step(0.52, h1) * smoothstep(thick, thick * 0.5, abs(fract(y / rowH) - 0.3 - 0.4 * h2)) * step(0.0001, thick);
+          col = mix(col, uMarkCol, dash * 0.8 * onTrunk);
+          float kH = 0.62, kr = floor(y / kH), ka = ang * 0.47746 + hash2(vec2(kr, 9.0)) * 3.0;      // scars: three arcs to a row
+          vec2 kc = vec2(kr, mod(floor(ka), 3.0));
+          if (hash2(kc + vec2(0.5, 0.5)) > 0.45 && y > 1.0) {
+            float ku = (fract(ka) - 0.32 - 0.36 * hash2(kc + vec2(0.125, 0.25))) * 0.23;   // metres across the bark
+            float kv = (fract(y / kH) - 0.3 - 0.4 * hash2(kc + vec2(0.25, 0.125))) * kH;   // and up it
+            float au = abs(ku);
+            float eye = 1.0 - smoothstep(0.75, 1.0, length(vec2(ku / 0.03, kv / 0.014)));
+            float brow = (1.0 - smoothstep(0.5, 1.0, abs(kv - (0.034 - au * 0.8)) / max(0.0085 * (1.0 - au / 0.08), 0.0001))) * step(au, 0.08);
+            col = mix(col, uMarkCol, max(eye, brow) * onTrunk);
+          }
+          float foot = 1.0 - smoothstep(0.1, 0.85, y + (noise3(vec3(vON.x * 2.6, y * 1.4, vON.z * 2.6)) - 0.5) * 0.9);
+          col = mix(col, mix(uMarkCol * 1.5, uMarkCol * 0.95, smoothstep(0.35, 0.65, st.y)), foot * 0.92 * onTrunk);
+          col = mix(col, mix(uTwig * 0.72, uTwig, smoothstep(0.0, 0.4, lit)), smoothstep(0.3, 1.2, away));
+          crack = 0.0;
+        } else if (uFurrow > 0.0) {
+          // furrowed bark: painted as one form first (light to the sun, dark away from it, the edge between ragged with the
+          // long strokes: a round trunk, not patches), then the bark's own pattern over it: long plates running with the
+          // wood (each a touch lighter or darker than the next), a dark furrow between them, and a thin edge of light where
+          // a plate's side catches the sun. Too far off to tell the furrows apart, they fade and leave the form alone.
+          float fv = furrows((vOP - vCtr) * uStroke, vCtr * uStroke);
+          if (vJoin > 0.001) { vec3 ct = vec3(vAx.x, vOP.y, vAx.z); fv = mix(fv, furrows((vOP - ct) * uStroke, ct * uStroke), vJoin); }
+          float near = 1.0 - smoothstep(uFurrowW * 0.9, uFurrowW * 2.4, fwidth(fv));
+          float tb = lit * 0.5 + 0.5 + (st.x - 0.5) * 0.5 + (step(0.5, fv) - 0.5) * 0.1 * near;      // (the plates either side of a furrow: one a touch lighter)
+          tb -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * uShadeK;
+          col = mix(uC, uB, smoothstep(0.3, 0.36, tb));
+          col = mix(col, uA, smoothstep(0.54, 0.6, tb));
+          float e = abs(fv - 0.5);
+          float line = 1.0 - smoothstep(uFurrowW * 0.5, uFurrowW, e);
+          float rim = smoothstep(uFurrowW, uFurrowW * 1.6, fv - 0.5) * (1.0 - smoothstep(uFurrowW * 2.0, uFurrowW * 3.6, fv - 0.5));
+          col = mix(col, uH, rim * smoothstep(0.5, 0.62, tb) * 0.5 * near);
+          col = mix(col, uMarkCol, line * uFurrow * near);
+          crack = 0.0;
+        }
         col = mix(col, uC * 0.75, crack * 0.4);                                                  // thin dark strokes in the grooves
         col = mix(col, uC * 0.85, clamp(vCrev, 0.0, 1.0) * 0.4);                                 // hollows and crotches sit in soft shade (smooth, never blotchy)
         if (uFoot > 0.0) {                                            // the foot stands in the grass: its colour creeps up the roots, ragged
