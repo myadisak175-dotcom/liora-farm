@@ -41,7 +41,7 @@ export function cameraTrunkFraction(from, to, trunks, padding = 0.3) {
   return fraction;
 }
 
-export function createPlayer({ character, level, camera, dom, ui = null, onTap = null }) {
+export function createPlayer({ character, level, camera, dom, ui = null, onTap = null, onStep = null }) {
   const pos = new THREE.Vector3(level.spawn.x, 0, level.spawn.z);
   const standAt = level.standAt || level.heightAt;   // where her feet are: the land, or (on maps that know them) the tops of rocks she can stand on
   pos.y = standAt(pos.x, pos.z);
@@ -213,9 +213,10 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
         character.water.level.value = depthHere > 0.02 ? level.heightAt(pos.x, pos.z) + depthHere : -1e5;
         character.water.wet.value.set(pos.y + wetH, wetAmt);
       }
-      // ---- footsteps in water: each foot swings between a low and a high point of its own; the moment it comes back down to the
+      // ---- footsteps: each foot swings between a low and a high point of its own; the moment it comes back down to the
       // low point is the step. The range is learnt as she moves, so walk and run (and any other clip) need no numbers of their own.
-      if (feet.length && level.ripple) {
+      // In water the step makes a ring; on land it is heard (onStep: footsteps.js).
+      if (feet.length && (level.ripple || onStep)) {
         root.updateMatrixWorld(true);
         for (const f of feet) {
           f.bone.getWorldPosition(footPos);
@@ -229,11 +230,12 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           if (y > f.lo + range * 0.55) f.up = true;
           else if (f.up && y < f.lo + range * 0.28) {
             f.up = false;
-            const d = level.waterDepthAt(footPos.x, footPos.z);
-            if (d > 0.04 && f.since > 0.18) {
+            const d = level.waterDepthAt ? level.waterDepthAt(footPos.x, footPos.z) : 0;
+            const pace = Math.min(1, Math.max(0, (speed - WALK) / (RUN - WALK)));
+            if (d <= 0.04) { if (onStep) onStep(pace, footPos); }
+            else if (level.ripple && f.since > 0.18) {
               f.since = 0;
               // harder the faster she goes and the deeper the water; a run kicks up a wider ring than a walk
-              const pace = Math.min(1, Math.max(0, (speed - WALK) / (RUN - WALK)));
               level.ripple(footPos.x, footPos.z, (0.75 + 0.35 * Math.min(1, d / 0.4)) * (1 + 0.45 * pace), 0.3 + 0.08 * pace, 'step');
             }
           }
