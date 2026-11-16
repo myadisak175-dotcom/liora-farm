@@ -331,6 +331,8 @@ The hill village's pines are firs of drooping fronds, after a painted storybook 
 
 `FROND_LOOK` at the top of the file holds the look's numbers (how bright, how deep the shade under a skirt, how much the strokes differ).
 
+**Pines and ferns laid as a brush lays them** (`frond-pine.js`, `ground-cover.js`: `BRUSH`; `?pinebrush=0`: as they were). As the leaves above: the light steps through the tones in long patches that lean the same way over the whole tree, so a stroke of light or of shade runs over several fronds, and each stroke's own little shade is mostly left out (the thin dark and light accents stay). The fronds keep their shape and their slim strokes; their edges are a little softer. The ferns' leaflets are brush dabs, as wide as before but fuller and broken at the edge by bristles, their tones laid in the same long patches, a third the size of a tree's. The tall tufts of grass and their plumes are as they were. Nothing more is drawn.
+
 ### The rocks of the hill village
 
 The loose rocks are the rock kit's (`rocks.js`, `createRockKit`): the big chiselled boulder, the middling stone (alone by the water, three together on the land) and the small pebbles, where the plan has its boulders, stones and pebbles. They are painted with the cliffs' own brush-painted stone (`propRockMaterial({ paint })`: the cliff paint laid on from the three sides a face looks to, in the kit's own few steps of light), so they read as fallen from the cliffs; a little moss on what faces up on the land, none on those standing in the water. `?cliff=strata`: the kit's own pale stone.

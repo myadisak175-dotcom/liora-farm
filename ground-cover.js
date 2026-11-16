@@ -14,10 +14,11 @@
    createGroundCover([{ kind: 'fern' | 'tuft', x, y, z, seed, scale }, ...]) -> Mesh
      mesh.userData.thin(k)   draw only the share k (0..1) of its ribbons: for those far off
    setGroundCoverSun(vec3)   world direction toward the sun: the light on them follows it live
+   setGroundCoverBrush(on)   the ferns as a brush lays them (on, as it starts; off: as they were): see BRUSH
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    ========================================================================== */
 import * as THREE from 'three';
-import { mulberry32, uniforms as natureUniforms, NATURE_VCOMMON, NATURE_HAZEF } from './stylized-nature.js';
+import { mulberry32, uniforms as natureUniforms, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
@@ -28,6 +29,19 @@ export function setGroundCoverSun(v) {
   if (SUN.value.y < 0.12) SUN.value.y = 0.12;                       // (at night they keep a low light)
   SUN.value.normalize();
 }
+
+// BRUSH: the ferns as a brush lays them, as the anime trees' leaves (anime-tree.js, BRUSH) and the grass's painterly look.
+// Nothing is added to draw: the same ribbons, the same fronds. Two things change, on the ferns only (the tufts and their
+// plumes stay as they are):
+//   - the leaflets are brush dabs: round where the brush came down, drawn out to the tip, their edges broken by bristles
+//   - the tones run in strokes: where the light steps from one tone to the next is moved by long patches that lean the
+//     same way over the plant, so a stroke of light or of shade runs over several leaflets at once
+const BRUSH = { value: 1 };
+export function setGroundCoverBrush(on = true) {
+  BRUSH.value = on ? 1 : 0;
+  if (material) material.uniforms.uMask.value = coverAtlas(on);
+}
+export const groundCoverBrush = () => BRUSH.value > 0.5;
 
 // four tones each, shade to light
 const TONES = {
@@ -44,25 +58,43 @@ const WIDE = 0.3;                 // a ribbon is this wide for its length (the p
 //   2     a blade of grass: folded along its middle, one half in the light
 //   3     a plume: a bare stalk with a feathery head
 // --------------------------------------------------------------------------
-let atlas = null;
-function coverAtlas() {
-  if (atlas) return atlas;
+const atlas = {};
+function coverAtlas(brush = false) {
+  const key = brush ? 'brush' : 'plain';
+  if (atlas[key]) return atlas[key];
   const W = 128, H = 512, cv = document.createElement('canvas');
   cv.width = W * 4; cv.height = H;
   const g = cv.getContext('2d');
   g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, H);
-  const rng = mulberry32(2203);
+  const rng = mulberry32(2203), bristles = mulberry32(5309);          // (the bristles their own: the rest is drawn as before)
   const paint = t => `rgb(255,${Math.round(Math.min(1, Math.max(0, t)) * 255)},0)`;
   const cell = (k, draw) => { g.save(); g.beginPath(); g.rect(k * W + 1, 0, W - 2, H); g.clip(); draw(k * W + W / 2); g.restore(); };
-  // a leaflet from (x, y) out at ang: a lance, a tone darker at its foot
+  // a leaflet from (x, y) out at ang: a lance, a tone darker at its foot. BRUSH: a dab instead, round where the brush came
+  // down a little out from the rib and drawn out to a soft point, its edge broken by tufts of bristles
   const leaflet = (x, y, ang, len, wid, t) => {
     const c = Math.cos(ang), s = Math.sin(ang);
     const gr = g.createLinearGradient(x, y, x + c * len, y + s * len);
-    gr.addColorStop(0, paint(t * 0.6)); gr.addColorStop(1, paint(t));
+    gr.addColorStop(0, paint(t * (brush ? 0.72 : 0.6))); gr.addColorStop(1, paint(t));      // (a dab is fuller at its foot: a little lighter there)
     g.fillStyle = gr;
     g.beginPath(); g.moveTo(x, y);
-    g.quadraticCurveTo(x + c * len * 0.4 - s * wid, y + s * len * 0.4 + c * wid, x + c * len, y + s * len);
-    g.quadraticCurveTo(x + c * len * 0.4 + s * wid, y + s * len * 0.4 - c * wid, x, y);
+    if (!brush) {
+      g.quadraticCurveTo(x + c * len * 0.4 - s * wid, y + s * len * 0.4 + c * wid, x + c * len, y + s * len);
+      g.quadraticCurveTo(x + c * len * 0.4 + s * wid, y + s * len * 0.4 - c * wid, x, y);
+    } else {
+      g.save(); g.translate(x, y); g.rotate(ang);
+      const r = wid * 0.6;                                             // (as wide as the lance at its widest, but full sooner)
+      g.moveTo(0, 0);
+      g.bezierCurveTo(len * 0.12, -r, len * 0.42, -r * 1.05, len * 0.62, -r * 0.7);
+      g.quadraticCurveTo(len * 0.88, -r * 0.3, len, 0);
+      g.quadraticCurveTo(len * 0.88, r * 0.3, len * 0.62, r * 0.7);
+      g.bezierCurveTo(len * 0.42, r * 1.05, len * 0.12, r, 0, 0);
+      for (let k = 0; k < 6; k++) {
+        const along = 0.18 + bristles() * 0.6, side = bristles() < 0.5 ? -1 : 1;
+        const u = len * along, v = side * r * (0.75 - Math.abs(along - 0.4) * 0.6), rx = len * (0.07 + bristles() * 0.06), ry = r * (0.22 + bristles() * 0.16);
+        g.moveTo(u + rx, v); g.ellipse(u, v, rx, ry, side * 0.35, 0, Math.PI * 2);
+      }
+      g.restore();
+    }
     g.fill();
   };
   const frond = (cx, longest, lean) => {
@@ -98,7 +130,7 @@ function coverAtlas() {
   });
   const t = new THREE.CanvasTexture(cv);
   t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4;
-  return (atlas = t);
+  return (atlas[key] = t);
 }
 
 // --------------------------------------------------------------------------
@@ -115,6 +147,7 @@ attribute vec4 iLook;     // x: width (negative: the picture mirrored), y: atlas
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vK;          // x: kind, y: how far along (0 foot .. 1 tip), z: tint
+varying vec3 vP;          // where it is (world), still: the brush strokes stay on the plant as it sways
 void main() {
   float t = position.y + 0.5, u = position.x;
   float a = iArc.z, d = max(iArc.w, 0.02), ang = a - d * t;
@@ -125,6 +158,7 @@ void main() {
   // folded along its middle into a shallow V (a frond's leaflets stand up from its rib, a blade is keeled): seen from the
   // side it still shows a face, and is never a line
   vec3 p = root + dir * arc.x + vec3(0.0, arc.y, 0.0) + side * u * iLook.x + face * abs(u * iLook.x) * uFold;
+  vP = p;
   float ph = iLook.z + root.x * 0.3 + root.z * 0.2;
   p += vec3(sin(uTime * 1.3 + ph), 0.0, cos(uTime * 1.05 + ph * 1.3)) * (iRoot.w < 0.5 ? 0.03 : 0.075) * iArc.y * t * t * uWind;
   // someone walking through: what is near her legs parts and sinks, the more the further along the ribbon (its foot stays)
@@ -142,12 +176,15 @@ void main() {
 }`;
 const FS = /* glsl */`
 ${NATURE_HAZEF}
+${natureInternal.NOISE}
 uniform sampler2D uMask;
 uniform vec3 uSun;
+uniform float uBrush, uBrushW;      // the ferns' tones laid in brush strokes (see BRUSH), and how far a stroke moves a tone
 uniform vec3 uF0, uF1, uF2, uF3, uG0, uG1, uG2, uG3, uP0, uP1, uP2, uP3;
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vK;
+varying vec3 vP;
 void main() {
   vec4 m = texture2D(uMask, vUv);
   float w = max(fwidth(m.r), 1e-3) * 0.75;
@@ -155,6 +192,12 @@ void main() {
   if (alpha < 0.02) discard;
   float tone = m.g / max(m.r, 0.05);
   float v = (dot(normalize(vN), uSun) * 0.5 + 0.5) * 0.5 + tone * 0.38 + vK.y * 0.2 + vK.z * 0.1;
+  if (uBrush > 0.5 && vK.x < 0.5) {
+    // BRUSH: long patches leaning one way over the plant (a fern is small: the patches are a third of a tree's)
+    vec2 sq = vec2(vP.x * 0.8 + vP.z * 0.6 + vP.y * 0.45, vP.y - (vP.x * 0.6 - vP.z * 0.8) * 0.3) * 3.0;
+    float stroke = noise2(vec2(sq.x * 0.7, sq.y * 2.1)) * 0.65 + noise2(vec2(sq.x * 1.7 + 5.0, sq.y * 4.8)) * 0.35;
+    v += (stroke - 0.5) * uBrushW;
+  }
   vec3 c0 = uF0, c1 = uF1, c2 = uF2, c3 = uF3;
   if (vK.x > 1.5) { c0 = uP0; c1 = uP1; c2 = uP2; c3 = uP3; }
   else if (vK.x > 0.5) { c0 = uG0; c1 = uG1; c2 = uG2; c3 = uG3; }
@@ -166,7 +209,7 @@ void main() {
 let material = null;
 function coverMaterial() {
   if (material) return material;
-  const U = { ...natureUniforms, uSun: SUN, uMask: { value: coverAtlas() }, uFold: { value: 0.5 } };
+  const U = { ...natureUniforms, uSun: SUN, uMask: { value: coverAtlas(BRUSH.value > 0.5) }, uFold: { value: 0.5 }, uBrush: BRUSH, uBrushW: { value: 0.25 } };
   for (const [k, name] of [['F', 'fern'], ['G', 'blade'], ['P', 'plume']]) TONES[name].forEach((c, i) => { U['u' + k + i] = { value: rgb(c) }; });
   return (material = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS, alphaToCoverage: true, side: THREE.DoubleSide }));
 }

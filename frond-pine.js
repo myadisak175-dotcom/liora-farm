@@ -30,11 +30,12 @@
         VARIANTS shapes (picked by seed), copied into place, turned and sized. detail under 0.8 (a tree she never comes
         near): fewer skirts of fewer, wider fronds on plainer cards, under half the triangles.
    setFrondPineSun(vec3)   world direction toward the sun (as setAnimeSun)
+   setFrondPineBrush(on)   the fronds' tones laid in long brush strokes over the whole tree (on, as it starts; off: as they were): see BRUSH
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, NATURE_VCOMMON, NATURE_HAZEF } from './stylized-nature.js';
+import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
 import { ANIME_PALETTES } from './anime-tree.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
@@ -52,6 +53,15 @@ export function setFrondPineSun(v) {
   SUN.value.normalize();
 }
 
+// BRUSH: the tones as a brush lays them, as the anime trees' leaves (anime-tree.js, BRUSH) and the grass's painterly look.
+// The fronds keep their own shape, their strokes and the masks they are painted by: nothing else is drawn. Only where the
+// light steps from one flat tone to the next moves, by long patches that lean the same way all over the tree (from each
+// stroke's middle, so a stroke keeps one tone): a stroke of light or of shade runs over several fronds at once. Each
+// stroke's own little shade is mostly left out; the thin dark and light accents stay
+const BRUSH = { value: 1 };
+export function setFrondPineBrush(on = true) { BRUSH.value = on ? 1 : 0; }
+export const frondPineBrush = () => BRUSH.value > 0.5;
+
 // the look, in one place
 export const FROND_LOOK = {
   round: { value: 1.25 },         // how far a frond's normal turns from its rib to its edge (radians): light one side, shade the other
@@ -68,6 +78,8 @@ export const FROND_LOOK = {
   // skirts read one by one from afar, on the sunny side and the shaded one alike
   aoW: { value: 0.5 }, aoSoft: { value: 0.2 },
   bias: { value: 0.01 },          // the whole tree lighter (+) or deeper (-)
+  brush: { value: 0.4 },          // BRUSH: how far a brush stroke moves a tone
+  soft: { value: 2.0 },           // BRUSH: how soft a stroke's edge (times as wide as it is otherwise)
 };
 
 // --------------------------------------------------------------------------
@@ -198,6 +210,7 @@ varying vec4 vBend;
 varying vec4 vShade;
 varying vec3 vSun;
 varying float vOut;
+varying vec3 vRoot;
 void main() {
   float s = position.x + 0.5, u = position.y * 2.0;               // along the frond 0..1, across -1..1
   float L = iFrond.y, W = iFrond.z, e = iFrond.w;
@@ -215,14 +228,16 @@ void main() {
   vHaze = hazeAt(mv.xyz);
   gl_Position = projectionMatrix * mv;
   vUv = vec2(s, 1.0 - (iRoot.w + 0.5 + 0.5 * u) * 0.25);
-  vDir = dir; vSide = side; vFrond = iFrond; vBend = iBend; vShade = iShade;
+  vDir = dir; vSide = side; vFrond = iFrond; vBend = iBend; vShade = iShade; vRoot = iRoot.xyz;
   vOut = dot(iRoot.xz - iBase.xz, dir.xz) < 0.0 ? -1.0 : 1.0;     // most fronds head out from the trunk; the bud's lean in over it
   vSun = normalize(uSun * mat3(modelMatrix));
 }`;
 
 const FROND_FS = /* glsl */`
 ${NATURE_HAZEF}
+${natureInternal.NOISE}
 uniform sampler2D uMask, uTone;
+uniform float uBrush, uBrushW, uSoft;      // the tones laid in brush strokes (see BRUSH), how far a stroke moves a tone, how soft its edge
 uniform vec3 uC0, uC1, uC2, uC3, uC4;
 uniform vec4 uStep;       // where each flat tone starts
 uniform float uRound, uJitter, uPop, uConeMix, uConeUp, uLightW, uSkyW, uHeightW, uAOW, uAoSoft, uUnder, uBias;
@@ -234,9 +249,10 @@ varying vec4 vBend;
 varying vec4 vShade;
 varying vec3 vSun;
 varying float vOut;
+varying vec3 vRoot;
 void main() {
   vec3 t = texture2D(uMask, vUv, -0.5).rgb;                       // (a little sharper than the mip would be: crisp stroke points)
-  float w = max(fwidth(t.r), 1e-3) * 0.75;
+  float w = max(fwidth(t.r), 1e-3) * 0.75 * mix(1.0, uSoft, uBrush);
   float alpha = smoothstep(0.5 - w, 0.5 + w, t.r);
   if (alpha < 0.02) discard;
   vec3 k = texture2D(uTone, vUv, -0.5).rgb;
@@ -257,6 +273,14 @@ void main() {
   float h = vShade.x + vFrond.y * (e * s - d * s * s) * 0.1;      // up the spire: lighter
   float ao = vShade.y * (1.0 - smoothstep(vShade.z - uAoSoft, vShade.z, s));     // under the skirt above: in its shade
   float v = lam * uLightW + sky * uSkyW + h * uHeightW - ao * uAOW + own.x * uPop + uBias - under;
+  if (uBrush > 0.5) {
+    // BRUSH: long patches leaning one way over the whole tree, from the stroke's middle (where the frond lays it, mesh space)
+    vec3 q = vRoot + vDir * (vFrond.y * s * (1.0 - 0.08 * s)) + vec3(0.0, vFrond.y * (e * s - d * s * s), 0.0)
+           + vSide * (u * vFrond.z + vBend.z * s * s * vFrond.y);
+    vec2 sq = vec2(q.x * 0.8 + q.z * 0.6 + q.y * 0.45, q.y - (q.x * 0.6 - q.z * 0.8) * 0.3);
+    float stroke = noise2(vec2(sq.x * 0.7, sq.y * 2.1)) * 0.65 + noise2(vec2(sq.x * 1.7 + 5.0, sq.y * 4.8)) * 0.35;
+    v += (stroke - 0.5) * uBrushW - own.x * uPop * 0.6 * (1.0 - step(0.25, abs(own.x)));     // (the accents keep their own)
+  }
   vec3 col = uC0;                                                  // the game pine's five flat tones
   col = mix(col, uC1, step(uStep.x, v));
   col = mix(col, uC2, step(uStep.y, v));
@@ -275,7 +299,7 @@ function frondMaterial() {
       uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] },
       uStep: { value: new THREE.Vector4(...P.steps) },
       uRound: K.round, uJitter: K.jitter, uPop: K.pop, uConeMix: K.coneMix, uConeUp: K.coneUp, uLightW: K.lightW, uSkyW: K.skyW,
-      uHeightW: K.heightW, uAOW: K.aoW, uAoSoft: K.aoSoft, uUnder: K.under, uBias: K.bias,
+      uHeightW: K.heightW, uAOW: K.aoW, uAoSoft: K.aoSoft, uUnder: K.under, uBias: K.bias, uBrush: BRUSH, uBrushW: K.brush, uSoft: K.soft,
     },
     vertexShader: FROND_VS, fragmentShader: FROND_FS, alphaToCoverage: true, side: THREE.DoubleSide,
   });

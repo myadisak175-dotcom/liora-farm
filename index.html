@@ -72,9 +72,9 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=walk1b",
   "./anime-tree.js": "./anime-tree.js?v=brush2fast1",
-  "./frond-pine.js": "./frond-pine.js?v=1",
+  "./frond-pine.js": "./frond-pine.js?v=brush1",
   "./meadow-flowers.js": "./meadow-flowers.js?v=1",
-  "./ground-cover.js": "./ground-cover.js?v=1",
+  "./ground-cover.js": "./ground-cover.js?v=brush1",
   "./rocks.js": "./rocks.js?v=paint2",
   "./ground-paths.js": "./ground-paths.js?v=soft6wet1land1fast2",
   "./rocks-level.js": "./rocks-level.js?v=16",
@@ -190,6 +190,8 @@ import { buildPitLevel } from './pit-level.js';
 import { buildVillageLevel } from './village-level.js';
 import { buildHillVillageLevel } from './hill-village-level.js';
 import { setAnimeBrush } from './anime-tree.js';
+import { setFrondPineBrush } from './frond-pine.js';
+import { setGroundCoverBrush } from './ground-cover.js';
 import { loadCharacter } from './stylized-character.js';
 import { createPlayer } from './player.js';
 import { createCharacterShadow } from './character-shadow.js';
@@ -352,6 +354,7 @@ setStyle(Q.get('paint') !== '0');
 if (Q.get('grassring') === '0' && level.grass.userData.setRing) level.grass.userData.setRing(false);      // ?grassring=0: without the ring of coarse tufts past the tile, to compare
 if (Q.get('grasslod') === '0') level.grass.userData.setFarLod(false);      // ?grasslod=0: every tuft drawn in full, near and far alike (as it was), to compare
 if (Q.get('leafbrush') === '0') setAnimeBrush(false);     // ?leafbrush=0: the leaves as they were, not as a brush lays them (anime-tree.js, BRUSH)
+if (Q.get('pinebrush') === '0') { setFrondPineBrush(false); setGroundCoverBrush(false); }     // ?pinebrush=0: the pines and the ferns as they were, not as a brush lays them (frond-pine.js, ground-cover.js: BRUSH)
 
 const tunerPanel = document.getElementById('tuner');
 createWaterTuner({ tune: { ...WATER_TUNE, ...FALL_TUNE }, optics: level.optics, button: document.getElementById('tune'), panel: tunerPanel });
