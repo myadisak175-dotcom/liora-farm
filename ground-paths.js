@@ -51,26 +51,77 @@ export async function loadPathTextures(style = 'grit') {
   return { sand, dirt, dispose() { sand.dispose(); dirt.dispose(); } };
 }
 
+const WAY_SQUARE = 4;                                                      // metres: the squares near() goes by (see createPaths)
 export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   const soft = style === 'soft';
   const makeLine = p => {
     const l = { pts: densify(p.points, 0.5), half: p.half || 1.1 };
     l.box = [Math.min(...l.pts.map(q => q[0])) - l.half * 2 - 1, Math.max(...l.pts.map(q => q[0])) + l.half * 2 + 1, Math.min(...l.pts.map(q => q[1])) - l.half * 2 - 1, Math.max(...l.pts.map(q => q[1])) + l.half * 2 + 1];
     l.len = [0]; for (let i = 1; i < l.pts.length; i++) l.len.push(l.len[i - 1] + Math.hypot(l.pts[i][0] - l.pts[i - 1][0], l.pts[i][1] - l.pts[i - 1][1]));
+    // its pieces sixteen at a time, each run with the box round it (near(): a run whose box is further off than the nearest
+    // piece found so far has nothing nearer in it)
+    l.runs = [];
+    for (let i = 0; i < l.pts.length - 1; i += 16) {
+      const e = Math.min(l.pts.length - 1, i + 16), xs = l.pts.slice(i, e + 1).map(q => q[0]), zs = l.pts.slice(i, e + 1).map(q => q[1]);
+      l.runs.push([i, e, Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]);
+    }
     return l;
   };
   const lines = paths.map(makeLine);
   let rib = null;                                                           // the ribbons, once made: what add() draws one more into
+  // the paths by squares of the land (WAY_SQUARE metres): each square knows the paths whose box takes it in, in the order they
+  // were made, and near() asks only the point's square's. It finds what it always found (the same paths, asked in the same
+  // order), without going through every path for every point: with hundreds of ways painted by hand that was most of the
+  // time the map took to load (the land's heights, the ground picture and the ways' picture ask it at every point)
+  const squares = new Map(), squareOf = (i, j) => (i + 32768) * 65536 + (j + 32768);
+  const enroll = (l, on) => {
+    const [x0, x1, z0, z1] = l.box;
+    for (let i = Math.floor(x0 / WAY_SQUARE); i <= Math.floor(x1 / WAY_SQUARE); i++) for (let j = Math.floor(z0 / WAY_SQUARE); j <= Math.floor(z1 / WAY_SQUARE); j++) {
+      const k = squareOf(i, j); let a = squares.get(k);
+      if (on) { if (!a) squares.set(k, a = []); a.push(l); } else if (a) { const p = a.indexOf(l); if (p >= 0) a.splice(p, 1); }
+    }
+  };
+  // and each square knows the pieces of path (a path's line is in pieces of half a metre) that pass within SEG_REACH of it, in
+  // the same order: a long way's box takes in many squares, but only a few of its pieces come near any one of them. Asked
+  // first; a piece not known to a square is further than SEG_REACH from any point of it, so if one known is nearer than that,
+  // it is the nearest of all (else every path whose box takes the point in is asked, as before)
+  const SEG_REACH = 6, pieces = new Map();
+  const enrollPieces = (l, on) => {
+    for (let i = 0; i < l.pts.length - 1; i++) {
+      const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1];
+      for (let si = Math.floor((Math.min(ax, bx) - SEG_REACH) / WAY_SQUARE); si <= Math.floor((Math.max(ax, bx) + SEG_REACH) / WAY_SQUARE); si++)
+        for (let sj = Math.floor((Math.min(az, bz) - SEG_REACH) / WAY_SQUARE); sj <= Math.floor((Math.max(az, bz) + SEG_REACH) / WAY_SQUARE); sj++) {
+          const k = squareOf(si, sj); let a = pieces.get(k);
+          if (on) { if (!a) pieces.set(k, a = []); a.push(l, i); } else if (a) { for (let q = a.length - 2; q >= 0; q -= 2) if (a[q] === l) a.splice(q, 2); }
+        }
+    }
+  };
+  for (const l of lines) { enroll(l, true); enrollPieces(l, true); }
   // the nearest path: how far from its middle, and how wide it is there
   const near = (x, z) => {
     let best = 1e9, half = 1;
-    for (const l of lines) {
+    const k = squareOf(Math.floor(x / WAY_SQUARE), Math.floor(z / WAY_SQUARE)), here = squares.get(k);
+    if (!here) return { d: best, half };
+    const some = pieces.get(k);
+    if (some) for (let q = 0; q < some.length; q += 2) {
+      const l = some[q], i = some[q + 1], [x0, x1, z0, z1] = l.box;
+      if (x < x0 || x > x1 || z < z0 || z > z1) continue;
+      const ax = l.pts[i][0], az = l.pts[i][1], bx = l.pts[i + 1][0] - ax, bz = l.pts[i + 1][1] - az;
+      const t = Math.min(1, Math.max(0, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz))), d = Math.hypot(x - ax - bx * t, z - az - bz * t);
+      if (d < best) { best = d; half = l.half; }
+    }
+    if (best <= SEG_REACH) return { d: best, half };
+    best = 1e9; half = 1;
+    for (const l of here) {
       const [x0, x1, z0, z1] = l.box;
       if (x < x0 || x > x1 || z < z0 || z > z1) continue;
-      for (let i = 0; i < l.pts.length - 1; i++) {
-        const ax = l.pts[i][0], az = l.pts[i][1], bx = l.pts[i + 1][0] - ax, bz = l.pts[i + 1][1] - az;
-        const t = Math.min(1, Math.max(0, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz))), d = Math.hypot(x - ax - bx * t, z - az - bz * t);
-        if (d < best) { best = d; half = l.half; }
+      for (const [r0, r1, rx0, rx1, rz0, rz1] of l.runs) {
+        if (Math.hypot(Math.max(rx0 - x, 0, x - rx1), Math.max(rz0 - z, 0, z - rz1)) > best) continue;
+        for (let i = r0; i < r1; i++) {
+          const ax = l.pts[i][0], az = l.pts[i][1], bx = l.pts[i + 1][0] - ax, bz = l.pts[i + 1][1] - az;
+          const t = Math.min(1, Math.max(0, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz))), d = Math.hypot(x - ax - bx * t, z - az - bz * t);
+          if (d < best) { best = d; half = l.half; }
+        }
       }
     }
     return { d: best, half };
@@ -85,18 +136,16 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   const distances = map => {
     if (dist) return dist;
     const S = map.size, R = map.radius, [mx, mz] = map.center, C = soft ? 4 : 1, dd = new Uint8Array(S * S * C).fill(255);
-    const fill = ([x0, x1, z0, z1], fresh = false) => {                      // (fresh: worked out again from all the paths, not only lowered)
-      const i0 = Math.max(0, Math.floor((x0 - mx + R) / (2 * R) * S)), i1 = Math.min(S - 1, Math.ceil((x1 - mx + R) / (2 * R) * S));
-      const j0 = Math.max(0, Math.floor((z0 - mz + R) / (2 * R) * S)), j1 = Math.min(S - 1, Math.ceil((z1 - mz + R) / (2 * R) * S));
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-        const q = near(mx - R + (i + 0.5) / S * 2 * R, mz - R + (j + 0.5) / S * 2 * R);
-        const o = (j * S + i) * C;
-        if (fresh) { dd[o] = 255; if (soft) dd[o + 1] = 255; }
-        if (q.d > 1e8) continue;
-        dd[o] = Math.min(dd[o], Math.round(Math.min(1, q.d / q.half / 4) * 255));
-        if (soft) dd[o + 1] = Math.min(dd[o + 1], Math.round(Math.min(1, Math.max(0, (q.d - q.half + 2) / 4)) * 255));
-      }
+    const at = (i, j, fresh) => {                                            // one point of the picture (fresh: worked out again, not only lowered)
+      const q = near(mx - R + (i + 0.5) / S * 2 * R, mz - R + (j + 0.5) / S * 2 * R);
+      const o = (j * S + i) * C;
+      if (fresh) { dd[o] = 255; if (soft) dd[o + 1] = 255; }
+      if (q.d > 1e8) return;
+      dd[o] = Math.min(dd[o], Math.round(Math.min(1, q.d / q.half / 4) * 255));
+      if (soft) dd[o + 1] = Math.min(dd[o + 1], Math.round(Math.min(1, Math.max(0, (q.d - q.half + 2) / 4)) * 255));
     };
+    const span = ([x0, x1, z0, z1]) => [Math.max(0, Math.floor((x0 - mx + R) / (2 * R) * S)), Math.min(S - 1, Math.ceil((x1 - mx + R) / (2 * R) * S)), Math.max(0, Math.floor((z0 - mz + R) / (2 * R) * S)), Math.min(S - 1, Math.ceil((z1 - mz + R) / (2 * R) * S))];
+    const fill = (box, fresh = false) => { const [i0, i1, j0, j1] = span(box); for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) at(i, j, fresh); };
     // how many soft ribbons lie over each point: a ribbon reaches its way's half width and a metre and a half more round its line,
     // and where several lay over one spot each was drawn there, see-through, one over the other (ways painted close together
     // were laid on thick). The land lays a way there as many times over (onLand), so the ways look as they did
@@ -119,7 +168,15 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       }
     };
     if (soft) for (let o = 0; o < S * S; o++) { dd[o * 4] = 255; dd[o * 4 + 1] = 255; dd[o * 4 + 2] = 0; dd[o * 4 + 3] = 0; }
-    for (const l of lines) { fill(l.box); cover(l, 1); }
+    // every point any path's box takes in, worked out once (each box in turn asked again every point that boxes before it had
+    // asked: where ways lie close together, many times over, for the same answer)
+    const todo = new Uint8Array(S * S);
+    for (const l of lines) {
+      const [i0, i1, j0, j1] = span(l.box);
+      for (let j = j0; j <= j1; j++) todo.fill(1, j * S + i0, j * S + i1 + 1);
+      cover(l, 1);
+    }
+    for (let o = 0; o < S * S; o++) if (todo[o]) { const i = o % S; at(i, (o - i) / S, false); }
     const tex = new THREE.DataTexture(dd, S, S, soft ? THREE.RGBAFormat : THREE.RedFormat, THREE.UnsignedByteType);
     tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.unpackAlignment = 1; tex.needsUpdate = true;
     return (dist = { tex, fill, cover });
@@ -201,7 +258,7 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
     add(path) {
       const l = makeLine(path);
       if (l.pts.length < 2) return null;
-      lines.push(l);
+      lines.push(l); enroll(l, true); enrollPieces(l, true);
       if (dist) { dist.fill(l.box); dist.cover(l, 1); dist.tex.needsUpdate = true; }
       if (rib) { l.mesh = rib.meshOf(l); rib.group.add(l.mesh); }
       return l;
@@ -209,7 +266,7 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
     remove(l) {
       const k = lines.indexOf(l);
       if (k < 0) return;
-      lines.splice(k, 1);
+      lines.splice(k, 1); enroll(l, false); enrollPieces(l, false);
       if (rib && l.mesh) { rib.group.remove(l.mesh); l.mesh.userData.dispose(); }
       if (dist) { dist.fill(l.box, true); dist.cover(l, -1); dist.tex.needsUpdate = true; }
     },

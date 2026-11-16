@@ -61,10 +61,23 @@ export const grassOver = (o, x, z) => 1 - ss(o.r - 0.35, o.r + 0.45, toLine(o.pt
 export function foldPathOps(basePaint, ops, wayPaint) {
   if (!ops.length) return basePaint;
   const list = ops.map(o => ({ o, box: opBox(o), paint: o.k === 'way' ? wayPaint(o) : null }));
+  // the strokes by squares of the land (4 m), each square's in the order they were painted: a point asks only the strokes
+  // whose reach takes in its square, in the same order as before (going through every stroke for every point of the ground
+  // picture was a good part of the time the map took to load)
+  const G = 4, squares = new Map(), key = (i, j) => (i + 32768) * 65536 + (j + 32768);
+  for (const e of list) {
+    const [x0, x1, z0, z1] = e.box;
+    for (let i = Math.floor(x0 / G); i <= Math.floor(x1 / G); i++) for (let j = Math.floor(z0 / G); j <= Math.floor(z1 / G); j++) {
+      const k = key(i, j); let a = squares.get(k);
+      if (!a) squares.set(k, a = []);
+      a.push(e);
+    }
+  }
   return (x, z) => {
     const p = basePaint(x, z);
     let e = p ? p[0] : 0, s = p ? p[1] : 0, m = p ? p[2] : 0;
-    for (const { o, box, paint } of list) {
+    const here = squares.get(key(Math.floor(x / G), Math.floor(z / G))) || [];
+    for (const { o, box, paint } of here) {
       if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) continue;
       if (paint) { const q = paint(x, z); if (q) { e = Math.max(e, q[0]); m = Math.max(m, q[2]); } }
       else { const f = grassOver(o, x, z); if (f > 0) { e *= 1 - f; m *= 1 - f; } }
