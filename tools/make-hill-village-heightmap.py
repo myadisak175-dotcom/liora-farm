@@ -339,8 +339,9 @@ riv_h = lambda z: float(np.interp(z, _rz, [hw * S for _, _, hw in _rl]))
 ms = WATER[1][4]; a, b = np.array(M(*ms[2][:2])), np.array(M(*ms[3][:2])); t = (b - a) / np.linalg.norm(b - a); nrm = np.array([t[1], -t[0]])
 if nrm[1] > 0: nrm = -nrm                                             # the bank toward the north
 s0 = a + (b - a) * 0.35; mill_yaw = math.atan2(t[0], t[1])            # ridge along the stream
-WHEEL = s0 + nrm * (ms[2][2] - 0.2); MILL = s0 + nrm * (ms[2][2] + 1.3 + 2.0)
+WHEEL = s0 + nrm * (ms[2][2] - 0.45); MILL = s0 + nrm * (ms[2][2] + 1.3 + 2.0)      # (the wheel half a metre into the water: its race is cut into the bank under it, in 6)
 house('watermill', (float(MILL[0]), float(MILL[1])), dict(w=4, l=6, floors=2, wall='brick', door='front', seed=24, windows=0.5), mill_yaw)
+MILL_T, MILL_N = t.copy(), nrm.copy()                                # (along the mill stream there, and out to its north bank)
 
 # the houses and small things moved by hand in the game (place-editor.js; the moves sent from there are kept in
 # hill-village-moves.json beside the plan): each is put where it was moved to, before the ground is levelled under it. A move
@@ -739,6 +740,13 @@ for f_ in falls:                                                      # the rock
         hump = f_['top'] + 0.15 + 0.85 * np.sqrt(np.clip(1 - q_, 0, 1))
         H = np.where((q_ < 1) & (along < 0.5), np.maximum(H, hump), H)
         ROCKS_IN_LIPS.append(['boulder', f_['x'] + dz_ * u_ - dx_ * (0.55 * L_), f_['z'] - dx_ * u_ - dz_ * (0.55 * L_), b_, f_['yaw'] + 1.2 * u_])
+# the water mill's wheel turns in a race cut into the bank beside the mill: the ground under it, and a little either side, is
+# taken down below the water, so the stream runs round the whole wheel and its paddles dip in it (it stood half on the bank,
+# its lower rim buried in the ground)
+race_x, race_z = WX - WHEEL[0], WZ - WHEEL[1]
+race_a = race_x * MILL_N[0] + race_z * MILL_N[1]                     # (out from the wheel's middle toward the mill: under the wheel and a little either side, no further)
+race_w = (1 - sm(2.2, 2.8, np.abs(race_x * MILL_T[0] + race_z * MILL_T[1]))) * (1 - sm(0.55, 1.0, race_a)) * sm(-1.4, -0.8, race_a)
+H = np.where(race_w > 0, np.minimum(H, H * (1 - race_w) + (tiers[1]['level'] - 0.9) * race_w), H)
 H = ndi.gaussian_filter(H, 0.6)
 
 # ------------------------------------------------------------------ 7. the small things: a market round the fountain, and what a farm leaves lying about

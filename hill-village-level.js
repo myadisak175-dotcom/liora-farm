@@ -309,7 +309,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     colliders.push([b.x, b.z, 1.15]); bare.push([b.x, b.z, 2.2]); casters.push([b.x, b.z, 2.4, 1.3, 0.8]);
   }
   // the water mill's wheel, in the stream beside its house
-  const wheel = new THREE.Mesh(BD.wheelGeometry({ radius: 2.0, width: 1.0, axle: 3.2, seed: 24 }), propMaterial());
+  const wheel = new THREE.Mesh(BD.wheelGeometry({ radius: 2.0, width: 1.0, axle: 3.7, seed: 24 }), propMaterial());
   wheel.name = 'waterWheel'; wheel.rotation.order = 'YXZ'; wheel.rotation.y = P.wheel.yaw;
   wheel.position.set(P.wheel.x, P.wheel.level + 1.35, P.wheel.z);
   wheel.userData.dispose = () => wheel.geometry.dispose();
