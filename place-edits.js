@@ -54,8 +54,8 @@ export function applyPlaceEdits(P, key) {
   if (!moves.length) return report;
   const byId = new Map(placeables(P).map(t => [t.id, t]));
   for (const m of moves) {
-    const t = byId.get(m.id) || findProp(P, m);
-    if (!t) { report.stale++; continue; }
+    const t = byId.get(m.id) || findProp(P, m, m.from);
+    if (!t) { if (findProp(P, m, m.to)) report.baked++; else report.stale++; continue; }      // (a small thing the map has moved: its id is where the map put it, so it is found where the move took it)
     const at = [t.x, t.z, t.yaw];
     if (near(at, m.to)) { report.baked++; continue; }                     // the map's tool has it there already
     if (!near(at, m.from)) { report.stale++; continue; }                  // the map has moved it since: the move is out of date
@@ -63,9 +63,9 @@ export function applyPlaceEdits(P, key) {
   }
   return report;
 }
-const findProp = (P, m) => {                                              // a small thing the tool wrote again a little off: the nearest of its kind
+const findProp = (P, m, at) => {                                          // a small thing the tool wrote again a little off: the nearest of its kind to at
   const kind = m.id.split('@')[0]; let best = null, bd = 0.3;
-  for (const t of placeables(P)) if (t.kind === 'prop' && t.prop === kind) { const d = Math.hypot(t.x - m.from[0], t.z - m.from[1]); if (d < bd) { bd = d; best = t; } }
+  for (const t of placeables(P)) if (t.kind === 'prop' && t.prop === kind) { const d = Math.hypot(t.x - at[0], t.z - at[1]); if (d < bd) { bd = d; best = t; } }
   return best;
 };
 function setOnPlan(P, t, [x, z, yaw]) {

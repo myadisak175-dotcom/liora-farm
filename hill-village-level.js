@@ -47,7 +47,7 @@ import { fieldGeometry } from './village-fields.js';
 import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 import { foliageKey, applyFoliage } from './foliage-edits.js';
-import { pathKey, loadPathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
+import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 import { createMapRim } from './map-rim.js';
 
 const { mulberry32 } = N._internal;
@@ -149,7 +149,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return y;
   };
   const toolWays = [...P.paths.map(p => ({ points: p.points.slice(), half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))];      // (a yard: a short way as wide as the yard)
-  const pathOps = [...(P.pathOps || []), ...loadPathOps(pathKey('hillvillage'))].filter(o => o.k === 'grass' || o.pts.length >= 2);
+  const pathOps = [...(P.pathOps || []), ...settlePathOps(pathKey('hillvillage'), P.pathOps, 'hillvillage')].filter(o => o.k === 'grass' || o.pts.length >= 2);      // (those the map has are let go from this browser)
   // a way that ends out in the margin (the road in) does not stop there: it runs on to the land's edge, and from there the
   // rim takes it into its wood (map-rim.js)
   const waysOut = [];

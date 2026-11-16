@@ -6,6 +6,7 @@
 //
 //   const key = pathKey('hillvillage');
 //   const ops = loadPathOps(key);                       [{ k: 'way', half, pts: [[x, z], ...] } | { k: 'grass', r, pts }]
+//   const ops = settlePathOps(key, plan.pathOps, map)   the same, less those the map's tool has taken in (they are let go here)
 //   savePathOps(key, ops)                               (an empty list: nothing kept)
 //   const paint = foldPathOps(basePaint, ops, wayPaint) (x, z) -> [earth, sand, mow] or null: the map's own ways' paint, then each
 //                                                       stroke over it in turn (wayPaint(op) -> that one way's own paint function)
@@ -17,6 +18,21 @@ export const pathKey = map => 'liora.pathEdits.' + map;
 
 export function loadPathOps(key) {
   try { const s = localStorage.getItem(key); const o = s ? JSON.parse(s) : null; return o && Array.isArray(o.ops) ? o.ops.filter(okOp) : []; } catch { return []; }
+}
+// The strokes sent to Claude go into the map (hill-village-paths.json: the plan's pathOps, in the order they were painted). Once
+// the map has them they are let go from this browser, from the first kept stroke on, as long as each is one the map has: else
+// the map would draw them and then this browser again. What was painted after them stays kept (and is what ⋯ gives next time).
+export function settlePathOps(key, mapOps = [], map = '') {
+  const kept = loadPathOps(key);
+  if (!kept.length || !mapOps || !mapOps.length) return kept;
+  const inMap = new Map();
+  for (const o of mapOps) if (okOp(o)) { const s = JSON.stringify(tidy(o)); inMap.set(s, (inMap.get(s) || 0) + 1); }
+  let n = 0;
+  for (; n < kept.length; n++) { const s = JSON.stringify(tidy(kept[n])), c = inMap.get(s); if (!c) break; inMap.set(s, c - 1); }
+  if (!n) return kept;
+  const rest = kept.slice(n);
+  try { savePathOps(key, rest, map); } catch { /* used as it is this once */ }
+  return rest;
 }
 export function savePathOps(key, ops, map = '') {
   if (ops.length) localStorage.setItem(key, JSON.stringify({ map, v: 1, ops: ops.map(tidy) })); else localStorage.removeItem(key);
