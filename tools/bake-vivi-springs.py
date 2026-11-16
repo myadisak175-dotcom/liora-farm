@@ -21,6 +21,13 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
+# The game's own taste over the VRoid file's values, by spring group name. The file's skirt is very loose (stiffness 0.5,
+# drag 0.05): running, it flew up past her waist. Stiffer and damped, it still swings and lifts over her knees (the leg
+# collision spheres still push it), but settles quickly: on a sprint, nine bones in ten stay within ~40° of rest (was ~80°).
+TUNE = {
+    "Skirt": {"stiffness": 3.0, "dragForce": 0.5},
+}
+
 
 def parse_glb_json(data):
     if data[:4] != b"glTF":
@@ -82,11 +89,13 @@ def main(argv):
             "colliderGroups": [i for i in g.get("colliderGroups", []) if 0 <= i < len(collider_groups)],
             "center": bone(center) if isinstance(center, int) and center >= 0 else None,
         })
+        springs[-1].update(TUNE.get(springs[-1]["name"], {}))
     data = {"colliderGroups": collider_groups, "springs": springs}
     out_path = os.path.join(REPO, "vivi-springs.js")
     head = ("// vivi-springs.js: written by tools/bake-vivi-springs.py from her original VRoid file; do not edit by hand.\n"
             f"// {len(springs)} spring groups ({sum(len(s['roots']) for s in springs)} chains: hair, skirt, sleeves, chest), "
-            f"{sum(len(g['colliders']) for g in collider_groups)} collision spheres on {len(collider_groups)} body bones.\n")
+            f"{sum(len(g['colliders']) for g in collider_groups)} collision spheres on {len(collider_groups)} body bones.\n"
+            + "".join(f"// tuned for the game: {name} {vals}\n" for name, vals in TUNE.items()))
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(head + "export const VIVI_SPRINGS = " + json.dumps(data, separators=(",", ":")) + ";\n")
     print(head.strip())
