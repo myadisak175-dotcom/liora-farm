@@ -584,6 +584,21 @@ function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange
     const dx = (x - P.c.x) / P.r, dy = (y - P.c.y) / (P.r * P.f), dz = (z - P.c.z) / P.r;
     return dx * dx + dy * dy + dz * dz < k * k;
   };
+  // inside any puff's ball but the one numbered skip: the same sums as inside(), in plain numbers and given up on as soon as
+  // they pass k² (asked tens of thousands of times a crown, by ao() and for the leaves buried in a neighbour)
+  const PU = puffs.map(P => [P.c.x, P.c.y, P.c.z, P.r, P.r * P.f]);
+  const inAny = (x, y, z, k, skip = -1, only = null) => {
+    const kk = k * k, m = only ? only.length : PU.length;
+    for (let w = 0; w < m; w++) {
+      const q = only ? only[w] : w;
+      if (q === skip) continue;
+      const B = PU[q], dx = (x - B[0]) / B[3];
+      let s = dx * dx; if (s >= kk) continue;
+      const dy = (y - B[1]) / B[4]; s += dy * dy; if (s >= kk) continue;
+      const dz = (z - B[2]) / B[3]; if (s + dz * dz < kk) return true;
+    }
+    return false;
+  };
   // the AO's rays: a fixed fan over the upper half of a ball, turned onto each card's normal
   const FAN = [];
   for (let i = 0; i < 12; i++) {
@@ -594,15 +609,20 @@ function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange
   const STEPS = [[0.3, 1], [0.7, 0.8], [1.25, 0.6], [2.0, 0.4]].map(([s, w]) => [s * Math.min(1, reach), w]);
   const STEP_SUM = STEPS.reduce((s, [, w]) => s + w, 0);
   const tmp = new THREE.Vector3(), tA = new THREE.Vector3(), tB = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  // (the puffs a card's rays can reach at all: a ray goes no further than the last of STEPS from the card, and a puff
+  // shrunk by k reaches no further than k times its larger radius from its middle; a little to spare)
+  const farthest = STEPS[STEPS.length - 1][0], near = [];
   const ao = (p, n) => {
     tA.crossVectors(Math.abs(n.y) < 0.9 ? up : tmp.set(1, 0, 0), n).normalize();
     tB.crossVectors(n, tA);
+    near.length = 0;
+    for (let q = 0; q < PU.length; q++) { const B = PU[q]; if (Math.hypot(p.x - B[0], p.y - B[1], p.z - B[2]) <= 0.86 * Math.max(B[3], B[4]) + farthest * 1.01 + 1e-3) near.push(q); }
     let occ = 0;
     for (const f of FAN) {
       const dx = tA.x * f.x + n.x * f.y + tB.x * f.z, dy = tA.y * f.x + n.y * f.y + tB.y * f.z, dz = tA.z * f.x + n.z * f.y + tB.z * f.z;
       for (const [s, w] of STEPS) {
         const x = p.x + dx * s, y = p.y + dy * s, z = p.z + dz * s;
-        if (y < floorY || puffs.some(P => inside(x, y, z, P, 0.86))) { occ += w; break; }      // the ground shades too
+        if (y < floorY || (near.length && inAny(x, y, z, 0.86, -1, near))) { occ += w; break; }      // the ground shades too
       }
     }
     return Math.min(1, occ / (FAN.length * STEP_SUM) * 2.2);
@@ -611,7 +631,6 @@ function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange
   const C = [], PF = [], K = [], SH = [], CN = [];
   const d = new THREE.Vector3(), p = new THREE.Vector3(), n = new THREE.Vector3();
   puffs.forEach((P, pi) => {
-    const others = puffs.filter((_, j) => j !== pi);
     const taper = P.taper || 0, egg = P.egg || 0;
     const N = Math.round(ellipsoidArea(P.r, P.r * P.f * (1 + egg * 0.5), P.r) * density), inner = Math.round(N * 0.22);
     for (let j = 0; j < N + inner; j++) {
@@ -625,7 +644,7 @@ function buildPuffs(rng, puffs, env, { leaf, density, floorY = -Infinity, hRange
       const up01 = Math.max(d.y, 0), k = 1 - taper * up01;
       p.set(d.x * P.r * depth * k, d.y * P.r * P.f * depth * (1 + egg * up01), d.z * P.r * depth * k).add(P.c);
       if (p.y < floorY + leaf * 0.3) continue;                                     // nothing under the ground
-      if (!deep && others.some(Q => inside(p.x, p.y, p.z, Q, 0.8))) continue;     // buried in a neighbour: never seen
+      if (!deep && inAny(p.x, p.y, p.z, 0.8, pi)) continue;                       // buried in a neighbour: never seen
       tmp.copy(p).sub(env.c).divide(env.r);
       if (env.hollow !== false && tmp.length() < 0.42) continue;                    // deep in the crown: never seen
       n.set(d.x, d.y / P.f, d.z).normalize();
@@ -712,22 +731,28 @@ function hiddenByCompass(bits, sides) {
   return out;
 }
 
-function cardGeometry({ C, PF, K, SH, CN, B = null, HD = null }) {
+function cardGeometry({ C, PF, K, SH, CN, B = null, HD = null }, order = null) {      // order: the cards' order in it (inOwnOrder), else as they are
   const quad = new THREE.PlaneGeometry(1, 1);
   const g = new THREE.InstancedBufferGeometry();
   g.index = quad.index;
   g.setAttribute('position', quad.attributes.position);
   g.setAttribute('uv', quad.attributes.uv);
   const n = C.length / 3;
-  let base = B ? new Float32Array(B) : null;
+  const laid = (src, size) => {
+    const out = new Float32Array(n * size);
+    if (!order) out.set(src);
+    else for (let i = 0; i < n; i++) { const o = order[i] * size; for (let k = 0; k < size; k++) out[i * size + k] = src[o + k]; }
+    return out;
+  };
+  let base = B ? laid(B, 4) : null;
   if (!base) { base = new Float32Array(n * 4); for (let i = 3; i < base.length; i += 4) base[i] = 1; }
-  g.setAttribute('iCenter', new THREE.InstancedBufferAttribute(new Float32Array(C), 3));
-  g.setAttribute('iPuff', new THREE.InstancedBufferAttribute(new Float32Array(PF), 4));
-  g.setAttribute('iCard', new THREE.InstancedBufferAttribute(new Float32Array(K), 4));
-  g.setAttribute('iShade', new THREE.InstancedBufferAttribute(new Float32Array(SH), 4));
-  g.setAttribute('iCN', new THREE.InstancedBufferAttribute(new Float32Array(CN), 4));
+  g.setAttribute('iCenter', new THREE.InstancedBufferAttribute(laid(C, 3), 3));
+  g.setAttribute('iPuff', new THREE.InstancedBufferAttribute(laid(PF, 4), 4));
+  g.setAttribute('iCard', new THREE.InstancedBufferAttribute(laid(K, 4), 4));
+  g.setAttribute('iShade', new THREE.InstancedBufferAttribute(laid(SH, 4), 4));
+  g.setAttribute('iCN', new THREE.InstancedBufferAttribute(laid(CN, 4), 4));
   g.setAttribute('iBase', new THREE.InstancedBufferAttribute(base, 4));
-  g.setAttribute('iHid', new THREE.InstancedBufferAttribute(HD ? new Float32Array(HD) : new Float32Array(n), 1));
+  g.setAttribute('iHid', new THREE.InstancedBufferAttribute(HD ? laid(HD, 1) : new Float32Array(n), 1));
   g.instanceCount = n;
   return g;
 }
@@ -1001,15 +1026,11 @@ const shapeOf = (kind, type, v, far) => {
   return shapes[key] || (shapes[key] = kind === 'bush' ? bushParts(v + 1, far, type === 'flowering', type === 'clump') : treeParts(type, v + 1, far));
 };
 
-// a buffer's cards put in the order of their own numbers (iShade.w, lowest first): returns the numbers, in that order
+// a buffer's cards in the order of their own numbers (iShade.w, lowest first): that order (cardGeometry lays them out in
+// it), and the numbers in it
 function inOwnOrder(b) {
   const n = b.C.length / 3, order = Array.from({ length: n }, (_, i) => i).sort((p, q) => b.SH[p * 4 + 3] - b.SH[q * 4 + 3]);
-  for (const [key, size] of [['C', 3], ['PF', 4], ['K', 4], ['SH', 4], ['CN', 4], ['B', 4], ['HD', 1]]) {
-    const src = b[key], dst = new Array(src.length);
-    for (let i = 0; i < n; i++) for (let k = 0; k < size; k++) dst[i * size + k] = src[order[i] * size + k];
-    b[key] = dst;
-  }
-  return Float32Array.from({ length: n }, (_, i) => b.SH[i * 4 + 3]);
+  return { order, own: Float32Array.from(order, i => b.SH[i * 4 + 3]) };
 }
 
 export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metres (0: a forest's plants of one palette are one mesh, as before)
@@ -1095,7 +1116,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
   let cards = 0;
   const leaves = [];                                                   // each mesh of cards: the mesh, its cards' own numbers in order, its plants (T: the ball each one's cards lie in, its size)
   for (const b of Object.values(leafB)) {
-    const own = inOwnOrder(b), geo = cardGeometry(b);
+    const { order, own } = inOwnOrder(b), geo = cardGeometry(b, order);
     add(geo, materials(b.palette, b.mask).leaf, 'anime_leaves'); cards += own.length;
     leaves.push({ mesh: group.children[group.children.length - 1], geo, own, T: b.T });
   }

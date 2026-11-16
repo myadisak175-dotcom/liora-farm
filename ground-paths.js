@@ -52,6 +52,18 @@ export async function loadPathTextures(style = 'grit') {
 }
 
 const WAY_SQUARE = 4;                                                      // metres: the squares near() goes by (see createPaths)
+// the noise a way's paint takes at a point (its edge's wander, its tufts), kept for the last point asked: the ground picture
+// asks every way that reaches a point in turn, at that point, and all of them (of one seed) take the same noise there
+const NOISE_AT = { x: NaN, z: NaN, seed: NaN, a: 0, b: 0, c: 0 };
+function wayNoise(x, z, seed) {
+  const q = NOISE_AT;
+  if (q.x !== x || q.z !== z || q.seed !== seed) {
+    q.x = x; q.z = z; q.seed = seed;
+    q.a = (fbm3(x * 0.45, 1.3, z * 0.45, seed + 3, 2) - 0.5) * 0.7; q.b = (fbm3(x * 1.8, 2.7, z * 1.8, seed + 5, 2) - 0.5) * 0.22;
+    q.c = fbm3(x * 0.95, 4.1, z * 0.95, seed + 9, 2);
+  }
+  return q;
+}
 export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   const soft = style === 'soft';
   const makeLine = p => {
@@ -100,9 +112,10 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   // the nearest path: how far from its middle, and how wide it is there
   const near = (x, z) => {
     let best = 1e9, half = 1;
-    const k = squareOf(Math.floor(x / WAY_SQUARE), Math.floor(z / WAY_SQUARE)), here = squares.get(k);
+    const few = lines.length <= 8;                                           // (a few ways, as a stroke painted by hand has one: all of them, as before)
+    const k = few ? 0 : squareOf(Math.floor(x / WAY_SQUARE), Math.floor(z / WAY_SQUARE)), here = few ? lines : squares.get(k);
     if (!here) return { d: best, half };
-    const some = pieces.get(k);
+    const some = few ? null : pieces.get(k);
     if (some) for (let q = 0; q < some.length; q += 2) {
       const l = some[q], i = some[q + 1], [x0, x1, z0, z1] = l.box;
       if (x < x0 || x > x1 || z < z0 || z > z1) continue;
@@ -127,7 +140,7 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
     return { d: best, half };
   };
   // the path's edge wanders: broad bends and small bites
-  const edge = (x, z, d) => d + (fbm3(x * 0.45, 1.3, z * 0.45, seed + 3, 2) - 0.5) * 0.7 + (fbm3(x * 1.8, 2.7, z * 1.8, seed + 5, 2) - 0.5) * 0.22;
+  const edge = (x, z, d) => { const q = wayNoise(x, z, seed); return d + q.a + q.b; };
   // how far each point of the map is from the middle of the nearest path (in path widths): one picture for all the ways, so
   // where two paths meet they agree on what is middle and what is edge (the soft look also wants to know how many metres
   // outside the path's edge a point is: a second number, -2 .. 2 m; and how many soft ribbons lie over it: a third, see cover).
@@ -193,14 +206,14 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
         const s = edge(x, z, d) - half;                                       // metres outside the path's edge (inside: less than 0)
         let earth = 1 - ss(-0.45, 0.9, s);
         // tufts that have pushed in from the edges (soft-edged; none in the middle, where feet keep it bare)
-        earth *= 1 - 0.8 * ss(0.57, 0.7, fbm3(x * 0.95, 4.1, z * 0.95, seed + 9, 2)) * ss(half * 0.45, half * 0.85, d);
+        earth *= 1 - 0.8 * ss(0.57, 0.7, wayNoise(x, z, seed).c) * ss(half * 0.45, half * 0.85, d);
         return [earth, 0, 0.7 * (1 - ss(0.2, 1.8, s))];
       }
       if (d > half * 2.2) return null;
       const e = edge(x, z, d);
       let earth = 1 - ss(half * 0.72, half * 1.02, e);
       // clumps of grass that have pushed in from the edges (none in the middle, where feet keep it bare)
-      const clump = ss(0.6, 0.66, fbm3(x * 0.95, 4.1, z * 0.95, seed + 9, 2)) * ss(half * 0.3, half * 0.75, d);
+      const clump = ss(0.6, 0.66, wayNoise(x, z, seed).c) * ss(half * 0.3, half * 0.75, d);
       earth *= 1 - clump;
       const mow = (1 - ss(half * 1.0, half * 1.7, e)) * 0.85;                // the grass right beside it is short, trodden
       return [earth, 0, mow];
