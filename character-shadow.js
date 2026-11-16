@@ -18,6 +18,7 @@
 //   scene.add(shadow.object);
 //   shadow.receive(level.grass.material);                                            // once: the grass takes it too
 //   shadow.update(renderer, player.position, sunDirection, strength);                // every frame, before the scene is drawn
+//   shadow.setCharacter(character);                                                  // another character took her place
 import * as THREE from 'three';
 
 const MIN_SUN = 0.3;        // a sun on the horizon would throw endless shadows (the same floor the trees' shadows use)
@@ -68,7 +69,8 @@ export function createCharacterShadow({
   cell = 0.26,                      // the ground patch: metres between its points
   lift = 0.035,                     // how far above the ground it lies
 } = {}) {
-  const body = character.object, H = character.height || 1.6;
+  let body = character.object;
+  const H = character.height || 1.6;          // (every playable character is the same height: setCharacter keeps the picture's size)
   const R = H * 0.72;               // half the picture's width in metres: she fits in it in any pose
   const target = new THREE.WebGLRenderTarget(size, size, { depthBuffer: true });
   target.texture.minFilter = target.texture.magFilter = THREE.LinearFilter;
@@ -219,6 +221,7 @@ export function createCharacterShadow({
       uniforms.uChK.value = Math.min(1, k) * 0.85;
       mesh.visible = true;
     },
+    setCharacter(next) { body = next.object; },           // another character is playing: hers is the outline now
     dispose() { target.dispose(); geo.dispose(); mat.dispose(); noShade.dispose(); },
   };
 }

@@ -120,8 +120,8 @@ const placeVivi = () => {
 };
 if (!Q.has('novivi')) (async () => {
   try {
-    const [{ loadCharacter }, { VIVI_GLB }, { VIVI_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./vivi-anim.js')]);
-    vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
+    const [{ loadCharacter }, { VIVI_GLB }, { CHARACTER_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./character-anim.js')]);
+    vivi = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);
     if (vivi.setSize) vivi.setSize(1.6 / vivi.baseHeight);              // her height in the game
     vivi.play('idle');
     scene.add(vivi.object);

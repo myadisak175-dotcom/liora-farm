@@ -9,10 +9,11 @@
 //   every frame: player.update(dt)
 //
 // A jump: she leaves the ground at once (no wind-up), flies a plain ballistic arc and lands on whatever standAt says is
-// under her, a rock's top included. The clips (vivi-anim.js): jump_start plays through the rise, jump_air holds a long
+// under her, a rock's top included. The clips (character-anim.js): jump_start plays through the rise, jump_air holds a long
 // fall, jump_land takes the landing; moving on, she runs straight out of the landing.
 //
-// Her size (character.size, set by character.setSize) scales what goes with her body: walk and run speeds, the water she
+// Her height (character.height, against Vivi's 1.412 m as modelled, the height every number here was tuned at) scales what
+// goes with her body, whoever is playing: walk and run speeds, jump height, the water she
 // will wade into, how close she comes to a trunk, the blob under her feet and how far back the camera sits.
 
 import * as THREE from 'three';
@@ -46,7 +47,10 @@ export function cameraTrunkFraction(from, to, trunks, padding = 0.3) {
   return fraction;
 }
 
-export function createPlayer({ character, level, camera, dom, ui = null, onTap = null }) {
+const TUNED_HEIGHT = 1.412;                   // Vivi as modelled: WALK0, RUN0, JUMP0, ... below are for her at this height
+
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null }) {
+  let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   const pos = new THREE.Vector3(level.spawn.x, 0, level.spawn.z);
   const standAt = level.standAt || level.heightAt;   // where her feet are: the land, or (on maps that know them) the tops of rocks she can stand on
   pos.y = standAt(pos.x, pos.z);
@@ -130,7 +134,11 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   const WALK0 = 1.2, RUN0 = 3.3, DEEP0 = 0.5;
   // her two feet, followed bone by bone, so the water is touched exactly when and where a foot comes down
   const feet = [];
-  character.object.traverse(o => { if (o.isBone && /_(L|R)_Foot$/.test(o.name)) feet.push({ bone: o, lo: 0, hi: 0, up: false, seen: false, since: 1 }); });
+  const findFeet = () => {
+    feet.length = 0;
+    character.object.traverse(o => { if (o.isBone && /_(L|R)_Foot$/.test(o.name)) feet.push({ bone: o, lo: 0, hi: 0, up: false, seen: false, since: 1 }); });
+  };
+  findFeet();
   const footPos = new THREE.Vector3();
 
   // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
@@ -145,16 +153,28 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   }
 
   const player = {
-    object: root, position: pos, character, blob: shadow,
+    object: root, position: pos, blob: shadow,
+    get character() { return character; },
     get heading() { return heading; }, get camYaw() { return camYaw; }, get speed() { return speed; },
     lookDir: new THREE.Vector3(0, 0, -1),
     get airborne() { return air; },
     jump() { jumpWanted = JUMP_BUFFER; },
+    // another character takes her place, mid-stride or mid-air: same spot, same heading, same speed
+    setCharacter(next) {
+      if (next === character) return;
+      root.remove(character.object);
+      character = next;
+      root.add(character.object);
+      findFeet();
+      landT = -1;
+      character.play(air ? 'jump_air' : 'idle', 0);
+      if (character.resetSprings) character.resetSprings();
+    },
     teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; air = false; vy = 0; landT = -1; if (character.resetSprings) character.resetSprings(); },
     setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
     update(dt) {
       dt = Math.min(dt, 0.05);
-      const k = character.size || 1, WALK = WALK0 * k, RUN = RUN0 * k, DEEP = DEEP0 * k, camD = camDist * k;
+      const k = (character.height || TUNED_HEIGHT) / TUNED_HEIGHT, WALK = WALK0 * k, RUN = RUN0 * k, DEEP = DEEP0 * k, camD = camDist * k;
       shadow.scale.setScalar(k);
       // ---- input -> wish direction in the world, relative to the camera
       let mx = move.x, mz = move.y;

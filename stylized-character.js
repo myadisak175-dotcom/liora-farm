@@ -1,11 +1,11 @@
 // stylized-character.js
 // A playable anime character (skinned GLB) with a two-tone cel shader, plus clips built from baked keyframes.
 //
-//   const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);      // base64 string or ArrayBuffer of a .glb
+//   const vivi = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);  // base64 string or ArrayBuffer of a .glb (any VRoid model)
 //   scene.add(vivi.object);            // feet at y = 0, facing +Z
-//   vivi.play('walk');                 // 'idle' | 'walk' | 'run' | 'jump_start' | 'jump_air' | 'jump_land' (vivi-anim.js)
+//   vivi.play('walk');                 // 'idle' | 'walk' | 'run' | 'jump_start' | 'jump_air' | 'jump_land' (character-anim.js)
 //   every frame: vivi.update(dt)
-//   hair and cloth that swing: vivi.attachSprings(createSprings(vivi.model, VIVI_SPRINGS)) (character-springs.js);
+//   hair and cloth that swing: vivi.attachSprings(createSprings(vivi.model, springsData)) (character-springs.js);
 //   then every frame, once she has been placed: vivi.updateSprings(dt)
 //   vivi.setSize(k)                    // k times her modelled size: height and the clips' ground speeds go with it
 //
@@ -13,7 +13,7 @@
 // picture's alpha, for the water drawn over it (stylized-water.js), and what has been under stays darker until it dries.
 //
 // Materials come from the GLB: alphaMode (OPAQUE / MASK / BLEND), doubleSided and
-// extras { color: [r,g,b,a], shade: [r,g,b], face: bool, queue } written by tools/prep_vivi.py.
+// extras { color: [r,g,b,a], shade: [r,g,b], face: bool, queue } written by tools/prep-vroid.py (Vivi: its forerunner, prep_vivi.py).
 // Phone-safe shader: no uniform arrays, no loops.
 
 import * as THREE from 'three';
@@ -93,16 +93,18 @@ const b64ToBuffer = b64 => { const bin = atob(b64), u = new Uint8Array(bin.lengt
 
 // A clip's bone track holds one rotation per frame, or a single rotation for a bone that never moves in it.
 // c.loop === false: a one-shot (a jump's take-off or landing) that plays once and holds its last pose.
-function buildClips(anim) {
+// unit: what the hips path and the ground speeds are multiplied by. character-anim.js writes them in hips heights
+// (anim.hipsUnit), so the same clips fit every model: unit = this model's own hips height.
+function buildClips(anim, unit = 1) {
   const clips = {};
   for (const [name, c] of Object.entries(anim.clips)) {
     const times = new Float32Array(c.frames);
     for (let i = 0; i < c.frames; i++) times[i] = i / (c.frames - 1) * c.duration;
     const still = new Float32Array([0]);
     const tracks = Object.entries(c.tracks).map(([bone, v]) => new THREE.QuaternionKeyframeTrack(bone + '.quaternion', v.length === 4 ? still : times, new Float32Array(v)));
-    tracks.push(new THREE.VectorKeyframeTrack(anim.hipsBone + '.position', times, new Float32Array(c.hips)));
+    tracks.push(new THREE.VectorKeyframeTrack(anim.hipsBone + '.position', times, new Float32Array(c.hips).map(v => v * unit)));
     clips[name] = new THREE.AnimationClip(name, c.duration, tracks);
-    clips[name].userData = { speed: c.speed, loop: c.loop !== false };
+    clips[name].userData = { speed: c.speed * unit, loop: c.loop !== false };
   }
   return clips;
 }
@@ -127,7 +129,9 @@ export async function loadCharacter(source, anim) {
   object.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(object, true);
   const mixer = new THREE.AnimationMixer(model);
-  const clips = buildClips(anim), actions = {};
+  const hipsBone = model.getObjectByName(anim.hipsBone);
+  const hipsHeight = hipsBone ? hipsBone.getWorldPosition(new THREE.Vector3()).y : 1;      // as modelled, standing in T-pose
+  const clips = buildClips(anim, anim.hipsUnit === 'hipsHeight' ? hipsHeight : 1), actions = {};
   for (const [k, c] of Object.entries(clips)) {
     actions[k] = mixer.clipAction(c);
     if (!c.userData.loop) { actions[k].setLoop(THREE.LoopOnce, 1); actions[k].clampWhenFinished = true; }
@@ -137,7 +141,7 @@ export async function loadCharacter(source, anim) {
   const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
   let springs = null;
   const ch = {
-    object, model, mixer, actions, height: baseHeight, water, baseHeight, size: 1,
+    object, model, mixer, actions, height: baseHeight, water, baseHeight, hipsHeight, size: 1,
     speeds: { ...baseSpeeds },
     // k times her modelled size (1 = as the GLB is, ~1.41 m). A bigger step covers more ground: the clips' speeds grow with her
     setSize(k) {
@@ -163,7 +167,11 @@ export async function loadCharacter(source, anim) {
     },
     setRate(r) { if (current) current.timeScale = r; },
     update(dt) { mixer.update(Math.min(dt, 0.05)); },
-    dispose() { mixer.stopAllAction(); made.forEach(m => { if (m.uniforms.uMap.value) m.uniforms.uMap.value.dispose(); m.dispose(); }); },
+    dispose() {
+      mixer.stopAllAction();
+      made.forEach(m => { if (m.uniforms.uMap.value) m.uniforms.uMap.value.dispose(); m.dispose(); });
+      model.traverse(o => { if (o.isMesh) o.geometry.dispose(); if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose(); });
+    },
   };
   ch.play('idle', 0);
   object.userData = { kind: 'character', dispose: () => ch.dispose() };

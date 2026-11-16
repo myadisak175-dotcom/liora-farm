@@ -2,7 +2,7 @@
 // Hair, skirt, sleeves and chest that swing as she moves: VRM spring bones, solved by three-vrm's own spring-bone code
 // (the same as any VRM viewer), rebuilt by bone name on a character whose VRM data was stripped for the web.
 //
-//   const springs = createSprings(model, VIVI_SPRINGS);   // model: her loaded scene; data: vivi-springs.js
+//   const springs = createSprings(model, data);   // model: her loaded scene; data: assets/characters/<id>.springs.json
 //   springs.setScale(k);       // she is drawn k times her modelled size: the collision spheres grow with her
 //   springs.reset();           // after a teleport: the hair starts at rest where she lands instead of whipping across the map
 //   every frame, after her pose and her place in the world are set: springs.update(dt)

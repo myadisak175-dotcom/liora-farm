@@ -111,11 +111,12 @@
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1",
-  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./character-springs.js": "./character-springs.js?v=1",
-  "./vivi-springs.js": "./vivi-springs.js?v=2skirt",
-  "./vivi-anim.js": "./vivi-anim.js?v=ual2sprint",
+  "./character-anim.js": "./character-anim.js?v=ual2sprint",
+  "./characters.js": "./characters.js?v=1",
+  "./character-picker.js": "./character-picker.js?v=1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
   "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1",
   "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
@@ -135,12 +136,12 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
-  "./character-shadow.js": "./character-shadow.js?v=shadow2"
+  "./character-shadow.js": "./character-shadow.js?v=shadow2swap1"
 } }
 </script>
 </head>
@@ -206,7 +207,6 @@ import { buildHillVillageLevel } from './hill-village-level.js';
 import { setAnimeBrush } from './anime-tree.js';
 import { setFrondPineBrush } from './frond-pine.js';
 import { setGroundCoverBrush } from './ground-cover.js';
-import { loadCharacter } from './stylized-character.js';
 import { createPlayer } from './player.js';
 import { createCharacterShadow } from './character-shadow.js';
 import { WATER_TUNE } from './stylized-water.js';
@@ -215,10 +215,9 @@ import { FALL_TUNE } from './stylized-waterfall.js';
 import { createSkyTuner } from './sky-tuner.js';
 import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
-import { VIVI_GLB } from './vivi-data.js';
-import { VIVI_ANIM } from './vivi-anim.js';
-import { VIVI_SPRINGS } from './vivi-springs.js';
-import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { CHARACTERS, DEFAULT_CHARACTER, faceOf, loadPlayable } from './characters.js';
+import { createCharacterPicker } from './character-picker.js';
 import DEER_GLB from './deer-glb.js';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
@@ -280,13 +279,20 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
   if (old) { scene.remove(old); old.userData.dispose(); }
   scene.add(Sky.createDistantMountains({ center: [0, 0], seed: 5, layers: level.horizon.layers }));
 }
-await onStep('ปลุก Vivi');
-const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
-vivi.attachSprings(createSprings(vivi.model, VIVI_SPRINGS));      // her hair, skirt and sleeves swing
-// her height: 1.6 m, to stand right beside the building kit's doors and the trees (as modelled she is ~1.41 m: a child next to
-// a 3 m storey). Set before her shadow is made, so its picture is sized for her
-const VIVI_HEIGHT = 1.75;
-vivi.setSize(VIVI_HEIGHT / vivi.baseHeight);
+// who plays: the one chosen last time in the picker (top left), Vivi at first (characters.js). Every character stands 1.75 m,
+// right beside the building kit's doors and the trees (Vivi as modelled is ~1.41 m: a child next to a 3 m storey). Sized
+// before her shadow is made, so its picture fits her
+const HERO_HEIGHT = 1.75, HERO_KEY = 'liora.character';
+let heroId = DEFAULT_CHARACTER;
+try { const saved = localStorage.getItem(HERO_KEY); if (CHARACTERS.some(c => c.id === saved)) heroId = saved; } catch (e) { /* not remembered: Vivi */ }
+await onStep(`ปลุก ${CHARACTERS.find(c => c.id === heroId).name}`);
+let hero;
+try { hero = await loadPlayable(heroId, CHARACTER_ANIM, { height: HERO_HEIGHT }); }
+catch (err) {                                                     // the remembered one would not load: Vivi plays
+  console.warn('[character]', heroId, err);
+  heroId = DEFAULT_CHARACTER;
+  hero = await loadPlayable(heroId, CHARACTER_ANIM, { height: HERO_HEIGHT });
+}
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
   if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active)) return;     // while editing, a tap belongs to the editor
@@ -294,7 +300,7 @@ const onTap = (cx, cy) => {                          // tap the water: a stone's
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
 if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }      // (the valley finds its own bank)
-const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
 level.addUnderwater(player.object);
 // the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
@@ -302,7 +308,7 @@ const jumpBtn = document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
-const charShadow = createCharacterShadow({ character: vivi, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
+const charShadow = createCharacterShadow({ character: hero, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
 level.addUnderwater(charShadow.object);                // on the river bed too, seen through the water
 const shadowOnGrass = !!(level.grass && charShadow.receive(level.grass.material));   // and across the tops of the grass
@@ -482,6 +488,22 @@ if (foliageEditor) {
   document.body.append(b);
   if (foliageEditor.resume) foliageEditor.open(foliageEditor.resume);        // back from "save": the same view
 }
+// ---- 👤 who walks the world: the playable characters' faces (top left, under the hand tools). The new one takes her place
+// on the spot, mid-stride or mid-air; the choice is remembered for the next visit
+const picker = createCharacterPicker({
+  characters: CHARACTERS, current: heroId, faceOf,
+  top: LEFT_TOP + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0) + (pathBrush ? 1 : 0) + (foliageEditor ? 1 : 0)),
+  onPick: async id => {
+    const next = await loadPlayable(id, CHARACTER_ANIM, { height: HERO_HEIGHT });
+    const old = hero;
+    level.addUnderwater(next.object);                     // seen through the water, like the one before
+    player.setCharacter(next);
+    charShadow.setCharacter(next);
+    hero = next; heroId = id;
+    old.dispose();
+    try { localStorage.setItem(HERO_KEY, id); } catch (e) { /* not remembered */ }
+  },
+});
 // ---- 📍 ไปที่…: straight to any of the places the map offers (the village, the abyss's rim, ...)
 const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0) + (pathBrush ? 1 : 0)) });
 // ---- 🗺 the map: a small round one at the top that follows her; a tap opens the whole map, where a pin takes her to a place
@@ -558,7 +580,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

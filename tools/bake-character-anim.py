@@ -1,39 +1,37 @@
 #!/usr/bin/env python3
-"""Bake Vivi's moves from the shared animation library into vivi-anim.js.
+"""Bake the characters' moves from the shared animation library into character-anim.js.
 
 The animation library (.vrma files: Quaternius Universal Animation Library 1+2, CC0) is the one source of every
 character's moves. This game plays them in its own compact format (see stylized-character.js): for each J_Bip bone,
-its local rotation at 30 frames a second, plus the hips' position. Every VRoid model has the same J_Bip bones, so the
-same bake works for any of them.
+its local rotation at 30 frames a second, plus the hips' path. Every VRoid model has the same J_Bip bones and stands in
+the same T-pose with no rest rotations, so one bake serves every playable character:
 
-How a library clip becomes hers (the same steps three-vrm's createVRMAnimationClip takes, checked against it):
   - a library clip's skeleton stands in T-pose with no rest rotations, so each keyframe is the bone's turn away from T-pose;
   - VRoid models are VRM 0.x, which face -Z: every turn is mirrored through the Y axis (x and z negated);
-  - the hips' path is scaled by her hips height over the library skeleton's.
+  - the hips' path is written in hips heights (the library skeleton's hips stand at 1), and ground speeds in hips heights
+    a second: stylized-character.js multiplies both by the loaded model's own hips height, so a long-legged character
+    covers more ground per step. (The same steps three-vrm's createVRMAnimationClip takes; checked against it.)
 
 Usage (from the repo folder):
-  python3 tools/bake-vivi-anim.py LIBRARY_DIR            (LIBRARY_DIR: the folder holding the .vrma files)
-writes vivi-anim.js next to index.html. No packages needed beyond Python 3.
+  python3 tools/bake-character-anim.py LIBRARY_DIR        (LIBRARY_DIR: the folder holding the .vrma files)
+writes character-anim.js next to index.html. No packages needed beyond Python 3.
 """
-import base64
 import json
-import math
 import os
-import re
 import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
-# game clip name, library clip, loops?, ground speed in m/s at her modelled size (None: measured from the planted foot)
+# game clip name, library clip, loops?, ground speed in hips heights a second (None: measured from the planted foot)
 CLIPS = [
     ("idle", "Idle_Loop", True, 0.0),
     ("walk", "Walk_Loop", True, None),
-    # The library's sprint covers ~7 m/s on her, far more than her run pace. It is played at its own rhythm at her full
-    # run (about three steps a second) rather than slowed to match the ground; its feet are down for under a tenth of the
-    # cycle, so the slide does not show.
-    ("run", "Sprint_Loop", True, 3.3),
+    # The library's sprint covers ~9.7 hips heights a second, far more than the run pace. It is played at its own rhythm
+    # at a full run (about three steps a second; 4.25 hips heights a second, Vivi's 3.3 m/s as modelled) rather than
+    # slowed to match the ground; its feet are down for under a tenth of the cycle, so the slide does not show.
+    ("run", "Sprint_Loop", True, 4.25),
     ("jump_start", "Jump_Start", False, 0.0),
     ("jump_air", "Jump_Loop", True, 0.0),
     ("jump_land", "Jump_Land", False, 0.0),
@@ -76,7 +74,7 @@ def qrot(q, v):
     return (v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx))
 
 
-# ---------------------------------------------------------------- GLB reading
+# ---------------------------------------------------------------- reading a library clip
 
 def parse_glb(data):
     if data[:4] != b"glTF":
@@ -100,25 +98,6 @@ def read_floats(js, binary, index):
     off = view.get("byteOffset", 0) + acc.get("byteOffset", 0)
     stride = view.get("byteStride", 0) or 4 * n
     return [struct.unpack_from(f"<{n}f", binary, off + i * stride) for i in range(acc["count"])]
-
-
-def her_skeleton():
-    """Her bones as the game loads them (from vivi-data.js): hips height above her feet, and every bone name."""
-    src = open(os.path.join(REPO, "vivi-data.js"), encoding="utf-8").read()
-    m = re.search(r"export const VIVI_GLB = ['\"`]([A-Za-z0-9+/=]+)", src)
-    if not m:
-        raise ValueError("VIVI_GLB not found in vivi-data.js")
-    js, _ = parse_glb(base64.b64decode(m.group(1)))
-    nodes = js["nodes"]
-    parent = {c: i for i, n in enumerate(nodes) for c in n.get("children", [])}
-    names = {n.get("name"): i for i, n in enumerate(nodes)}
-    y, i = 0.0, names["J_Bip_C_Hips"]
-    while i is not None:
-        if nodes[i].get("rotation", [0, 0, 0, 1]) != [0, 0, 0, 1]:
-            raise ValueError(f"{nodes[i].get('name')}: expected no rest rotation above the hips")
-        y += nodes[i].get("translation", [0, 0, 0])[1]
-        i = parent.get(i)
-    return y, set(names)
 
 
 def read_vrma(path):
@@ -183,12 +162,11 @@ def planted_foot_speed(clip):
     return speeds[len(speeds) // 2] if speeds else 0.0
 
 
-def bake(clip, scale, her_bones):
-    frames = len(clip["times"])
+def bake(clip):
     tracks = {}
     for bone, values in clip["rot"].items():
         name = VROID_BONES.get(bone)
-        if name is None or name not in her_bones:
+        if name is None:
             continue
         flat = []
         for x, y, z, w in values:
@@ -196,10 +174,11 @@ def bake(clip, scale, her_bones):
         if all(flat[i] == flat[i % 4] for i in range(len(flat))):
             flat = flat[:4]                                                     # never moves: one key is enough
         tracks[name] = flat
+    unit = 1.0 / clip["rest_hips"][1]                                           # metres -> hips heights
     hips = []
     for x, y, z in clip["hips"]:
-        hips += [round(-x * scale, 4), round(y * scale, 4), round(-z * scale, 4)]
-    return tracks, hips, frames
+        hips += [round(-x * unit, 5), round(y * unit, 5), round(-z * unit, 5)]
+    return tracks, hips, len(clip["times"])
 
 
 def main(argv):
@@ -207,29 +186,29 @@ def main(argv):
         print(__doc__)
         return 1
     lib = argv[1]
-    out_path = argv[2] if len(argv) > 2 else os.path.join(REPO, "vivi-anim.js")
-    hips_y, her_bones = her_skeleton()
-    anim = {"fps": 30, "forwardYaw": 3.1416, "hipsBone": "J_Bip_C_Hips", "clips": {}}
+    out_path = argv[2] if len(argv) > 2 else os.path.join(REPO, "character-anim.js")
+    anim = {"fps": 30, "forwardYaw": 3.1416, "hipsBone": "J_Bip_C_Hips", "hipsUnit": "hipsHeight", "clips": {}}
     lines = []
     for game_name, lib_name, loop, speed in CLIPS:
         clip = read_vrma(os.path.join(lib, f"{lib_name}.vrma"))
-        scale = hips_y / clip["rest_hips"][1]
-        measured = planted_foot_speed(clip) * scale
-        tracks, hips, frames = bake(clip, scale, her_bones)
+        measured = planted_foot_speed(clip) / clip["rest_hips"][1]
+        tracks, hips, frames = bake(clip)
         anim["clips"][game_name] = {
             "duration": round(clip["times"][-1], 4), "frames": frames, "loop": loop,
             "speed": round(measured if speed is None else speed, 4),
             "tracks": tracks, "hips": hips,
         }
         lines.append(f"//   {game_name:<10} <- {lib_name:<14} {clip['times'][-1]:.2f} s, {len(tracks)} bones"
-                     f"{'' if loop else ', once'}, ground speed {measured:.2f} m/s"
-                     f"{'' if speed is None else f' (played as {speed:.2f})'}")
+                     f"{'' if loop else ', once'}"
+                     + (f", ground speed {measured:.2f} hips heights/s" if speed is None or speed > 0 else "")
+                     + (f" (played as {speed:.2f})" if speed else ""))
         print(lines[-1][4:])
-    head = ("// vivi-anim.js: written by tools/bake-vivi-anim.py from the shared animation library; do not edit by hand.\n"
-            "// Her moves come from Quaternius' Universal Animation Library 1+2 (CC0), retargeted onto her VRoid bones.\n"
+    head = ("// character-anim.js: written by tools/bake-character-anim.py from the shared animation library; do not edit by hand.\n"
+            "// Every playable character's moves: Quaternius' Universal Animation Library 1+2 (CC0), for VRoid bones.\n"
+            "// Hips path and ground speeds are in hips heights: stylized-character.js scales them to each model.\n"
             + "\n".join(lines) + "\n")
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write(head + "export const VIVI_ANIM = " + json.dumps(anim, separators=(",", ":")) + ";\n")
+        f.write(head + "export const CHARACTER_ANIM = " + json.dumps(anim, separators=(",", ":")) + ";\n")
     print(f"wrote {out_path} ({os.path.getsize(out_path) // 1024} KB)")
     return 0
 
