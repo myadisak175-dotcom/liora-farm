@@ -319,10 +319,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const br = P.bridge, bc = Math.cos(br.yaw), bs = Math.sin(br.yaw), bL = br.length;
     const bEnd = s => [br.x + s * (bL / 2 - 0.4) * bc, br.z - s * (bL / 2 - 0.4) * bs];
     const by = Math.min(H(...bEnd(-1)), H(...bEnd(1))) - 0.12;
-    builds.push(BD.place(BD.stoneBridgeGeometry({ length: bL, seed: 25 }), br.x, by, br.z, br.yaw));
-    decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.0, y: u => by + BD.stoneBridgeDeck(u, { length: bL }) });
+    kb.bridge({ length: bL, width: 2.9, deck: u => BD.stoneBridgeDeck(u, { length: bL }) }, br.x, by, br.z, br.yaw);      // (in the houses' own stone: village-kit.js)
+    decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.1, y: u => by + BD.stoneBridgeDeck(u, { length: bL }) });      // (the way between its parapets: 1.13 m either side)
     for (let u = -bL / 2; u <= bL / 2; u += 1) for (const v of [-0.8, 0.8]) bare.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 1.3]);
-    for (const s of [-1, 1]) for (const v of [-1.45, 1.45]) for (let u = 1; u <= bL / 2 + 0.6; u += 0.8) colliders.push([br.x + s * u * bc + v * bs, br.z - s * u * bs + v * bc, 0.42]);      // its parapets (and no stepping off its side)
+    for (const v of [-1.45, 1.45]) for (let u = -(bL / 2 + 0.6); u <= bL / 2 + 0.6 + 1e-6; u += 0.8) colliders.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 0.42]);      // its parapets (and no stepping off its side). (They began 1 m either side of its middle: there, at its highest, she could walk through the parapet, off the deck, and down into the river under it)
     casters.push([br.x, br.z, 0.6, 4.2, 0.7]);
   }
   // the plank bridges (the first valley's: stylized-terrain.js): one over the valley's river, and one over each of the three
