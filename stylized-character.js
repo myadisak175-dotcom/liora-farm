@@ -3,7 +3,7 @@
 //
 //   const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);      // base64 string or ArrayBuffer of a .glb
 //   scene.add(vivi.object);            // feet at y = 0, facing +Z
-//   vivi.play('walk');                 // 'idle' | 'walk' | 'run'
+//   vivi.play('walk');                 // 'idle' | 'walk' | 'run' | 'jump_start' | 'jump_air' | 'jump_land' (vivi-anim.js)
 //   every frame: vivi.update(dt)
 //   vivi.setSize(k)                    // k times her modelled size: height and the clips' ground speeds go with it
 //
@@ -89,15 +89,18 @@ function celMaterial(src, water) {
 
 const b64ToBuffer = b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; };
 
+// A clip's bone track holds one rotation per frame, or a single rotation for a bone that never moves in it.
+// c.loop === false: a one-shot (a jump's take-off or landing) that plays once and holds its last pose.
 function buildClips(anim) {
   const clips = {};
   for (const [name, c] of Object.entries(anim.clips)) {
     const times = new Float32Array(c.frames);
     for (let i = 0; i < c.frames; i++) times[i] = i / (c.frames - 1) * c.duration;
-    const tracks = Object.entries(c.tracks).map(([bone, v]) => new THREE.QuaternionKeyframeTrack(bone + '.quaternion', times, new Float32Array(v)));
+    const still = new Float32Array([0]);
+    const tracks = Object.entries(c.tracks).map(([bone, v]) => new THREE.QuaternionKeyframeTrack(bone + '.quaternion', v.length === 4 ? still : times, new Float32Array(v)));
     tracks.push(new THREE.VectorKeyframeTrack(anim.hipsBone + '.position', times, new Float32Array(c.hips)));
     clips[name] = new THREE.AnimationClip(name, c.duration, tracks);
-    clips[name].userData = { speed: c.speed };
+    clips[name].userData = { speed: c.speed, loop: c.loop !== false };
   }
   return clips;
 }
@@ -123,7 +126,10 @@ export async function loadCharacter(source, anim) {
   const box = new THREE.Box3().setFromObject(object, true);
   const mixer = new THREE.AnimationMixer(model);
   const clips = buildClips(anim), actions = {};
-  for (const [k, c] of Object.entries(clips)) actions[k] = mixer.clipAction(c);
+  for (const [k, c] of Object.entries(clips)) {
+    actions[k] = mixer.clipAction(c);
+    if (!c.userData.loop) { actions[k].setLoop(THREE.LoopOnce, 1); actions[k].clampWhenFinished = true; }
+  }
   let current = null;
   const baseHeight = box.max.y - box.min.y;
   const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
@@ -137,11 +143,12 @@ export async function loadCharacter(source, anim) {
       ch.height = baseHeight * k;
       for (const name in baseSpeeds) ch.speeds[name] = baseSpeeds[name] * k;
     },
-    play(name, fade = 0.22) {
+    // warp: blend the two clips' paces during the fade (walk <-> run); a one-shot keeps its own timing (warp = false)
+    play(name, fade = 0.22, warp = true) {
       const next = actions[name];
       if (!next || next === current) return;
-      next.reset().setEffectiveWeight(1).play();
-      if (current && fade > 0) current.crossFadeTo(next, fade, true); else if (current) current.stop();
+      next.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).play();
+      if (current && fade > 0) current.crossFadeTo(next, fade, warp); else if (current) current.stop();
       current = next;
       ch.state = name;
     },

@@ -3,9 +3,14 @@
 //
 //   left side of the screen  : floating joystick (push far = run)        keyboard: WASD / arrows, Shift = walk
 //   right side of the screen : drag to look around                       mouse: drag
+//   jump button (index.html) : player.jump()                             keyboard: Space
 //
 //   const player = createPlayer({ character, level, camera, dom: renderer.domElement, ui: document.getElementById('stick') });
 //   every frame: player.update(dt)
+//
+// A jump: she leaves the ground at once (no wind-up), flies a plain ballistic arc and lands on whatever standAt says is
+// under her, a rock's top included. The clips (vivi-anim.js): jump_start plays through the rise, jump_air holds a long
+// fall, jump_land takes the landing; moving on, she runs straight out of the landing.
 //
 // Her size (character.size, set by character.setSize) scales what goes with her body: walk and run speeds, the water she
 // will wade into, how close she comes to a trunk, the blob under her feet and how far back the camera sits.
@@ -50,6 +55,12 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   let speed = 0, went = 0, paceWas = 0;      // how fast she means to go, how fast she really went (last frame), and the pace before
   const move = new THREE.Vector2();           // joystick / keys, -1..1
   const keys = new Set();
+  // ---- jumping (heights and gravity at her modelled size; update() scales them with her, so a jump takes the same time at any size)
+  const JUMP0 = 0.6, GRAV0 = 20;              // apex height (m), gravity (m/s²): ~0.5 s in the air on flat ground
+  const JUMP_BUFFER = 0.15;                   // a press just before she lands still jumps, on landing
+  const START_RATE = 1.8, START_AT = 0.06;    // jump_start squeezed into the short flight (its legs are stretched again by the landing)
+  const LAND_RATE = 1.4, LAND_HOLD = 0.14;    // landing standing still plays out; moving, she is off again after LAND_HOLD s
+  let air = false, vy = 0, landT = -1, jumpWanted = 0;
 
   // ---- blob shadow under the feet
   const shadow = (() => {
@@ -107,14 +118,16 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   dom.addEventListener('pointerup', up);
   dom.addEventListener('pointercancel', up);
   dom.addEventListener('wheel', e => { camDist = Math.min(9, Math.max(2.6, camDist + e.deltaY * 0.004)); }, { passive: true });
-  addEventListener('keydown', e => keys.add(e.code));
+  addEventListener('keydown', e => { keys.add(e.code); if (e.code === 'Space' && !e.repeat) jumpWanted = JUMP_BUFFER; });
   addEventListener('keyup', e => keys.delete(e.code));
   addEventListener('blur', () => keys.clear());
 
   const tmp = new THREE.Vector3(), look = new THREE.Vector3(), camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
   let camReady = false, camReach = camDist, wade = 0, stepSide = 1;
   let wasDepth = 0, wetH = 0, wetAmt = 0;      // the water she stood in a frame ago; how high up she is wet (m above her feet) and how wet still
-  const WALK0 = 1.45, RUN0 = 3.3, DEEP0 = 0.5;      // at her modelled size (DEEP: water she will not wade into); update() scales them with her
+  // at her modelled size (DEEP: water she will not wade into); update() scales them with her. WALK0 suits the walk clip's own
+  // stride (0.83 m/s on her), so a full walk plays it at most ~1.45x and her feet do not slide
+  const WALK0 = 1.2, RUN0 = 3.3, DEEP0 = 0.5;
   // her two feet, followed bone by bone, so the water is touched exactly when and where a foot comes down
   const feet = [];
   character.object.traverse(o => { if (o.isBone && /_(L|R)_Foot$/.test(o.name)) feet.push({ bone: o, lo: 0, hi: 0, up: false, seen: false, since: 1 }); });
@@ -135,7 +148,9 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
     object: root, position: pos, character, blob: shadow,
     get heading() { return heading; }, get camYaw() { return camYaw; }, get speed() { return speed; },
     lookDir: new THREE.Vector3(0, 0, -1),
-    teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; },
+    get airborne() { return air; },
+    jump() { jumpWanted = JUMP_BUFFER; },
+    teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; air = false; vy = 0; landT = -1; },
     setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
     update(dt) {
       dt = Math.min(dt, 0.05);
@@ -159,20 +174,20 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
         target = amount > 0.72 ? RUN : WALK * Math.max(0.6, amount / 0.72);
         const want = Math.atan2(wx, wz);
         let d = want - heading; d = Math.atan2(Math.sin(d), Math.cos(d));
-        heading += d * Math.min(1, dt * 11);
+        heading += d * Math.min(1, dt * (air ? 4 : 11));      // in the air she can only lean into a turn
       }
       // wading slows you down, the more the deeper it is (ankle-deep hardly at all, knee-deep she cannot run); deep water stops you
       const depthHere = level.waterDepthAt(pos.x, pos.z);
       const heavy = Math.min(1, Math.max(0, (depthHere - 0.1 * k) / (0.4 * k))), drag = heavy * heavy * (3 - 2 * heavy);
       target *= 1 - 0.52 * drag;
       // running into the water: one splash where she breaks the surface
-      if (depthHere > 0.06 && wasDepth <= 0.06 && speed > 2.2 * k && level.ripple) level.ripple(pos.x + Math.sin(heading) * 0.25, pos.z + Math.cos(heading) * 0.25, 0.9, 0.3, 'splash');
+      if (!air && depthHere > 0.06 && wasDepth <= 0.06 && speed > 2.2 * k && level.ripple) level.ripple(pos.x + Math.sin(heading) * 0.25, pos.z + Math.cos(heading) * 0.25, 0.9, 0.3, 'splash');
       wasDepth = depthHere;
       // what has been in the water is wet (a run splashes her higher), and dries in a quarter of a minute once she is out
       if (depthHere > 0.03) { wetH = Math.max(wetH, depthHere + 0.05 + 0.12 * Math.min(1, speed / RUN)); wetAmt = 1; }
       else { wetAmt = Math.max(0, wetAmt - dt / 15); if (wetAmt === 0) wetH = 0; }
       // standing in water: a slow ring now and then. Walking is handled further down, where each foot's own landing makes the ring
-      if (depthHere > 0.04 && level.ripple) {
+      if (depthHere > 0.04 && level.ripple && !air) {
         wade -= dt;
         const moving = speed > 0.3;
         if (wade <= 0 && (!moving || !feet.length)) {
@@ -184,7 +199,8 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           wade = moving ? 0.17 + Math.random() * 0.09 : 1.2 + Math.random() * 0.8;      // never quite in time, like real steps
         }
       } else wade = 0;
-      speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 - 4 * drag : 10 + 5 * drag));      // water is slow to get going in and quick to stop her
+      // water is slow to get going in and quick to stop her; in the air she keeps the speed she jumped with
+      speed += (target - speed) * Math.min(1, dt * (air ? 1.5 : target > speed ? 7 - 4 * drag : 10 + 5 * drag));
       if (speed > 0.02) {
         tmp.set(pos.x + Math.sin(heading) * speed * dt, 0, pos.z + Math.cos(heading) * speed * dt);
         if (level.waterDepthAt(tmp.x, tmp.z) > DEEP && level.waterDepthAt(tmp.x, tmp.z) > depthHere) {
@@ -204,14 +220,51 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       const paceNow = Math.min(speed, went * 1.1 + 0.05), pace = Math.min(paceNow, paceWas);      // (a pace held for one frame only does not change her gait)
       paceWas = paceNow;
       const ground = standAt(pos.x, pos.z);
-      pos.y += (ground - pos.y) * Math.min(1, dt * 18);
+      // ---- jumping: off the ground at once, unless she is deeper in the water than her knees
+      jumpWanted = Math.max(0, jumpWanted - dt);
+      if (!air && jumpWanted > 0 && depthHere < 0.32 * k) {
+        air = true; jumpWanted = 0; landT = -1;
+        vy = Math.sqrt(2 * GRAV0 * JUMP0) * k;
+        character.play('jump_start', 0.08, false);
+        if (character.actions.jump_start) character.actions.jump_start.time = START_AT;
+        if (depthHere > 0.04 && level.ripple) level.ripple(pos.x, pos.z, 0.8, 0.3, 'splash');      // pushing off from the water
+      }
+      if (air) {
+        const g = GRAV0 * k;
+        pos.y += vy * dt - 0.5 * g * dt * dt;              // exact for a steady pull: the same arc at any frame rate
+        vy -= g * dt;
+        if (pos.y <= ground) {
+          if (vy > 0) pos.y = ground;                     // rising past a higher step (a rock's top): carried up with it
+          else {                                          // down: she lands
+            air = false; vy = 0; pos.y = ground; landT = 0;
+            character.play('jump_land', 0.06, false);
+            if (depthHere > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1.0, 0.32, 'splash');
+          }
+        }
+      } else pos.y += (ground - pos.y) * Math.min(1, dt * 18);
+      const lift = Math.max(0, pos.y - ground);           // how high above the ground she is (only while jumping)
       // ---- animation follows the real speed, so feet do not slide
       const st = pace < 0.25 ? 'idle' : pace < (WALK + RUN) * 0.5 ? 'walk' : 'run';
-      if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : 0.2);
-      character.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, pace / (character.speeds[st] || 1))));
+      if (air) {
+        const rise = character.actions.jump_start;
+        if (character.state === 'jump_start' && rise && rise.time >= rise.getClip().duration - 0.02) character.play('jump_air', 0.2, false);
+        character.setRate(character.state === 'jump_start' ? START_RATE : 1);
+      } else if (landT >= 0) {
+        landT += dt;
+        const land = character.actions.jump_land;
+        if ((pace >= 0.25 && landT > LAND_HOLD) || character.state !== 'jump_land' || (land && land.time >= land.getClip().duration - 0.02)) landT = -1;
+        else character.setRate(LAND_RATE);
+      }
+      if (!air && landT < 0) {
+        if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : 0.2);
+        character.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, pace / (character.speeds[st] || 1))));
+      }
       character.update(dt);
       root.position.copy(pos);
       character.object.rotation.y = heading;
+      // the blob stays on the ground under her, smaller the higher she is
+      shadow.position.y = 0.06 - lift;
+      shadow.scale.setScalar(k * (1 - 0.35 * Math.min(1, lift / (1.2 * k))));
       // tell her materials where the water's surface is (far below when she is on land) and how high she is wet
       if (character.water) {
         character.water.level.value = depthHere > 0.02 ? level.heightAt(pos.x, pos.z) + depthHere : -1e5;
@@ -222,6 +275,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       if (feet.length && level.ripple) {
         root.updateMatrixWorld(true);
         for (const f of feet) {
+          if (air || landT >= 0) { f.up = false; continue; }      // a jump's tucked legs are not steps (and must not stretch the learnt range)
           f.bone.getWorldPosition(footPos);
           const y = footPos.y - pos.y;
           if (!f.seen) { f.lo = f.hi = y; f.seen = true; }
@@ -244,7 +298,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
         }
       }
       // ---- camera: orbits a point above the shoulders, never dips under the ground
-      look.set(pos.x, pos.y + character.height * 0.82, pos.z);
+      look.set(pos.x, pos.y - lift * 0.6 + character.height * 0.82, pos.z);      // a jump lifts the view only a little
       const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
       // tree crowns: if the line from her shoulders to the camera runs into a leaf mass, the camera comes closer and stays
       // under the canopy instead of diving into the leaves

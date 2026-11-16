@@ -19,6 +19,14 @@
     background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
   #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
     background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  /* jump: under the right thumb, in the joystick's colours */
+  #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+    z-index: 4; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
+  #jumpBtn[hidden] { display: none; }
   #fps { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 8px; font-size: 11px; color: rgba(39, 52, 26, .75);
     background: rgba(255, 255, 255, .62); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
   #style { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 34px; font: inherit; font-size: 12px; color: #fff;
@@ -103,7 +111,8 @@
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1",
-  "./stylized-character.js": "./stylized-character.js?v=wade1size1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1",
+  "./vivi-anim.js": "./vivi-anim.js?v=ual1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
   "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1",
   "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
@@ -123,7 +132,7 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1size1edge2",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -166,6 +175,7 @@
 })();
 </script>
 <div id="stick"><i></i></div>
+<button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
 <div id="fps"></div>
 <button id="style">หญ้า: พู่กัน</button>
 <button id="tune">ปรับน้ำ</button>
@@ -202,7 +212,8 @@ import { FALL_TUNE } from './stylized-waterfall.js';
 import { createSkyTuner } from './sky-tuner.js';
 import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
-import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
+import { VIVI_GLB } from './vivi-data.js';
+import { VIVI_ANIM } from './vivi-anim.js';
 import DEER_GLB from './deer-glb.js';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
@@ -280,6 +291,10 @@ if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z:
 const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
 level.addUnderwater(player.object);
+// the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
+const jumpBtn = document.getElementById('jumpBtn');
+jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: vivi, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
@@ -484,6 +499,7 @@ const frame = (dt = clock.getDelta()) => {
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   const rockEditing = rockEditor && rockEditor.active;
   if (rockEditing) rockEditor.apply(camera);                              // the rock editor's camera flies free of her

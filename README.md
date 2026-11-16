@@ -20,6 +20,7 @@ Every shader's noise is `NOISE` in `stylized-nature.js` (`noise2`, `hash2`). Its
 
 Credits retained from the supplied project:
 - Vivi: VRoid sample (CC0).
+- Vivi's moves: Quaternius Universal Animation Library 1+2 (CC0 1.0), from the shared animation library (.vrma), baked into `vivi-anim.js` by `tools/bake-vivi-anim.py` (`python3 tools/bake-vivi-anim.py <folder of .vrma files>`; the clip list is at the top of the script).
 - “DEER” by WildMesh 3D (CC BY-NC 4.0).
 - Grass approach inspired by Cortiz (MIT).
 - Windmill: a Sketchfab model supplied for this project, restyled into flat colour patches (`assets/models/windmill.glb`); author and licence credit still to be filled in.
