@@ -70,6 +70,10 @@
   body:not(.dev) #timeBtn { top:114px; }
   body:not(.dev) #timeRun { top:156px; }
   body:not(.dev) #fullscreen { top:198px; }
+  /* ?curse=1: the curse trial's button, under full screen */
+  #curseBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
+    background: rgba(70, 56, 92, .85); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
+  body:not(.dev) #curseBtn { top: 240px; }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
@@ -141,7 +145,8 @@
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
-  "./character-shadow.js": "./character-shadow.js?v=shadow2swap1"
+  "./character-shadow.js": "./character-shadow.js?v=shadow2swap1",
+  "./curse.js": "./curse.js?v=1"
 } }
 </script>
 </head>
@@ -227,6 +232,8 @@ import { createPathBrush } from './path-brush.js';
 import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
 import { createGameMap } from './game-map.js';
 import { createWarpUI } from './warp-ui.js';
+import { createCurse, CURSE_TUNE, CURSE_CONTROLS } from './curse.js';
+import { createTunerPanel } from './tuner-panel.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -408,6 +415,20 @@ if (tod) {
   setInterval(showTime, 1000);
 } else { timeBtn.remove(); timeRun.remove(); }
 
+// ---- ☠ the curse (a trial, ?curse=1): the world drained of colour, dimmer and misty, to find how gloomy the game should begin.
+// She stays in colour. The sliders are remembered on this device; "คัดลอกค่า" gives the numbers to send back
+let curse = null;
+if (Q.has('curse')) {
+  curse = createCurse({ sky, haze: N.uniforms });
+  curse.apply(scene, { keep: [player.object] });
+  const btn = document.createElement('button'); btn.id = 'curseBtn'; btn.textContent = '☠ คำสาป';
+  btn.onpointerdown = e => e.stopPropagation();
+  const panel = document.createElement('div'); panel.id = 'curseTuner'; panel.className = 'tuner';
+  document.body.append(btn, panel);
+  createTunerPanel({ tune: CURSE_TUNE, controls: CURSE_CONTROLS, key: 'liora.curse.v1', button: btn, panel, onChange: () => curse.changed() });
+  curse.changed();                                       // the values remembered from last time
+}
+
 // ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
 // it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
 // is not tried again for a while: without that the picture went coarse and fine, and the grass thin and thick, over and
@@ -550,6 +571,7 @@ const frame = (dt = clock.getDelta()) => {
   if (sky.userData.update) sky.userData.update(renderer, dt);
   if (tod) tod.update(dt);
   if (shadows) shadows.update();
+  if (curse) curse.update(renderer);
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
   if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(dt);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
@@ -580,7 +602,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
