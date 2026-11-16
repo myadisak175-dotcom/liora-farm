@@ -36,7 +36,7 @@
                            (never from below the horizon: at night the plants keep a low light)
    setAnimeFarLeaves(on)   away from the eye, leaves that lie behind others are not drawn, and far off fewer are (on, as it
                            starts); off: every leaf of every plant is drawn at any distance (see FAR_LEAVES)
-   setAnimeBrush(on)       the leaves as a brush lays them (off, as it starts): see BRUSH
+   setAnimeBrush(on)       the leaves as a brush lays them (on, as it starts; off: as they were): see BRUSH
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    Low leaves part round whoever walks through them (stylized-nature's setWalker): a flowering clump is walked through.
    ========================================================================== */
@@ -110,7 +110,7 @@ export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...F
 //     same way all over the plant (strokeAt in the leaf's own shader), so a stroke of light or of shade runs over several
 //     leaves at once; each leaf's own speck of tint is mostly left out
 // Only the leafy plants (mask 'leaf'): needles and flowers stay as they are.
-const BRUSH = { value: 0 };
+const BRUSH = { value: 1 };
 export function setAnimeBrush(on = true) {
   BRUSH.value = on ? 1 : 0;
   for (const key in mats) if (key.endsWith('/leaf')) mats[key].leaf.uniforms.uMask.value = clusterMask(on ? 'brush' : 'leaf');
