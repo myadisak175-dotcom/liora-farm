@@ -30,10 +30,10 @@ REPO = os.path.dirname(HERE)
 CLIPS = [
     ("idle", "Idle_Loop", True, 0.0),
     ("walk", "Walk_Loop", True, None),
-    # The library's jog is a long bounding run (measured ~5 m/s on her). At her run pace it is played a little faster than
-    # its own ground speed would allow, so the steps keep a running rhythm; its feet are down only ~13% of the cycle, so
-    # the small slide does not show.
-    ("run", "Jog_Fwd_Loop", True, 3.0),
+    # The library's sprint covers ~7 m/s on her, far more than her run pace. It is played at its own rhythm at her full
+    # run (about three steps a second) rather than slowed to match the ground; its feet are down for under a tenth of the
+    # cycle, so the slide does not show.
+    ("run", "Sprint_Loop", True, 3.3),
     ("jump_start", "Jump_Start", False, 0.0),
     ("jump_air", "Jump_Loop", True, 0.0),
     ("jump_land", "Jump_Land", False, 0.0),
