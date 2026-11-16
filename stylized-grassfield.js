@@ -241,6 +241,8 @@ vec3 dabColor(vec3 ground, vec3 tip, float v) {
   c = mix(c, light, step(0.71, v));                             // sunlit accents, used sparingly
   return c;
 }`;
+// (the land's own paint lays the far meadow in with these, so that it is the near one seen from afar: stylized-terrain.js, grassLook)
+export const GRASS_LOOK_GLSL = LOOK_GLSL;
 
 export function groundMaterial(map, { far = '#eef5e4', fadeA = null, fadeB = null, radius = null, tip = GRASS_TIP } = {}) {
   const R = radius || map.radius;
@@ -516,34 +518,64 @@ export function createFluffyGrass({
 // around a centre. Every tuft keeps its place in the world (it only jumps to the far side when the tile edge passes it,
 // where it is already faded to nothing), so the grass never swims, and the cost stays the same however big the world is.
 // Layers, back to front: dark ground between the roots -> a dense short carpet -> sparser tall tufts with light tips.
+// a tuft's blades: offset x, offset z (tuft units), height factor, turn. A far tuft is the first three of them
+const TUFT_BLADES = [[0, 0, 1.0, 0.0], [0.9, 0.25, 0.78, 0.9], [-0.75, 0.55, 0.7, -0.8], [0.2, -0.95, 0.62, 0.45], [-0.5, -0.7, 0.86, -0.35]];
 function tuftGeometry() {
-  // 5 blades, each a soft two-segment leaf that can curve. aBlade = offset x, offset z (tuft units), height factor, turn
-  const B = [[0, 0, 1.0, 0.0], [0.9, 0.25, 0.78, 0.9], [-0.75, 0.55, 0.7, -0.8], [0.2, -0.95, 0.62, 0.45], [-0.5, -0.7, 0.86, -0.35]];
-  const pos = [], bl = [], idx = [];
-  B.forEach((b, i) => {
+  // 5 blades, each a soft two-segment leaf that can curve. aBlade: see TUFT_BLADES; aSpare: 1 on the two blades a far tuft has not
+  const pos = [], bl = [], spare = [], idx = [];
+  TUFT_BLADES.forEach((b, i) => {
     pos.push(-0.5, 0, 0, 0.5, 0, 0, -0.4, 0.5, 0, 0.4, 0.5, 0, 0, 1, 0);
-    for (let k = 0; k < 5; k++) bl.push(...b);
+    for (let k = 0; k < 5; k++) { bl.push(...b); spare.push(i < 3 ? 0 : 1); }
     const o = i * 5; idx.push(o, o + 1, o + 2, o + 2, o + 1, o + 3, o + 2, o + 3, o + 4);
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aBlade', new THREE.Float32BufferAttribute(bl, 4));
+  g.setAttribute('aSpare', new THREE.Float32BufferAttribute(spare, 1));
+  g.setIndex(idx);
+  return g;
+}
+// a tuft as it is drawn far from the walker: the full tuft's first 3 blades, one flat triangle each (3 triangles where the
+// full tuft has 15). At that distance a blade is a few pixels wide and the whole tuft one flat tone
+function farTuftGeometry() {
+  const pos = [], bl = [], spare = [], idx = [];
+  TUFT_BLADES.slice(0, 3).forEach((b, i) => {
+    pos.push(-0.5, 0, 0, 0.5, 0, 0, 0, 1, 0);
+    for (let k = 0; k < 3; k++) { bl.push(...b); spare.push(0); }
+    const o = i * 3; idx.push(o, o + 1, o + 2);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aBlade', new THREE.Float32BufferAttribute(bl, 4));
+  g.setAttribute('aSpare', new THREE.Float32BufferAttribute(spare, 1));
   g.setIndex(idx);
   return g;
 }
 
+// NEAR AND FAR (farLod, on by default): the full tufts are drawn only round the walker, the rest of the tile as far tufts
+// (above), a little under half the triangles. Nothing is seen to change over, because it is ONE tuft that is drawn either way:
+//   - the tile is the same quarter of it laid out four times over, so the tufts round the walker (that quarter, on its own
+//     small tile about her) stand exactly where the big pool's do, and are the same tufts
+//   - going out from her (uMorph: from x to y) a full tuft turns INTO its far shape, little by little: its two spare blades
+//     sink away, the other three widen and straighten until each lies exactly on the far tuft's flat triangle
+//   - only there, where the two shapes are one and the same, is the far tuft drawn in the full one's place (uMorph.z)
+// userData.setFarLod(false): every tuft in full, as it was.
 export function createFollowGrass({
   map, field, count = 200000, tile = 62, seed = 5,
   bladeHeight = 0.34, bladeWidth = 0.055, tuft = 0.11, tip = GRASS_TIP,
   far = '#eef5e4', fadeA = null, fadeB = null, thin = 1,        // thin > 1: fewer, wider blades (a lighter carpet that still closes)
+  farLod = true, farWidth = 1.7,                                // farWidth: a far tuft's blades are this much wider (three stand for five)
 } = {}) {
   const rng = mulberry32(seed * 733 + 11);
+  const nearTile = tile / 2;                                    // the quarter that the tile repeats: the full tufts' own tile
   map.area.set(map.center[0], map.center[1], tile);
   const uniforms = {
     ...bladeUniforms(map, { tip, far, fadeA, fadeB, bladeHeight, bladeWidth }),
     uHeight: { value: field.texture }, uHeightRect: { value: field.rect },
     uArea: { value: map.area }, uTuft: { value: tuft }, uPaint: map.paint,
     uThin: { value: thin },       // widens blades when fewer of them are drawn
+    uNear: { value: new THREE.Vector4(map.center[0], map.center[1], nearTile, farWidth) },      // the near tufts' tile: centre x, z, size; w: a far blade's extra width
+    uMorph: { value: new THREE.Vector3(nearTile * 0.26, nearTile * 0.47, nearTile * 0.47) },     // from the walker: a full tuft starts turning into its far shape, has turned; the far tuft is drawn from here on (inside the near tile's half width)
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -554,9 +586,13 @@ export function createFollowGrass({
       attribute vec4 aBlade;     // this blade inside its tuft: offset x, offset z, height factor, turn
       attribute vec2 iCell;      // the tuft's place on the tile
       attribute vec4 iRnd;       // turn (-1..1), height scale, phase (0..1), tint (-1..1)
+      attribute float aLod;      // 0: a full tuft of the whole pool (no near and far)   1: a far tuft   2: a near tuft, on its own tile
+      attribute float aSpare;    // 1: one of the two blades a far tuft has not
       uniform sampler2D uHeight;
       uniform vec4 uHeightRect;  // corner x, corner z, scale, offset
       uniform vec3 uArea;        // tile centre x, z, tile size
+      uniform vec4 uNear;        // the near tufts' tile: centre x, z, size; w = how much wider a far tuft's blades are
+      uniform vec3 uMorph;       // distance from the walker: a full tuft starts turning into its far shape, has turned, the far tuft takes its place
       uniform float uTime, uWind, uTuft, uThin, uPaint;
       uniform vec2 uBlade;       // width, height
       uniform vec3 uTip;
@@ -569,8 +605,17 @@ export function createFollowGrass({
       varying float vFade;
       varying float vHaze;
       void main() {
-        vec2 xz = mod(iCell - uArea.xy, uArea.z) - 0.5 * uArea.z + uArea.xy;
-        float edge = 1.0 - smoothstep(uArea.z * 0.34, uArea.z * 0.49, length(xz - uArea.xy));
+        vec3 area = aLod > 1.5 ? uNear.xyz : uArea;
+        vec2 xz = mod(iCell - area.xy, area.z) - 0.5 * area.z + area.xy;
+        // the tile's edge: the grass thins out a tuft at a time, each at a distance of its own (its phase), over the tile's last
+        // third. (All at one distance they came up together as she walked: a line of grass rising, running ahead of her)
+        float last = uArea.z * mix(0.30, 0.43, fract(iRnd.z * 37.0 + 0.61));
+        float edge = 1.0 - smoothstep(last, last + uArea.z * 0.06, length(xz - uArea.xy));
+        // near and far: a near tuft is the far tuft that stands on the same spot (see NEAR AND FAR above). turned: how far it
+        // has turned into the far shape, 0 the full tuft .. 1 the far one. Past uMorph.z the far tuft is drawn and the near one not
+        float walk = length(xz - uNear.xy);
+        float turned = aLod < 0.5 ? 0.0 : aLod < 1.5 ? 1.0 : smoothstep(uMorph.x, uMorph.y, walk);
+        if (aLod > 0.5) edge *= aLod < 1.5 ? step(uMorph.z, walk) : 1.0 - step(uMorph.z, walk);
         float ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
         vec4 m = groundMap(xz);
         float cn = clumpAt(xz);
@@ -582,6 +627,7 @@ export function createFollowGrass({
         vec3 toC = cameraPosition - root;
         float dist = length(toC.xz);
         h *= smoothstep(0.35, 1.2, length(toC));                // blades right in front of the lens sink away
+        h *= 1.0 - aSpare * turned;                             // the two blades a far tuft has not: gone by the time it has turned
         vec2 toCam = toC.xz / max(dist, 0.001);
         // face the camera, every blade turned a little differently
         float a = iRnd.x * 0.6 + aBlade.w * 0.75;
@@ -600,9 +646,12 @@ export function createFollowGrass({
         h *= 1.0 - 0.12 * push;
         float y = position.y;
         float w = uThin * uBlade.x * (0.8 + 0.4 * fract(iRnd.z * 7.0)) * (1.0 + dist * 0.035) * (1.0 + 0.4 * uPaint);     // far blades wider: thin blades would shimmer
+        w *= mix(1.0, uNear.w, turned);                         // a far tuft: three blades stand for five
+        // the leaf's waist (y = 0.5) comes in onto the straight line from foot to tip as the tuft turns: turned, the leaf IS the flat triangle
+        float waist = (1.0 - abs(y - 0.5) * 2.0) * turned;
         vec3 p = root;
-        p.xz += right * (position.x * w) + lean * (h * y * y);            // y squared: the blade arcs over instead of tilting stiffly
-        p.y += h * y * (1.0 - 0.3 * min(dot(lean, lean), 1.6) * y);
+        p.xz += right * (position.x * mix(1.0, 0.625, waist) * w) + lean * (h * mix(y * y, y, turned));            // y squared: the blade arcs over instead of tilting stiffly
+        p.y += h * y * (1.0 - 0.3 * min(dot(lean, lean), 1.6) * mix(y, 1.0, turned));
         vY = y;
         vRoot = rootColor(m);
         vMid = m.rgb;
@@ -640,44 +689,77 @@ export function createFollowGrass({
       }`,
     side: THREE.DoubleSide,
   });
-  const base = tuftGeometry();
-  const cell = new Float32Array(count * 2), rnd = new Float32Array(count * 4);
-  for (let n = 0; n < count; n++) {
-    cell[n * 2] = rng() * tile; cell[n * 2 + 1] = rng() * tile;
+  const base = tuftGeometry(), flat = farTuftGeometry();
+  // the tufts of one quarter of the tile: each one's place on it, and what makes it itself
+  const n0 = Math.round(count / 4);
+  const cell0 = new Float32Array(n0 * 2), rnd0 = new Float32Array(n0 * 4);
+  for (let i = 0; i < n0; i++) {
+    cell0[i * 2] = rng() * nearTile; cell0[i * 2 + 1] = rng() * nearTile;
     const tall = rng() < 0.16;                          // the upper layer: fewer, taller, lighter
-    rnd[n * 4] = rng() * 2 - 1; rnd[n * 4 + 1] = tall ? 1.35 + 0.55 * rng() : 0.7 + 0.4 * rng(); rnd[n * 4 + 2] = rng();
-    rnd[n * 4 + 3] = tall ? 0.3 + 0.7 * rng() : rng() * 2 - 1;
+    rnd0[i * 4] = rng() * 2 - 1; rnd0[i * 4 + 1] = tall ? 1.35 + 0.55 * rng() : 0.7 + 0.4 * rng(); rnd0[i * 4 + 2] = rng();
+    rnd0[i * 4 + 3] = tall ? 0.3 + 0.7 * rng() : rng() * 2 - 1;
   }
-  const g = new THREE.InstancedBufferGeometry();
-  g.index = base.index;
-  g.setAttribute('position', base.attributes.position);
-  g.setAttribute('aBlade', base.attributes.aBlade);
-  g.setAttribute('iCell', new THREE.InstancedBufferAttribute(cell, 2));
-  g.setAttribute('iRnd', new THREE.InstancedBufferAttribute(rnd, 4));
-  g.instanceCount = count;
-  const mesh = new THREE.Mesh(g, mat);
+  // the whole tile: that quarter four times over. A tuft's four copies follow one another, so drawing only the first part of
+  // the pool (setDensity) thins the whole tile evenly, and leaves the same tufts as the first part of the quarter's own pool
+  const cell4 = new Float32Array(n0 * 8), rnd4 = new Float32Array(n0 * 16);
+  for (let i = 0; i < n0; i++) for (let k = 0; k < 4; k++) {
+    const o = i * 4 + k;
+    cell4[o * 2] = cell0[i * 2] + (k & 1) * nearTile; cell4[o * 2 + 1] = cell0[i * 2 + 1] + (k >> 1) * nearTile;
+    for (let j = 0; j < 4; j++) rnd4[o * 4 + j] = rnd0[i * 4 + j];
+  }
+  const wide = { n: n0 * 4, iCell: new THREE.InstancedBufferAttribute(cell4, 2), iRnd: new THREE.InstancedBufferAttribute(rnd4, 4) };
+  // (the shader lays a tile out from half its size before its centre: half a near tile's difference between the two pools,
+  // made up here, so that a near tuft stands on its far tuft's spot to the millimetre)
+  const cellN = cell0.map(v => (v + nearTile / 2) % nearTile);
+  const close = { n: n0, iCell: new THREE.InstancedBufferAttribute(cellN, 2), iRnd: new THREE.InstancedBufferAttribute(rnd0, 4) };
+  // a pool drawn with one of the two tuft shapes; lod tells the shader which of the three it is (see aLod there)
+  const tufts = (shape, lod, p) => {
+    const g = new THREE.InstancedBufferGeometry();
+    g.index = shape.index;
+    g.setAttribute('position', shape.attributes.position);
+    g.setAttribute('aBlade', shape.attributes.aBlade);
+    g.setAttribute('aSpare', shape.attributes.aSpare);
+    g.setAttribute('aLod', new THREE.Float32BufferAttribute(new Float32Array(shape.attributes.position.count).fill(lod), 1));
+    g.setAttribute('iCell', p.iCell);
+    g.setAttribute('iRnd', p.iRnd);
+    g.instanceCount = p.n;
+    return g;
+  };
+  const gAll = tufts(base, 0, wide), gFar = tufts(flat, 1, wide), gNear = tufts(base, 2, close);
+  const mesh = new THREE.Mesh(farLod ? gFar : gAll, mat);
   mesh.name = 'followGrass';
   mesh.frustumCulled = false;          // the shader decides where the blades are
+  const nearMesh = new THREE.Mesh(gNear, mat);          // (the same material: what is taught to the grass, her shadow, the clouds', is taught to both)
+  nearMesh.name = 'followGrassNear';
+  nearMesh.frustumCulled = false;
+  nearMesh.visible = farLod;
+  mesh.add(nearMesh);                  // (so whoever hides the grass hides both)
   let density = 1;
   mesh.userData = {
-    kind: 'followGrass', tufts: count, blades: count * 5,
+    kind: 'followGrass', tufts: wide.n, blades: wide.n * 5, nearTufts: close.n,
     // centre the tile a little ahead of the walker, in the direction the camera looks, so most blades are on screen
     follow(pos, lookDir = null, lead = 0.24) {
       let x = pos.x, z = pos.z;
       if (lookDir) { const l = Math.hypot(lookDir.x, lookDir.z) || 1; x += lookDir.x / l * tile * lead; z += lookDir.z / l * tile * lead; }
       map.area.set(x, z, tile);
+      uniforms.uNear.value.x = pos.x; uniforms.uNear.value.y = pos.z;      // the full tufts: round the walker herself (turning the camera moves nothing)
       uniforms.uWalker.value.set(pos.x, pos.y, pos.z, 0.55);
     },
     // draw only part of the pool (0.2..1); the blades that remain get wider so the carpet stays closed
     setDensity(d) {
       density = Math.min(1, Math.max(0.2, d));
-      g.instanceCount = Math.round(count * density);
+      gNear.instanceCount = Math.round(close.n * density);                    // (the same tufts in both pools: see the pools above)
+      gAll.instanceCount = gFar.instanceCount = gNear.instanceCount * 4;
       uniforms.uThin.value = thin / Math.sqrt(density);
     },
     get density() { return density; },
+    // near and far (true), or every tuft in full as it was (false): to compare, on the device
+    setFarLod(on) { mesh.geometry = on ? gFar : gAll; nearMesh.visible = !!on; },
+    get farLod() { return nearMesh.visible; },
+    get triangles() { return nearMesh.visible ? gFar.instanceCount * 3 + gNear.instanceCount * 15 : gAll.instanceCount * 15; },      // as drawn now
     setPainterly(on) { map.paint.value = on ? 1 : 0; },
     get painterly() { return map.paint.value > 0.5; },
-    dispose() { g.dispose(); base.dispose(); mat.dispose(); map.area.z = 0; },
+    dispose() { gAll.dispose(); gFar.dispose(); gNear.dispose(); base.dispose(); flat.dispose(); mat.dispose(); map.area.z = 0; },
   };
   return mesh;
 }

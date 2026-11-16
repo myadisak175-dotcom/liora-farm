@@ -86,6 +86,13 @@ export function setAnimeSun(v) {
 //   z..w   of the rest, fewer are drawn, each a little larger (FAR_KEEP: the share still drawn at w and beyond, and how
 //          much larger): far off, a leaf is smaller than a dot of the screen
 // Nearer than x every leaf is drawn (under a crown, looking up, too). setAnimeFarLeaves(false) draws every leaf anywhere.
+// Both shrink a card to nothing in the shader: the phone shades none of it, but is still sent it and still works out where
+// it would stand, and from most places well over half the cards sent were such, or stood out of view. So a forest can keep
+// its cards in cells (createAnimeForest(list, { cell }): the plants of one square of ground, of one palette, are one mesh),
+// each cell's cards in the order of their own numbers (the z..w saving goes by that number: the low ones stay), and
+// forest.userData.lod(eye, frustum, mirrorY), called each frame, draws of each cell only as many cards, from the front, as
+// its nearest plant still shows (the rest are the ones that had shrunk to nothing), and no cell that has no plant in view
+// (nor mirrored in the water at mirrorY). The picture is the same; a third to a quarter of the cards are sent.
 const FAR_ON = [8, 13, 16, 48];
 const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
 export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
@@ -938,9 +945,20 @@ const shapeOf = (kind, type, v, far) => {
   return shapes[key] || (shapes[key] = kind === 'bush' ? bushParts(v + 1, far, type === 'flowering', type === 'clump') : treeParts(type, v + 1, far));
 };
 
-export function createAnimeForest(list) {
+// a buffer's cards put in the order of their own numbers (iShade.w, lowest first): returns the numbers, in that order
+function inOwnOrder(b) {
+  const n = b.C.length / 3, order = Array.from({ length: n }, (_, i) => i).sort((p, q) => b.SH[p * 4 + 3] - b.SH[q * 4 + 3]);
+  for (const [key, size] of [['C', 3], ['PF', 4], ['K', 4], ['SH', 4], ['CN', 4], ['B', 4], ['HD', 1]]) {
+    const src = b[key], dst = new Array(src.length);
+    for (let i = 0; i < n; i++) for (let k = 0; k < size; k++) dst[i * size + k] = src[order[i] * size + k];
+    b[key] = dst;
+  }
+  return Float32Array.from({ length: n }, (_, i) => b.SH[i * 4 + 3]);
+}
+
+export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metres (0: a forest's plants of one palette are one mesh, as before)
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S3 = new THREE.Vector3(), T3 = new THREE.Vector3();
-  const UP = new THREE.Vector3(0, 1, 0);
+  const UP = new THREE.Vector3(0, 1, 0), BOX = new THREE.Box3(), BALL = new THREE.Sphere();
   const leafB = {}, barkB = {}, fallB = {};
   const rng = mulberry32(list.length * 7 + 3);
   for (const e of list) {
@@ -949,33 +967,41 @@ export function createAnimeForest(list) {
     const part = shapeOf(bush ? 'bush' : 'tree', type, v, far);
     const palette = bush ? (type === 'clump' ? 'tree' : 'game') : part.kind.palette, mask = bush ? 'leaf' : (part.kind.mask || 'leaf');
     M.compose(T3.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S3.set(s, s, s));
-    const key = palette + '/' + mask;
-    const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [] });
+    const at = cell ? '@' + Math.floor(e.x / cell) + ',' + Math.floor(e.z / cell) : '', key = palette + '/' + mask + at;
+    const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [], T: [] });
     const c = part.cards, n = c.C.length / 3, sides = c.HID ? compassSides(e.rotY ?? 0) : null;
+    let big = 0;                                                       // its biggest card, corner to corner
+    BOX.makeEmpty();
     for (let i = 0; i < n; i++) {
+      big = Math.max(big, c.K[i * 4 + 1] * s * Math.max(c.K[i * 4 + 2], 1 / c.K[i * 4 + 2]));
       b.HD.push(sides ? hiddenByCompass(c.HID[i], sides) : 0);
-      V.set(c.C[i * 3], c.C[i * 3 + 1], c.C[i * 3 + 2]).applyMatrix4(M); b.C.push(V.x, V.y, V.z);
+      V.set(c.C[i * 3], c.C[i * 3 + 1], c.C[i * 3 + 2]).applyMatrix4(M); b.C.push(V.x, V.y, V.z); BOX.expandByPoint(V);
       V.set(c.PF[i * 4], c.PF[i * 4 + 1], c.PF[i * 4 + 2]).applyMatrix4(M); b.PF.push(V.x, V.y, V.z, c.PF[i * 4 + 3] * s);
       b.K.push(c.K[i * 4], c.K[i * 4 + 1] * s, c.K[i * 4 + 2], c.K[i * 4 + 3]);
       b.SH.push(c.SH[i * 4], c.SH[i * 4 + 1], c.SH[i * 4 + 2], c.SH[i * 4 + 3]);
       V.set(c.CN[i * 4], c.CN[i * 4 + 1], c.CN[i * 4 + 2]).applyQuaternion(Q); b.CN.push(V.x, V.y, V.z, c.CN[i * 4 + 3]);
       b.B.push(e.x, e.y, e.z, s);
     }
+    if (n) { BOX.getBoundingSphere(BALL); b.T.push(BALL.center.x, BALL.center.y, BALL.center.z, BALL.radius + big * 1.1 + 0.6 * s + 0.4, s); }      // (the ball its cards lie in: their middles, a far card's reach, and a little for the wind in them)
     if (bush && part.bloom) {                                         // its flowers, in the colour its seed picks
       const col = BLOOM_COLORS.includes(e.bloom) ? e.bloom      // its own colour, or its neighbourhood's (18 m: bushes side by side flower alike)
         : BLOOM_COLORS[Math.abs((Math.floor(e.x / 18) * 73856093) ^ (Math.floor(e.z / 18) * 19349663)) % BLOOM_COLORS.length];
-      const fk = 'bloom-' + col + '/blossom';
-      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [] });
+      const fk = 'bloom-' + col + '/blossom' + at;
+      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [], T: [] });
       const f = part.bloom, nf = f.C.length / 3;
+      let bigF = 0;
+      BOX.makeEmpty();
       for (let i = 0; i < nf; i++) {
+        bigF = Math.max(bigF, f.K[i * 4 + 1] * s * Math.max(f.K[i * 4 + 2], 1 / f.K[i * 4 + 2]));
         fb.HD.push(0);
-        V.set(f.C[i * 3], f.C[i * 3 + 1], f.C[i * 3 + 2]).applyMatrix4(M); fb.C.push(V.x, V.y, V.z);
+        V.set(f.C[i * 3], f.C[i * 3 + 1], f.C[i * 3 + 2]).applyMatrix4(M); fb.C.push(V.x, V.y, V.z); BOX.expandByPoint(V);
         V.set(f.PF[i * 4], f.PF[i * 4 + 1], f.PF[i * 4 + 2]).applyMatrix4(M); fb.PF.push(V.x, V.y, V.z, f.PF[i * 4 + 3] * s);
         fb.K.push(f.K[i * 4], f.K[i * 4 + 1] * s, f.K[i * 4 + 2], f.K[i * 4 + 3]);
         fb.SH.push(f.SH[i * 4], f.SH[i * 4 + 1], f.SH[i * 4 + 2], f.SH[i * 4 + 3]);
         V.set(f.CN[i * 4], f.CN[i * 4 + 1], f.CN[i * 4 + 2]).applyQuaternion(Q); fb.CN.push(V.x, V.y, V.z, f.CN[i * 4 + 3]);
         fb.B.push(e.x, e.y, e.z, s);
       }
+      if (nf) { BOX.getBoundingSphere(BALL); fb.T.push(BALL.center.x, BALL.center.y, BALL.center.z, BALL.radius + bigF * 1.1 + 0.6 * s + 0.4, s); }
     }
     if (bush) continue;
     const g = part.trunk.geometry.clone();
@@ -994,9 +1020,47 @@ export function createAnimeForest(list) {
   const add = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.name = name; group.add(m); owned.push(geo); };
   for (const [type, { mat, geos }] of Object.entries(barkB)) { add(mergeGeometries(geos), mat, 'anime_bark_' + type); geos.forEach(g => g.dispose()); }
   let cards = 0;
-  for (const b of Object.values(leafB)) { add(cardGeometry(b), materials(b.palette, b.mask).leaf, 'anime_leaves'); cards += b.C.length / 3; }
+  const leaves = [];                                                   // each mesh of cards: the mesh, its cards' own numbers in order, its plants (T: the ball each one's cards lie in, its size)
+  for (const b of Object.values(leafB)) {
+    const own = inOwnOrder(b), geo = cardGeometry(b);
+    add(geo, materials(b.palette, b.mask).leaf, 'anime_leaves'); cards += own.length;
+    leaves.push({ mesh: group.children[group.children.length - 1], geo, own, T: b.T });
+  }
   for (const [palette, f] of Object.entries(fallB)) if (f.S.length) add(fallGeometry(f), materials(palette).fall, 'anime_falling');
   group.name = 'anime_forest';
-  group.userData = { kind: 'forest', plants: list.length, cards, drawCalls: group.children.length, dispose() { owned.forEach(o => o.dispose()); } };
+  const eyeHere = new THREE.Vector3(), ball = new THREE.Sphere();
+  group.userData = {
+    kind: 'forest', plants: list.length, cards, drawCalls: group.children.length,
+    // Call each frame with the eye and the view (world): see the note on the savings above. Of each mesh of cards
+    //   - none is drawn if none of its plants is in the view (frustum), nor mirrored in water that lies at mirrorY (a tree
+    //     above the top of the picture still stands in the water below it): leave mirrorY out when no water mirrors anything
+    //   - only as many cards are drawn as its nearest plant still shows (FAR_LEAVES: the cards past that have shrunk to nothing)
+    // lod(null): all of it again. (The forest may have been moved, not turned or sized.)
+    lod(eye, frustum = null, mirrorY = null) {
+      const far = FAR_LEAVES.value, keep = FAR_KEEP.value.x;
+      if (eye) group.worldToLocal(eyeHere.copy(eye));
+      const e = group.matrixWorld.elements, ox = e[12], oy = e[13], oz = e[14];      // where the forest has been moved to
+      for (const { mesh, geo, own, T } of leaves) {
+        let span = eye ? Infinity : 0, seen = !eye || !frustum;      // how far off its nearest plant is, for its size; is any of its plants in view
+        for (let i = 0; i < T.length; i += 5) {
+          if (span > 0) span = Math.min(span, Math.max(0, Math.hypot(eyeHere.x - T[i], eyeHere.y - T[i + 1], eyeHere.z - T[i + 2]) - T[i + 3]) / Math.max(T[i + 4], 1));
+          if (!seen) {
+            ball.center.set(T[i] + ox, T[i + 1] + oy, T[i + 2] + oz); ball.radius = T[i + 3];
+            seen = frustum.intersectsSphere(ball);
+            if (!seen && mirrorY !== null) { ball.center.y = 2 * mirrorY - ball.center.y; seen = frustum.intersectsSphere(ball); }
+          }
+          if (seen && span === 0) break;
+        }
+        mesh.visible = seen;
+        if (!seen) continue;
+        const t = Math.min(1, Math.max(0, (span - far.z) / (far.w - far.z))), few = t * t * (3 - 2 * t), last = 1 + (keep - 1) * few + 0.08;      // a card whose number is under this may still show
+        let lo = 0, hi = own.length;
+        while (lo < hi) { const m = (lo + hi) >> 1; if (own[m] < last) lo = m + 1; else hi = m; }
+        geo.instanceCount = Math.max(1, lo);
+      }
+    },
+    get drawn() { return leaves.reduce((n, l) => n + (l.mesh.visible ? l.geo.instanceCount : 0), 0); },      // cards drawn now
+    dispose() { owned.forEach(o => o.dispose()); },
+  };
   return group;
 }

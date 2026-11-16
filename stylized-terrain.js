@@ -96,18 +96,30 @@ BLANK_WAYS.needsUpdate = true;
 // patches of sand, at the soft ways' own size, so the beach and the ways read as one ground. ground: the ground map the
 // grass grows by ({ texture, rect }: stylized-grassfield.js), so no sand shows under a thick meadow: it goes through dry
 // grass into it where the blades stand thick. Without them nothing changes.
-function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null } = {}) {
+// grassLook (with ground): THE MEADOW AS ITS GRASS PAINTS IT. { glsl, tip, area, paint }: the grass's own look
+// (stylized-grassfield.js: GRASS_LOOK_GLSL, GRASS_TIP, map.area, map.paint). For land past the map's own (the rim) also
+// { land: [x0, z0, x1, z1], greens: [deep, mid, sunny], lean }: past that rectangle the map has nothing to say, and the
+// meadow is plain: broad drifts of its three greens, lighter on a slope that leans to the sun (lean: how much).
+// Beyond the reach of the blades the meadow is then laid in with the blades' own flat tones, from the same map and by the
+// same strokes, the trees' shadows in it: the far meadow is the near one seen from afar, and where the blades come up they
+// come up out of ground of their own colour. Under the standing blades the land keeps its paint.
+function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null } = {}) {
   const C = TERRAIN_COLORS;
   const defines = {};
   if (cliffPaint) defines.CLIFF_PAINT = 1;
   if (sandPaint) defines.SAND_PAINT = 1;
   if (sandPaint && ground) defines.SAND_GROUND = 1;
+  if (grassLook && ground) defines.GRASS_LOOK = 1;
   return new THREE.ShaderMaterial({
     defines,
     uniforms: {
       uCliffPaint: { value: cliffPaint }, uCliffTile: { value: new THREE.Vector2(1 / cliffTile[0], 1 / cliffTile[1]) },
       uSandPaint: { value: sandPaint }, uSandWet: { value: rgb(C.sandWet) }, uHay: { value: rgb(C.hay) },
       uGround: { value: ground ? ground.texture : null }, uGroundRect: { value: ground ? ground.rect : new THREE.Vector3(0, 0, 1) },
+      uGrassTip: { value: rgb(grassLook ? grassLook.tip : '#c6e26c') }, uGrassArea: { value: grassLook ? grassLook.area : new THREE.Vector3(0, 0, 0) },
+      uGrassPaint: grassLook ? grassLook.paint : { value: 0 },
+      uGrassLand: { value: new THREE.Vector4(...(grassLook && grassLook.land ? grassLook.land : [-1e6, -1e6, 1e6, 1e6])) }, uGrassLean: { value: grassLook && grassLook.lean ? grassLook.lean : 1.2 },
+      uGrassDeep: { value: rgb(grassLook && grassLook.greens ? grassLook.greens[0] : '#6f9a3c') }, uGrassMid: { value: rgb(grassLook && grassLook.greens ? grassLook.greens[1] : '#86ae42') }, uGrassSunny: { value: rgb(grassLook && grassLook.greens ? grassLook.greens[2] : '#a2c44c') },
       uG0: { value: rgb(C.grass[0]) }, uG1: { value: rgb(C.grass[1]) }, uG2: { value: rgb(C.grass[2]) }, uG3: { value: rgb(C.grass[3]) },
       uR0: { value: rgb(C.rock[0]) }, uR1: { value: rgb(C.rock[1]) }, uR2: { value: rgb(C.rock[2]) }, uR3: { value: rgb(C.rock[3]) },
       uB0: { value: rgb(C.sand[0]) }, uB1: { value: rgb(C.sand[1]) }, uB2: { value: rgb(C.sand[2]) },
@@ -157,9 +169,16 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         uniform sampler2D uSandPaint;
         uniform vec3 uSandWet, uHay;
       #endif
-      #ifdef SAND_GROUND
-        uniform sampler2D uGround;    // a: how much grass grows there (the map the blades read)
+      #if defined(SAND_GROUND) || defined(GRASS_LOOK)
+        uniform sampler2D uGround;    // rgb: the ground's colour, a: how much grass grows there (the map the blades read)
         uniform vec3 uGroundRect;     // its middle x, z and 1 / its width
+      #endif
+      #ifdef GRASS_LOOK
+        uniform vec3 uGrassTip, uGrassArea;      // a blade's tip; where the blades stand now (centre x, z, tile)
+        uniform vec4 uGrassLand;                 // the land the map speaks for: x0, z0, x1, z1
+        uniform vec3 uGrassDeep, uGrassMid, uGrassSunny;
+        uniform float uGrassPaint, uGrassLean;
+        ${grassLook ? grassLook.glsl : ''}
       #endif
       varying vec4 vRock;
       uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
@@ -193,6 +212,29 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
           float lit = dot(n, normalize(vec3(-0.3, 1.0, 0.35)));
           float g = s * 0.6 + (lit - 0.9) * 2.6 + 0.2;
           col = g > 0.6 ? uG3 : (g > 0.45 ? uG2 : (g > 0.3 ? uG1 : uG0));
+          #ifdef GRASS_LOOK
+          {
+            // the meadow as its grass paints it (see grassLook above): everywhere but under the standing blades
+            // the ground's colour: on the land, the map's. Past the land's edge plain meadow, in broad drifts of its three
+            // greens, lighter where a slope leans to the sun (as the map paints the land), so a hill has a lit and a shaded side
+            vec2 inl = clamp(vWP.xz, uGrassLand.xy, uGrassLand.zw);
+            float past = length(vWP.xz - inl);
+            vec4 gm = texture2D(uGround, (inl - uGroundRect.xy) * uGroundRect.z + 0.5);
+            if (past > 0.0) {
+              float dn = noise2(vWP.xz * 0.05) * 0.75 + noise2(vWP.xz * 0.19 + 3.0) * 0.25;
+              float dt = clamp(smoothstep(0.38, 0.62, dn) + (n.z * 0.35 - n.x * 0.3) / max(n.y, 0.3) * uGrassLean, 0.0, 1.0);
+              vec3 wild = dt < 0.5 ? mix(uGrassDeep, uGrassMid, dt * 2.0) : mix(uGrassMid, uGrassSunny, dt * 2.0 - 1.0);
+              gm = mix(gm, vec4(wild, 1.0), smoothstep(0.5, 9.0, past));
+            }
+            // GRASS_GROUND (gm is the ground's colour here; the rim lays its trees' shadows on it: map-rim.js)
+            float cn = clumpAt(vWP.xz);
+            vec3 afar = mix(gm.rgb, tipColor(gm.rgb, uGrassTip), (0.3 + 0.5 * cn) * gm.a);
+            // (a field of blades seen from afar is its tall tufts' tips, a tone lighter than the tuft at their feet: + 0.05, and a little light)
+            afar = mix(afar, mix(gm.rgb, dabColor(gm.rgb, uGrassTip, cn * 0.45 + strokeAt(vWP.xz) * 0.55 + 0.05) * 1.035, gm.a), uGrassPaint);
+            float under = uGrassArea.z > 0.0 ? 1.0 - smoothstep(uGrassArea.z * 0.26, uGrassArea.z * 0.42, length(vWP.xz - uGrassArea.xy)) : 0.0;
+            col = mix(afar, col, under);
+          }
+          #endif
           float b = vBank + (j - 0.37) * 0.5;
           #ifdef SAND_PAINT
             // the banks' sand, painted with the ways' own brush and laid as they are (twice, at two sizes, turned, so the repeat

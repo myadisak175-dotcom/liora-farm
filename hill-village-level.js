@@ -242,6 +242,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (e.kind === 'tree') stands(e); else if (e.type !== 'clump') colliders.push([e.x, e.z, 0.7 * BUSH_SIZE * e.scale]);
   }
   const bigTrees = [];                                                     // the great tree: a forest of its own, so it can be moved by hand
+  const leafLods = [];                                                     // forests that are always drawn: each frame, how many of their leaf cards (anime-tree.js: lod)
   for (const b of P.buildings) if (b.kind === 'tree') {
     const e = { kind: 'tree', type: b.type, seed: b.shape ?? 100, detail: 0.8, x: b.x, y: H(b.x, b.z) - 0.05, z: b.z, rotY: b.turn ?? r() * 6.28, scale: b.scale };      // (its shape and its turn: the plan's)
     stands(e); bigTrees.push({ b, plant: e });
@@ -363,7 +364,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // the great tree: a forest of one
   for (const { b, plant } of bigTrees) {
     const obj = createAnimeForest([plant]); obj.name = 'greatTree';
-    group.add(obj);
+    group.add(obj); leafLods.push(obj.userData.lod);
     addThing(b.id, b, (x, z) => ({ y: H(x, z) - 0.05, deep: 0 }), null, { obj, y0: plant.y + 0.05 });
   }
   // the things, each where it stands, merged with the rest
@@ -472,6 +473,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
   const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
+  // the far meadow is laid in as the grass paints it (the land's own paint, and the rim's: stylized-terrain.js, grassLook)
+  const grassLook = { glsl: G.GRASS_LOOK_GLSL, tip: G.GRASS_TIP, area: map.area, paint: map.paint };
   const fade = { far, fadeA: 1e5, fadeB: 2e5 };      // (the blades do not fade into the far colour toward the land's edge either: the land runs on past it, see the rim below)
   // the banks' sand: painted with the ways' own brush, so the beach and the ways read as one ground (?sand=flat: as it was)
   let sandPaint = null;
@@ -499,7 +502,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
-    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
+    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map, grassLook });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     const [pa, pd] = M.pieces, own = [whole, mat];
     for (let pj = 0; pj < pd; pj++) for (let pi = 0; pi < pa; pi++) {
@@ -524,13 +527,22 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // on a cliff or in another tree
   await onStep('ปลูกป่ารอบแผนที่');
   const horizonR = Math.hypot(HX, FR) + M.rim;                              // where the nearest ring of far hills stands (see horizon below)
+  const landRect = [-FR + Math.max(0, Math.floor((X0 + FR) / field.step)) * field.step, CZ - FR, -FR + Math.min(field.n - 1, Math.ceil((X1 + FR) / field.step)) * field.step, CZ + FR];      // the land as it is drawn
   const rim = createMapRim({
-    rect: [-FR + Math.max(0, Math.floor((X0 + FR) / field.step)) * field.step, CZ - FR, -FR + Math.min(field.n - 1, Math.ceil((X1 + FR) / field.step)) * field.step, CZ + FR],      // the land as it is drawn
+    rect: landRect,
     heightAt: H, terrainMaterial: T._terrain.terrainMaterial, far, zc: CZ, cliffPaint, horizon: { center: [0, CZ], radius: horizonR }, ways: waysOut, seed,
+    paint: { ground: map, grassLook: { ...grassLook, land: landRect, greens: [G.GROUND_COLORS.deep, G.GROUND_COLORS.mid, G.GROUND_COLORS.sunny], lean: 2.2 } },      // (its meadow is the land's, run on past the edge)
     clear: (x, z) => { const w = paths.near(x, z); return slope(x, z) < 0.6 && !brookAt(x, z) && w.d > w.half + 2.5 && !plants.some(p => Math.hypot(p.x - x, p.z - z) < 3.4); },
   });
   rim.userData.setSun(L);
   group.add(rim);
+  // the rim's trees that stand in the land's own last metres throw their shadows as the land's trees do: on its ground map,
+  // so the ground and the blades both have them
+  if (rim.userData.inLand.length) {
+    for (const [x, z, h, r] of rim.userData.inLand) casters.push([x, z, h, r, 0.7]);
+    map.beginCast(sunShadows(L.clone()), 1);
+    while (!map.stepCast(1e9)) { /* all of it now: the map is not on screen yet */ }
+  }
   console.info('[hill-village] the rim:', rim.userData.crowns, 'crowns,', rim.userData.triangles, 'triangles');
   let pathTex = null;
   try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
@@ -556,6 +568,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // they are told to and take away what stood there before: all of it as the level is built, a few when the foliage editor
   // has moved a plant.
   const groves = [], inView = [], grovesAt = new Map(), squaresAt = new Map();
+  const leafLodOff = new URLSearchParams(location.search).get('leaflod') === '0';      // ?leaflod=0: every leaf card sent, as it was (to compare)
+  const LEAF_CELL = leafLodOff ? 0 : 30;                                    // a grove's leaf cards are kept by squares this wide: each is drawn, or not, and thinned, for itself
   const GROVE = +new URLSearchParams(location.search).get('grove') || M.grove, SQUARE = 40, v3g = new THREE.Vector3();
   const groveOf = (x, z) => Math.floor((x - X0) / GROVE) + ',' + Math.floor((z - Z0) / GROVE), squareOf = (x, z) => Math.floor((x - X0) / SQUARE) + ',' + Math.floor((z - Z0) / SQUARE);
   const uproot = (at, key) => {
@@ -569,7 +583,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const isPine = p => p.kind === 'tree' && p.type === 'pine';
   const woodOf = list => {                                                 // a grove's trees and bushes: its pines drawn by frond-pine.js, the rest by anime-tree.js
     const obj = new THREE.Group(), pines = list.filter(isPine), rest = list.filter(p => !isPine(p)); obj.name = 'grove';
-    if (rest.length) obj.add(createAnimeForest(rest));
+    if (rest.length) { const forest = createAnimeForest(rest, { cell: LEAF_CELL }); obj.add(forest); obj.userData.lod = forest.userData.lod; }      // (its leaves in cells: see lod in update)
     if (pines.length) obj.add(createFrondPineForest(pines));
     return obj;
   };
@@ -587,7 +601,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (list.length) {
         const box = new THREE.Box3();
         for (const p of list) { const sc = p.scale || 1, w = (p.kind === 'bush' ? 1.6 * BUSH_SIZE : 5.5) * sc; box.expandByPoint(v3g.set(p.x - w, p.y - 1, p.z - w)); box.expandByPoint(v3g.set(p.x + w, p.y + (p.kind === 'bush' ? 2.2 * BUSH_SIZE : 12.2) * sc, p.z + w)); }
-        const rec = { obj: woodOf(list), box }; groves.push(rec); recs.push(rec);
+        const wood = woodOf(list), rec = { obj: wood, box, lod: wood.userData.lod }; groves.push(rec); recs.push(rec);
       }
       for (const b of beds.get(key) || []) {
         const far = b.rad * 1.38 + 0.5;                                    // (from further off than 110 m a bed of flowers is too small to see)
@@ -834,16 +848,20 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         camWorld.setFromMatrixPosition(camera.matrixWorld);
         // what is out of view is not drawn: a grove, a bed of flowers (nor one too far off to see)
+        // the water in view: how near the nearest of it is, and at what height it lies (the waters lie at several heights)
+        let near = Infinity, level = WL;
+        for (const s of stretches) if (frustum.intersectsSphere(s.sphere)) { const d = s.near(camWorld); if (d < near) { near = d; level = s.level; } }
+        const mirrorY = optics.quality > 0 && near < 75 ? level : null;      // (where the water mirrors the trees: a tree out of view may stand in it)
         for (const g of inView) {
           const d = g.far ? g.box.distanceToPoint(camWorld) : 0;
           g.obj.visible = frustum.intersectsBox(g.box) && (!g.far || d < g.far);
           if (g.thin && g.obj.visible) g.thin(d < 38 ? 1 : d < 65 ? 0.6 : 0.35);
+          if (g.lod && g.obj.visible) { if (leafLodOff) g.lod(null); else g.lod(camWorld, frustum, mirrorY); }      // a grove's leaves: only the cells in view, only the cards that still show from here
         }
+        for (const lod of leafLods) { if (leafLodOff) lod(null); else lod(camWorld, frustum, mirrorY); }
         water.update(renderer, frustum, camWorld);                           // (a fall out of view or far away is not drawn either)
         // the water's two pictures (what lies under it, what is mirrored on it): only when water is on screen and near, made
-        // for the height of the stretch she is nearest (the waters lie at several heights), and without the far groves
-        let near = Infinity, level = WL;
-        for (const s of stretches) if (frustum.intersectsSphere(s.sphere)) { const d = s.near(camWorld); if (d < near) { near = d; level = s.level; } }
+        // for the height of the stretch she is nearest (found above), and without the far groves
         frameNo++;
         const q = optics.quality, doThrough = near < 45, doMirror = q > 0 && near < 75 && frameNo % (q === 2 ? 2 : 4) === 0;
         if (doThrough || doMirror) {
@@ -859,7 +877,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir); },      // (the trees' crowns are lit by it live)
+    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k); },      // (the trees' crowns are lit by it live)
     get sunCast() { return cast; },
     follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };

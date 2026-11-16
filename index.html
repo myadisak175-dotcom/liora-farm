@@ -57,7 +57,7 @@
   #animeBtn { position:fixed; left:max(10px,env(safe-area-inset-left)); top:calc(122px + env(safe-area-inset-top)); z-index:4; border:1px solid #ffffff88; border-radius:999px; padding:9px 14px; background:#2d7fd0dc; color:white; font:600 12px system-ui; touch-action:manipulation; }
   /* the game's own screen: only what is played with. The map in the top right corner, the clock and full screen under it; the
      two hand tools (move things, paint ways) top left. ?dev=1 shows the testing buttons as well (water, grass, sky, fps, ...) */
-  body:not(.dev) :is(#style, #tune, #skyBtn, #fps, #credit, #waterView, #splashTest, #animeBtn, #forage-view, #forage-bag, #tpBtn, #editBtn, #rockEditBtn, #hint) { display:none !important; }
+  body:not(.dev) :is(#style, #tune, #skyBtn, #fps, #credit, #waterView, #splashTest, #animeBtn, #tpBtn, #editBtn, #rockEditBtn, #hint) { display:none !important; }
   body:not(.dev) #gmMini { left:auto; margin-left:0; right:max(8px, env(safe-area-inset-right)); top:calc(8px + env(safe-area-inset-top)); }
   body:not(.dev) #timeBtn { top:114px; }
   body:not(.dev) #timeRun { top:156px; }
@@ -71,7 +71,7 @@
   "./water-droplets.js": "./water-droplets.js?v=crown6",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=walk1",
-  "./anime-tree.js": "./anime-tree.js?v=far1",
+  "./anime-tree.js": "./anime-tree.js?v=cells1",
   "./frond-pine.js": "./frond-pine.js?v=1",
   "./meadow-flowers.js": "./meadow-flowers.js?v=1",
   "./ground-cover.js": "./ground-cover.js?v=1",
@@ -84,8 +84,8 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=35",
-  "./map-rim.js": "./map-rim.js?v=1",
+  "./hill-village-level.js": "./hill-village-level.js?v=37",
+  "./map-rim.js": "./map-rim.js?v=2",
   "./path-brush.js": "./path-brush.js?v=1",
   "./path-edits.js": "./path-edits.js?v=1",
   "./place-editor.js": "./place-editor.js?v=1",
@@ -97,11 +97,11 @@
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
   "./rock-editor.js": "./rock-editor.js?v=3",
   "./rocks-layout.js": "./rocks-layout.js?v=2",
-  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1look1",
   "./stylized-sky.js": "./stylized-sky.js?v=alps1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=grow1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=lod1",
   "./stylized-character.js": "./stylized-character.js?v=wade1size1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
   "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1",
@@ -200,7 +200,6 @@ import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
 import { VIVI_GLB, VIVI_ANIM } from './vivi-data.js';
 import DEER_GLB from './deer-glb.js';
-import { createForestForage } from './forest-forage.js?v=5';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
 import { createPlaceEditor } from './place-editor.js';
@@ -261,8 +260,6 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
   if (old) { scene.remove(old); old.userData.dispose(); }
   scene.add(Sky.createDistantMountains({ center: [0, 0], seed: 5, layers: level.horizon.layers }));
 }
-let forage = null;
-try { forage = await createForestForage({ level, onStep }); } catch (e) { console.error('Forest forage failed to load', e); }
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
 // her height: 1.6 m, to stand right beside the building kit's doors and the trees (as modelled she is ~1.41 m: a child next to
@@ -278,11 +275,6 @@ const onTap = (cx, cy) => {                          // tap the water: a stone's
 if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }      // (the valley finds its own bank)
 const player = createPlayer({ character: vivi, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
-if (forage) {
-  const visit = document.createElement('button'); visit.id = 'forage-view'; visit.textContent = '🌿 ไปดูของป่า';
-  visit.onpointerdown = e => e.stopPropagation(); visit.onclick = () => forage.visit(player); document.body.append(visit);
-  if (Q.has('forage')) forage.visit(player);
-}
 level.addUnderwater(player.object);
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: vivi, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
@@ -356,6 +348,7 @@ const styleBtn = document.getElementById('style');
 const setStyle = on => { level.grass.userData.setPainterly(on); styleBtn.textContent = 'หญ้า: ' + (on ? 'พู่กัน' : 'เนียน'); };
 styleBtn.onclick = () => setStyle(!level.grass.userData.painterly);
 setStyle(Q.get('paint') !== '0');
+if (Q.get('grasslod') === '0') level.grass.userData.setFarLod(false);      // ?grasslod=0: every tuft drawn in full, near and far alike (as it was), to compare
 
 const tunerPanel = document.getElementById('tuner');
 createWaterTuner({ tune: { ...WATER_TUNE, ...FALL_TUNE }, optics: level.optics, button: document.getElementById('tune'), panel: tunerPanel });
@@ -493,7 +486,6 @@ const frame = (dt = clock.getDelta()) => {
   if (pathBrush) pathBrush.apply(camera);                                 // and the path brush's (or, walking, the brush following her feet)
   const planting = foliageEditor && foliageEditor.active;
   if (planting) foliageEditor.apply(camera);                              // and the foliage editor's
-  if (forage) forage.update(dt, player.position);
   level.follow(rockEditing ? rockEditor.focus : placing ? placeEditor.focus : painting ? pathBrush.focus : planting ? foliageEditor.focus : player.position, player.lookDir);      // (the grass grows round what is looked at)
   if (warpUI) warpUI.update();
   if (gameMap) gameMap.update();
@@ -537,7 +529,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, forage, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, vivi, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

@@ -28,6 +28,11 @@
                     goes on over the apron as trodden earth, bends, narrows and is lost under the trees a little way into
                     the wood; no crown stands on it.
 
+     5. shadows     every tree throws one on the meadow under it, as the land's own trees do (soft, cool, lying away from the
+                    sun and moving with it), so a tree out on a hill stands on the hill. Past the land's edge they are a
+                    small picture the rim's ground reads (with the land's grass look: stylized-terrain.js, grassLook); the
+                    trees in the land's own last metres are handed to the level (userData.inLand) for the land's shadows.
+
    Nothing here is walked on, and nothing moves but a slow sway of the crowns.
    Mobile-safe: no loops in the shaders, no uniform arrays.
    ========================================================================== */
@@ -140,8 +145,8 @@ void main() {
 }`;
 
 // ---- the land's own paint, with the wood laid over it past the edge (a patch of stylized-terrain.js's shader)
-function rimMaterial(terrainMaterial, far, zc, cliffPaint, look) {
-  const m = terrainMaterial(far, [1e5, 1e5], zc, { cliffPaint });       // (no fade to the far colour: the haze does that)
+function rimMaterial(terrainMaterial, far, zc, cliffPaint, look, paint, shade) {
+  const m = terrainMaterial(far, [1e5, 1e5], zc, { cliffPaint, ...paint });       // (no fade to the far colour: the haze does that. paint: the land's own meadow, see createMapRim)
   const swap = (src, a, b) => { if (!src.includes(a)) throw new Error('map-rim: the land\'s shader has no "' + a + '"'); return src.replace(a, b); };
   m.vertexShader = swap(swap(m.vertexShader, 'attribute float aBank;', 'attribute float aBank;\n      attribute float aWood;\n      varying float vWood;'), 'vBank = aBank;', 'vBank = aBank; vWood = aWood;');
   m.fragmentShader = swap(swap(m.fragmentShader, 'varying float vBank;', 'varying float vBank;\n      varying float vWood;\n      uniform vec3 uW0, uW1, uW2;'), 'col = mix(col, uHaze, vHaze);', /* glsl */`
@@ -153,12 +158,20 @@ function rimMaterial(terrainMaterial, far, zc, cliffPaint, look) {
           col = wv > 0.66 ? uW2 : (wv > 0.5 ? uW1 : uW0);
         }
         col = mix(col, uHaze, vHaze);`);
+  // the trees' shadows: on the meadow's own ground colour, before its tones are laid in (so only with the land's grass look)
+  const mark = '// GRASS_GROUND';
+  if (shade && m.fragmentShader.includes(mark)) {
+    m.fragmentShader = swap(swap(m.fragmentShader, 'uniform vec3 uW0, uW1, uW2;', 'uniform vec3 uW0, uW1, uW2;\n      uniform sampler2D uRimShade;\n      uniform vec3 uRimShadeRect, uRimShadeTint;\n      uniform float uRimShadeK;'),
+      mark, 'gm.rgb *= mix(vec3(1.0), uRimShadeTint, texture2D(uRimShade, (vWP.xz - uRimShadeRect.xy) * uRimShadeRect.z + 0.5).r * uRimShadeK);\n            ' + mark);
+    Object.assign(m.uniforms, { uRimShade: { value: shade.texture }, uRimShadeRect: { value: shade.rect }, uRimShadeTint: { value: new THREE.Vector3(...shade.tint) }, uRimShadeK: { value: 1 } });
+  }
   look.floor.forEach((c, i) => { m.uniforms['uW' + i] = { value: rgb(c) }; });
   m.uniforms.uP0.value = rgb(look.way[0]); m.uniforms.uP1.value = rgb(look.way[1]);
   return m;
 }
 
-export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2', zc = 0, cliffPaint = null, horizon, clear = () => true, ways = [], seed = 1, look = RIM_LOOK } = {}) {
+// paint: { ground, grassLook } as the land's own paint has them (stylized-terrain.js), so the rim's meadow is the land's
+export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2', zc = 0, cliffPaint = null, horizon, clear = () => true, ways = [], seed = 1, look = RIM_LOOK, paint = null } = {}) {
   const [X0, Z0, X1, Z1] = rect, [HCX, HCZ] = horizon.center, R = horizon.radius * 0.985;
   const group = new THREE.Group(); group.name = 'mapRim';
   const cx = x => Math.min(X1 - 0.02, Math.max(X0 + 0.02, x)), cz = z => Math.min(Z1 - 0.02, Math.max(Z0 + 0.02, z));
@@ -239,7 +252,12 @@ export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2',
     g.computeVertexNormals();
     return g;
   };
-  const mat = rimMaterial(terrainMaterial, far, zc, cliffPaint, look);
+  // the picture of the trees' shadows on the rim's ground: all the rim, a little under a metre to a point (filled in below)
+  const SH = 1024, shadeData = new Uint8Array(SH * SH), shadeTex = new THREE.DataTexture(shadeData, SH, SH, THREE.RedFormat, THREE.UnsignedByteType);
+  shadeTex.colorSpace = THREE.NoColorSpace; shadeTex.unpackAlignment = 1; shadeTex.magFilter = shadeTex.minFilter = THREE.LinearFilter;
+  shadeTex.wrapS = shadeTex.wrapT = THREE.ClampToEdgeWrapping;
+  const mat = rimMaterial(terrainMaterial, far, zc, cliffPaint, look, paint,
+    { texture: shadeTex, rect: new THREE.Vector3(HCX, HCZ, 1 / (2 * R)), tint: paint && paint.ground && paint.ground.castTint ? paint.ground.castTint : [0.5, 0.6, 0.76] });
   const A = look.apron, apronG = ringMesh(look.apronStep, 10, () => A, (k, n) => k === n - 1 ? 4 : 0);      // (its last ring dives under the woods)
   const woodsG = ringMesh(look.woodsStep, 22, T => Array.from({ length: look.woodsRings + 1 }, (_, k) => look.woodsFrom + (Math.max(T, look.woodsFrom + 30) - look.woodsFrom) * Math.pow(k / look.woodsRings, 1.6)), k => k === 0 ? 3 : 0);
   const apron = new THREE.Mesh(apronG, mat), woods = new THREE.Mesh(woodsG, mat);
@@ -249,11 +267,13 @@ export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2',
 
   // ---- the crowns: a jittered grid of them over the rim, close along the wood's edge, thinning out behind it
   const rng = mulberry32(seed * 131 + 9), G = look.crowns, ipos = [], ilook = [];
+  const outer = [], inLand = [];                                       // every tree, for its shadow: [x, z, its height, its crown's radius], past the land's edge / in the land
   const sOf = (x, z) => { const ex = cx(x), ez = cz(z), dn = ez - Z0, de = X1 - ex, ds = Z1 - ez, dw = ex - X0, m = Math.min(dn, de, ds, dw); return m === dn ? ex - X0 : m === de ? W + ez - Z0 : m === ds ? W + D + X1 - ex : 2 * W + D + Z1 - ez; };      // the nearest point of the edge, as arclength
   const crown = (x, z, d, y, big, trunk) => {
     const r = lerp(look.crownR[0], look.crownR[1], rng()) * big, h = trunk ? (look.trunk[0] + rng() * look.trunk[1]) * Math.sqrt(big) : 0, squat = 0.78 + rng() * 0.2;
     ipos.push(x, y + (trunk ? h : 2 + rng() * 3) + r * squat * 0.45, z, r);
     ilook.push(squat, (rng() - 0.5) * 0.2 - 0.04 * ss(40, 160, d), rng(), trunk ? h + r * squat * 0.05 : 0);
+    if (trunk) (d < 0 ? inLand : outer).push([x, z, h + r * squat * 1.3, r * 0.9]);
     return r;
   };
   for (let gz = HCZ - R; gz < HCZ + R; gz += G) for (let gx = HCX - R; gx < HCX + R; gx += G) {
@@ -294,14 +314,49 @@ export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2',
     },
     vertexShader: CROWN_VS, fragmentShader: CROWN_FS, side: THREE.DoubleSide,
   });
+  // ---- the shadows of the trees past the land's edge, for a sun at dir: each an ellipse lying away from the sun (as the
+  // land's own are: its ground map's cast), into the picture. The first time at once; after that a few trees at a time, and
+  // the new picture goes in whole when it is done
+  let job = 0;
+  const baked = new THREE.Vector3();
+  const shadows = (dir, atOnce = false) => {
+    const my = ++job, buf = new Uint8Array(SH * SH), span = 2 * R, px0 = HCX - R, pz0 = HCZ - R;
+    const dxz = Math.hypot(dir.x, dir.z) || 1, ly = Math.max(0.3, dir.y), ux = -dir.x / dxz, uz = -dir.z / dxz, len = dxz / ly;
+    let i = 0;
+    const some = () => {
+      if (my !== job) return;
+      const t0 = performance.now();
+      for (; i < outer.length && (atOnce || performance.now() - t0 < 3); i++) {
+        const [tx, tz, h, rr] = outer[i], a = len * h / 2 + rr, b = rr * 1.1, x = tx + ux * len * h / 2, z = tz + uz * len * h / 2, r = Math.max(a, b);
+        const i0 = Math.max(0, Math.floor((x - r - px0) / span * SH)), i1 = Math.min(SH - 1, Math.ceil((x + r - px0) / span * SH));
+        const j0 = Math.max(0, Math.floor((z - r - pz0) / span * SH)), j1 = Math.min(SH - 1, Math.ceil((z + r - pz0) / span * SH));
+        for (let j = j0; j <= j1; j++) for (let k = i0; k <= i1; k++) {
+          const dx = px0 + (k + 0.5) / SH * span - x, dz = pz0 + (j + 0.5) / SH * span - z, u = (dx * ux + dz * uz) / a, v = (-dx * uz + dz * ux) / b, d = Math.hypot(u, v);
+          if (d >= 1) continue;
+          const c = Math.round((1 - ss(0.55, 1, d)) * 0.7 * 255), o = j * SH + k;
+          if (c > buf[o]) buf[o] = c;
+        }
+      }
+      if (i < outer.length) setTimeout(some, 0); else { shadeData.set(buf); shadeTex.needsUpdate = true; }
+    };
+    baked.copy(dir);
+    some();
+  };
+  shadows(crownMat.uniforms.uSun.value, true);
   const crowns = new THREE.Mesh(quad, crownMat);
   crowns.name = 'rimCrowns'; crowns.frustumCulled = false;
   group.add(crowns);
 
   group.userData = {
     kind: 'mapRim', crowns: quad.instanceCount, triangles: (apronG.index.count + woodsG.index.count) / 3 + quad.instanceCount * 4,
-    setSun(dir) { const u = crownMat.uniforms.uSun.value; u.copy(dir); if (u.y < 0.12) u.y = 0.12; u.normalize(); },      // (never lit from below the horizon: as the trees)
-    dispose() { apronG.dispose(); woodsG.dispose(); quad.dispose(); mat.dispose(); crownMat.dispose(); mask.dispose(); },
+    inLand,                                                              // the trees in the land's own last metres: [x, z, height, crown's radius], for the land's own shadows
+    // the sun: the crowns are lit by it, and the shadows lie away from it (k: how dark shadows are now, 0 at night)
+    setSun(dir, k = 1) {
+      const u = crownMat.uniforms.uSun.value; u.copy(dir); if (u.y < 0.12) u.y = 0.12; u.normalize();      // (never lit from below the horizon: as the trees)
+      if (mat.uniforms.uRimShadeK) mat.uniforms.uRimShadeK.value = k;
+      if (baked.distanceToSquared(u) > 0.0012) shadows(u);                                                // (the sun has moved a couple of degrees)
+    },
+    dispose() { job++; apronG.dispose(); woodsG.dispose(); quad.dispose(); mat.dispose(); crownMat.dispose(); mask.dispose(); shadeTex.dispose(); },
   };
   return group;
 }
