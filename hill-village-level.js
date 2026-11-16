@@ -504,19 +504,33 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
     const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map, grassLook });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
+    // Its triangles. A cell of the grid is half a metre, and the land was two triangles to every cell, 753 000 in all,
+    // meadow and cliff alike. Now a square of cells is drawn whole where the land inside it is flat to 3 cm (coarseGrid,
+    // stylized-terrain.js) and nothing shows the ground itself from near: only where grass grows thick (a way's ribbon
+    // lies 3 cm over the land, sand and earth are bare), away from water (a shore is where the land meets the water's
+    // level) and all field or none. ?landlod=0: two triangles to every cell, as it was.
     const [pa, pd] = M.pieces, own = [whole, mat];
+    const grassAt = o => { const s = map.size, mi = Math.min(s - 1, Math.max(0, Math.floor((pos[o * 3] - map.center[0] + map.radius) / (2 * map.radius) * s))), mj = Math.min(s - 1, Math.max(0, Math.floor((pos[o * 3 + 2] - map.center[1] + map.radius) / (2 * map.radius) * s))); return map.data[(mj * s + mi) * 4 + 3]; };
+    const cells = new URLSearchParams(location.search).get('landlod') === '0'
+      ? T._terrain.coarseGrid({ cols, rows: n, pos, nor: whole.attributes.normal.array, top: 1 })
+      : T._terrain.coarseGrid({ cols, rows: n, pos, nor: whole.attributes.normal.array, tol: 0.03, angle: 4, top: 8, may: o => bank[o] > 9.999 && (o % cols === 0 || soil[o] === soil[o - 1]) && (o < cols || soil[o] === soil[o - cols]) && grassAt(o) > 250 });
+    const lists = Array.from({ length: pa * pd }, () => []);
+    for (const c of cells) {                                             // each square goes to the piece its middle lies in
+      const pi = Math.min(pa - 1, Math.floor((c.i + c.k / 2) * pa / (cols - 1))), pj = Math.min(pd - 1, Math.floor((c.j + c.k / 2) * pd / (n - 1)));
+      lists[pj * pa + pi].push(c.tris);
+    }
+    let drawn = 0;
     for (let pj = 0; pj < pd; pj++) for (let pi = 0; pi < pa; pi++) {
-      const i0 = Math.round(pi * (cols - 1) / pa), i1 = Math.round((pi + 1) * (cols - 1) / pa), j0 = Math.round(pj * (n - 1) / pd), j1 = Math.round((pj + 1) * (n - 1) / pd);
-      const idx = new Uint32Array((i1 - i0) * (j1 - j0) * 6), box = new THREE.Box3(), v = new THREE.Vector3();
-      let k = 0;
-      for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) { const a = j * cols + i, b = a + cols; idx[k++] = a; idx[k++] = b; idx[k++] = a + 1; idx[k++] = b; idx[k++] = b + 1; idx[k++] = a + 1; }
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const o = (j * cols + i) * 3; box.expandByPoint(v.set(pos[o], pos[o + 1], pos[o + 2])); }
+      const idx = Uint32Array.from(lists[pj * pa + pi].flat()), box = new THREE.Box3(), v = new THREE.Vector3();
+      if (!idx.length) continue;
+      for (const o of idx) box.expandByPoint(v.set(pos[o * 3], pos[o * 3 + 1], pos[o * 3 + 2]));
       const g = new THREE.BufferGeometry();                                // (every piece reads the one set of points: only its list of triangles is its own)
       for (const name of ['position', 'normal', 'aBank', 'aPath']) g.setAttribute(name, whole.attributes[name]);
       g.setIndex(new THREE.BufferAttribute(idx, 1)); g.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
       const m = new THREE.Mesh(g, mat); m.name = 'terrain-' + pi + '-' + pj; m.layers.enable(W.UNDERWATER);
-      terrain.add(m); own.push(g);
+      terrain.add(m); own.push(g); drawn += idx.length / 3;
     }
+    console.info('[hill-village] the land:', drawn, 'triangles of', (cols - 1) * (n - 1) * 2);
     if (cliffPaint) own.push(cliffPaint);
     if (sandPaint) own.push(sandPaint);
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };

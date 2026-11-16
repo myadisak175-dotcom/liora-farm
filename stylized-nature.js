@@ -1038,7 +1038,7 @@ function rockMaterial(moss, tone = 'warm') {
 // --------------------------------------------------------------------------
 // How finely wood and the leaf core are cut. A forest of hundreds of trees is drawn twice a frame (once more in the water's mirror),
 // so every triangle here is paid hundreds of times. Smooth-shaded tubes hide the lower counts well.
-const TREE_LOD = { trunkRadial: 10, trunkLength: 24, branchRadial: 7, branchLength: 8, coreDetail: 2 };
+const TREE_LOD = { trunkRadial: 10, trunkLength: 24, branchRadial: 7, branchLength: 8, coreDetail: 2 };      // (growTreeFrame can grow one frame's wood with other numbers: a far tree's)
 
 function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null, opt = {}) {
   const curve = new THREE.CatmullRomCurve3(points);
@@ -1857,11 +1857,16 @@ export const treeSpec = type => TREE_TYPES[type];
 // The wood and the leaf masses of a tree from a spec shaped like the TREE_TYPES ones (trunk, grow or tiers, bark ...), for a
 // kit that dresses the crown its own way (anime-tree.js). trunk: bark mesh, ready to add; tiers: one leaf mass per limb tip
 // (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space.
-export function growTreeFrame(spec, seed = 1) {
-  const rng = mulberry32(seed * 7919 + 5);
+// wood: { trunkRadial, trunkLength, branchRadial, branchLength } for this frame only: the same tree (stem, limbs and roots
+// where they are), its wood with fewer sides and rings, for a tree seen from far off.
+export function growTreeFrame(spec, seed = 1, wood = null) {
+  const rng = mulberry32(seed * 7919 + 5), usual = { ...TREE_LOD };
   let trunk, tiers;
-  if (spec.custom || spec.grow) ({ trunk, tiers } = (spec.custom || buildGrown)(rng, spec));
-  else { tiers = typeof spec.tiers === 'function' ? spec.tiers(rng) : spec.tiers; trunk = buildTrunk(rng, spec); }
+  if (wood) Object.assign(TREE_LOD, wood);
+  try {
+    if (spec.custom || spec.grow) ({ trunk, tiers } = (spec.custom || buildGrown)(rng, spec));
+    else { tiers = typeof spec.tiers === 'function' ? spec.tiers(rng) : spec.tiers; trunk = buildTrunk(rng, spec); }
+  } finally { Object.assign(TREE_LOD, usual); }
   const mesh = new THREE.Mesh(withBase(trunk), barkMaterial(spec));
   mesh.frustumCulled = false;
   return { trunk: mesh, tiers, rng };

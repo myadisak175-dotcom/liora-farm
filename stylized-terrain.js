@@ -900,4 +900,52 @@ export function createValley({ seed = 1, width = 130, depth = 150, zCenter = -20
 // water shader for sibling modules: needs geometry attributes aDepth (water depth, >1 = deep) and aFlow (along, across -1..1)
 export const _water = { waterMaterial, WATER_COLORS };
 export const _strata = { GLSL: STRATA, HAZEV, colors: TERRAIN_COLORS };
-export const _terrain = { terrainMaterial };      // the land's own paint, for land built elsewhere (the abyss's depths)
+// A GRID OF POINTS DRAWN WITH AS FEW TRIANGLES AS TELL THE SAME LAND. The points are cols x rows, row after row (pos: x, y, z;
+// nor: their normals). Drawn cell by cell it is two triangles to every cell, flat ground and broken alike. Here a square of
+// 2, 4, 8 .. (top) cells is drawn whole where the ground inside it is flat: no point in it further than tol (metres) off
+// the plane through its corners, no normal in it more than angle (degrees) off its first, and may(o) true of every point
+// (o: the point's number): where the land must keep every point, the caller says so. Squares of different sizes meet
+// without a gap: a square that has smaller ones beside it is drawn as a fan from its middle point through every point its
+// neighbours use along its sides. Returns the squares: [{ i, j, k, tris: [point numbers, three to a triangle] }] (i, j: its
+// first corner; k: cells along a side), wound as the cell-by-cell triangles are (a, a + cols, a + 1).
+function coarseGrid({ cols, rows, pos, nor, may = null, tol = 0.03, angle = 4, top = 8 }) {
+  const H = o => pos[o * 3 + 1], cosA = Math.cos(angle * Math.PI / 180);
+  const flat = (i0, j0, k) => {
+    if (i0 + k > cols - 1 || j0 + k > rows - 1) return false;
+    const a = j0 * cols + i0, h00 = H(a), h10 = H(a + k), h01 = H(a + k * cols), h11 = H(a + k * cols + k);
+    if (Math.abs(h00 + h11 - h01 - h10) / 4 > tol / 2) return false;      // (its two triangles lie on one plane, near enough)
+    const nx = nor[a * 3], ny = nor[a * 3 + 1], nz = nor[a * 3 + 2];
+    for (let j = 0; j <= k; j++) for (let i = 0; i <= k; i++) {
+      const o = a + j * cols + i, u = i / k, v = j / k;
+      if (Math.abs(H(o) - ((h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v)) > tol) return false;
+      if (nor[o * 3] * nx + nor[o * 3 + 1] * ny + nor[o * 3 + 2] * nz < cosA) return false;
+      if (may && !may(o)) return false;
+    }
+    return true;
+  };
+  const cells = [], used = new Uint8Array(cols * rows);
+  const take = (i0, j0, k) => {
+    if (k > 1 && !flat(i0, j0, k)) { const h = k / 2; take(i0, j0, h); take(i0 + h, j0, h); take(i0, j0 + h, h); take(i0 + h, j0 + h, h); return; }
+    if (i0 >= cols - 1 || j0 >= rows - 1) return;
+    const a = j0 * cols + i0;
+    used[a] = used[a + k] = used[a + k * cols] = used[a + k * cols + k] = 1;
+    cells.push({ i: i0, j: j0, k, tris: null });
+  };
+  for (let j = 0; j < rows - 1; j += top) for (let i = 0; i < cols - 1; i += top) take(i, j, top);
+  for (const c of cells) {
+    const { i, j, k } = c, a = j * cols + i;
+    if (k === 1) { c.tris = [a, a + cols, a + 1, a + cols, a + cols + 1, a + 1]; continue; }
+    // round the square, the way its triangles are wound: down its first side, along the far one, back up, and along the near one
+    const ring = [];
+    for (let t = 0; t < k; t++) { const o = a + t * cols; if (t === 0 || used[o]) ring.push(o); }
+    for (let t = 0; t < k; t++) { const o = a + k * cols + t; if (t === 0 || used[o]) ring.push(o); }
+    for (let t = 0; t < k; t++) { const o = a + (k - t) * cols + k; if (t === 0 || used[o]) ring.push(o); }
+    for (let t = 0; t < k; t++) { const o = a + (k - t); if (t === 0 || used[o]) ring.push(o); }
+    if (ring.length === 4) { c.tris = [ring[0], ring[1], ring[3], ring[1], ring[2], ring[3]]; continue; }
+    const mid = a + (k / 2) * cols + k / 2, tris = c.tris = [];
+    for (let t = 0; t < ring.length; t++) tris.push(mid, ring[t], ring[(t + 1) % ring.length]);
+  }
+  return cells;
+}
+
+export const _terrain = { terrainMaterial, coarseGrid };      // the land's own paint and its saving of triangles, for land built elsewhere (the abyss's depths, the hill village)
