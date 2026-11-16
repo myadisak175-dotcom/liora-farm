@@ -92,7 +92,6 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const foliage = applyFoliage(P, foliageKey('hillvillage'));              // and the plants arranged by hand (the foliage editor): while kept here they are the map's, all of them
   const { x0: X0, z0: Z0, cell, nx, nz, base, range, play } = P.land;     // (she walks inside play: x0, x1, z0, z1; the rest is wooded hills to look at)
   const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
-  const onLand = (x, z, in_ = 0) => x > X0 + in_ && x < X1 - in_ && z > Z0 + in_ && z < Z1 - in_;
   // The ground made even under what was moved by hand in this browser, as the map's tool makes it when the move goes into the
   // map for everyone (level_ground there: the middle height of the ground in a circle, feathered out into the land round it).
   // So a moved house or market stall stands on a floor of its own, and is not half sunk in a slope. (The land's heights
@@ -452,11 +451,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
 
   // ------------------------------------------------------------------ the ground picture, the land, the grass
   await onStep('ระบายสีพื้น');
-  // the land fades into the haze toward its edges (the land's own paint does that): the grass stops before it does
-  for (let z = Z0; z <= Z1; z += 5) for (const s of [-1, 1]) bare.push([s * (HX - 4), z, 10]);
-  for (let x = X0; x <= X1; x += 5) for (const z of [Z0 + 3, Z0 + 15, Z1 - 15, Z1 - 4]) bare.push([x, z, 10]);
+  // (the grass grows to the land's very edge, and on past it: the land runs on there, see the rim below)
+  const landRect = [-FR + Math.max(0, Math.floor((X0 + FR) / field.step)) * field.step, CZ - FR, -FR + Math.min(field.n - 1, Math.ceil((X1 + FR) / field.step)) * field.step, CZ + FR];      // the land as it is drawn
   const paint = (x, z) => {
-    if (!onLand(x, z, 0.5)) return [1, 0, 0];                              // off the land: nothing grows
+    if (x < landRect[0] - 1 || x > landRect[2] + 1) return [1, 0, 0];      // off the land (the map is a square, wider than it): not the map's to say, the rim paints itself
     let earth = ss(0.7, 1.1, slope(x, z)), mow = 0;                        // the cliffs: bare (no grass grows on them)
     const b = brookAt(x, z), sand = b ? 1 - ss(0.2, 1.4, b.d) : 0;        // the water's beds and banks: sand, no grass
     const pp = pathPaint(x, z);
@@ -541,7 +539,6 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // on a cliff or in another tree
   await onStep('ปลูกป่ารอบแผนที่');
   const horizonR = Math.hypot(HX, FR) + M.rim;                              // where the nearest ring of far hills stands (see horizon below)
-  const landRect = [-FR + Math.max(0, Math.floor((X0 + FR) / field.step)) * field.step, CZ - FR, -FR + Math.min(field.n - 1, Math.ceil((X1 + FR) / field.step)) * field.step, CZ + FR];      // the land as it is drawn
   const rim = createMapRim({
     rect: landRect,
     heightAt: H, terrainMaterial: T._terrain.terrainMaterial, far, zc: CZ, cliffPaint, horizon: { center: [0, CZ], radius: horizonR }, ways: waysOut, seed,
@@ -572,7 +569,13 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     texture.magFilter = texture.minFilter = THREE.LinearFilter; texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping; texture.needsUpdate = true;
     grassField = { ...field, texture };
   }
-  const grass = G.createFollowGrass({ map, field: grassField, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade });
+  // past the tile the meadow goes on in a ring of few, coarse tufts, out to a hundred metres; and past the land's edge the
+  // blades stand on the rim's ground, in its colours (stylized-grassfield.js: THE RING, PAST THE LAND)
+  const grass = G.createFollowGrass({
+    map, field: grassField, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade,
+    ring: { tile: 215, count: Math.round(grassCount * 0.3), width: 1.9, spread: 3.5, height: 1.1, lead: 0.1 },
+    beyond: { ...rim.userData.grass, land: landRect, greens: [G.GROUND_COLORS.deep, G.GROUND_COLORS.mid, G.GROUND_COLORS.sunny], lean: 2.2 },
+  });
   if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
   console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
   group.add(grass);

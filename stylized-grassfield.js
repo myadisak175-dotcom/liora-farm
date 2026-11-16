@@ -17,6 +17,8 @@
 //     scene.add(createTerrain(field, map, { far }));
 //     const grass = createFollowGrass({ map, field, count: 260000, tile: 72 });   scene.add(grass);
 //     every frame: grass.userData.follow(playerPosition, cameraDirection)
+//     (ring: few, coarse tufts on past the tile, out to a hundred metres; beyond: blades on land past the map's own.
+//      See createFollowGrass.)
 //
 // The shared-colour-map idea follows Cortiz's "Stylized Grass" (github.com/cortiz2894/stylized-components, MIT).
 // Written for plain three.js and for phone GPUs: no uniform arrays, no loops in GLSL.
@@ -560,11 +562,26 @@ function farTuftGeometry() {
 //     sink away, the other three widen and straighten until each lies exactly on the far tuft's flat triangle
 //   - only there, where the two shapes are one and the same, is the far tuft drawn in the full one's place (uMorph.z)
 // userData.setFarLod(false): every tuft in full, as it was.
+//
+// THE RING (ring: { tile, count, width, spread, height, lead }; none without it): past the tile the meadow does not go bare.
+// A third pool of far tufts stands on a tile of its own, several times as wide (tile: its size; they are seen out to a
+// little under half of it), few and coarse: count of them on all of it, each as broad as a clump (width: its blades this
+// many times a far blade's; spread: its three blades stand this many times further apart; height). A ring tuft comes up
+// where the tile's own tufts thin out, one for one at distances of their own, and thins out the same way at the ring's own
+// edge: so nothing is seen to begin or end. userData.setRing(false): without it.
+//
+// PAST THE LAND (beyond: { sheet, rect, land, greens, lean, shade, shadeRect, shadeTint, shadeK }; nothing without it): the
+// map and the heights speak for the land only (land: x0, z0, x1, z1). Where the land runs on past that (map-rim.js) the
+// tufts stand on what the sheet says: a picture of that ground (rect: centre x, z, 1 / its size) with, in r g b a, its
+// height, how much grass grows (none on rock or on a way), how deep in a wood it lies, and how its slope leans to the sun.
+// Their colour there is the ground's own, made as the ground's paint makes it (stylized-terrain.js, grassLook: the three
+// greens in broad drifts, lean, the trees' shadows from shade), so the tufts come up out of ground of their colour.
 export function createFollowGrass({
   map, field, count = 200000, tile = 62, seed = 5,
   bladeHeight = 0.34, bladeWidth = 0.055, tuft = 0.11, tip = GRASS_TIP,
   far = '#eef5e4', fadeA = null, fadeB = null, thin = 1,        // thin > 1: fewer, wider blades (a lighter carpet that still closes)
   farLod = true, farWidth = 1.7,                                // farWidth: a far tuft's blades are this much wider (three stand for five)
+  ring = null, beyond = null,
 } = {}) {
   const rng = mulberry32(seed * 733 + 11);
   const nearTile = tile / 2;                                    // the quarter that the tile repeats: the full tufts' own tile
@@ -576,9 +593,17 @@ export function createFollowGrass({
     uThin: { value: thin },       // widens blades when fewer of them are drawn
     uNear: { value: new THREE.Vector4(map.center[0], map.center[1], nearTile, farWidth) },      // the near tufts' tile: centre x, z, size; w: a far blade's extra width
     uMorph: { value: new THREE.Vector3(nearTile * 0.26, nearTile * 0.47, nearTile * 0.47) },     // from the walker: a full tuft starts turning into its far shape, has turned; the far tuft is drawn from here on (inside the near tile's half width)
+    uRing: { value: new THREE.Vector3(map.center[0], map.center[1], ring ? ring.tile : 0) },   // the ring's tile: centre x, z, size
+    uRingLook: { value: new THREE.Vector3(ring ? ring.width ?? 1.6 : 1, ring ? ring.spread ?? 3 : 1, ring ? ring.height ?? 1.1 : 1) },      // a ring tuft's blades: so many times as wide, as far apart, as tall
   };
+  if (beyond) Object.assign(uniforms, {
+    uBeyond: { value: beyond.sheet }, uBeyondRect: { value: beyond.rect }, uLand: { value: new THREE.Vector4(...beyond.land) },
+    uBeyondDeep: { value: rgb(beyond.greens[0]) }, uBeyondMid: { value: rgb(beyond.greens[1]) }, uBeyondSunny: { value: rgb(beyond.greens[2]) }, uBeyondLean: { value: beyond.lean ?? 1.2 },
+    uBeyondShade: { value: beyond.shade }, uBeyondShadeRect: { value: beyond.shadeRect }, uBeyondShadeTint: { value: beyond.shadeTint }, uBeyondShadeK: beyond.shadeK,
+  });
   const mat = new THREE.ShaderMaterial({
     uniforms,
+    defines: beyond ? { BEYOND: 1 } : {},
     vertexShader: /* glsl */`
       ${NOISE}
       ${MAP_GLSL}
@@ -586,13 +611,21 @@ export function createFollowGrass({
       attribute vec4 aBlade;     // this blade inside its tuft: offset x, offset z, height factor, turn
       attribute vec2 iCell;      // the tuft's place on the tile
       attribute vec4 iRnd;       // turn (-1..1), height scale, phase (0..1), tint (-1..1)
-      attribute float aLod;      // 0: a full tuft of the whole pool (no near and far)   1: a far tuft   2: a near tuft, on its own tile
+      attribute float aLod;      // 0: a full tuft of the whole pool (no near and far)   1: a far tuft   2: a near tuft, on its own tile   3: a tuft of the ring
       attribute float aSpare;    // 1: one of the two blades a far tuft has not
       uniform sampler2D uHeight;
       uniform vec4 uHeightRect;  // corner x, corner z, scale, offset
       uniform vec3 uArea;        // tile centre x, z, tile size
       uniform vec4 uNear;        // the near tufts' tile: centre x, z, size; w = how much wider a far tuft's blades are
       uniform vec3 uMorph;       // distance from the walker: a full tuft starts turning into its far shape, has turned, the far tuft takes its place
+      uniform vec3 uRing;        // the ring's tile: centre x, z, size
+      uniform vec3 uRingLook;    // a ring tuft's blades: so many times as wide, as far apart, as tall
+      #ifdef BEYOND
+        uniform sampler2D uBeyond, uBeyondShade;      // past the land: that ground (height, grass, wood, lean); its trees' shadows
+        uniform vec3 uBeyondRect, uBeyondShadeRect, uBeyondShadeTint, uBeyondDeep, uBeyondMid, uBeyondSunny;
+        uniform vec4 uLand;      // the land the map and the heights speak for: x0, z0, x1, z1
+        uniform float uBeyondLean, uBeyondShadeK;
+      #endif
       uniform float uTime, uWind, uTuft, uThin, uPaint;
       uniform vec2 uBlade;       // width, height
       uniform vec3 uTip;
@@ -605,25 +638,53 @@ export function createFollowGrass({
       varying float vFade;
       varying float vHaze;
       void main() {
-        vec3 area = aLod > 1.5 ? uNear.xyz : uArea;
+        float ringed = step(2.5, aLod);
+        vec3 area = aLod > 2.5 ? uRing : aLod > 1.5 ? uNear.xyz : uArea;
         vec2 xz = mod(iCell - area.xy, area.z) - 0.5 * area.z + area.xy;
         // the tile's edge: the grass thins out a tuft at a time, each at a distance of its own (its phase), over the tile's last
         // third. (All at one distance they came up together as she walked: a line of grass rising, running ahead of her)
-        float last = uArea.z * mix(0.30, 0.43, fract(iRnd.z * 37.0 + 0.61));
-        float edge = 1.0 - smoothstep(last, last + uArea.z * 0.06, length(xz - uArea.xy));
+        float own = mix(0.30, 0.43, fract(iRnd.z * 37.0 + 0.61));
+        float edge = 1.0 - smoothstep(uArea.z * own, uArea.z * (own + 0.06), length(xz - uArea.xy));
+        float walk = length(xz - uNear.xy);
+        // a tuft of the ring: up where the tile's own are down, by the same rule; and down again at the ring's own edge. (None
+        // near her: the tile lies ahead of her, so behind her its tufts thin out a few steps off, and a coarse tuft is for afar)
+        if (aLod > 2.5) edge = (1.0 - edge) * (1.0 - smoothstep(uRing.z * own, uRing.z * (own + 0.06), length(xz - uRing.xy))) * smoothstep(uMorph.z, uMorph.z * 1.4, walk);
         // near and far: a near tuft is the far tuft that stands on the same spot (see NEAR AND FAR above). turned: how far it
         // has turned into the far shape, 0 the full tuft .. 1 the far one. Past uMorph.z the far tuft is drawn and the near one not
-        float walk = length(xz - uNear.xy);
-        float turned = aLod < 0.5 ? 0.0 : aLod < 1.5 ? 1.0 : smoothstep(uMorph.x, uMorph.y, walk);
-        if (aLod > 0.5) edge *= aLod < 1.5 ? step(uMorph.z, walk) : 1.0 - step(uMorph.z, walk);
-        float ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
-        vec4 m = groundMap(xz);
+        float turned = aLod < 0.5 ? 0.0 : (aLod < 1.5 || aLod > 2.5) ? 1.0 : smoothstep(uMorph.x, uMorph.y, walk);
+        if (aLod > 0.5 && aLod < 2.5) edge *= aLod < 1.5 ? step(uMorph.z, walk) : 1.0 - step(uMorph.z, walk);
+        float ground;
+        vec4 m;
+        #ifdef BEYOND
+          vec2 inl = clamp(xz, uLand.xy, uLand.zw);
+          float past = length(xz - inl);
+          if (past > 0.0) {
+            // past the land (see PAST THE LAND above): the ground's height and colour as that ground has them
+            vec4 by = texture2D(uBeyond, (xz - uBeyondRect.xy) * uBeyondRect.z + 0.5);
+            ground = by.r;
+            float dn = noise2(xz * 0.05) * 0.75 + noise2(xz * 0.19 + 3.0) * 0.25;
+            float dt = clamp(smoothstep(0.38, 0.62, dn) + by.a * uBeyondLean, 0.0, 1.0);
+            vec3 wild = dt < 0.5 ? mix(uBeyondDeep, uBeyondMid, dt * 2.0) : mix(uBeyondMid, uBeyondSunny, dt * 2.0 - 1.0);
+            m = mix(groundMap(inl), vec4(wild, 1.0), smoothstep(0.5, 9.0, past));
+            m.rgb *= mix(vec3(1.0), uBeyondShadeTint, texture2D(uBeyondShade, (xz - uBeyondShadeRect.xy) * uBeyondShadeRect.z + 0.5).r * uBeyondShadeK);
+            // none in a wood: its edge is ragged, as that ground paints it
+            float wd = by.b + (noise2(xz * 0.9) * 0.5 + noise2(xz * 3.0) * 0.25 - 0.37) * 0.45 + (noise2(xz * 0.11 + 4.0) - 0.5) * 0.6;
+            m.a *= by.g * (1.0 - smoothstep(0.32, 0.5, wd));
+          } else {
+            ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
+            m = groundMap(xz);
+          }
+        #else
+          ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
+          m = groundMap(xz);
+        #endif
         float cn = clumpAt(xz);
         // this blade's own root inside the tuft
         float ta = iRnd.x * 3.1416, tc = cos(ta), ts = sin(ta);
         vec2 off = vec2(aBlade.x * tc - aBlade.y * ts, aBlade.x * ts + aBlade.y * tc);
-        vec3 root = vec3(xz.x + off.x * uTuft, ground, xz.y + off.y * uTuft);
-        float h = uBlade.y * (0.6 + 0.85 * cn) * iRnd.y * aBlade.z * smoothstep(0.1, 0.75, m.a) * edge;
+        vec3 root = vec3(xz.x + off.x * uTuft * mix(1.0, uRingLook.y, ringed), ground, xz.y + off.y * uTuft * mix(1.0, uRingLook.y, ringed));
+        // (a ring tuft is broad: it keeps further back from a way's or the water's edge, where the grass thins, than a blade need)
+        float h = uBlade.y * (0.6 + 0.85 * cn) * iRnd.y * aBlade.z * smoothstep(mix(0.1, 0.5, ringed), mix(0.75, 0.95, ringed), m.a) * edge * mix(1.0, uRingLook.z, ringed);
         vec3 toC = cameraPosition - root;
         float dist = length(toC.xz);
         h *= smoothstep(0.35, 1.2, length(toC));                // blades right in front of the lens sink away
@@ -646,7 +707,7 @@ export function createFollowGrass({
         h *= 1.0 - 0.12 * push;
         float y = position.y;
         float w = uThin * uBlade.x * (0.8 + 0.4 * fract(iRnd.z * 7.0)) * (1.0 + dist * 0.035) * (1.0 + 0.4 * uPaint);     // far blades wider: thin blades would shimmer
-        w *= mix(1.0, uNear.w, turned);                         // a far tuft: three blades stand for five
+        w *= mix(1.0, uNear.w, turned) * mix(1.0, uRingLook.x, ringed);      // a far tuft: three blades stand for five; a ring tuft: for a whole clump
         // the leaf's waist (y = 0.5) comes in onto the straight line from foot to tip as the tuft turns: turned, the leaf IS the flat triangle
         float waist = (1.0 - abs(y - 0.5) * 2.0) * turned;
         vec3 p = root;
@@ -726,6 +787,19 @@ export function createFollowGrass({
     return g;
   };
   const gAll = tufts(base, 0, wide), gFar = tufts(flat, 1, wide), gNear = tufts(base, 2, close);
+  // the ring's own pool: anywhere on its tile, each tuft itself as the others are
+  let gRing = null, ringMesh = null, ringN = 0;
+  if (ring) {
+    ringN = ring.count;
+    const cellR = new Float32Array(ringN * 2), rndR = new Float32Array(ringN * 4);
+    for (let i = 0; i < ringN; i++) {
+      cellR[i * 2] = rng() * ring.tile; cellR[i * 2 + 1] = rng() * ring.tile;
+      const tall = rng() < 0.16;
+      rndR[i * 4] = rng() * 2 - 1; rndR[i * 4 + 1] = tall ? 1.35 + 0.55 * rng() : 0.7 + 0.4 * rng(); rndR[i * 4 + 2] = rng();
+      rndR[i * 4 + 3] = tall ? 0.3 + 0.7 * rng() : rng() * 2 - 1;
+    }
+    gRing = tufts(flat, 3, { n: ringN, iCell: new THREE.InstancedBufferAttribute(cellR, 2), iRnd: new THREE.InstancedBufferAttribute(rndR, 4) });
+  }
   const mesh = new THREE.Mesh(farLod ? gFar : gAll, mat);
   mesh.name = 'followGrass';
   mesh.frustumCulled = false;          // the shader decides where the blades are
@@ -734,14 +808,21 @@ export function createFollowGrass({
   nearMesh.frustumCulled = false;
   nearMesh.visible = farLod;
   mesh.add(nearMesh);                  // (so whoever hides the grass hides both)
+  if (gRing) {
+    ringMesh = new THREE.Mesh(gRing, mat);
+    ringMesh.name = 'followGrassRing';
+    ringMesh.frustumCulled = false;
+    mesh.add(ringMesh);
+  }
   let density = 1;
   mesh.userData = {
-    kind: 'followGrass', tufts: wide.n, blades: wide.n * 5, nearTufts: close.n,
+    kind: 'followGrass', tufts: wide.n, blades: wide.n * 5, nearTufts: close.n, ringTufts: ringN,
     // centre the tile a little ahead of the walker, in the direction the camera looks, so most blades are on screen
     follow(pos, lookDir = null, lead = 0.24) {
       let x = pos.x, z = pos.z;
       if (lookDir) { const l = Math.hypot(lookDir.x, lookDir.z) || 1; x += lookDir.x / l * tile * lead; z += lookDir.z / l * tile * lead; }
       map.area.set(x, z, tile);
+      if (ring) { const k = (ring.lead ?? 0.1) * ring.tile / (tile * lead || 1); uniforms.uRing.value.set(pos.x + (x - pos.x) * k, pos.z + (z - pos.z) * k, ring.tile); }      // (the ring: as far ahead of her as lead says, of its own tile)
       uniforms.uNear.value.x = pos.x; uniforms.uNear.value.y = pos.z;      // the full tufts: round the walker herself (turning the camera moves nothing)
       uniforms.uWalker.value.set(pos.x, pos.y, pos.z, 0.55);
     },
@@ -750,16 +831,20 @@ export function createFollowGrass({
       density = Math.min(1, Math.max(0.2, d));
       gNear.instanceCount = Math.round(close.n * density);                    // (the same tufts in both pools: see the pools above)
       gAll.instanceCount = gFar.instanceCount = gNear.instanceCount * 4;
+      if (gRing) gRing.instanceCount = Math.round(ringN * density);
       uniforms.uThin.value = thin / Math.sqrt(density);
     },
     get density() { return density; },
     // near and far (true), or every tuft in full as it was (false): to compare, on the device
     setFarLod(on) { mesh.geometry = on ? gFar : gAll; nearMesh.visible = !!on; },
     get farLod() { return nearMesh.visible; },
-    get triangles() { return nearMesh.visible ? gFar.instanceCount * 3 + gNear.instanceCount * 15 : gAll.instanceCount * 15; },      // as drawn now
+    // the ring of coarse tufts past the tile (true), or none (false): to compare, on the device
+    setRing(on) { if (ringMesh) ringMesh.visible = !!on; },
+    get ring() { return !!ringMesh && ringMesh.visible; },
+    get triangles() { return (nearMesh.visible ? gFar.instanceCount * 3 + gNear.instanceCount * 15 : gAll.instanceCount * 15) + (ringMesh && ringMesh.visible ? gRing.instanceCount * 3 : 0); },      // as drawn now
     setPainterly(on) { map.paint.value = on ? 1 : 0; },
     get painterly() { return map.paint.value > 0.5; },
-    dispose() { gAll.dispose(); gFar.dispose(); gNear.dispose(); base.dispose(); flat.dispose(); mat.dispose(); map.area.z = 0; },
+    dispose() { gAll.dispose(); gFar.dispose(); gNear.dispose(); if (gRing) gRing.dispose(); base.dispose(); flat.dispose(); mat.dispose(); map.area.z = 0; },
   };
   return mesh;
 }

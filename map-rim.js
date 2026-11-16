@@ -33,6 +33,11 @@
                     small picture the rim's ground reads (with the land's grass look: stylized-terrain.js, grassLook); the
                     trees in the land's own last metres are handed to the level (userData.inLand) for the land's shadows.
 
+     6. the grass   the meadow's blades stand on this ground too, as far as they are drawn (stylized-grassfield.js, PAST THE
+                    LAND). They cannot ask the land's heights or its ground map out here, so the rim hands them a picture of
+                    itself (userData.grass: the sheet): its height, where grass grows, where the woods are, how it leans to
+                    the sun, read off its own two meshes; and its trees' shadows.
+
    Nothing here is walked on, and nothing moves but a slow sway of the crowns.
    Mobile-safe: no loops in the shaders, no uniform arrays.
    ========================================================================== */
@@ -60,6 +65,7 @@ export const RIM_LOOK = {
   bark: ['#6e5044', '#4a3631'],   // a trunk: its sunny side, its shaded side
   way: ['#dcc07c', '#c3a162'],    // a way that runs off the land: its trodden earth, its rim (the soft ways' own earth: ground-paths.js)
   wayRun: 30,                     // metres past the land's edge such a way is still seen
+  sheet: 90,                      // the grass's picture of the rim (see the sheet below) reaches this far past the land's longer side
 };
 
 // ---- the leafy card: r = inside the crown's outline, g = a tone of its own for each leaf (so the light steps leaf by leaf)
@@ -163,7 +169,7 @@ function rimMaterial(terrainMaterial, far, zc, cliffPaint, look, paint, shade) {
   if (shade && m.fragmentShader.includes(mark)) {
     m.fragmentShader = swap(swap(m.fragmentShader, 'uniform vec3 uW0, uW1, uW2;', 'uniform vec3 uW0, uW1, uW2;\n      uniform sampler2D uRimShade;\n      uniform vec3 uRimShadeRect, uRimShadeTint;\n      uniform float uRimShadeK;'),
       mark, 'gm.rgb *= mix(vec3(1.0), uRimShadeTint, texture2D(uRimShade, (vWP.xz - uRimShadeRect.xy) * uRimShadeRect.z + 0.5).r * uRimShadeK);\n            ' + mark);
-    Object.assign(m.uniforms, { uRimShade: { value: shade.texture }, uRimShadeRect: { value: shade.rect }, uRimShadeTint: { value: new THREE.Vector3(...shade.tint) }, uRimShadeK: { value: 1 } });
+    Object.assign(m.uniforms, { uRimShade: { value: shade.texture }, uRimShadeRect: { value: shade.rect }, uRimShadeTint: { value: shade.tint }, uRimShadeK: shade.k });
   }
   look.floor.forEach((c, i) => { m.uniforms['uW' + i] = { value: rgb(c) }; });
   m.uniforms.uP0.value = rgb(look.way[0]); m.uniforms.uP1.value = rgb(look.way[1]);
@@ -256,14 +262,64 @@ export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2',
   const SH = 1024, shadeData = new Uint8Array(SH * SH), shadeTex = new THREE.DataTexture(shadeData, SH, SH, THREE.RedFormat, THREE.UnsignedByteType);
   shadeTex.colorSpace = THREE.NoColorSpace; shadeTex.unpackAlignment = 1; shadeTex.magFilter = shadeTex.minFilter = THREE.LinearFilter;
   shadeTex.wrapS = shadeTex.wrapT = THREE.ClampToEdgeWrapping;
-  const mat = rimMaterial(terrainMaterial, far, zc, cliffPaint, look, paint,
-    { texture: shadeTex, rect: new THREE.Vector3(HCX, HCZ, 1 / (2 * R)), tint: paint && paint.ground && paint.ground.castTint ? paint.ground.castTint : [0.5, 0.6, 0.76] });
+  const shade = { texture: shadeTex, rect: new THREE.Vector3(HCX, HCZ, 1 / (2 * R)), tint: new THREE.Vector3(...(paint && paint.ground && paint.ground.castTint ? paint.ground.castTint : [0.5, 0.6, 0.76])), k: { value: 1 } };
+  const mat = rimMaterial(terrainMaterial, far, zc, cliffPaint, look, paint, shade);
   const A = look.apron, apronG = ringMesh(look.apronStep, 10, () => A, (k, n) => k === n - 1 ? 4 : 0);      // (its last ring dives under the woods)
   const woodsG = ringMesh(look.woodsStep, 22, T => Array.from({ length: look.woodsRings + 1 }, (_, k) => look.woodsFrom + (Math.max(T, look.woodsFrom + 30) - look.woodsFrom) * Math.pow(k / look.woodsRings, 1.6)), k => k === 0 ? 3 : 0);
   const apron = new THREE.Mesh(apronG, mat), woods = new THREE.Mesh(woodsG, mat);
   apron.name = 'rimApron'; woods.name = 'rimWoods';
   apron.frustumCulled = woods.frustumCulled = false;                   // (they lie all round: some of each is always in view)
   group.add(apron, woods);
+
+  // ---- the sheet: this ground as the grass must know it to stand on it (stylized-grassfield.js, PAST THE LAND). A picture
+  // of the land's surroundings, some 60 cm to a point, with in r g b a
+  //   r  how high the ground stands            g  how much grass grows there: none on rock, none on a way out
+  //   b  how deep in a wood it lies (aWood, less on a way: the measure the ground's own paint goes by, above)
+  //   a  how its slope leans to the sun (what the paint lightens the meadow by: stylized-terrain.js, grassLook)
+  // read off the two meshes themselves, point by point, the upper of them where one dives under the other: so a tuft stands
+  // on the ground that is drawn, not on the one that was meant. Inside the land's edge it says what the land says (the
+  // grass does not ask there, but a point beside the edge is made of both).
+  const SR = Math.min(R, Math.max(W, D) / 2 + look.sheet), SN = 1024, sheetData = new Float32Array(SN * SN * 4), top = new Float32Array(SN * SN).fill(-1e9);
+  const texel = v => (v + SR) / (2 * SR) * SN - 0.5;                    // (from metres off the middle to points of the picture)
+  for (const g of [apronG, woodsG]) {
+    const P = g.attributes.position.array, NV = g.attributes.normal.array, WD = g.attributes.aWood.array, PA = g.attributes.aPath.array, I = g.index.array;
+    for (let t = 0; t < I.length; t += 3) {
+      const a = I[t], b = I[t + 1], c = I[t + 2];
+      const ax = P[a * 3] - HCX, az = P[a * 3 + 2] - HCZ, bx = P[b * 3] - HCX, bz = P[b * 3 + 2] - HCZ, cx_ = P[c * 3] - HCX, cz_ = P[c * 3 + 2] - HCZ;
+      const i0 = Math.max(0, Math.ceil(texel(Math.min(ax, bx, cx_)))), i1 = Math.min(SN - 1, Math.floor(texel(Math.max(ax, bx, cx_))));
+      const j0 = Math.max(0, Math.ceil(texel(Math.min(az, bz, cz_)))), j1 = Math.min(SN - 1, Math.floor(texel(Math.max(az, bz, cz_))));
+      if (i0 > i1 || j0 > j1) continue;
+      const den = (bz - cz_) * (ax - cx_) + (cx_ - bx) * (az - cz_);
+      if (Math.abs(den) < 1e-9) continue;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const px = (i + 0.5) / SN * 2 * SR - SR, pz = (j + 0.5) / SN * 2 * SR - SR;
+        const u = ((bz - cz_) * (px - cx_) + (cx_ - bx) * (pz - cz_)) / den, v = ((cz_ - az) * (px - cx_) + (ax - cx_) * (pz - cz_)) / den, w = 1 - u - v;
+        if (u < -1e-4 || v < -1e-4 || w < -1e-4) continue;
+        const y = u * P[a * 3 + 1] + v * P[b * 3 + 1] + w * P[c * 3 + 1], o = j * SN + i;
+        if (y <= top[o]) continue;
+        top[o] = y;
+        let nx = u * NV[a * 3] + v * NV[b * 3] + w * NV[c * 3], ny = u * NV[a * 3 + 1] + v * NV[b * 3 + 1] + w * NV[c * 3 + 1], nz = u * NV[a * 3 + 2] + v * NV[b * 3 + 2] + w * NV[c * 3 + 2];
+        const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+        const path = u * PA[a] + v * PA[b] + w * PA[c], steep = Math.sqrt(Math.max(0, 1 - ny * ny)) / Math.max(ny, 0.05);
+        sheetData[o * 4] = y;
+        sheetData[o * 4 + 1] = (1 - ss(0.7, 1.1, steep)) * (1 - ss(0.15, 0.55, path));      // (the land's own rule for a slope: no grass on a cliff)
+        sheetData[o * 4 + 2] = u * WD[a] + v * WD[b] + w * WD[c] - path * 2.5;
+        sheetData[o * 4 + 3] = (nz * 0.35 - nx * 0.3) / Math.max(ny, 0.3);
+      }
+    }
+  }
+  for (let j = 0; j < SN; j++) for (let i = 0; i < SN; i++) {
+    const o = j * SN + i, x = HCX + (i + 0.5) / SN * 2 * SR - SR, z = HCZ + (j + 0.5) / SN * 2 * SR - SR;
+    if (x > X0 && x < X1 && z > Z0 && z < Z1) {                          // on the land: as the land has it
+      const e = 0.6, sx = (heightAt(cx(x + e), z) - heightAt(cx(x - e), z)) / (2 * e), sz = (heightAt(x, cz(z + e)) - heightAt(x, cz(z - e))) / (2 * e);
+      sheetData[o * 4] = heightAt(x, z); sheetData[o * 4 + 1] = 1; sheetData[o * 4 + 2] = 0; sheetData[o * 4 + 3] = sx * 0.3 - sz * 0.35;
+    } else if (top[o] < -1e8 || i === 0 || j === 0 || i === SN - 1 || j === SN - 1) sheetData[o * 4 + 1] = 0;      // no ground here, or the picture's own edge (what lies past it reads this): no grass
+  }
+  const sheetHalf = new Uint16Array(SN * SN * 4);
+  for (let k = 0; k < sheetHalf.length; k++) sheetHalf[k] = THREE.DataUtils.toHalfFloat(sheetData[k]);
+  const sheetTex = new THREE.DataTexture(sheetHalf, SN, SN, THREE.RGBAFormat, THREE.HalfFloatType);
+  sheetTex.colorSpace = THREE.NoColorSpace; sheetTex.magFilter = sheetTex.minFilter = THREE.LinearFilter;
+  sheetTex.wrapS = sheetTex.wrapT = THREE.ClampToEdgeWrapping; sheetTex.needsUpdate = true;
 
   // ---- the crowns: a jittered grid of them over the rim, close along the wood's edge, thinning out behind it
   const rng = mulberry32(seed * 131 + 9), G = look.crowns, ipos = [], ilook = [];
@@ -350,13 +406,16 @@ export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2',
   group.userData = {
     kind: 'mapRim', crowns: quad.instanceCount, triangles: (apronG.index.count + woodsG.index.count) / 3 + quad.instanceCount * 4,
     inLand,                                                              // the trees in the land's own last metres: [x, z, height, crown's radius], for the land's own shadows
+    // for the meadow's blades (createFollowGrass, beyond): the sheet and where it lies (centre x, z, 1 / its size), and the
+    // trees' shadows as the rim's own ground has them
+    grass: { sheet: sheetTex, rect: new THREE.Vector3(HCX, HCZ, 1 / (2 * SR)), shade: shadeTex, shadeRect: shade.rect, shadeTint: shade.tint, shadeK: shade.k },
     // the sun: the crowns are lit by it, and the shadows lie away from it (k: how dark shadows are now, 0 at night)
     setSun(dir, k = 1) {
       const u = crownMat.uniforms.uSun.value; u.copy(dir); if (u.y < 0.12) u.y = 0.12; u.normalize();      // (never lit from below the horizon: as the trees)
-      if (mat.uniforms.uRimShadeK) mat.uniforms.uRimShadeK.value = k;
+      shade.k.value = k;
       if (baked.distanceToSquared(u) > 0.0012) shadows(u);                                                // (the sun has moved a couple of degrees)
     },
-    dispose() { job++; apronG.dispose(); woodsG.dispose(); quad.dispose(); mat.dispose(); crownMat.dispose(); mask.dispose(); shadeTex.dispose(); },
+    dispose() { job++; apronG.dispose(); woodsG.dispose(); quad.dispose(); mat.dispose(); crownMat.dispose(); mask.dispose(); shadeTex.dispose(); sheetTex.dispose(); },
   };
   return group;
 }
