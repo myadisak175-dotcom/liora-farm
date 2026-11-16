@@ -850,8 +850,21 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       }
       return false;
     },
-    confine(p) {                                                           // off the cliffs: back to the nearest ground she may stand on
+    confine(p, from = null) {                                              // off the cliffs and out of deep water
       if (walkable(p.x, p.z)) return;
+      // walking into a cliff's edge (from: where she was, where she may be): she goes along the edge as far as her step takes her
+      // that way, or stops at it. (She was put back on the nearest ground she may stand on, found by looking round in rings, the
+      // first ring 0.15 m out: every frame she pushed on she was thrown 0.15 m or more, three times as far as a run's step, and
+      // not always the way she was going: she raced along the edge, or shook on the spot running)
+      if (from && walkable(from.x, from.z)) {
+        const vx = p.x - from.x, vz = p.z - from.z;
+        for (const a of [0.3, -0.3, 0.6, -0.6, 0.9, -0.9, 1.2, -1.2]) {     // her step turned along the edge, and shortened as it turns
+          const c = Math.cos(a), s = Math.sin(a), x = from.x + (vx * c - vz * s) * c, z = from.z + (vx * s + vz * c) * c;
+          if (walkable(x, z)) { p.x = x; p.z = z; return; }
+        }
+        p.x = from.x; p.z = from.z; return;
+      }
+      // standing where she may not (put there): back to the nearest ground she may stand on
       for (let rr = 0.15; rr <= 3; rr += 0.15) for (let a = 0; a < 12; a++) {
         const x = p.x + Math.cos(a * Math.PI / 6) * rr, z = p.z + Math.sin(a * Math.PI / 6) * rr;
         if (walkable(x, z)) { p.x = x; p.z = z; return; }

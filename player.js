@@ -121,14 +121,14 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   const footPos = new THREE.Vector3();
 
   // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
-  function collide(p, k = 1) {
+  function collide(p, k = 1, from = null) {
     for (const [cx, cz, cr] of level.colliders) {
       const dx = p.x - cx, dz = p.z - cz, r = cr + 0.28 * k, d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * r; p.z = cz + dz / d * r; }
     }
     const rr = Math.hypot(p.x, p.z);
     if (rr > level.radius) { p.x *= level.radius / rr; p.z *= level.radius / rr; }
-    if (level.confine) level.confine(p);            // maps with walls of their own (cliffs) say where a walker may be
+    if (level.confine) level.confine(p, from);      // maps with walls of their own (cliffs) say where a walker may be (from: where she was)
   }
 
   const player = {
@@ -194,7 +194,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           const da = level.waterDepthAt(ax, az), db = level.waterDepthAt(bx, bz);
           if (Math.min(da, db) > DEEP) tmp.set(pos.x, 0, pos.z); else if (da < db) tmp.set(ax, 0, az); else tmp.set(bx, 0, bz);
         }
-        collide(tmp, k);
+        collide(tmp, k, pos);
         const went = Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt;
         pos.x = tmp.x; pos.z = tmp.z;
         speed = Math.min(speed, went * 1.15 + 0.05);          // pushing against something: stop walking on the spot
