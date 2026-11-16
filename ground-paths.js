@@ -18,6 +18,8 @@
 //   const tex = await loadPathTextures(style)       the earth pictures for that look (grit: sand and dirt; soft: the paint), once
 //   group.add(P.ribbon(heightAt, map, tex, bankAt))  the painted path itself (after the ground map is made; bankAt, if given:
 //                                                  how high a spot stands above the water, so the soft look is wet toward it)
+//   terrainMaterial(..., { ways: P.onLand(map, tex) })  or, in the soft look, the land draws the ways itself: no ribbon at all
+//                                                  (see onLand). The land's own aBank does what bankAt does for a ribbon.
 //   P.stones(heightAt)                             [{ type, seed, x, z, ry, s, y }] flat stones and pebbles to set into it
 //   const h = P.add({ points, half })              after ribbon(): one more path, drawn at once (a way painted by hand)
 //   P.remove(h)                                    and taken away again
@@ -75,6 +77,53 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
   };
   // the path's edge wanders: broad bends and small bites
   const edge = (x, z, d) => d + (fbm3(x * 0.45, 1.3, z * 0.45, seed + 3, 2) - 0.5) * 0.7 + (fbm3(x * 1.8, 2.7, z * 1.8, seed + 5, 2) - 0.5) * 0.22;
+  // how far each point of the map is from the middle of the nearest path (in path widths): one picture for all the ways, so
+  // where two paths meet they agree on what is middle and what is edge (the soft look also wants to know how many metres
+  // outside the path's edge a point is: a second number, -2 .. 2 m; and how many soft ribbons lie over it: a third, see cover).
+  // Made once, for whichever draws the ways
+  let dist = null;
+  const distances = map => {
+    if (dist) return dist;
+    const S = map.size, R = map.radius, [mx, mz] = map.center, C = soft ? 4 : 1, dd = new Uint8Array(S * S * C).fill(255);
+    const fill = ([x0, x1, z0, z1], fresh = false) => {                      // (fresh: worked out again from all the paths, not only lowered)
+      const i0 = Math.max(0, Math.floor((x0 - mx + R) / (2 * R) * S)), i1 = Math.min(S - 1, Math.ceil((x1 - mx + R) / (2 * R) * S));
+      const j0 = Math.max(0, Math.floor((z0 - mz + R) / (2 * R) * S)), j1 = Math.min(S - 1, Math.ceil((z1 - mz + R) / (2 * R) * S));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const q = near(mx - R + (i + 0.5) / S * 2 * R, mz - R + (j + 0.5) / S * 2 * R);
+        const o = (j * S + i) * C;
+        if (fresh) { dd[o] = 255; if (soft) dd[o + 1] = 255; }
+        if (q.d > 1e8) continue;
+        dd[o] = Math.min(dd[o], Math.round(Math.min(1, q.d / q.half / 4) * 255));
+        if (soft) dd[o + 1] = Math.min(dd[o + 1], Math.round(Math.min(1, Math.max(0, (q.d - q.half + 2) / 4)) * 255));
+      }
+    };
+    // how many soft ribbons lie over each point: a ribbon reaches its way's half width and a metre and a half more round its line,
+    // and where several lay over one spot each was drawn there, see-through, one over the other (ways painted close together
+    // were laid on thick). The land lays a way there as many times over (onLand), so the ways look as they did
+    const layers = soft ? new Uint16Array(S * S) : null, mark = soft ? new Int32Array(S * S).fill(-1) : null;
+    let stamp = 0;
+    const cover = (l, by) => {
+      if (!soft) return;
+      const W = l.half + 1.5, id = stamp++, P = l.pts;
+      for (let s = 0; s < Math.max(1, P.length - 1); s++) {
+        const [ax, az] = P[s], [bx, bz] = P[Math.min(s + 1, P.length - 1)], ux = bx - ax, uz = bz - az, L2 = ux * ux + uz * uz || 1e-9;
+        const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - W - mx + R) / (2 * R) * S)), i1 = Math.min(S - 1, Math.ceil((Math.max(ax, bx) + W - mx + R) / (2 * R) * S));
+        const j0 = Math.max(0, Math.floor((Math.min(az, bz) - W - mz + R) / (2 * R) * S)), j1 = Math.min(S - 1, Math.ceil((Math.max(az, bz) + W - mz + R) / (2 * R) * S));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const o = j * S + i;
+          if (mark[o] === id) continue;
+          const x = mx - R + (i + 0.5) / S * 2 * R - ax, z = mz - R + (j + 0.5) / S * 2 * R - az, t = Math.min(1, Math.max(0, (x * ux + z * uz) / L2));
+          if (Math.hypot(x - ux * t, z - uz * t) > W) continue;
+          mark[o] = id; layers[o] = Math.max(0, layers[o] + by); dd[o * 4 + 2] = Math.min(255, layers[o]);
+        }
+      }
+    };
+    if (soft) for (let o = 0; o < S * S; o++) { dd[o * 4] = 255; dd[o * 4 + 1] = 255; dd[o * 4 + 2] = 0; dd[o * 4 + 3] = 0; }
+    for (const l of lines) { fill(l.box); cover(l, 1); }
+    const tex = new THREE.DataTexture(dd, S, S, soft ? THREE.RGBAFormat : THREE.RedFormat, THREE.UnsignedByteType);
+    tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.unpackAlignment = 1; tex.needsUpdate = true;
+    return (dist = { tex, fill, cover });
+  };
   return {
     near,
     sink(x, z) { const { d, half } = near(x, z); return d > half * 2 ? 0 : -0.07 * (1 - ss(half * 0.55, half * 1.15, d)); },
@@ -104,25 +153,7 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
     // the water; without it no way is ever wet
     ribbon(heightAt, map, tex = null, bankAt = null) {
       const group = new THREE.Group(); group.name = 'paths';
-      // how far each point of the map is from the middle of the nearest path (in path widths): one picture for all the ribbons,
-      // so where two paths meet they agree on what is middle and what is edge
-      // (the soft look also wants to know how many metres outside the path's edge a point is: a second number, -2 .. 2 m)
-      const S = map.size, R = map.radius, [mx, mz] = map.center, C = soft ? 2 : 1, dd = new Uint8Array(S * S * C).fill(255);
-      const fill = ([x0, x1, z0, z1], fresh = false) => {                    // (fresh: worked out again from all the paths, not only lowered)
-        const i0 = Math.max(0, Math.floor((x0 - mx + R) / (2 * R) * S)), i1 = Math.min(S - 1, Math.ceil((x1 - mx + R) / (2 * R) * S));
-        const j0 = Math.max(0, Math.floor((z0 - mz + R) / (2 * R) * S)), j1 = Math.min(S - 1, Math.ceil((z1 - mz + R) / (2 * R) * S));
-        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-          const q = near(mx - R + (i + 0.5) / S * 2 * R, mz - R + (j + 0.5) / S * 2 * R);
-          const o = (j * S + i) * C;
-          if (fresh) { dd[o] = 255; if (soft) dd[o + 1] = 255; }
-          if (q.d > 1e8) continue;
-          dd[o] = Math.min(dd[o], Math.round(Math.min(1, q.d / q.half / 4) * 255));
-          if (soft) dd[o + 1] = Math.min(dd[o + 1], Math.round(Math.min(1, Math.max(0, (q.d - q.half + 2) / 4)) * 255));
-        }
-      };
-      for (const l of lines) fill(l.box);
-      const distTex = new THREE.DataTexture(dd, S, S, soft ? THREE.RGFormat : THREE.RedFormat, THREE.UnsignedByteType);
-      distTex.magFilter = distTex.minFilter = THREE.LinearFilter; distTex.unpackAlignment = 1; distTex.needsUpdate = true;
+      const distTex = distances(map).tex;
       const mat = soft ? softPathMaterial(map, tex, distTex) : pathMaterial(map, tex, distTex);
       const meshOf = l => {
         // Its points are never more than about half a metre apart, along it and across it, so it lies on the ground everywhere.
@@ -153,22 +184,34 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       };
       for (const l of lines) group.add(meshOf(l));
       group.userData.dispose = () => { mat.dispose(); distTex.dispose(); };
-      rib = { group, fill, meshOf, distTex };
+      rib = { group, meshOf };
       return group;
+    },
+    // THE WAYS DRAWN BY THE LAND (the soft look): in place of ribbons the land's own paint lays them (stylized-terrain.js,
+    // terrainMaterial's ways), by the same lines of shader as a soft ribbon (SOFT_WAY_GLSL), from the same picture of distances.
+    // There is nothing to draw for them: a ribbon was a mesh of its own (a draw call each) lying see-through over the land, so
+    // where ways were painted close together the same spot was drawn again for every ribbon over it. Now ways added by hand,
+    // however many, add nothing: the land is drawn anyway, and only its points near a way have more to work out.
+    // Returns { glsl, defines, uniforms } for terrainMaterial's ways, and dispose().
+    onLand(map, tex = null) {
+      const d = distances(map), paint = tex && tex.paint ? tex.paint : null;
+      return { glsl: SOFT_WAY_GLSL, defines: paint ? { WAY_TEX: 1 } : {}, uniforms: softWayUniforms(map, paint, d.tex), dispose: () => d.tex.dispose() };
     },
     // one more path, after the ribbons are made: it is in near() and paint() from now on, and drawn at once
     add(path) {
       const l = makeLine(path);
       if (l.pts.length < 2) return null;
       lines.push(l);
-      if (rib) { rib.fill(l.box); rib.distTex.needsUpdate = true; l.mesh = rib.meshOf(l); rib.group.add(l.mesh); }
+      if (dist) { dist.fill(l.box); dist.cover(l, 1); dist.tex.needsUpdate = true; }
+      if (rib) { l.mesh = rib.meshOf(l); rib.group.add(l.mesh); }
       return l;
     },
     remove(l) {
       const k = lines.indexOf(l);
       if (k < 0) return;
       lines.splice(k, 1);
-      if (rib && l.mesh) { rib.group.remove(l.mesh); l.mesh.userData.dispose(); rib.fill(l.box, true); rib.distTex.needsUpdate = true; }
+      if (rib && l.mesh) { rib.group.remove(l.mesh); l.mesh.userData.dispose(); }
+      if (dist) { dist.fill(l.box, true); dist.cover(l, -1); dist.tex.needsUpdate = true; }
     },
     // flat stones worn into the path (alone or in twos and threes) and pebbles at its sides
     stones() {
@@ -294,15 +337,62 @@ function pathMaterial(map, tex, distTex) {
 // fades out in under a metre. Without the picture: the same, over one flat earth colour. Toward the water it is wet: darker,
 // by how high each point of the ribbon stands above the water (aBank: the level's bankAt, the same measure the banks' sand is
 // wet by, so a way running down onto the beach is wet just where the sand beside it is).
+// THE SOFT LOOK, as one function that both a soft ribbon (softPathMaterial) and the land's own paint (onLand) call: at a point
+// wp of the ground (up: how much the ground there faces up; bank: how high it stands above the water beside it, 10 with none
+// near), the way's colour and how much of it shows (0: none). Needs NOISE before it; WAY_TEX defined when there is a paint.
+const SOFT_WAY_GLSL = /* glsl */`
+uniform sampler2D uWayMap, uWayCast, uWayPaint, uWayD;
+uniform vec3 uWayMapRect, uWayCastTint, uWayEarth, uWayCream, uWayDeep, uWaySide, uWayHay, uWayWet;
+vec4 softWay(vec3 wp, float up, float bank) {
+  vec2 uv = (wp.xz - uWayMapRect.xy) * uWayMapRect.z + 0.5;
+  vec2 pd = texture2D(uWayD, uv).rg;
+  if (pd.g > 0.995) return vec4(0.0);                                      // (no way within two metres of here)
+  vec4 m = texture2D(uWayMap, uv);
+  float mid = pd.r * 4.0;                                                  // 0 down the middle, 1 at the edge (all paths agree)
+  float out_ = pd.g * 4.0 - 2.0;                                           // metres outside the edge (inside: less than 0)
+  float n1 = noise2(wp.xz * 0.9), n2 = noise2(wp.xz * 2.4 + 3.0);
+  // how much of the path is left here: less as the grass comes in (a soft, slightly ragged fade), and none a little way
+  // out over bare ground
+  float grass = m.a + (noise2(wp.xz * 5.0) - 0.5) * 0.22 + (noise2(wp.xz * 13.0) - 0.5) * 0.10;
+  float a = (1.0 - smoothstep(0.10, 0.70, grass)) * (1.0 - smoothstep(0.15, 0.95, out_ + (n2 - 0.5) * 0.5));
+  // a way is trodden ground: none of it on a cliff's face (a way that ends at a cliff's foot, or is painted across one,
+  // does not colour the rock). Full on a slope of 45 degrees, gone by 65
+  a *= smoothstep(0.42, 0.68, up);
+  if (a < 0.01) return vec4(0.0);
+#ifdef WAY_TEX
+  vec2 p = wp.xz / 4.1, q = mat2(0.8, -0.6, 0.6, 0.8) * wp.xz / 6.3;
+  vec3 col = mix(texture2D(uWayPaint, p).rgb, texture2D(uWayPaint, q).rgb, 0.35 + 0.3 * noise2(wp.xz * 0.3));
+#else
+  vec3 col = uWayEarth * (0.96 + 0.08 * n2);
+#endif
+  float worn = 1.0 - smoothstep(0.1, 0.95, mid + (n1 - 0.5) * 0.6);         // the middle, where feet have worn it pale
+  col = mix(col, uWayCream, worn * 0.30);
+  float broad = noise2(wp.xz * 0.36 + 7.0);                                 // broad soft patches: of deeper tone, and of paler
+  col = mix(col, col * uWayDeep / uWayEarth, smoothstep(0.50, 0.74, broad) * (0.55 + 0.45 * n2));
+  col = mix(col, uWayCream, smoothstep(0.42, 0.20, broad) * 0.22);
+  col = mix(col, uWaySide, smoothstep(-0.55, 0.15, out_ + (n1 - 0.5) * 0.5) * 0.5);      // browner toward its sides
+  col = mix(col, uWayHay, smoothstep(0.08, 0.5, grass) * 0.8);                  // and to dry grass where the meadow begins
+  // wet toward the water: the banks' sand is wet by the same measure, with the same ragged edge (stylized-terrain.js)
+  float sb = bank + (noise2(wp.xz * 0.9) - 0.5) * 0.24 + (noise2(wp.xz * 3.1 + 5.0) - 0.5) * 0.08;
+  col = mix(col, col * uWayWet, 1.0 - smoothstep(0.02, 0.40, sb + (noise2(wp.xz * 1.7 + 9.0) - 0.5) * 0.14));
+  col *= mix(vec3(1.0), uWayCastTint, texture2D(uWayCast, uv).r);          // the sun's shadows
+  return vec4(col, a);
+}
+// how many soft ribbons lie over this point (see cover): the land lays the way as many times over, so a = 1 - (1 - a)^layers
+float wayLayers(vec3 wp) { return texture2D(uWayD, (wp.xz - uWayMapRect.xy) * uWayMapRect.z + 0.5).b * 255.0; }`;
+const softWayUniforms = (map, paint, distTex) => ({
+  uWayPaint: { value: paint }, uWayD: { value: distTex },
+  uWayMap: { value: map.texture }, uWayMapRect: { value: map.rect }, uWayCast: { value: map.cast || null }, uWayCastTint: { value: new THREE.Vector3(...(map.castTint || [0.5, 0.6, 0.76])) },
+  uWayEarth: { value: rgb(SOFT.earth) }, uWayCream: { value: rgb(SOFT.cream) }, uWayDeep: { value: rgb(SOFT.deep) }, uWaySide: { value: rgb(SOFT.side) }, uWayHay: { value: rgb(SOFT.hay) },
+  uWayWet: { value: rgb(SOFT.wet) },
+});
+
 function softPathMaterial(map, tex, distTex) {
   const paint = tex && tex.paint ? tex.paint : null;
   return new THREE.ShaderMaterial({
-    defines: paint ? { TEX: 1 } : {},
+    defines: paint ? { WAY_TEX: 1 } : {},
     uniforms: {
-      uPaint: { value: paint }, uPathD: { value: distTex },
-      uMap: { value: map.texture }, uMapRect: { value: map.rect }, uCast: { value: map.cast || null }, uCastTint: { value: new THREE.Vector3(...(map.castTint || [0.5, 0.6, 0.76])) },
-      uEarth: { value: rgb(SOFT.earth) }, uCream: { value: rgb(SOFT.cream) }, uDeep: { value: rgb(SOFT.deep) }, uSide: { value: rgb(SOFT.side) }, uHay: { value: rgb(SOFT.hay) },
-      uWet: { value: rgb(SOFT.wet) },
+      ...softWayUniforms(map, paint, distTex),
       uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
     },
     vertexShader: /* glsl */`
@@ -322,43 +412,13 @@ function softPathMaterial(map, tex, distTex) {
     fragmentShader: /* glsl */`
       ${NOISE}
       ${HAZEF}
-      uniform sampler2D uMap, uCast, uPaint, uPathD;
-      uniform vec3 uMapRect, uCastTint, uEarth, uCream, uDeep, uSide, uHay, uWet;
+      ${SOFT_WAY_GLSL}
       varying vec3 vWP;
       varying float vBank;
       void main() {
-        vec2 uv = (vWP.xz - uMapRect.xy) * uMapRect.z + 0.5;
-        vec4 m = texture2D(uMap, uv);
-        vec2 pd = texture2D(uPathD, uv).rg;
-        float mid = pd.r * 4.0;                                                  // 0 down the middle, 1 at the edge (all paths agree)
-        float out_ = pd.g * 4.0 - 2.0;                                           // metres outside the edge (inside: less than 0)
-        float n1 = noise2(vWP.xz * 0.9), n2 = noise2(vWP.xz * 2.4 + 3.0);
-        // how much of the path is left here: less as the grass comes in (a soft, slightly ragged fade), and none a little way
-        // out over bare ground
-        float grass = m.a + (noise2(vWP.xz * 5.0) - 0.5) * 0.22 + (noise2(vWP.xz * 13.0) - 0.5) * 0.10;
-        float a = (1.0 - smoothstep(0.10, 0.70, grass)) * (1.0 - smoothstep(0.15, 0.95, out_ + (n2 - 0.5) * 0.5));
-        // a way is trodden ground: none of it on a cliff's face (a way that ends at a cliff's foot, or is painted across one,
-        // does not colour the rock). Full on a slope of 45 degrees, gone by 65
-        a *= smoothstep(0.42, 0.68, abs(normalize(cross(dFdx(vWP), dFdy(vWP))).y));
-        if (a < 0.01) discard;
-      #ifdef TEX
-        vec2 p = vWP.xz / 4.1, q = mat2(0.8, -0.6, 0.6, 0.8) * vWP.xz / 6.3;
-        vec3 col = mix(texture2D(uPaint, p).rgb, texture2D(uPaint, q).rgb, 0.35 + 0.3 * noise2(vWP.xz * 0.3));
-      #else
-        vec3 col = uEarth * (0.96 + 0.08 * n2);
-      #endif
-        float worn = 1.0 - smoothstep(0.1, 0.95, mid + (n1 - 0.5) * 0.6);         // the middle, where feet have worn it pale
-        col = mix(col, uCream, worn * 0.30);
-        float broad = noise2(vWP.xz * 0.36 + 7.0);                                 // broad soft patches: of deeper tone, and of paler
-        col = mix(col, col * uDeep / uEarth, smoothstep(0.50, 0.74, broad) * (0.55 + 0.45 * n2));
-        col = mix(col, uCream, smoothstep(0.42, 0.20, broad) * 0.22);
-        col = mix(col, uSide, smoothstep(-0.55, 0.15, out_ + (n1 - 0.5) * 0.5) * 0.5);      // browner toward its sides
-        col = mix(col, uHay, smoothstep(0.08, 0.5, grass) * 0.8);                  // and to dry grass where the meadow begins
-        // wet toward the water: the banks' sand is wet by the same measure, with the same ragged edge (stylized-terrain.js)
-        float sb = vBank + (noise2(vWP.xz * 0.9) - 0.5) * 0.24 + (noise2(vWP.xz * 3.1 + 5.0) - 0.5) * 0.08;
-        col = mix(col, col * uWet, 1.0 - smoothstep(0.02, 0.40, sb + (noise2(vWP.xz * 1.7 + 9.0) - 0.5) * 0.14));
-        col *= mix(vec3(1.0), uCastTint, texture2D(uCast, uv).r);                // the sun's shadows
-        gl_FragColor = vec4(mix(col, uHaze, vHaze), a);
+        vec4 w = softWay(vWP, abs(normalize(cross(dFdx(vWP), dFdy(vWP))).y), vBank);
+        if (w.a < 0.01) discard;
+        gl_FragColor = vec4(mix(w.rgb, uHaze, vHaze), w.a);
       }`,
     transparent: true, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, side: THREE.DoubleSide,

@@ -103,9 +103,11 @@ BLANK_WAYS.needsUpdate = true;
 // Beyond the reach of the blades the meadow is then laid in with the blades' own flat tones, from the same map and by the
 // same strokes, the trees' shadows in it: the far meadow is the near one seen from afar, and where the blades come up they
 // come up out of ground of their own colour. Under the standing blades the land keeps its paint.
-function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null } = {}) {
+// ways: the trodden ways laid by the land's own paint (ground-paths.js, P.onLand: { glsl, defines, uniforms }), over whatever
+// the land is painted there, before the haze: the ways cost nothing to draw then, however many are painted by hand.
+function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null, ways = null } = {}) {
   const C = TERRAIN_COLORS;
-  const defines = {};
+  const defines = ways ? { WAY_LAND: 1, ...ways.defines } : {};
   if (cliffPaint) defines.CLIFF_PAINT = 1;
   if (sandPaint) defines.SAND_PAINT = 1;
   if (sandPaint && ground) defines.SAND_GROUND = 1;
@@ -113,6 +115,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
   return new THREE.ShaderMaterial({
     defines,
     uniforms: {
+      ...(ways ? ways.uniforms : {}),
       uCliffPaint: { value: cliffPaint }, uCliffTile: { value: new THREE.Vector2(1 / cliffTile[0], 1 / cliffTile[1]) },
       uSandPaint: { value: sandPaint }, uSandWet: { value: rgb(C.sandWet) }, uHay: { value: rgb(C.hay) },
       uGround: { value: ground ? ground.texture : null }, uGroundRect: { value: ground ? ground.rect : new THREE.Vector3(0, 0, 1) },
@@ -180,6 +183,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         uniform float uGrassPaint, uGrassLean;
         ${grassLook ? grassLook.glsl : ''}
       #endif
+      ${ways ? ways.glsl : ''}
       varying vec4 vRock;
       uniform sampler2D uWays;      // r: metres to the middle of the nearest way / 4,  g: how paved the spot is (0 earth .. 1 cobbles)
       uniform vec4 uWaysRect;       // centre x, centre z, 1 / width, 1 / depth of the ground the picture covers
@@ -304,6 +308,12 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
             }
           }
         }
+        #ifdef WAY_LAND
+        {
+          vec4 w = softWay(vWP, abs(n.y), vBank);                         // the ways (ground-paths.js: laid by the land, see ways above)
+          col = mix(col, w.rgb, 1.0 - pow(1.0 - w.a, wayLayers(vWP)));       // (as thick as the ribbons lay there)
+        }
+        #endif
         col = mix(col, uHaze, vHaze);
         // DEEP: down a pit the walls go pale into the mist that hangs in it, then blue, then dark: no floor is ever seen
         if (uDeepOn > 0.5 && vWP.y - uDeepTop < -4.0) {

@@ -1552,7 +1552,8 @@ rocks += [[k, round(x, 2), round(z, 2), round(sc_, 2), round(rot, 2)] for k, x, 
 # the small things again: none on a way, in the water or on a cliff
 for k, x, z, _ in PROPS:
     i, j = int((z - Z0) / MPP), int((x + XH) / MPP)
-    if k not in ('lamp', 'signpost') and path_d[i, j] < 0.6 and not any(math.hypot(x - yx, z - yz) < yr for yx, yz, yr, _p in YARDS): print(f'  ! {k} at {x:.1f}, {z:.1f} stands on a way')
+    by_hand = any('@' in m_['id'] and m_['id'].split('@')[0] == k and abs(m_['to'][0] - x) < 0.01 and abs(m_['to'][1] - z) < 0.01 for m_ in MOVES)      # (a thing put on a way by hand was meant to stand there)
+    if k not in ('lamp', 'signpost') and not by_hand and path_d[i, j] < 0.6 and not any(math.hypot(x - yx, z - yz) < yr for yx, yz, yr, _p in YARDS): print(f'  ! {k} at {x:.1f}, {z:.1f} stands on a way')
     if water_d[i, j] < 0.5 or slope[i, j] > 0.5: print(f'  ! {k} at {x:.1f}, {z:.1f} is in water or on a cliff')
 
 # ------------------------------------------------------------------ 10. write it all out

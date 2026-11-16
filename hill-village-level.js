@@ -480,6 +480,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     sandPaint = await new THREE.TextureLoader().loadAsync(url(M.sand));
     sandPaint.wrapS = sandPaint.wrapT = THREE.RepeatWrapping; sandPaint.anisotropy = 4; sandPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
   } catch (err) { console.warn('[hill-village] sand paint', err); }
+  // the ways' paint, and in the soft look the ways laid by the land itself (ground-paths.js, onLand: no ribbons, so the ways
+  // painted by hand cost nothing to draw, however many); ?paths=grit: ribbons, as before
+  let pathTex = null;
+  try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
+  const landWays = pathStyle === 'soft' ? paths.onLand(map, pathTex) : null;
   // the land itself: only the columns of the ground's grid that lie on the land, in pieces (each drawn only when it is in view),
   // in the valley's land paint: grass on the flat, rock on the cliffs, sand by the water (painted, wet toward the water, and
   // going through dry grass into the meadow where the blades stand thick), earth in the fields
@@ -500,12 +505,12 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
-    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map, grassLook });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
+    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map, grassLook, ways: landWays });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     // Its triangles. A cell of the grid is half a metre, and the land was two triangles to every cell, 753 000 in all,
     // meadow and cliff alike. Now a square of cells is drawn whole where the land inside it is flat to 3 cm (coarseGrid,
-    // stylized-terrain.js) and nothing shows the ground itself from near: only where grass grows thick (a way's ribbon
-    // lies 3 cm over the land, sand and earth are bare), away from water (a shore is where the land meets the water's
+    // stylized-terrain.js) and nothing shows the ground itself from near: only where grass grows thick (the ways, sand and
+    // earth are bare ground), away from water (a shore is where the land meets the water's
     // level) and all field or none. ?landlod=0: two triangles to every cell, as it was.
     const [pa, pd] = M.pieces, own = [whole, mat];
     const grassAt = o => { const s = map.size, mi = Math.min(s - 1, Math.max(0, Math.floor((pos[o * 3] - map.center[0] + map.radius) / (2 * map.radius) * s))), mj = Math.min(s - 1, Math.max(0, Math.floor((pos[o * 3 + 2] - map.center[1] + map.radius) / (2 * map.radius) * s))); return map.data[(mj * s + mi) * 4 + 3]; };
@@ -555,9 +560,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     while (!map.stepCast(1e9)) { /* all of it now: the map is not on screen yet */ }
   }
   console.info('[hill-village] the rim:', rim.userData.crowns, 'crowns,', rim.userData.triangles, 'triangles');
-  let pathTex = null;
-  try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
-  const ways = paths.ribbon(H, map, pathTex, bankAt);      // (bankAt: the ways are wet toward the water, as the sand beside them is)
+  const ways = landWays ? new THREE.Group() : paths.ribbon(H, map, pathTex, bankAt);      // (bankAt: the ways are wet toward the water, as the sand beside them is)
+  if (landWays) { ways.name = 'paths'; ways.userData.dispose = () => landWays.dispose(); }
   if (pathTex) ways.userData.dispose = (d => () => { d(); pathTex.dispose(); })(ways.userData.dispose);
   group.add(ways);
   await onStep('ปลูกหญ้า');
@@ -728,10 +732,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     group.remove(split); split = null;
     houses.visible = true; if (builtThings) builtThings.visible = true;
   };
-  const wayAt = (x, z) => { const n = paths.near(x, z); return n.d < n.half - 0.2; };
 
   // ------------------------------------------------------------------ painting ways by hand (path-brush.js asks; path-edits.js keeps the strokes)
-  // A stroke shows at once: a way is one more ribbon of the ways' own (ground-paths.js) and the grass under it is laid low in the
+  // A stroke shows at once: a way is one more of the ways the land lays (ground-paths.js) and the grass under it is laid low in the
   // ground picture; grass is let back up over whatever way is there. Only the grass's amount is changed now (the ground picture's
   // colour, the paths' little dip in the land and the map are made again when the scene loads with the strokes saved)
   const { data: mapData, size: MS, radius: MR, center: [MCX, MCZ] } = map;
@@ -802,7 +805,6 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       for (let a = -0.5; a <= 0.501; a += 0.25) for (let b = -0.5; b <= 0.501; b += 0.25) spots.push([it.x + a * (w - 1.2) * c + b * (l - 1.2) * sn, it.z - a * (w - 1.2) * sn + b * (l - 1.2) * c]);
       if (spots.some(([x, z]) => !inMap(x, z))) return 'อยู่นอกแมพ';
       if (spots.some(([x, z]) => waterDepthAt(x, z) > 0.05)) return 'ลงไปในน้ำ';
-      if (t.foot && spots.some(([x, z]) => wayAt(x, z))) return 'ทับทางเดิน';
       if (t.foot) { const { deep } = t.lift(it.x, it.z, it.yaw); if (deep > 1.2) return 'ตั้งคร่อมผา ฐานสูง ' + deep.toFixed(1) + ' ม.'; }
       else if (spots.some(([x, z]) => slope(x, z) > 0.9)) return 'อยู่บนหน้าผา';
       return '';

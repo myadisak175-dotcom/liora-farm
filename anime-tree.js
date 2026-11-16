@@ -36,12 +36,13 @@
                            (never from below the horizon: at night the plants keep a low light)
    setAnimeFarLeaves(on)   away from the eye, leaves that lie behind others are not drawn, and far off fewer are (on, as it
                            starts); off: every leaf of every plant is drawn at any distance (see FAR_LEAVES)
+   setAnimeBrush(on)       the leaves as a brush lays them (off, as it starts): see BRUSH
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    Low leaves part round whoever walks through them (stylized-nature's setWalker): a flowering clump is walked through.
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, NATURE_VCOMMON, NATURE_HAZEF } from './stylized-nature.js';
+import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
@@ -100,6 +101,21 @@ const FAR_WOOD = { branchRadial: 4, branchLength: 5 }, WOOD_FAR = 40;      // (t
 const FAR_ON = [8, 13, 16, 48];
 const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
 export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
+
+// BRUSH: the leaves as a brush lays them, as the grass's painterly look lays the meadow (stylized-grassfield.js). Two things
+// change, and nothing is added to draw: the same cards, the same leaves on them, one flat tone each as before.
+//   - the leaf clusters are brush dabs (the mask 'brush'): rounder and broader than pointed leaves, a little closer together,
+//     their edges broken by the bristles, so a crown reads as soft heaped strokes of paint
+//   - the tones run in strokes: where the light steps from one flat tone to the next is moved by long patches that lean the
+//     same way all over the plant (strokeAt in the leaf's own shader), so a stroke of light or of shade runs over several
+//     leaves at once; each leaf's own speck of tint is mostly left out
+// Only the leafy plants (mask 'leaf'): needles and flowers stay as they are.
+const BRUSH = { value: 0 };
+export function setAnimeBrush(on = true) {
+  BRUSH.value = on ? 1 : 0;
+  for (const key in mats) if (key.endsWith('/leaf')) mats[key].leaf.uniforms.uMask.value = clusterMask(on ? 'brush' : 'leaf');
+}
+export const animeBrush = () => BRUSH.value > 0.5;
 
 // Every tree's crown is made of boughs, not of balls: each limb's tip carries a canopy (a puff wider than it is tall), beside
 // it one or two smaller ones a little lower, and sprays hanging round its lower outer edge (taller than they are wide), so
@@ -239,6 +255,16 @@ function needlePath(g, L, W) {
   g.quadraticCurveTo(L * 0.45, -W, 0, 0);
   g.closePath();
 }
+function dabPath(g, L, W, rng) {                                   // a dab of the brush: round where it came down, drawn out a
+  g.beginPath();                                                     // little the way it went, its edge broken by tufts of bristles
+  g.ellipse(L * 0.5, 0, L * 0.5, W * 0.5, 0, 0, Math.PI * 2);
+  for (let k = 0; k < 9; k++) {
+    const a = rng() * Math.PI * 2, u = L * (0.5 + Math.cos(a) * 0.43), v = W * Math.sin(a) * 0.43;
+    const rx = L * (0.09 + rng() * 0.08), ry = W * (0.13 + rng() * 0.1);
+    g.moveTo(u + rx, v); g.ellipse(u, v, rx, ry, a * 0.3, 0, Math.PI * 2);
+  }
+  g.closePath();
+}
 function floretPath(g, R, turn) {                                   // five round petals about a middle, as one shape
   g.beginPath();
   for (let k = 0; k < 5; k++) {
@@ -250,7 +276,7 @@ function floretPath(g, R, turn) {                                   // five roun
 }
 function clusterMask(style) {
   if (masks[style]) return masks[style];
-  const S = 1024, C = 512, rng = mulberry32(style === 'needle' ? 977 : style === 'blossom' ? 733 : 4211);
+  const S = 1024, C = 512, rng = mulberry32(style === 'needle' ? 977 : style === 'blossom' ? 733 : style === 'brush' ? 5309 : 4211);
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const g = cv.getContext('2d');
@@ -300,6 +326,21 @@ function clusterMask(style) {
         const tx = bx + Math.cos(dir) * L, ty = by + Math.sin(dir) * L;
         if (Math.hypot(tx - mid, ty - mid) > C * 0.47) continue;
         draw(ox, oy, bx, by, dir, L, W, bx + Math.cos(dir) * L * 0.5, by + Math.sin(dir) * L * 0.5, needlePath);
+      }
+    } else if (style === 'brush') {
+      // brush dabs (see BRUSH): fewer and broader than leaves, closer together, pointing out of the cluster as the leaves do
+      const placed = [];
+      for (let tries = 0; tries < 500 && placed.length < 19; tries++) {
+        const L = C * range(rng, 0.2, 0.27), W = L * range(rng, 0.58, 0.74);
+        const rr = C * 0.34 * Math.sqrt(rng()), a = rng() * Math.PI * 2;
+        const bx = mid + Math.cos(a) * rr, by = mid + Math.sin(a) * rr;
+        const dir = a + (rng() - 0.5) * 1.0 + (rr < C * 0.08 ? rng() * 6.28 : 0);
+        const cx = bx + Math.cos(dir) * L * 0.5, cy = by + Math.sin(dir) * L * 0.5;
+        const tx = bx + Math.cos(dir) * L * 1.05, ty = by + Math.sin(dir) * L * 1.05;
+        if (Math.hypot(tx - mid, ty - mid) > C * 0.47) continue;
+        if (placed.some(p => Math.hypot(p[0] - cx, p[1] - cy) < (p[2] + L) * 0.27)) continue;   // (less air than between leaves: dabs heap up)
+        placed.push([cx, cy, L]);
+        draw(ox, oy, bx, by, dir, L, W, cx, cy, (gg, l, w) => dabPath(gg, l, w, rng));
       }
     } else {
       const placed = [];
@@ -398,10 +439,12 @@ void main() {
 
 const LEAF_FS = /* glsl */`
 ${NATURE_HAZEF}
+${natureInternal.NOISE}
 uniform sampler2D uMask;
 uniform vec3 uC0, uC1, uC2, uC3, uC4;
 uniform vec4 uStep;       // where each flat tone starts
 uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint, uSkyW;
+uniform float uBrush, uBrushW;      // the tones laid in brush strokes (see BRUSH), and how far a stroke moves a tone
 #ifdef BLOSSOM
 uniform sampler2D uCentre;
 uniform vec3 uCentreCol;
@@ -431,6 +474,12 @@ void main() {
   float lam = dot(n, vSun) * 0.5 + 0.5;
   float leaf = fract(dot(lc, vec2(17.31, 31.73)) + vShade.w * 7.0) - 0.5;
   float v = lam * uLightW + vShade.x * uHeightW - vShade.y * uAOW + vShade.z + leaf * uLeafTint + max(n.y, 0.0) * uSkyW;   // (uSkyW: light from the sky on what faces up, in the shade too)
+  if (uBrush > 0.5) {
+    // BRUSH: long patches leaning one way over the whole plant, the same for every leaf in one (from the leaf's middle)
+    vec2 sq = vec2(p.x * 0.8 + p.z * 0.6 + p.y * 0.45, p.y - (p.x * 0.6 - p.z * 0.8) * 0.3);
+    float stroke = noise2(vec2(sq.x * 0.7, sq.y * 2.1)) * 0.65 + noise2(vec2(sq.x * 1.7 + 5.0, sq.y * 4.8)) * 0.35;
+    v += (stroke - 0.5) * uBrushW - leaf * uLeafTint * 0.75;
+  }
   vec3 col = uC0;                                                   // Color Ramp, constant
   col = mix(col, uC1, step(uStep.x, v));
   col = mix(col, uC2, step(uStep.y, v));
@@ -504,7 +553,8 @@ function materials(palette, mask = 'leaf') {
   const U = { ...natureUniforms, uSun: SUN, uFarLeaves: FAR_LEAVES, uFarKeep: FAR_KEEP, uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] } };
   const leaf = new THREE.ShaderMaterial({
     uniforms: {
-      ...U, uMask: { value: clusterMask(mask) },
+      ...U, uMask: { value: clusterMask(mask === 'leaf' && BRUSH.value > 0.5 ? 'brush' : mask) },
+      uBrush: mask === 'leaf' ? BRUSH : { value: 0 }, uBrushW: { value: W.brush ?? 0.36 },
       uStep: { value: new THREE.Vector4(...st) },
       uCrownMix: { value: 0.3 }, uLightW: { value: W.light ?? 0.85 }, uHeightW: { value: W.height ?? 0.28 }, uAOW: { value: W.ao ?? 0.5 }, uLeafTint: { value: W.tint ?? 0.08 }, uSkyW: { value: W.sky ?? 0 },
     },
