@@ -150,7 +150,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
     lookDir: new THREE.Vector3(0, 0, -1),
     get airborne() { return air; },
     jump() { jumpWanted = JUMP_BUFFER; },
-    teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; air = false; vy = 0; landT = -1; },
+    teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; air = false; vy = 0; landT = -1; if (character.resetSprings) character.resetSprings(); },
     setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
     update(dt) {
       dt = Math.min(dt, 0.05);
@@ -262,6 +262,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
       character.update(dt);
       root.position.copy(pos);
       character.object.rotation.y = heading;
+      if (character.updateSprings) character.updateSprings(dt);      // hair and cloth follow where she now is
       // the blob stays on the ground under her, smaller the higher she is
       shadow.position.y = 0.06 - lift;
       shadow.scale.setScalar(k * (1 - 0.35 * Math.min(1, lift / (1.2 * k))));

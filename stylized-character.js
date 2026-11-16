@@ -5,6 +5,8 @@
 //   scene.add(vivi.object);            // feet at y = 0, facing +Z
 //   vivi.play('walk');                 // 'idle' | 'walk' | 'run' | 'jump_start' | 'jump_air' | 'jump_land' (vivi-anim.js)
 //   every frame: vivi.update(dt)
+//   hair and cloth that swing: vivi.attachSprings(createSprings(vivi.model, VIVI_SPRINGS)) (character-springs.js);
+//   then every frame, once she has been placed: vivi.updateSprings(dt)
 //   vivi.setSize(k)                    // k times her modelled size: height and the clips' ground speeds go with it
 //
 // In water (player.js tells her: vivi.water.level, vivi.water.wet): what is under the surface says how deep it is in the
@@ -133,8 +135,9 @@ export async function loadCharacter(source, anim) {
   let current = null;
   const baseHeight = box.max.y - box.min.y;
   const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
+  let springs = null;
   const ch = {
-    object, mixer, actions, height: baseHeight, water, baseHeight, size: 1,
+    object, model, mixer, actions, height: baseHeight, water, baseHeight, size: 1,
     speeds: { ...baseSpeeds },
     // k times her modelled size (1 = as the GLB is, ~1.41 m). A bigger step covers more ground: the clips' speeds grow with her
     setSize(k) {
@@ -142,7 +145,13 @@ export async function loadCharacter(source, anim) {
       object.scale.setScalar(k);
       ch.height = baseHeight * k;
       for (const name in baseSpeeds) ch.speeds[name] = baseSpeeds[name] * k;
+      if (springs) springs.setScale(k);
     },
+    // hair and cloth that swing (character-springs.js), made by the page that has the spring data: attach once
+    attachSprings(s) { springs = s; s.setScale(ch.size); },
+    // after her pose and her place in the world are set for this frame (player.js)
+    updateSprings(dt) { if (springs) springs.update(dt); },
+    resetSprings() { if (springs) springs.reset(); },
     // warp: blend the two clips' paces during the fade (walk <-> run); a one-shot keeps its own timing (warp = false)
     play(name, fade = 0.22, warp = true) {
       const next = actions[name];

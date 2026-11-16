@@ -107,7 +107,7 @@ const placeVivi = () => {
 };
 if (!Q.has('novivi')) (async () => {
   try {
-    const [{ loadCharacter }, { VIVI_GLB, VIVI_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js')]);
+    const [{ loadCharacter }, { VIVI_GLB }, { VIVI_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./vivi-anim.js')]);
     vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
     vivi.play('idle');
     scene.add(vivi.object);

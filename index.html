@@ -111,7 +111,10 @@
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1",
-  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
+  "./character-springs.js": "./character-springs.js?v=1",
+  "./vivi-springs.js": "./vivi-springs.js?v=1",
   "./vivi-anim.js": "./vivi-anim.js?v=ual1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
   "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1",
@@ -132,7 +135,7 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1size1edge2jump1",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -214,6 +217,8 @@ import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
 import { VIVI_GLB } from './vivi-data.js';
 import { VIVI_ANIM } from './vivi-anim.js';
+import { VIVI_SPRINGS } from './vivi-springs.js';
+import { createSprings } from './character-springs.js';
 import DEER_GLB from './deer-glb.js';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
@@ -277,6 +282,7 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
 }
 await onStep('ปลุก Vivi');
 const vivi = await loadCharacter(VIVI_GLB, VIVI_ANIM);
+vivi.attachSprings(createSprings(vivi.model, VIVI_SPRINGS));      // her hair, skirt and sleeves swing
 // her height: 1.6 m, to stand right beside the building kit's doors and the trees (as modelled she is ~1.41 m: a child next to
 // a 3 m storey). Set before her shadow is made, so its picture is sized for her
 const VIVI_HEIGHT = 1.75;
