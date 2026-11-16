@@ -852,15 +852,25 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     },
     confine(p, from = null) {                                              // off the cliffs and out of deep water
       if (walkable(p.x, p.z)) return;
-      // walking into a cliff's edge (from: where she was, where she may be): she goes along the edge as far as her step takes her
-      // that way, or stops at it. (She was put back on the nearest ground she may stand on, found by looking round in rings, the
-      // first ring 0.15 m out: every frame she pushed on she was thrown 0.15 m or more, three times as far as a run's step, and
-      // not always the way she was going: she raced along the edge, or shook on the spot running)
+      // walking into a cliff's edge (from: where she was, where she may be): she goes along the edge with the part of her step that
+      // runs along it, or stops at it if she walks (nearly) straight in. (She was put back on the nearest ground she may stand on,
+      // found by looking round in rings, the first ring 0.15 m out: every frame she pushed on she was thrown 0.15 m or more, three
+      // times as far as a run's step, and not always the way she was going: she raced along the edge, or shook on the spot
+      // running. Then her step was turned along the edge until it found ground: at a low cliff, whose edge is ragged, that kept
+      // her creeping along it with her legs going even when she walked straight at it)
       if (from && walkable(from.x, from.z)) {
-        const vx = p.x - from.x, vz = p.z - from.z;
-        for (const a of [0.3, -0.3, 0.6, -0.6, 0.9, -0.9, 1.2, -1.2]) {     // her step turned along the edge, and shortened as it turns
-          const c = Math.cos(a), s = Math.sin(a), x = from.x + (vx * c - vz * s) * c, z = from.z + (vx * s + vz * c) * c;
-          if (walkable(x, z)) { p.x = x; p.z = z; return; }
+        const vx = p.x - from.x, vz = p.z - from.z, len = Math.hypot(vx, vz);
+        let nx = 0, nz = 0;                                                // which way the edge faces her: the ground round her she may not stand on
+        for (let i = 0; i < 16; i++) { const a = i / 8 * Math.PI, sx = Math.sin(a), sz = Math.cos(a); if (!walkable(from.x + sx * 0.4, from.z + sz * 0.4)) { nx += sx; nz += sz; } }
+        const nl = Math.hypot(nx, nz);
+        if (nl > 1e-6 && len > 1e-6) {
+          nx /= nl; nz /= nl;
+          const into = Math.max(0, vx * nx + vz * nz), ax = vx - nx * into, az = vz - nz * into, along = Math.hypot(ax, az);
+          if (along > len * 0.4) for (const [k, off] of [[1, 0], [1, 0.4], [0.6, 0.6]]) {      // (walking within some 24 degrees of straight at it: she stops)
+            let dx = ax * k - nx * along * off, dz = az * k - nz * along * off;      // (off: a little away from it, round a bump in a ragged edge)
+            const dl = Math.hypot(dx, dz); if (dl > len) { dx *= len / dl; dz *= len / dl; }      // (never further than her step)
+            if (walkable(from.x + dx, from.z + dz)) { p.x = from.x + dx; p.z = from.z + dz; return; }
+          }
         }
         p.x = from.x; p.z = from.z; return;
       }

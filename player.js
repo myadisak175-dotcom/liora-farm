@@ -47,7 +47,7 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
   pos.y = standAt(pos.x, pos.z);
   let heading = level.spawn.yaw;              // where the character faces (0 = +Z)
   let camYaw = level.spawn.yaw - Math.PI, camPitch = 0.17, camDist = 4.3;   // the camera starts behind her
-  let speed = 0;
+  let speed = 0, went = 0, paceWas = 0;      // how fast she means to go, how fast she really went (last frame), and the pace before
   const move = new THREE.Vector2();           // joystick / keys, -1..1
   const keys = new Set();
 
@@ -195,16 +195,20 @@ export function createPlayer({ character, level, camera, dom, ui = null, onTap =
           if (Math.min(da, db) > DEEP) tmp.set(pos.x, 0, pos.z); else if (da < db) tmp.set(ax, 0, az); else tmp.set(bx, 0, bz);
         }
         collide(tmp, k, pos);
-        const went = Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt;
+        went = Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt;
         pos.x = tmp.x; pos.z = tmp.z;
-        speed = Math.min(speed, went * 1.15 + 0.05);          // pushing against something: stop walking on the spot
-      }
+        if (went < speed * 0.3) speed = Math.min(speed, went * 1.15 + 0.05);      // pushing against something: stop walking on the spot
+      } else went = 0;
+      // her legs go at the pace she really goes: going along a cliff's edge or round a trunk she goes slower than she means to,
+      // and keeps meaning to (her speed was cut to the pace each frame: she crept along the edge with her legs going)
+      const paceNow = Math.min(speed, went * 1.1 + 0.05), pace = Math.min(paceNow, paceWas);      // (a pace held for one frame only does not change her gait)
+      paceWas = paceNow;
       const ground = standAt(pos.x, pos.z);
       pos.y += (ground - pos.y) * Math.min(1, dt * 18);
       // ---- animation follows the real speed, so feet do not slide
-      const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 ? 'walk' : 'run';
+      const st = pace < 0.25 ? 'idle' : pace < (WALK + RUN) * 0.5 ? 'walk' : 'run';
       if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : 0.2);
-      character.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (character.speeds[st] || 1))));
+      character.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, pace / (character.speeds[st] || 1))));
       character.update(dt);
       root.position.copy(pos);
       character.object.rotation.y = heading;
