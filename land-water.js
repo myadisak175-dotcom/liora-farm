@@ -67,8 +67,13 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
     const n = rows.length, lv = rows[0][2], F = [0], tan = [];
     for (let i = 1; i < n; i++) F.push(F[i - 1] + Math.hypot(rows[i][0] - rows[i - 1][0], rows[i][1] - rows[i - 1][1]));
     for (let i = 0; i < n; i++) { const a = rows[Math.max(0, i - 1)], b = rows[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; tan.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]); }
-    // how deep its bed is (nine rows in ten are no deeper), and so how low the ground must be to count as past an edge
-    const depths = rows.map(r => lv - H(r[0], r[1])).sort((a, b) => a - b), bed = Math.max(0.3, depths[Math.floor(depths.length * 0.9)]), past = lv - bed - PAST;
+    // how deep its bed is (nine rows in ten are no deeper), and so how low the ground must be to count as past an edge. The rows
+    // at its end that already lie out over the drop are not its bed: a short stretch (one step of a cascade, five to ten rows)
+    // has one or two of them in its deepest tenth, and its lip was then looked for metres down the cliff's face, so its water
+    // stood out over the drop a metre or more above the rock
+    const dep = rows.map(r => lv - H(r[0], r[1])), med = dep.slice().sort((a, b) => a - b)[Math.floor(n / 2)];
+    let held = n; while (held > 1 && dep[held - 1] > med + PAST) held--;
+    const depths = dep.slice(0, held).sort((a, b) => a - b), bed = Math.max(0.3, depths[Math.floor(depths.length * 0.9)]), past = lv - bed - PAST;
     const A = rows[0], B = rows[n - 1], tA = tan[0], tB = tan[n - 1], nB = [-tB[1], tB[0]];
 
     // ---- the lip: lane by lane across its end, how far down the lane the ground holds (lim), and whether water reaches it there
