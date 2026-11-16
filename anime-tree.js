@@ -117,6 +117,23 @@ export function setAnimeBrush(on = true) {
 }
 export const animeBrush = () => BRUSH.value > 0.5;
 
+// DRYNESS: how dead the plants are, read from a picture laid over the land (the curse's mask: the red of each pixel, 0
+// alive .. 1 dead), by where each leaf hangs. Drier: fewer leaves (each card's own number decides which go first, so a
+// crown thins all over, not from one side), a little smaller, and in the dry tones; dead (1): no leaves at all, the wood
+// bare. The falling leaves go brown with it, and a dead plant drops none. As it starts the picture is one black pixel:
+// every plant alive, nothing changed.
+//   setAnimeDryness(texture, rect)   rect: [x0, z0, width, depth] of the land the picture covers (metres, world)
+const DRY_TONES = ['#3a2f24', '#5a4632', '#7d6243', '#a08356', '#c4aa78'];      // deep shade -> sunlit: dead leaves, ochre to grey-brown
+const DRY = {
+  uDryMap: { value: (() => { const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); t.needsUpdate = true; return t; })() },
+  uDryRect: { value: new THREE.Vector4(0, 0, 1, 1) },                 // x0, z0, 1 / width, 1 / depth
+  uD0: { value: rgb(DRY_TONES[0]) }, uD1: { value: rgb(DRY_TONES[1]) }, uD2: { value: rgb(DRY_TONES[2]) }, uD3: { value: rgb(DRY_TONES[3]) }, uD4: { value: rgb(DRY_TONES[4]) },
+};
+export function setAnimeDryness(texture, [x0, z0, w, d]) {
+  DRY.uDryMap.value = texture;
+  DRY.uDryRect.value.set(x0, z0, 1 / w, 1 / d);
+}
+
 // Every tree's crown is made of boughs, not of balls: each limb's tip carries a canopy (a puff wider than it is tall), beside
 // it one or two smaller ones a little lower, and sprays hanging round its lower outer edge (taller than they are wide), so
 // the outline is lobed and ends in drooping points, with hollows between the boughs. A spec's boughs says how:
@@ -383,6 +400,8 @@ attribute vec4 iShade;    // x: height in the plant 0..1, y: AO 0..1, z: tint, w
 attribute vec4 iCN;       // xyz: the whole crown's normal here, w: the puff's height / width
 attribute vec4 iBase;     // plant foot + scale; (0,0,0,1) for a single plant
 attribute float iHid;     // from which eighths of the compass this card lies behind others: a bit each (hiddenFrom)
+uniform sampler2D uDryMap;  // DRYNESS: how dead the land is here (red), over the rect uDryRect
+uniform vec4 uDryRect;
 varying vec2 vUv;
 varying vec3 vCard;
 varying vec4 vPuff;
@@ -392,6 +411,7 @@ varying vec4 vRS;
 varying vec3 vSun;
 varying vec4 vCN;
 varying vec4 vShade;
+varying float vDry;
 void main() {
   float ph = objPhase() + iBase.x * 0.37 + iBase.z * 0.23;
   float sc = objScale();
@@ -419,6 +439,12 @@ void main() {
   hid *= smoothstep(uFarLeaves.x, uFarLeaves.y, span) * (smoothstep(-0.5, -0.4, eye.y) - smoothstep(0.6, 0.7, eye.y));
   float few = smoothstep(uFarLeaves.z, uFarLeaves.w, span), kept = mix(1.0, uFarKeep.x, few);
   float lod = (1.0 - hid) * (1.0 - smoothstep(kept, kept + 0.08, iShade.w)) * mix(1.0, uFarKeep.y, few);
+  // DRYNESS: the drier, the fewer leaves (by each card's own number) and the smaller; dead: none
+  vec2 dryUv = (wc.xz - uDryRect.xy) * uDryRect.zw;
+  float dry = texture2D(uDryMap, clamp(dryUv, 0.0, 1.0)).r;
+  float leafLeft = pow(clamp(1.0 - dry * 1.03, 0.0, 1.0), 1.5);      // (a crown is many leaves deep: thinned on a curve, so half dry looks half bare)
+  lod *= mix(1.0, 1.0 - smoothstep(leafLeft - 0.05, leafLeft, iShade.w), step(0.002, dry)) * (1.0 - 0.18 * dry);
+  vDry = dry;
   float cs = cos(iCard.x), sn = sin(iCard.x);
   vec2 hs = vec2(iCard.z, 1.0 / iCard.z) * iCard.y * lod;
   vec2 q = position.xy * hs * sc;
@@ -445,6 +471,8 @@ uniform vec3 uC0, uC1, uC2, uC3, uC4;
 uniform vec4 uStep;       // where each flat tone starts
 uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint, uSkyW;
 uniform float uBrush, uBrushW;      // the tones laid in brush strokes (see BRUSH), and how far a stroke moves a tone
+uniform vec3 uD0, uD1, uD2, uD3, uD4;   // DRYNESS: the dead leaves' tones
+varying float vDry;
 #ifdef BLOSSOM
 uniform sampler2D uCentre;
 uniform vec3 uCentreCol;
@@ -485,6 +513,14 @@ void main() {
   col = mix(col, uC2, step(uStep.y, v));
   col = mix(col, uC3, step(uStep.z, v));
   col = mix(col, uC4, step(uStep.w, v));
+  if (vDry > 0.002) {                                               // DRYNESS: the same steps, in the dead leaves' tones
+    vec3 dc = uD0;
+    dc = mix(dc, uD1, step(uStep.x, v));
+    dc = mix(dc, uD2, step(uStep.y, v));
+    dc = mix(dc, uD3, step(uStep.z, v));
+    dc = mix(dc, uD4, step(uStep.w, v));
+    col = mix(col, dc, smoothstep(0.05, 0.6, vDry));
+  }
 #ifdef BLOSSOM
   col = mix(col, uCentreCol * (0.72 + 0.28 * step(uStep.y, v)), smoothstep(0.35, 0.6, texture2D(uCentre, vUv).r));
 #endif
@@ -499,10 +535,13 @@ attribute vec3 iSpawn;
 attribute vec4 iPar;      // x: phase 0..1, y: fall speed, z: sway rate, w: size
 attribute float iTone;
 attribute float iGround;  // the ground's height under the tree
+uniform sampler2D uDryMap;  // DRYNESS (see the leaves): brown leaves fall from a dying plant, none from a dead one
+uniform vec4 uDryRect;
 varying vec2 vUv;
 varying float vA;
 varying float vTone;
 varying float vSide;
+varying float vDry;
 void main() {
   float life = (iSpawn.y - iGround) / iPar.y + 1.2;
   float t = fract(uTime / life + iPar.x), age = t * life;
@@ -523,14 +562,19 @@ void main() {
   vA = smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.86, 1.0, t));
   vTone = iTone;
   vSide = step(0.0, tumble);
+  vec4 ws = modelMatrix * vec4(iSpawn, 1.0);
+  vDry = texture2D(uDryMap, clamp((ws.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
+  vA *= 1.0 - smoothstep(0.85, 0.98, vDry);
 }`;
 const FALL_FS = /* glsl */`
 ${NATURE_HAZEF}
 uniform vec3 uC1, uC2, uC3;
+uniform vec3 uD1, uD2, uD3;   // DRYNESS: the dead leaves' tones
 varying vec2 vUv;
 varying float vA;
 varying float vTone;
 varying float vSide;
+varying float vDry;
 void main() {
   // one pointed leaf drawn straight from the uv: stalk at the bottom, tip at the top
   float y = vUv.y, x = abs(vUv.x - 0.5) * 2.0;
@@ -541,6 +585,8 @@ void main() {
   if (a < 0.02) discard;
   vec3 col = mix(uC2, uC3, vTone);
   col = mix(uC1, col, 0.35 + 0.65 * vSide);          // the leaf's back, as it turns, is a tone darker
+  vec3 dc = mix(uD1, mix(uD2, uD3, vTone), 0.35 + 0.65 * vSide);
+  col = mix(col, dc, smoothstep(0.05, 0.6, vDry));
   gl_FragColor = vec4(mix(col, uHaze, vHaze), a);
 }`;
 
@@ -550,7 +596,7 @@ function materials(palette, mask = 'leaf') {
   const pk = ANIME_PALETTES[palette] ? palette : 'game', key = pk + '/' + mask;
   if (mats[key]) return mats[key];
   const pal = ANIME_PALETTES[pk].tones.map(rgb), st = ANIME_PALETTES[pk].steps, W = ANIME_PALETTES[pk].weights || {};      // weights: how much the sun, the height in the plant and the shade among the puffs move a leaf's tone
-  const U = { ...natureUniforms, uSun: SUN, uFarLeaves: FAR_LEAVES, uFarKeep: FAR_KEEP, uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] } };
+  const U = { ...natureUniforms, ...DRY, uSun: SUN, uFarLeaves: FAR_LEAVES, uFarKeep: FAR_KEEP, uC0: { value: pal[0] }, uC1: { value: pal[1] }, uC2: { value: pal[2] }, uC3: { value: pal[3] }, uC4: { value: pal[4] } };
   const leaf = new THREE.ShaderMaterial({
     uniforms: {
       ...U, uMask: { value: clusterMask(mask === 'leaf' && BRUSH.value > 0.5 ? 'brush' : mask) },
