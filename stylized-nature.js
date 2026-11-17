@@ -1038,19 +1038,23 @@ function rockMaterial(moss, tone = 'warm') {
 // --------------------------------------------------------------------------
 // How finely wood and the leaf core are cut. A forest of hundreds of trees is drawn twice a frame (once more in the water's mirror),
 // so every triangle here is paid hundreds of times. Smooth-shaded tubes hide the lower counts well.
-const TREE_LOD = { trunkRadial: 10, trunkLength: 24, branchRadial: 7, branchLength: 8, coreDetail: 2 };      // (growTreeFrame can grow one frame's wood with other numbers: a far tree's)
+const TREE_LOD = { trunkRadial: 10, trunkLength: 24, trunkEase: 1, branchRadial: 7, branchLength: 8, rootRadial: 5, rootLength: 5, coreDetail: 2 };      // (growTreeFrame can grow one frame's wood with other numbers: a far tree's)
+// trunkEase: the stem's rings closer together at its foot (1: evenly), so a stem of few rings keeps the swell into its roots
 
 function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null, opt = {}) {
   const curve = new THREE.CatmullRomCurve3(points);
-  const frames = curve.computeFrenetFrames(lenSeg, false);
+  // opt.ease: ring i sits at t = (i / lenSeg) ^ ease (rings gathered toward the foot); the frames are then taken finer and
+  // each ring uses the nearest
+  const ease = opt.ease || 1, FR = ease === 1 ? lenSeg : 64;
+  const frames = curve.computeFrenetFrames(FR, false);
   const pos = [], nor = [], ctr = [], crev = [], jn = [], ax = [], idx = [];
   const P = new THREE.Vector3(), n = new THREE.Vector3(), q = new THREE.Vector3(), nt = new THREE.Vector3();
   const axis = opt.axis || null, blendLen = opt.blend || 0.25;
   for (let i = 0; i <= lenSeg; i++) {
-    const t = i / lenSeg;
+    const t = ease === 1 ? i / lenSeg : Math.pow(i / lenSeg, ease), fi = ease === 1 ? i : Math.round(t * FR);
     curve.getPointAt(t, P);
     const r0 = radiusAt(t);
-    const N = frames.normals[i], B = frames.binormals[i];
+    const N = frames.normals[fi], B = frames.binormals[fi];
     // a limb grows OUT of the wood it leaves: near its foot the shading, paint and shadow all belong to the
     // trunk and only turn into the limb's own further along (so no seam shows where the two surfaces cross)
     const wt = axis ? 1 - Math.min(1, t / blendLen) : 0, w = wt * wt * (3 - 2 * wt);
@@ -1081,7 +1085,7 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
   for (const end of [0, lenSeg]) {
     const offset = end * row, centre = pos.length / 3;
     const c = ctr.slice(offset * 3, offset * 3 + 3);
-    const capN = frames.tangents[end].clone().multiplyScalar(end === 0 ? -1 : 1);
+    const capN = frames.tangents[end === 0 ? 0 : FR].clone().multiplyScalar(end === 0 ? -1 : 1);
     const appendCap = source => {
       pos.push(...source);
       nor.push(capN.x, capN.y, capN.z);
@@ -1130,7 +1134,7 @@ function buildTrunk(rng, spec, grow = null) {
   const trunkShape = (t, a) => 1 + 0.1 * Math.exp(-t * height / 0.8) * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)
     + 0.05 * Math.cos(a * 2 + lph) + 0.035 * Math.sin(a * 3 + t * 9 + lph * 2);
   const trunk = taperedTube(pts, trunkR, TREE_LOD.trunkRadial, TREE_LOD.trunkLength, trunkShape,
-    { crev: (t, a) => 0.45 * Math.exp(-t * height / 0.7) * (0.5 - 0.5 * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)) });
+    { crev: (t, a) => 0.45 * Math.exp(-t * height / 0.7) * (0.5 - 0.5 * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)), ease: TREE_LOD.trunkEase });
   parts.push(trunk.geo);
   const up = new THREE.Vector3(0, 1, 0);
   const hollow = (t, a, w) => 0.2 * w * w;              // shadow in the crotch, fading out along the limb
@@ -1165,7 +1169,7 @@ function buildTrunk(rng, spec, grow = null) {
     const len = foot * range(rng, 1.7, 2.5);
     const rp = [base, base.clone().addScaledVector(d, len * 0.4).setY(base.y * 0.55), base.clone().addScaledVector(d, len * 0.75).setY(0.02), base.clone().addScaledVector(d, len).setY(-0.16)];
     const axisPt = pts[0].clone();
-    const tube = taperedTube(rp, t => foot * 0.7 * (1 - 0.62 * t) + 0.02, 5, 5, null,
+    const tube = taperedTube(rp, t => foot * 0.7 * (1 - 0.62 * t) + 0.02, TREE_LOD.rootRadial, TREE_LOD.rootLength, null,
       { axis: axisPt, blend: 0.5, crev: (t, a, w) => 0.12 + 0.25 * w * w });
     parts.push(tube.geo);
   }

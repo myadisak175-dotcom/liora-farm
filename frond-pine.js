@@ -421,14 +421,18 @@ function frondGeometry({ R, F, B, S, base = null }, far = false) {
 
 // the game pine's trunk and bark, lit by this sun, made for this crown: as tall as this tree, dead straight (the fronds
 // are rooted on the tree's axis, a wandering stem would show beside them), with a slim leader that runs out to a point
-// and ends inside the bud; the bark under the skirts is shaded from where they start
-function trunkOf(seed) {
+// and ends inside the bud; the bark under the skirts is shaded from where they start. far (a tree she never comes near):
+// the same stem with fewer sides and rings (FAR_WOOD), its rings gathered at the foot so it still swells into its roots
+// (?woodlod=old: as before, every pine's stem as a near one's)
+const FAR_WOOD = typeof location !== 'undefined' && new URLSearchParams(location.search).get('woodlod') === 'old' ? null
+  : { trunkRadial: 7, trunkLength: 10, trunkEase: 1.6, rootRadial: 4, rootLength: 3 };
+function trunkOf(seed, far = false) {
   const spec = treeSpec('pine'), C = characterOf(seed);
   const tops = spec.trunk.pts[spec.trunk.pts.length - 1][1];
   const slim = { ...spec, trunk: { ...spec.trunk, sway: 0, lean: 0.03,
     pts: spec.trunk.pts.map(([, y], i) => [0, i === 0 ? y : y / tops * (C.top - 0.05), 0]),
     radius: t => 0.2 * Math.pow(1 - t, 0.9) + 0.012 + 0.13 * Math.exp(-t * 30) } };
-  const { trunk } = growTreeFrame(slim, seed);
+  const { trunk } = growTreeFrame(slim, seed, far && FAR_WOOD ? FAR_WOOD : null);
   trunk.material.uniforms.uLight = SUN;
   trunk.material.uniforms.uShadeY.value = C.first - 0.3;
   return trunk;
@@ -436,7 +440,7 @@ function trunkOf(seed) {
 
 // --------------------------------------------------------------------------
 export function createFrondPine({ seed = 1, detail = 1 } = {}) {
-  const trunk = trunkOf(seed), far = detail < 0.8;
+  const far = detail < 0.8, trunk = trunkOf(seed, far);
   const F = buildFronds(seed, far);
   const fronds = new THREE.Mesh(frondGeometry(F, far), frondMaterial());
   fronds.frustumCulled = false; fronds.name = 'frond_pine_fronds';
@@ -453,7 +457,7 @@ export function createFrondPine({ seed = 1, detail = 1 } = {}) {
 // a grove: every tree is one of a few shapes (built once, kept), copied into place, turned and sized
 const VARIANTS = 6;
 const shapes = {};
-const shapeOf = (v, far) => shapes[v + (far ? 'f' : 'n')] || (shapes[v + (far ? 'f' : 'n')] = { F: buildFronds(v + 1, far), trunk: trunkOf(v + 1) });
+const shapeOf = (v, far) => shapes[v + (far ? 'f' : 'n')] || (shapes[v + (far ? 'f' : 'n')] = { F: buildFronds(v + 1, far), trunk: trunkOf(v + 1, far) });
 export function createFrondPineForest(list) {
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S3 = new THREE.Vector3(), T3 = new THREE.Vector3();
   const UP = new THREE.Vector3(0, 1, 0);

@@ -95,9 +95,17 @@ export function setAnimeSun(v) {
 // its nearest plant still shows (the rest are the ones that had shrunk to nothing), and no cell that has no plant in view
 // (nor mirrored in the water at mirrorY). The picture is the same; a third to a quarter of the cards are sent.
 // The wood goes with them: in a forest kept in cells, a cell's trunks and limbs are one mesh too, not drawn out of view, and
-// from further off than WOOD_FAR (for the tree's size) drawn as far wood: the same stem, its limbs with fewer sides and
-// rings (FAR_WOOD), under half the triangles; a limb is a point or two thick by then, and mostly in the leaves.
-const FAR_WOOD = { branchRadial: 4, branchLength: 5 }, WOOD_FAR = 40;      // (the stem is what shows, and stays as it is: only the limbs, which are in the leaves, are made plain)
+// from further off drawn plainer, in two steps (for the tree's size): past WOOD_MID as MID_WOOD, past WOOD_FAR as FAR_WOOD.
+// The same stem, limbs and roots, with fewer sides and rings: by 40 m a limb is a point or two thick and mostly in the
+// leaves, and the stem a few points wide (its rings gathered at the foot, so it still swells into its roots); past 100 m
+// the whole tree is a handful of points across. Under a third, then under a fifth, of the near wood's triangles, for wood
+// that covers next to nothing of the screen.
+// ?woodlod=old: as it was before (one step at 40 m, the stem never plainer), to compare
+const OLD_WOOD = typeof location !== 'undefined' && new URLSearchParams(location.search).get('woodlod') === 'old';
+const MID_WOOD = OLD_WOOD ? { branchRadial: 4, branchLength: 5 }
+  : { trunkRadial: 7, trunkLength: 10, trunkEase: 1.6, branchRadial: 4, branchLength: 3, rootRadial: 4, rootLength: 3 };
+const FAR_WOOD = { trunkRadial: 5, trunkLength: 6, trunkEase: 1.8, branchRadial: 3, branchLength: 2, rootRadial: 3, rootLength: 2 };
+const WOOD_MID = 40, WOOD_FAR = OLD_WOOD ? Infinity : 100;
 const FAR_ON = [8, 13, 16, 48];
 const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
 export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
@@ -869,8 +877,8 @@ function treeParts(type, seed, far = false) {
   const kind = KINDS[type] || KINDS.broadleaf, spec = kind.spec();
   const { trunk, tiers } = growTreeFrame(spec, seed);
   trunk.material.uniforms.uLight = SUN;                             // the bark is lit by the same sun
-  let farWood = null;                                               // the same wood with fewer sides and rings (FAR_WOOD): made when a forest first asks for it
-  const trunkFar = () => farWood || (farWood = growTreeFrame(spec, seed, FAR_WOOD).trunk.geometry);
+  const plain = {};                                                  // the same wood with fewer sides and rings (MID_WOOD, FAR_WOOD): made when a forest first asks for it
+  const trunkAt = step => plain[step] || (plain[step] = growTreeFrame(spec, seed, step === 'far' ? FAR_WOOD : MID_WOOD).trunk.geometry);
   const rng = mulberry32(seed * 131 + 7);
   const puffs = tiers.map(T => ({ c: new THREE.Vector3(...T.c), r: T.r[0] * (kind.wide || 1), f: T.r[1] / T.r[0] * (kind.thick || 1) / (kind.wide || 1),
     taper: T.taper || 0, egg: T.egg || 0 }));
@@ -886,7 +894,7 @@ function treeParts(type, seed, far = false) {
   cards.HID = hiddenFrom(cards);                                   // (by the tree's own sides: a forest turns them to the compass's)
   const sides = compassSides();
   cards.HD = Array.from(cards.HID, bits => hiddenByCompass(bits, sides));
-  return { kind, spec, trunk, trunkFar, cards, leaf, rng };
+  return { kind, spec, trunk, trunkAt, cards, leaf, rng };
 }
 // a bush: puffs of small leaves, leaves all through (it is seen from above), smallest leaves of all. Small puffs, so the
 // crevices between them show; the light up the bush is gentler than up a tree (it is short). Five shapes, so bushes side
@@ -1136,11 +1144,12 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
       for (let i = 0; i < ab.count; i++) ab.setXYZW(i, e.x, e.y, e.z, s);
       return g;
     };
-    const wood = barkB[type + at] || (barkB[type + at] = { type, mat: part.trunk.material, geos: [], far: [], T: [] });
+    const wood = barkB[type + at] || (barkB[type + at] = { type, mat: part.trunk.material, geos: [], mid: [], far: [], T: [] });
     const g = stood(part.trunk.geometry);
     wood.geos.push(g);
-    if (cell) {                                                        // (kept in cells: its far wood too, and the ball its wood lies in)
-      wood.far.push(stood(part.trunkFar()));
+    if (cell) {                                                        // (kept in cells: its plainer wood too, and the ball its wood lies in)
+      wood.mid.push(stood(part.trunkAt('mid')));
+      if (WOOD_FAR < Infinity) wood.far.push(stood(part.trunkAt('far')));
       g.computeBoundingSphere(); wood.T.push(g.boundingSphere.center.x, g.boundingSphere.center.y, g.boundingSphere.center.z, g.boundingSphere.radius + 0.3 * s, s);
     }
     if (!far && part.kind.fall) {                                     // the near trees drop leaves (half as many as a lone tree)
@@ -1150,14 +1159,13 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
   }
   const group = new THREE.Group(), owned = [];
   const add = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.name = name; group.add(m); owned.push(geo); };
-  const woods = [];                                                    // each cell's wood: its mesh, its far mesh, its trees (T: the ball each one's wood lies in, its size)
-  for (const { type, mat, geos, far, T } of Object.values(barkB)) {
+  const woods = [];                                                    // each cell's wood: its mesh, its plainer meshes, its trees (T: the ball each one's wood lies in, its size)
+  for (const { type, mat, geos, mid, far, T } of Object.values(barkB)) {
     add(mergeGeometries(geos), mat, 'anime_bark_' + type); geos.forEach(g => g.dispose());
-    if (!far.length) continue;
+    if (!mid.length) continue;
     const near = group.children[group.children.length - 1];
-    add(mergeGeometries(far), mat, 'anime_bark_far_' + type); far.forEach(g => g.dispose());
-    const farMesh = group.children[group.children.length - 1]; farMesh.visible = false;
-    woods.push({ near, far: farMesh, T });
+    const plainer = (list, name) => { add(mergeGeometries(list), mat, name); list.forEach(g => g.dispose()); const m = group.children[group.children.length - 1]; m.visible = false; return m; };
+    woods.push({ near, mid: plainer(mid, 'anime_bark_mid_' + type), far: far.length ? plainer(far, 'anime_bark_far_' + type) : null, T });
   }
   let cards = 0;
   const leaves = [];                                                   // each mesh of cards: the mesh, its cards' own numbers in order, its plants (T: the ball each one's cards lie in, its size)
@@ -1192,7 +1200,8 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
           }
           if (seen && span === 0) break;
         }
-        w.near.visible = seen && span <= WOOD_FAR; w.far.visible = seen && span > WOOD_FAR;
+        w.near.visible = seen && span <= WOOD_MID; w.mid.visible = seen && span > WOOD_MID && span <= WOOD_FAR;
+        if (w.far) w.far.visible = seen && span > WOOD_FAR;
       }
       for (const { mesh, geo, own, T } of leaves) {
         let span = eye ? Infinity : 0, seen = !eye || !frustum;      // how far off its nearest plant is, for its size; is any of its plants in view
