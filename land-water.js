@@ -30,7 +30,8 @@
 //   lower: metres each stretch stands under the level its rows say (a drought: drought.js). Its bed and its edges are the
 //   land's and stay as they are; the water is cut to its new shore and goes over its lip only where it still reaches it,
 //   so a stretch drawn down spills in a narrower fall or in none. The lookup is to be made from the stretches as they stand
-//   (their levels lowered), so the falls land on the water as it is.
+//   (their levels lowered), so the falls land on the water as it is. still: the stretches drawn down below their lips on
+//   purpose (pools, no fall): the check does not ask a fall of them
 //   lipLanes(rows, heightAt), lipRuns(lanes, level, parted): how the lip is found, for a level that chooses how low to stand
 //
 // (Before this each level laid a strip or a sheet from the line alone, ended it on a straight line, and stood a ready-made
@@ -133,7 +134,7 @@ export function fallFoot({ O, out }, top, bottom) {
   return { forward, foot: [O[0] + out[0] * (forward + 0.35), O[1] + out[1] * (forward + 0.35)] };
 }
 
-export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null, split = [], lower = [] }) {
+export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null, split = [], lower = [], still = [] }) {
   const group = new THREE.Group(); group.name = 'landWater';
   const surfaces = [], falls = [], info = [], owned = [], small = [];
   const report = { falls: [], hanging: 0, open: 0, short: 0, where: [], noLip: [], ok: true };      // (where: which stretches the open and short edges are on)
@@ -152,7 +153,7 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
       const lim = lanes.map(l => l.lim);
       for (const { a, b } of lips) for (let i = a; i <= b; i++) lanes[i].lim = (lim[Math.max(a, i - 1)] + lim[i] * 2 + lim[Math.min(b, i + 1)]) / 4;
       const drop = lanes.some(l => l.lim < Infinity);
-      if (!lips.length && (deep.includes(k) || (drop && lookup.at(B[0] + tB[0] * 4, B[1] + tB[1] * 4)))) report.noLip.push(k);      // (it should fall here: into the deep, or onto the water just ahead)
+      if (!lips.length && !still.includes(k) && (deep.includes(k) || (drop && lookup.at(B[0] + tB[0] * 4, B[1] + tB[1] * 4)))) report.noLip.push(k);      // (it should fall here: into the deep, or onto the water just ahead; unless it is drawn down below its lip: still)
       if (!drop) for (const l of lanes) l.lim = 0;                         // no edge here (the water runs out of the map, or into more water): it ends on a line across its last row
       else for (const l of lanes) if (l.lim === Infinity) l.lim = 0.6;
     }

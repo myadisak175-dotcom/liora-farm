@@ -3,7 +3,8 @@
 
      const west = await joinWestFringe({ raw, plan, url });      // as the level reads its land, before it makes anything from it
      west.raw            the land's numbers with the fringe's columns added on the west (plan.land says how wide it is now)
-     west.dryAt(x, z)    0..1: how much a spot is the bed of the fringe's dry water (bare and sandy: no grass grows in it)
+     west.dryAt(x, z)    0..1: how much a spot is the bed of the fringe's dry water (bare and sandy: no grass grows in it; the
+                         brook's bed runs on over the seam into the village's own brook)
      west.beds           the same beds as a picture for the land's paint: { map, rect, levels } (stylized-terrain.js, beds)
      west.deadAt(x, z)   0..1: how dead the land is there (the curse's picture, as it is set here)
 
@@ -85,7 +86,16 @@ export async function joinWestFringe({ raw, plan: P, url }) {
   // ---- the dry water's bed: the gully and the brook (each a line with half its bed's width at every point, as the land
   // was worn: wide on a riffle, narrow in a pool) and the pond inside its shore. Worked out once, on a grid of half
   // metres over the box they lie in; dryAt reads that
-  const D = F.dry_water, beds = D.beds.map(b => b.points), shore = D.pond.shore;
+  // Where a bed comes to the seam beside the village's own water (the brook: the village's brook goes on from there), the bed
+  // is carried on into that water's first rows, so the two are one way: dry bed, then the brook (and under the curse, the
+  // brook's own bed dry too: drought.js)
+  const D = F.dry_water, beds = D.beds.map(b => b.points.slice()), shore = D.pond.shore;
+  for (const pts of beds) {
+    const [ex, ez, eh, el] = pts[pts.length - 1];
+    let best = null, gap = 8;
+    for (const rows of P.brooks || []) { const d = Math.hypot(rows[0][0] - ex, rows[0][1] - ez); if (d < gap) { gap = d; best = rows; } }
+    if (best) for (const q of best.slice(0, 4)) pts.push([q[0], q[1], Math.max(eh, q[3] * 0.9), el]);
+  }
   const box = [Infinity, -Infinity, Infinity, -Infinity];
   const grow = (x, z, r) => { box[0] = Math.min(box[0], x - r); box[1] = Math.max(box[1], x + r); box[2] = Math.min(box[2], z - r); box[3] = Math.max(box[3], z + r); };
   for (const pts of beds) for (const [x, z, half] of pts) grow(x, z, half + 2);
@@ -114,10 +124,9 @@ export async function joinWestFringe({ raw, plan: P, url }) {
     grid[j * gw + i] = dry; level[j * gw + i] = lev;
   }
   const dryAt = (x, z) => {
-    if (x < box[0] || x > box[1] || z < box[2] || z > box[3] || x > seam) return 0;
+    if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) return 0;
     const u = (x - box[0]) / G, v = (z - box[2]) / G, i = Math.min(gw - 2, Math.floor(u)), j = Math.min(gh - 2, Math.floor(v)), fu = u - i, fv = v - j, o = j * gw + i;
-    const dry = (grid[o] * (1 - fu) + grid[o + 1] * fu) * (1 - fv) + (grid[o + gw] * (1 - fu) + grid[o + gw + 1] * fu) * fv;
-    return dry * ss(seam, seam - 3, x);                                   // (at the seam the village's own brook takes over)
+    return (grid[o] * (1 - fu) + grid[o + 1] * fu) * (1 - fv) + (grid[o + gw] * (1 - fu) + grid[o + gw + 1] * fu) * fv;
   };
   // the same as a picture, for the land's paint (stylized-terrain.js, beds): red: how much a spot is a bed, green: the bed's
   // own level there (what lies under it is a pool, the pond's basin: darker mud). The paint reads it a pixel at a time
@@ -125,7 +134,7 @@ export async function joinWestFringe({ raw, plan: P, url }) {
   for (let k = 0; k < level.length; k++) { lo = Math.min(lo, level[k]); hi = Math.max(hi, level[k]); }
   const px = new Uint8Array(gw * gh * 4);
   for (let k = 0; k < gw * gh; k++) {
-    px[k * 4] = Math.round(255 * grid[k] * ss(seam, seam - 3, box[0] + (k % gw) * G));
+    px[k * 4] = Math.round(255 * grid[k]);
     px[k * 4 + 1] = Math.round(255 * (level[k] - lo) / (hi - lo || 1)); px[k * 4 + 3] = 255;
   }
   const map = new THREE.DataTexture(px, gw, gh); map.magFilter = map.minFilter = THREE.LinearFilter; map.needsUpdate = true;

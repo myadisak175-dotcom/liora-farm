@@ -1,17 +1,17 @@
 /* ==========================================================================
-   drought.js  —  the hill village under the curse: how low its water stands, and how dead its land is
+   drought.js  —  the hill village under the curse: how low its water stands, where the pools are left, how dead its land is
 
-     const { lower, report } = droughtWater({ stretches, heightAt, names, split, falls });   // metres each stretch stands under its plan
+     const { lower, report } = droughtWater({ stretches, heightAt, names });   // metres each stretch stands under its plan
+     const pools = droughtPools(water.surfaces, heightAt);                     // the water left: [{ x, z, y, area, deepest, tris }]
      const dead = cursedLand({ plan, rect, west });     // dead.at(x, z): 0 alive .. 1 dead; the picture is set (setDryness)
 
    One job: the land as the curse has left it, worked out as the level is read (?curse=1 asks for it; nothing is baked, so
-   the same plan can be brought back to life a stretch and a place at a time).
+   the same plan can be brought back to life a stretch and a place at a time: a fall at a time, the game's quests to come).
 
-   The water. Every stretch stands lower than its plan says: the streams down to what is left in their pools, the rivers
-   lower, and every fall a thin one. A fall's width is not drawn: how low each stretch stands is chosen so that it still goes
-   over its lip, but only in a narrow run (land-water.js finds the lip as it always does: lipLanes, lipRuns). So the sheet,
-   its shore and the fall agree, as the water and the land always do. A stretch a fall lands in keeps water under its foot.
-   What each kind of water aims at (KIND): how low it stands at least and at most (metres), and how wide its fall is to be.
+   The water. No fall runs: every stretch stands below the lowest point of its lip, so it goes over nowhere, and what is left
+   of it lies in pools in the deepest parts of its bed (a pool under each old fall, where the water dug deepest; pools along
+   the streams and the rivers' deep reaches; the rest dry). How low at least, by the kind of water (KIND); lower still where
+   its lip lies deep. The sheet, its shore, wading and the wet sand all follow from that one number (land-water.js, lower).
 
    The land. Dead all round: the hills, the woods, the valley, the pit's rim, the fringe. The village itself (its houses,
    yards, fields, pasture, stalls) is not dead yet but nearly (NEAR: a little life left in it, in patches), and the edge
@@ -19,51 +19,57 @@
    ferns, the flowers and the pines all die by it.
    ========================================================================== */
 import * as THREE from 'three';
-import { lipLanes, lipRuns, lipLine, fallFoot } from './land-water.js';
+import { lipLanes } from './land-water.js';
 import { setDryness } from './stylized-nature.js';
 
-const LANE = 0.4;                 // (land-water.js's lanes: a run of lanes a to b is (b - a) * LANE wide)
 export const KIND = {
-  stream: { least: 0.3, most: 0.6, fall: 1.2 },      // the upper and mill streams, the meadow brooks, the bowls: down to their pools
-  river: { least: 0.5, most: 1.3, fall: 2.6 },       // the river and the valley's river: lower, over its lip in a few strands
-  step: { least: 0.15, most: 0.45, fall: 1.0 },      // a step of a cascade, a shelf of the pit: shallow pools to begin with
+  stream: { least: 0.3 },        // the upper and mill streams, the meadow brooks, the bowls
+  river: { least: 0.6 },         // the river and the valley's river
+  step: { least: 0.15 },         // a step of a cascade, a shelf of the pit
 };
 const kindOf = name => /^(river|valley_river)$/.test(name) ? 'river' : /(step|shelf)/.test(name) ? 'step' : 'stream';
-const UNDER_FOOT = 0.2;           // metres of water a fall still lands in, at least, where its foot is
+const UNDER_LIP = 0.05;           // metres a stretch stands under the lowest point of its lip
 export const NEAR = 0.55;         // how dead the village itself is (0 alive .. 1 dead)
 
-// How low each stretch stands. Taken from the highest water down, so that a fall's foot is known before the water it lands
-// in is chosen: a stretch stands no lower than leaves UNDER_FOOT of water under every foot that lands in it, and a stretch
-// above prefers a narrow run of its lip whose fall lands where that water will be
-export function droughtWater({ stretches, heightAt: H, names, split = [], falls = [] }) {
-  const levels = stretches.map(rows => rows[0][2]), lower = levels.map(() => 0), report = [];
-  const into = k => { const f = falls.find(q => q.from === k && !q.deep); return f ? levels.findIndex(l => Math.abs(l - f.bottom) < 0.05) : -1; };
-  const feet = levels.map(() => []);                                     // the feet landing in each stretch, as they are chosen
-  const order = levels.map((l, k) => k).sort((a, b) => levels[b] - levels[a]);
-  for (const k of order) {
-    const K = KIND[kindOf(names[k] || '')], { lanes } = lipLanes(stretches[k], H), parted = split.includes(k), to = into(k);
-    let most = K.most;
-    for (const f of feet[k]) most = Math.min(most, levels[k] - H(f[0], f[1]) - UNDER_FOOT);
-    most = Math.max(0, most);
-    const below = to >= 0 ? KIND[kindOf(names[to] || '')] : null;
-    let best = Infinity, drop = 0, width = 0, chosen = [];
-    for (let d = 0; d <= most + 1e-6; d += 0.01) {
-      const runs = lipRuns(lanes, levels[k] - d, parted);
-      if (!runs.length) continue;                                        // (it must still go over: every stretch here ends in a fall)
-      const w = runs.reduce((s, r) => s + (r.b - r.a) * LANE, 0);
-      const lands = to >= 0 ? runs.map(r => fallFoot(lipLine(stretches[k], lanes, r), levels[k] - d, levels[to]).foot) : [];
-      let dry = 0;                                                        // (how far short of the water below its feet would be, were that water as low as it is to go)
-      for (const f of lands) dry += Math.max(0, below.least + UNDER_FOOT - (levels[to] - H(f[0], f[1])));
-      const score = Math.abs(w - K.fall) + Math.max(0, K.least - d) * 3 + dry * 4 - d * 0.01;      // (a fall as wide as it is to be; low enough; landing in water; and the lower the better)
-      if (score < best) { best = score; drop = d; width = w; chosen = lands; }
-    }
-    lower[k] = drop;
-    if (to >= 0) feet[to].push(...chosen);
-    report.push({ k, name: names[k], drop: +drop.toFixed(2), fall: +width.toFixed(1), most: +most.toFixed(2) });
-  }
-  report.sort((a, b) => a.k - b.k);
+export function droughtWater({ stretches, heightAt: H, names = [] }) {
+  const report = [];
+  const lower = stretches.map((rows, k) => {
+    const lv = rows[0][2], { lanes } = lipLanes(rows, H), sills = lanes.filter(l => l.sill !== null).map(l => l.sill);
+    const under = sills.length ? lv - Math.min(...sills) + UNDER_LIP : 0;          // (how far down it must stand to go over nowhere)
+    const drop = Math.max(KIND[kindOf(names[k] || '')].least, under);
+    report.push({ k, name: names[k], drop: +drop.toFixed(2) });
+    return drop;
+  });
   console.info('[drought] water', JSON.stringify(report));
   return { lower, report };
+}
+
+// the water that is left, pool by pool: the triangles of each sheet that lie over the ground (a sheet runs on under a dry
+// riffle, hidden by it: those are not water), joined where they touch. Each pool: its middle, its level, its area (m2), its
+// deepest spot [x, z, depth] and its triangles (x, z, three to a triangle: what the map paints)
+export function droughtPools(surfaces, H) {
+  const pools = [];
+  for (const mesh of surfaces) {
+    const pos = mesh.geometry.attributes.position.array, idx = mesh.geometry.index.array, n = pos.length / 3;
+    const up = Array.from({ length: n }, (_, i) => i), root = i => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; };
+    const wet = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t], b = idx[t + 1], c = idx[t + 2], cx = (pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3, cz = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3;
+      if (H(cx, cz) > pos[a * 3 + 1] - 0.02) continue;                   // (ground above the water here: dry)
+      wet.push(t); up[root(b)] = root(a); up[root(c)] = root(a);
+    }
+    const byRoot = new Map();
+    for (const t of wet) {
+      const r = root(idx[t]); let p = byRoot.get(r);
+      if (!p) byRoot.set(r, p = { x: 0, z: 0, y: pos[idx[t] * 3 + 1], area: 0, deepest: [0, 0, 0], tris: [] });
+      const [a, b, c] = [idx[t], idx[t + 1], idx[t + 2]].map(i => [pos[i * 3], pos[i * 3 + 2]]);
+      const area = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2, cx = (a[0] + b[0] + c[0]) / 3, cz = (a[1] + b[1] + c[1]) / 3;
+      p.area += area; p.x += cx * area; p.z += cz * area; p.tris.push(...a, ...b, ...c);
+      const depth = p.y - H(cx, cz); if (depth > p.deepest[2]) p.deepest = [cx, cz, depth];
+    }
+    for (const p of byRoot.values()) { p.x /= p.area || 1; p.z /= p.area || 1; pools.push(p); }
+  }
+  return pools;
 }
 
 // ---- the land: one number for every spot, and the picture of it

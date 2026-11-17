@@ -26,8 +26,9 @@
 // West of the village lies the west fringe, the neglected countryside where the game begins: its own heightmap, joined on at
 // the land's west edge as it is read (west-fringe.js). Here it is only one wider land with a second part she may walk in.
 //
-// ?curse=1: the land as the curse leaves it (drought.js): dead all round and the village nearly so, and the water drawn down,
-// every stretch lower and every fall a thin one. The same land and plan: only how dead it is and how high the water stands.
+// ?curse=1: the land as the curse leaves it (drought.js): dead all round and the village nearly so, and the water drawn down
+// below every lip: no fall runs, only murky pools are left, dark mist rising off them now and then (dark-mist.js). The same
+// land and plan: only how dead it is and how high the water stands.
 //
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
@@ -56,7 +57,8 @@ import { foliageKey, applyFoliage } from './foliage-edits.js';
 import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 import { createMapRim } from './map-rim.js';
 import { joinWestFringe } from './west-fringe.js';
-import { droughtWater, cursedLand } from './drought.js';
+import { droughtWater, droughtPools, cursedLand } from './drought.js';
+import { createDarkMist } from './dark-mist.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -68,6 +70,7 @@ export const HILL_VILLAGE_MAP = {
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
   bare: './assets/heightmaps/hill-village-bare.png',      // where the rain's runnels have worn the grass away, on the land's own grid (the heightmap tool, 7b)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
+  mapCursed: './assets/maps/hill-village-map-cursed.json',      // (the same under the curse: the land dead, the water's beds dry; the pools are painted on it as the level loads)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
   pieces: [3, 6],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
@@ -219,7 +222,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // under the curse (?curse=1) the land is dead all round and the village nearly so, and the water is drawn down: every
   // stretch stands lower (drought.js), the falls thin. Its beds and banks are the land's: only how high the water stands changes
   const cursed = new URLSearchParams(location.search).has('curse');
-  const drought = cursed ? droughtWater({ stretches: P.brooks, heightAt: H, names: (P.waters || []).map(w => w.id), split: P.split || [], falls: P.falls || [] }) : null;
+  const drought = cursed ? droughtWater({ stretches: P.brooks, heightAt: H, names: (P.waters || []).map(w => w.id) }) : null;
   const lower = drought ? drought.lower : [];
   const standing = P.brooks.map((rows, k) => lower[k] ? rows.map(([x, z, l, hw]) => [x, z, l - lower[k], hw]) : rows);
   const deadAt = cursed ? cursedLand({ plan: P, rect: [X0, Z0, X1 - X0, Z1 - Z0], west }).at : west.deadAt;
@@ -711,14 +714,29 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const WL = (P.waters.find(w => w.id === 'river') || P.waters[0]).level;      // (the waves are worked out on one level: the river's, by the bridge)
   const sim = W.createWaterSim({ rect: [P.spawn.x - 24, P.spawn.z - 24, 48], size: 512, field, foamTexture, level: WL, follow: true });
   const optics = W.createWaterOptics({ level: WL });
-  const waterMat = W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, fadeA: 1e4, fadeB: 2e4 });      // (no water runs out to the land's edge: none of it fades)
+  const waterMat = W.waterMaterial({ field, animeCells, sim, optics, foamTexture, far, fadeA: 1e4, fadeB: 2e4, murk: cursed ? 1 : 0 });      // (no water runs out to the land's edge: none of it fades; under the curse: stagnant, murky)
   // each stretch's surface, and a fall wherever one runs off an edge, are worked out from the land itself (land-water.js): the
   // sheet lies only where the ground holds it, the fall hangs from the sheet's own edge and its foam is where it lands
   // (from its third shelf each stream goes into the pit's mist: the abyss's long fall, abyss-scene.js)
   const deepFall = f => createAbyssFalls({ falls: [f], centre: [f.x + Math.sin(f.yaw), f.z + Math.cos(f.yaw)], bottom: f.top - 42, optics: null, foamTexture });
-  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length, deep: P.deep || [], deepFall, split: P.split || [], lower });
+  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: cursed ? 0 : P.falls.length,
+    deep: P.deep || [], deepFall, split: P.split || [], lower, still: cursed ? P.brooks.map((r, k) => k) : [] });      // (under the curse no fall runs: pools only)
   water.group.userData.dispose = water.dispose;
   group.add(water.group);
+  // under the curse: the pools the water has left, dark mist rising off the bigger ones now and then (dark-mist.js), and the
+  // map shows them: its cursed picture (dry beds, dead land: tools/make-hill-village-map.py) with each pool painted on it
+  const pools = cursed ? droughtPools(water.surfaces, H) : [];
+  const darkMist = cursed ? createDarkMist(pools) : null;
+  if (darkMist) group.add(darkMist.group);
+  const mapOverlay = cursed ? (g, at) => {
+    g.beginPath();
+    for (const p of pools) for (let i = 0; i < p.tris.length; i += 6) {
+      const [ax, ay] = at(p.tris[i], p.tris[i + 1]), [bx, by] = at(p.tris[i + 2], p.tris[i + 3]), [cx, cy] = at(p.tris[i + 4], p.tris[i + 5]);
+      g.moveTo(ax, ay); g.lineTo(bx, by); g.lineTo(cx, cy); g.closePath();
+    }
+    g.lineJoin = 'round'; g.lineWidth = 2.5; g.strokeStyle = '#4b5649'; g.stroke();      // (the edge first: the water laid over it covers all but its outside)
+    g.fillStyle = '#7d8b78'; g.fill();
+  } : null;
   // the pit's clouds, on its shelves and over its eye (the abyss's: their heights are the first pit's, so all are moved by shift)
   if (P.pit) {
     const clouds = createAbyssClouds({ centre: [P.pit.x, P.pit.z], rimR: () => P.pit.brink, ledges: P.pit.shelves, falls: [], count: 120 });
@@ -893,8 +911,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
-    name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report },
-    map: url(M.map),
+    name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
+    map: url(cursed ? M.mapCursed : M.map), mapOverlay,
     horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },

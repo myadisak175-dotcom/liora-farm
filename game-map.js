@@ -1,7 +1,7 @@
 /* ==========================================================================
    game-map.js  —  the map as a game shows it: a small round one that follows her, and the whole map on a tap
 
-     const map = await createGameMap({ url: level.map, player, places });      // places: teleportPlaces(level)
+     const map = await createGameMap({ url: level.map, player, places, overlay: level.mapOverlay });      // places: teleportPlaces(level)
      every frame: map.update()
 
    One job: show where she is on a picture of the land, and take her to a place she picks on it.
@@ -53,12 +53,21 @@ const CSS = `
 const MINI = { size: 96, metres: 64 };          // the small map: this many pixels across, showing this many metres of land
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
-export async function createGameMap({ url, player, places = [], onGo = null } = {}) {
+// overlay (optional): something the level draws onto the picture once, as it loads (the curse's pools: drought.js), called
+// with a canvas's 2d context, at (x, z) -> [px, py], and the picture's pixels to a metre
+export async function createGameMap({ url, player, places = [], onGo = null, overlay = null } = {}) {
   const info = await (await fetch(url)).json();
-  const src = new URL(info.file, new URL(url, location.href)).href;
-  const picture = () => { const i = new Image(); i.src = src; i.width = info.width; i.height = info.height; i.draggable = false; i.alt = ''; return i; };
+  let src = new URL(info.file, new URL(url, location.href)).href;
   const ppm = info.width / (info.x1 - info.x0);                           // the picture's pixels to a metre
   const at = (x, z) => [(x - info.x0) * ppm, (z - info.z0) * ppm];        // a place in the world -> a point of the picture
+  if (overlay) try {
+    const img = new Image(); img.crossOrigin = 'anonymous'; img.src = src; await img.decode();
+    const c = document.createElement('canvas'); c.width = info.width; c.height = info.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, info.width, info.height);
+    overlay(g, at, ppm);
+    src = URL.createObjectURL(await new Promise(ok => c.toBlob(ok, 'image/webp', 0.9)));
+  } catch (e) { console.warn('[game-map] the overlay was not drawn', e); }
+  const picture = () => { const i = new Image(); i.src = src; i.width = info.width; i.height = info.height; i.draggable = false; i.alt = ''; return i; };
   document.head.append(Object.assign(el('style'), { textContent: CSS }));
   const icon = label => label.split(' ')[0], name = label => label.slice(label.indexOf(' ') + 1);
 

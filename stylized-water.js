@@ -556,7 +556,11 @@ const CHURN_GLSL = /* glsl */`
 // ==========================================================================
 // WATER SURFACE
 // ==========================================================================
-export function waterMaterial({ field, animeCells = null, sim = null, optics = null, far = '#cde6f2', fadeA = 96, fadeB = 118, look = WATER_LOOK, foamTexture = null, sun = [-0.4, 0.9, 0.5] } = {}) {
+// MURK: water gone stagnant (the curse's pools: drought.js). A murky water's own colour, from where it is thin to where it
+// is deep, a dull grey-green; the bottom is lost under a hand's depth of it, no light nets it, no sun glows through its edge.
+// waterMaterial's murk (0 clear, as ever .. 1 murky) and its colours; mat.uniforms.uMurk.value can change it live
+export const MURK = { thin: '#6f7a64', deep: '#323a33' };
+export function waterMaterial({ field, animeCells = null, sim = null, optics = null, far = '#cde6f2', fadeA = 96, fadeB = 118, look = WATER_LOOK, foamTexture = null, sun = [-0.4, 0.9, 0.5], murk = 0 } = {}) {
   const L = { ...WATER_LOOK, ...look };
   const S = sim || NO_SIM(), O = optics || NO_OPTICS();
   const foamMap = foamTexture || new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
@@ -567,6 +571,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
     uSim: S.texture, uSimRect: { value: S.rect }, uSimPx: { value: S.enabled ? S.rect.z / S.size : 1 },
     ...O.uniforms, ...TUNE_UNIFORMS(),
     uShallow: { value: rgb(L.shallow) }, uMid: { value: rgb(L.mid) }, uDeep: { value: rgb(L.deep) }, uAbyss: { value: rgb(L.abyss) },
+    uMurk: { value: murk }, uMurkThin: { value: rgb(MURK.thin) }, uMurkDeep: { value: rgb(MURK.deep) },
     uAnimeCells: { value: animeCells || foamMap }, uAnimeOn: { value: animeCells ? 1 : 0 }, uRing: WATER_TUNE.ring,
     uStepRing: WATER_TUNE.stepRing, ...Object.fromEntries(WATER_RINGS.uniforms.map((u, i) => ['uRg' + i, u])),
     uChurn: WATER_CHURN, uWakeHead: WATER_WAKE.head, uWakeOn: WATER_WAKE.on, ...Object.fromEntries(WATER_WAKE.uniforms.map((u, i) => ['uWk' + i, u])),
@@ -624,6 +629,8 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
       uniform float uTime, uFadeA, uFadeB, uSimPx, uOptics, uMirrorOn;
       uniform float uCaustic, uCausticScale, uShimmer, uSwell, uSpeed, uRefract, uReflect, uClear, uFoamAmt, uGlint, uFleck, uShore;
       uniform vec3 uShallow, uMid, uDeep, uAbyss, uFoam, uCell, uSky, uSun, uFar, uHaze;
+      uniform float uMurk;
+      uniform vec3 uMurkThin, uMurkDeep;
       varying vec3 vWP;
       varying vec3 vFlow;
       varying vec2 vDir;
@@ -757,6 +764,9 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
           cover = mix(0.5, 0.96, smoothstep(0.0, 0.22, depth));
         }
         body += uCell * caustic * uCaustic * mix(0.3, 0.45, uToon);
+        // MURK: stagnant water's own dull colour, and the bottom gone under a hand's depth of it
+        body = mix(body, mix(uMurkThin, uMurkDeep, smoothstep(0.0, 0.8, dn)), uMurk);
+        cover = mix(cover, mix(0.6, 0.98, smoothstep(0.0, 0.18, depth)), uMurk);
         // her legs are seen through the water that lies over THEM, not over the bed: clear just under the surface, fading into
         // the water's colour further down, so she stands in the water and is not cut off by it
         cover = mix(cover, mix(0.08, 0.92, smoothstep(0.0, mix(0.95, 0.45, uToon), herDepth)), her);
@@ -769,7 +779,7 @@ export function waterMaterial({ field, animeCells = null, sim = null, optics = n
         // Sunlight glowing through the thin water at the edges, strongest when looking towards the sun.
         float throughSun = pow(max(dot(-V, normalize(uSun)), 0.0), 2.0);
         float thin = 1.0 - smoothstep(0.05, 0.85, dn);
-        col += vec3(0.50, 0.92, 0.52) * thin * (0.08 + 0.20 * throughSun) * smoothstep(0.0, 0.05, depth) * (1.0 - uToon);
+        col += vec3(0.50, 0.92, 0.52) * thin * (0.08 + 0.20 * throughSun) * smoothstep(0.0, 0.05, depth) * (1.0 - uToon) * (1.0 - uMurk);
 
         if (uToon > 0.5) {
           // anime water: a pattern of pale curling lines on the surface, carried by the current. It is laid out in metres (so it is

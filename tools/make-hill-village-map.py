@@ -3,7 +3,8 @@
 # Reads what tools/make-hill-village-heightmap.py wrote (assets/heightmaps/hill-village.bin + .json: the land's heights and the
 # plan of everything on it) and paints the map from it, so the map is always the land as it is: run this after that tool.
 # Writes assets/maps/hill-village-map.webp (north, the game's -z, at the top) and hill-village-map.json (the part of the world
-# the picture covers, for game-map.js to put her and the places on it).
+# the picture covers, for game-map.js to put her and the places on it); and hill-village-map-cursed.webp + .json, the same
+# land as the curse leaves it (?curse=1), painted the same way (see paint, below).
 #
 # How it is painted, from the bottom up:
 #   1. the land: meadow green, a little paler the higher it lies, lit from the north-west so every terrace's edge shows;
@@ -60,186 +61,209 @@ if WEST:                                                              # the two 
 X0, X1, Z0, Z1 = min(q[0] for q in PLAYS) - MARGIN, max(q[1] for q in PLAYS) + MARGIN, min(q[2] for q in PLAYS) - MARGIN, max(q[3] for q in PLAYS) + MARGIN
 W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
 
-# ---- 1, 2. the land, painted point by point
-px = X0 + (np.arange(W * SS) + 0.5) / (PPM * SS); pz = Z0 + (np.arange(Hh * SS) + 0.5) / (PPM * SS)
-gi, gj = np.meshgrid((px - L['x0']) / L['cell'], (pz - L['z0']) / L['cell'])
-h = ndi.map_coordinates(H, [gj, gi], order=1, mode='nearest')
-m = 1 / (PPM * SS)
-dz, dx = np.gradient(ndi.gaussian_filter(h, 1.2), m)
-slope = np.hypot(dx, dz)
-light = np.clip(1.0 + (dx * 0.62 + dz * 0.62) * 0.55, 0.55, 1.35)      # lit from the north-west: a face that falls toward the south-east is in shade
-rng = np.random.default_rng(5)
-drift = ndi.zoom(rng.random((Hh // 60 + 3, W // 60 + 3)), 60 * SS, order=3)[:Hh * SS, :W * SS]      # broad drifts of tone over the meadow
-high = sm(-14, 24, h)                                                  # how high the land lies, the valley's floor to the keep's crag
-img = rgb(COL['grass_low']) * (1 - high[..., None]) + rgb(COL['grass_high']) * high[..., None]
-img *= (0.94 + 0.12 * drift)[..., None]
-rock = sm(0.55, 1.0, slope)[..., None]
-img = img * (1 - rock) + (rgb(COL['rock_dark']) + (rgb(COL['rock_lit']) - rgb(COL['rock_dark'])) * sm(0.6, 1.3, light)[..., None]) * rock
-img *= (0.86 + 0.14 * np.clip(light, 0.6, 1.2) / 1.2 * 1.2)[..., None] * (1 - rock * 0.0)
-pit = plan.get('pit')
-if pit:                                                               # down the pit: darker shelf by shelf, then its mist
-    rim = pit['shift'] + 15.0; deep = np.clip((rim - 3 - h) / 30, 0, 1)
-    img *= (1 - 0.28 * deep)[..., None]
-    mist = sm(rim - 30, rim - 52, h) * (0.78 + 0.22 * ndi.zoom(rng.random((Hh // 12 + 3, W // 12 + 3)), 12 * SS, order=3)[:Hh * SS, :W * SS])
-    img = img * (1 - mist[..., None]) + rgb(COL['mist']) * mist[..., None]
-PX, PZ = np.meshgrid(px, pz)
-if WEST:                                                              # the fringe's land is dead: its grass the colour of straw
-    k = (sm(SEAM + 2, SEAM - 10, PX) * (1 - rock[..., 0]))[..., None] * 0.72
-    img = img * (1 - k) + (img @ np.array([0.3, 0.59, 0.11]))[..., None] * np.array([1.14, 1.0, 0.7]) * k
-off = np.minimum.reduce([np.maximum.reduce([q[0] - PX, PX - q[1], q[2] - PZ, PZ - q[3]]) for q in PLAYS])      # metres outside where she can walk
-wash = sm(-0.5, 2.5, off)[..., None] * 0.6
-img = img * (1 - wash) + rgb(COL['beyond']) * wash
-canvas = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert('RGBA')
+# The map is painted twice: as the land is, and as the curse leaves it (?curse=1: drought.js): the land dead, every tree
+# a dead one, the water's beds dry and no fall running (the pools that are left are painted on in the game, where the
+# drought works them out). The second is hill-village-map-cursed.webp + .json.
+def paint(CURSED):
+    NAME = 'hill-village-map-cursed' if CURSED else 'hill-village-map'
+    # ---- 1, 2. the land, painted point by point
+    px = X0 + (np.arange(W * SS) + 0.5) / (PPM * SS); pz = Z0 + (np.arange(Hh * SS) + 0.5) / (PPM * SS)
+    gi, gj = np.meshgrid((px - L['x0']) / L['cell'], (pz - L['z0']) / L['cell'])
+    h = ndi.map_coordinates(H, [gj, gi], order=1, mode='nearest')
+    m = 1 / (PPM * SS)
+    dz, dx = np.gradient(ndi.gaussian_filter(h, 1.2), m)
+    slope = np.hypot(dx, dz)
+    light = np.clip(1.0 + (dx * 0.62 + dz * 0.62) * 0.55, 0.55, 1.35)      # lit from the north-west: a face that falls toward the south-east is in shade
+    rng = np.random.default_rng(5)
+    drift = ndi.zoom(rng.random((Hh // 60 + 3, W // 60 + 3)), 60 * SS, order=3)[:Hh * SS, :W * SS]      # broad drifts of tone over the meadow
+    high = sm(-14, 24, h)                                                  # how high the land lies, the valley's floor to the keep's crag
+    img = rgb(COL['grass_low']) * (1 - high[..., None]) + rgb(COL['grass_high']) * high[..., None]
+    img *= (0.94 + 0.12 * drift)[..., None]
+    rock = sm(0.55, 1.0, slope)[..., None]
+    img = img * (1 - rock) + (rgb(COL['rock_dark']) + (rgb(COL['rock_lit']) - rgb(COL['rock_dark'])) * sm(0.6, 1.3, light)[..., None]) * rock
+    img *= (0.86 + 0.14 * np.clip(light, 0.6, 1.2) / 1.2 * 1.2)[..., None] * (1 - rock * 0.0)
+    pit = plan.get('pit')
+    if pit:                                                               # down the pit: darker shelf by shelf, then its mist
+        rim = pit['shift'] + 15.0; deep = np.clip((rim - 3 - h) / 30, 0, 1)
+        img *= (1 - 0.28 * deep)[..., None]
+        mist = sm(rim - 30, rim - 52, h) * (0.78 + 0.22 * ndi.zoom(rng.random((Hh // 12 + 3, W // 12 + 3)), 12 * SS, order=3)[:Hh * SS, :W * SS])
+        img = img * (1 - mist[..., None]) + rgb(COL['mist']) * mist[..., None]
+    PX, PZ = np.meshgrid(px, pz)
+    if WEST or CURSED:                                                    # the fringe's land is dead: its grass the colour of straw (under the curse, all of it)
+        k = ((1.0 if CURSED else sm(SEAM + 2, SEAM - 10, PX)) * (1 - rock[..., 0]))[..., None] * 0.72
+        img = img * (1 - k) + (img @ np.array([0.3, 0.59, 0.11]))[..., None] * np.array([1.14, 1.0, 0.7]) * k
+    off = np.minimum.reduce([np.maximum.reduce([q[0] - PX, PX - q[1], q[2] - PZ, PZ - q[3]]) for q in PLAYS])      # metres outside where she can walk
+    wash = sm(-0.5, 2.5, off)[..., None] * 0.6
+    img = img * (1 - wash) + rgb(COL['beyond']) * wash
+    canvas = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert('RGBA')
 
-# ---- drawing on it: everything else is shapes, in metres
-K = PPM * SS
-P = lambda x, z: ((x - X0) * K, (z - Z0) * K)
-layer = lambda: Image.new('RGBA', canvas.size, (0, 0, 0, 0))
-
-
-def stroke(d, pts, width, fill):
-    """a line of that width (metres) with round ends and joints"""
-    q = [P(*p) for p in pts]; w = max(1, int(round(width * K)))
-    d.line(q, fill=fill, width=w, joint='curve')
-    for x, y in (q[0], q[-1]): d.ellipse([x - w / 2, y - w / 2, x + w / 2, y + w / 2], fill=fill)
+    # ---- drawing on it: everything else is shapes, in metres
+    K = PPM * SS
+    P = lambda x, z: ((x - X0) * K, (z - Z0) * K)
+    layer = lambda: Image.new('RGBA', canvas.size, (0, 0, 0, 0))
 
 
-def box(x, z, w, l, yaw, lx0=-0.5, lx1=0.5, lz0=-0.5, lz1=0.5):
-    """the corners of a rectangle w across (its own x) and l along (its own z), turned as the game turns a house: its z toward (sin yaw, cos yaw)"""
-    c, s = math.cos(yaw), math.sin(yaw)
-    return [P(x + a * w * c + b * l * s, z - a * w * s + b * l * c) for a, b in [(lx0, lz0), (lx1, lz0), (lx1, lz1), (lx0, lz1)]]
+    def stroke(d, pts, width, fill):
+        """a line of that width (metres) with round ends and joints"""
+        q = [P(*p) for p in pts]; w = max(1, int(round(width * K)))
+        d.line(q, fill=fill, width=w, joint='curve')
+        for x, y in (q[0], q[-1]): d.ellipse([x - w / 2, y - w / 2, x + w / 2, y + w / 2], fill=fill)
 
 
-def catmull(pts, step=1.0):
-    """the way through its points as the game lays it: a smooth curve"""
-    out = []; g = lambda i: pts[min(len(pts) - 1, max(0, i))]
-    for i in range(len(pts) - 1):
-        a, b, c, d = g(i - 1), g(i), g(i + 1), g(i + 2); n = max(2, int(math.hypot(c[0] - b[0], c[1] - b[1]) / step))
-        for k in range(n):
-            t = k / n; out.append(tuple(0.5 * ((2 * b[j]) + (-a[j] + c[j]) * t + (2 * a[j] - 5 * b[j] + 4 * c[j] - d[j]) * t * t + (-a[j] + 3 * b[j] - 3 * c[j] + d[j]) * t ** 3) for j in (0, 1)))
-    return out + [tuple(pts[-1])]
+    def box(x, z, w, l, yaw, lx0=-0.5, lx1=0.5, lz0=-0.5, lz1=0.5):
+        """the corners of a rectangle w across (its own x) and l along (its own z), turned as the game turns a house: its z toward (sin yaw, cos yaw)"""
+        c, s = math.cos(yaw), math.sin(yaw)
+        return [P(x + a * w * c + b * l * s, z - a * w * s + b * l * c) for a, b in [(lx0, lz0), (lx1, lz0), (lx1, lz1), (lx0, lz1)]]
 
 
-# ---- 3. the water
-d = ImageDraw.Draw(canvas)
-for grow, part, colour in ((0.35, 1.0, COL['water_edge']), (0.0, 1.0, COL['water']), (0.0, 0.45, COL['water_mid'])):      # its bank's line, the water, its pale middle
-    for rows in plan['brooks'] + [[[x, z, i['level'], hw] for x, z, hw in i['rows']] + [plan['brooks'][i['stretch']][0]] for i in plan.get('inflows', [])]:      # (a row: x, z, the water's height, half its width; and where each water comes in from the margin)
-        for a, b in zip(rows, rows[1:]): stroke(d, [a[:2], b[:2]], (a[3] + b[3]) * part + 2 * grow, colour)
-for f in plan['falls']:                                               # foam along the lip, and a streak down the way it falls
-    c, s = math.cos(f['yaw']), math.sin(f['yaw']); half = f['width'] / 2
-    stroke(d, [(f['x'] - c * half, f['z'] + s * half), (f['x'] + c * half, f['z'] - s * half)], 0.9, COL['foam'])
-    stroke(d, [(f['x'], f['z']), (f['x'] + s * 1.6, f['z'] + c * 1.6)], max(0.8, half * 0.9), COL['foam'])
+    def catmull(pts, step=1.0):
+        """the way through its points as the game lays it: a smooth curve"""
+        out = []; g = lambda i: pts[min(len(pts) - 1, max(0, i))]
+        for i in range(len(pts) - 1):
+            a, b, c, d = g(i - 1), g(i), g(i + 1), g(i + 2); n = max(2, int(math.hypot(c[0] - b[0], c[1] - b[1]) / step))
+            for k in range(n):
+                t = k / n; out.append(tuple(0.5 * ((2 * b[j]) + (-a[j] + c[j]) * t + (2 * a[j] - 5 * b[j] + 4 * c[j] - d[j]) * t * t + (-a[j] + 3 * b[j] - 3 * c[j] + d[j]) * t ** 3) for j in (0, 1)))
+        return out + [tuple(pts[-1])]
 
-if WEST:                                                              # the fringe's dry water: its pond's floor, the gully and the brook's bed, the colour of dry mud
-    D = FR['dry_water']; pond = D['pond']
-    d.polygon([P(x, z) for x, z in pond['shore']], fill='#b9a57c', outline='#8c7a58')      # (inside its shore: where the water stood)
+
+    # ---- 3. the water
+    # The dry beds first, each as wide as it lies there (outlines of all of them, then all of them filled, so where two run into
+    # one another no line is left between): the fringe's (its pond's floor, the gully and the brook: west-fringe.js), carried
+    # on where one runs into the village's own water (the brook at the seam), so the two are one way; and under the curse the
+    # village's water's beds too, every one dry (the pools that are left are the game's to paint: drought.js). Then, as the
+    # land is, the water over them: its bank's line, the water, its pale middle, and foam where it falls
+    d = ImageDraw.Draw(canvas)
+    waters = plan['brooks'] + [[[x, z, i['level'], hw] for x, z, hw in i['rows']] + [plan['brooks'][i['stretch']][0]] for i in plan.get('inflows', [])]      # (a row: x, z, the water's height, half its width; and where each water comes in from the margin)
+    beds = [[(x, z, hw * 0.9) for x, z, _, hw in rows] for rows in waters] if CURSED else []
+    if WEST:
+        D = FR['dry_water']; pond = D['pond']
+        d.polygon([P(x, z) for x, z in pond['shore']], fill='#b9a57c', outline='#8c7a58')      # (inside its shore: where the water stood)
+        for bed in D['beds']:
+            beds.append([(x, z, half * 0.8) for x, z, half, *_ in bed['points']])
+            ex, ez, eh = bed['points'][-1][:3]
+            gap, rows = min(((math.hypot(r[0][0] - ex, r[0][1] - ez), r) for r in waters), key=lambda t: t[0])
+            if gap < 8: beds.append([(ex, ez, eh * 0.8)] + [(q[0], q[1], q[3] * 0.9) for q in rows[:4]])
     for grow, colour in ((0.3, '#8c7a58'), (0.0, '#d4c39a')):
-        for bed in D['beds']:                                         # (each bed as wide as it lies there: x, z, half its width)
-            for a, b in zip(bed['points'], bed['points'][1:]): stroke(d, [a[:2], b[:2]], (a[2] + b[2]) * 0.8 + 2 * grow, colour)
+        for bed in beds:
+            for a, b in zip(bed, bed[1:]): stroke(d, [a[:2], b[:2]], a[2] + b[2] + 2 * grow, colour)
+    if not CURSED:
+        for grow, part, colour in ((0.35, 1.0, COL['water_edge']), (0.0, 1.0, COL['water']), (0.0, 0.45, COL['water_mid'])):
+            for rows in waters:
+                for a, b in zip(rows, rows[1:]): stroke(d, [a[:2], b[:2]], (a[3] + b[3]) * part + 2 * grow, colour)
+        for f in plan['falls']:
+            c, s = math.cos(f['yaw']), math.sin(f['yaw']); half = f['width'] / 2
+            stroke(d, [(f['x'] - c * half, f['z'] + s * half), (f['x'] + c * half, f['z'] - s * half)], 0.9, COL['foam'])
+            stroke(d, [(f['x'], f['z']), (f['x'] + s * 1.6, f['z'] + c * 1.6)], max(0.8, half * 0.9), COL['foam'])
 
-# ---- 4. ways, yards, fields, fences, bridges
-before_ways = canvas.copy()                                           # (grass painted over a way by hand: the land as it was before the ways)
-ways = [(catmull(p['points']), p['half']) for p in plan['paths']]
-for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])):
-    for pts, half in ways: stroke(d, pts, 2 * half + 2 * grow, colour)
-    for x, z, r, *_ in plan['yards']:
-        cx, cy = P(x, z); rr = (r + grow) * K; d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=colour)
-# the ways painted by hand in the game (path-brush.js; kept in hill-village-paths.json and written into the plan as pathOps), in
-# the order they were painted: a way drawn as the others are, grass by laying the land as it was before the ways back over
-for o in plan.get('pathOps', []):
-    pts = catmull(o['pts']) if len(o['pts']) > 1 else [tuple(o['pts'][0]), (o['pts'][0][0] + 0.3, o['pts'][0][1])]
-    if o['k'] == 'way':
-        for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])): stroke(d, pts, 2 * o['half'] + 2 * grow, colour)
-    else:
-        mask = Image.new('L', canvas.size, 0); stroke(ImageDraw.Draw(mask), pts, 2 * o['r'], 255)
-        canvas.paste(before_ways, (0, 0), mask); d = ImageDraw.Draw(canvas)
-for f in plan['fields']:
-    d.polygon(box(f['x'], f['z'], f['w'], f['d'], f['yaw']), fill=COL['soil'])
-    n = max(3, int(f['d'] / 1.1))
-    for k in range(n):                                                # its rows, along its own x
-        t = -0.5 + (k + 0.5) / n; c, s = math.cos(f['yaw']), math.sin(f['yaw'])
-        a, b = (f['x'] - 0.46 * f['w'] * c + t * f['d'] * s, f['z'] + 0.46 * f['w'] * s + t * f['d'] * c), (f['x'] + 0.46 * f['w'] * c + t * f['d'] * s, f['z'] - 0.46 * f['w'] * s + t * f['d'] * c)
-        stroke(d, [a, b], 0.55, COL['crop'].get(f['crop'], '#86c060'))
-for f in plan['fences']:
-    pts = f['points'] + f['points'][:1]
-    for i, (a, b) in enumerate(zip(pts, pts[1:])):
-        if i == f.get('gate'):                                        # a gap for the gate, in the middle of that side
-            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); u = np.array(b) - np.array(a); u = u / np.linalg.norm(u) * 1.1
-            stroke(d, [a, (mid[0] - u[0], mid[1] - u[1])], 0.4, COL['fence']); stroke(d, [(mid[0] + u[0], mid[1] + u[1]), b], 0.4, COL['fence'])
-        else: stroke(d, [a, b], 0.4, COL['fence'])
-br = plan['bridge']                                                   # (the bridges lie along their own x: toward (cos yaw, -sin yaw))
-for b, wide, fill, edge in [(br, 3.4, COL['stone'], COL['stone_edge'])] + [(q, 2.3, COL['plank'], COL['fence']) for q in [plan['plank']] + plan.get('planks', [])]:
-    c, s = math.cos(b['yaw']), math.sin(b['yaw']); a, e = (b['x'] - c * b['length'] / 2, b['z'] + s * b['length'] / 2), (b['x'] + c * b['length'] / 2, b['z'] - s * b['length'] / 2)
-    d.line([P(*a), P(*e)], fill=edge, width=int((wide + 0.5) * K)); d.line([P(*a), P(*e)], fill=fill, width=int(wide * K))
+    # ---- 4. ways, yards, fields, fences, bridges
+    before_ways = canvas.copy()                                           # (grass painted over a way by hand: the land as it was before the ways)
+    ways = [(catmull(p['points']), p['half']) for p in plan['paths']]
+    for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])):
+        for pts, half in ways: stroke(d, pts, 2 * half + 2 * grow, colour)
+        for x, z, r, *_ in plan['yards']:
+            cx, cy = P(x, z); rr = (r + grow) * K; d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=colour)
+    # the ways painted by hand in the game (path-brush.js; kept in hill-village-paths.json and written into the plan as pathOps), in
+    # the order they were painted: a way drawn as the others are, grass by laying the land as it was before the ways back over
+    for o in plan.get('pathOps', []):
+        pts = catmull(o['pts']) if len(o['pts']) > 1 else [tuple(o['pts'][0]), (o['pts'][0][0] + 0.3, o['pts'][0][1])]
+        if o['k'] == 'way':
+            for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])): stroke(d, pts, 2 * o['half'] + 2 * grow, colour)
+        else:
+            mask = Image.new('L', canvas.size, 0); stroke(ImageDraw.Draw(mask), pts, 2 * o['r'], 255)
+            canvas.paste(before_ways, (0, 0), mask); d = ImageDraw.Draw(canvas)
+    for f in plan['fields']:
+        d.polygon(box(f['x'], f['z'], f['w'], f['d'], f['yaw']), fill=COL['soil'])
+        n = max(3, int(f['d'] / 1.1))
+        for k in range(n):                                                # its rows, along its own x
+            t = -0.5 + (k + 0.5) / n; c, s = math.cos(f['yaw']), math.sin(f['yaw'])
+            a, b = (f['x'] - 0.46 * f['w'] * c + t * f['d'] * s, f['z'] + 0.46 * f['w'] * s + t * f['d'] * c), (f['x'] + 0.46 * f['w'] * c + t * f['d'] * s, f['z'] - 0.46 * f['w'] * s + t * f['d'] * c)
+            stroke(d, [a, b], 0.55, COL['crop'].get(f['crop'], '#86c060'))
+    for f in plan['fences']:
+        pts = f['points'] + f['points'][:1]
+        for i, (a, b) in enumerate(zip(pts, pts[1:])):
+            if i == f.get('gate'):                                        # a gap for the gate, in the middle of that side
+                mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); u = np.array(b) - np.array(a); u = u / np.linalg.norm(u) * 1.1
+                stroke(d, [a, (mid[0] - u[0], mid[1] - u[1])], 0.4, COL['fence']); stroke(d, [(mid[0] + u[0], mid[1] + u[1]), b], 0.4, COL['fence'])
+            else: stroke(d, [a, b], 0.4, COL['fence'])
+    br = plan['bridge']                                                   # (the bridges lie along their own x: toward (cos yaw, -sin yaw))
+    for b, wide, fill, edge in [(br, 3.4, COL['stone'], COL['stone_edge'])] + [(q, 2.3, COL['plank'], COL['fence']) for q in [plan['plank']] + plan.get('planks', [])]:
+        c, s = math.cos(b['yaw']), math.sin(b['yaw']); a, e = (b['x'] - c * b['length'] / 2, b['z'] + s * b['length'] / 2), (b['x'] + c * b['length'] / 2, b['z'] - s * b['length'] / 2)
+        d.line([P(*a), P(*e)], fill=edge, width=int((wide + 0.5) * K)); d.line([P(*a), P(*e)], fill=fill, width=int(wide * K))
 
-# ---- shadows of what stands up (one soft layer, laid under the things themselves)
-sh = layer(); ds = ImageDraw.Draw(sh)
-inside = lambda x, z: X0 - 3 < x < X1 + 3 and Z0 - 3 < z < Z1 + 3
-plants = [p for p in plan['plants'] if p[0] in COL['tree'] and inside(p[1], p[2])]
-dead = [p for p in plants if p[1] < SEAM] if WEST else []              # the fringe's trees: dead (west-fringe.js takes their leaves)
-plants = [p for p in plants if p not in dead]
-for b in plan['buildings']:
-    if b['kind'] == 'house':
-        w, l = b['spec']['w'] + 1.0, b['spec']['l'] + 0.8; o = 0.5 + b['spec'].get('floors', 1) * 0.6
-        ds.polygon(box(b['x'] + o, b['z'] + o, w, l, b['yaw']), fill=COL['shadow'])
-for kind, x, z, scale, *_ in plants:
-    r = COL['tree_r'][kind] * scale * K; cx, cy = P(x + 0.7 * scale, z + 0.7 * scale); ds.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['shadow'])
-canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(K * 0.35)))
-d = ImageDraw.Draw(canvas)
+    # ---- shadows of what stands up (one soft layer, laid under the things themselves)
+    sh = layer(); ds = ImageDraw.Draw(sh)
+    inside = lambda x, z: X0 - 3 < x < X1 + 3 and Z0 - 3 < z < Z1 + 3
+    plants = [p for p in plan['plants'] if p[0] in COL['tree'] and inside(p[1], p[2])]
+    dead = plants[:] if CURSED else [p for p in plants if p[1] < SEAM] if WEST else []      # the fringe's trees: dead (west-fringe.js takes their leaves); under the curse every one
+    plants = [p for p in plants if p not in dead]
+    for b in plan['buildings']:
+        if b['kind'] == 'house':
+            w, l = b['spec']['w'] + 1.0, b['spec']['l'] + 0.8; o = 0.5 + b['spec'].get('floors', 1) * 0.6
+            ds.polygon(box(b['x'] + o, b['z'] + o, w, l, b['yaw']), fill=COL['shadow'])
+    for kind, x, z, scale, *_ in plants:
+        r = COL['tree_r'][kind] * scale * K; cx, cy = P(x + 0.7 * scale, z + 0.7 * scale); ds.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['shadow'])
+    canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(K * 0.35)))
+    d = ImageDraw.Draw(canvas)
 
-# ---- 5. the houses, the well, the sails
-for b in plan['buildings']:
-    if b['kind'] == 'house':
-        w, l = b['spec']['w'] + 1.0, b['spec']['l'] + 0.8; ew = max(1, int(0.22 * K))
-        if b['spec'].get('tower'):                                    # a tower's roof: four slopes to a point
-            q = box(b['x'], b['z'], w, l, b['yaw']); mid = P(b['x'], b['z'])
-            for i, shade in enumerate(('roof_lit', 'roof_dark', 'roof_dark', 'roof_lit')): d.polygon([q[i], q[(i + 1) % 4], mid], fill=COL[shade])
-            d.line(q + q[:1], fill=COL['roof_edge'], width=ew, joint='curve')
-            for c_ in q: d.line([c_, mid], fill=COL['roof_edge'], width=max(1, ew // 2))
-        else:                                                         # a ridge along its own z: one side in the light, one out of it
-            west_lit = math.cos(b['yaw']) > math.sin(b['yaw'])       # (its -x side faces (-cos yaw, sin yaw): is that toward the north-west, where the light is?)
-            d.polygon(box(b['x'], b['z'], w, l, b['yaw'], -0.5, 0.0), fill=COL['roof_lit' if west_lit else 'roof_dark'])
-            d.polygon(box(b['x'], b['z'], w, l, b['yaw'], 0.0, 0.5), fill=COL['roof_dark' if west_lit else 'roof_lit'])
-            q = box(b['x'], b['z'], w, l, b['yaw']); d.line(q + q[:1], fill=COL['roof_edge'], width=ew, joint='curve')
-            r0, r1 = box(b['x'], b['z'], w, l, b['yaw'], 0.0, 0.0)[0], box(b['x'], b['z'], w, l, b['yaw'], 0.0, 0.0)[2]
-            d.line([r0, r1], fill=COL['roof_edge'], width=max(1, ew // 2))
-    elif b['kind'] == 'well':
-        cx, cy = P(b['x'], b['z']); r = 1.2 * K
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K)))
-        d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill=COL['water'])
-for b in plan['buildings']:
-    if b['kind'] == 'sails':                                          # the windmill's sails: a cross before the tower's face
-        fx, fz = math.sin(b['yaw']), math.cos(b['yaw']); hx, hz = b['x'] + fx * b['out'], b['z'] + fz * b['out']; r = b['span'] / 2
-        for wdt, colour in ((1.5, COL['sail_edge']), (1.0, COL['sail'])):      # (seen from above, sails that turn before a wall are a bar along it)
-            stroke(d, [(hx - fz * r, hz + fx * r), (hx + fz * r, hz - fx * r)], wdt, colour)
+    # ---- 5. the houses, the well, the sails
+    for b in plan['buildings']:
+        if b['kind'] == 'house':
+            w, l = b['spec']['w'] + 1.0, b['spec']['l'] + 0.8; ew = max(1, int(0.22 * K))
+            if b['spec'].get('tower'):                                    # a tower's roof: four slopes to a point
+                q = box(b['x'], b['z'], w, l, b['yaw']); mid = P(b['x'], b['z'])
+                for i, shade in enumerate(('roof_lit', 'roof_dark', 'roof_dark', 'roof_lit')): d.polygon([q[i], q[(i + 1) % 4], mid], fill=COL[shade])
+                d.line(q + q[:1], fill=COL['roof_edge'], width=ew, joint='curve')
+                for c_ in q: d.line([c_, mid], fill=COL['roof_edge'], width=max(1, ew // 2))
+            else:                                                         # a ridge along its own z: one side in the light, one out of it
+                west_lit = math.cos(b['yaw']) > math.sin(b['yaw'])       # (its -x side faces (-cos yaw, sin yaw): is that toward the north-west, where the light is?)
+                d.polygon(box(b['x'], b['z'], w, l, b['yaw'], -0.5, 0.0), fill=COL['roof_lit' if west_lit else 'roof_dark'])
+                d.polygon(box(b['x'], b['z'], w, l, b['yaw'], 0.0, 0.5), fill=COL['roof_dark' if west_lit else 'roof_lit'])
+                q = box(b['x'], b['z'], w, l, b['yaw']); d.line(q + q[:1], fill=COL['roof_edge'], width=ew, joint='curve')
+                r0, r1 = box(b['x'], b['z'], w, l, b['yaw'], 0.0, 0.0)[0], box(b['x'], b['z'], w, l, b['yaw'], 0.0, 0.0)[2]
+                d.line([r0, r1], fill=COL['roof_edge'], width=max(1, ew // 2))
+        elif b['kind'] == 'well':
+            cx, cy = P(b['x'], b['z']); r = 1.2 * K
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K)))
+            d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill='#4a4038' if CURSED else COL['water'])
+    for b in plan['buildings']:
+        if b['kind'] == 'sails':                                          # the windmill's sails: a cross before the tower's face
+            fx, fz = math.sin(b['yaw']), math.cos(b['yaw']); hx, hz = b['x'] + fx * b['out'], b['z'] + fz * b['out']; r = b['span'] / 2
+            for wdt, colour in ((1.5, COL['sail_edge']), (1.0, COL['sail'])):      # (seen from above, sails that turn before a wall are a bar along it)
+                stroke(d, [(hx - fz * r, hz + fx * r), (hx + fz * r, hz - fx * r)], wdt, colour)
 
-# ---- 6. rocks, bushes, trees
-for kind, x, z, scale, *_ in plan.get('rocks', []):
-    if not inside(x, z): continue
-    cx, cy = P(x, z); r = 0.8 * scale * K
-    d.ellipse([cx - r, cy - r * 0.8, cx + r, cy + r * 0.8], fill=COL['rock'], outline=COL['rock_edge'], width=max(1, int(0.15 * K)))
-for kind, x, z, scale, *_ in sorted(plants, key=lambda p: (p[0] != 'bush', p[2])):
-    dark, lit = COL['tree'][kind]; r = COL['tree_r'][kind] * scale * K; cx, cy = P(x, z)
-    edge = tuple(int(v * 0.72) for v in rgb(dark))
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=dark, outline=edge, width=max(1, int(0.14 * K)))
-    d.ellipse([cx - r * 0.72, cy - r * 0.72, cx + r * 0.25, cy + r * 0.25], fill=lit)      # the light on its crown, from the north-west
-if WEST:                                                              # the fringe's dead trees (bare twigs), its ruins (floors with no roof) and its old well
-    for kind, x, z, scale, *_ in dead:
-        r = COL['tree_r'][kind] * scale * 0.85
-        for a in np.arange(0.3, 6.2, 2 * math.pi / 5): stroke(d, [(x, z), (x + r * math.cos(a), z + r * math.sin(a))], 0.45, '#5b4636')
-    for q in FR['ruins']:
-        a = q['r'] * 0.62; d.line([P(q['x'] - a, q['z'] - a), P(q['x'] + a, q['z'] - a), P(q['x'] + a, q['z'] + a), P(q['x'] - a, q['z'] + a * 0.2)], fill='#8d8270', width=max(1, int(0.45 * K)), joint='curve')
-    cx, cy = P(FR['well']['x'], FR['well']['z']); r = 1.2 * K
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K))); d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill='#4a4038')
-for b in plan['buildings']:
-    if b['kind'] == 'tree':                                           # the great tree
-        dark, lit = COL['tree']['oak']; r = 2.6 * b.get('scale', 2) * K; cx, cy = P(b['x'], b['z'])
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=dark, outline=tuple(int(v * 0.72) for v in rgb(dark)), width=max(1, int(0.2 * K)))
-        d.ellipse([cx - r * 0.75, cy - r * 0.75, cx + r * 0.2, cy + r * 0.2], fill=lit)
+    # ---- 6. rocks, bushes, trees
+    for kind, x, z, scale, *_ in plan.get('rocks', []):
+        if not inside(x, z): continue
+        cx, cy = P(x, z); r = 0.8 * scale * K
+        d.ellipse([cx - r, cy - r * 0.8, cx + r, cy + r * 0.8], fill=COL['rock'], outline=COL['rock_edge'], width=max(1, int(0.15 * K)))
+    for kind, x, z, scale, *_ in sorted(plants, key=lambda p: (p[0] != 'bush', p[2])):
+        dark, lit = COL['tree'][kind]; r = COL['tree_r'][kind] * scale * K; cx, cy = P(x, z)
+        edge = tuple(int(v * 0.72) for v in rgb(dark))
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=dark, outline=edge, width=max(1, int(0.14 * K)))
+        d.ellipse([cx - r * 0.72, cy - r * 0.72, cx + r * 0.25, cy + r * 0.25], fill=lit)      # the light on its crown, from the north-west
+    if WEST:                                                              # the fringe's dead trees (bare twigs), its ruins (floors with no roof) and its old well
+        for kind, x, z, scale, *_ in dead:
+            r = COL['tree_r'][kind] * scale * 0.85
+            for a in np.arange(0.3, 6.2, 2 * math.pi / 5): stroke(d, [(x, z), (x + r * math.cos(a), z + r * math.sin(a))], 0.45, '#5b4636')
+        for q in FR['ruins']:
+            a = q['r'] * 0.62; d.line([P(q['x'] - a, q['z'] - a), P(q['x'] + a, q['z'] - a), P(q['x'] + a, q['z'] + a), P(q['x'] - a, q['z'] + a * 0.2)], fill='#8d8270', width=max(1, int(0.45 * K)), joint='curve')
+        cx, cy = P(FR['well']['x'], FR['well']['z']); r = 1.2 * K
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K))); d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill='#4a4038')
+    for b in plan['buildings']:
+        if b['kind'] == 'tree' and CURSED:                                # the great tree, dead
+            r = 2.6 * b.get('scale', 2) * 0.85
+            for a in np.arange(0.3, 6.2, 2 * math.pi / 7): stroke(d, [(b['x'], b['z']), (b['x'] + r * math.cos(a), b['z'] + r * math.sin(a))], 0.7, '#5b4636')
+        elif b['kind'] == 'tree':                                         # the great tree
+            dark, lit = COL['tree']['oak']; r = 2.6 * b.get('scale', 2) * K; cx, cy = P(b['x'], b['z'])
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=dark, outline=tuple(int(v * 0.72) for v in rgb(dark)), width=max(1, int(0.2 * K)))
+            d.ellipse([cx - r * 0.75, cy - r * 0.75, cx + r * 0.2, cy + r * 0.2], fill=lit)
 
-OUT.mkdir(parents=True, exist_ok=True)
-final = canvas.convert('RGB').resize((W, Hh), Image.LANCZOS)
-final.save(OUT / f'{NAME}.webp', quality=88, method=6)
-(OUT / f'{NAME}.json').write_text(json.dumps({'file': f'{NAME}.webp', 'x0': X0, 'z0': Z0, 'x1': X1, 'z1': Z1, 'width': W, 'height': Hh, 'play': PLAYS[0], **({'more': PLAYS[1:]} if WEST else {})}) + '\n')
-print(f"{NAME}.webp: {W} x {Hh} px, {X1 - X0:.0f} x {Z1 - Z0:.0f} m ({PPM} px to a metre), {(OUT / f'{NAME}.webp').stat().st_size // 1024} kB; "
-      f"{len(plan['brooks'])} stretches of water, {len(ways)} ways, {sum(b['kind'] == 'house' for b in plan['buildings'])} houses, {len(plants)} trees and bushes")
+    OUT.mkdir(parents=True, exist_ok=True)
+    final = canvas.convert('RGB').resize((W, Hh), Image.LANCZOS)
+    final.save(OUT / f'{NAME}.webp', quality=88, method=6)
+    (OUT / f'{NAME}.json').write_text(json.dumps({'file': f'{NAME}.webp', 'x0': X0, 'z0': Z0, 'x1': X1, 'z1': Z1, 'width': W, 'height': Hh, 'play': PLAYS[0], **({'more': PLAYS[1:]} if WEST else {})}) + '\n')
+    print(f"{NAME}.webp: {W} x {Hh} px, {X1 - X0:.0f} x {Z1 - Z0:.0f} m ({PPM} px to a metre), {(OUT / f'{NAME}.webp').stat().st_size // 1024} kB; "
+          f"{len(plan['brooks'])} stretches of water, {len(ways)} ways, {sum(b['kind'] == 'house' for b in plan['buildings'])} houses, {len(plants)} trees and bushes")
+
+
+for CURSED in (False, True): paint(CURSED)

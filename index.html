@@ -96,8 +96,8 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=54",
-  "./west-fringe.js": "./west-fringe.js?v=5",
+  "./hill-village-level.js": "./hill-village-level.js?v=55",
+  "./west-fringe.js": "./west-fringe.js?v=6",
   "./village-kit.js": "./village-kit.js?v=bridge3",
   "./map-rim.js": "./map-rim.js?v=4",
   "./path-brush.js": "./path-brush.js?v=1",
@@ -106,7 +106,7 @@
   "./foliage-editor.js": "./foliage-editor.js?v=2",
   "./foliage-edits.js": "./foliage-edits.js?v=4",
   "./place-edits.js": "./place-edits.js?v=2",
-  "./land-water.js": "./land-water.js?v=7",
+  "./land-water.js": "./land-water.js?v=8",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
   "./rock-editor.js": "./rock-editor.js?v=3",
@@ -123,7 +123,7 @@
   "./characters.js": "./characters.js?v=1",
   "./character-picker.js": "./character-picker.js?v=1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
-  "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1",
+  "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1murk1",
   "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
   "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
@@ -133,7 +133,7 @@
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1t4",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1t4",
   "./teleport-menu.js": "./teleport-menu.js?v=16",
-  "./game-map.js": "./game-map.js?v=1",
+  "./game-map.js": "./game-map.js?v=2",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
@@ -148,7 +148,8 @@
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
   "./character-shadow.js": "./character-shadow.js?v=shadow2swap1",
   "./curse.js": "./curse.js?v=1",
-  "./drought.js": "./drought.js?v=1"
+  "./drought.js": "./drought.js?v=2",
+  "./dark-mist.js": "./dark-mist.js?v=2"
 } }
 </script>
 </head>
@@ -532,7 +533,7 @@ const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((scene
 // ---- 🗺 the map: a small round one at the top that follows her; a tap opens the whole map, where a pin takes her to a place
 let gameMap = null;
 if (typeof level.map === 'string') try {                    // (only a level that offers its map's picture: on the others level.map is the ground's colour map, not a file)
-  gameMap = await createGameMap({ url: level.map, player, places: teleportPlaces(level) });
+  gameMap = await createGameMap({ url: level.map, player, places: teleportPlaces(level), overlay: level.mapOverlay });
   document.getElementById('credit').style.maxWidth = 'calc(50vw - 70px)';     // (the small map sits in the middle of the top edge)
 } catch (err) { console.warn('[map]', err); }
 // ---- 🌀 warp stones: by one, a button offers the others (the rim of the abyss and the stones down it)
