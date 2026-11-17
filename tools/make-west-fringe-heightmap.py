@@ -378,7 +378,8 @@ for w in ways:
 # ------------------------------------------------------------------ 8. the dead woods, and the places to go to
 # Every tree here is dead (the game takes its leaves off: anime-tree.js, dryness). They stand off the ways, the dry beds,
 # the holes, the floors and the steep ground: thick on the dead hill, a few by the ruins and along the road's shelf, thin
-# over the low ground, and hardly any on the lowest step by the farm (that one is to be farmed).
+# over the low ground, and hardly any on the lowest step by the farm (that one is to be farmed). The steeper the ground a
+# tree stands on, the smaller it is: a great stem's foot is metres across, and on a slope half of it would hang in the air.
 tr = np.random.default_rng(2207)
 wayQ = np.vstack([densify(w['points'], 1.0)[0] for w in ways])
 dryQ = np.vstack([densify(pts, 1.0)[0] for _, _, pts in REACHES] + [densify(GULLY, 1.0)[0]])
@@ -399,7 +400,8 @@ def wood(mask, want, apart, tries=6000):
         x, z = float(WX[js[k], is_[k]]), float(WZ[js[k], is_[k]])
         if any(math.hypot(x - t[1], z - t[2]) < apart for t in dead_trees): continue
         kind, _, a, b = KINDS[int(np.searchsorted(np.cumsum([q[1] for q in KINDS]), tr.random()))]
-        dead_trees.append([kind, round(x, 2), round(z, 2), round(float(tr.uniform(a, b)), 2), round(float(tr.uniform(0, 360)), 1), 700 + len(dead_trees)])
+        size = float(tr.uniform(a, b)) * (1 - 0.4 * float(sm(0.18, 0.42, SL[js[k], is_[k]])))
+        dead_trees.append([kind, round(x, 2), round(z, 2), round(size, 2), round(float(tr.uniform(0, 360)), 1), 700 + len(dead_trees)])
         n += 1
         if n >= want: break
     return n

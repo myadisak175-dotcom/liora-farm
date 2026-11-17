@@ -228,11 +228,16 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   //   cover    (ferns and tall tufts of grass: ground-cover.js)  kind, x, z, scale, which colony
   const BEDS = ['pink', 'yellow', 'blue'];
   const turnOf = d => d * Math.PI / 180, dice = (i, k) => mulberry32(seed * 131 + i * 977 + k)();      // (a row from an older plan has no turn or shape: the dice give it one, the same every time)
+  // A tree on a slope stands on the lowest ground under its foot (r: its stem's radius where it meets the ground), so no part
+  // of the foot hangs in the air: the side toward the hill goes into the hill, as a tree's does. Never deeper than 0.6 of r:
+  // beside a cliff's edge it stays as it is. (For now only with the west fringe on, ?west=1, whose hill has big trees on
+  // steep ground: a trial. Without it every tree stands at the height of the ground under its middle, as before.)
+  const footY = (x, z, r, y) => { let low = y; for (let k = 0; k < 8; k++) low = Math.min(low, H(x + Math.cos(k * 0.7854) * r, z + Math.sin(k * 0.7854) * r)); return Math.max(low, y - 0.6 * r); };
   const plantOf = ([kind, x, z, scale, fifth, , turn, shape], i) => {
     const rotY = turn == null ? dice(i, 1) * 6.28 : turnOf(turn), sd = shape == null ? 100 + i : shape, y = H(x, z);
     if (kind === 'flower') return { kind: 'flower', x, y, z, rad: scale, bed: BEDS.includes(fifth) ? fifth : BEDS[i % 3], seed: sd };
     if (kind === 'bush') return { kind: 'bush', type: 'round', seed: sd, x, y, z, rotY, scale };      // (plain green: the flowers are the beds' and the clumps')
-    return { kind: 'tree', type: kind, seed: sd, detail: typeof fifth === 'number' ? fifth : 0.8, x, y: y - 0.05, z, rotY, scale };
+    return { kind: 'tree', type: kind, seed: sd, detail: typeof fifth === 'number' ? fifth : 0.8, x, y: (west ? footY(x, z, (TRUNK[kind] || 0.4) * 1.35 * scale, y) : y) - 0.05, z, rotY, scale };
   };
   const clumpOf = ([x, z, scale, bloom, , turn, shape], i) => ({ kind: 'bush', type: 'clump', bloom, seed: shape == null ? 300 + i : shape, x, y: H(x, z), z, rotY: turn == null ? dice(i, 3) * 6.28 : turnOf(turn), scale });
   const entriesOf = rows => {                                               // -> { plants: trees, bushes and clumps; beds; cover }
