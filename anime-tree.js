@@ -127,16 +127,36 @@ export const animeBrush = () => BRUSH.value > 0.5;
 
 // DRYNESS: how dead the plants are, read from a picture laid over the land (the curse's mask: the red of each pixel, 0
 // alive .. 1 dead), by where each leaf hangs. Drier: fewer leaves (each card's own number decides which go first, so a
-// crown thins all over, not from one side), a little smaller, and in the dry tones; dead (1): no leaves at all, the wood
-// bare. The falling leaves go brown with it, and a dead plant drops none. As it starts the picture is one black pixel:
-// every plant alive, nothing changed.
+// crown thins all over, not from one side), a little smaller, and in the dry tones; dead (1): no leaves at all. The
+// falling leaves go brown with it, and a dead plant drops none. As it starts the picture is one black pixel: every plant
+// alive, nothing changed.
 //   setAnimeDryness(texture, rect)   rect: [x0, z0, width, depth] of the land the picture covers (metres, world)
+// A dead plant is not its limbs alone (a few thick sticks, far smaller than the crown was): it keeps its crown's shape, in
+// bare twigs. TWIGS: a share of the leaf cards (TWIG.share: the ones with the lowest numbers, so a far crown keeps them
+// all) carry a spray of twigs once their leaves are gone. Such a card is laid from inside its puff out to where its
+// leaves were (rooted TWIG.root puff radii back toward the puff's middle, reaching TWIG.past of a card beyond: the crown
+// keeps its size), turned so its spray points out of the crown as the eye sees it, in the dead wood's tones. A small
+// puff has few cards: more of them carry twigs (up to TWIG.small times the share, for puffs under half a metre); a far
+// crown keeps TWIG.far of its sprays (a haze of twigs: fewer do). They come a card at a time as the plant
+// dries (each at its own dryness, between TWIG.from and TWIG.to), so a dying crown is brown leaves and bare twigs
+// together. No card is added for it: the twigs are drawn on cards that would have shrunk to nothing, and their picture
+// lies in the alpha of the leaves' own mask (twigAlpha). And the wood itself goes pale and grey, its bark peeling
+// (stylized-nature's bark shader, DRYNESS, by the same picture).
 const DRY_TONES = ['#3a2f24', '#5a4632', '#7d6243', '#a08356', '#c4aa78'];      // deep shade -> sunlit: dead leaves, ochre to grey-brown
+const TWIG_TONES = ['#4a4541', '#69635b', '#8b857a'];                            // shade -> sunlit: bare twigs, a dry grey
+const DEAD_WOOD = ['#b4aea2', '#918b81', '#69645f', '#cdc6b6', '#45413e'];       // dead wood: light, body, shade; bare wood where the bark has peeled; cracks
+const TWIG = { share: 0.12, small: 1.5, far: 0.6, root: 0.86, past: 0.62, wide: 0.82, foot: 0.36, least: 1.7, from: 0.12, to: 0.72 };
 const DRY = {
   uDryMap: { value: (() => { const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); t.needsUpdate = true; return t; })() },
   uDryRect: { value: new THREE.Vector4(0, 0, 1, 1) },                 // x0, z0, 1 / width, 1 / depth
   uD0: { value: rgb(DRY_TONES[0]) }, uD1: { value: rgb(DRY_TONES[1]) }, uD2: { value: rgb(DRY_TONES[2]) }, uD3: { value: rgb(DRY_TONES[3]) }, uD4: { value: rgb(DRY_TONES[4]) },
+  uT0: { value: rgb(TWIG_TONES[0]) }, uT1: { value: rgb(TWIG_TONES[1]) }, uT2: { value: rgb(TWIG_TONES[2]) },
+  uTwigLay: { value: new THREE.Vector4(TWIG.root, TWIG.past, TWIG.wide, TWIG.least) },
+  uTwigAt: { value: new THREE.Vector4(TWIG.from, TWIG.to, TWIG.foot, TWIG.far) },
 };
+// the same picture and the dead wood's tones, for the bark (stylized-nature's bark shader, DRYNESS)
+const DRY_WOOD = { uDryMap: DRY.uDryMap, uDryRect: DRY.uDryRect, uDW0: { value: rgb(DEAD_WOOD[0]) }, uDW1: { value: rgb(DEAD_WOOD[1]) },
+  uDW2: { value: rgb(DEAD_WOOD[2]) }, uDW3: { value: rgb(DEAD_WOOD[3]) }, uDW4: { value: rgb(DEAD_WOOD[4]) }, uDW5: { value: rgb(TWIG_TONES[1]) } };
 export function setAnimeDryness(texture, [x0, z0, w, d]) {
   DRY.uDryMap.value = texture;
   DRY.uDryRect.value.set(x0, z0, 1 / w, 1 / d);
@@ -299,6 +319,52 @@ function floretPath(g, R, turn) {                                   // five roun
   }
   g.moveTo(R * 0.3, 0); g.arc(0, 0, R * 0.3, 0, Math.PI * 2);
 }
+// TWIGS (see DRYNESS): what a leaf card shows once its leaves are gone. Four sprays of bare twigs, one to a cell as the
+// leaves' clusters are, each rooted at the middle of its cell's lower edge and reaching up to fill the cell. A spray is
+// a twig: a leader that runs on in short straight lengths, turning a little at each joint and thinner as it goes, and
+// at each joint a side twig, to one side and then the other, the lower ones longest, each a twig of the same kind (one
+// upright, two leaning, one forked low into two leaders). -> its coverage, a byte a pixel, rows from the top
+let twigs = null;
+function twigAlpha(S, C) {
+  if (twigs) return twigs;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const g = cv.getContext('2d'), rng = mulberry32(8123), UP = -Math.PI / 2, THIN = 2.6;
+  g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+  g.strokeStyle = '#fff'; g.lineCap = 'round';
+  for (let v = 0; v < 4; v++) {
+    const ox = (v % 2) * C, oy = Math.floor(v / 2) * C, pad = 12;
+    // (a spray keeps inside a wedge, TWIG.foot of the cell wide at its foot and all of it at its top: its card is cut to
+    // that wedge, so no card is drawn where no spray has a twig)
+    const inside = (x, y) => y > pad && y < C - 2 && Math.abs(x - C / 2) < (TWIG.foot + (1 - TWIG.foot) * (1 - y / C)) * C / 2 - pad;
+    g.save(); g.beginPath(); g.rect(ox + 5, oy, C - 10, C); g.clip();
+    const twig = (x, y, dir, len, w, depth, side) => {
+      const joints = depth === 0 ? 9 : depth === 3 ? 2 : Math.max(depth === 1 ? 3 : 2, Math.round(len / (C * 0.072))), step = len / joints;
+      for (let j = 0; j < joints; j++) {
+        const ww = Math.max(w * (1 - 0.62 * j / joints), THIN);
+        let a = dir + (rng() - 0.5) * (depth === 0 ? 0.22 : 0.34), ex = x + Math.cos(a) * step, ey = y + Math.sin(a) * step;
+        if (!inside(ex, ey)) {                                                // it would leave its cell: more upright and shorter, or it ends here
+          a += (UP - a) * 0.6; ex = x + Math.cos(a) * step * 0.7; ey = y + Math.sin(a) * step * 0.7;
+          if (!inside(ex, ey)) return;
+        }
+        g.lineWidth = ww;
+        g.beginPath(); g.moveTo(ox + x, oy + y); g.lineTo(ox + ex, oy + ey); g.stroke();
+        x = ex; y = ey; dir = a;
+        if (depth < 3 && j < joints - 1 && (depth > 0 || j > 0)) {            // (the leader's first length is bare: it lies inside the crown)
+          const reach = (len - step * (j + 1)) * range(rng, 0.7, 1) * (depth === 0 ? 0.86 : 0.8);
+          if (reach > C * 0.03) twig(x, y, dir + side * range(rng, 0.52, 0.9), reach, Math.max(ww * 0.66, THIN), depth + 1, -side);
+          side = -side;
+        }
+      }
+    };
+    if (v === 3) { twig(C / 2, C - 2, UP - 0.34, C * 0.9, 9, 0, -1); twig(C / 2, C - 2, UP + 0.3, C * 0.84, 8, 0, 1); }
+    else twig(C / 2, C - 2, UP + [0, -0.16, 0.2][v], C * 0.95, 10, 0, v === 1 ? 1 : -1);
+    g.restore();
+  }
+  const px = g.getImageData(0, 0, S, S).data, out = new Uint8Array(S * S);
+  for (let i = 0; i < out.length; i++) out[i] = px[i * 4];
+  return (twigs = out);
+}
 function clusterMask(style) {
   if (masks[style]) return masks[style];
   const S = 1024, C = 512, rng = mulberry32(style === 'needle' ? 977 : style === 'blossom' ? 733 : style === 'brush' ? 5309 : 4211);
@@ -384,7 +450,18 @@ function clusterMask(style) {
     }
     g.restore();
   }
-  const t = new THREE.CanvasTexture(cv);
+  let t;
+  if (style === 'leaf' || style === 'brush') {
+    // the leafy plants' mask carries the bare twigs too (see TWIGS), in its alpha: the picture's own bytes, rows from the
+    // bottom as a texture's are, so nothing multiplies the leaves' colours by it
+    const px = g.getImageData(0, 0, S, S).data, tw = twigAlpha(S, C), data = new Uint8Array(S * S * 4);
+    for (let y = 0; y < S; y++) for (let x = 0, from = y * S * 4, to = (S - 1 - y) * S * 4; x < S; x++, from += 4, to += 4) {
+      data[to] = px[from]; data[to + 1] = px[from + 1]; data[to + 2] = px[from + 2]; data[to + 3] = tw[y * S + x];
+    }
+    t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
+    t.generateMipmaps = true;
+    t.needsUpdate = true;
+  } else t = new THREE.CanvasTexture(cv);
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
   t.anisotropy = 4;
@@ -410,6 +487,10 @@ attribute vec4 iBase;     // plant foot + scale; (0,0,0,1) for a single plant
 attribute float iHid;     // from which eighths of the compass this card lies behind others: a bit each (hiddenFrom)
 uniform sampler2D uDryMap;  // DRYNESS: how dead the land is here (red), over the rect uDryRect
 uniform vec4 uDryRect;
+uniform vec2 uTwigs;      // TWIGS: x: the share of the cards that carry bare twigs once their leaves are gone (0: none do), y: times as many in a small puff
+uniform vec4 uTwigLay;    // x: how far back toward its puff's middle a spray is rooted (puff radii), y: how far past the card's middle it reaches (cards: to where its leaves reached), z: its width / its length, w: how far back at the least (cards)
+uniform vec4 uTwigAt;     // x, y: between which two drynesses the sprays come, each at its own; z: how wide a spray's card is at its foot (of its width); w: the share of the sprays a far crown keeps
+varying float vTwig;
 varying vec2 vUv;
 varying vec3 vCard;
 varying vec4 vPuff;
@@ -451,15 +532,42 @@ void main() {
   vec2 dryUv = (wc.xz - uDryRect.xy) * uDryRect.zw;
   float dry = texture2D(uDryMap, clamp(dryUv, 0.0, 1.0)).r;
   float leafLeft = pow(clamp(1.0 - dry * 1.03, 0.0, 1.0), 1.5);      // (a crown is many leaves deep: thinned on a curve, so half dry looks half bare)
-  lod *= mix(1.0, 1.0 - smoothstep(leafLeft - 0.05, leafLeft, iShade.w), step(0.002, dry)) * (1.0 - 0.18 * dry);
+  float leafOn = mix(1.0, 1.0 - smoothstep(leafLeft - 0.05, leafLeft, iShade.w), step(0.002, dry)) * (1.0 - 0.18 * dry);
+  // TWIGS: a card that carries a spray loses its leaves at its own dryness, and its twigs stand bare from then on
+  float bareAt = mix(uTwigAt.x, uTwigAt.y, fract(iShade.w * 61.7));
+  float twigShare = uTwigs.x * mix(uTwigs.y, 1.0, smoothstep(0.45, 1.0, iPuff.w)) * mix(1.0, uTwigAt.w, few);
+  float carries = step(iShade.w, twigShare) * step(0.002, dry);
+  float twig = carries * step(bareAt, dry);
+  leafOn *= 1.0 - carries * smoothstep(bareAt - 0.06, bareAt, dry);
   vDry = dry;
+  vTwig = twig;
   float cs = cos(iCard.x), sn = sin(iCard.x);
-  vec2 hs = vec2(iCard.z, 1.0 / iCard.z) * iCard.y * lod;
-  vec2 q = position.xy * hs * sc;
-  mv.xy += vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);          // camera-facing card
+  vec2 hs = vec2(iCard.z, 1.0 / iCard.z) * iCard.y * lod * leafOn;
+  vec2 cell = uv;
+  if (twig > 0.5) {
+    // laid from inside the puff out past where the leaves were, its foot toward the puff's middle: the card's own up is
+    // the way out of the puff as the eye sees it. A spray that points at the eye, or away, is a short narrow tuft
+    vec3 outM = c - pc;
+    float far3 = length(outM);
+    vec3 way = mat3(modelViewMatrix) * (outM / max(far3, 1e-4));      // (its length: the plant's own size on screen)
+    float back = min(far3 * 0.94, max(iPuff.w * uTwigLay.x, iCard.y * uTwigLay.w)), whole = back + iCard.y * uTwigLay.y;      // (a small puff's spray: still long enough to reach back among the others)
+    float flat2 = length(way.xy), sz = length(way);
+    vec2 dir = flat2 > 1e-4 * sz ? way.xy / flat2 : vec2(0.0, 1.0);
+    float grown = smoothstep(bareAt, bareAt + 0.06, dry) * (1.0 - smoothstep(twigShare * 0.8, twigShare, iShade.w) * few);      // (the ones a far crown is about to lose: smaller first)
+    float across = flat2 / max(sz, 1e-5);                                  // (1: it lies across the view; 0: it points at the eye, a small tuft that keeps still as she moves)
+    float tall = max(flat2, 0.3 * sz) * whole * grown, wide = sz * whole * uTwigLay.z * grown * mix(1.0, uFarKeep.y, few) * mix(0.55, 1.0, smoothstep(0.2, 0.6, across));
+    mv.xyz += vec3(-way.xy * back + dir * tall * 0.5, way.z * (whole * 0.5 - back));
+    float wedge = mix(uTwigAt.z, 1.0, uv.y);                               // (the card: a wedge, as narrow at its foot as the sprays are drawn)
+    mv.xy += vec2(dir.y, -dir.x) * position.x * wide * wedge + dir * position.y * tall;
+    cs = dir.y; sn = dir.x; hs = vec2(wide, tall);
+    cell.x = 0.5 + (cell.x - 0.5) * wedge * (1.0 - 2.0 * step(0.5, fract(iShade.w * 173.3)));      // (half of them mirrored: eight sprays of four)
+  } else {
+    vec2 q = position.xy * hs * sc;
+    mv.xy += vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);        // camera-facing card
+  }
   vHaze = hazeAt(mv.xyz);
   gl_Position = projectionMatrix * mv;
-  vUv = uv * 0.5 + vec2(mod(iCard.w, 2.0), floor(iCard.w / 2.0)) * 0.5;
+  vUv = cell * 0.5 + vec2(mod(iCard.w, 2.0), floor(iCard.w / 2.0)) * 0.5;
   mat3 mvm = mat3(modelViewMatrix);
   vRight = normalize(vec3(1.0, 0.0, 0.0) * mvm);                   // the screen's right and up, in mesh space
   vUp = normalize(vec3(0.0, 1.0, 0.0) * mvm);
@@ -471,21 +579,36 @@ void main() {
   vShade = iShade;
 }`;
 
+// what a card covers of a pixel, for the colour pass and the depth pass alike: the leaves' outline (the mask's red), or a
+// twig card's spray (its alpha). Twigs are thin: near, their outline as the leaves'; from where a twig is thinner than
+// a pixel, the share of the pixel it covers and a little more (the screen's samples take it: a far crown of twigs is a
+// haze, it neither fades away nor breaks into dots). No branch: the leaves' sums are as they were
+const LEAF_COVER = /* glsl */`
+uniform sampler2D uMask;
+varying vec2 vUv;
+varying float vTwig;
+float cover(vec4 t) {
+  float a = mix(t.r, t.a, vTwig);
+  float w = max(fwidth(a), 1e-3) * 0.75;
+  float perPx = (fwidth(vUv.x) + fwidth(vUv.y)) * 720.0;                 // the mask's pixels to one of the screen's (about)
+  float thin = min(a * 1.8, 1.0) * step(0.14, a);
+  return mix(smoothstep(0.5 - w, 0.5 + w, a), thin, vTwig * smoothstep(1.5, 4.0, perPx));
+}`;
 const LEAF_FS = /* glsl */`
 ${NATURE_HAZEF}
 ${natureInternal.NOISE}
-uniform sampler2D uMask;
+${LEAF_COVER}
 uniform vec3 uC0, uC1, uC2, uC3, uC4;
 uniform vec4 uStep;       // where each flat tone starts
 uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint, uSkyW;
 uniform float uBrush, uBrushW;      // the tones laid in brush strokes (see BRUSH), and how far a stroke moves a tone
 uniform vec3 uD0, uD1, uD2, uD3, uD4;   // DRYNESS: the dead leaves' tones
+uniform vec3 uT0, uT1, uT2;             // TWIGS: bare twigs' tones
 varying float vDry;
 #ifdef BLOSSOM
 uniform sampler2D uCentre;
 uniform vec3 uCentreCol;
 #endif
-varying vec2 vUv;
 varying vec3 vCard;
 varying vec4 vPuff;
 varying vec3 vRight;
@@ -495,10 +618,19 @@ varying vec3 vSun;
 varying vec4 vCN;
 varying vec4 vShade;
 void main() {
-  vec3 t = texture2D(uMask, vUv).rgb;
-  float w = max(fwidth(t.r), 1e-3) * 0.75;
-  float alpha = smoothstep(0.5 - w, 0.5 + w, t.r);
+  vec4 t4 = texture2D(uMask, vUv);
+  vec3 t = t4.rgb;
+  float alpha = cover(t4);
   if (alpha < 0.02) discard;
+  if (vTwig > 0.5) {
+    // a spray of bare twigs: one flat tone to a spray, by how high in the crown it is, how deep among the others, which
+    // way the crown faces the sun there, and its own number: the sprays read one behind another
+    float tv = vShade.x * 0.45 + (dot(normalize(vCN.xyz), vSun) * 0.5 + 0.5) * 0.5 - vShade.y * 0.35 + (fract(vShade.w * 37.0) - 0.5) * 0.3;
+    vec3 tc = mix(uT0, uT1, step(0.34, tv));
+    tc = mix(tc, uT2, step(0.6, tv));
+    gl_FragColor = vec4(mix(tc, uHaze, vHaze), alpha);
+    return;
+  }
   // this leaf's middle, in mesh space: every pixel of one leaf is lit alike
   vec2 lc = t.gb / max(t.r, 0.05);
   vec2 lq = (lc - 0.5) * vRS.zw;
@@ -546,12 +678,9 @@ void main() {
 // the ground and grass behind the crowns are skipped too. ?leafpre=0: as before, one pass.
 const LEAF_PREPASS = !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('leafpre') === '0');
 const LEAF_DEPTH_FS = /* glsl */`
-uniform sampler2D uMask;
-varying vec2 vUv;
+${LEAF_COVER}
 void main() {
-  float a = texture2D(uMask, vUv).r;
-  float w = max(fwidth(a), 1e-3) * 0.75;
-  float alpha = smoothstep(0.5 - w, 0.5 + w, a);
+  float alpha = cover(texture2D(uMask, vUv));
   if (alpha < 0.02) discard;
   gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
 }`;
@@ -646,6 +775,7 @@ function materials(palette, mask = 'leaf') {
     uniforms: {
       ...U, uMask: { value: clusterMask(mask === 'leaf' && BRUSH.value > 0.5 ? 'brush' : mask) },
       uBrush: mask === 'leaf' ? BRUSH : { value: 0 }, uBrushW: { value: W.brush ?? 0.36 },
+      uTwigs: { value: new THREE.Vector2(mask === 'leaf' ? TWIG.share : 0, TWIG.small) },      // (needles and flowers: none; their masks carry no twigs)
       uStep: { value: new THREE.Vector4(...st) },
       uCrownMix: { value: 0.3 }, uLightW: { value: W.light ?? 0.85 }, uHeightW: { value: W.height ?? 0.28 }, uAOW: { value: W.ao ?? 0.5 }, uLeafTint: { value: W.tint ?? 0.08 }, uSkyW: { value: W.sky ?? 0 },
     },
@@ -915,6 +1045,8 @@ function treeParts(type, seed, far = false) {
   const kind = KINDS[type] || KINDS.broadleaf, spec = kind.spec();
   const { trunk, tiers } = growTreeFrame(spec, seed);
   trunk.material.uniforms.uLight = SUN;                             // the bark is lit by the same sun
+  Object.assign(trunk.material.uniforms, DRY_WOOD);                 // and dies by the same picture (DRYNESS)
+  trunk.material.defines = { ...trunk.material.defines, DRYNESS: 1 };
   const plain = {};                                                  // the same wood with fewer sides and rings (MID_WOOD, FAR_WOOD): made when a forest first asks for it
   const trunkAt = step => plain[step] || (plain[step] = growTreeFrame(spec, seed, step === 'far' ? FAR_WOOD : MID_WOOD).trunk.geometry);
   const rng = mulberry32(seed * 131 + 7);

@@ -624,6 +624,11 @@ function barkMaterial(spec) {
       varying vec3 vAx;
       varying float vJoin;
       varying float vCrev;
+      #ifdef DRYNESS
+      uniform sampler2D uDryMap;      // how dead the land is here (red), over the rect uDryRect (anime-tree.js, DRYNESS)
+      uniform vec4 uDryRect;
+      varying float vDry;
+      #endif
       void main() {
         vec3 local = (position - aBase.xyz) / aBase.w;
         vec3 p = position + windOffset(local, objPhase() + aBase.x * 0.37 + aBase.z * 0.23) * aBase.w;
@@ -636,6 +641,9 @@ function barkMaterial(spec) {
         vCrev = aCrev;
         vec4 wp = modelMatrix * vec4(p, 1.0);
         vec4 mv = viewMatrix * wp;
+        #ifdef DRYNESS
+        vDry = texture2D(uDryMap, clamp((wp.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
+        #endif
         // Wood writes its real depth, matching the closed geometry from every viewing direction.
         vHaze = hazeAt(mv.xyz);
         gl_Position = projectionMatrix * mv;
@@ -653,6 +661,10 @@ function barkMaterial(spec) {
       varying vec3 vAx;
       varying float vJoin;
       varying float vCrev;
+      #ifdef DRYNESS
+      uniform vec3 uDW0, uDW1, uDW2, uDW3, uDW4, uDW5;      // dead wood: light, body, shade; bare wood where the bark has peeled; cracks; the thin wood's (the twigs')
+      varying float vDry;
+      #endif
       float noise3(vec3 x) {                                              // noise2 with a third number (NOISE's exact arithmetic: the same on every chip)
         vec3 i = floor(x), f = fract(x);
         f = f * f * (3.0 - 2.0 * f);
@@ -693,7 +705,14 @@ function barkMaterial(spec) {
         col = mix(col, uA, smoothstep(0.58, 0.64, t));
         col = mix(col, uH, smoothstep(0.72, 0.77, t) * smoothstep(0.0, 0.5, lit) * 0.85);   // dry-brush light on the sunny side
         float crack = smoothstep(0.78, 0.86, st.y);
-        if (uBirch > 0.5) {
+        // (DRYNESS: wood that is wholly dead is painted over below: what only the living bark shows is not worked out for it)
+        #ifdef DRYNESS
+        float deadK = smoothstep(0.08, 0.7, vDry);
+        bool living = deadK < 0.999;
+        #else
+        const bool living = true;
+        #endif
+        if (living && uBirch > 0.5) {
           // a birch: white bark painted as one form. The side to the sun is white and the side away from it a cool shade,
           // the edge between them ragged with the long strokes (no blotches of grey over the white); the thin wood away
           // in the crown turns dark; fine dark lenticels lie across the trunk, each a thin lens of its own length; here
@@ -727,7 +746,7 @@ function barkMaterial(spec) {
           col = mix(col, mix(uMarkCol * 1.5, uMarkCol * 0.95, smoothstep(0.35, 0.65, st.y)), foot * 0.92 * onTrunk);
           col = mix(col, mix(uTwig * 0.72, uTwig, smoothstep(0.0, 0.4, lit)), smoothstep(0.3, 1.2, away));
           crack = 0.0;
-        } else if (uFurrow > 0.0) {
+        } else if (living && uFurrow > 0.0) {
           // furrowed bark: painted as one form first (light to the sun, dark away from it, the edge between ragged with the
           // long strokes: a round trunk, not patches), then the bark's own pattern over it: long plates running with the
           // wood (each a touch lighter or darker than the next), a dark furrow between them, and a thin edge of light where
@@ -748,7 +767,7 @@ function barkMaterial(spec) {
         }
         col = mix(col, uC * 0.75, crack * 0.4);                                                  // thin dark strokes in the grooves
         col = mix(col, uC * 0.85, clamp(vCrev, 0.0, 1.0) * 0.4);                                 // hollows and crotches sit in soft shade (smooth, never blotchy)
-        if (uFoot > 0.0) {                                            // the foot stands in the grass: its colour creeps up the roots, ragged
+        if (living && uFoot > 0.0) {                                  // the foot stands in the grass: its colour creeps up the roots, ragged
           float f = 1.0 - smoothstep(0.05, 0.75, vOP.y + (noise3(vOP * 4.0) - 0.5) * 0.55);
           col = mix(col, mix(uFootCol * 0.8, uFootCol, smoothstep(0.0, 0.5, lit)), f * uFoot);
         }
@@ -764,10 +783,36 @@ function barkMaterial(spec) {
           col = mix(col, uH, smoothstep(0.06, 0.09, fr) * (1.0 - smoothstep(0.13, 0.2, fr)) * 0.45);
           col = mix(col, uRingCol, 1.0 - smoothstep(0.025, 0.06, fr));
         }
-        if (uMoss > 0.0) {                                            // moss on what faces up (roots, limb tops) and low on the trunk
+        if (living && uMoss > 0.0) {                                  // moss on what faces up (roots, limb tops) and low on the trunk
           float m = (normalize(vN).y * 0.75 + (noise3(vOP * 3.4) - 0.5) * 1.2 + (noise3(vOP * 9.0) - 0.5) * 0.25 - 0.66) * uMoss;   // tops of roots and limbs, rarely the upright bark
           col = mix(col, mix(uMossB, uMossA, smoothstep(0.1, 0.45, lit)), smoothstep(0.0, 0.06, m));   // patches, lit like the wood
         }
+        #ifdef DRYNESS
+        if (deadK > 0.0) {
+          // dead wood (anime-tree.js, DRYNESS): whatever the tree was, its wood has weathered to a dry pale grey, painted
+          // as one form (light to the sun, shade away from it, the edge ragged with the long strokes). Here and there the
+          // bark has peeled: long patches that run with the wood, the bare wood under them paler, the bark's broken
+          // edge a thin shadow along one side; fine dry cracks run lengthways. The thin wood out in the crown darkens to
+          // the twigs' own grey, so limb runs into twig. No moss, no green at the foot: all of it is over the living bark
+          float td = lit * 0.5 + 0.5 + (st.x - 0.5) * 0.6;
+          td -= smoothstep(uShadeY - 0.3, uShadeY + 0.6, vOP.y) * uShadeK * 0.4;      // (a bare crown shades its limbs less)
+          vec3 dc = mix(uDW2, uDW1, smoothstep(0.3, 0.36, td));
+          dc = mix(dc, uDW0, smoothstep(0.56, 0.62, td));
+          vec3 ring = vOP - vCtr, along = vCtr * uStroke;
+          float thick = length(ring);
+          vec3 rd = ring / max(thick, 1e-4);                                           // (by the direction out from the centre-line, as the furrows are: thick wood and thin alike)
+          float peel = noise3(rd * 1.5 + along * 0.5 + 21.0) * 0.8 + st.y * 0.2;      // (its edge ragged with the strokes' own grooves)
+          float fine = 1.0 - smoothstep(0.012, 0.04, fwidth(peel));                    // (too far off to tell: the edge's shadow is left out)
+          float bare = smoothstep(0.6, 0.612, peel);
+          float lip = smoothstep(0.572, 0.6, peel) * (1.0 - bare);
+          dc = mix(dc, uDW2 * 0.9, lip * 0.5 * fine);
+          dc = mix(dc, uDW3 * (0.86 + 0.14 * smoothstep(0.42, 0.52, td)), bare * 0.92);
+          dc = mix(dc, uDW4, smoothstep(0.82, 0.9, st.y) * 0.4);
+          dc = mix(dc, uDW2 * 0.85, clamp(vCrev, 0.0, 1.0) * 0.45);
+          dc = mix(dc, uDW5 * (0.9 + 0.2 * smoothstep(0.4, 0.55, td)), 1.0 - smoothstep(0.02, 0.075, thick));
+          col = mix(col, dc, deadK);
+        }
+        #endif
         gl_FragColor = vec4(uDebug > 0.5 ? vec3(0.0, 0.0, 1.0) : mix(col, uHaze, vHaze), 1.0);
       }`,
   });
