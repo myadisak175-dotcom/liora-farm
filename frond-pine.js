@@ -31,12 +31,13 @@
         near): fewer skirts of fewer, wider fronds on plainer cards, under half the triangles.
    setFrondPineSun(vec3)   world direction toward the sun (as setAnimeSun)
    setFrondPineBrush(on)   the fronds' tones laid in long brush strokes over the whole tree (on, as it starts; off: as they were): see BRUSH
+   in dying land (stylized-nature's setDryness) a pine goes rust-brown, then grey and sparse, and drops fronds: see DEAD_PINE
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
-import { ANIME_PALETTES } from './anime-tree.js';
+import { ANIME_PALETTES, dyingWood } from './anime-tree.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -211,9 +212,18 @@ varying vec4 vShade;
 varying vec3 vSun;
 varying float vOut;
 varying vec3 vRoot;
+uniform sampler2D uDryMap;  // DRYNESS: how dead the land is here (red), over the rect uDryRect (stylized-nature's setDryness)
+uniform vec4 uDryRect;
+varying float vDry;
 void main() {
+  // DRYNESS: a dying pine goes rust-brown, a dead one grey, its needles thin and a share of its fronds fall (each at a
+  // dryness of its own)
+  vec3 foot = (modelMatrix * vec4(iBase.xyz, 1.0)).xyz;
+  float dry = texture2D(uDryMap, clamp((foot.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
+  vDry = dry;
+  if (dry > mix(0.55, 1.4, fract(iShade.w * 7.7 + 0.13))) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   float s = position.x + 0.5, u = position.y * 2.0;               // along the frond 0..1, across -1..1
-  float L = iFrond.y, W = iFrond.z, e = iFrond.w;
+  float L = iFrond.y, W = iFrond.z, e = iFrond.w - 0.25 * dry;      // (dead: the fronds hang lower)
   vec3 dir = vec3(cos(iFrond.x), 0.0, sin(iFrond.x));
   vec3 side = vec3(sin(iFrond.x), 0.0, -cos(iFrond.x));            // (dir, side, up) turn the right way: the card's front is its top
   // the rib reaches out and droops ever more toward the tip; the card curves away from the rib's own top to both edges
@@ -250,10 +260,13 @@ varying vec4 vShade;
 varying vec3 vSun;
 varying float vOut;
 varying vec3 vRoot;
+varying float vDry;
+uniform vec3 uRust0, uRust1, uRust2, uRust3, uRust4, uGrey0, uGrey1, uGrey2, uGrey3, uGrey4;      // DRYNESS: a dying pine's five tones, and a dead one's
 void main() {
   vec3 t = texture2D(uMask, vUv, -0.5).rgb;                       // (a little sharper than the mip would be: crisp stroke points)
   float w = max(fwidth(t.r), 1e-3) * 0.75 * mix(1.0, uSoft, uBrush);
-  float alpha = smoothstep(0.5 - w, 0.5 + w, t.r);
+  float cut = 0.5 + 0.22 * smoothstep(0.3, 1.0, vDry);            // (dead: thinner strokes, the needles gone sparse)
+  float alpha = smoothstep(cut - w, cut + w, t.r);
   if (alpha < 0.02) discard;
   vec3 k = texture2D(uTone, vUv, -0.5).rgb;
   vec2 m = t.gb / max(t.r, 0.05);                                 // this stroke's middle: every pixel of one stroke is lit alike
@@ -281,14 +294,25 @@ void main() {
     float stroke = noise2(vec2(sq.x * 0.7, sq.y * 2.1)) * 0.65 + noise2(vec2(sq.x * 1.7 + 5.0, sq.y * 4.8)) * 0.35;
     v += (stroke - 0.5) * uBrushW - own.x * uPop * 0.6 * (1.0 - step(0.25, abs(own.x)));     // (the accents keep their own)
   }
-  vec3 col = uC0;                                                  // the game pine's five flat tones
-  col = mix(col, uC1, step(uStep.x, v));
-  col = mix(col, uC2, step(uStep.y, v));
-  col = mix(col, uC3, step(uStep.z, v));
-  col = mix(col, uC4, step(uStep.w, v));
+  vec3 c0 = uC0, c1 = uC1, c2 = uC2, c3 = uC3, c4 = uC4;          // the game pine's five flat tones
+  if (vDry > 0.002) {
+    float g = smoothstep(0.6, 0.95, vDry), k = smoothstep(0.08, 0.5, vDry);
+    c0 = mix(c0, mix(uRust0, uGrey0, g), k); c1 = mix(c1, mix(uRust1, uGrey1, g), k); c2 = mix(c2, mix(uRust2, uGrey2, g), k);
+    c3 = mix(c3, mix(uRust3, uGrey3, g), k); c4 = mix(c4, mix(uRust4, uGrey4, g), k);
+  }
+  vec3 col = c0;
+  col = mix(col, c1, step(uStep.x, v));
+  col = mix(col, c2, step(uStep.y, v));
+  col = mix(col, c3, step(uStep.z, v));
+  col = mix(col, c4, step(uStep.w, v));
   gl_FragColor = vec4(mix(col, uHaze, vHaze), alpha);
 }`;
 
+// DRYNESS (stylized-nature's setDryness): a dying pine's needles go rust-brown, a dead one's a weathered grey (shade -> sunlit)
+const DEAD_PINE = {
+  rust: ['#3a2519', '#5b3a24', '#7f5532', '#a27445', '#c29a62'],
+  grey: ['#3a3631', '#56504a', '#756d62', '#958c7d', '#b2a996'],
+};
 let material = null;
 function frondMaterial() {
   if (material) return material;
@@ -300,6 +324,7 @@ function frondMaterial() {
       uStep: { value: new THREE.Vector4(...P.steps) },
       uRound: K.round, uJitter: K.jitter, uPop: K.pop, uConeMix: K.coneMix, uConeUp: K.coneUp, uLightW: K.lightW, uSkyW: K.skyW,
       uHeightW: K.heightW, uAOW: K.aoW, uAoSoft: K.aoSoft, uUnder: K.under, uBias: K.bias, uBrush: BRUSH, uBrushW: K.brush, uSoft: K.soft,
+      ...Object.fromEntries(DEAD_PINE.rust.map((c, i) => ['uRust' + i, { value: rgb(c) }])), ...Object.fromEntries(DEAD_PINE.grey.map((c, i) => ['uGrey' + i, { value: rgb(c) }])),
     },
     vertexShader: FROND_VS, fragmentShader: FROND_FS, alphaToCoverage: true, side: THREE.DoubleSide,
   });
@@ -435,6 +460,7 @@ function trunkOf(seed, far = false) {
   const { trunk } = growTreeFrame(slim, seed, far && FAR_WOOD ? FAR_WOOD : null);
   trunk.material.uniforms.uLight = SUN;
   trunk.material.uniforms.uShadeY.value = C.first - 0.3;
+  dyingWood(trunk.material);                                        // (in dead land: the dead wood's grey, as the other trees')
   return trunk;
 }
 

@@ -26,6 +26,9 @@
 // West of the village lies the west fringe, the neglected countryside where the game begins: its own heightmap, joined on at
 // the land's west edge as it is read (west-fringe.js). Here it is only one wider land with a second part she may walk in.
 //
+// ?curse=1: the land as the curse leaves it (drought.js): dead all round and the village nearly so, and the water drawn down,
+// every stretch lower and every fall a thin one. The same land and plan: only how dead it is and how high the water stands.
+//
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
 import * as THREE from 'three';
@@ -53,6 +56,7 @@ import { foliageKey, applyFoliage } from './foliage-edits.js';
 import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 import { createMapRim } from './map-rim.js';
 import { joinWestFringe } from './west-fringe.js';
+import { droughtWater, cursedLand } from './drought.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -212,8 +216,16 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
   const colliders = [], cameraTrunks = [], crowns = [], shade = [], bare = [], press = [], casters = [], plants = [];
 
+  // under the curse (?curse=1) the land is dead all round and the village nearly so, and the water is drawn down: every
+  // stretch stands lower (drought.js), the falls thin. Its beds and banks are the land's: only how high the water stands changes
+  const cursed = new URLSearchParams(location.search).has('curse');
+  const drought = cursed ? droughtWater({ stretches: P.brooks, heightAt: H, names: (P.waters || []).map(w => w.id), split: P.split || [], falls: P.falls || [] }) : null;
+  const lower = drought ? drought.lower : [];
+  const standing = P.brooks.map((rows, k) => lower[k] ? rows.map(([x, z, l, hw]) => [x, z, l - lower[k], hw]) : rows);
+  const deadAt = cursed ? cursedLand({ plan: P, rect: [X0, Z0, X1 - X0, Z1 - Z0], west }).at : west.deadAt;
+
   // the water: where it lies and how high it stands (land-water.js)
-  const brookAt = waterLookup(P.brooks, { x0: X0, z0: Z0, x1: X1, z1: Z1 }).at;
+  const brookAt = waterLookup(standing, { x0: X0, z0: Z0, x1: X1, z1: Z1 }).at;
   // how high a spot stands above the water beside it (and a quarter of how far out from the water's edge it is), or 10 with no
   // water near: the land's sand and the ways' wet earth both go by it, so they agree on where the ground is wet
   const bankAt = (x, z, y = H(x, z)) => { const b = brookAt(x, z); return b ? y - b.level + b.d * 0.25 : 10; };
@@ -235,7 +247,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       colliders.push([e.x, e.z, rad + 0.22]); cameraTrunks.push([e.x, e.z, rad + 0.12, y, y + TREE_H[e.type] * e.scale]); bare.push([e.x, e.z, rad * 1.5]);
       for (const [cy, cr] of CROWN[e.type] || []) crowns.push([e.x, y + cy * e.scale, e.z, cr * e.scale]);
     }
-    const dead = e.type === 'pine' ? 0 : west.deadAt(e.x, e.z);                // (a dead tree's bare crown: no pool of shade under it, and a thin shadow)
+    const dead = deadAt(e.x, e.z);                                             // (a dead tree's bare crown: no pool of shade under it, and a thin shadow)
     shade.push([e.x, e.z, 4 * e.scale, 0.4 * (1 - dead)]); casters.push([e.x, e.z, TREE_H[e.type] * e.scale, 2.4 * e.scale, 0.7 * (1 - 0.5 * dead)]);
   };
   // The foliage: the plan's rows made into what the forests are given. Used as the level is built, and again by the foliage
@@ -704,7 +716,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // sheet lies only where the ground holds it, the fall hangs from the sheet's own edge and its foam is where it lands
   // (from its third shelf each stream goes into the pit's mist: the abyss's long fall, abyss-scene.js)
   const deepFall = f => createAbyssFalls({ falls: [f], centre: [f.x + Math.sin(f.yaw), f.z + Math.cos(f.yaw)], bottom: f.top - 42, optics: null, foamTexture });
-  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length, deep: P.deep || [], deepFall, split: P.split || [] });
+  const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: P.falls.length, deep: P.deep || [], deepFall, split: P.split || [], lower });
   water.group.userData.dispose = water.dispose;
   group.add(water.group);
   // the pit's clouds, on its shelves and over its eye (the abyss's: their heights are the first pit's, so all are moved by shift)
@@ -881,7 +893,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
-    name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
+    name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report },
     map: url(M.map),
     horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
@@ -929,7 +941,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       droplets.update(renderer);
       if (mill) mill.update(dt);
       if (camera) { rocks.userData.update(camera); wet.userData.update(camera); }      // (each rock as finely as its distance calls for)
-      wheel.rotation.x += dt * 0.5;
+      wheel.rotation.x += dt * (cursed ? 0.08 : 0.5);                       // (in the drought it barely turns)
       if (scene && camera) {
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         camWorld.setFromMatrixPosition(camera.matrixWorld);

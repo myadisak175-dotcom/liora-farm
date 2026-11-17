@@ -157,6 +157,8 @@ const DRY = {
 const DRY_WOOD = { uDryMap: DRY.uDryMap, uDryRect: DRY.uDryRect, uDW0: { value: rgb(DEAD_WOOD[0]) }, uDW1: { value: rgb(DEAD_WOOD[1]) },
   uDW2: { value: rgb(DEAD_WOOD[2]) }, uDW3: { value: rgb(DEAD_WOOD[3]) }, uDW4: { value: rgb(DEAD_WOOD[4]) }, uDW5: { value: rgb(TWIG_TONES[1]) } };
 export function setAnimeDryness(texture, rect) { setDryness(texture, rect); }      // (as it was called before the grass died by it too)
+// a trunk's bark (stylized-nature's growTreeFrame) made to die by the same picture, in the same dead wood (the pines' too)
+export function dyingWood(material) { Object.assign(material.uniforms, DRY_WOOD); material.defines = { ...material.defines, DRYNESS: 1 }; return material; }
 
 // Every tree's crown is made of boughs, not of balls: each limb's tip carries a canopy (a puff wider than it is tall), beside
 // it one or two smaller ones a little lower, and sprays hanging round its lower outer edge (taller than they are wide), so
@@ -1041,8 +1043,7 @@ function treeParts(type, seed, far = false) {
   const kind = KINDS[type] || KINDS.broadleaf, spec = kind.spec();
   const { trunk, tiers } = growTreeFrame(spec, seed);
   trunk.material.uniforms.uLight = SUN;                             // the bark is lit by the same sun
-  Object.assign(trunk.material.uniforms, DRY_WOOD);                 // and dies by the same picture (DRYNESS)
-  trunk.material.defines = { ...trunk.material.defines, DRYNESS: 1 };
+  dyingWood(trunk.material);                                        // and dies by the same picture (DRYNESS)
   const plain = {};                                                  // the same wood with fewer sides and rings (MID_WOOD, FAR_WOOD): made when a forest first asks for it
   const trunkAt = step => plain[step] || (plain[step] = growTreeFrame(spec, seed, step === 'far' ? FAR_WOOD : MID_WOOD).trunk.geometry);
   const rng = mulberry32(seed * 131 + 7);

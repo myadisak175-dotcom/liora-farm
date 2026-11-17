@@ -23,10 +23,15 @@
 //                 was said to be). A level prints it; a map is not right until it is clean
 //
 //   const lookup = waterLookup(stretches, { x0, z0, x1, z1 });        // lookup.at(x, z): the water there ({ d: metres past its edge, level }) or null
-//   const water = createLandWater({ stretches, heightAt, lookup, material, foamTexture, cells, expect, deep, deepFall, split });
+//   const water = createLandWater({ stretches, heightAt, lookup, material, foamTexture, cells, expect, deep, deepFall, split, lower });
 //   scene.add(water.group);      every frame: water.update(renderer, frustum, cameraPosition)
 //   water.surfaces (to hide while the water's own pictures are taken), water.small (the spray, billows and mist at the falls' feet:
 //   left out of the mirror picture too), water.stretches (level, sphere, near(point)), water.report
+//   lower: metres each stretch stands under the level its rows say (a drought: drought.js). Its bed and its edges are the
+//   land's and stay as they are; the water is cut to its new shore and goes over its lip only where it still reaches it,
+//   so a stretch drawn down spills in a narrower fall or in none. The lookup is to be made from the stretches as they stand
+//   (their levels lowered), so the falls land on the water as it is.
+//   lipLanes(rows, heightAt), lipRuns(lanes, level, parted): how the lip is found, for a level that chooses how low to stand
 //
 // (Before this each level laid a strip or a sheet from the line alone, ended it on a straight line, and stood a ready-made
 // fall at a spot given in numbers: where a cliff's edge was not square to the stream the sheet hung out over it, the fall
@@ -58,58 +63,96 @@ export function waterLookup(stretches, { x0, z0, x1, z1 }, step = 0.5) {
   };
 }
 
-export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null, split = [] }) {
+// a stretch's end, lane by lane across it (LANE apart, from one side of its last row to the other): how far down each lane
+// the ground still holds (lim: metres past the last row, Infinity: it never falls away there) and how high the ground
+// stands at that sill (sill: its height, or null). Worked out from the land and the stretch's own bed: the same however
+// low the water stands (past: how low the ground must be to count as gone over an edge)
+export function lipLanes(rows, H) {
+  const n = rows.length, lv = rows[0][2];
+  const tanAt = i => { const a = rows[Math.max(0, i - 1)], b = rows[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
+  // how deep its bed is (nine rows in ten are no deeper), and so how low the ground must be to count as past an edge. The rows
+  // at its end that already lie out over the drop are not its bed: a short stretch (one step of a cascade, five to ten rows)
+  // has one or two of them in its deepest tenth, and its lip was then looked for metres down the cliff's face, so its water
+  // stood out over the drop a metre or more above the rock
+  const dep = rows.map(r => lv - H(r[0], r[1])), med = dep.slice().sort((a, b) => a - b)[Math.floor(n / 2)];
+  let held = n; while (held > 1 && dep[held - 1] > med + PAST) held--;
+  const depths = dep.slice(0, held).sort((a, b) => a - b), bed = Math.max(0.3, depths[Math.floor(depths.length * 0.9)]), past = lv - bed - PAST;
+  const B = rows[n - 1], tB = tanAt(n - 1), nB = [-tB[1], tB[0]], lanes = [];
+  for (let u = -(B[3] + 0.5); u <= B[3] + 0.5 + 1e-6; u += LANE) {
+    let lim = Infinity;
+    for (let s = -UP; s <= DOWN; s += 0.1) if (H(B[0] + nB[0] * u + tB[0] * s, B[1] + nB[1] * u + tB[1] * s) < past) { lim = s - 0.3; break; }      // (a step back from where it falls away: the sheet ends on the sill, not over the cliff's face)
+    if (lim <= -UP + 0.05) lim = Infinity;                                 // (air all the way up this lane: not an edge across the water's end; the sheet is drawn in from the side instead)
+    const sill = lim < Infinity ? H(B[0] + nB[0] * u + tB[0] * (lim - 0.1), B[1] + nB[1] * u + tB[1] * (lim - 0.1)) : null;
+    lanes.push({ u, lim, sill });
+  }
+  return { lanes, past };
+}
+// where water standing at this level goes over the stretch's end: the run of lanes it reaches the edge in, about the middle
+// (and, where rocks part the water, every other such run). Runs narrower than 0.8 m carry no fall. [{ a, b }] by lane,
+// left to right; none: it spills nowhere
+export function lipRuns(lanes, level, parted = false) {
+  const wet = lanes.map(l => l.lim < Infinity && l.sill < level + 0.02), runs = [];
+  let mid = -1, bestU = Infinity;
+  lanes.forEach((l, i) => { if (wet[i] && Math.abs(l.u) < bestU) { bestU = Math.abs(l.u); mid = i; } });
+  if (mid < 0) return runs;
+  let a = mid, b = mid;
+  while (a > 0 && wet[a - 1]) a--;
+  while (b < lanes.length - 1 && wet[b + 1]) b++;
+  if ((b - a) * LANE < 0.8) return runs;
+  runs.push({ a, b });
+  if (parted) for (let i = 0; i < lanes.length; i++) {                     // the other strands: each run of wet lanes either side of the rocks
+    if (!wet[i] || (i >= a && i <= b)) continue;
+    let j = i; while (j < lanes.length - 1 && wet[j + 1]) j++;
+    if ((j - i) * LANE >= 0.8) runs.push({ a: i, b: j });
+    i = j;
+  }
+  return runs.sort((p, q) => p.a - q.a);
+}
+
+// the line a run of the lip goes over by (each lane's edge, eased: the ground is a grid of half metres), its middle (O), the
+// way out from it (square to it, the way the water runs: out, yaw), the line as the fall takes it (local: across, along,
+// about O, turned by yaw) and how wide it is
+export function lipLine(rows, lanes, { a, b }) {
+  const n = rows.length, B = rows[n - 1], P = rows[Math.max(0, n - 2)], tl = Math.hypot(B[0] - P[0], B[1] - P[1]) || 1, tB = [(B[0] - P[0]) / tl, (B[1] - P[1]) / tl], nB = [-tB[1], tB[0]];
+  const line = [];
+  for (let i = a; i <= b; i++) {
+    const lim = (lanes[Math.max(a, i - 1)].lim + lanes[i].lim * 2 + lanes[Math.min(b, i + 1)].lim) / 4;
+    line.push([B[0] + nB[0] * lanes[i].u + tB[0] * lim, B[1] + nB[1] * lanes[i].u + tB[1] * lim]);
+  }
+  const p0 = line[0], p1 = line[line.length - 1], O = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+  let ox = -(p1[1] - p0[1]), oz = p1[0] - p0[0]; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+  if (ox * tB[0] + oz * tB[1] < 0) { ox = -ox; oz = -oz; }
+  const yaw = Math.atan2(ox, oz), c = Math.cos(yaw), s = Math.sin(yaw);
+  const local = line.map(([x, z]) => [(x - O[0]) * c - (z - O[1]) * s, (x - O[0]) * s + (z - O[1]) * c]).sort((p, q) => p[0] - q[0]);
+  let width = 0; for (let i = 1; i < local.length; i++) width += Math.hypot(local[i][0] - local[i - 1][0], local[i][1] - local[i - 1][1]);
+  return { O, out: [ox, oz], yaw, local, width };
+}
+// where a fall from that line lands: how far out it leaps (forward), and the spot its foot is (the foam's middle)
+export function fallFoot({ O, out }, top, bottom) {
+  const forward = Math.min(2.2, 0.6 + (top - bottom) * 0.12);
+  return { forward, foot: [O[0] + out[0] * (forward + 0.35), O[1] + out[1] * (forward + 0.35)] };
+}
+
+export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null, split = [], lower = [] }) {
   const group = new THREE.Group(); group.name = 'landWater';
   const surfaces = [], falls = [], info = [], owned = [], small = [];
   const report = { falls: [], hanging: 0, open: 0, short: 0, where: [], noLip: [], ok: true };      // (where: which stretches the open and short edges are on)
+  const levelOf = k => stretches[k][0][2] - (lower[k] || 0);               // (lower: metres a stretch stands under its plan's level; its bed is the same)
 
   for (const [k, rows] of stretches.entries()) {
-    const n = rows.length, lv = rows[0][2], F = [0], tan = [];
+    const n = rows.length, lv = levelOf(k), F = [0], tan = [];
     for (let i = 1; i < n; i++) F.push(F[i - 1] + Math.hypot(rows[i][0] - rows[i - 1][0], rows[i][1] - rows[i - 1][1]));
     for (let i = 0; i < n; i++) { const a = rows[Math.max(0, i - 1)], b = rows[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; tan.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]); }
-    // how deep its bed is (nine rows in ten are no deeper), and so how low the ground must be to count as past an edge. The rows
-    // at its end that already lie out over the drop are not its bed: a short stretch (one step of a cascade, five to ten rows)
-    // has one or two of them in its deepest tenth, and its lip was then looked for metres down the cliff's face, so its water
-    // stood out over the drop a metre or more above the rock
-    const dep = rows.map(r => lv - H(r[0], r[1])), med = dep.slice().sort((a, b) => a - b)[Math.floor(n / 2)];
-    let held = n; while (held > 1 && dep[held - 1] > med + PAST) held--;
-    const depths = dep.slice(0, held).sort((a, b) => a - b), bed = Math.max(0.3, depths[Math.floor(depths.length * 0.9)]), past = lv - bed - PAST;
     const A = rows[0], B = rows[n - 1], tA = tan[0], tB = tan[n - 1], nB = [-tB[1], tB[0]];
 
-    // ---- the lip: lane by lane across its end, how far down the lane the ground holds (lim), and whether water reaches it there
-    const lanes = [];
-    for (let u = -(B[3] + 0.5); u <= B[3] + 0.5 + 1e-6; u += LANE) {
-      let lim = Infinity;
-      for (let s = -UP; s <= DOWN; s += 0.1) if (H(B[0] + nB[0] * u + tB[0] * s, B[1] + nB[1] * u + tB[1] * s) < past) { lim = s - 0.3; break; }      // (a step back from where it falls away: the sheet ends on the sill, not over the cliff's face)
-      if (lim <= -UP + 0.05) lim = Infinity;                               // (air all the way up this lane: not an edge across the water's end; the sheet is drawn in from the side instead)
-      const wet = lim < Infinity && H(B[0] + nB[0] * u + tB[0] * (lim - 0.1), B[1] + nB[1] * u + tB[1] * (lim - 0.1)) < lv + 0.02;
-      lanes.push({ u, lim, wet });
-    }
-    // the lip: the run of lanes water reaches the edge in, about the middle (and, where rocks part the water, every other
-    // such run: lips)
-    let lip = null; const parted = split.includes(k), lips = [];
+    // ---- the lip: lane by lane across its end, how far down the lane the ground holds (lim), and whether water reaches it there;
+    // the runs of lanes it goes over by (lips), each run's line eased (the ground is a grid of half metres)
+    const { lanes, past } = lipLanes(rows, H), parted = split.includes(k), lips = lipRuns(lanes, lv, parted), lines = lips.map(r => lipLine(rows, lanes, r));
     {
-      let mid = -1, bestU = Infinity;
-      lanes.forEach((l, i) => { if (l.wet && Math.abs(l.u) < bestU) { bestU = Math.abs(l.u); mid = i; } });
-      if (mid >= 0) {
-        let a = mid, b = mid;
-        while (a > 0 && lanes[a - 1].wet) a--;
-        while (b < lanes.length - 1 && lanes[b + 1].wet) b++;
-        if ((b - a) * LANE >= 0.8) {
-          const lim = lanes.map(l => l.lim);
-          for (let i = a; i <= b; i++) lanes[i].lim = (lim[Math.max(a, i - 1)] + lim[i] * 2 + lim[Math.min(b, i + 1)]) / 4;      // (its line eased: the ground is a grid of half metres)
-          lip = { a, b }; lips.push(lip);
-          if (parted) for (let i = 0; i < lanes.length; i++) {             // the other strands: each run of wet lanes either side of the rocks
-            if (!lanes[i].wet || (i >= a && i <= b)) continue;
-            let j = i; while (j < lanes.length - 1 && lanes[j + 1].wet) j++;
-            if ((j - i) * LANE >= 0.8) { for (let q = i; q <= j; q++) lanes[q].lim = (lim[Math.max(i, q - 1)] + lim[q] * 2 + lim[Math.min(j, q + 1)]) / 4; lips.push({ a: i, b: j }); }
-            i = j;
-          }
-          lips.sort((p, q) => p.a - q.a);
-        }
-      }
+      const lim = lanes.map(l => l.lim);
+      for (const { a, b } of lips) for (let i = a; i <= b; i++) lanes[i].lim = (lim[Math.max(a, i - 1)] + lim[i] * 2 + lim[Math.min(b, i + 1)]) / 4;
       const drop = lanes.some(l => l.lim < Infinity);
-      if (!lip && (deep.includes(k) || (drop && lookup.at(B[0] + tB[0] * 4, B[1] + tB[1] * 4)))) report.noLip.push(k);      // (it should fall here: into the deep, or onto the water just ahead)
+      if (!lips.length && (deep.includes(k) || (drop && lookup.at(B[0] + tB[0] * 4, B[1] + tB[1] * 4)))) report.noLip.push(k);      // (it should fall here: into the deep, or onto the water just ahead)
       if (!drop) for (const l of lanes) l.lim = 0;                         // no edge here (the water runs out of the map, or into more water): it ends on a line across its last row
       else for (const l of lanes) if (l.lim === Infinity) l.lim = 0.6;
     }
@@ -183,33 +226,26 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
     g.setIndex(idx);
     const m = new THREE.Mesh(g, material); m.renderOrder = 1; m.name = 'water';
     group.add(m); surfaces.push(m); owned.push(g);
-    const box = new THREE.Box3(); for (const q of rows) box.expandByPoint(new THREE.Vector3(q[0], q[2], q[1]));
+    const box = new THREE.Box3(); for (const q of rows) box.expandByPoint(new THREE.Vector3(q[0], lv, q[1]));
     info.push({ level: lv, sphere: box.getBoundingSphere(new THREE.Sphere()), near: c => { let d = Infinity; for (let i = 0; i < n; i += 2) d = Math.min(d, Math.hypot(c.x - rows[i][0], c.y - lv, c.z - rows[i][1]) - rows[i][3]); return d; } });
 
     // ---- the fall: hung from the lip, landing on the water below (a parted lip: one from each of its runs, told of as one fall)
     let told = null;
-    for (const lip of lips) {
-      const line = [];
-      for (let i = lip.a; i <= lip.b; i++) line.push([B[0] + nB[0] * lanes[i].u + tB[0] * lanes[i].lim, B[1] + nB[1] * lanes[i].u + tB[1] * lanes[i].lim]);
-      const p0 = line[0], p1 = line[line.length - 1], O = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
-      let ox = -(p1[1] - p0[1]), oz = p1[0] - p0[0]; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;      // out from the lip: square to it, the way the water runs
-      if (ox * tB[0] + oz * tB[1] < 0) { ox = -ox; oz = -oz; }
-      const yaw = Math.atan2(ox, oz), c = Math.cos(yaw), s = Math.sin(yaw);
-      const local = line.map(([x, z]) => [(x - O[0]) * c - (z - O[1]) * s, (x - O[0]) * s + (z - O[1]) * c]).sort((p, q) => p[0] - q[0]);
-      let width = 0; for (let i = 1; i < local.length; i++) width += Math.hypot(local[i][0] - local[i - 1][0], local[i][1] - local[i - 1][1]);
+    for (const L of lines) {
+      const { O, yaw, local, width } = L, [ox, oz] = L.out;
       if (deep.includes(k)) {                                              // over a pit: the level's own long fall, from the middle of the lip
         if (deepFall) { const far = deepFall({ x: O[0], z: O[1], top: lv, width, yaw }); group.add(far.group); falls.push({ fall: far, deep: true, ball: new THREE.Sphere(new THREE.Vector3(O[0], lv - 20, O[1]), 26 + width) }); }
         report.falls.push({ from: k, x: +O[0].toFixed(1), z: +O[1].toFixed(1), top: lv, width: +width.toFixed(1), deep: true });
         continue;
       }
       // the water below: where the fall will land, or a little further out
-      let low = null, guess = stretches[k + 1] ? stretches[k + 1][0][2] : lv - 6;
+      let low = null, guess = stretches[k + 1] ? levelOf(k + 1) : lv - 6;
       for (let out = 1.0; out <= 9 && low === null; out += 0.5) { const w = lookup.at(O[0] + ox * out, O[1] + oz * out); if (w && w.level < lv - 0.5 && w.d < 0) low = w.level; }
-      const bottom = low === null ? guess : low, forward = Math.min(2.2, 0.6 + (lv - bottom) * 0.12), foot = [O[0] + ox * (forward + 0.35), O[1] + oz * (forward + 0.35)];
+      const bottom = low === null ? guess : low, { forward, foot } = fallFoot(L, lv, bottom);
       const under = lookup.at(foot[0], foot[1]), onWater = !!under && Math.abs(under.level - bottom) < 0.05 && H(foot[0], foot[1]) < bottom;
       // how wide the water it lands on is there: the foam at its foot reaches no further than that water's edge
       let lowHalf = width * 1.5, nearRow = Infinity;
-      for (const rows2 of stretches) if (Math.abs(rows2[0][2] - bottom) < 0.05) for (const q of rows2) { const d = Math.hypot(q[0] - foot[0], q[1] - foot[1]); if (d < nearRow) { nearRow = d; lowHalf = q[3]; } }
+      for (const [k2, rows2] of stretches.entries()) if (Math.abs(levelOf(k2) - bottom) < 0.05) for (const q of rows2) { const d = Math.hypot(q[0] - foot[0], q[1] - foot[1]); if (d < nearRow) { nearRow = d; lowHalf = q[3]; } }
       const fall = createWaterfall({ x: 0, z: 0, lip: local, top: lv, bottom: bottom - 0.21, forward, churn: Math.min(width * 1.5, Math.max(1.4, lowHalf * 0.95)),      // (its sheet of foam lies 0.27 m over the bottom it is given: just on the water)
         scale: Math.min(1, Math.max(0.6, width / 9)), foamTexture, cells });
       fall.group.position.set(O[0], 0, O[1]); fall.group.rotation.y = yaw;

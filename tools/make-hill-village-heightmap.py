@@ -697,13 +697,13 @@ for i_, up in enumerate(tiers):
                       'yaw': round(float(math.atan2(dirn[0], dirn[1])), 3), 'deep': 1, 'from': i_, 'out': 0})
         print(f"  fall {up['name']} -> the mist, from {up['level']:.1f} m")
 for f_ in falls:                                                      # under each fall the cliff is sheer (water wears it back), so the sheet falls free: as wide as the water, out to its foot
-    if f_['deep']: continue
-    low = tiers[tiers[f_['from']]['next']]
+    if f_['deep']: continue                                           # (and the floor there is the pool the fall has dug: the deeper the higher it falls from, see below)
+    low = tiers[tiers[f_['from']]['next']]; D_ = 0.4 + min(1.4, 0.075 * (f_['top'] - f_['bottom']))
     dx_, dz_ = math.sin(f_['yaw']), math.cos(f_['yaw']); rx, rz = WX - f_['x'], WZ - f_['z']
     along = rx * dx_ + rz * dz_; side = rx * dz_ - rz * dx_; across = np.abs(side)
     w = np.clip((along - 0.25) / 0.5, 0, 1) * np.clip((f_['out'] + 1.2 - along) / 1.0, 0, 1) * np.clip((f_['width'] / 2 + 0.3 - across) / 0.6, 0, 1)
     for u_, w_, _ in f_.get('rocks', []): w = w * sm(w_ / 2 - 0.1, w_ / 2 + 0.5, np.abs(side - u_))      # (under a rock in its lip the cliff is left as it is: a rib between two strands)
-    H = np.where(w > 0, np.minimum(H, H * (1 - w) + (low['level'] - 0.4) * w), H)
+    H = np.where(w > 0, np.minimum(H, H * (1 - w) + (low['level'] - D_) * w), H)
 # The stretches that run a way of their own (not a cascade's step or a shelf of the pit: those are pools too short to have a
 # shape) are made as water makes a bed, not pressed in to a rule (water_shape.py): the line drawn for each wanders a little;
 # it is wide and shallow on a riffle and narrow and deep in a pool, the pools at its bends; in a bend its deepest lies
@@ -839,7 +839,25 @@ for k_, tr in enumerate(tiers):
     rows = np.vstack([P[:-1:4], P[-1:]]); hw = np.concatenate([A[:-1:4, 0], A[-1:, 0]])
     brooks.append([[round(float(p[0]), 2), round(float(p[1]), 2), round(lvl, 2), round(float(h_), 2)] for p, h_ in zip(rows, hw)])
 H = flat.reshape(NZ, NX); water_d = water_d.reshape(NZ, NX)
-ROCKS_IN_LIPS = []                                                    # the boulders that stand on them (put with the valley's rocks, in 9)
+# Under each fall the water has dug itself a pool, the deeper the higher it falls from (0.4 m under a low step, nearly two
+# under the great fall): the ground already under the water below is taken down about where the fall lands (the game's own
+# reckoning, land-water.js: it leaps out 0.6 m and 0.12 m more for each metre it drops, 2.2 at most), as wide as the fall
+# and a little more, and never steeper than the water would leave it from the shore in. So a fall lands in water deep
+# enough to take it, even when the water stands lower (a drought: drought.js)
+for f_ in falls:
+    if f_['deep']: continue
+    lv_ = tiers[tiers[f_['from']]['next']]['level']; drop_ = f_['top'] - f_['bottom']
+    D_ = 0.4 + min(1.4, 0.075 * drop_); fwd_ = min(2.2, 0.6 + 0.12 * drop_) + 0.35; reach_ = fwd_ + 3.0 + f_['width'] / 2 + 2.0
+    i0, i1 = np.searchsorted(WX[0], f_['x'] - reach_), np.searchsorted(WX[0], f_['x'] + reach_)
+    j0, j1 = np.searchsorted(WZ[:, 0], f_['z'] - reach_), np.searchsorted(WZ[:, 0], f_['z'] + reach_)
+    sub = H[j0:j1, i0:i1]; dx_, dz_ = math.sin(f_['yaw']), math.cos(f_['yaw']); rx, rz = WX[j0:j1, i0:i1] - f_['x'], WZ[j0:j1, i0:i1] - f_['z']
+    along = rx * dx_ + rz * dz_; across = np.abs(rx * dz_ - rz * dx_)
+    bowl = sm(fwd_ + 2.4, fwd_ + 0.7, along) * sm(-0.3, 0.7, along) * sm(f_['width'] / 2 + 1.2, f_['width'] / 2 - 0.2, across)
+    wet_ = sub < lv_ - 0.02
+    from_shore = ndi.distance_transform_edt(wet_) * MPP               # metres in from the nearest dry ground (its shore is not moved)
+    H[j0:j1, i0:i1] = np.where(wet_, np.minimum(sub, lv_ - np.minimum(D_ * bowl, 1.5 * np.maximum(0, from_shore - 0.3))), sub)
+    print(f"  pool under the fall {tiers[f_['from']]['name']}: {D_:.2f} m deep at most")
+ROCKS_IN_LIPS = []                                                  # the boulders that stand on them (put with the valley's rocks, in 9)
 for f_ in falls:                                                      # the rocks in a parted fall's lip: each a hump standing out of the water, rounded upstream, from above the sill out to the lip
     dx_, dz_ = math.sin(f_['yaw']), math.cos(f_['yaw']); rx, rz = WX - f_['x'], WZ - f_['z']
     along = rx * dx_ + rz * dz_; side = rx * dz_ - rz * dx_

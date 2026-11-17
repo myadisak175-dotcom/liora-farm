@@ -18,6 +18,7 @@
         allow(x, z) -> false where nothing may grow (a way, water); avoid: [[x, z, r], ...] round spots kept clear
         (one draw call: stems, heads and spires are instances of one quad)
    setFlowerSun(vec3)      world direction toward the sun: the heads' light follows it live
+   In dying land (stylized-nature's setDryness) they fade brown and hang their heads, one by one gone; in dead land, none.
    every frame: stylized-nature's update(dt) (time + wind are shared with the other plants)
    ========================================================================== */
 import * as THREE from 'three';
@@ -182,9 +183,17 @@ varying vec3 vA;
 varying vec3 vB;
 varying vec3 vC;
 varying vec3 vK;          // x: kind, y: height along (0 foot .. 1 tip), z: light
+uniform sampler2D uDryMap;  // DRYNESS: how dead the land is here (red), over the rect uDryRect (stylized-nature's setDryness)
+uniform vec4 uDryRect;
+varying float vDry;
 void main() {
   vec3 base = (modelMatrix * vec4(iBase, 1.0)).xyz;
-  vec3 axis = iTip.xyz;
+  // DRYNESS: in dying land a flower fades to a dry brown and hangs its head; each is gone at a dryness of its own, and in
+  // dead land none is left (its stem and head share one phase, so they go together)
+  float dry = texture2D(uDryMap, clamp((base.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
+  vDry = dry;
+  if (dry > mix(0.15, 0.8, fract(iPar.z * 7.31 + 0.19))) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+  vec3 axis = iTip.xyz * vec3(1.0 + 0.3 * dry, 1.0 - 0.35 * dry, 1.0 + 0.3 * dry);
   float len = length(axis);
   float ph = iPar.z + base.x * 0.3 + base.z * 0.2;
   vec3 sway = vec3(sin(uTime * 1.7 + ph), 0.0, cos(uTime * 1.3 + ph)) * 0.08 * len * uWind;
@@ -228,6 +237,7 @@ varying vec3 vA;
 varying vec3 vB;
 varying vec3 vC;
 varying vec3 vK;
+varying float vDry;
 void main() {
   vec4 m = texture2D(uMask, vUv);
   float w = max(fwidth(m.r), 1e-3) * 0.75;
@@ -242,6 +252,7 @@ void main() {
     col = mix(col, mix(vA, vec3(1.0), 0.45), step(0.88, t));
     if (m.b > m.r * 0.5) col = vC * (0.8 + 0.2 * step(0.5, tone));
   }
+  if (vDry > 0.002) col = mix(col, dot(col, vec3(0.3, 0.6, 0.1)) * vec3(1.08, 0.96, 0.78) * 0.85, smoothstep(0.02, 0.5, vDry));      // DRYNESS: faded to a dry brown
   gl_FragColor = vec4(mix(col, uHaze, vHaze), alpha);
 }`;
 let material = null;

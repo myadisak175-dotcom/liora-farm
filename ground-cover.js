@@ -10,6 +10,7 @@
               toward the tips; most carry a few pale plumes on straight stalks above the blades
    Three flat tones from the light on the ribbon's upper face, the picture's own tone and how far along it is.
    They sway in the wind, and part round whoever walks through them (stylized-nature's setWalker): nothing here is solid.
+   In dead land (stylized-nature's setDryness) the ferns wilt brown and many go, the grass tufts are straw: see DRY_TONES.
 
    createGroundCover([{ kind: 'fern' | 'tuft', x, y, z, seed, scale }, ...]) -> Mesh
      mesh.userData.thin(k)   draw only the share k (0..1) of its ribbons: for those far off
@@ -48,6 +49,14 @@ const TONES = {
   fern: ['#27421f', '#3e622b', '#5d8435', '#8cab3c'],
   blade: ['#4e7c36', '#76a03e', '#a3c64c', '#cde270'],
   plume: ['#a8975c', '#cdbd80', '#eadfae', '#fbf6da'],
+};
+// DRYNESS (stylized-nature's setDryness: the picture the trees and the grass die by): in dead land a fern is a brown,
+// wilted thing, lower and bent further over, and about half of them are gone; the blades and plumes are straw. Each goes at
+// a dryness of its own, so dying land is green and brown together. Nothing baked: the picture changes, they come back
+const DRY_TONES = {
+  fern: ['#33271c', '#57412b', '#7e6240', '#a3895c'],
+  blade: ['#6e6448', '#8f8361', '#b3a57c', '#d4caad'],      // (the dry grass's own: stylized-grassfield's DRY_GROUND)
+  plume: ['#7c7466', '#9c9482', '#bdb59f', '#dcd5c1'],
 };
 const WIDE = 0.3;                 // a ribbon is this wide for its length (the pictures are drawn for it)
 
@@ -148,12 +157,18 @@ varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vK;          // x: kind, y: how far along (0 foot .. 1 tip), z: tint
 varying vec3 vP;          // where it is (world), still: the brush strokes stay on the plant as it sways
+uniform sampler2D uDryMap;  // DRYNESS: how dead the land is here (red), over the rect uDryRect
+uniform vec4 uDryRect;
+varying float vDry;
 void main() {
-  float t = position.y + 0.5, u = position.x;
-  float a = iArc.z, d = max(iArc.w, 0.02), ang = a - d * t;
-  vec2 arc = vec2(sin(a) - sin(ang), cos(ang) - cos(a)) / d * iArc.y;      // out, up
-  vec3 dir = vec3(cos(iArc.x), 0.0, sin(iArc.x)), side = vec3(-dir.z, 0.0, dir.x);
   vec3 root = (modelMatrix * vec4(iRoot.xyz, 1.0)).xyz;
+  float dry = texture2D(uDryMap, clamp((root.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
+  vDry = dry;
+  if (iRoot.w < 0.5 && dry > mix(0.6, 1.02, fract(iLook.z * 5.13 + 0.37))) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }      // (a fern gone: the half that goes first)
+  float t = position.y + 0.5, u = position.x;
+  float a = iArc.z - 0.2 * dry, d = max(iArc.w, 0.02) + 0.55 * dry * step(iRoot.w, 0.5), ang = a - d * t;      // (dry: it rises less, and a fern bends further over)
+  vec2 arc = vec2(sin(a) - sin(ang), cos(ang) - cos(a)) / d * iArc.y * (1.0 - 0.28 * dry);      // out, up
+  vec3 dir = vec3(cos(iArc.x), 0.0, sin(iArc.x)), side = vec3(-dir.z, 0.0, dir.x);
   vec3 face = -sin(ang) * dir + vec3(0.0, cos(ang), 0.0);              // its upper face
   // folded along its middle into a shallow V (a frond's leaflets stand up from its rib, a blade is keeled): seen from the
   // side it still shows a face, and is never a line
@@ -181,10 +196,12 @@ uniform sampler2D uMask;
 uniform vec3 uSun;
 uniform float uBrush, uBrushW;      // the ferns' tones laid in brush strokes (see BRUSH), and how far a stroke moves a tone
 uniform vec3 uF0, uF1, uF2, uF3, uG0, uG1, uG2, uG3, uP0, uP1, uP2, uP3;
+uniform vec3 uDF0, uDF1, uDF2, uDF3, uDG0, uDG1, uDG2, uDG3, uDP0, uDP1, uDP2, uDP3;      // DRYNESS: the same, dead
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vK;
 varying vec3 vP;
+varying float vDry;
 void main() {
   vec4 m = texture2D(uMask, vUv);
   float w = max(fwidth(m.r), 1e-3) * 0.75;
@@ -201,6 +218,13 @@ void main() {
   vec3 c0 = uF0, c1 = uF1, c2 = uF2, c3 = uF3;
   if (vK.x > 1.5) { c0 = uP0; c1 = uP1; c2 = uP2; c3 = uP3; }
   else if (vK.x > 0.5) { c0 = uG0; c1 = uG1; c2 = uG2; c3 = uG3; }
+  if (vDry > 0.002) {                                                   // DRYNESS: the dead tones, by how dead the land is (each plant at its own pace)
+    vec3 d0 = uDF0, d1 = uDF1, d2 = uDF2, d3 = uDF3;
+    if (vK.x > 1.5) { d0 = uDP0; d1 = uDP1; d2 = uDP2; d3 = uDP3; }
+    else if (vK.x > 0.5) { d0 = uDG0; d1 = uDG1; d2 = uDG2; d3 = uDG3; }
+    float k = smoothstep(0.05, 0.6, vDry);
+    c0 = mix(c0, d0, k); c1 = mix(c1, d1, k); c2 = mix(c2, d2, k); c3 = mix(c3, d3, k);
+  }
   vec3 col = mix(c0, c1, step(0.42, v));
   col = mix(col, c2, step(0.62, v));
   col = mix(col, c3, step(0.84, v));
@@ -210,7 +234,10 @@ let material = null;
 function coverMaterial() {
   if (material) return material;
   const U = { ...natureUniforms, uSun: SUN, uMask: { value: coverAtlas(BRUSH.value > 0.5) }, uFold: { value: 0.5 }, uBrush: BRUSH, uBrushW: { value: 0.25 } };
-  for (const [k, name] of [['F', 'fern'], ['G', 'blade'], ['P', 'plume']]) TONES[name].forEach((c, i) => { U['u' + k + i] = { value: rgb(c) }; });
+  for (const [k, name] of [['F', 'fern'], ['G', 'blade'], ['P', 'plume']]) {
+    TONES[name].forEach((c, i) => { U['u' + k + i] = { value: rgb(c) }; });
+    DRY_TONES[name].forEach((c, i) => { U['uD' + k + i] = { value: rgb(c) }; });
+  }
   return (material = new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS, alphaToCoverage: true, side: THREE.DoubleSide }));
 }
 
