@@ -35,6 +35,8 @@ CLIPS = [
     ("jump_start", "Jump_Start", False, 0.0),
     ("jump_air", "Jump_Loop", True, 0.0),
     ("jump_land", "Jump_Land", False, 0.0),
+    # the moves (player-moves.js, ?move=1): a long fall ends in a forward roll
+    ("roll", "Roll", False, 0.0),
 ]
 
 # VRM 1.0 humanoid bone (the library's names) -> VRoid bone. VRM 0.x thumbs are one joint further out than VRM 1.0's:

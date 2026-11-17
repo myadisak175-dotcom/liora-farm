@@ -11,7 +11,8 @@
 //     she is not thrown off a height by brushing its edge; a jump or a dash goes at once), falls, and lands on the ground at
 //     its foot. Where she comes down on the cliff's face she slides down it to the ground. She only leaves where there is
 //     ground to land on: an edge over deep water or over the map's end is a wall, as before. (No way back up yet: cliffs
-//     are still walls from below. Climbing is the next stage.)
+//     are still walls from below. Climbing is the next stage.) A long fall ends in a forward roll (the library's Roll) that
+//     carries her on, the way the stick points or the way she was going.
 //   - dash: a burst of speed the way the joystick points (the way she faces if it is let go), then a sprint for as long as
 //     she keeps running. No stamina yet.
 //   - go at the land's pace: slower up a slope and a little faster down it, leaning into the hill, into her turns and into
@@ -41,7 +42,9 @@ const HOP0 = 2.2, HOP_OUT0 = 2.4;             // off an edge: a small hop up (m/
 const TALL0 = 2.4, EDGE_WAIT = 0.3;           // a drop taller than this (m) holds her at the brink this long (s) before she goes
 const FAR0 = 16;                              // a drop taller than this (m; 20 m at 1.75 m) she does not take at all: its edge is a wall (the abyss's shaft)
 const STEP0 = 0.45;                           // the ground falling away under her by more than this (m): she falls, not steps
-const HARD0 = 2.2, HARD_HOLD = 0.38;          // a fall longer than this (m) is a hard landing: she stops for this long (s)
+const HARD0 = 2.2, HARD_HOLD = 0.38;          // a fall longer than this (m) is a hard landing: she rolls (without a roll clip, or deep in water: she stops this long, s)
+const ROLL_RATE = 1.5, ROLL_FROM = 0.25;      // the roll clip (1.47 s) played this much faster, from this far in (s: past its crouch, already diving)
+const ROLL_FAST0 = 3.6, ROLL_SLOW0 = 1.6;     // her pace over the ground through the roll (m/s): from this (or faster, if she came down faster) to this
 const SLIDE0 = 5, SLIDE_FALL0 = 11;           // down a cliff's face: no faster than this over the ground, nor than this downwards (m/s)
 const DASH_T = 0.2, DASH_COOL = 0.8;          // the burst (s), and how soon she can dash again (s)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -58,6 +61,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let speed = 0, went = 0, paceWas = 0;       // how fast she means to go, how fast she really went (last frame), and the pace before
   let vy = 0, peakY = pos.y, slideV = 0, slideT = 0, stuckT = 0;
   let landT = -1, landHold = LAND_HOLD, hardT = 0, jumpWanted = 0;
+  let rollT = 0, rollLen = 1, rollV = 0;      // s left of a landing roll, how long it is, the pace she rolls out at
   let dashWanted = 0, dashT = 0, dashCool = 0, sprint = false, easedOff = 0;
   let edgeT = 0, edgeGrace = 0;               // how long she has pushed at a tall cliff's brink
   let shy = 0;                                // s after a slide that got her nowhere: edges are walls for a moment (not straight off the same one again)
@@ -177,19 +181,27 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   }
   // off the ground: up (m/s; 0: the ground fell away), with the jump's take-off or straight into the fall
   function leave(up, k, takeOff) {
-    mode = 'air'; vy = up; peakY = pos.y; landT = -1; hardT = 0; edgeT = 0; edgeGrace = 0;
+    mode = 'air'; vy = up; peakY = pos.y; landT = -1; hardT = 0; rollT = 0; edgeT = 0; edgeGrace = 0;
     speed = Math.min(speed, SPRINT0 * k * 1.15);                              // (a dash off an edge is a long leap, not a flight)
     if (takeOff) {
       character.play('jump_start', 0.08, false);
       if (character.actions.jump_start) character.actions.jump_start.time = START_AT;
     } else character.play('jump_air', 0.18, false);
   }
-  function touchDown(k, depth, slid) {
+  function touchDown(k, depth, slid, want = null) {
     const hard = !slid && peakY - pos.y > HARD0 * k;
-    mode = 'ground'; vy = 0; landT = 0; landHold = hard ? HARD_HOLD : LAND_HOLD; hardT = hard ? HARD_HOLD : 0;
+    mode = 'ground'; vy = 0;
+    if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, hard ? 1.4 : 1.0, 0.32, 'splash');
+    if (hard && character.actions.roll && depth < 0.32 * k) {                // a long fall: she rolls out of it, on along the stick (or the way she was going)
+      if (want !== null) heading = want;
+      rollLen = (character.actions.roll.getClip().duration - ROLL_FROM) / ROLL_RATE; rollT = rollLen; rollV = Math.max(ROLL_FAST0 * k, speed);
+      landT = -1; hardT = 0;
+      character.play('roll', 0.06, false); character.actions.roll.time = ROLL_FROM; character.setRate(ROLL_RATE);
+      return;
+    }
+    landT = 0; landHold = hard ? HARD_HOLD : LAND_HOLD; hardT = hard ? HARD_HOLD : 0;
     if (hard) speed *= 0.2;
     character.play('jump_land', 0.06, false);
-    if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, hard ? 1.4 : 1.0, 0.32, 'splash');
   }
   function startSlide(k) {
     mode = 'slide'; slideT = 0; stuckT = 0; slideV = Math.min(Math.max(2 * k, -vy), SLIDE_FALL0 * k); vy = 0;      // (as fast down as she came onto it)
@@ -202,7 +214,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (!home && level.confine) level.confine(tmp);
     if (home || footing(tmp.x, tmp.z) !== 'ground') tmp.copy(lastSafe);
     pos.set(tmp.x, standAt(tmp.x, tmp.z), tmp.z);
-    mode = 'ground'; vy = 0; speed = 0; landT = -1; hardT = 0; shy = 2;
+    mode = 'ground'; vy = 0; speed = 0; landT = -1; hardT = 0; rollT = 0; shy = 2;
     character.play('idle', 0.2);
   }
 
@@ -226,7 +238,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     },
     teleport(x, z, yaw = heading) {
       pos.set(x, standAt(x, z), z); heading = yaw; cam.setView(yaw - Math.PI);
-      mode = 'ground'; vy = 0; landT = -1; hardT = 0; dashT = 0; edgeT = 0; edgeGrace = 0; lastSafe.copy(pos);
+      mode = 'ground'; vy = 0; landT = -1; hardT = 0; rollT = 0; dashT = 0; edgeT = 0; edgeGrace = 0; lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
     setView(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
@@ -242,7 +254,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const depthHere = level.waterDepthAt(pos.x, pos.z), shallow = depthHere < 0.32 * k;      // (deeper than her knees: no jump, no dash)
       jumpWanted = Math.max(0, jumpWanted - dt); dashWanted = Math.max(0, dashWanted - dt); dashCool = Math.max(0, dashCool - dt); shy = Math.max(0, shy - dt);
       // ---- dash: a burst the way the stick points, then a sprint while she keeps running
-      if (dashWanted > 0 && dashCool === 0 && mode === 'ground' && shallow) {
+      if (dashWanted > 0 && dashCool === 0 && mode === 'ground' && rollT <= 0 && shallow) {
         dashWanted = 0; dashT = DASH_T; dashCool = DASH_COOL; sprint = true; landT = -1; hardT = 0;
         if (pushing) heading = want;
       }
@@ -253,7 +265,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       let target = 0, turned = 0;
       if (pushing) {
         target = running ? (sprint ? SPRINT : RUN) : WALK * Math.max(0.6, amount / 0.72);
-        turned = wrap(want - heading) * Math.min(1, dt * (mode === 'ground' ? 11 : 4));      // in the air she can only lean into a turn
+        turned = wrap(want - heading) * Math.min(1, dt * (mode !== 'ground' || rollT > 0 ? 4 : 11));      // in the air (and rolling) she can only lean into a turn
         if (mode !== 'slide') heading += turned;                              // (sliding, she goes where the rock sends her)
       }
       // the slope under her, along her way (the rise in a metre): up it she slows, down it she goes a little faster
@@ -267,6 +279,11 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const heavy = Math.min(1, Math.max(0, (depthHere - 0.1 * k) / (0.4 * k))), drag = heavy * heavy * (3 - 2 * heavy);
       target *= 1 - 0.52 * drag;
       if (hardT > 0) { hardT -= dt; target = 0; }                             // a hard landing: a moment to gather herself
+      if (rollT > 0) {                                                        // rolling: on at the roll's own pace, easing to her own as she comes up out of it
+        rollT -= dt;
+        const p = 1 - Math.max(0, rollT) / rollLen;
+        target = rollV + (Math.max(ROLL_SLOW0 * k, pushing ? Math.min(target, RUN) : 0) - rollV) * p * p;
+      }
       // running into the water: one splash where she breaks the surface
       if (mode === 'ground' && depthHere > 0.06 && wasDepth <= 0.06 && speed > 2.2 * k && level.ripple) level.ripple(pos.x + Math.sin(heading) * 0.25, pos.z + Math.cos(heading) * 0.25, 0.9, 0.3, 'splash');
       wasDepth = depthHere;
@@ -288,6 +305,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       // the burst holds her at the dash's pace; otherwise water is slow to get going in and quick to stop her, and in the air
       // she keeps the speed she left the ground with
       if (dashT > 0) { dashT -= dt; if (mode === 'ground') speed = Math.max(speed, DASH * (1 - 0.5 * drag)); }
+      else if (rollT > 0 && mode === 'ground') speed = target;
       else speed += (target - speed) * Math.min(1, dt * (mode !== 'ground' ? 1.5 : target > speed ? 7 - 4 * drag : 10 + 5 * drag));
       // ---- she moves
       if (mode === 'slide') {
@@ -332,7 +350,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       paceWas = paceNow;
       const ground = standAt(pos.x, pos.z);
       // ---- jumping: off the ground at once, unless she is deeper in the water than her knees
-      if (mode === 'ground' && jumpWanted > 0 && shallow) {
+      if (mode === 'ground' && jumpWanted > 0 && rollT <= 0 && shallow) {
         jumpWanted = 0;
         leave(Math.sqrt(2 * GRAV0 * JUMP0) * k, k, true);
         if (depthHere > 0.04 && level.ripple) level.ripple(pos.x, pos.z, 0.8, 0.3, 'splash');      // pushing off from the water
@@ -346,7 +364,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
           // on a cliff's face (coming down on it, or jumping up at it: a jump gets her no higher up a face than it lifts her):
           // she slides on down. (Rising past ground she may stand on, a rock's top: carried up with it)
           pos.y = ground;
-          if (footing && footing(pos.x, pos.z) === 'cliff') startSlide(k); else if (vy <= 0) touchDown(k, depthHere, false);
+          if (footing && footing(pos.x, pos.z) === 'cliff') startSlide(k); else if (vy <= 0) touchDown(k, depthHere, false, pushing ? want : null);
         } else if (footing && peakY - pos.y > (FAR0 + 6) * k) rescue(true);    // (it does not happen: the edges of such drops are walls)
       } else if (mode === 'slide') {
         pos.y = ground;
@@ -368,13 +386,15 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         const rise = character.actions.jump_start;
         if (character.state === 'jump_start' && rise && rise.time >= rise.getClip().duration - 0.02) character.play('jump_air', 0.2, false);
         character.setRate(character.state === 'jump_start' ? START_RATE : 1);
+      } else if (rollT > 0 && character.state === 'roll') {
+        character.setRate(ROLL_RATE);                                         // (the roll plays out: no walk or run till she is up)
       } else if (landT >= 0) {
         landT += dt;
         const landing = character.actions.jump_land;
         if ((pace >= 0.25 && landT > landHold) || character.state !== 'jump_land' || (landing && landing.time >= landing.getClip().duration - 0.02)) landT = -1;
         else character.setRate(LAND_RATE);
       }
-      if (mode === 'ground' && landT < 0) {
+      if (mode === 'ground' && landT < 0 && !(rollT > 0 && character.state === 'roll')) {
         if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : 0.2);
         // the walk at its own stride; the run clip (the library's sprint) at its own rhythm at a full run, quicker at a sprint
         character.setRate(st === 'idle' ? 1 : st === 'walk' ? Math.min(1.9, Math.max(0.7, pace / (character.speeds.walk || 1))) : Math.min(1.45, Math.max(0.7, pace / RUN)));
@@ -383,8 +403,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       // ---- her body leans: forward up a hill and back down one (walking it, not standing on it), forward in a dash and a
       // sprint, and into her turns
       const going = Math.min(1, pace / WALK);
-      const wantLean = mode !== 'ground' ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : sprint && pace > RUN ? 0.06 : 0);
-      const wantRoll = mode !== 'ground' || dt <= 0 ? 0 : Math.min(0.14, Math.max(-0.14, -turned / dt * 0.03 * Math.min(1, pace / RUN)));
+      const wantLean = mode !== 'ground' || rollT > 0 ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : sprint && pace > RUN ? 0.06 : 0);
+      const wantRoll = mode !== 'ground' || rollT > 0 || dt <= 0 ? 0 : Math.min(0.14, Math.max(-0.14, -turned / dt * 0.03 * Math.min(1, pace / RUN)));
       lean += (wantLean - lean) * ease(8, dt); roll += (wantRoll - roll) * ease(6, dt);
       root.position.copy(pos);
       character.object.rotation.set(lean, heading, roll, 'YXZ');
@@ -397,7 +417,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         character.water.level.value = depthHere > 0.02 ? level.heightAt(pos.x, pos.z) + depthHere : -1e5;
         character.water.wet.value.set(pos.y + wetH, wetAmt);
       }
-      steps.update(dt, { root, pos, speed, walk: WALK, run: RUN, still: mode !== 'ground' || landT >= 0 });
+      steps.update(dt, { root, pos, speed, walk: WALK, run: RUN, still: mode !== 'ground' || landT >= 0 || rollT > 0 });
       cam.update(dt, { pos, height: character.height, k, heading, speed: went, run: RUN, sprint: sprint && pace > RUN, mode, looking: input.looking });
     },
   };
