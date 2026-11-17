@@ -530,7 +530,7 @@ const picker = createCharacterPicker({
 const teleportMenu = createTeleportMenu({ level, player, top: 164 + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0) + (pathBrush ? 1 : 0)) });
 // ---- 🗺 the map: a small round one at the top that follows her; a tap opens the whole map, where a pin takes her to a place
 let gameMap = null;
-if (level.map) try {
+if (typeof level.map === 'string') try {                    // (only a level that offers its map's picture: on the others level.map is the ground's colour map, not a file)
   gameMap = await createGameMap({ url: level.map, player, places: teleportPlaces(level) });
   document.getElementById('credit').style.maxWidth = 'calc(50vw - 70px)';     // (the small map sits in the middle of the top edge)
 } catch (err) { console.warn('[map]', err); }
