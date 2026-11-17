@@ -23,6 +23,9 @@
 //
 // (Not the terraced village island of village-level.js, ?map=village: that is another trial of the same idea.)
 //
+// ?west=1 (a trial): the west fringe joined on at the land's west edge (west-fringe.js): one wider land, a second part she
+// may walk in. Nothing here knows more of it than that; without ?west the land is as it was.
+//
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
 import * as THREE from 'three';
@@ -49,6 +52,7 @@ import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.
 import { foliageKey, applyFoliage } from './foliage-edits.js';
 import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
 import { createMapRim } from './map-rim.js';
+import { joinWestFringe } from './west-fringe.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -58,6 +62,7 @@ export const HILL_VILLAGE_MAP = {
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
+  mapWest: './assets/maps/hill-village-west-map.json',      // the same with the west fringe joined on (?west=1; the tool run with --west)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
   pieces: [3, 6],                 // the ground is drawn in this many pieces across and down, the woods in groves GROVE metres square
@@ -87,11 +92,16 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // ------------------------------------------------------------------ the land: read from the picture
   await onStep('อ่านแผนที่ความสูง');
   const fresh = { cache: 'no-cache' };                                    // (the land and the plan change together: never one from the browser's cache and one new)
-  const [raw, P] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json())]);
+  let [raw, P] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json())]);
+  const west = new URLSearchParams(location.search).has('west') ? await joinWestFringe({ raw, plan: P, url }) : null;      // ?west=1: the land wider to the west, the plan with the fringe's ways, trees and places
+  if (west) raw = west.raw;
+  const foliageMap = west ? 'hillvillage-west' : 'hillvillage';           // (plants arranged by hand with the fringe on are kept apart: its trees are not the village's)
   const placeBase = placeables(P), placed = applyPlaceEdits(P, placeKey('hillvillage'));      // the things moved by hand, kept in this browser
-  const foliage = applyFoliage(P, foliageKey('hillvillage'));              // and the plants arranged by hand (the foliage editor): while kept here they are the map's, all of them
+  const foliage = applyFoliage(P, foliageKey(foliageMap));                 // and the plants arranged by hand (the foliage editor): while kept here they are the map's, all of them
   const { x0: X0, z0: Z0, cell, nx, nz, base, range, play } = P.land;     // (she walks inside play: x0, x1, z0, z1; the rest is wooded hills to look at)
-  const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way)
+  const X1 = X0 + (nx - 1) * cell, Z1 = Z0 + (nz - 1) * cell, CX = (X0 + X1) / 2, CZ = (Z0 + Z1) / 2, FR = (Z1 - Z0) / 2, HX = (X1 - X0) / 2;      // FR: half its length (the longer way); CX: its middle across (0, but for a land made wider on one side)
+  const plays = [play, ...(P.land.more || [])];                           // every part she may walk in (one, but for a land joined to another)
+  const inPlay = (x, z, inset = 0) => plays.some(q => x > q[0] + inset && x < q[1] - inset && z > q[2] + inset && z < q[3] - inset);
   // The ground made even under what was moved by hand in this browser, as the map's tool makes it when the move goes into the
   // map for everyone (level_ground there: the middle height of the ground in a circle, feathered out into the land round it).
   // So a moved house or market stall stands on a floor of its own, and is not half sunk in a slope. (The land's heights
@@ -155,7 +165,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const waysOut = [];
   for (const w of toolWays) for (const last of [false, true]) {
     const pts = w.points, a = last ? pts[pts.length - 1] : pts[0], b = last ? pts[pts.length - 2] : pts[1];
-    if (a[0] > play[0] && a[0] < play[1] && a[1] > play[2] && a[1] < play[3]) continue;
+    if (inPlay(a[0], a[1])) continue;
     if (pathOps.some(o => o.k === 'grass' && grassOver(o, a[0], a[1]) > 0.5)) continue;      // (grass painted over its end by hand: that way is gone)
     const len = Math.hypot(a[0] - b[0], a[1] - b[1]), dx = (a[0] - b[0]) / len, dz = (a[1] - b[1]) / len;
     const t = Math.min(dx > 0 ? (X1 - a[0]) / dx : dx < 0 ? (X0 - a[0]) / dx : 1e9, dz > 0 ? (Z1 - a[1]) / dz : dz < 0 ? (Z0 - a[1]) / dz : 1e9);      // metres on to the edge, the way it is going
@@ -179,8 +189,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const paths = createPaths({ paths: [...toolWays, ...pathOps.filter(o => o.k === 'way').map(o => ({ points: o.pts, half: o.half }))], seed, style: pathStyle });
   const wayPaint = o => o.paint || (o.paint = createPaths({ paths: [{ points: o.pts, half: o.half }], seed, style: pathStyle }).paint);
   const pathPaint = foldPathOps(pathOps.length ? createPaths({ paths: toolWays, seed, style: pathStyle }).paint : paths.paint, pathOps, wayPaint);      // (a yard: a short way as wide as the yard)
-  const heightFn = (x, z) => cutting(x, z, inflowCut(x, z, landAt(x, z))) + (Math.abs(x) < HX + 2 ? paths.sink(x, z) : 0);      // (the ways lie a little below the grass)
-  const field = G.createHeightField({ radius: FR, center: [0, CZ], cells: M.cells, heightFn });      // (a square as long as the land: wider than it, and only the land's part is drawn)
+  const heightFn = (x, z) => cutting(x, z, inflowCut(x, z, landAt(x, z))) + (Math.abs(x - CX) < HX + 2 ? paths.sink(x, z) : 0);      // (the ways lie a little below the grass)
+  const field = G.createHeightField({ radius: FR, center: [CX, CZ], cells: M.cells, heightFn });      // (a square as long as the land: wider than it, and only the land's part is drawn)
   const H = field.heightAt;
   const slope = (x, z) => Math.hypot(H(x + 0.5, z) - H(x - 0.5, z), H(x, z + 0.5) - H(x, z - 0.5));
   const colliders = [], cameraTrunks = [], crowns = [], shade = [], bare = [], press = [], casters = [], plants = [];
@@ -452,11 +462,12 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // ------------------------------------------------------------------ the ground picture, the land, the grass
   await onStep('ระบายสีพื้น');
   // (the grass grows to the land's very edge, and on past it: the land runs on there, see the rim below)
-  const landRect = [-FR + Math.max(0, Math.floor((X0 + FR) / field.step)) * field.step, CZ - FR, -FR + Math.min(field.n - 1, Math.ceil((X1 + FR) / field.step)) * field.step, CZ + FR];      // the land as it is drawn
+  const landRect = [CX - FR + Math.max(0, Math.floor((X0 - CX + FR) / field.step)) * field.step, CZ - FR, CX - FR + Math.min(field.n - 1, Math.ceil((X1 - CX + FR) / field.step)) * field.step, CZ + FR];      // the land as it is drawn
   const paint = (x, z) => {
     if (x < landRect[0] - 1 || x > landRect[2] + 1) return [1, 0, 0];      // off the land (the map is a square, wider than it): not the map's to say, the rim paints itself
     let earth = ss(0.7, 1.1, slope(x, z)), mow = 0;                        // the cliffs: bare (no grass grows on them)
     const b = brookAt(x, z), sand = b ? 1 - ss(0.2, 1.4, b.d) : 0;        // the water's beds and banks: sand, no grass
+    if (west) earth = Math.max(earth, west.dryAt(x, z));                   // the beds the fringe's water has left: bare earth
     const pp = pathPaint(x, z);
     if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }               // the ways: trodden earth, short grass beside them
     if (inField(x, z, 0.5)) earth = 1; else if (inField(x, z, 1.6)) mow = Math.max(mow, 0.7);
@@ -470,7 +481,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return casters.map(([x, z, h, rr, st]) => [x + ux * len * h / 2, z + uz * len * h / 2, len * h / 2 + rr, rr * 1.1, ux, uz, st, 0]);
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
-  const map = G.createGroundMap({ radius: FR, center: [0, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
+  const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
   // the far meadow is laid in as the grass paints it (the land's own paint, and the rim's: stylized-terrain.js, grassLook)
   const grassLook = { glsl: G.GRASS_LOOK_GLSL, tip: G.GRASS_TIP, area: map.area, paint: map.paint };
   const fade = { far, fadeA: 1e5, fadeB: 2e5 };      // (the blades do not fade into the far colour toward the land's edge either: the land runs on past it, see the rim below)
@@ -490,12 +501,13 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // going through dry grass into the meadow where the blades stand thick), earth in the fields
   const terrain = new THREE.Group(); terrain.name = 'terrain';
   {
-    const { n, step, heights } = field, cA = Math.max(0, Math.floor((X0 + FR) / step)), cB = Math.min(n - 1, Math.ceil((X1 + FR) / step)), cols = cB - cA + 1;
+    const { n, step, heights } = field, cA = Math.max(0, Math.floor((X0 - CX + FR) / step)), cB = Math.min(n - 1, Math.ceil((X1 - CX + FR) / step)), cols = cB - cA + 1;
     const pos = new Float32Array(cols * n * 3), bank = new Float32Array(cols * n).fill(10), soil = new Float32Array(cols * n);
     for (let j = 0; j < n; j++) for (let i = 0; i < cols; i++) {
-      const o = j * cols + i, x = -FR + (cA + i) * step, z = CZ - FR + j * step, y = heights[j * n + cA + i];
+      const o = j * cols + i, x = CX - FR + (cA + i) * step, z = CZ - FR + j * step, y = heights[j * n + cA + i];
       pos[o * 3] = x; pos[o * 3 + 1] = y; pos[o * 3 + 2] = z;
       bank[o] = bankAt(x, z, y);
+      if (west) { const dry = west.dryAt(x, z); if (dry > 0) bank[o] = Math.min(bank[o], 10 - 9.58 * dry); }      // the fringe's dry beds: sand, as dry as a beach's upper edge
       if (inField(x, z, 0.4)) soil[o] = 1;
     }
     const whole = new THREE.BufferGeometry(), all = new Uint32Array((cols - 1) * (n - 1) * 6);
@@ -512,7 +524,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     // stylized-terrain.js) and nothing shows the ground itself from near: only where grass grows thick (the ways, sand and
     // earth are bare ground), away from water (a shore is where the land meets the water's
     // level) and all field or none. ?landlod=0: two triangles to every cell, as it was.
-    const [pa, pd] = M.pieces, own = [whole, mat];
+    const [pa, pd] = [Math.round(M.pieces[0] * (X1 - X0) / 220), M.pieces[1]], own = [whole, mat];      // (pieces across: as many as the land is wide, by the 220 m the village's own is)
     const grassAt = o => { const s = map.size, mi = Math.min(s - 1, Math.max(0, Math.floor((pos[o * 3] - map.center[0] + map.radius) / (2 * map.radius) * s))), mj = Math.min(s - 1, Math.max(0, Math.floor((pos[o * 3 + 2] - map.center[1] + map.radius) / (2 * map.radius) * s))); return map.data[(mj * s + mi) * 4 + 3]; };
     const cells = new URLSearchParams(location.search).get('landlod') === '0'
       ? T._terrain.coarseGrid({ cols, rows: n, pos, nor: whole.attributes.normal.array, top: 1 })
@@ -546,7 +558,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const horizonR = Math.hypot(HX, FR) + M.rim;                              // where the nearest ring of far hills stands (see horizon below)
   const rim = createMapRim({
     rect: landRect,
-    heightAt: H, terrainMaterial: T._terrain.terrainMaterial, far, zc: CZ, cliffPaint, horizon: { center: [0, CZ], radius: horizonR }, ways: waysOut, seed,
+    heightAt: H, terrainMaterial: T._terrain.terrainMaterial, far, zc: CZ, cliffPaint, horizon: { center: [CX, CZ], radius: horizonR }, ways: waysOut, seed,
     paint: { ground: map, grassLook: { ...grassLook, land: landRect, greens: [G.GROUND_COLORS.deep, G.GROUND_COLORS.mid, G.GROUND_COLORS.sunny], lean: 2.2 } },      // (its meadow is the land's, run on past the edge)
     clear: (x, z) => { const w = paths.near(x, z); return slope(x, z) < 0.6 && !brookAt(x, z) && w.d > w.half + 2.5 && !plants.some(p => Math.hypot(p.x - x, p.z - z) < 3.4); },
   });
@@ -691,7 +703,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // ------------------------------------------------------------------ where she may walk; the sun; what the game asks of a level
   let castSun = L.clone(), castK = 1, wantSun = castSun.clone(), wantK = 1, lastCast = -99, castBusy = false;
   const cast = { dir: castSun.clone(), k: 1 };
-  const inMap = (x, z) => x > play[0] + 1 && x < play[1] - 1 && z > play[2] + 1 && z < play[3] - 1;
+  const inMap = (x, z) => inPlay(x, z, 1);
   const walkable = (x, z) => inMap(x, z) && (!!deckAt(x, z) || (slope(x, z) < 0.9 && waterDepthAt(x, z) < 1.05));      // off the cliffs, out of deep water
   const standAt = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
   console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
@@ -815,7 +827,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // own to be carried about in. (Her way round a moved tree, the bare ground at its foot and its shadow are worked out when
   // the map loads again.)
   const foliageEdit = {
-    key: foliageKey('hillvillage'), map: 'hillvillage', report: foliage, heightAt: H, groveOf, squareOf,
+    key: foliageKey(foliageMap), map: foliageMap, report: foliage, heightAt: H, groveOf, squareOf,
     rows: () => ({ plants: P.plants.map(r => r.slice()), clumps: (P.clumps || []).map(r => r.slice()), cover: (P.cover || []).map(r => r.slice()) }),
     plant(rows, dirty = null) {                                            // the scene from these rows: all of it, or only the groves and squares named ({ groves, squares }: sets of groveOf's and squareOf's keys)
       const F = entriesOf(rows);
@@ -837,9 +849,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
-    name: 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
-    map: url(M.map),
-    horizon: { center: [0, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
+    name: west ? 'หมู่บ้านบนเขา + ชายขอบตะวันตก (ทดลอง)' : 'หมู่บ้านบนเขาและหุบเขา (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report },
+    map: url(west ? M.mapWest : M.map),
+    horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     tapWater(origin, dir) {

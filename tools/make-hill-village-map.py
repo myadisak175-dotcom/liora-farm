@@ -14,9 +14,11 @@
 #   6. rocks, bushes and trees (a shadow, a crown, a light on it).
 #
 #   python3 tools/make-hill-village-map.py            (Termux: pip install numpy scipy pillow)
+#   python3 tools/make-hill-village-map.py --west     the same with the west fringe joined on (tools/make-west-fringe-heightmap.py),
+#                                                     as the game joins it for ?west=1 (west-fringe.js): hill-village-west-map.webp + .json
 #
 # To change its look: PPM (pixels to a metre), MARGIN (how much land is shown beyond where she can walk), COL.
-import json, math
+import json, math, sys
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -40,7 +42,23 @@ sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 
 
 plan = json.loads((SRC / 'hill-village.json').read_text())
 L = plan['land']; H = np.fromfile(SRC / 'hill-village.bin', '<u2').reshape(L['nz'], L['nx']) / 65535 * L['range'] + L['base']
-X0, X1, Z0, Z1 = L['play'][0] - MARGIN, L['play'][1] + MARGIN, L['play'][2] - MARGIN, L['play'][3] + MARGIN
+WEST = '--west' in sys.argv; NAME = 'hill-village-west-map' if WEST else 'hill-village-map'
+PLAYS = [L['play']]; FR = None                                        # every part she walks in; the fringe's plan
+if WEST:                                                              # the two lands made one, and the plan changed, as west-fringe.js does it
+    FR = json.loads((SRC / 'west-fringe.json').read_text()); WL = FR['land']; SEAM = FR['joins']['seam_x']
+    HW = np.fromfile(SRC / 'west-fringe.bin', '<u2').reshape(WL['nz'], WL['nx']) / 65535 * WL['range'] + WL['base']
+    add, j0, iseam = int(round((L['x0'] - WL['x0']) / L['cell'])), int(round((WL['z0'] - L['z0']) / L['cell'])), int(round((SEAM - WL['x0']) / L['cell']))
+    joined = np.empty((L['nz'], L['nx'] + add)); joined[:, add:] = H
+    joined[j0:, :iseam] = HW[:, :iseam]; joined[:j0, :add] = H[:j0, :1] + (HW[0, :add] - HW[0, add])[None, :]
+    H = joined; L = dict(L, x0=WL['x0'], nx=L['nx'] + add)
+    PLAYS.append([WL['play'][0], SEAM + 3, WL['play'][2], WL['play'][3]])
+    gone = lambda x, z: x < SEAM - 0.5 and z > WL['z0']                # in the old margin the fringe replaces
+    for p in plan['paths']:
+        if p['id'] == 'road_in': p['points'] = [q for q in p['points'] if q[0] >= SEAM - 1e-6]
+    plan['paths'] += [{'id': 'wf_' + w['id'], 'half': w['half'], 'points': [q for q in w['points'] if q[0] > WL['x0'] + 0.5]} for w in FR['ways']]
+    plan['inflows'] = [f for f in plan.get('inflows', []) if not gone(f['rows'][0][0], f['rows'][0][1])]
+    plan['plants'] = [r for r in plan['plants'] if not gone(r[1], r[2])]
+X0, X1, Z0, Z1 = min(q[0] for q in PLAYS) - MARGIN, max(q[1] for q in PLAYS) + MARGIN, min(q[2] for q in PLAYS) - MARGIN, max(q[3] for q in PLAYS) + MARGIN
 W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
 
 # ---- 1, 2. the land, painted point by point
@@ -66,7 +84,10 @@ if pit:                                                               # down the
     mist = sm(rim - 30, rim - 52, h) * (0.78 + 0.22 * ndi.zoom(rng.random((Hh // 12 + 3, W // 12 + 3)), 12 * SS, order=3)[:Hh * SS, :W * SS])
     img = img * (1 - mist[..., None]) + rgb(COL['mist']) * mist[..., None]
 PX, PZ = np.meshgrid(px, pz)
-off = np.maximum.reduce([L['play'][0] - PX, PX - L['play'][1], L['play'][2] - PZ, PZ - L['play'][3]])      # metres outside where she can walk
+if WEST:                                                              # the fringe's land is dead: its grass the colour of straw
+    k = (sm(SEAM + 2, SEAM - 10, PX) * (1 - rock[..., 0]))[..., None] * 0.72
+    img = img * (1 - k) + (img @ np.array([0.3, 0.59, 0.11]))[..., None] * np.array([1.14, 1.0, 0.7]) * k
+off = np.minimum.reduce([np.maximum.reduce([q[0] - PX, PX - q[1], q[2] - PZ, PZ - q[3]]) for q in PLAYS])      # metres outside where she can walk
 wash = sm(-0.5, 2.5, off)[..., None] * 0.6
 img = img * (1 - wash) + rgb(COL['beyond']) * wash
 canvas = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert('RGBA')
@@ -109,6 +130,13 @@ for f in plan['falls']:                                               # foam alo
     c, s = math.cos(f['yaw']), math.sin(f['yaw']); half = f['width'] / 2
     stroke(d, [(f['x'] - c * half, f['z'] + s * half), (f['x'] + c * half, f['z'] - s * half)], 0.9, COL['foam'])
     stroke(d, [(f['x'], f['z']), (f['x'] + s * 1.6, f['z'] + c * 1.6)], max(0.8, half * 0.9), COL['foam'])
+
+if WEST:                                                              # the fringe's dry water: its pond's floor, the gully and the brook's bed, the colour of dry mud
+    D = FR['dry_water']; pond = D['pond']
+    ring = [P(pond['x'] + pond['rx'] * 0.94 * math.cos(a) * (1 + 0.08 * math.sin(3 * a)), pond['z'] + pond['rz'] * 0.94 * math.sin(a) * (1 + 0.08 * math.sin(3 * a))) for a in np.linspace(0, 2 * math.pi, 60)]
+    d.polygon(ring, fill='#b9a57c', outline='#8c7a58')
+    for grow, colour in ((0.3, '#8c7a58'), (0.0, '#d4c39a')):
+        for pts, half in [(D['gully'], D['gully_half'])] + [(r['points'], r['half']) for r in D['reaches']]: stroke(d, catmull(pts), 2 * half * 0.8 + 2 * grow, colour)
 
 # ---- 4. ways, yards, fields, fences, bridges
 before_ways = canvas.copy()                                           # (grass painted over a way by hand: the land as it was before the ways)
@@ -194,6 +222,14 @@ for kind, x, z, scale, *_ in sorted(plants, key=lambda p: (p[0] != 'bush', p[2])
     edge = tuple(int(v * 0.72) for v in rgb(dark))
     d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=dark, outline=edge, width=max(1, int(0.14 * K)))
     d.ellipse([cx - r * 0.72, cy - r * 0.72, cx + r * 0.25, cy + r * 0.25], fill=lit)      # the light on its crown, from the north-west
+if WEST:                                                              # the fringe's dead trees (bare twigs), its ruins (floors with no roof) and its old well
+    for kind, x, z, scale, *_ in FR['dead_trees']:
+        r = COL['tree_r'][kind] * scale * 0.85
+        for a in np.arange(0.3, 6.2, 2 * math.pi / 5): stroke(d, [(x, z), (x + r * math.cos(a), z + r * math.sin(a))], 0.45, '#5b4636')
+    for q in FR['ruins']:
+        a = q['r'] * 0.62; d.line([P(q['x'] - a, q['z'] - a), P(q['x'] + a, q['z'] - a), P(q['x'] + a, q['z'] + a), P(q['x'] - a, q['z'] + a * 0.2)], fill='#8d8270', width=max(1, int(0.45 * K)), joint='curve')
+    cx, cy = P(FR['well']['x'], FR['well']['z']); r = 1.2 * K
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K))); d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill='#4a4038')
 for b in plan['buildings']:
     if b['kind'] == 'tree':                                           # the great tree
         dark, lit = COL['tree']['oak']; r = 2.6 * b.get('scale', 2) * K; cx, cy = P(b['x'], b['z'])
@@ -202,7 +238,7 @@ for b in plan['buildings']:
 
 OUT.mkdir(parents=True, exist_ok=True)
 final = canvas.convert('RGB').resize((W, Hh), Image.LANCZOS)
-final.save(OUT / 'hill-village-map.webp', quality=88, method=6)
-(OUT / 'hill-village-map.json').write_text(json.dumps({'file': 'hill-village-map.webp', 'x0': X0, 'z0': Z0, 'x1': X1, 'z1': Z1, 'width': W, 'height': Hh, 'play': L['play']}) + '\n')
-print(f"hill-village-map.webp: {W} x {Hh} px, {X1 - X0:.0f} x {Z1 - Z0:.0f} m ({PPM} px to a metre), {(OUT / 'hill-village-map.webp').stat().st_size // 1024} kB; "
+final.save(OUT / f'{NAME}.webp', quality=88, method=6)
+(OUT / f'{NAME}.json').write_text(json.dumps({'file': f'{NAME}.webp', 'x0': X0, 'z0': Z0, 'x1': X1, 'z1': Z1, 'width': W, 'height': Hh, 'play': PLAYS[0], **({'more': PLAYS[1:]} if WEST else {})}) + '\n')
+print(f"{NAME}.webp: {W} x {Hh} px, {X1 - X0:.0f} x {Z1 - Z0:.0f} m ({PPM} px to a metre), {(OUT / f'{NAME}.webp').stat().st_size // 1024} kB; "
       f"{len(plan['brooks'])} stretches of water, {len(ways)} ways, {sum(b['kind'] == 'house' for b in plan['buildings'])} houses, {len(plants)} trees and bushes")
