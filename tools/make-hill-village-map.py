@@ -132,10 +132,10 @@ for f in plan['falls']:                                               # foam alo
 
 if WEST:                                                              # the fringe's dry water: its pond's floor, the gully and the brook's bed, the colour of dry mud
     D = FR['dry_water']; pond = D['pond']
-    ring = [P(pond['x'] + pond['rx'] * 0.94 * math.cos(a) * (1 + 0.08 * math.sin(3 * a)), pond['z'] + pond['rz'] * 0.94 * math.sin(a) * (1 + 0.08 * math.sin(3 * a))) for a in np.linspace(0, 2 * math.pi, 60)]
-    d.polygon(ring, fill='#b9a57c', outline='#8c7a58')
+    d.polygon([P(x, z) for x, z in pond['shore']], fill='#b9a57c', outline='#8c7a58')      # (inside its shore: where the water stood)
     for grow, colour in ((0.3, '#8c7a58'), (0.0, '#d4c39a')):
-        for pts, half in [(D['gully'], D['gully_half'])] + [(r['points'], r['half']) for r in D['reaches']]: stroke(d, catmull(pts), 2 * half * 0.8 + 2 * grow, colour)
+        for bed in D['beds']:                                         # (each bed as wide as it lies there: x, z, half its width)
+            for a, b in zip(bed['points'], bed['points'][1:]): stroke(d, [a[:2], b[:2]], (a[2] + b[2]) * 0.8 + 2 * grow, colour)
 
 # ---- 4. ways, yards, fields, fences, bridges
 before_ways = canvas.copy()                                           # (grass painted over a way by hand: the land as it was before the ways)

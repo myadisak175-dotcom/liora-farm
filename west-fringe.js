@@ -4,6 +4,7 @@
      const west = await joinWestFringe({ raw, plan, url });      // as the level reads its land, before it makes anything from it
      west.raw            the land's numbers with the fringe's columns added on the west (plan.land says how wide it is now)
      west.dryAt(x, z)    0..1: how much a spot is the bed of the fringe's dry water (bare and sandy: no grass grows in it)
+     west.poolAt(x, z, y)  metres a spot of that bed, at height y, lies under the bed's own level: a pool, the pond's basin
      west.deadAt(x, z)   0..1: how dead the land is there (the curse's picture, as it is set here)
 
    One job: make the two lands one as they are read. The fringe (assets/heightmaps/west-fringe.bin + .json, written by
@@ -81,20 +82,47 @@ export async function joinWestFringe({ raw, plan: P, url }) {
     setDryness(tex, [L.x0, L.z0, width, depth]);
   }
 
-  // ---- the dry water's bed: the gully, the pond's floor, the brook's reaches
-  const D = F.dry_water, lines = [[D.gully, D.gully_half], ...D.reaches.map(r => [r.points, r.half])];
+  // ---- the dry water's bed: the gully and the brook (each a line with half its bed's width at every point, as the land
+  // was worn: wide on a riffle, narrow in a pool) and the pond inside its shore. Worked out once, on a grid of half
+  // metres over the box they lie in; dryAt reads that
+  const D = F.dry_water, beds = D.beds.map(b => b.points), shore = D.pond.shore;
   const box = [Infinity, -Infinity, Infinity, -Infinity];
-  for (const [pts] of lines) for (const [x, z] of pts) { box[0] = Math.min(box[0], x - 4); box[1] = Math.max(box[1], x + 4); box[2] = Math.min(box[2], z - 4); box[3] = Math.max(box[3], z + 4); }
-  box[2] = Math.min(box[2], D.pond.z - D.pond.rz - 2); box[3] = Math.max(box[3], D.pond.z + D.pond.rz + 2);
+  const grow = (x, z, r) => { box[0] = Math.min(box[0], x - r); box[1] = Math.max(box[1], x + r); box[2] = Math.min(box[2], z - r); box[3] = Math.max(box[3], z + r); };
+  for (const pts of beds) for (const [x, z, half] of pts) grow(x, z, half + 2);
+  for (const [x, z] of shore) grow(x, z, 2);
+  const G = 0.5, gw = Math.ceil((box[1] - box[0]) / G) + 1, gh = Math.ceil((box[3] - box[2]) / G) + 1, grid = new Float32Array(gw * gh), level = new Float32Array(gw * gh);
+  const inShore = (x, z) => {                                             // metres inside the pond's shore (+), outside it (-)
+    let d = Infinity, inside = false;
+    for (let k = 0, n = shore.length; k < n; k++) {
+      const [ax, az] = shore[k], [bx, bz] = shore[(k + 1) % n], ex = bx - ax, ez = bz - az;
+      const t = Math.min(1, Math.max(0, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+      d = Math.min(d, Math.hypot(x - ax - ex * t, z - az - ez * t));
+      if ((az > z) !== (bz > z) && x < ax + (z - az) / (bz - az) * ex) inside = !inside;
+    }
+    return inside ? d : -d;
+  };
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const x = box[0] + i * G, z = box[2] + j * G;
+    let dry = Math.abs(x - D.pond.x) < D.pond.rx + 2 && Math.abs(z - D.pond.z) < D.pond.rz + 2 ? ss(-0.7, 0.7, inShore(x, z)) : 0, lev = D.pond.sill;
+    for (const pts of beds) for (let k = 0; k < pts.length - 1 && dry < 1; k++) {
+      const ax = pts[k][0], az = pts[k][1], bx = pts[k + 1][0] - ax, bz = pts[k + 1][1] - az;
+      if (Math.abs(x - ax) > 8 || Math.abs(z - az) > 8) continue;
+      const t = Math.min(1, Math.max(0, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1))), half = pts[k][2] + (pts[k + 1][2] - pts[k][2]) * t;
+      const here = 1 - ss(half - 0.2, half + 0.9, Math.hypot(x - ax - bx * t, z - az - bz * t));
+      if (here > dry) { dry = here; lev = pts[k][3] + (pts[k + 1][3] - pts[k][3]) * t; }
+    }
+    grid[j * gw + i] = dry; level[j * gw + i] = lev;
+  }
   const dryAt = (x, z) => {
     if (x < box[0] || x > box[1] || z < box[2] || z > box[3] || x > seam) return 0;
-    let dry = 1 - ss(0.78, 0.98, Math.hypot((x - D.pond.x) / D.pond.rx, (z - D.pond.z) / D.pond.rz));
-    for (const [pts, half] of lines) for (let i = 0; i < pts.length - 1 && dry < 1; i++) {
-      const ax = pts[i][0], az = pts[i][1], bx = pts[i + 1][0] - ax, bz = pts[i + 1][1] - az;
-      const t = Math.min(1, Math.max(0, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1)));
-      dry = Math.max(dry, 1 - ss(half - 0.2, half + 0.9, Math.hypot(x - ax - bx * t, z - az - bz * t)));
-    }
+    const u = (x - box[0]) / G, v = (z - box[2]) / G, i = Math.min(gw - 2, Math.floor(u)), j = Math.min(gh - 2, Math.floor(v)), fu = u - i, fv = v - j, o = j * gw + i;
+    const dry = (grid[o] * (1 - fu) + grid[o + 1] * fu) * (1 - fv) + (grid[o + gw] * (1 - fu) + grid[o + gw + 1] * fu) * fv;
     return dry * ss(seam, seam - 3, x);                                   // (at the seam the village's own brook takes over)
   };
-  return { raw: out, dryAt, deadAt, plan: F };
+  // how far under its bed's own level a place at height y lies (metres, 0 and up): a pool in the brook, the pond's basin
+  const poolAt = (x, z, y) => {
+    if (x < box[0] || x > box[1] || z < box[2] || z > box[3] || x > seam) return 0;
+    return Math.max(0, level[Math.min(gh - 1, Math.round((z - box[2]) / G)) * gw + Math.min(gw - 1, Math.round((x - box[0]) / G))] - y);
+  };
+  return { raw: out, dryAt, poolAt, deadAt, plan: F };
 }

@@ -299,6 +299,15 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
               sc = mix(sc, sc * uSandWet, wet);                            // wet toward the water (and under it)
               sc = mix(sc, mix(uHay, vec3(0.68, 0.63, 0.48), dz), smoothstep(0.30, 0.85, max(grass, 1.0 - sand)) * 0.7);      // dry grass where the meadow begins
               sc = mix(sc, dot(sc, vec3(0.3, 0.6, 0.1)) * vec3(1.03, 0.97, 0.86), dz * 0.6);      // (in dead land: a dry bed's silt, its warmth gone)
+              if (dz > 0.0) {
+                // a dry bed: where it lay deepest (a pool, a pond's basin: the wet end of the sand) the mud dried last. It is
+                // darker there, ringed by the lines the water stood at as it went down, and cracked
+                float deep = 1.0 - smoothstep(0.16, 0.4, sb);
+                sc *= 1.0 - 0.07 * dz * smoothstep(0.42, 0.58, fract(vBank * 15.0)) * smoothstep(0.44, 0.3, sb);
+                #ifdef DRY_PAINT
+                sc = mix(sc, uDryCrack, (1.0 - texture2D(uDryPaint, vWP.xz / 4.1).a) * deep * 0.8 * dz);
+                #endif
+              }
               col = mix(col, sc, sand);
             }
           #else
