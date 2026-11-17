@@ -20,13 +20,15 @@
   #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
     background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
   /* jump: under the right thumb, in the joystick's colours */
-  #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  #jumpBtn, #dashBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
     z-index: 4; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
     color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
     -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
-  #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
-  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
-  #jumpBtn[hidden] { display: none; }
+  #jumpBtn svg, #dashBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #jumpBtn.down, #dashBtn.down { background: rgba(255, 255, 255, .5); }
+  #jumpBtn[hidden], #dashBtn[hidden] { display: none; }
+  /* dash (?move=1): beside the jump, a little smaller */
+  #dashBtn { right: calc(max(24px, env(safe-area-inset-right) + 14px) + 76px); width: 56px; height: 56px; }
   #fps { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 8px; font-size: 11px; color: rgba(39, 52, 26, .75);
     background: rgba(255, 255, 255, .62); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
   #style { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 34px; font: inherit; font-size: 12px; color: #fff;
@@ -106,7 +108,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=55",
+  "./hill-village-level.js": "./hill-village-level.js?v=56",
   "./west-fringe.js": "./west-fringe.js?v=6",
   "./village-kit.js": "./village-kit.js?v=bridge3",
   "./map-rim.js": "./map-rim.js?v=4",
@@ -152,6 +154,10 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1",
+  "./player-moves.js": "./player-moves.js?v=1",
+  "./player-input.js": "./player-input.js?v=1",
+  "./player-camera.js": "./player-camera.js?v=1",
+  "./player-footsteps.js": "./player-footsteps.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -226,7 +232,7 @@ import { buildHillVillageLevel } from './hill-village-level.js';
 import { setAnimeBrush } from './anime-tree.js';
 import { setFrondPineBrush } from './frond-pine.js';
 import { setGroundCoverBrush } from './ground-cover.js';
-import { createPlayer } from './player.js';
+import { createPlayer as createWalker } from './player.js';
 import { createCharacterShadow } from './character-shadow.js';
 import { WATER_TUNE } from './stylized-water.js';
 import { createWaterTuner } from './water-tuner.js';
@@ -322,6 +328,9 @@ const onTap = (cx, cy) => {                          // tap the water: a stone's
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
 if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }      // (the valley finds its own bank)
+// ?move=1 (a trial): the player with the moves (player-moves.js: off a cliff's top, dash, the land's pace, a camera that goes
+// with her) in place of the walker. Without it nothing of the trial is loaded
+const createPlayer = Q.has('move') ? (await import('./player-moves.js')).createPlayer : createWalker;
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 scene.add(player.object);
 level.addUnderwater(player.object);
@@ -329,6 +338,15 @@ level.addUnderwater(player.object);
 const jumpBtn = document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
+// the dash button, beside it (only the player with the moves can dash: ?move=1). Shift does the same on a keyboard
+let dashBtn = null;
+if (player.dash) {
+  dashBtn = document.createElement('button'); dashBtn.id = 'dashBtn'; dashBtn.type = 'button'; dashBtn.setAttribute('aria-label', 'พุ่ง');
+  dashBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span>';
+  jumpBtn.after(dashBtn);
+  dashBtn.addEventListener('pointerdown', e => { e.preventDefault(); dashBtn.classList.add('down'); player.dash(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dashBtn.addEventListener(ev, () => dashBtn.classList.remove('down'));
+}
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: hero, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
@@ -569,6 +587,7 @@ const frame = (dt = clock.getDelta()) => {
   A.updateAnimals(dt);
   player.update(dt);
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
+  if (dashBtn && dashBtn.hidden !== editing()) dashBtn.hidden = editing();
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   const rockEditing = rockEditor && rockEditor.active;
   if (rockEditing) rockEditor.apply(camera);                              // the rock editor's camera flies free of her

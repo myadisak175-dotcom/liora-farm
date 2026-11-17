@@ -768,6 +768,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const inMap = (x, z) => inPlay(x, z, 1);
   const walkable = (x, z) => inMap(x, z) && (!!deckAt(x, z) || (slope(x, z) < 0.9 && waterDepthAt(x, z) < 1.05));      // off the cliffs, out of deep water
   const standAt = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
+  // what is under her feet at a spot, for the moves (player-moves.js): 'ground' she may stand on (the same answer as walkable),
+  // 'cliff' too steep to stand on (she may fall past it or slide down it), 'water' too deep to wade, 'out' off the map
+  // (the pit's shaft, below its lowest shelf, is not a place: 114 m down to a floor that is only there to close the land. It is 'out')
+  const shaftTop = P.pit ? Math.min(...P.pit.shelves.map(sh => sh.y)) + P.pit.shift - 3 : -Infinity;
+  const footing = (x, z) => !inMap(x, z) || H(x, z) < shaftTop ? 'out' : deckAt(x, z) ? 'ground' : waterDepthAt(x, z) >= 1.05 ? 'water' : slope(x, z) >= 0.9 ? 'cliff' : 'ground';
   console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};
@@ -909,7 +914,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     drop(holder) { group.remove(holder); holder.traverse(m => { if (m.geometry) m.geometry.dispose(); }); },
   };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, views, placeEdit, pathEdit, foliageEdit,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
     map: url(cursed ? M.mapCursed : M.map), mapOverlay,
