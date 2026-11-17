@@ -42,7 +42,7 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mulberry32, uniforms as natureUniforms, growTreeFrame, bareBark, treeSpec, setDryness, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
+import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, setDryness, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
@@ -242,7 +242,7 @@ const BIRCH = {
     floor: -0.7, tuck: 0.55,
     clump: { r: 0.58, flat: 0.8, vary: [0.7, 1.35], push: 0.1, lift: 0.05 },
     top: 0.85,
-    bare: { n: [2, 3], reach: [0.32, 0.48], twigs: [1, 2], crook: 0.6, lift: -0.16 },      // a birch's thin wood hangs
+    bare: { n: [2, 3], reach: [0.32, 0.48], twigs: [1, 2], crook: 0.6, rise: 0.5 },      // a birch's thin wood climbs steeply, as its limbs do
   },
   boughs: { canopy: [0.7, 0.85], side: { n: [0, 1], p: 0.85, size: [0.6, 0.85], out: [0.8, 1.1], drop: [0.2, 0.55] },
     sprays: { n: [2, 3], p: 0.4, r: [0.3, 0.44], f: [1.9, 2.7], drop: [0.75, 1.3], out: [0.45, 0.85] } },
@@ -940,7 +940,6 @@ function treeParts(type, seed, far = false) {
   const { trunk, tiers, bare } = growTreeFrame(spec, seed);
   trunk.material.uniforms.uLight = SUN;                             // the bark is lit by the same sun
   dyingWood(trunk.material);                                        // and dies by the same picture (DRYNESS)
-  const bareMat = bare ? bareBark(trunk.material) : null;           // its bare branches: the same bark, on wood only a dead tree shows
   const plain = {};                                                  // the same wood with fewer sides and rings (MID_WOOD, FAR_WOOD): made when a forest first asks for it
   const frameAt = step => plain[step] || (plain[step] = growTreeFrame(spec, seed, step === 'far' ? FAR_WOOD : MID_WOOD));
   const trunkAt = step => frameAt(step).trunk.geometry, bareAt = step => frameAt(step).bare;
@@ -959,7 +958,7 @@ function treeParts(type, seed, far = false) {
   cards.HID = hiddenFrom(cards);                                   // (by the tree's own sides: a forest turns them to the compass's)
   const sides = compassSides();
   cards.HD = Array.from(cards.HID, bits => hiddenByCompass(bits, sides));
-  return { kind, spec, trunk, trunkAt, bare, bareMat, bareAt, cards, leaf, rng };
+  return { kind, spec, trunk, trunkAt, bare, bareAt, cards, leaf, rng };
 }
 // a bush: puffs of small leaves, leaves all through (it is seen from above), smallest leaves of all. Small puffs, so the
 // crevices between them show; the light up the bush is gentler than up a tree (it is short). Five shapes, so bushes side
@@ -1105,17 +1104,17 @@ function leafMeshes(rng, cards, palette, mask, falling, fallCount, leaf) {
 
 // --------------------------------------------------------------------------
 export function createAnimeTree({ type = 'broadleaf', seed = 1, falling = true } = {}) {
-  const { kind, spec, trunk, bare, bareMat, cards, leaf, rng } = treeParts(type, seed);
+  const { kind, spec, trunk, bare, cards, leaf, rng } = treeParts(type, seed);
   const { leaves, fall } = leafMeshes(rng, cards, kind.palette, kind.mask, falling, kind.fall, leaf);
   const group = new THREE.Group();
   group.add(trunk, leaves);
-  if (bare) { const m = new THREE.Mesh(bare, bareMat); m.frustumCulled = false; m.name = 'anime_bare'; group.add(m); }      // (nothing of it shows while the land is alive)
+  if (bare) { const m = new THREE.Mesh(bare, trunk.material); m.frustumCulled = false; m.name = 'anime_bare'; group.add(m); }      // (its bare branches: the same bark; nothing of them shows while the land is alive)
   if (fall) group.add(fall);
   group.name = 'anime_tree_' + type;
   group.userData = {
     kind: 'tree', type, height: spec.height, cards: leaves.geometry.instanceCount,
     setFalling(on) { if (fall) fall.visible = !!on; },
-    dispose() { trunk.geometry.dispose(); trunk.material.dispose(); if (bare) { bare.dispose(); bareMat.dispose(); } leaves.geometry.dispose(); if (fall) fall.geometry.dispose(); },
+    dispose() { trunk.geometry.dispose(); trunk.material.dispose(); if (bare) bare.dispose(); leaves.geometry.dispose(); if (fall) fall.geometry.dispose(); },
   };
   return group;
 }
@@ -1212,7 +1211,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
     }
     if (bush) continue;
     const stood = geo => standAt(geo, M, e.x, e.y, e.z, s);
-    const wood = barkB[type + at] || (barkB[type + at] = { type, mat: part.trunk.material, bareMat: part.bareMat, geos: [], mid: [], far: [], bare: [], later: [], T: [] });
+    const wood = barkB[type + at] || (barkB[type + at] = { type, mat: part.trunk.material, geos: [], mid: [], far: [], bare: [], later: [], T: [] });
     const g = stood(part.trunk.geometry);
     wood.geos.push(g);
     if (cell) {                                                        // (kept in cells: its plainer wood too, and the ball its wood lies in)
@@ -1236,18 +1235,20 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
   const add = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.name = name; group.add(m); owned.push(geo); };
   const woods = [];                                                    // each cell's wood: its mesh, its plainer meshes, its bare branches, its trees (T: the ball each one's wood lies in, its size)
   const made = (list, m, name) => { add(mergeGeometries(list), m, name); list.forEach(g => g.dispose()); return group.children[group.children.length - 1]; };
-  for (const { type, mat, bareMat, geos, mid, far, bare, later, T } of Object.values(barkB)) {
+  for (const { type, mat, geos, mid, far, bare, later, T } of Object.values(barkB)) {
     const near = made(geos, mat, 'anime_bark_' + type);
-    if (bare.length) made(bare, bareMat, 'anime_bare_' + type);
+    if (bare.length) made(bare, mat, 'anime_bare_' + type);
     if (!mid.length) continue;                                         // (not kept in cells: all of it is drawn, always; the bare branches show by the land's dryness alone)
     const plainer = (list, name) => { const mesh = made(list, mat, name); mesh.visible = false; return mesh; };
-    woods.push({ type, near, mid: plainer(mid, 'anime_bark_mid_' + type), far: far.length ? plainer(far, 'anime_bark_far_' + type) : null, bareMat, later, bare: null, bareMid: null, T, dry: 0 });
+    woods.push({ type, near, mid: plainer(mid, 'anime_bark_mid_' + type), far: far.length ? plainer(far, 'anime_bark_far_' + type) : null, mat, later, bare: null, bareMid: null, T, dry: 0 });
   }
   // a cell's bare branches (all of them, or the plainer ones): made the first time the cell shows them, and kept. Most of a
-  // map is never dry, or never come near: its trees' branches are never made
+  // map is never dry, or never come near: its trees' branches are never made. They are drawn with the cell's own bark:
+  // whatever the game has done to that material since (the hour's light, the clouds' shadows, the curse's grade, all laid
+  // on once the scene was built) is on them too, though they are made long after
   const branchesOf = (w, plain) => {
     const list = w.later.map(({ part, M: at, x, y, z, s }) => standAt(plain ? part.bareAt('mid') : part.bare, at, x, y, z, s));
-    return made(list, w.bareMat, (plain ? 'anime_bare_mid_' : 'anime_bare_') + w.type);
+    return made(list, w.mat, (plain ? 'anime_bare_mid_' : 'anime_bare_') + w.type);
   };
   let cards = 0;
   const leaves = [];                                                   // each mesh of cards: the mesh, its cards' own numbers in order, its plants (T: the ball each one's cards lie in, its size)

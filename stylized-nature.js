@@ -626,6 +626,7 @@ function barkMaterial(spec) {
       attribute float aJoin;    // 0..1 how much this spot is still the trunk's wood (the foot of a limb)
       attribute vec3 aAx;       // the trunk's centre-line there (only x and z are used)
       attribute float aCrev;    // 0..1 shadowed hollow: root valleys and the crotch where a limb leaves the trunk
+      attribute float aBare;    // 1: a bare branch's wood (BARE BRANCHES); the stem's, limbs' and roots' have none of it (0)
       varying vec3 vN;
       varying vec3 vOP;
       varying vec3 vON;
@@ -643,11 +644,9 @@ function barkMaterial(spec) {
         vec3 at = position;
         #ifdef DRYNESS
         vDry = texture2D(uDryMap, clamp(((modelMatrix * vec4(position, 1.0)).xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
-        #ifdef BARE
-        // BARE BRANCHES: wood a living tree does not show. None of it where the land is alive; drawn out of its own middle
-        // line as the land dries, thin at first
-        at = mix(aCtr, position, smoothstep(0.12, 0.6, vDry));
-        #endif
+        // BARE BRANCHES (aBare): wood a living tree does not show. None of it where the land is alive; drawn out of its own
+        // middle line as the land dries, thin at first
+        at = mix(position, mix(aCtr, position, smoothstep(0.12, 0.6, vDry)), aBare);
         #endif
         vec3 p = at + windOffset(local, objPhase() + aBase.x * 0.37 + aBase.z * 0.23) * aBase.w;
         vN = normalize(mat3(modelMatrix) * normal);
@@ -1597,9 +1596,11 @@ function buildGrown(rng, spec, seed = 1) {
 // stem and a dozen limbs, its leaves gone, is a few thick sticks, far smaller than its crown was; a real one carries its
 // crown on branches, and those are grown here: off each limb's outer part (and off the leader) a few side branches, set
 // round the limb in turn and leaving it at a sharp angle toward its tip, each crooked (it turns a little at every joint,
-// and lifts: bare.lift, or droops if that is under 0) and drawn out to a point; each forks into a twig or two of the
-// same kind, a twig now and then into a finer one, and the limb's own blunt end forks in two. Real wood, so one piece
-// with the limb it leaves, painted as it is, and the same from every side.
+// and lifts: bare.lift) and drawn out to a point; each forks into a twig or two of the same kind, a twig now and then
+// into a finer one, and the limb's own blunt end forks in two. All of it reaches UP (bare.rise: the least a branch or
+// twig climbs, as the sine of its angle above level): none leaves its limb heading down or level, and none turns down
+// or level at a joint, whichever way the limb itself runs. A branch that hangs or sticks straight out of a bare tree
+// reads as broken. Real wood, so one piece with the limb it leaves, painted as it is, and the same from every side.
 //   bare: { n: [a, b] side branches a limb, reach: [a, b] their length (of the limb's), twigs: [a, b] a branch, fine: 0..1
 //           how often a twig forks again, crook, lift, r: a branch's thickness (of the limb's where it leaves) }
 // Its own dice (the tree's are not thrown for it: the living tree is the tree it always was), and the same branches
@@ -1607,14 +1608,21 @@ function buildGrown(rng, spec, seed = 1) {
 function buildBare(rng, limbs, B) {
   const parts = [], up = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
   const T = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3(), w = new THREE.Vector3(), p = new THREE.Vector3();
-  const crook = B.crook ?? 0.8, lift = B.lift ?? 0.2, thick = TREE_LOD.bareThick, twigs = TREE_LOD.bare > 1;
+  const crook = B.crook ?? 0.8, lift = B.lift ?? 0.2, rise = B.rise ?? 0.34, thick = TREE_LOD.bareThick, twigs = TREE_LOD.bare > 1;
+  // a way turned up until it climbs at least so steeply (its heading over the ground kept)
+  const climb = (d, least) => {
+    if (d.y >= least) return d;
+    const flat = Math.hypot(d.x, d.z), k = flat > 1e-6 ? Math.sqrt(1 - least * least) / flat : 0;
+    return d.set(d.x * k, flat > 1e-6 ? least : 1, d.z * k);
+  };
   // a length of thin wood from s, heading d: len long, r thick at its foot, in so many joints -> its middle line. made: its
   // wood is; if not, only where it would run (the dice are thrown alike, so a plainer frame has the same branches)
   const shoot = (s, d, len, r, joints, made, radial, rings) => {
     const pts = [s.clone()];
     w.copy(d); p.copy(s);
     for (let j = 0; j < joints; j++) {
-      w.x += (rng() - 0.5) * crook; w.y += (rng() - 0.5) * crook + lift * 0.35; w.z += (rng() - 0.5) * crook; w.normalize();
+      w.x += (rng() - 0.5) * crook; w.y += (rng() - 0.5) * crook + lift * 0.35; w.z += (rng() - 0.5) * crook;
+      climb(w.normalize(), rise * 0.7);                                       // (it may flatten a little as it goes, never level, never down)
       pts.push(p.addScaledVector(w, len / joints).clone());
     }
     if (!made) return new THREE.CatmullRomCurve3(pts);
@@ -1623,17 +1631,14 @@ function buildBare(rng, limbs, B) {
     parts.push(tube.geo);
     return tube.curve;
   };
-  // the way a shoot leaves wood that runs along T: turned off it by `off`, toward the side `az` round it; never steeply down
+  // the way a shoot leaves wood that runs along T: turned off it by `off`, toward the side `az` round it; of that side
+  // and the one across the limb from it, the one that climbs more, and turned up if that is still not enough
   const away = (off, az) => {
     u.crossVectors(T, Math.abs(T.y) < 0.95 ? up : X).normalize(); v.crossVectors(u, T);
-    const d = new THREE.Vector3();
-    for (let k = 0; k < 2; k++) {
-      d.copy(T).multiplyScalar(Math.cos(off)).addScaledVector(u, Math.cos(az) * Math.sin(off)).addScaledVector(v, Math.sin(az) * Math.sin(off));
-      if (d.y > -0.3) break;
-      az += Math.PI;                                                          // (to the other side of the limb)
-    }
-    if (d.y < -0.3) d.setY(-0.3);
-    return d.normalize();
+    const way = a => new THREE.Vector3().copy(T).multiplyScalar(Math.cos(off)).addScaledVector(u, Math.cos(a) * Math.sin(off)).addScaledVector(v, Math.sin(a) * Math.sin(off));
+    let d = way(az);
+    if (d.y < rise) { const other = way(az + Math.PI); if (other.y > d.y) d = other; }
+    return climb(d.normalize(), rise);
   };
   // a twig off a branch (or a finer one off a twig): from part way along it, to one side
   const twigOff = (curve, r, len, at, side, made, depth) => {
@@ -1665,6 +1670,7 @@ function buildBare(rng, limbs, B) {
   const g = mergeGeometries(parts);
   parts.forEach(q => q.dispose());
   for (const name of ['aJoin', 'aAx', 'aCrev']) g.deleteAttribute(name);      // (no limb's foot on the stem and no hollow in it: the bark reads nothing for them, as it does for none)
+  g.setAttribute('aBare', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(1), 1));      // (what tells the bark this wood is a bare branch's)
   return g;
 }
 
@@ -2002,7 +2008,8 @@ export const treeSpec = type => TREE_TYPES[type];
 // The wood and the leaf masses of a tree from a spec shaped like the TREE_TYPES ones (trunk, grow or tiers, bark ...), for a
 // kit that dresses the crown its own way (anime-tree.js). trunk: bark mesh, ready to add; tiers: one leaf mass per limb tip
 // (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space. bare: the
-// tree's bare branches (BARE BRANCHES: a geometry for the same bark, drawn with bareBark(trunk.material)), or null.
+// tree's bare branches (BARE BRANCHES: a geometry drawn with the trunk's own material, the bark made to die by the
+// dryness picture, anime-tree.js's dyingWood: it shows where the land is dry), or null.
 // wood: { trunkRadial, trunkLength, branchRadial, branchLength } for this frame only: the same tree (stem, limbs and roots
 // where they are), its wood with fewer sides and rings, for a tree seen from far off.
 export function growTreeFrame(spec, seed = 1, wood = null) {
@@ -2016,12 +2023,6 @@ export function growTreeFrame(spec, seed = 1, wood = null) {
   const mesh = new THREE.Mesh(withBase(trunk), barkMaterial(spec));
   mesh.frustumCulled = false;
   return { trunk: mesh, tiers, rng, bare: trunk.userData.bare ? withBase(trunk.userData.bare) : null };
-}
-// The bark for a tree's bare branches (BARE BRANCHES): the tree's own bark (the same uniforms: it dies, is lit and sways as
-// the wood does), on wood that is drawn out of nothing as the land dries (the bark shader, BARE). The bark must die by the
-// dryness picture (anime-tree.js's dyingWood) before this is asked for.
-export function bareBark(bark) {
-  return new THREE.ShaderMaterial({ uniforms: bark.uniforms, defines: { ...bark.defines, BARE: 1 }, vertexShader: bark.vertexShader, fragmentShader: bark.fragmentShader });
 }
 export const treeSpecScale = type => TREE_TYPES[type]?.scale ?? 1;
 
