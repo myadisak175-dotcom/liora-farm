@@ -518,9 +518,6 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       const o = j * cols + i, x = CX - FR + (cA + i) * step, z = CZ - FR + j * step, y = heights[j * n + cA + i];
       pos[o * 3] = x; pos[o * 3 + 1] = y; pos[o * 3 + 2] = z;
       bank[o] = bankAt(x, z, y);
-      // the fringe's dry beds: sand, as dry as a beach's upper edge on a riffle or a bar, and the deeper a pool or the pond's
-      // basin lies under the bed's own level the nearer to wet (the land's paint makes that darker mud, cracked)
-      { const dry = west.dryAt(x, z); if (dry > 0) bank[o] = Math.min(bank[o], 10 - (9.58 + 0.34 * Math.min(1, west.poolAt(x, z, y) / 0.9)) * dry); }
       if (inField(x, z, 0.4)) soil[o] = 1;
     }
     const whole = new THREE.BufferGeometry(), all = new Uint32Array((cols - 1) * (n - 1) * 6);
@@ -530,7 +527,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
-    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, dryPaint, ground: map, grassLook, ways: landWays });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
+    // (the fringe's dry beds are sand too: handed over as a picture, west.beds, so their edges are the beds' own)
+    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, dryPaint, beds: west.beds, ground: map, grassLook, ways: landWays });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     // Its triangles. A cell of the grid is half a metre, and the land was two triangles to every cell, 753 000 in all,
     // meadow and cliff alike. Now a square of cells is drawn whole where the land inside it is flat to 3 cm (coarseGrid,
@@ -562,6 +560,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (cliffPaint) own.push(cliffPaint);
     if (sandPaint) own.push(sandPaint);
     if (dryPaint) own.push(dryPaint);
+    own.push(west.beds.map);
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };
   }
   group.add(terrain);

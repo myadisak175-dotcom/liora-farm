@@ -285,7 +285,7 @@ _edge = POND[5] - 0.07 * shW
 pondT = POND[5] - 0.07 * np.minimum(_in, shW) - np.clip(_edge - _basin, 0, None) * (1 - np.exp(-np.clip(_in - shW, 0, None) / 3.4))
 _gz, _gx = np.gradient(pondT, CELL)
 pondT += 0.02 * np.sin(2 * np.pi * (pondT - 4.5) / 0.22) * sm(4.9, 5.05, pondT) * sm(POND[5] + 0.02, POND[5] - 0.1, pondT) * sm(0.13, 0.07, np.hypot(_gx, _gz))      # strandlines (on the shallows: a steep bottom keeps none)
-_bank = 0.16 + 0.75 * np.clip(wnoise(17, 2) + 0.5, 0, 1) ** 1.6                    # the banks: from a beach she strolls down to a bank cut steep
+_bank = 0.16 + 0.42 * np.clip(wnoise(17, 2) + 0.5, 0, 1) ** 1.6                    # the banks: from a beach she strolls down to a short steep bank (never a cliff: they stand a step high)
 _beach = 1.0 + 3.0 * np.clip(wnoise(21, 2) + 0.5, 0, 1)
 pondT = np.where(sdP > 0, pondT, POND[5] + 0.1 * np.minimum(_out, _beach) + _bank * np.clip(_out - _beach, 0, None) + 0.02 * _out ** 2)
 FAN = (-208.6, 149.4, math.atan2(151.0 - 149.4, -196.0 + 208.6))       # the gully's fan: its head, the way it spreads
@@ -457,12 +457,18 @@ def channel(Q, s, level, half, deep, falls=(), fords=(), reach=9.0):
     g = -kn[i] * su                                                     # + on the bend's outer side, - on its inner
     ws = np.maximum(w[i] - su * off[i], 0.3)
     q = np.abs(u) / ws
-    bed = lev - dep[i] * (1 - np.clip(q, 0, 1) ** np.where(g > 0, 2.0 + 1.3 * g, 2.0 + 0.7 * g))
+    # (nothing low stands steep. The land paints rock on what is steeper than about 0.7, and a bank a step high painted as
+    # rock is a row of splinters: a pool's side is kept under 0.6, and a bank is cut steep only where it stands over a
+    # metre above the bed, where it is a face)
+    shape = np.minimum(np.where(g > 0, 2.0 + 1.3 * g, 2.0 + 0.7 * g), np.maximum(1.25, 0.58 * ws / np.maximum(dep[i], 0.05)))
+    bed = lev - dep[i] * (1 - np.clip(q, 0, 1) ** shape)
     steep = np.clip(np.where(su > 0, steepL[i], steepR[i]) + np.where(g > 0, 1.15 * g, 0.22 * g), 0.3, 1.9)
+    steep = np.minimum(steep, 0.56 + 1.3 * sm(1.1, 1.9, Hsoft[m] - lev))
     steep = steep * (1 - ford[i]) + 0.3 * ford[i]
     d = np.clip(np.abs(u) - ws, 0, None)
     C = np.full((NZ, NX), 1e6); C[m] = np.where(q <= 1, bed, lev + steep * d + 0.025 * d * d)
-    return C, m, w, dep
+    face = np.zeros((NZ, NX), bool); face[m] = (steep > 0.62) & (q > 1)      # where a bank is meant to stand as a face
+    return C, m, w, dep, face
 
 
 def into_land(C, m):
@@ -480,11 +486,12 @@ def crossings(Q, s):                                                    # where 
 
 Hplain = None
 Hb = H.copy()                                                 # (the land before the beds: to say how deep each lies)
+Hsoft = ndi.gaussian_filter(H, 3.0)                           # (and broadly: how high a bank stands over a bed)
 # the gully: from the west hills to the pond, 0.7 m under the land, never rising on its way down
 Qg, sg = bed_line(GULLY, 1.3)
 gb = ndi.gaussian_filter1d(sample(H, Qg), 4.0 / DS, mode='nearest') - 0.7
 gb = np.minimum.accumulate(gb); gb = np.maximum(gb, POND[5] + 0.05)
-Cg, mg, wg, dg = channel(Qg, sg, gb, 1.15, 0.42, fords=crossings(Qg, sg))
+Cg, mg, wg, dg, faceG = channel(Qg, sg, gb, 1.15, 0.42, fords=crossings(Qg, sg))
 # the brook: out over the sill, and down its three level reaches to the seam, one line
 BROOK = SILL + [p for _, _, pts in REACHES for p in pts[1:]]
 FALLS = [REACHES[1][2][0], REACHES[2][2][0]]                  # where a reach ends: a dry fall, at a scarp
@@ -495,7 +502,7 @@ Lb = np.where(sb < sF[0], REACHES[0][1], np.where(sb < sF[1], REACHES[1][1], REA
 Lb = np.where(sb < sF[0], REACHES[0][1] + (POND[5] - REACHES[0][1]) * sm(s1 + 2.5, s1 - 2.5, sb), Lb)      # (from the sill down to the first reach: a run, no step)
 for f, hi, lo in ((sF[0], REACHES[0][1], REACHES[1][1]), (sF[1], REACHES[1][1], REACHES[2][1])):          # a dry fall: its face stands 0.9 m deep
     Lb = np.where(np.abs(sb - f) < 0.45, hi + (lo - hi) * sm(f - 0.45, f + 0.45, sb), Lb)
-Cb, mb, wb, db = channel(Qb, sb, Lb, 1.85, 0.6, falls=sF, fords=crossings(Qb, sb))
+Cb, mb, wb, db, faceB = channel(Qb, sb, Lb, 1.85, 0.6, falls=sF, fords=crossings(Qb, sb))
 Hland = H.copy()
 for i, (name, bed, pts) in enumerate(REACHES[2:]): carve(pts, 1.5, bed)      # the last metres as first cut: what the village's brook meets
 Hplain = H.copy(); H = Hland
@@ -564,6 +571,22 @@ _r = np.clip(np.log(np.maximum(FLOW, 1) / 40.0) / math.log(700.0 / 40.0), 0, 1) 
 RILL = ndi.gaussian_filter(1.05 * _r ** 1.2 * sm(0.05, 0.3, _fall), 1.25) + ndi.gaussian_filter(0.11 * _r, 2.6)
 RILL *= (1 - KEEP) * (WEST > 0.999)
 H = H - RILL
+# and nothing small round the water is left standing steep (a runnel's side where it notches a bank, a bed's rim): eased
+# to a slope the land paints as earth. Not what is meant to be steep: a dry fall, a bank's face, and what was steep
+# before any of this (the scarps, the holes, the hill, the cliffs)
+def slope_of(F):
+    gz_, gx_ = np.gradient(F, CELL); return np.hypot(gx_, gz_)
+
+
+_round = ndi.binary_dilation(bedsM | (RILL > 0.02) | (np.abs(sdP) < 6), iterations=int(6 / CELL))
+_meant = ndi.binary_dilation(faceB | faceG | (ndi.gaussian_filter(slope_of(Hland), 1.0) > 0.55), iterations=3)
+for x, z in FALLS: _meant |= np.hypot(WX - x, WZ - z) < 4.5
+SOFT = _round & ~_meant & (WEST > 0.999) & (KEEP < 0.5)
+for _ in range(60):
+    hot = SOFT & (slope_of(H) > 0.58)
+    if not hot.any(): break
+    hot = ndi.binary_dilation(hot, iterations=1) & SOFT
+    H = np.where(hot, 0.45 * H + 0.55 * ndi.gaussian_filter(H, 0.9), H)
 
 # ------------------------------------------------------------------ 7. checks
 gz, gx = np.gradient(H, CELL); SL = np.hypot(gx, gz)
@@ -594,6 +617,9 @@ _calm = np.min([np.abs(sb - f) for f in sF], axis=0) > 6
 print('  the brook\'s bed %.1f .. %.1f m wide, its pools to %.2f m under its riffles (%.2f m under a dry fall), fords at %s; the gully\'s %.1f .. %.1f m wide' % (
     2 * wb.min(), 2 * wb.max(), db[_calm].max(), db.max(), [round(f) for f in crossings(Qb, sb)], 2 * wg.min(), 2 * wg.max()))
 print('  runnels: worn into %.1f%% of the low ground, the deepest %.2f m' % (100 * (RILL > 0.05)[inplay & (sdS < -2)].mean(), RILL.max()))
+_in = SOFT & ~ndi.binary_dilation(~SOFT & _round, iterations=2)      # (not the places right beside a fall or a face: they slope as it does)
+print('  round the water (not its falls and faces): %d places steeper than 0.62 (the land would paint them rock)' % int((_in & (slope_of(H) > 0.62)).sum()))
+assert (_in & (slope_of(H) > 0.66)).sum() == 0, 'something small stands steep by the water'
 for name, Q_ in (('brook', Qb), ('gully', Qg)):                 # she walks in the beds too: all of each but a dry fall's face (and what lies past where she may go)
     P_ = Q_[(Q_[:, 0] > PLAY[0] + 1) & (Q_[:, 0] < SEAM - 1)]; on = np.array([lab[at(x, z)] == home for x, z in P_])
     print('  she can walk %.0f%% of the %s\'s bed' % (100 * on.mean(), name))

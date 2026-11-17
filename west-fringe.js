@@ -4,7 +4,7 @@
      const west = await joinWestFringe({ raw, plan, url });      // as the level reads its land, before it makes anything from it
      west.raw            the land's numbers with the fringe's columns added on the west (plan.land says how wide it is now)
      west.dryAt(x, z)    0..1: how much a spot is the bed of the fringe's dry water (bare and sandy: no grass grows in it)
-     west.poolAt(x, z, y)  metres a spot of that bed, at height y, lies under the bed's own level: a pool, the pond's basin
+     west.beds           the same beds as a picture for the land's paint: { map, rect, levels } (stylized-terrain.js, beds)
      west.deadAt(x, z)   0..1: how dead the land is there (the curse's picture, as it is set here)
 
    One job: make the two lands one as they are read. The fringe (assets/heightmaps/west-fringe.bin + .json, written by
@@ -119,10 +119,16 @@ export async function joinWestFringe({ raw, plan: P, url }) {
     const dry = (grid[o] * (1 - fu) + grid[o + 1] * fu) * (1 - fv) + (grid[o + gw] * (1 - fu) + grid[o + gw + 1] * fu) * fv;
     return dry * ss(seam, seam - 3, x);                                   // (at the seam the village's own brook takes over)
   };
-  // how far under its bed's own level a place at height y lies (metres, 0 and up): a pool in the brook, the pond's basin
-  const poolAt = (x, z, y) => {
-    if (x < box[0] || x > box[1] || z < box[2] || z > box[3] || x > seam) return 0;
-    return Math.max(0, level[Math.min(gh - 1, Math.round((z - box[2]) / G)) * gw + Math.min(gw - 1, Math.round((x - box[0]) / G))] - y);
-  };
-  return { raw: out, dryAt, poolAt, deadAt, plan: F };
+  // the same as a picture, for the land's paint (stylized-terrain.js, beds): red: how much a spot is a bed, green: the bed's
+  // own level there (what lies under it is a pool, the pond's basin: darker mud). The paint reads it a pixel at a time
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < level.length; k++) { lo = Math.min(lo, level[k]); hi = Math.max(hi, level[k]); }
+  const px = new Uint8Array(gw * gh * 4);
+  for (let k = 0; k < gw * gh; k++) {
+    px[k * 4] = Math.round(255 * grid[k] * ss(seam, seam - 3, box[0] + (k % gw) * G));
+    px[k * 4 + 1] = Math.round(255 * (level[k] - lo) / (hi - lo || 1)); px[k * 4 + 3] = 255;
+  }
+  const map = new THREE.DataTexture(px, gw, gh); map.magFilter = map.minFilter = THREE.LinearFilter; map.needsUpdate = true;
+  const bedsPaint = { map, rect: [box[0] - G / 2, box[2] - G / 2, 1 / (gw * G), 1 / (gh * G)], levels: [lo, hi - lo] };
+  return { raw: out, dryAt, beds: bedsPaint, deadAt, plan: F };
 }

@@ -109,9 +109,12 @@ BLANK_WAYS.needsUpdate = true;
 // too. dryPaint (with grassLook): THE DRY EARTH, PAINTED. A picture of dry earth made with the ways' own brush, its
 // cracks in its alpha (tools/make-path-paint.py dry): laid as the sand is, wherever the dead land carries no grass, and
 // cracked only in stretches. Sand and ways lying in dead land lose their warmth.
+// beds (with sandPaint): DRY BEDS. { map, rect: [x0, z0, 1 / width, 1 / depth], levels: [lowest, span] }: a picture of where
+// dry water's beds lie (red) and each bed's own level (green), laid over the land. The land paints sand there, by the
+// picture and a pixel at a time, so a bed's edge is a line of its own and not the land's triangles' (west-fringe.js makes it).
 // ways: the trodden ways laid by the land's own paint (ground-paths.js, P.onLand: { glsl, defines, uniforms }), over whatever
 // the land is painted there, before the haze: the ways cost nothing to draw then, however many are painted by hand.
-function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null, ways = null, dryPaint = null } = {}) {
+function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null, ways = null, dryPaint = null, beds = null } = {}) {
   const C = TERRAIN_COLORS;
   const defines = ways ? { WAY_LAND: 1, ...ways.defines } : {};
   if (cliffPaint) defines.CLIFF_PAINT = 1;
@@ -119,11 +122,13 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
   if (sandPaint && ground) defines.SAND_GROUND = 1;
   if (grassLook && ground) defines.GRASS_LOOK = 1;
   if (grassLook && ground && dryPaint) defines.DRY_PAINT = 1;
+  if (sandPaint && beds) defines.BED_MAP = 1;
   return new THREE.ShaderMaterial({
     defines,
     uniforms: {
       ...(ways ? ways.uniforms : {}), ...(grassLook && grassLook.uniforms ? grassLook.uniforms : {}),
       uDryPaint: { value: dryPaint }, uDryCrack: { value: rgb(C.dryCrack) }, uDryDust: { value: rgb(C.dryDust) },
+      uBedMap: { value: beds ? beds.map : null }, uBedRect: { value: beds ? new THREE.Vector4(...beds.rect) : new THREE.Vector4() }, uBedLev: { value: beds ? new THREE.Vector2(...beds.levels) : new THREE.Vector2() },
       uCliffPaint: { value: cliffPaint }, uCliffTile: { value: new THREE.Vector2(1 / cliffTile[0], 1 / cliffTile[1]) },
       uSandPaint: { value: sandPaint }, uSandWet: { value: rgb(C.sandWet) }, uHay: { value: rgb(C.hay) },
       uGround: { value: ground ? ground.texture : null }, uGroundRect: { value: ground ? ground.rect : new THREE.Vector3(0, 0, 1) },
@@ -179,6 +184,11 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
       #ifdef SAND_PAINT
         uniform sampler2D uSandPaint;
         uniform vec3 uSandWet, uHay;
+      #endif
+      #ifdef BED_MAP
+        uniform sampler2D uBedMap;    // dry beds (see beds): r: how much a spot is one, g: the bed's own level there (uBedLev: its lowest, and the span)
+        uniform vec4 uBedRect;        // x0, z0, 1 / width, 1 / depth of the land the picture covers
+        uniform vec2 uBedLev;
       #endif
       #if defined(SAND_GROUND) || defined(GRASS_LOOK)
         #ifdef DRY_PAINT
@@ -278,7 +288,21 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
             // the banks' sand, painted with the ways' own brush and laid as they are (twice, at two sizes, turned, so the repeat
             // does not show). No line anywhere: darker and wet toward the water, and where the grass begins it goes to dry grass
             // and fades into the meadow, as the soft ways do
-            float sb = vBank + (noise2(vWP.xz * 0.9) - 0.5) * 0.24 + (noise2(vWP.xz * 3.1 + 5.0) - 0.5) * 0.08;    // ragged, but soft
+            float bk = vBank;
+            #ifdef BED_MAP
+            {
+              // a dry bed: sand too, as dry as a beach's upper edge, and the deeper a pool or a pond's basin lies under the bed's
+              // own level the nearer to wet. Read from a picture here, a pixel at a time: its edge runs as the bed does, where a
+              // value carried by the land's corners would run along its triangles' sides, in teeth
+              vec2 bu = (vWP.xz - uBedRect.xy) * uBedRect.zw;
+              if (bu.x > 0.0 && bu.x < 1.0 && bu.y > 0.0 && bu.y < 1.0) {
+                vec4 bd = texture2D(uBedMap, bu);
+                float pool = clamp((uBedLev.x + bd.g * uBedLev.y - vWP.y) / 0.9, 0.0, 1.0);
+                bk = min(bk, mix(0.42, 0.08, pool) + (1.0 - bd.r) * 0.9);
+              }
+            }
+            #endif
+            float sb = bk + (noise2(vWP.xz * 0.9) - 0.5) * 0.24 + (noise2(vWP.xz * 3.1 + 5.0) - 0.5) * 0.08;    // ragged, but soft
             float sand = 1.0 - smoothstep(0.48, 0.80, sb);                  // the beach, until the land rises out of the water's reach
             #ifdef SAND_GROUND
               // and none under a thick meadow: where the blades stand thick the sand has given way to dry grass
@@ -303,7 +327,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
                 // a dry bed: where it lay deepest (a pool, a pond's basin: the wet end of the sand) the mud dried last. It is
                 // darker there, ringed by the lines the water stood at as it went down, and cracked
                 float deep = 1.0 - smoothstep(0.16, 0.4, sb);
-                sc *= 1.0 - 0.07 * dz * smoothstep(0.42, 0.58, fract(vBank * 15.0)) * smoothstep(0.44, 0.3, sb);
+                sc *= 1.0 - 0.07 * dz * smoothstep(0.42, 0.58, fract(bk * 15.0)) * smoothstep(0.44, 0.3, sb);
                 #ifdef DRY_PAINT
                 sc = mix(sc, uDryCrack, (1.0 - texture2D(uDryPaint, vWP.xz / 4.1).a) * deep * 0.8 * dz);
                 #endif
