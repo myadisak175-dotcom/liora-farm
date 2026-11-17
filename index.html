@@ -74,6 +74,16 @@
   #curseBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
     background: rgba(70, 56, 92, .85); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
   body:not(.dev) #curseBtn { top: 240px; }
+  /* the hill village: the button that switches between the living world and the cursed one, under full screen (the curse
+     trial's button then goes under it) */
+  #worldBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
+    border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
+  #worldBtn.toCursed { background: rgba(116, 46, 52, .9); }
+  #worldBtn.toLiving { background: rgba(62, 112, 52, .85); }
+  #worldBtn:disabled { opacity: .7; }
+  body:not(.dev) #worldBtn { top: 240px; }
+  body.world #curseBtn { top: 306px; }
+  body.world:not(.dev) #curseBtn { top: 282px; }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
@@ -141,13 +151,14 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
   "./character-shadow.js": "./character-shadow.js?v=shadow2swap1",
   "./curse.js": "./curse.js?v=1",
+  "./world-switch.js": "./world-switch.js?v=1",
   "./drought.js": "./drought.js?v=2",
   "./dark-mist.js": "./dark-mist.js?v=2"
 } }
@@ -236,6 +247,7 @@ import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
 import { createGameMap } from './game-map.js';
 import { createWarpUI } from './warp-ui.js';
 import { createCurse, CURSE_TUNE, CURSE_CONTROLS } from './curse.js';
+import { createWorldSwitch } from './world-switch.js';
 import { createTunerPanel } from './tuner-panel.js';
 
 const HAZE = '#cde6f2';
@@ -417,6 +429,11 @@ if (tod) {
   if (Q.get('time') === 'stop') { tod.auto = false; timeRun.textContent = '▶ เดินเวลา'; }
   setInterval(showTime, 1000);
 } else { timeBtn.remove(); timeRun.remove(); }
+
+// ---- 🥀/🌿 the hill village's living world and its cursed one (?curse=1), to compare them from the same place: the map loads
+// again in the other world with her where she stood, the camera as it looked and the hour as it was (world-switch.js)
+const worldSwitch = createWorldSwitch({ player, tod, map: MAP });
+if (worldSwitch && worldSwitch.restored && tod) { showTime(); timeRun.textContent = tod.auto ? '⏸ หยุดเวลา' : '▶ เดินเวลา'; }
 
 // ---- ☠ the curse (a trial, ?curse=1): the world drained of colour, dimmer and misty, to find how gloomy the game should begin.
 // She stays in colour. The sliders are remembered on this device; "คัดลอกค่า" gives the numbers to send back

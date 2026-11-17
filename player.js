@@ -155,7 +155,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const player = {
     object: root, position: pos, blob: shadow,
     get character() { return character; },
-    get heading() { return heading; }, get camYaw() { return camYaw; }, get speed() { return speed; },
+    get heading() { return heading; }, get camYaw() { return camYaw; }, get camPitch() { return camPitch; }, get camDist() { return camDist; }, get speed() { return speed; },
     lookDir: new THREE.Vector3(0, 0, -1),
     get airborne() { return air; },
     jump() { jumpWanted = JUMP_BUFFER; },
