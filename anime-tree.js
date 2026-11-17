@@ -535,6 +535,43 @@ void main() {
   gl_FragColor = vec4(mix(col, uHaze, vHaze), alpha);
 }`;
 
+// LEAF PREPASS. A crown is many cards deep: from where she stands, a pixel of leaves had 30 to 60 cards over it (and
+// more, under a tree), and the leaf shader above (tones, brush strokes, haze) ran for every one of them, the ones
+// hidden behind others too: a shader that throws pixels away (the leaf's outline) and spreads its edge over the
+// screen's samples (alpha to coverage) keeps the phone from skipping what lies behind. So the leaves are drawn twice:
+// first only into depth, every card, with a shader that does nothing but read the leaf's outline (LEAF_DEPTH_FS: the
+// same outline, the same soft edge); then in colour, not writing depth and only where a card is the nearest leaf there
+//, so the leaf shader runs about once a pixel. The picture is the same. The depth pass is each leaf mesh's
+// child (the same cards, the same cells and counts from lod), drawn before all else that is solid (renderOrder -1), so
+// the ground and grass behind the crowns are skipped too. ?leafpre=0: as before, one pass.
+const LEAF_PREPASS = !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('leafpre') === '0');
+const LEAF_DEPTH_FS = /* glsl */`
+uniform sampler2D uMask;
+varying vec2 vUv;
+void main() {
+  float a = texture2D(uMask, vUv).r;
+  float w = max(fwidth(a), 1e-3) * 0.75;
+  float alpha = smoothstep(0.5 - w, 0.5 + w, a);
+  if (alpha < 0.02) discard;
+  gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
+}`;
+const depthMats = new WeakMap();
+function withPrepass(mesh) {
+  if (!LEAF_PREPASS) return mesh;
+  const m = mesh.material;
+  let d = depthMats.get(m);
+  if (!d) {
+    // (the colour pass draws a hair nearer than the depth it tests against: polygonOffset on this one)
+    d = new THREE.ShaderMaterial({ uniforms: m.uniforms, defines: m.defines, vertexShader: LEAF_VS, fragmentShader: LEAF_DEPTH_FS,
+      alphaToCoverage: true, side: THREE.DoubleSide, colorWrite: false, polygonOffset: true, polygonOffsetFactor: 0, polygonOffsetUnits: 2 });
+    depthMats.set(m, d);
+  }
+  const dm = new THREE.Mesh(mesh.geometry, d);
+  dm.frustumCulled = false; dm.renderOrder = -1; dm.name = 'anime_leaves_depth';
+  mesh.add(dm);
+  return mesh;
+}
+
 // falling leaves: each one drops from a spot in the crown, sways and tumbles downwind, fades, and starts again.
 // All in the shader from the time: nothing to update per frame.
 const FALL_VS = /* glsl */`
@@ -613,6 +650,7 @@ function materials(palette, mask = 'leaf') {
       uCrownMix: { value: 0.3 }, uLightW: { value: W.light ?? 0.85 }, uHeightW: { value: W.height ?? 0.28 }, uAOW: { value: W.ao ?? 0.5 }, uLeafTint: { value: W.tint ?? 0.08 }, uSkyW: { value: W.sky ?? 0 },
     },
     vertexShader: LEAF_VS, fragmentShader: LEAF_FS, alphaToCoverage: true, side: THREE.DoubleSide,
+    depthWrite: !LEAF_PREPASS,
   });
   if (mask === 'blossom') {
     leaf.defines = { BLOSSOM: 1 };
@@ -1034,6 +1072,7 @@ function leafMeshes(rng, cards, palette, mask, falling, fallCount, leaf) {
     fall.frustumCulled = false; fall.visible = falling; fall.name = 'anime_falling';
   }
   leaves.frustumCulled = false; leaves.name = 'anime_leaves';
+  withPrepass(leaves);
   return { leaves, fall };
 }
 
@@ -1172,7 +1211,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
   for (const b of Object.values(leafB)) {
     const { order, own } = inOwnOrder(b), geo = cardGeometry(b, order);
     add(geo, materials(b.palette, b.mask).leaf, 'anime_leaves'); cards += own.length;
-    leaves.push({ mesh: group.children[group.children.length - 1], geo, own, T: b.T });
+    leaves.push({ mesh: withPrepass(group.children[group.children.length - 1]), geo, own, T: b.T });
   }
   for (const [palette, f] of Object.entries(fallB)) if (f.S.length) add(fallGeometry(f), materials(palette).fall, 'anime_falling');
   group.name = 'anime_forest';
