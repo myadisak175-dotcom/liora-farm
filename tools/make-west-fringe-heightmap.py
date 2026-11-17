@@ -18,13 +18,18 @@
 #   the dead hill     in the south-west, 14 m, ribbed with gullies, a crag by its flat top, a way winding up, a slip scar on its
 #                     north face
 #
-#   python3 make-west-fringe-heightmap.py [repo] [out]
+#   python3 tools/make-west-fringe-heightmap.py [repo] [out] [--into-map]
 # writes  west-fringe.png   16-bit grey, white high, black low (601 x 778, one pixel every 0.4 m)
 #         west-fringe.bin   the same as raw 16-bit numbers, little-endian (what the game reads)
 #         west-fringe.json  where the land lies, the ways, the house floors, the well, the dry water, the dead trees, the places
-# The game joins this land to the village's as it loads (west-fringe.js, ?west=1).
+# The game joins this land to the village's as it loads (west-fringe.js): it is part of the hill village's map.
+#
+# The dead trees are planted here once, and then put into the map's own foliage with --into-map: that writes them (and the
+# village's old margin plants taken out) as hill-village-foliage-edits.json, which make-hill-village-heightmap.py lays over the
+# map's kept foliage. From then on they are the map's plants, arranged by hand in the game like any other (foliage-editor.js);
+# running this tool again does not move them.
 # Places are metres, as in the village's plan: x east, z south.
-import json, math, sys
+import json, math, sys, zlib
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
@@ -33,8 +38,9 @@ from scipy.interpolate import RBFInterpolator
 from scipy.spatial import cKDTree
 
 HERE = Path(__file__).resolve().parent
-REPO = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE.parent
-OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else REPO / 'assets/heightmaps'
+ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
+REPO = Path(ARGS[0]) if len(ARGS) > 0 else HERE.parent
+OUT = Path(ARGS[1]) if len(ARGS) > 1 else REPO / 'assets/heightmaps'
 OUT.mkdir(parents=True, exist_ok=True)
 
 # ------------------------------------------------------------------ 0. the village's land, and this land's grid on the same lines
@@ -451,3 +457,21 @@ plan = {
 }
 json.dump(plan, open(OUT / 'west-fringe.json', 'w'), ensure_ascii=False, separators=(',', ':'))
 print('written:', OUT / 'west-fringe.png', v16.shape[::-1], 'heights %.1f..%.1f' % (BASE, BASE + RANGE))
+
+# ------------------------------------------------------------------ 10. into the map's foliage, once (--into-map)
+# As an arrangement made by hand is sent (foliage-edits.js): on the stamp of the map's kept foliage, the margin's plants out
+# (they stood in the wooded hills this land replaces), the dead trees in. 'carry': the map then tells a browser holding an
+# arrangement made on the foliage before this one to take the same out and put the same in (foliageWas), so it stands.
+if '--into-map' in sys.argv:
+    fol_file = REPO / 'assets/heightmaps/hill-village-foliage.json'
+    FOL = json.loads(fol_file.read_text())
+    stamp = zlib.crc32(json.dumps([FOL['plants'], FOL['clumps'], FOL['cover']], separators=(',', ':')).encode())
+    assert stamp == FOL['stamp'], 'the kept foliage is not what its stamp says'
+    gone = lambda x, z: x < SEAM - 0.5 and z > Z0                    # (as west-fringe.js has it: the margin west of the seam, beside this land)
+    assert not any(gone(r[1], r[2]) for r in FOL['plants'] if r[0] in ('oak', 'broadleaf', 'birch', 'sapling') and r[7] >= 700 and r[4] == 0.8 and r[5] == 0), 'the dead trees are in already'
+    ed = {'map': 'hillvillage', 'v': 1, 'base': stamp, 'carry': True, 'why': 'the west fringe: its dead trees in, the old margin\'s plants out',
+          'plants': {'set': [], 'del': [i for i, r in enumerate(FOL['plants']) if gone(r[1], r[2])], 'add': [[k, x, z, s, 0.8, 0, t, sh] for k, x, z, s, t, sh in dead_trees]},
+          'clumps': {'set': [], 'del': [i for i, r in enumerate(FOL['clumps']) if gone(r[0], r[1])], 'add': []},
+          'cover': {'set': [], 'del': [i for i, r in enumerate(FOL['cover']) if gone(r[1], r[2])], 'add': []}}
+    (REPO / 'assets/heightmaps/hill-village-foliage-edits.json').write_text(json.dumps(ed, ensure_ascii=False, separators=(',', ':')) + '\n')
+    print('into the map: %d plants and %d of ground cover out, %d dead trees in; now run make-hill-village-heightmap.py' % (len(ed['plants']['del']), len(ed['cover']['del']), len(ed['plants']['add'])))

@@ -14,8 +14,9 @@
 #   6. rocks, bushes and trees (a shadow, a crown, a light on it).
 #
 #   python3 tools/make-hill-village-map.py            (Termux: pip install numpy scipy pillow)
-#   python3 tools/make-hill-village-map.py --west     the same with the west fringe joined on (tools/make-west-fringe-heightmap.py),
-#                                                     as the game joins it for ?west=1 (west-fringe.js): hill-village-west-map.webp + .json
+#
+# The west fringe (tools/make-west-fringe-heightmap.py) is part of the map: its land is joined on here as the game joins it
+# (west-fringe.js), its ways, dry water and ruins drawn, and the plants that stand on it drawn as the dead trees they are.
 #
 # To change its look: PPM (pixels to a metre), MARGIN (how much land is shown beyond where she can walk), COL.
 import json, math, sys
@@ -42,7 +43,7 @@ sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 
 
 plan = json.loads((SRC / 'hill-village.json').read_text())
 L = plan['land']; H = np.fromfile(SRC / 'hill-village.bin', '<u2').reshape(L['nz'], L['nx']) / 65535 * L['range'] + L['base']
-WEST = '--west' in sys.argv; NAME = 'hill-village-west-map' if WEST else 'hill-village-map'
+WEST = (SRC / 'west-fringe.json').exists(); NAME = 'hill-village-map'
 PLAYS = [L['play']]; FR = None                                        # every part she walks in; the fringe's plan
 if WEST:                                                              # the two lands made one, and the plan changed, as west-fringe.js does it
     FR = json.loads((SRC / 'west-fringe.json').read_text()); WL = FR['land']; SEAM = FR['joins']['seam_x']
@@ -52,12 +53,10 @@ if WEST:                                                              # the two 
     joined[j0:, :iseam] = HW[:, :iseam]; joined[:j0, :add] = H[:j0, :1] + (HW[0, :add] - HW[0, add])[None, :]
     H = joined; L = dict(L, x0=WL['x0'], nx=L['nx'] + add)
     PLAYS.append([WL['play'][0], SEAM + 3, WL['play'][2], WL['play'][3]])
-    gone = lambda x, z: x < SEAM - 0.5 and z > WL['z0']                # in the old margin the fringe replaces
     for p in plan['paths']:
         if p['id'] == 'road_in': p['points'] = [q for q in p['points'] if q[0] >= SEAM - 1e-6]
     plan['paths'] += [{'id': 'wf_' + w['id'], 'half': w['half'], 'points': [q for q in w['points'] if q[0] > WL['x0'] + 0.5]} for w in FR['ways']]
-    plan['inflows'] = [f for f in plan.get('inflows', []) if not gone(f['rows'][0][0], f['rows'][0][1])]
-    plan['plants'] = [r for r in plan['plants'] if not gone(r[1], r[2])]
+    plan['inflows'] = [f for f in plan.get('inflows', []) if not (f['rows'][0][0] < SEAM - 0.5 and f['rows'][0][1] > WL['z0'])]
 X0, X1, Z0, Z1 = min(q[0] for q in PLAYS) - MARGIN, max(q[1] for q in PLAYS) + MARGIN, min(q[2] for q in PLAYS) - MARGIN, max(q[3] for q in PLAYS) + MARGIN
 W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
 
@@ -177,6 +176,8 @@ for b, wide, fill, edge in [(br, 3.4, COL['stone'], COL['stone_edge'])] + [(q, 2
 sh = layer(); ds = ImageDraw.Draw(sh)
 inside = lambda x, z: X0 - 3 < x < X1 + 3 and Z0 - 3 < z < Z1 + 3
 plants = [p for p in plan['plants'] if p[0] in COL['tree'] and inside(p[1], p[2])]
+dead = [p for p in plants if p[1] < SEAM] if WEST else []              # the fringe's trees: dead (west-fringe.js takes their leaves)
+plants = [p for p in plants if p not in dead]
 for b in plan['buildings']:
     if b['kind'] == 'house':
         w, l = b['spec']['w'] + 1.0, b['spec']['l'] + 0.8; o = 0.5 + b['spec'].get('floors', 1) * 0.6
@@ -223,7 +224,7 @@ for kind, x, z, scale, *_ in sorted(plants, key=lambda p: (p[0] != 'bush', p[2])
     d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=dark, outline=edge, width=max(1, int(0.14 * K)))
     d.ellipse([cx - r * 0.72, cy - r * 0.72, cx + r * 0.25, cy + r * 0.25], fill=lit)      # the light on its crown, from the north-west
 if WEST:                                                              # the fringe's dead trees (bare twigs), its ruins (floors with no roof) and its old well
-    for kind, x, z, scale, *_ in FR['dead_trees']:
+    for kind, x, z, scale, *_ in dead:
         r = COL['tree_r'][kind] * scale * 0.85
         for a in np.arange(0.3, 6.2, 2 * math.pi / 5): stroke(d, [(x, z), (x + r * math.cos(a), z + r * math.sin(a))], 0.45, '#5b4636')
     for q in FR['ruins']:

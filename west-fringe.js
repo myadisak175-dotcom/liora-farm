@@ -1,5 +1,5 @@
 /* ==========================================================================
-   west-fringe.js  —  the west fringe joined onto the hill village's land  (a trial: ?west=1)
+   west-fringe.js  —  the west fringe joined onto the hill village's land
 
      const west = await joinWestFringe({ raw, plan, url });      // as the level reads its land, before it makes anything from it
      west.raw            the land's numbers with the fringe's columns added on the west (plan.land says how wide it is now)
@@ -15,9 +15,10 @@
      land      wider (x0, nx), and land.more: a second part she may walk in
      paths     the village's road now begins at the seam; the fringe's ways are added (painted and trodden like any other)
      inflows   the brook that came in through the old margin's hill comes in no more: its bed out there is dry
-     plants    the old margin's trees and ferns are gone; the fringe's dead trees stand (anime-tree.js: dryness takes the
-               leaves off every tree west of the seam, and thins those just east of it)
      views     the fringe's places (teleport-menu.js lists them)
+   Its plants are not added here: the dead trees are in the map's own foliage (put in once by the fringe's tool, --into-map),
+   so they are arranged by hand like any other plant. What is done here is to make them dead: dryness (anime-tree.js) takes
+   the leaves off every tree west of the seam, and thins those just east of it.
    ========================================================================== */
 import * as THREE from 'three';
 import { setAnimeDryness } from './anime-tree.js';
@@ -57,10 +58,6 @@ export async function joinWestFringe({ raw, plan: P, url }) {
   if (road) road.points = road.points.filter(q => q[0] >= seam - 1e-6);
   for (const w of F.ways) P.paths.push({ id: 'wf_' + w.id, half: w.half, points: w.points.filter(q => q[0] > W.x0 + 0.5) });
   P.inflows = (P.inflows || []).filter(f => !gone(f.rows[0][0], f.rows[0][1]));
-  P.plants = (P.plants || []).filter(r => !gone(r[1], r[2]));
-  P.clumps = (P.clumps || []).filter(r => !gone(r[0], r[1]));
-  P.cover = (P.cover || []).filter(r => !gone(r[1], r[2]));
-  for (const [kind, x, z, size, turn, shape] of F.dead_trees) P.plants.push([kind, x, z, size, 0.8, 0, turn, shape]);
   for (const [k, v] of Object.entries(F.go)) P.views[k] = v;
 
   // ---- the trees' dryness: dead west of the seam, dying in the village's last metres beside it, alive from there east

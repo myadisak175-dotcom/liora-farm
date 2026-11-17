@@ -1495,7 +1495,10 @@ print(f"    (the land: banks {int(_bank.sum() * MPP * MPP)} m2, hollows {int(_ho
 # (foliage-editor.js). While that file is there the rules are not asked again: what they planted just now is put aside. To
 # plant afresh by the rules: delete it. What the editor sends ("คัดลอกข้อมูล": rows taken out, changed and added, by where
 # they stand in the kept lists) goes in hill-village-foliage-edits.json and is laid over the kept foliage once: it names the
-# stamp of the foliage it was made on, and the foliage has another stamp once it is in.
+# stamp of the foliage it was made on, and the foliage has another stamp once it is in. An edit marked 'carry' (only plants out
+# and plants in, none changed) is also written into the plan as foliageWas: a browser still holding an arrangement made on the
+# foliage before it takes the same out and puts the same in, and its arrangement stands (foliage-edits.js). The next edit
+# laid over lets that go.
 _stamp = lambda f_: zlib.crc32(json.dumps([f_['plants'], f_['clumps'], f_['cover']], separators=(',', ':')).encode())
 _fol_file, _ed_file = OUT / 'hill-village-foliage.json', OUT / 'hill-village-foliage-edits.json'
 if _fol_file.exists():
@@ -1506,16 +1509,20 @@ else:
 if _ed_file.exists():
     ED = json.loads(_ed_file.read_text())
     if ED.get('full') or ED.get('base') == _stamp(FOL):
+        _carry = ED.get('carry') and not ED.get('full') and not any('all' in (ED.get(n) or {}) or (ED.get(n) or {}).get('set') for n in ('plants', 'clumps', 'cover'))
+        FOL['was'] = {'base': _stamp(FOL), 'gone': {}, 'add': {}} if _carry else None
         for name in ('plants', 'clumps', 'cover'):
             e_ = ED.get(name) or {}; rows = FOL[name]
             if 'all' in e_: rows = e_['all']
             else:
                 for i_, row in e_.get('set', []): rows[i_] = row
                 gone = set(e_.get('del', [])); rows = [r_ for i_, r_ in enumerate(rows) if i_ not in gone] + e_.get('add', [])
+                if FOL['was'] and gone: FOL['was']['gone'][name] = sorted(gone)
+                if FOL['was'] and e_.get('add'): FOL['was']['add'][name] = list(range(len(rows) - len(e_['add']), len(rows)))
             print(f"  foliage arranged by hand, {name}: {len(e_.get('all', [])) or ''}{'all given' if 'all' in e_ else str(len(e_.get('set', []))) + ' changed, ' + str(len(e_.get('del', []))) + ' out, ' + str(len(e_.get('add', []))) + ' new'}")
             FOL[name] = rows
     else: print('  foliage edits: already in (made on an earlier foliage): nothing to do')
-FOL = {'stamp': _stamp(FOL), 'plants': FOL['plants'], 'clumps': FOL['clumps'], 'cover': FOL['cover']}
+FOL = {'stamp': _stamp(FOL), 'plants': FOL['plants'], 'clumps': FOL['clumps'], 'cover': FOL['cover'], **({'was': FOL['was']} if FOL.get('was') else {})}
 _fol_file.write_text(json.dumps(FOL, separators=(',', ':')))
 out_plants, clumps, cover = FOL['plants'], FOL['clumps'], FOL['cover']
 
@@ -1603,7 +1610,7 @@ plan = {
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': round(PLANK_YAW, 3)},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit
-    'paths': plan_paths, **({'pathOps': PATH_OPS} if PATH_OPS else {}), 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'clumps': clumps, 'cover': cover, 'foliage': FOL['stamp'], 'rocks': rocks,
+    'paths': plan_paths, **({'pathOps': PATH_OPS} if PATH_OPS else {}), 'yards': YARDS, 'fences': FENCES, 'fields': FIELDS, 'props': PROPS, 'plants': out_plants, 'clumps': clumps, 'cover': cover, 'foliage': FOL['stamp'], **({'foliageWas': FOL['was']} if FOL.get('was') else {}), 'rocks': rocks,
     # the pit: its middle, about how far its brink is from that, how far its picture's heights were moved to stand in the bowl (the
     # abyss's clouds and the land's fading into mist are set by height), and its shelves (metres in from the brink)
     'pit': {'x': round(float(BOWL[0]), 2), 'z': round(float(BOWL[1]), 2), 'brink': 39.2, 'shift': round(PIT_SHIFT, 2), 'turn': round(PIT_TURN, 3),
