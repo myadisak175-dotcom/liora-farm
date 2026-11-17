@@ -13,7 +13,7 @@ the same T-pose with no rest rotations, so one bake serves every playable charac
     covers more ground per step. (The same steps three-vrm's createVRMAnimationClip takes; checked against it.)
 
 Usage (from the repo folder):
-  python3 tools/bake-character-anim.py LIBRARY_DIR        (LIBRARY_DIR: the folder holding the .vrma files)
+  python3 tools/bake-character-anim.py assets/animations/vrma      (or any folder holding the library's .vrma files)
 writes character-anim.js next to index.html. No packages needed beyond Python 3.
 """
 import json

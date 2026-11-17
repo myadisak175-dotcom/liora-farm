@@ -20,7 +20,7 @@ Every shader's noise is `NOISE` in `stylized-nature.js` (`noise2`, `hash2`). Its
 
 Credits retained from the supplied project:
 - Playable characters (Vivi, Shino, Shibu, Darkness Shibu, Vita, Victoria, Fumiriya, HairSample F/M): VRoid Studio sample avatars by pixiv (CC0), in `assets/characters/` (`characters.js` lists them; the 👤 button top left picks one). Each was made from its .vrm by `tools/prep-vroid.py` (model) and `tools/bake-character-springs.py` (hair and cloth that swing); Vivi's model is her earlier `prep_vivi.py` one, which the new tool reproduces.
-- Their moves: Quaternius Universal Animation Library 1+2 (CC0 1.0), from the shared animation library (.vrma), baked into `character-anim.js` by `tools/bake-character-anim.py` (`python3 tools/bake-character-anim.py <folder of .vrma files>`; the clip list is at the top of the script).
+- Their moves: Quaternius Universal Animation Library 1+2 (CC0 1.0). The whole shared library is in `assets/animations/` (84 clips as `.vrma`, with `index.json`; made from Quaternius' GLBs by `tools/ual_to_vrma.py`). The game does not load them: the clips it uses are baked into `character-anim.js` by `tools/bake-character-anim.py` (`python3 tools/bake-character-anim.py assets/animations/vrma`; the clip list is at the top of the script).
 - Swinging hair and cloth: spring bones solved by pixiv's `@pixiv/three-vrm-springbone` (MIT, loaded from jsDelivr), built by `character-springs.js`.
 - “DEER” by WildMesh 3D (CC BY-NC 4.0).
 - Grass approach inspired by Cortiz (MIT).

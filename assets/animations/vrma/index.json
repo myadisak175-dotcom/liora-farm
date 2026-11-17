@@ -1,0 +1,678 @@
+{
+  "fps": 30,
+  "license": "CC0-1.0 (Quaternius)",
+  "clips": [
+    {
+      "name": "Chest_Open",
+      "file": "Chest_Open.vrma",
+      "source": "UAL2",
+      "duration": 1.367,
+      "frames": 42,
+      "loop": false
+    },
+    {
+      "name": "ClimbUp_1m",
+      "file": "ClimbUp_1m.vrma",
+      "source": "UAL2",
+      "duration": 0.667,
+      "frames": 21,
+      "loop": false
+    },
+    {
+      "name": "Consume",
+      "file": "Consume.vrma",
+      "source": "UAL2",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": false
+    },
+    {
+      "name": "Crouch_Fwd_Loop",
+      "file": "Crouch_Fwd_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2,
+      "frames": 61,
+      "loop": true
+    },
+    {
+      "name": "Crouch_Idle_Loop",
+      "file": "Crouch_Idle_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.933,
+      "frames": 89,
+      "loop": true
+    },
+    {
+      "name": "Dance_Loop",
+      "file": "Dance_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1,
+      "frames": 31,
+      "loop": true
+    },
+    {
+      "name": "Death01",
+      "file": "Death01.vrma",
+      "source": "UAL1",
+      "duration": 2.4,
+      "frames": 73,
+      "loop": false
+    },
+    {
+      "name": "Driving_Loop",
+      "file": "Driving_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.667,
+      "frames": 51,
+      "loop": true
+    },
+    {
+      "name": "Farm_Harvest",
+      "file": "Farm_Harvest.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": false
+    },
+    {
+      "name": "Farm_PlantSeed",
+      "file": "Farm_PlantSeed.vrma",
+      "source": "UAL2",
+      "duration": 2.767,
+      "frames": 84,
+      "loop": false
+    },
+    {
+      "name": "Farm_Watering",
+      "file": "Farm_Watering.vrma",
+      "source": "UAL2",
+      "duration": 3.8,
+      "frames": 115,
+      "loop": false
+    },
+    {
+      "name": "Fixing_Kneeling",
+      "file": "Fixing_Kneeling.vrma",
+      "source": "UAL1",
+      "duration": 5.2,
+      "frames": 157,
+      "loop": false
+    },
+    {
+      "name": "Hit_Chest",
+      "file": "Hit_Chest.vrma",
+      "source": "UAL1",
+      "duration": 0.333,
+      "frames": 11,
+      "loop": false
+    },
+    {
+      "name": "Hit_Head",
+      "file": "Hit_Head.vrma",
+      "source": "UAL1",
+      "duration": 0.433,
+      "frames": 14,
+      "loop": false
+    },
+    {
+      "name": "Hit_Knockback",
+      "file": "Hit_Knockback.vrma",
+      "source": "UAL2",
+      "duration": 0.833,
+      "frames": 26,
+      "loop": false
+    },
+    {
+      "name": "Idle_FoldArms_Loop",
+      "file": "Idle_FoldArms_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Idle_Lantern_Loop",
+      "file": "Idle_Lantern_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Idle_Loop",
+      "file": "Idle_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Idle_No_Loop",
+      "file": "Idle_No_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Idle_Rail_Call",
+      "file": "Idle_Rail_Call.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": false
+    },
+    {
+      "name": "Idle_Rail_Loop",
+      "file": "Idle_Rail_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Idle_Shield_Break",
+      "file": "Idle_Shield_Break.vrma",
+      "source": "UAL2",
+      "duration": 1.067,
+      "frames": 33,
+      "loop": false
+    },
+    {
+      "name": "Idle_Shield_Loop",
+      "file": "Idle_Shield_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Idle_TalkingPhone_Loop",
+      "file": "Idle_TalkingPhone_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2.933,
+      "frames": 89,
+      "loop": true
+    },
+    {
+      "name": "Idle_Talking_Loop",
+      "file": "Idle_Talking_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.933,
+      "frames": 89,
+      "loop": true
+    },
+    {
+      "name": "Idle_Torch_Loop",
+      "file": "Idle_Torch_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.267,
+      "frames": 39,
+      "loop": true
+    },
+    {
+      "name": "Interact",
+      "file": "Interact.vrma",
+      "source": "UAL1",
+      "duration": 2,
+      "frames": 61,
+      "loop": false
+    },
+    {
+      "name": "Jog_Fwd_Loop",
+      "file": "Jog_Fwd_Loop.vrma",
+      "source": "UAL1",
+      "duration": 0.933,
+      "frames": 29,
+      "loop": true
+    },
+    {
+      "name": "Jump_Land",
+      "file": "Jump_Land.vrma",
+      "source": "UAL1",
+      "duration": 1.267,
+      "frames": 39,
+      "loop": false
+    },
+    {
+      "name": "Jump_Loop",
+      "file": "Jump_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": true
+    },
+    {
+      "name": "Jump_Start",
+      "file": "Jump_Start.vrma",
+      "source": "UAL1",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": false
+    },
+    {
+      "name": "LayToIdle",
+      "file": "LayToIdle.vrma",
+      "source": "UAL2",
+      "duration": 1.533,
+      "frames": 47,
+      "loop": false
+    },
+    {
+      "name": "Melee_Hook",
+      "file": "Melee_Hook.vrma",
+      "source": "UAL2",
+      "duration": 0.467,
+      "frames": 15,
+      "loop": false
+    },
+    {
+      "name": "Melee_Hook_Rec",
+      "file": "Melee_Hook_Rec.vrma",
+      "source": "UAL2",
+      "duration": 0.6,
+      "frames": 19,
+      "loop": false
+    },
+    {
+      "name": "NinjaJump_Idle_Loop",
+      "file": "NinjaJump_Idle_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2,
+      "frames": 61,
+      "loop": true
+    },
+    {
+      "name": "NinjaJump_Land",
+      "file": "NinjaJump_Land.vrma",
+      "source": "UAL2",
+      "duration": 1.267,
+      "frames": 39,
+      "loop": false
+    },
+    {
+      "name": "NinjaJump_Start",
+      "file": "NinjaJump_Start.vrma",
+      "source": "UAL2",
+      "duration": 0.967,
+      "frames": 30,
+      "loop": false
+    },
+    {
+      "name": "OverhandThrow",
+      "file": "OverhandThrow.vrma",
+      "source": "UAL2",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": false
+    },
+    {
+      "name": "PickUp_Table",
+      "file": "PickUp_Table.vrma",
+      "source": "UAL1",
+      "duration": 0.833,
+      "frames": 26,
+      "loop": false
+    },
+    {
+      "name": "Pistol_Aim_Down",
+      "file": "Pistol_Aim_Down.vrma",
+      "source": "UAL1",
+      "duration": 0.167,
+      "frames": 6,
+      "loop": false
+    },
+    {
+      "name": "Pistol_Aim_Neutral",
+      "file": "Pistol_Aim_Neutral.vrma",
+      "source": "UAL1",
+      "duration": 0.167,
+      "frames": 6,
+      "loop": false
+    },
+    {
+      "name": "Pistol_Aim_Up",
+      "file": "Pistol_Aim_Up.vrma",
+      "source": "UAL1",
+      "duration": 0.167,
+      "frames": 6,
+      "loop": false
+    },
+    {
+      "name": "Pistol_Idle_Loop",
+      "file": "Pistol_Idle_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.667,
+      "frames": 51,
+      "loop": true
+    },
+    {
+      "name": "Pistol_Reload",
+      "file": "Pistol_Reload.vrma",
+      "source": "UAL1",
+      "duration": 1.667,
+      "frames": 51,
+      "loop": false
+    },
+    {
+      "name": "Pistol_Shoot",
+      "file": "Pistol_Shoot.vrma",
+      "source": "UAL1",
+      "duration": 0.633,
+      "frames": 20,
+      "loop": false
+    },
+    {
+      "name": "Punch_Cross",
+      "file": "Punch_Cross.vrma",
+      "source": "UAL1",
+      "duration": 1,
+      "frames": 31,
+      "loop": false
+    },
+    {
+      "name": "Punch_Jab",
+      "file": "Punch_Jab.vrma",
+      "source": "UAL1",
+      "duration": 0.867,
+      "frames": 27,
+      "loop": false
+    },
+    {
+      "name": "Push_Loop",
+      "file": "Push_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.667,
+      "frames": 81,
+      "loop": true
+    },
+    {
+      "name": "Roll",
+      "file": "Roll.vrma",
+      "source": "UAL1",
+      "duration": 1.467,
+      "frames": 45,
+      "loop": false
+    },
+    {
+      "name": "Shield_Dash",
+      "file": "Shield_Dash.vrma",
+      "source": "UAL2",
+      "duration": 1.1,
+      "frames": 34,
+      "loop": false
+    },
+    {
+      "name": "Shield_OneShot",
+      "file": "Shield_OneShot.vrma",
+      "source": "UAL2",
+      "duration": 0.833,
+      "frames": 26,
+      "loop": false
+    },
+    {
+      "name": "Sitting_Enter",
+      "file": "Sitting_Enter.vrma",
+      "source": "UAL1",
+      "duration": 1.3,
+      "frames": 40,
+      "loop": false
+    },
+    {
+      "name": "Sitting_Exit",
+      "file": "Sitting_Exit.vrma",
+      "source": "UAL1",
+      "duration": 1.033,
+      "frames": 32,
+      "loop": false
+    },
+    {
+      "name": "Sitting_Idle_Loop",
+      "file": "Sitting_Idle_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.667,
+      "frames": 51,
+      "loop": true
+    },
+    {
+      "name": "Sitting_Talking_Loop",
+      "file": "Sitting_Talking_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.933,
+      "frames": 89,
+      "loop": true
+    },
+    {
+      "name": "Slide_Exit",
+      "file": "Slide_Exit.vrma",
+      "source": "UAL2",
+      "duration": 0.5,
+      "frames": 16,
+      "loop": false
+    },
+    {
+      "name": "Slide_Loop",
+      "file": "Slide_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2,
+      "frames": 61,
+      "loop": true
+    },
+    {
+      "name": "Slide_Start",
+      "file": "Slide_Start.vrma",
+      "source": "UAL2",
+      "duration": 0.833,
+      "frames": 26,
+      "loop": false
+    },
+    {
+      "name": "Spell_Simple_Enter",
+      "file": "Spell_Simple_Enter.vrma",
+      "source": "UAL1",
+      "duration": 0.533,
+      "frames": 17,
+      "loop": false
+    },
+    {
+      "name": "Spell_Simple_Exit",
+      "file": "Spell_Simple_Exit.vrma",
+      "source": "UAL1",
+      "duration": 0.433,
+      "frames": 14,
+      "loop": false
+    },
+    {
+      "name": "Spell_Simple_Idle_Loop",
+      "file": "Spell_Simple_Idle_Loop.vrma",
+      "source": "UAL1",
+      "duration": 2.1,
+      "frames": 64,
+      "loop": true
+    },
+    {
+      "name": "Spell_Simple_Shoot",
+      "file": "Spell_Simple_Shoot.vrma",
+      "source": "UAL1",
+      "duration": 0.5,
+      "frames": 16,
+      "loop": false
+    },
+    {
+      "name": "Sprint_Loop",
+      "file": "Sprint_Loop.vrma",
+      "source": "UAL1",
+      "duration": 0.667,
+      "frames": 21,
+      "loop": true
+    },
+    {
+      "name": "Swim_Fwd_Loop",
+      "file": "Swim_Fwd_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": true
+    },
+    {
+      "name": "Swim_Idle_Loop",
+      "file": "Swim_Idle_Loop.vrma",
+      "source": "UAL1",
+      "duration": 3.333,
+      "frames": 101,
+      "loop": true
+    },
+    {
+      "name": "Sword_Attack",
+      "file": "Sword_Attack.vrma",
+      "source": "UAL1",
+      "duration": 1.533,
+      "frames": 47,
+      "loop": false
+    },
+    {
+      "name": "Sword_Block",
+      "file": "Sword_Block.vrma",
+      "source": "UAL2",
+      "duration": 1.233,
+      "frames": 38,
+      "loop": false
+    },
+    {
+      "name": "Sword_Dash",
+      "file": "Sword_Dash.vrma",
+      "source": "UAL2",
+      "duration": 1.567,
+      "frames": 48,
+      "loop": false
+    },
+    {
+      "name": "Sword_Heavy_Combo",
+      "file": "Sword_Heavy_Combo.vrma",
+      "source": "UAL2",
+      "duration": 4.333,
+      "frames": 131,
+      "loop": false
+    },
+    {
+      "name": "Sword_Idle",
+      "file": "Sword_Idle.vrma",
+      "source": "UAL1",
+      "duration": 1.667,
+      "frames": 51,
+      "loop": false
+    },
+    {
+      "name": "Sword_Regular_A",
+      "file": "Sword_Regular_A.vrma",
+      "source": "UAL2",
+      "duration": 0.433,
+      "frames": 14,
+      "loop": false
+    },
+    {
+      "name": "Sword_Regular_A_Rec",
+      "file": "Sword_Regular_A_Rec.vrma",
+      "source": "UAL2",
+      "duration": 0.967,
+      "frames": 30,
+      "loop": false
+    },
+    {
+      "name": "Sword_Regular_B",
+      "file": "Sword_Regular_B.vrma",
+      "source": "UAL2",
+      "duration": 0.533,
+      "frames": 17,
+      "loop": false
+    },
+    {
+      "name": "Sword_Regular_B_Rec",
+      "file": "Sword_Regular_B_Rec.vrma",
+      "source": "UAL2",
+      "duration": 1.033,
+      "frames": 32,
+      "loop": false
+    },
+    {
+      "name": "Sword_Regular_C",
+      "file": "Sword_Regular_C.vrma",
+      "source": "UAL2",
+      "duration": 2,
+      "frames": 61,
+      "loop": false
+    },
+    {
+      "name": "Sword_Regular_Combo",
+      "file": "Sword_Regular_Combo.vrma",
+      "source": "UAL2",
+      "duration": 3,
+      "frames": 91,
+      "loop": false
+    },
+    {
+      "name": "TreeChopping_Loop",
+      "file": "TreeChopping_Loop.vrma",
+      "source": "UAL2",
+      "duration": 0.967,
+      "frames": 30,
+      "loop": true
+    },
+    {
+      "name": "Walk_Carry_Loop",
+      "file": "Walk_Carry_Loop.vrma",
+      "source": "UAL2",
+      "duration": 2,
+      "frames": 61,
+      "loop": true
+    },
+    {
+      "name": "Walk_Formal_Loop",
+      "file": "Walk_Formal_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": true
+    },
+    {
+      "name": "Walk_Loop",
+      "file": "Walk_Loop.vrma",
+      "source": "UAL1",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": true
+    },
+    {
+      "name": "Yes",
+      "file": "Yes.vrma",
+      "source": "UAL2",
+      "duration": 2.5,
+      "frames": 76,
+      "loop": false
+    },
+    {
+      "name": "Zombie_Idle_Loop",
+      "file": "Zombie_Idle_Loop.vrma",
+      "source": "UAL2",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": true
+    },
+    {
+      "name": "Zombie_Scratch",
+      "file": "Zombie_Scratch.vrma",
+      "source": "UAL2",
+      "duration": 1.8,
+      "frames": 55,
+      "loop": false
+    },
+    {
+      "name": "Zombie_Walk_Fwd_Loop",
+      "file": "Zombie_Walk_Fwd_Loop.vrma",
+      "source": "UAL2",
+      "duration": 1.333,
+      "frames": 41,
+      "loop": true
+    }
+  ]
+}
