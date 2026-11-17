@@ -570,12 +570,38 @@ function farTuftGeometry() {
 // where the tile's own tufts thin out, one for one at distances of their own, and thins out the same way at the ring's own
 // edge: so nothing is seen to begin or end. userData.setRing(false): without it.
 //
+// ONLY WHAT IS IN VIEW: every tuft of the pools is sent every frame, and the shader used to work each one out in full
+// (the ground's map, the noise, the wind) though from where she stands well over half of them are behind the camera, to
+// the side of it, or past where their kind is drawn at all. So the shader first finds where the tuft stands (cheap) and
+// folds it away at once when it is not drawn there (edge 0), or when no blade of it can reach into the camera's view (a
+// ball round it, wider and taller than any blade can bend, wholly past a side of the view or behind the camera; the
+// ground's height from the height field, with room under and over it). The camera is whichever draws: the water's
+// mirror too. Only for a camera with perspective. For this to save anything the tufts that a phone's GPU works on
+// together (its next few in the pool) must stand together: so each pool is in order of place on its tile (a Z-order
+// curve), within eighths of the pool (setDensity keeps whole eighths: the thinning stays even, and a near tuft and its
+// far tuft are kept or dropped together). The picture is the same. ?grasscull=0: as before, every tuft in full.
+//
 // PAST THE LAND (beyond: { sheet, rect, land, greens, lean, shade, shadeRect, shadeTint, shadeK }; nothing without it): the
 // map and the heights speak for the land only (land: x0, z0, x1, z1). Where the land runs on past that (map-rim.js) the
 // tufts stand on what the sheet says: a picture of that ground (rect: centre x, z, 1 / its size) with, in r g b a, its
 // height, how much grass grows (none on rock or on a way), how deep in a wood it lies, and how its slope leans to the sun.
 // Their colour there is the ground's own, made as the ground's paint makes it (stylized-terrain.js, grassLook: the three
 // greens in broad drifts, lean, the trees' shadows from shade), so the tufts come up out of ground of their colour.
+// a pool put in order of place on its tile (ONLY WHAT IS IN VIEW): by eighth of the pool first (eighth(t): which eighth
+// tuft t, in the pool's own order, is in), then along a Z-order curve over the tile
+function inPlaceOrder(pool, size, eighth) {
+  const n = pool.n, c = pool.iCell.array, r = pool.iRnd.array, key = new Float64Array(n);
+  const spread = v => { v &= 1023; v = (v | (v << 8)) & 0x00ff00ff; v = (v | (v << 4)) & 0x0f0f0f0f; v = (v | (v << 2)) & 0x33333333; return (v | (v << 1)) & 0x55555555; };
+  for (let t = 0; t < n; t++) {
+    const x = Math.min(1023, Math.max(0, Math.floor(c[t * 2] / size * 1024))), z = Math.min(1023, Math.max(0, Math.floor(c[t * 2 + 1] / size * 1024)));
+    key[t] = eighth(t) * 2097152 + (spread(x) | (spread(z) << 1));
+  }
+  const order = Uint32Array.from({ length: n }, (_, t) => t).sort((a, b) => key[a] - key[b]);
+  const c2 = new Float32Array(n * 2), r2 = new Float32Array(n * 4);
+  for (let t = 0; t < n; t++) { const o = order[t]; c2[t * 2] = c[o * 2]; c2[t * 2 + 1] = c[o * 2 + 1]; for (let q = 0; q < 4; q++) r2[t * 4 + q] = r[o * 4 + q]; }
+  c.set(c2); r.set(r2);
+}
+
 export function createFollowGrass({
   map, field, count = 200000, tile = 62, seed = 5,
   bladeHeight = 0.34, bladeWidth = 0.055, tuft = 0.11, tip = GRASS_TIP,
@@ -595,6 +621,7 @@ export function createFollowGrass({
     uMorph: { value: new THREE.Vector3(nearTile * 0.26, nearTile * 0.47, nearTile * 0.47) },     // from the walker: a full tuft starts turning into its far shape, has turned; the far tuft is drawn from here on (inside the near tile's half width)
     uRing: { value: new THREE.Vector3(map.center[0], map.center[1], ring ? ring.tile : 0) },   // the ring's tile: centre x, z, size
     uRingLook: { value: new THREE.Vector3(ring ? ring.width ?? 1.6 : 1, ring ? ring.spread ?? 3 : 1, ring ? ring.height ?? 1.1 : 1) },      // a ring tuft's blades: so many times as wide, as far apart, as tall
+    uCull: { value: typeof location !== 'undefined' && new URLSearchParams(location.search).get('grasscull') === '0' ? 0 : 1 },     // ONLY WHAT IS IN VIEW (?grasscull=0: off)
   };
   if (beyond) Object.assign(uniforms, {
     uBeyond: { value: beyond.sheet }, uBeyondRect: { value: beyond.rect }, uLand: { value: new THREE.Vector4(...beyond.land) },
@@ -630,6 +657,7 @@ export function createFollowGrass({
       uniform vec2 uBlade;       // width, height
       uniform vec3 uTip;
       uniform vec4 uWalker;      // x, y, z of whoever walks through the grass, w = radius
+      uniform float uCull;       // 1: a tuft out of view is folded away before its heavy part (ONLY WHAT IS IN VIEW)
       uniform float uHazeNear, uHazeFar, uHazeMax;
       varying vec3 vRoot;        // the dark between the roots
       varying vec3 vMid;         // ground colour
@@ -653,6 +681,18 @@ export function createFollowGrass({
         // has turned into the far shape, 0 the full tuft .. 1 the far one. Past uMorph.z the far tuft is drawn and the near one not
         float turned = aLod < 0.5 ? 0.0 : (aLod < 1.5 || aLod > 2.5) ? 1.0 : smoothstep(uMorph.x, uMorph.y, walk);
         if (aLod > 0.5 && aLod < 2.5) edge *= aLod < 1.5 ? step(uMorph.z, walk) : 1.0 - step(uMorph.z, walk);
+        // ONLY WHAT IS IN VIEW: not drawn here at all, or out of this camera's view: folded away now (off the screen, so not
+        // a pixel of it is drawn), before the heavy part
+        if (uCull > 0.5) {
+          if (edge <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+          if (projectionMatrix[3][3] < 0.5) {
+            float g0 = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
+            vec4 lowP = vec4(xz.x, g0 - 3.0, xz.y, 1.0), highP = vec4(xz.x, g0 + 2.0, xz.y, 1.0);
+            vec3 vl = (viewMatrix * lowP).xyz, vh = (viewMatrix * highP).xyz;
+            float depth = max(-vl.z, -vh.z), tH = 1.0 / projectionMatrix[0][0], reach = 2.0;
+            if (depth < -reach || max(abs(vl.x), abs(vh.x)) > depth * tH + reach * sqrt(1.0 + tH * tH)) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+          }
+        }
         float ground;
         vec4 m;
         #ifdef BEYOND
@@ -786,6 +826,8 @@ export function createFollowGrass({
     g.instanceCount = p.n;
     return g;
   };
+  inPlaceOrder(wide, tile, o => Math.floor(Math.floor(o / 4) * 8 / n0));
+  inPlaceOrder(close, nearTile, i => Math.floor(i * 8 / n0));
   const gAll = tufts(base, 0, wide), gFar = tufts(flat, 1, wide), gNear = tufts(base, 2, close);
   // the ring's own pool: anywhere on its tile, each tuft itself as the others are
   let gRing = null, ringMesh = null, ringN = 0;
@@ -798,7 +840,9 @@ export function createFollowGrass({
       rndR[i * 4] = rng() * 2 - 1; rndR[i * 4 + 1] = tall ? 1.35 + 0.55 * rng() : 0.7 + 0.4 * rng(); rndR[i * 4 + 2] = rng();
       rndR[i * 4 + 3] = tall ? 0.3 + 0.7 * rng() : rng() * 2 - 1;
     }
-    gRing = tufts(flat, 3, { n: ringN, iCell: new THREE.InstancedBufferAttribute(cellR, 2), iRnd: new THREE.InstancedBufferAttribute(rndR, 4) });
+    const poolR = { n: ringN, iCell: new THREE.InstancedBufferAttribute(cellR, 2), iRnd: new THREE.InstancedBufferAttribute(rndR, 4) };
+    inPlaceOrder(poolR, ring.tile, i => Math.floor(i * 8 / ringN));
+    gRing = tufts(flat, 3, poolR);
   }
   const mesh = new THREE.Mesh(farLod ? gFar : gAll, mat);
   mesh.name = 'followGrass';
@@ -826,9 +870,9 @@ export function createFollowGrass({
       uniforms.uNear.value.x = pos.x; uniforms.uNear.value.y = pos.z;      // the full tufts: round the walker herself (turning the camera moves nothing)
       uniforms.uWalker.value.set(pos.x, pos.y, pos.z, 0.55);
     },
-    // draw only part of the pool (0.2..1); the blades that remain get wider so the carpet stays closed
+    // draw only part of the pool (0.25..1, in whole eighths: see ONLY WHAT IS IN VIEW); the blades that remain get wider so the carpet stays closed
     setDensity(d) {
-      density = Math.min(1, Math.max(0.2, d));
+      density = Math.min(1, Math.max(0.25, Math.round(d * 8) / 8));
       gNear.instanceCount = Math.round(close.n * density);                    // (the same tufts in both pools: see the pools above)
       gAll.instanceCount = gFar.instanceCount = gNear.instanceCount * 4;
       if (gRing) gRing.instanceCount = Math.round(ringN * density);
