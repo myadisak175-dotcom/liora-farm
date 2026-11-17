@@ -24,18 +24,21 @@
 #   hill-village.png    the land to look at, 16-bit grey: white high, black low
 #   hill-village.bin    the land as raw 16-bit numbers, little-endian, land.nx across by land.nz down, one every land.cell
 #                       metres from (land.x0, land.z0)  (what the game reads)
+#   hill-village-bare.png   on the same grid, 8-bit grey: where the rain's runnels have worn the grass away (white: bare earth)
 #   hill-village.json   the plan: where the land lies and the part she walks on, the water (brooks and falls, as for ?map=pit),
 #                       the buildings, the bridges, the ways, yards, fences, fields, small things, plants (and the flowering
 #                       clumps and the ground cover, each a list of its own), rocks, and the places to start from
 #   hill-village-scatter.json   the plants and the valley's rocks as first thrown (written once, then read: see 9)
 #   hill-village-foliage.json   every plant as it stands: by the rules the first time, by hand in the game ever after (see 9)
 # Places are metres from the middle of the village: x east, z south. A yaw is the way a thing faces: 0 south (+z), pi/2 east.
-import json, math, zlib
+import json, math, sys, zlib
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import water_shape as WS                                             # (the water's ways, as every map's tool shapes them: water_shape.py)
 
 SIZE = 160.0                      # metres across the village's part she walks on (the plan's u, v run over this)
 MARGIN = 30.0                     # and round it, land she only sees: wooded hills rising to the map's edge
@@ -701,10 +704,115 @@ for f_ in falls:                                                      # under ea
     w = np.clip((along - 0.25) / 0.5, 0, 1) * np.clip((f_['out'] + 1.2 - along) / 1.0, 0, 1) * np.clip((f_['width'] / 2 + 0.3 - across) / 0.6, 0, 1)
     for u_, w_, _ in f_.get('rocks', []): w = w * sm(w_ / 2 - 0.1, w_ / 2 + 0.5, np.abs(side - u_))      # (under a rock in its lip the cliff is left as it is: a rib between two strands)
     H = np.where(w > 0, np.minimum(H, H * (1 - w) + (low['level'] - 0.4) * w), H)
-brooks = []; water_d = np.full(NZ * NX, 1e9)
+# The stretches that run a way of their own (not a cascade's step or a shelf of the pit: those are pools too short to have a
+# shape) are made as water makes a bed, not pressed in to a rule (water_shape.py): the line drawn for each wanders a little;
+# it is wide and shallow on a riffle and narrow and deep in a pool, the pools at its bends; in a bend its deepest lies
+# against the outer bank, cut steep, and the inner side goes up slowly over its bar; under the fall that feeds it a round
+# pool. Its water still stands level, at the stretch's height, and is as wide as its bed (the plan's rows say so, point by
+# point). Kept as they are: its ends (the lip it leaves by, the fall it comes in under), the bridges, the mill's wheel; and
+# it neither wanders nor widens toward anything that must stay dry (a house, a yard, a field, a way, a plant): it keeps
+# the width drawn for it there. Where a way crosses it, it is a ford: shallow, both banks easy.
+# (name: how far its line may wander, metres; how deep its riffles and its pools lie under its banks' foot (the river and the
+# valley's are never shallow enough to wade: 1.05 m and more everywhere, as before; the streams always are, but under a fall)
+SHAPED = {'upper_stream': (0.5, 0.18, 0.42), 'mill_stream': (0.45, 0.18, 0.42), 'river': (0.6, 1.0, 1.55), 'valley_river': (1.2, 1.15, 1.9),
+          'brook_1_meadow': (0.5, 0.15, 0.36), 'brook_2_meadow': (0.5, 0.15, 0.36), 'brook_1_bowl': (0.35, 0.12, 0.3), 'brook_2_bowl': (0.35, 0.12, 0.3)}
+LAND = WS.Land(WX, WZ, MPP)
+rwat = np.random.default_rng(4409)                                   # (the water's own dice)
+Hsoft = ndi.gaussian_filter(H, 3.0 / MPP)                            # (to say how high a bank stands over its water)
+# what must stay dry, and so how much room the water has: houses (their pads), yards, fields, the plants as they stand
+_dry = np.zeros((NZ, NX), bool)
+for b_ in B: _dry |= np.hypot(WX - b_['x'], WZ - b_['z']) < b_['pad'] + 0.5
+for x, z, r, _ in YARDS: _dry |= np.hypot(WX - x, WZ - z) < r + 0.3
+for f_ in FIELDS:
+    c_, s_ = math.cos(f_.get('yaw', 0.0)), math.sin(f_.get('yaw', 0.0)); rx_, rz_ = WX - f_['x'], WZ - f_['z']
+    _dry |= (np.abs(rx_ * c_ - rz_ * s_) < f_['w'] / 2 + 0.5) & (np.abs(rx_ * s_ + rz_ * c_) < f_['d'] / 2 + 0.5)
+_fol0 = OUT / 'hill-village-foliage.json'
+STANDING = json.loads(_fol0.read_text())['plants'] if _fol0.exists() else []
+_clear = {'oak': 2.0, 'broadleaf': 1.8, 'birch': 1.4, 'pine': 1.4, 'sapling': 1.2, 'bush': 0.9, 'flower': 0.8, 'clump': 0.8}
+_pl = [(r_[1], r_[2], _clear.get(r_[0], 1.0)) for r_ in STANDING]
+if _pl:
+    _pt = cKDTree(np.array([(x, z) for x, z, _ in _pl])); _pd, _pi = _pt.query(np.column_stack([WX.ravel(), WZ.ravel()]), distance_upper_bound=4.0)
+    _ok = np.isfinite(_pd); _dry.ravel()[np.flatnonzero(_ok)[_pd[_ok] < np.array([_pl[k][2] for k in _pi[_ok]])]] = True
+ROOM = ndi.distance_transform_edt(~_dry) * MPP                       # metres to the nearest of them
+ROCKS_KEPT = [r_ for r_ in (json.loads((OUT / 'hill-village-scatter.json').read_text())['rocks'] if (OUT / 'hill-village-scatter.json').exists() else []) if r_[0] != 'pebbles']
+BRIDGES = [(float(BRIDGE_C[0]), float(BRIDGE_C[1]), BRIDGE_LEN / 2 + 1.0), (PLANK_X, PLANK_Z, PLANK_LEN / 2 + 1.0), (float(WHEEL[0]), float(WHEEL[1]), 6.0)] + \
+          [(float(p_['mid'][0]), float(p_['mid'][1]), p_['len'] / 2 + 1.0) for p_ in PLANKS]
+
+
+def shaped_bed(tr, name):
+    """the bed of a stretch made as water makes it: -> its line (points DS apart), its profile (water_shape.profile), and the
+    half width drawn for it at each point"""
+    wander, shallow, deep = SHAPED[name]
+    P0, A0 = densify(tr['pts'], [[hw] for hw in tr['half']], step=WS.DS)
+    s0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P0, axis=0), axis=1))]
+    room0 = sample(ROOM, P0); wayd0 = sample(path_d, P0)
+    hold = [(x, z, r) for x, z, r in BRIDGES if np.hypot(P0[:, 0] - x, P0[:, 1] - z).min() < r + A0[:, 0].max() + 2]
+    for k in range(0, len(P0), 10):                                  # (every 2 m: is anything that must stay dry, or a way, close by?)
+        if room0[k] < A0[k, 0] + 2.4 or 0 < wayd0[k] < A0[k, 0] + 2.0: hold.append((float(P0[k, 0]), float(P0[k, 1]), 3.0))
+    Q, s = WS.bed_line(rwat, tr['pts'], wander, hold, corners=3)      # (its drawn corners well rounded: a bed wider than a bend is tight folds across itself)
+    drawn = np.interp(s / s[-1], s0 / s0[-1], A0[:, 0])
+    on_way = sample(path_d, Q) < 0                                    # where a way crosses: a ford
+    fords = []
+    if on_way.any():
+        runs = np.flatnonzero(np.diff(np.r_[0, on_way.astype(int), 0]))
+        fords = [float(s[(a_ + b_ - 1) // 2]) for a_, b_ in zip(runs[0::2], runs[1::2])]
+    # (under the fall that feeds it, the pool the fall dug: not for the valley's river, whose pool under the great fall is drawn)
+    pr = WS.profile(rwat, Q, s, drawn, deep, falls=[0.0] if tr['fed'] and name != 'valley_river' else (), fords=fords, shallow=shallow)
+    pr['w'] = np.minimum(pr['w'], drawn * 1.3 + 0.3)                 # (and never much wider than it was drawn)
+    # it keeps the width drawn for it near anything that must stay dry or a way it does not cross, at its two ends (the
+    # fall it comes in under and the lip it leaves by are found by the game across those widths), and at a bridge
+    room = sample(ROOM, Q) - 0.5; wayd = sample(path_d, Q) - 0.4
+    cap = np.where(room < drawn + 2.0, np.maximum(drawn, np.minimum(pr['w'], room)), pr['w'])
+    cap = np.where((wayd > 0) & (wayd < drawn + 2.0), np.maximum(drawn, np.minimum(cap, wayd)), cap)
+    for x, z, r in BRIDGES: cap = np.where(np.hypot(Q[:, 0] - x, Q[:, 1] - z) < r + 2.0, np.minimum(cap, drawn), cap)
+    # nor where it would reach into higher ground than its own banks (a cliff's foot, a terrace): its shore would be that
+    # ground's edge, a ruled line
+    for sd_ in (1, -1):
+        hi_ = sample(H0, Q + pr['N'] * sd_ * (pr['w'][:, None] + 0.6)) - tr['level']
+        cap = np.where(hi_ > 2.0, np.minimum(cap, drawn), cap)
+    cap = np.minimum(cap, ndi.grey_erosion(cap, size=int(4.0 / WS.DS)))      # (and not widened by a step: eased over a few metres)
+    cap = ndi.gaussian_filter1d(cap, 1.5 / WS.DS, mode='nearest')
+    ends = tr['next'] is not None or tr['deep_end']
+    keep_end = sm(1.0, 4.0, s[-1] - s) if ends else 1.0
+    keep_head = 1.0 if tr['fed'] else sm(1.0, 4.0, s)
+    pr['w'] = drawn + (cap - drawn) * keep_end * keep_head
+    pr['dep'] = pr['dep'] * keep_end + shallow * (1 - keep_end) if ends else pr['dep']
+    return Q, s, pr, drawn
+
+
+brooks = []; water_d = np.full(NZ * NX, 1e9); BEDS = {}
 flat = H.ravel().copy(); g0 = H0.ravel()
 unit = lambda v_: v_ / np.linalg.norm(v_)
 for k_, tr in enumerate(tiers):
+    if tr['name'] in SHAPED:
+        P, s_line, prof, drawn = shaped_bed(tr, tr['name']); BEDS[tr['name']] = (P, prof)
+        at, dd, idx = nearest(P, float(prof['w'].max()) * 1.35 + 2.2 + 3.0); half = prof['w'][idx]; lvl = tr['level']; bank = 2.2 + half * 0.35; ends = tr['next'] is not None or tr['deep_end']
+        px_at = np.stack([WX.ravel()[at], WZ.ravel()[at]], 1); past = np.zeros(len(at), bool)
+        if ends: past |= (idx == len(P) - 1) & (((px_at - P[-1]) @ unit(P[-1] - P[-min(11, len(P))])) > 0.1)
+        if tr['fed']: past |= (idx == 0) & (((px_at - P[0]) @ unit(P[0] - P[min(10, len(P) - 1)])) > 0.1)
+        up_lip = (len(P) - 1 - idx) * WS.DS if ends else np.full(len(at), 99.0)
+        at_lip = (up_lip < 3.0) & ~past
+        own = (g0[at] < lvl + 3.2) & ((g0[at] > lvl - 3.2) | (dd < half) | at_lip) & ~past
+        C, q, _ = WS.section(prof, px_at[:, 0], px_at[:, 1], dd, idx, np.full(len(P), lvl - 0.12), Hsoft.ravel()[at])
+        d_out = np.clip(dd - half, 0, None)
+        # in its bed: the bed. On its banks: cut to the bank's slope where the land stands higher, and never lower than a hand
+        # over the water for the first metre and a half out (so it holds its water, as the old banks did); then the land
+        for kind_, rx_, rz_, sc_, _ in ROCKS_KEPT:                    # (a rock standing in the water still stands out of it: it sits on a shoal of its own, a hand or two under the water)
+            r_ = 0.9 * sc_ + 0.5; d_r = np.hypot(px_at[:, 0] - rx_, px_at[:, 1] - rz_)
+            C = np.where(d_r < r_ + 2.5, np.maximum(C, lvl - 0.4 - 1.6 * sm(r_, r_ + 2.5, d_r)), C)
+        held = np.maximum(WS.lower(flat[at], C, 0.12), np.where((d_out > 0.25) & (d_out < 1.5), lvl + 0.15, -1e9))
+        target = np.where(q <= 1, C, held)
+        wgt = np.where(q <= 1, 1.0, 1 - sm(bank * 0.6, bank, d_out))
+        new = flat[at] + (target - flat[at]) * wgt
+        shoulder = (lvl + 0.3) + (flat[at] - (lvl + 0.3)) * sm(0, 1.0, dd - half - 1.2)
+        new = new + (np.maximum(new, shoulder) - new) * (1 - sm(2.0, 3.0, up_lip)) * (q > 1)
+        flat[at] = np.where(own & (dd < half + bank), new, flat[at])
+        water_d[at] = np.minimum(water_d[at], dd - half)
+        rows = np.vstack([P[:-1:5], P[-1:]]); hw = np.concatenate([prof['w'][:-1:5], prof['w'][-1:]])
+        brooks.append([[round(float(p[0]), 2), round(float(p[1]), 2), round(lvl, 2), round(float(h_), 2)] for p, h_ in zip(rows, hw)])
+        print(f"  {tr['name']}: {len(P) * WS.DS:.0f} m, its bed {2 * prof['w'].min():.1f} .. {2 * prof['w'].max():.1f} m wide (drawn {2 * drawn.min():.1f} .. {2 * drawn.max():.1f}), "
+              f"{prof['dep'].min() + 0.12:.2f} .. {prof['dep'].max() + 0.12:.2f} m deep" + (f", fords at {', '.join(f'{f:.0f}' for f in prof['fords'])} m" if prof['fords'] else ''))
+        continue
     P, A = densify(tr['pts'], [[hw] for hw in tr['half']], step=0.25)
     at, dd, idx = nearest(P, max(tr['half']) * 1.35 + 2.2 + 3.0); half = A[idx, 0]; lvl = tr['level']; bank = 2.2 + half * 0.35; ends = tr['next'] is not None or tr['deep_end']
     # its own terrace only: the cliff above is never cut into, and past the brink (or behind the foot of the fall that feeds it)
@@ -777,6 +885,59 @@ for m in MOVES:                                                          # the s
     if p_ is None or math.hypot(p_[1] - fx_, p_[2] - fz_) > 0.3: print(f"  ! the move of {m['id']} is out of date"); continue
     p_[1:] = [tx_, tz_, ty_]; print(f"  moved by hand: {m['id']} to {tx_}, {tz_}")
     if PROP_R.get(kind_, 0) >= 1.0: level_ground(tx_, tz_, PROP_R[kind_])      # (the ground made even under it, as under a moved house: a stall is not left half sunk in a slope. A lamp, a signpost, a sheep stand on the ground as it is)
+INFLOWS_EARLY = [   # where the waters come from (see 10): the stretch, its line (x, z, half-width in metres), its knoll
+    ('upper_stream', [(-105.2, -57.0, 1.0), (-105.2, -48.5, 1.1), (-103.8, -41.0, 1.2), (-99.0, -34.0, 1.25), (-93.0, -30.2, 1.3), (-85.0, -26.8, 1.4), (-76.0, -23.8, 1.7)], (-91.0, -44.0, 3.4, 7.5)),
+    ('brook_2_meadow', [(-104.5, 157.0, 0.9), (-103.4, 166.0, 1.0), (-99.5, 173.5, 1.1), (-93.0, 178.6, 1.15), (-85.5, 181.3, 1.2)], (-90.5, 168.0, 3.0, 7.0)),
+    ('brook_1_meadow', [(104.8, 247.5, 0.9), (105.0, 239.0, 1.0), (104.6, 232.5, 1.05), (100.8, 227.0, 1.1), (94.0, 224.2, 1.2), (88.5, 222.8, 1.5)], (91.0, 238.0, 3.0, 7.0)),
+]
+
+# ------------------------------------------------------------------ 7b. the rain's runnels
+# Where would rain run on this land? Each place is drained to its lowest neighbour (the hollows filled, as a flood would
+# fill them: every drop gets somewhere, to a water, the pit, the land's edge) and the ground draining through each place is
+# counted; where enough gathers the land is worn into a runnel along it, deeper and wider the more it carries and the faster
+# it runs (water_shape.py, flow and runnels): gullies down the hills at the map's edges, down the bowl's sides above the pit,
+# down the banks between the village's terraces; on level ground no more than a swale. On a cliff (the land paints its
+# strata there) a runnel is half as deep, a notch the strata run into. Nothing is worn where something stands or is walked
+# (a house, a yard, a field, a fence, a way, a bridge's end, a plant, a rock), in or by a water, at a fall or a cascade's
+# steps, in the pit, where an inflow's valley is cut in the game, nor by the seam with the west fringe.
+_K = 2                                                               # (the water's way is worked out on every second height: a quarter of the work)
+_Hc = ndi.gaussian_filter(H, 1.0)[::_K, ::_K] + 0.22 * fbm_big(9.0, 2)[::_K, ::_K] - 0.11
+_out = (water_d < 0.2)[::_K, ::_K] | pit_in[::_K, ::_K]
+_out[0, :] = _out[-1, :] = _out[:, 0] = _out[:, -1] = True
+_acc, _run = WS.flow(_Hc, _out, MPP * _K, along=True)
+_up = lambda F: np.pad(ndi.zoom(F, _K, order=1)[:NZ, :NX], ((0, max(0, NZ - F.shape[0] * _K)), (0, max(0, NX - F.shape[1] * _K))), mode='edge')[:NZ, :NX]
+FLOW = _up(_acc)
+# how fast it runs: the slope along its own way down, eased over a few metres of it (not the land round it: along the foot
+# of a cliff the water runs slowly and only lays a swale, though the cliff beside it is steep)
+_onw = (_acc > 20.0).astype(float); _sg = 1.2 / (MPP * _K)
+_fall = _up(ndi.gaussian_filter(_run * _onw, _sg) / np.maximum(ndi.gaussian_filter(_onw, _sg), 1e-3))      # (eased along the ways the water takes only)
+_keep = np.zeros((NZ, NX))
+def _keep_round(x, z, r, edge=1.6):
+    global _keep
+    _keep = np.maximum(_keep, sm(r + edge, r, np.hypot(WX - x, WZ - z)))
+for b_ in B: _keep_round(b_['x'], b_['z'], b_['pad'] + 1.5)
+for x, z, r, _ in YARDS: _keep_round(x, z, r + 1.0)
+for x, z, r in BRIDGES: _keep_round(x, z, r + 2.0)
+for kind_, x, z, sc_, _ in ROCKS_KEPT: _keep_round(x, z, 0.9 * sc_ + 0.8)
+for r_ in STANDING: _keep_round(r_[1], r_[2], 1.2 + 0.6 * r_[3] if r_[0] in ('oak', 'broadleaf', 'birch', 'pine', 'sapling') else 0.8, 1.0)
+for f_ in falls: _keep_round(f_['x'], f_['z'], 6.0 if not f_['deep'] else 4.0)
+for f_ in FIELDS: _keep_round(f_['x'], f_['z'], math.hypot(f_['w'], f_['d']) / 2 + 1.0)
+for q_ in FENCES:
+    for x, z in q_['points']: _keep_round(x, z, 1.0)
+for k_, x, z, _ in PROPS: _keep_round(x, z, 1.6)
+for c in CASC:                                                       # (the cascades' steps, from the meadow down to the pit)
+    th = c['th']; _keep = np.maximum(_keep, sm(9.0, 6.0, np.abs(-(WX - BOWL[0]) * math.sin(th) + (WZ - BOWL[1]) * math.cos(th))) * ((WX - BOWL[0]) * math.cos(th) + (WZ - BOWL[1]) * math.sin(th) > PIT_BRINK - 6))
+for _, line_, _kn in INFLOWS_EARLY:                                  # (the inflows' valleys, cut by the game as it loads)
+    for x, z, _hw in line_: _keep_round(x, z, 7.0, 3.0)
+    _keep_round(_kn[0], _kn[1], _kn[3] + 2.0, 3.0)
+_keep = np.maximum.reduce([_keep, sm(1.6, 0.6, path_d), sm(1.4, 0.4, water_d), sm(-70.0, -76.0, WX), (r_bowl < PIT_BRINK + 2.5).astype(float)])
+RILL = WS.runnels(FLOW, _fall, MPP, where=(water_d > 0.3), deep=1.3, start=30.0) * (1 - 0.5 * sm(0.9, 1.6, _fall)) * (1 - _keep)
+H = H - RILL
+# Under the meadow's grass a runnel a hand or two deep is not seen at all: where one is cut deep down a slope, where the water
+# runs fast, the grass has gone from its floor and the bare earth shows (hill-village-bare.png: the game paints it bare)
+BARE = ndi.gaussian_filter(np.clip(sm(0.1, 0.32, RILL) * sm(0.07, 0.2, _fall), 0, 1), 0.3 / MPP)
+print(f'  runnels: worn into {100 * (RILL > 0.05).mean():.1f}% of the land, the deepest {RILL.max():.2f} m; bare earth in {100 * (BARE > 0.5).mean():.2f}% of it')
+
 # ------------------------------------------------------------------ 8. the places to start from (name, spot, the way she faces)
 SPAWN = M(.04, .868); FALL = tuple(LIP + RIVER_DIR * 2.0); above = M(.60, .80); rim = (RAMP_TOP[0] - 1.2, RAMP_TOP[1] - 4.0)
 VIEWS = {
@@ -1580,6 +1741,8 @@ CELL = 0.4; nx = int(2 * XH / CELL) + 1; nz = int((Z1 - Z0) / CELL) + 1      # t
 gz, gx_ = np.mgrid[0:nz, 0:nx].astype(np.float64)
 small = ndi.map_coordinates(H, [gz * CELL / MPP, gx_ * CELL / MPP], order=1, mode='nearest')
 np.clip((small - BASE) / RANGE * 65535, 0, 65535).round().astype('<u2').tofile(OUT / 'hill-village.bin')
+# where the rain's runnels have left the earth bare (7b), on the same grid: 0 grass .. 255 bare
+Image.fromarray((np.clip(ndi.map_coordinates(BARE, [gz * CELL / MPP, gx_ * CELL / MPP], order=1, mode='nearest'), 0, 1) * 255).round().astype(np.uint8)).save(OUT / 'hill-village-bare.png', optimize=True)
 # ------------------------------------------------------------------ 10. where the waters come from
 # No water rises at a spot she can look at: the upper stream and the two meadow brooks each come in from the margin, out of a
 # small valley through its hills and round the foot of a knoll that hides where the water begins. Those stretches are NOT laid
@@ -1587,11 +1750,7 @@ np.clip((small - BASE) / RANGE * 65535, 0, 65535).round().astype('<u2').tofile(O
 # (inflows: the stretch it flows into, rows of x, z, half-width from its hidden head down to that stretch's own head, and its
 # knoll: x, z, height, radius); the game cuts the valley and the bed as it loads and lays the water on as part of that stretch
 # (hill-village-level.js, VALLEY), and the map's picture draws it.
-INFLOWS = [   # (the stretch, its line: x, z, half-width in metres, its knoll)
-    ('upper_stream', [(-105.2, -57.0, 1.0), (-105.2, -48.5, 1.1), (-103.8, -41.0, 1.2), (-99.0, -34.0, 1.25), (-93.0, -30.2, 1.3), (-85.0, -26.8, 1.4), (-76.0, -23.8, 1.7)], (-91.0, -44.0, 3.4, 7.5)),
-    ('brook_2_meadow', [(-104.5, 157.0, 0.9), (-103.4, 166.0, 1.0), (-99.5, 173.5, 1.1), (-93.0, 178.6, 1.15), (-85.5, 181.3, 1.2)], (-90.5, 168.0, 3.0, 7.0)),
-    ('brook_1_meadow', [(104.8, 247.5, 0.9), (105.0, 239.0, 1.0), (104.6, 232.5, 1.05), (100.8, 227.0, 1.1), (94.0, 224.2, 1.2), (88.5, 222.8, 1.5)], (91.0, 238.0, 3.0, 7.0)),
-]
+INFLOWS = INFLOWS_EARLY
 inflows = []
 for name_, line_, knoll_ in INFLOWS:
     i_ = next(k for k, t_ in enumerate(tiers) if t_['name'] == name_); head_ = brooks[i_][0]

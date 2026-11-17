@@ -62,6 +62,7 @@ export const HILL_VILLAGE_MAP = {
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
+  bare: './assets/heightmaps/hill-village-bare.png',      // where the rain's runnels have worn the grass away, on the land's own grid (the heightmap tool, 7b)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
@@ -92,7 +93,24 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // ------------------------------------------------------------------ the land: read from the picture
   await onStep('อ่านแผนที่ความสูง');
   const fresh = { cache: 'no-cache' };                                    // (the land and the plan change together: never one from the browser's cache and one new)
-  let [raw, P] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json())]);
+  let [raw, P, bareImg] = await Promise.all([fetch(url(M.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(M.plan), fresh).then(r => r.json()),
+    fetch(url(M.bare), fresh).then(r => r.ok ? r.blob() : null).then(b => b && createImageBitmap(b)).catch(() => null)]);
+  // where the rain's runnels have left the earth bare: read once into bytes, on the land's own grid as the heightmap tool wrote it
+  const worn = (() => {
+    if (!bareImg) return null;
+    const c = document.createElement('canvas'); c.width = bareImg.width; c.height = bareImg.height;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bareImg, 0, 0);
+    const px = g.getImageData(0, 0, c.width, c.height).data, out = new Uint8Array(c.width * c.height);
+    for (let k = 0; k < out.length; k++) out[k] = px[k * 4];
+    return { nx: c.width, nz: c.height, x0: P.land.x0, z0: P.land.z0, cell: P.land.cell, v: out };
+  })();
+  const bareAt = (x, z) => {
+    if (!worn) return 0;
+    const u = (x - worn.x0) / worn.cell, v = (z - worn.z0) / worn.cell;
+    if (u < 0 || v < 0 || u >= worn.nx - 1 || v >= worn.nz - 1) return 0;
+    const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, o = j * worn.nx + i, b = worn.v;
+    return ((b[o] * (1 - fu) + b[o + 1] * fu) * (1 - fv) + (b[o + worn.nx] * (1 - fu) + b[o + worn.nx + 1] * fu) * fv) / 255;
+  };
   const west = await joinWestFringe({ raw, plan: P, url });                // the west fringe: the land wider to the west, the plan with its ways and places
   raw = west.raw;
   const placeBase = placeables(P), placed = applyPlaceEdits(P, placeKey('hillvillage'));      // the things moved by hand, kept in this browser
@@ -472,6 +490,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     let earth = ss(0.7, 1.1, slope(x, z)), mow = 0;                        // the cliffs: bare (no grass grows on them)
     const b = brookAt(x, z), sand = b ? 1 - ss(0.2, 1.4, b.d) : 0;        // the water's beds and banks: sand, no grass
     earth = Math.max(earth, west.dryAt(x, z));                             // the beds the fringe's water has left: bare earth
+    earth = Math.max(earth, bareAt(x, z));                                 // the rain's runnels where they run deep and fast: bare earth
     const pp = pathPaint(x, z);
     if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }               // the ways: trodden earth, short grass beside them
     if (inField(x, z, 0.5)) earth = 1; else if (inField(x, z, 1.6)) mow = Math.max(mow, 0.7);

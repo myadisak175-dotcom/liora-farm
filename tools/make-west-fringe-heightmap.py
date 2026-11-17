@@ -41,6 +41,8 @@ from scipy.interpolate import RBFInterpolator
 from scipy.spatial import cKDTree
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import water_shape as WS                                      # (the water's ways, as every map's tool shapes them: water_shape.py)
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 REPO = Path(ARGS[0]) if len(ARGS) > 0 else HERE.parent
 OUT = Path(ARGS[1]) if len(ARGS) > 1 else REPO / 'assets/heightmaps'
@@ -60,6 +62,7 @@ BASE, RANGE = 0.0, 40.0                                       # black is BASE me
 rng = np.random.default_rng(1117)
 JJ, II = np.mgrid[0:NZ, 0:NX].astype(np.float64)
 WX = X0 + II * CELL; WZ = Z0 + JJ * CELL
+LAND = WS.Land(WX, WZ, CELL)
 
 
 def sm(a, b, x):                                              # 0 at a, 1 at b, smooth between (a may be the greater)
@@ -87,22 +90,7 @@ def wnoise(cell, octaves=2, gain=0.5):                        # as noise(), with
     return (out - out.min()) / (out.max() - out.min()) - 0.5
 
 
-def wave(n, step, cell):                                      # smooth noise along a line: -1 .. 1 at n points `step` metres apart, its wave `cell` metres
-    g = rw.uniform(-1, 1, int(n * step / cell) + 6)
-    return np.clip(ndi.map_coordinates(g, [np.arange(n) * step / cell + 1.5], order=3, mode='nearest'), -1, 1)
-
-
-def lower(a, b, k=0.16):                                      # the lower of two surfaces, rounded where they meet (k metres): no crease
-    return -k * np.logaddexp(-a / k, -b / k)
-
-
-def chaikin(P, n=3, closed=False):                            # corners cut off a line, n times
-    P = np.asarray(P, float)
-    for _ in range(n):
-        A, B = (P, np.roll(P, -1, 0)) if closed else (P[:-1], P[1:])
-        Q = np.empty((2 * len(A), 2)); Q[0::2] = .75 * A + .25 * B; Q[1::2] = .25 * A + .75 * B
-        P = Q if closed else np.vstack([P[:1], Q, P[-1:]])
-    return P
+lower, chaikin = WS.lower, WS.chaikin
 
 
 def poly_sd(pts):                                             # metres from a shape's edge: + inside, - outside
@@ -400,75 +388,13 @@ def carve(pts, half, bed, bank=0.45, cut=2):
     return Q, s
 
 
-DS = 0.2                                                      # metres between a bed line's points
-
-
-def bed_line(pts, wander_m, hold=()):
-    """a drawn line made a water's own: its corners rounded, and wandering up to wander_m either side of where it was drawn
-    (not at its ends, nor near the places in hold: (x, z, metres))"""
-    Q, s = densify(chaikin(pts, 2), DS)
-    T = np.gradient(Q, axis=0); T /= np.linalg.norm(T, axis=1)[:, None] + 1e-9
-    k = sm(0, 5, s) * sm(s[-1], s[-1] - 5, s)
-    for x, z, r in hold: k = k * sm(r * 0.5, r * 1.6, np.hypot(Q[:, 0] - x, Q[:, 1] - z))
-    Q = Q + np.column_stack([-T[:, 1], T[:, 0]]) * (wander_m * wave(len(Q), DS, 12.0) * k)[:, None]
-    Q = np.column_stack([ndi.gaussian_filter1d(Q[:, 0], 3, mode='nearest'), ndi.gaussian_filter1d(Q[:, 1], 3, mode='nearest')])
-    return densify(Q, DS)
+DS = WS.DS                                                    # metres between a bed line's points
+# (the beds are made as water makes them: water_shape.py, bed_line and channel. Its dice here are the dry water's own, rw)
+bed_line = lambda pts, wander_m, hold=(): WS.bed_line(rw, pts, wander_m, hold)
 
 
 def channel(Q, s, level, half, deep, falls=(), fords=(), reach=9.0):
-    """a bed along the line Q (s: metres along it), made as water makes one: see above. level: the height of its riffles
-    at each point (a dry fall is a step in it); half: its half width on a riffle; deep: how far under its riffles its pools
-    go; falls, fords: metres along the line. -> the surface it cuts (where it is lower than the land, the land is cut to
-    it), where that is, and the bed's half width at each point"""
-    n = len(Q)
-    T = np.gradient(Q, axis=0); T /= np.linalg.norm(T, axis=1)[:, None] + 1e-9
-    N_ = np.column_stack([-T[:, 1], T[:, 0]])
-    turn = ndi.gaussian_filter1d(np.gradient(np.unwrap(np.arctan2(T[:, 1], T[:, 0])), s), 2.0 / DS, mode='nearest')      # 1 / metres: + turning to the N_ side
-    kn = np.clip(turn * 9.0, -1, 1)
-    calm = np.ones(n)                                                  # 0 at a fall or a ford: no bend's cut there, no pool
-    for f in falls: calm *= sm(1.5, 4.5, np.abs(s - f))
-    ford = np.zeros(n)
-    for f in fords: ford = np.maximum(ford, sm(5.0, 2.0, np.abs(s - f)))
-    calm *= 1 - ford
-    kn *= calm
-    bend = np.roll(np.abs(kn), int(1.5 / DS))                          # (a pool lies a little below the bend that dug it)
-    pool = np.clip(0.8 * bend + 0.5 * (0.5 + 0.5 * np.sin(2 * np.pi * s / (11.5 * half) + 6.28 * wave(n, DS, 40.0))) * (1 - bend), 0, 1) * calm
-    w = half * (1.14 - 0.32 * pool + 0.2 * wave(n, DS, 9.0)) * (1 + 0.25 * ford)
-    dep = 0.12 + (deep - 0.12) * pool
-    for f in falls:                                                     # the lip above: narrow, bare; the pool the fall dug below: round, deep, wide
-        up, dn = s < f, s >= f
-        w = np.where(up, w * (1 - 0.32 * np.exp(-((f - s) / 2.2) ** 2)), w * (1 + 0.5 * np.exp(-((s - f - 2.0) / 2.3) ** 2)))
-        dep = np.where(up, dep * (1 - np.exp(-((f - s) / 2.0) ** 2)) + 0.06, dep + 0.62 * np.exp(-((s - f - 1.7) / 1.6) ** 2))
-    off = -kn * 0.42 * w                                                # the deepest of it: toward the outside of the bend
-    steepL, steepR = 0.55 + 0.24 * wave(n, DS, 7.0), 0.55 + 0.24 * wave(n, DS, 7.0)      # each bank its own, all along
-    m, D, I = near_line(Q, reach)
-    i = I[m]
-    side = np.where((WX[m] - Q[i, 0]) * N_[i, 0] + (WZ[m] - Q[i, 1]) * N_[i, 1] >= 0, 1.0, -1.0)
-    # where each place lies along the line (not only which of its points is nearest): a fall's face is then a slope the
-    # land's grid can hold, and it is cut back furthest in the bed's middle (there the place counts as further down)
-    sc = s[i] + (WX[m] - Q[i, 0]) * T[i, 0] + (WZ[m] - Q[i, 1]) * T[i, 1]
-    if len(falls):
-        near = np.zeros(n)
-        for f in falls: near = np.maximum(near, sm(4.0, 1.0, np.abs(s - f)))
-        sc = sc + near[i] * 1.1 * np.clip(1 - (D[m] / w[i]) ** 2, 0, 1)
-    lev = np.interp(sc, s, level)
-    u = side * D[m] - off[i]
-    su = np.where(u >= 0, 1.0, -1.0)
-    g = -kn[i] * su                                                     # + on the bend's outer side, - on its inner
-    ws = np.maximum(w[i] - su * off[i], 0.3)
-    q = np.abs(u) / ws
-    # (nothing low stands steep. The land paints rock on what is steeper than about 0.7, and a bank a step high painted as
-    # rock is a row of splinters: a pool's side is kept under 0.6, and a bank is cut steep only where it stands over a
-    # metre above the bed, where it is a face)
-    shape = np.minimum(np.where(g > 0, 2.0 + 1.3 * g, 2.0 + 0.7 * g), np.maximum(1.25, 0.58 * ws / np.maximum(dep[i], 0.05)))
-    bed = lev - dep[i] * (1 - np.clip(q, 0, 1) ** shape)
-    steep = np.clip(np.where(su > 0, steepL[i], steepR[i]) + np.where(g > 0, 1.15 * g, 0.22 * g), 0.3, 1.9)
-    steep = np.minimum(steep, 0.56 + 1.3 * sm(1.1, 1.9, Hsoft[m] - lev))
-    steep = steep * (1 - ford[i]) + 0.3 * ford[i]
-    d = np.clip(np.abs(u) - ws, 0, None)
-    C = np.full((NZ, NX), 1e6); C[m] = np.where(q <= 1, bed, lev + steep * d + 0.025 * d * d)
-    face = np.zeros((NZ, NX), bool); face[m] = (steep > 0.62) & (q > 1)      # where a bank is meant to stand as a face
-    return C, m, w, dep, face
+    return WS.channel(LAND, rw, Q, s, level, half, deep, falls, fords, reach, rise_over=Hsoft)
 
 
 def into_land(C, m):
@@ -516,7 +442,6 @@ H = Hplain + (H - Hplain) * _k
 # drains through one line the land is worn into a runnel along it, deeper and wider the more it carries: they gather
 # down the slopes, join, and notch the banks where they reach a bed. Only on the low ground and the dead hill; nothing is
 # worn where a way runs, a floor lies or a tree stands, nor by the seam.
-import heapq
 def trees_now():                                              # the dead trees as they stand in the map's foliage (moved by hand since, maybe), else as planted
     f = REPO / 'assets/heightmaps/hill-village-foliage.json'
     if f.exists(): return [(r[1], r[2], r[3]) for r in json.loads(f.read_text())['plants'] if r[0] in ('oak', 'broadleaf', 'birch', 'sapling', 'pine') and r[1] < SEAM]
@@ -535,25 +460,6 @@ def kept_as_is():
     return keep
 
 
-def flow(Hf, out):
-    """the ground draining through each place (square metres), the hollows of Hf filled; out: where water leaves (a bed, a hole, the edge)"""
-    nz, nx = Hf.shape; h = Hf.ravel().tolist(); seen = out.ravel().copy(); par = np.full(nz * nx, -1, np.int64); order = []
-    heap = [(h[k], k) for k in np.flatnonzero(seen)]; heapq.heapify(heap)
-    NB = [(-1, -1, 1.414), (-1, 0, 1), (-1, 1, 1.414), (0, -1, 1), (0, 1, 1), (1, -1, 1.414), (1, 0, 1), (1, 1, 1.414)]
-    seen = seen.tolist()
-    while heap:
-        y, k = heapq.heappop(heap); order.append(k); j, i = divmod(k, nx)
-        for dj, di, _ in NB:
-            jj, ii = j + dj, i + di
-            if 0 <= jj < nz and 0 <= ii < nx:
-                q = jj * nx + ii
-                if not seen[q]: seen[q] = True; par[q] = k; heapq.heappush(heap, (max(h[q], y + 1e-4), q))
-    acc = np.full(nz * nx, CELL * CELL)
-    for k in reversed(order):
-        if par[k] >= 0: acc[par[k]] += acc[k]
-    return acc.reshape(nz, nx)
-
-
 RJ0, RJ1, RI0, RI1 = int((92 - Z0) / CELL), int((PLAY[3] + 4 - Z0) / CELL), int((PLAY[0] - 6 - X0) / CELL), int((SEAM - 4 - X0) / CELL)      # the low ground and the dead hill, with a little round them
 _R = (slice(RJ0, RJ1), slice(RI0, RI1))
 bedsM = ((Cb < Hland + 0.02) | (Cg < Hland + 0.02) | (sdP > 0))                       # the beds and the pond: where the runnels run to
@@ -561,32 +467,26 @@ _out = bedsM[_R].copy(); _out[0, :] = _out[-1, :] = _out[:, 0] = _out[:, -1] = T
 for _, x, z, r, *_ in SINKS: _out |= (np.hypot(WX - x, WZ - z) < r * 0.55)[_R]
 # (the land it is worked out on: smoothed, and with small swells of its own, so that over the flats the water's way wanders
 # as it does on real ground and is not ruled across them)
-FLOW = np.zeros((NZ, NX)); FLOW[_R] = flow((ndi.gaussian_filter(H, 1.0) + 0.24 * wnoise(9.0, 2) + 0.07 * wnoise(3.5, 2))[_R], _out)
+FLOW = np.zeros((NZ, NX)); FLOW[_R] = WS.flow((ndi.gaussian_filter(H, 1.0) + 0.24 * wnoise(9.0, 2) + 0.07 * wnoise(3.5, 2))[_R], _out, CELL)
 KEEP = kept_as_is()
 _gz, _gx = np.gradient(ndi.gaussian_filter(H, 1.5), CELL)
 _fall = ndi.gaussian_filter(np.hypot(_gx, _gz), 1.0)                                # how steeply the land falls there
-_r = np.clip(np.log(np.maximum(FLOW, 1) / 40.0) / math.log(700.0 / 40.0), 0, 1) * (~bedsM) * (sdS < -2.0)
 # water wears the land by how much of it there is and how fast it runs: a gully where it comes down a bank, a scarp or the
-# hill; over the flats no more than a swale, broad and a hand deep
-RILL = ndi.gaussian_filter(1.05 * _r ** 1.2 * sm(0.05, 0.3, _fall), 1.25) + ndi.gaussian_filter(0.11 * _r, 2.6)
+# hill; over the flats no more than a swale, broad and a hand deep (water_shape.py, runnels)
+RILL = WS.runnels(FLOW, _fall, CELL, where=(~bedsM) * (sdS < -2.0))
 RILL *= (1 - KEEP) * (WEST > 0.999)
 H = H - RILL
 # and nothing small round the water is left standing steep (a runnel's side where it notches a bank, a bed's rim): eased
 # to a slope the land paints as earth. Not what is meant to be steep: a dry fall, a bank's face, and what was steep
 # before any of this (the scarps, the holes, the hill, the cliffs)
-def slope_of(F):
-    gz_, gx_ = np.gradient(F, CELL); return np.hypot(gx_, gz_)
+slope_of = LAND.slope
 
 
 _round = ndi.binary_dilation(bedsM | (RILL > 0.02) | (np.abs(sdP) < 6), iterations=int(6 / CELL))
 _meant = ndi.binary_dilation(faceB | faceG | (ndi.gaussian_filter(slope_of(Hland), 1.0) > 0.55), iterations=3)
 for x, z in FALLS: _meant |= np.hypot(WX - x, WZ - z) < 4.5
 SOFT = _round & ~_meant & (WEST > 0.999) & (KEEP < 0.5)
-for _ in range(60):
-    hot = SOFT & (slope_of(H) > 0.58)
-    if not hot.any(): break
-    hot = ndi.binary_dilation(hot, iterations=1) & SOFT
-    H = np.where(hot, 0.45 * H + 0.55 * ndi.gaussian_filter(H, 0.9), H)
+H = WS.ease(LAND, H, SOFT)
 
 # ------------------------------------------------------------------ 7. checks
 gz, gx = np.gradient(H, CELL); SL = np.hypot(gx, gz)
