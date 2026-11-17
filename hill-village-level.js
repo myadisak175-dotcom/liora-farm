@@ -61,6 +61,7 @@ export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
+  dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
@@ -216,7 +217,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       colliders.push([e.x, e.z, rad + 0.22]); cameraTrunks.push([e.x, e.z, rad + 0.12, y, y + TREE_H[e.type] * e.scale]); bare.push([e.x, e.z, rad * 1.5]);
       for (const [cy, cr] of CROWN[e.type] || []) crowns.push([e.x, y + cy * e.scale, e.z, cr * e.scale]);
     }
-    shade.push([e.x, e.z, 4 * e.scale, 0.4]); casters.push([e.x, e.z, TREE_H[e.type] * e.scale, 2.4 * e.scale, 0.7]);
+    const dead = e.type === 'pine' ? 0 : west.deadAt(e.x, e.z);                // (a dead tree's bare crown: no pool of shade under it, and a thin shadow)
+    shade.push([e.x, e.z, 4 * e.scale, 0.4 * (1 - dead)]); casters.push([e.x, e.z, TREE_H[e.type] * e.scale, 2.4 * e.scale, 0.7 * (1 - 0.5 * dead)]);
   };
   // The foliage: the plan's rows made into what the forests are given. Used as the level is built, and again by the foliage
   // editor, which has the groves a plant was taken from or put in built anew.
@@ -485,7 +487,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
   const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
   // the far meadow is laid in as the grass paints it (the land's own paint, and the rim's: stylized-terrain.js, grassLook)
-  const grassLook = { glsl: G.GRASS_LOOK_GLSL, tip: G.GRASS_TIP, area: map.area, paint: map.paint };
+  const grassLook = { glsl: G.GRASS_LOOK_GLSL, uniforms: G.GRASS_DRY, tip: G.GRASS_TIP, area: map.area, paint: map.paint };
   const fade = { far, fadeA: 1e5, fadeB: 2e5 };      // (the blades do not fade into the far colour toward the land's edge either: the land runs on past it, see the rim below)
   // the banks' sand: painted with the ways' own brush, so the beach and the ways read as one ground (?sand=flat: as it was)
   let sandPaint = null;
@@ -493,6 +495,13 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     sandPaint = await new THREE.TextureLoader().loadAsync(url(M.sand));
     sandPaint.wrapS = sandPaint.wrapT = THREE.RepeatWrapping; sandPaint.anisotropy = 4; sandPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
   } catch (err) { console.warn('[hill-village] sand paint', err); }
+  // the dead land's dry earth (the west fringe, under the curse): painted with the same brush, laid by the land where no
+  // grass is left (stylized-terrain.js, dryPaint)
+  let dryPaint = null;
+  try {
+    dryPaint = await new THREE.TextureLoader().loadAsync(url(M.dry));
+    dryPaint.wrapS = dryPaint.wrapT = THREE.RepeatWrapping; dryPaint.anisotropy = 4; dryPaint.colorSpace = THREE.NoColorSpace;
+  } catch (err) { console.warn('[hill-village] dry paint', err); }
   // the ways' paint, and in the soft look the ways laid by the land itself (ground-paths.js, onLand: no ribbons, so the ways
   // painted by hand cost nothing to draw, however many); ?paths=grit: ribbons, as before
   let pathTex = null;
@@ -519,7 +528,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.setAttribute('aBank', new THREE.BufferAttribute(bank, 1)); whole.setAttribute('aPath', new THREE.BufferAttribute(soil, 1));
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
-    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, ground: map, grassLook, ways: landWays });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
+    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, dryPaint, ground: map, grassLook, ways: landWays });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     // Its triangles. A cell of the grid is half a metre, and the land was two triangles to every cell, 753 000 in all,
     // meadow and cliff alike. Now a square of cells is drawn whole where the land inside it is flat to 3 cm (coarseGrid,
@@ -550,6 +559,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     console.info('[hill-village] the land:', drawn, 'triangles of', (cols - 1) * (n - 1) * 2);
     if (cliffPaint) own.push(cliffPaint);
     if (sandPaint) own.push(sandPaint);
+    if (dryPaint) own.push(dryPaint);
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };
   }
   group.add(terrain);
@@ -561,7 +571,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const rim = createMapRim({
     rect: landRect,
     heightAt: H, terrainMaterial: T._terrain.terrainMaterial, far, zc: CZ, cliffPaint, horizon: { center: [CX, CZ], radius: horizonR }, ways: waysOut, seed,
-    paint: { ground: map, grassLook: { ...grassLook, land: landRect, greens: [G.GROUND_COLORS.deep, G.GROUND_COLORS.mid, G.GROUND_COLORS.sunny], lean: 2.2 } },      // (its meadow is the land's, run on past the edge)
+    paint: { ground: map, dryPaint, grassLook: { ...grassLook, land: landRect, greens: [G.GROUND_COLORS.deep, G.GROUND_COLORS.mid, G.GROUND_COLORS.sunny], lean: 2.2 } },      // (its meadow is the land's, run on past the edge)
     clear: (x, z) => { const w = paths.near(x, z); return slope(x, z) < 0.6 && !brookAt(x, z) && w.d > w.half + 2.5 && !plants.some(p => Math.hypot(p.x - x, p.z - z) < 3.4); },
   });
   rim.userData.setSun(L);

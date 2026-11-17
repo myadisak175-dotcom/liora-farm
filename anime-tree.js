@@ -42,7 +42,7 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
+import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, setDryness, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
@@ -130,7 +130,7 @@ export const animeBrush = () => BRUSH.value > 0.5;
 // crown thins all over, not from one side), a little smaller, and in the dry tones; dead (1): no leaves at all. The
 // falling leaves go brown with it, and a dead plant drops none. As it starts the picture is one black pixel: every plant
 // alive, nothing changed.
-//   setAnimeDryness(texture, rect)   rect: [x0, z0, width, depth] of the land the picture covers (metres, world)
+//   stylized-nature's setDryness(texture, rect)   rect: [x0, z0, width, depth] of the land the picture covers (metres, world)
 // A dead plant is not its limbs alone (a few thick sticks, far smaller than the crown was): it keeps its crown's shape, in
 // bare twigs. TWIGS: a share of the leaf cards (TWIG.share: the ones with the lowest numbers, so a far crown keeps them
 // all) carry a spray of twigs once their leaves are gone. Such a card is laid from inside its puff out to where its
@@ -147,8 +147,7 @@ const TWIG_TONES = ['#4a4541', '#69635b', '#8b857a'];                           
 const DEAD_WOOD = ['#b4aea2', '#918b81', '#69645f', '#cdc6b6', '#45413e'];       // dead wood: light, body, shade; bare wood where the bark has peeled; cracks
 const TWIG = { share: 0.12, small: 1.5, far: 0.6, root: 0.86, past: 0.62, wide: 0.82, foot: 0.36, least: 1.7, from: 0.12, to: 0.72 };
 const DRY = {
-  uDryMap: { value: (() => { const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); t.needsUpdate = true; return t; })() },
-  uDryRect: { value: new THREE.Vector4(0, 0, 1, 1) },                 // x0, z0, 1 / width, 1 / depth
+  uDryMap: natureUniforms.uDryMap, uDryRect: natureUniforms.uDryRect,      // (the picture is the kit's: the grass and the ground die by it too, stylized-nature's setDryness)
   uD0: { value: rgb(DRY_TONES[0]) }, uD1: { value: rgb(DRY_TONES[1]) }, uD2: { value: rgb(DRY_TONES[2]) }, uD3: { value: rgb(DRY_TONES[3]) }, uD4: { value: rgb(DRY_TONES[4]) },
   uT0: { value: rgb(TWIG_TONES[0]) }, uT1: { value: rgb(TWIG_TONES[1]) }, uT2: { value: rgb(TWIG_TONES[2]) },
   uTwigLay: { value: new THREE.Vector4(TWIG.root, TWIG.past, TWIG.wide, TWIG.least) },
@@ -157,10 +156,7 @@ const DRY = {
 // the same picture and the dead wood's tones, for the bark (stylized-nature's bark shader, DRYNESS)
 const DRY_WOOD = { uDryMap: DRY.uDryMap, uDryRect: DRY.uDryRect, uDW0: { value: rgb(DEAD_WOOD[0]) }, uDW1: { value: rgb(DEAD_WOOD[1]) },
   uDW2: { value: rgb(DEAD_WOOD[2]) }, uDW3: { value: rgb(DEAD_WOOD[3]) }, uDW4: { value: rgb(DEAD_WOOD[4]) }, uDW5: { value: rgb(TWIG_TONES[1]) } };
-export function setAnimeDryness(texture, [x0, z0, w, d]) {
-  DRY.uDryMap.value = texture;
-  DRY.uDryRect.value.set(x0, z0, 1 / w, 1 / d);
-}
+export function setAnimeDryness(texture, rect) { setDryness(texture, rect); }      // (as it was called before the grass died by it too)
 
 // Every tree's crown is made of boughs, not of balls: each limb's tip carries a canopy (a puff wider than it is tall), beside
 // it one or two smaller ones a little lower, and sprays hanging round its lower outer edge (taller than they are wide), so

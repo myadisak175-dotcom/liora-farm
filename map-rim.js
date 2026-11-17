@@ -63,6 +63,7 @@ export const RIM_LOOK = {
   inLand: 10,                     // crowns also stand in the land's own last metres, this far in from its edge
   floor: ['#22361a', '#3d5a2c', '#5f7f38'],      // the wood's ground, seen from afar: shade between crowns, a crown, a sunlit crown
   bark: ['#6e5044', '#4a3631'],   // a trunk: its sunny side, its shaded side
+  dead: ['#554f49', '#746d64', '#958e82', '#9a9489'],      // where the land is dead (stylized-nature's setDryness): a bare crown's greys, shade to light (the dead trees' twigs: anime-tree.js), and its trunk
   way: ['#dcc07c', '#c3a162'],    // a way that runs off the land: its trodden earth, its rim (the soft ways' own earth: ground-paths.js)
   wayRun: 30,                     // metres past the land's edge such a way is still seen
   sheet: 90,                      // the grass's picture of the rim (see the sheet below) reaches this far past the land's longer side
@@ -96,17 +97,21 @@ ${NATURE_VCOMMON}
 attribute vec4 iPos;      // xyz: the crown's middle, w: its radius
 attribute vec4 iLook;     // x: how squat it is, y: its own tone (lighter or darker than the next), z: seed, w: its trunk's height (0: none drawn)
 attribute float aPart;    // 0: the crown's card, 1: the trunk's
+uniform sampler2D uDryMap;  // DRYNESS: how dead the land is (stylized-nature's setDryness), over the rect uDryRect
+uniform vec4 uDryRect;
 varying vec2 vUv;
 varying vec3 vRight;
 varying vec3 vUp;
 varying vec3 vFwd;
 varying vec3 vLook;
 varying float vPart;
+varying float vDry;
 void main() {
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vRight = right; vUp = up; vFwd = cross(right, up);
   vUv = position.xy; vPart = aPart; vLook = iLook.xyz;
+  vDry = texture2D(uDryMap, clamp((iPos.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
   vec3 p = iPos.xyz;
   if (aPart < 0.5) {
     float sway = sin(uTime * 0.8 + iLook.z * 6.28) * 0.05 * uWind;      // the wind in the crown
@@ -124,6 +129,7 @@ const CROWN_FS = /* glsl */`
 ${NATURE_HAZEF}
 uniform sampler2D uMask;
 uniform vec3 uC0, uC1, uC2, uC3, uC4, uBark0, uBark1, uSun;
+uniform vec3 uDead0, uDead1, uDead2, uDeadBark;      // DRYNESS: a dead crown's greys, shade to light; its trunk
 uniform vec4 uStep;
 varying vec2 vUv;
 varying vec3 vRight;
@@ -131,13 +137,19 @@ varying vec3 vUp;
 varying vec3 vFwd;
 varying vec3 vLook;
 varying float vPart;
+varying float vDry;
 void main() {
   vec3 col;
-  if (vPart > 0.5) col = vUv.x * dot(vRight, uSun) > 0.0 ? uBark0 : uBark1;      // the trunk: lit on the sun's side
-  else {
+  if (vPart > 0.5) {
+    col = vUv.x * dot(vRight, uSun) > 0.0 ? uBark0 : uBark1;      // the trunk: lit on the sun's side
+    col = mix(col, uDeadBark * (vUv.x * dot(vRight, uSun) > 0.0 ? 1.0 : 0.78), vDry);
+  } else {
     float a = vLook.z * 6.283, c = cos(a), s = sin(a);
     vec3 t = texture2D(uMask, vec2(vUv.x * c - vUv.y * s, vUv.x * s + vUv.y * c) * 0.5 + 0.5).rgb;      // (each crown's card turned its own way)
     if (t.r < 0.5) discard;
+    // DRYNESS: a dead tree's crown is bare twigs. Seen from this far: most of its leaves gone (which: by each leaf's own
+    // tone), what is left a lace of dry grey the sky shows through
+    if (vDry > 0.001 && fract(t.g * 7.31 + vLook.z) < vDry * 0.62) discard;
     // the ball the card stands for lends its normal; the light steps through the flat tones, leaf by leaf
     vec3 n = normalize(vRight * vUv.x + vUp * vUv.y + vFwd * sqrt(max(0.02, 1.0 - dot(vUv, vUv))));
     float v = (dot(n, uSun) * 0.5 + 0.5) * 0.66 + n.y * 0.2 + (t.g - 0.5) * 0.3 + vLook.y;
@@ -146,6 +158,11 @@ void main() {
     col = mix(col, uC2, step(uStep.y, v));
     col = mix(col, uC3, step(uStep.z, v));
     col = mix(col, uC4, step(uStep.w, v));
+    if (vDry > 0.001) {
+      vec3 dead = mix(uDead0, uDead1, step(uStep.y, v));
+      dead = mix(dead, uDead2, step(uStep.w, v));
+      col = mix(col, dead, smoothstep(0.05, 0.6, vDry));
+    }
   }
   gl_FragColor = vec4(mix(col, uHaze, vHaze), 1.0);
 }`;
@@ -161,7 +178,8 @@ function rimMaterial(terrainMaterial, far, zc, cliffPaint, look, paint, shade) {
         float wd = vWood + (j - 0.37) * 0.45 + (noise2(vWP.xz * 0.11 + 4.0) - 0.5) * 0.6 - vPath * 2.5;      // (a way into the wood is not overgrown)
         if (wd > 0.5) {
           float wv = noise2(vWP.xz * 0.21 + 3.0) * 0.6 + noise2(vWP.xz * 0.57 + 9.0) * 0.4 + (n.y - 0.9) * 1.2 + (vWood - 1.0) * 0.22;
-          col = wv > 0.66 ? uW2 : (wv > 0.5 ? uW1 : uW0);
+          // (in dead land, dz: the trees are bare and the dry ground shows between them, a little darker under them)
+          col = mix(wv > 0.66 ? uW2 : (wv > 0.5 ? uW1 : uW0), col * (wv > 0.5 ? 0.94 : 0.82), dz);
         }
         col = mix(col, uHaze, vHaze);`);
   // the trees' shadows: on the meadow's own ground colour, before its tones are laid in (so only with the land's grass look)
@@ -367,6 +385,8 @@ export function createMapRim({ rect, heightAt, terrainMaterial, far = '#cde6f2',
       uMask: { value: mask }, uSun: { value: new THREE.Vector3(-0.45, 0.62, 0.64).normalize() },
       uC0: { value: rgb(pal.tones[0]) }, uC1: { value: rgb(pal.tones[1]) }, uC2: { value: rgb(pal.tones[2]) }, uC3: { value: rgb(pal.tones[3]) }, uC4: { value: rgb(pal.tones[4]) },
       uStep: { value: new THREE.Vector4(...pal.steps) }, uBark0: { value: rgb(look.bark[0]) }, uBark1: { value: rgb(look.bark[1]) },
+      uDryMap: _internal.shared.uDryMap, uDryRect: _internal.shared.uDryRect,
+      ...Object.fromEntries((look.dead || RIM_LOOK.dead).map((c, i) => [i < 3 ? 'uDead' + i : 'uDeadBark', { value: rgb(c) }])),
     },
     vertexShader: CROWN_VS, fragmentShader: CROWN_FS, side: THREE.DoubleSide,
   });

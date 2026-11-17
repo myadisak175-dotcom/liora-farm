@@ -77,6 +77,7 @@ const TERRAIN_COLORS = {
   sand: ['#efe1b6', '#e4cf9a', '#cbb07c'],               // dry light, dry, wet (at the water)
   sandWet: '#cdbda8',                                    // painted sand (sandPaint) is multiplied by this where it is wet: darker, a touch richer
   hay: '#b9b25a',                                        // dry grass, where painted sand gives way to the meadow (the soft ways' own: ground-paths.js)
+  dryCrack: '#4d453c', dryDust: '#c6bba5',               // painted dry earth (dryPaint): a crack in it, dust lying on it
   path: ['#e3cc98', '#c4a76f'],
   worn: '#eedcae',                                       // the middle of a way, where feet fall most
   verge: '#a2b24c',                                      // grass beside a way: trodden short, a little yellowed
@@ -103,19 +104,26 @@ BLANK_WAYS.needsUpdate = true;
 // Beyond the reach of the blades the meadow is then laid in with the blades' own flat tones, from the same map and by the
 // same strokes, the trees' shadows in it: the far meadow is the near one seen from afar, and where the blades come up they
 // come up out of ground of their own colour. Under the standing blades the land keeps its paint.
+// With the grass's look comes its dry ground (stylized-grassfield.js, DRY GROUND; grassLook.uniforms: GRASS_DRY): where the
+// dryness picture says the land is dead the meadow is laid in as dry earth with dry grass in patches, under the blades
+// too. dryPaint (with grassLook): THE DRY EARTH, PAINTED. A picture of dry earth made with the ways' own brush, its
+// cracks in its alpha (tools/make-path-paint.py dry): laid as the sand is, wherever the dead land carries no grass, and
+// cracked only in stretches. Sand and ways lying in dead land lose their warmth.
 // ways: the trodden ways laid by the land's own paint (ground-paths.js, P.onLand: { glsl, defines, uniforms }), over whatever
 // the land is painted there, before the haze: the ways cost nothing to draw then, however many are painted by hand.
-function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null, ways = null } = {}) {
+function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null, ways = null, dryPaint = null } = {}) {
   const C = TERRAIN_COLORS;
   const defines = ways ? { WAY_LAND: 1, ...ways.defines } : {};
   if (cliffPaint) defines.CLIFF_PAINT = 1;
   if (sandPaint) defines.SAND_PAINT = 1;
   if (sandPaint && ground) defines.SAND_GROUND = 1;
   if (grassLook && ground) defines.GRASS_LOOK = 1;
+  if (grassLook && ground && dryPaint) defines.DRY_PAINT = 1;
   return new THREE.ShaderMaterial({
     defines,
     uniforms: {
-      ...(ways ? ways.uniforms : {}),
+      ...(ways ? ways.uniforms : {}), ...(grassLook && grassLook.uniforms ? grassLook.uniforms : {}),
+      uDryPaint: { value: dryPaint }, uDryCrack: { value: rgb(C.dryCrack) }, uDryDust: { value: rgb(C.dryDust) },
       uCliffPaint: { value: cliffPaint }, uCliffTile: { value: new THREE.Vector2(1 / cliffTile[0], 1 / cliffTile[1]) },
       uSandPaint: { value: sandPaint }, uSandWet: { value: rgb(C.sandWet) }, uHay: { value: rgb(C.hay) },
       uGround: { value: ground ? ground.texture : null }, uGroundRect: { value: ground ? ground.rect : new THREE.Vector3(0, 0, 1) },
@@ -173,6 +181,10 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         uniform vec3 uSandWet, uHay;
       #endif
       #if defined(SAND_GROUND) || defined(GRASS_LOOK)
+        #ifdef DRY_PAINT
+        uniform sampler2D uDryPaint;  // rgb: dry earth, a: 1 - how much of a crack (see dryPaint above)
+        uniform vec3 uDryCrack, uDryDust;
+        #endif
         uniform sampler2D uGround;    // rgb: the ground's colour, a: how much grass grows there (the map the blades read)
         uniform vec3 uGroundRect;     // its middle x, z and 1 / its width
       #endif
@@ -203,6 +215,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
           vec3 paint = texture2D(uCliffPaint, vWP.zy * uCliffTile).rgb * pw.x + texture2D(uCliffPaint, vWP.xy * uCliffTile).rgb * pw.y;
         #endif
         vec3 col;
+        float dz = 0.0;                                                     // how dead the land is here (only the grass's look knows)
         if (n.y + (j - 0.37) * 0.3 < 0.7) {
           #ifdef CLIFF_PAINT
             // the painted rock: lit a little by the sun, and lighter where a face leans back to the sky (a cliff's shoulder, a ledge's top)
@@ -231,12 +244,33 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
               gm = mix(gm, vec4(wild, 1.0), smoothstep(0.5, 9.0, past));
             }
             // GRASS_GROUND (gm is the ground's colour here; the rim lays its trees' shadows on it: map-rim.js)
+            dz = dryAt(vWP.xz);                                             // DRY GROUND: land under the curse
+            float shadeD = mapShade(gm.rgb);
+            gm = dryGround(gm, vWP.xz, dz);
             float cn = clumpAt(vWP.xz);
-            vec3 afar = mix(gm.rgb, tipColor(gm.rgb, uGrassTip), (0.3 + 0.5 * cn) * gm.a);
+            vec3 afar = mix(gm.rgb, tipColor(gm.rgb, uGrassTip, dz), (0.3 + 0.5 * cn) * gm.a);
             // (a field of blades seen from afar is its tall tufts' tips, a tone lighter than the tuft at their feet: + 0.05, and a little light)
-            afar = mix(afar, mix(gm.rgb, dabColor(gm.rgb, uGrassTip, cn * 0.45 + strokeAt(vWP.xz) * 0.55 + 0.05) * 1.035, gm.a), uGrassPaint);
+            afar = mix(afar, mix(gm.rgb, dabColor(gm.rgb, uGrassTip, cn * 0.45 + strokeAt(vWP.xz) * 0.55 + 0.05, dz) * 1.035, gm.a), uGrassPaint);
             float under = uGrassArea.z > 0.0 ? 1.0 - smoothstep(uGrassArea.z * 0.26, uGrassArea.z * 0.42, length(vWP.xz - uGrassArea.xy)) : 0.0;
+            if (dz > 0.0) col = mix(col, gm.rgb * 0.8, dz);                 // (under the standing blades: dry ground there too, not the land's green)
             col = mix(afar, col, under);
+            #ifdef DRY_PAINT
+            if (dz > 0.0) {
+              // the dry earth, painted (see dryPaint above): where the dead land carries no grass, its edge to the dry grass
+              // ragged. Laid twice, at two sizes, turned, as the sand is; hollows a tone deeper, dust lying pale; cracked
+              // in stretches only; the map's shadows on it
+              float bare = 1.0 - smoothstep(0.2, 0.62, gm.a + (noise2(vWP.xz * 5.0) - 0.5) * 0.22 + (noise2(vWP.xz * 13.0) - 0.5) * 0.1);
+              vec4 e1 = texture2D(uDryPaint, vWP.xz / 4.1), e2 = texture2D(uDryPaint, mat2(0.8, -0.6, 0.6, 0.8) * vWP.xz / 6.3);
+              vec3 ec = mix(e1.rgb, e2.rgb, 0.35 + 0.3 * noise2(vWP.xz * 0.3));
+              float broad = noise2(vWP.xz * 0.3 + 17.0);
+              ec = mix(ec, ec * vec3(0.9, 0.88, 0.86), smoothstep(0.5, 0.76, broad) * 0.8);
+              ec = mix(ec, uDryDust, smoothstep(0.44, 0.2, broad) * 0.3);
+              float stretch = smoothstep(0.5, 0.6, noise2(vWP.xz * 0.05 + 31.0) * 0.65 + noise2(vWP.xz * 0.16 + 5.0) * 0.35);
+              ec = mix(ec, uDryCrack, (1.0 - e1.a) * stretch * 0.85);
+              ec *= mix(vec3(1.0), vec3(0.62, 0.68, 0.8), shadeD * 0.85);
+              col = mix(col, ec, bare * dz);
+            }
+            #endif
           }
           #endif
           float b = vBank + (j - 0.37) * 0.5;
@@ -263,7 +297,8 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
               sc = mix(sc, vec3(0.96, 0.89, 0.71), smoothstep(0.42, 0.20, broad) * 0.25);
               float wet = 1.0 - smoothstep(0.02, 0.40, sb + (noise2(vWP.xz * 1.7 + 9.0) - 0.5) * 0.14);
               sc = mix(sc, sc * uSandWet, wet);                            // wet toward the water (and under it)
-              sc = mix(sc, uHay, smoothstep(0.30, 0.85, max(grass, 1.0 - sand)) * 0.7);      // dry grass where the meadow begins
+              sc = mix(sc, mix(uHay, vec3(0.68, 0.63, 0.48), dz), smoothstep(0.30, 0.85, max(grass, 1.0 - sand)) * 0.7);      // dry grass where the meadow begins
+              sc = mix(sc, dot(sc, vec3(0.3, 0.6, 0.1)) * vec3(1.03, 0.97, 0.86), dz * 0.6);      // (in dead land: a dry bed's silt, its warmth gone)
               col = mix(col, sc, sand);
             }
           #else
@@ -311,6 +346,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         #ifdef WAY_LAND
         {
           vec4 w = softWay(vWP, abs(n.y), vBank);                         // the ways (ground-paths.js: laid by the land, see ways above)
+          w.rgb = mix(w.rgb, dot(w.rgb, vec3(0.3, 0.6, 0.1)) * vec3(1.03, 0.97, 0.86), dz * 0.55);      // (in dead land: trodden earth, its warmth gone)
           col = mix(col, w.rgb, 1.0 - pow(1.0 - w.a, wayLayers(vWP)));       // (as thick as the ribbons lay there)
         }
         #endif

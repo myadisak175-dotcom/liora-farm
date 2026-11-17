@@ -17,10 +17,18 @@
 # pebbles and many fine grains, light and dark: so the beach and the ways read as one ground. Wet sand is not painted here:
 # the game darkens the sand toward the water, wherever the water is.
 #
+# `dry` writes assets/ground/dry-paint.webp: the dry earth of land under the curse (the west fringe: stylized-terrain.js lays
+# it where the land is dry and no grass stands). The same brush once more, in a dull grey-brown with no warmth left in
+# it, pale dusty patches in place of damp ones, more grit. And cracks, as earth that has dried out breaks into plates:
+# they are not in the colour but in the picture's alpha (255: none .. 0: the middle of a crack), so the game can leave
+# them out, and has them only in stretches. A crack is the line between two of a scatter of points (the plates'
+# middles), wavering, wider here and thinner there, and broken off in places as a brush would leave it.
+#
 #   python3 tools/make-path-paint.py            (Termux: pip install numpy scipy pillow)
 #   python3 tools/make-path-paint.py sand
+#   python3 tools/make-path-paint.py dry
 #
-# To change the colours: PALETTE, dark to light. To change how it is laid on: DABS, DAMP, PEBBLES, GRAINS (each look's own, in LOOKS).
+# To change the colours: PALETTE, dark to light. To change how it is laid on: DABS, DAMP, PEBBLES, GRAINS, CRACKS (each look's own, in LOOKS).
 import sys
 from pathlib import Path
 import numpy as np
@@ -43,6 +51,14 @@ LOOKS = {
         DAMP=(5, (120, 240), 0.06),
         PEBBLES=(10, (3.5, 7.5)),
         GRAINS=[(280, (1.2, 2.2), 0.18), (150, (1.0, 1.8), -0.2)]),
+    'dry': dict(                                                      # dry earth under the curse
+        out='dry-paint.webp', seed=67,
+        PALETTE=['#665c50', '#857a68', '#9d917b', '#b2a790', '#c9bea8'],      # a stone's shadow, the earth in a hollow, the earth itself, dry and dusty, the palest dust
+        DABS=(270, (36, 150), (16, 46), (0.08, 0.19)),
+        DAMP=(8, (110, 230), -0.06),                                         # (under 0: paler. Dust lying in drifts, where the ways have damp)
+        PEBBLES=(46, (3.0, 8.5)),
+        GRAINS=[(170, (1.2, 2.4), 0.2), (190, (1.0, 2.0), -0.22)],
+        CRACKS=(150, (2.4, 4.6), 0.3)),                                      # how many plates, how wide a crack (px), the share of each crack's length left out
 }
 look = LOOKS[sys.argv[1] if len(sys.argv) > 1 else 'path']
 OUT = Path(__file__).resolve().parent.parent / 'assets/ground' / look['out']
@@ -111,5 +127,25 @@ for n, size, tone in GRAINS:
 t += (rng.random((N, N)) - .5) * 0.02
 img = colour(t)
 img = ndi.gaussian_filter(img, (0.5, 0.5, 0), mode='wrap')
-Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).save(OUT, quality=90, method=6)
+img = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+if look.get('CRACKS'):
+    # ---- 6. cracks, into the alpha: the lines between the plates of a scatter of points, as far from two of them alike
+    from scipy.spatial import cKDTree
+    n, width, gaps = look['CRACKS']
+    pts = np.empty((0, 2))
+    while len(pts) < n:                                                                     # (no two plates' middles close together: a sliver between them would fill with crack)
+        q = rng.uniform(0, N, 2)
+        if not len(pts) or np.hypot(wrap(pts[:, 0] - q[0]), wrap(pts[:, 1] - q[1])).min() > 0.62 * N / np.sqrt(n): pts = np.vstack([pts, q])
+    tiled = np.concatenate([pts + (dx, dy) for dx in (-N, 0, N) for dy in (-N, 0, N)])      # (and round the edges: the cracks repeat as the picture does)
+    wx, wy = (periodic(14, 2) - .5) * 26, (periodic(14, 2) - .5) * 26                       # the lines waver: read a little to the side
+    d, _ = cKDTree(tiled).query(np.stack([xx + wx, yy + wy], -1).reshape(-1, 2), k=2)
+    edge = (d[:, 1] - d[:, 0]).reshape(N, N)                                                # 0 on a line, growing into the plate
+    w = width[0] + (width[1] - width[0]) * periodic(9, 2)                                   # wider here, thinner there
+    w = w * sm(gaps - 0.08, gaps + 0.14, periodic(7, 3))                                    # and left out in places
+    crack = (1 - sm(0.55, 1.0, edge / np.maximum(w, 1e-3))) * (w > 0.2)
+    crack = ndi.gaussian_filter(crack, 0.6, mode='wrap')
+    img = np.dstack([img, (255 * (1 - np.clip(crack, 0, 1))).astype(np.uint8)])
+    Image.fromarray(img, 'RGBA').save(OUT, quality=90, method=6, exact=True)                # (exact: the colour is kept under a crack too)
+    print(f'{OUT.name}: cracks over {100 * (crack > 0.5).mean():.1f} % of it')
+else: Image.fromarray(img).save(OUT, quality=90, method=6)
 print(f'{OUT.name}: {N} x {N}, tones {t.min():.2f} .. {t.max():.2f}, {OUT.stat().st_size // 1024} kB')

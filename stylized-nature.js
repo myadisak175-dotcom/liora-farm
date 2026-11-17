@@ -20,6 +20,8 @@
    setHaze({ color, near, far, max })    aerial perspective: far things fade toward the haze colour
    setWalker(pos, radius)                who walks among the plants: kits whose low plants part round her legs read it
                                          (uniforms.uWalker: anime-tree.js's leaves, meadow-flowers.js's flowers)
+   setDryness(texture, rect)             how dead the land is, as a picture over it: the trees, the grass and the ground
+                                         under it die by it (uniforms.uDryMap, uDryRect)
    Setup (once per scene)
      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
      scene.add(createAlphaFix())          // keeps soft leaf edges from showing the page through
@@ -76,11 +78,18 @@ const shared = {
   uWalker: { value: new THREE.Vector4(0, -999, 0, 0.55) },      // x, y, z of her feet, w = how far round her the plants part (nobody: far below)
   // aerial perspective: far things fade toward the haze colour (off by default: uHazeMax = 0)
   uHaze: { value: rgb('#cde6f2') }, uHazeNear: { value: 60 }, uHazeFar: { value: 240 }, uHazeMax: { value: 0 },
+  // DRYNESS: how dead the land is, a picture laid over it (red: 0 alive .. 1 dead) and the rect it covers (x0, z0,
+  // 1 / width, 1 / depth). One black pixel as it starts: all alive. The kits that die by it read these two: the trees
+  // (anime-tree.js), the grass and the ground under it (stylized-grassfield.js, and the land's paint with it)
+  uDryMap: { value: (() => { const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); t.needsUpdate = true; return t; })() },
+  uDryRect: { value: new THREE.Vector4(0, 0, 1, 1) },
 };
 let windTarget = 1;
 export const uniforms = shared;
 export function setWind(v) { windTarget = typeof v === 'number' ? v : (v ? 1 : 0); }
 export function setWalker(pos, radius = 0.55) { shared.uWalker.value.set(pos.x, pos.y, pos.z, radius); }
+//   setDryness(texture, rect)   rect: [x0, z0, width, depth] of the land the picture covers (metres, world)
+export function setDryness(texture, [x0, z0, w, d]) { shared.uDryMap.value = texture; shared.uDryRect.value.set(x0, z0, 1 / w, 1 / d); }
 export function setHaze({ color, near, far, max } = {}) {
   if (color) shared.uHaze.value.copy(rgb(color));
   if (near !== undefined) shared.uHazeNear.value = near;

@@ -223,21 +223,54 @@ vec4 groundMap(vec2 xz) { return texture2D(uMap, (xz - uMapRect.xy) * uMapRect.z
 // GROUND
 // ==========================================================================
 export const GRASS_TIP = '#c6e26c';
+// DRY GROUND: land under the curse. The ground map is a living meadow's; where the dryness picture says the land is dead
+// (stylized-nature's setDryness: the picture the trees die by) the same spot is read as dry ground instead, by the
+// blades and by every paint that lays the meadow in (dryGround, below): bare dry earth, and dry grass still standing
+// in patches over about a quarter of it, in straw tones with nothing green left in them (the tips, the deep tone and
+// the dark between the roots have their dry colours too). What the map has bare stays bare, and where a shadow lies in
+// the map it lies on the dry ground. Nothing is baked: change the picture and the land dries or comes back to life.
+// A material that takes LOOK_GLSL takes GRASS_DRY's uniforms with it.
+export const DRY_GROUND = {
+  earth: '#9d917b',      // the bare dry earth, seen from afar (the middle of the painted earth: tools/make-path-paint.py dry)
+  straw: ['#8f8361', '#b3a57c'],      // dry grass's ground, in drifts: deeper, paler
+  tip: '#d4caad',        // a dry blade's tip
+};
+export const GRASS_DRY = {
+  uDryMap: shared.uDryMap, uDryRect: shared.uDryRect,
+  uDryEarth: { value: rgb(DRY_GROUND.earth) }, uDryStrawA: { value: rgb(DRY_GROUND.straw[0]) }, uDryStrawB: { value: rgb(DRY_GROUND.straw[1]) },
+  uDryTip: { value: rgb(DRY_GROUND.tip) },
+};
 // GLSL shared by ground and follow-grass, so that what the ground paints between and beyond the blades matches them:
 //   clumpAt  : lumpy drifts (taller, lighter grass)        tipColor : what a blade tip looks like on this ground
+//   dryAt    : how dead the land is at a spot (0..1)       dryGround, mapShade : see DRY GROUND
 const LOOK_GLSL = /* glsl */`
+uniform sampler2D uDryMap;
+uniform vec4 uDryRect;
+uniform vec3 uDryEarth, uDryStrawA, uDryStrawB, uDryTip;
+float dryAt(vec2 xz) { return texture2D(uDryMap, clamp((xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r; }
+// how much of a shadow lies on this spot of the living map (by how dark it is: its greens are never as dark as their shade)
+float mapShade(vec3 ground) { return 1.0 - smoothstep(0.34, 0.47, dot(ground, vec3(0.3, 0.6, 0.1))); }
+vec4 dryGround(vec4 m, vec2 xz, float dry) {
+  if (dry <= 0.0) return m;
+  float n = noise2(xz * 0.06 + 11.0) * 0.55 + noise2(xz * 0.17 + 3.0) * 0.3 + noise2(xz * 0.6 + 7.0) * 0.15;
+  float stands = smoothstep(0.56, 0.63, n);                     // where dry grass still stands: ragged patches, and a tuft here and there
+  vec3 straw = mix(uDryStrawA, uDryStrawB, smoothstep(0.3, 0.7, noise2(xz * 0.045 + 21.0)));
+  vec3 c = mix(uDryEarth, straw, stands * smoothstep(0.05, 0.4, m.a));
+  c *= mix(vec3(1.0), vec3(0.62, 0.68, 0.8), mapShade(m.rgb) * 0.85);
+  return mix(m, vec4(c, m.a * stands * 0.9), dry);
+}
 float clumpAt(vec2 xz) { return noise2(xz * 0.6) * 0.65 + noise2(xz * 1.7 + 9.0) * 0.35; }
-vec3 tipColor(vec3 ground, vec3 tip) { return mix(ground * 1.17, tip, 0.3); }
-// between the roots: deeper and cooler, not just darker (plain darkening turns yellow-green into mud)
-vec3 rootColor(vec4 m) { return m.rgb * mix(vec3(1.0), vec3(0.7, 0.9, 0.9), m.a); }
+vec3 tipColor(vec3 ground, vec3 tip, float dry) { return mix(ground * 1.17, mix(tip, uDryTip, dry), 0.3); }
+// between the roots: deeper and cooler, not just darker (plain darkening turns yellow-green into mud); dry: plainly darker
+vec3 rootColor(vec4 m, float dry) { return m.rgb * mix(vec3(1.0), mix(vec3(0.7, 0.9, 0.9), vec3(0.74, 0.72, 0.7), dry), m.a); }
 // painterly look: the field is laid in with a few flat tones, in long dabs that all lean the same way like brush strokes
 float strokeAt(vec2 xz) {
   vec2 q = vec2(xz.x * 0.82 + xz.y * 0.57, -xz.x * 0.57 + xz.y * 0.82);
   return noise2(vec2(q.x * 0.55, q.y * 1.9)) * 0.6 + noise2(vec2(q.x * 1.5 + 5.0, q.y * 4.6)) * 0.4;
 }
-vec3 dabColor(vec3 ground, vec3 tip, float v) {
-  vec3 light = tipColor(ground, tip);
-  vec3 c = ground * vec3(0.8, 0.94, 0.9);                       // deep
+vec3 dabColor(vec3 ground, vec3 tip, float v, float dry) {
+  vec3 light = tipColor(ground, tip, dry);
+  vec3 c = ground * mix(vec3(0.8, 0.94, 0.9), vec3(0.8, 0.78, 0.76), dry);      // deep
   c = mix(c, ground, step(0.4, v));                             // local green
   c = mix(c, mix(ground, light, 0.62), step(0.52, v));          // light
   c = mix(c, light, step(0.71, v));                             // sunlit accents, used sparingly
@@ -252,7 +285,7 @@ export function groundMaterial(map, { far = '#eef5e4', fadeA = null, fadeB = nul
     uniforms: {
       uMap: { value: map.texture }, uMapRect: { value: map.rect }, uArea: { value: map.area }, uTip: { value: rgb(tip) }, uPaint: map.paint,
       uFar: { value: rgb(far) }, uFadeA: { value: fadeA ?? R * 0.55 }, uFadeB: { value: fadeB ?? R * 0.97 },
-      ...HAZE_UNI(),
+      ...HAZE_UNI(), ...GRASS_DRY,
     },
     vertexShader: /* glsl */`
       uniform float uHazeNear, uHazeFar, uHazeMax;
@@ -274,7 +307,8 @@ export function groundMaterial(map, { far = '#eef5e4', fadeA = null, fadeB = nul
       varying vec3 vWP;
       varying float vHaze;
       void main() {
-        vec4 m = groundMap(vWP.xz);
+        float dry = dryAt(vWP.xz);
+        vec4 m = dryGround(groundMap(vWP.xz), vWP.xz, dry);
         vec3 col = m.rgb;
         // a little grain on bare earth only
         col *= 1.0 - (1.0 - m.a) * 0.07 * (noise2(vWP.xz * 2.3) - 0.5) * 2.0;
@@ -282,10 +316,10 @@ export function groundMaterial(map, { far = '#eef5e4', fadeA = null, fadeB = nul
           // where live grass stands: the dark layer between the roots.  beyond it: the look of grass seen from afar
           float under = 1.0 - smoothstep(uArea.z * 0.3, uArea.z * 0.47, length(vWP.xz - uArea.xy));
           float cn = clumpAt(vWP.xz);
-          vec3 afar = mix(m.rgb, tipColor(m.rgb, uTip), (0.3 + 0.5 * cn) * m.a);
+          vec3 afar = mix(m.rgb, tipColor(m.rgb, uTip, dry), (0.3 + 0.5 * cn) * m.a);
           afar *= 1.0 + (noise2(vWP.xz * 4.0) - 0.5) * 0.1 * m.a * (1.0 - uPaint);  // brushy grain so distant meadow is not flat
-          afar = mix(afar, mix(m.rgb, dabColor(m.rgb, uTip, cn * 0.45 + strokeAt(vWP.xz) * 0.55), m.a), uPaint);
-          col = mix(afar, rootColor(vec4(col, m.a)), under);
+          afar = mix(afar, mix(m.rgb, dabColor(m.rgb, uTip, cn * 0.45 + strokeAt(vWP.xz) * 0.55, dry), m.a), uPaint);
+          col = mix(afar, rootColor(vec4(col, m.a), dry), under);
         }
         col = mix(col, uHaze, vHaze);
         col = mix(col, uFar, smoothstep(uFadeA, uFadeB, length(vWP.xz - uMapRect.xy)));
@@ -613,7 +647,7 @@ export function createFollowGrass({
   const nearTile = tile / 2;                                    // the quarter that the tile repeats: the full tufts' own tile
   map.area.set(map.center[0], map.center[1], tile);
   const uniforms = {
-    ...bladeUniforms(map, { tip, far, fadeA, fadeB, bladeHeight, bladeWidth }),
+    ...bladeUniforms(map, { tip, far, fadeA, fadeB, bladeHeight, bladeWidth }), ...GRASS_DRY,
     uHeight: { value: field.texture }, uHeightRect: { value: field.rect },
     uArea: { value: map.area }, uTuft: { value: tuft }, uPaint: map.paint,
     uThin: { value: thin },       // widens blades when fewer of them are drawn
@@ -718,6 +752,8 @@ export function createFollowGrass({
           ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
           m = groundMap(xz);
         #endif
+        float dry = dryAt(xz);
+        m = dryGround(m, xz, dry);                              // (land under the curse: see DRY GROUND)
         float cn = clumpAt(xz);
         // this blade's own root inside the tuft
         float ta = iRnd.x * 3.1416, tc = cos(ta), ts = sin(ta);
@@ -754,16 +790,16 @@ export function createFollowGrass({
         p.xz += right * (position.x * mix(1.0, 0.625, waist) * w) + lean * (h * mix(y * y, y, turned));            // y squared: the blade arcs over instead of tilting stiffly
         p.y += h * y * (1.0 - 0.3 * min(dot(lean, lean), 1.6) * mix(y, 1.0, turned));
         vY = y;
-        vRoot = rootColor(m);
+        vRoot = rootColor(m, dry);
         vMid = m.rgb;
         // tips: lighter and warmer; tall clumps and tall blades catch more light; a sheen where a gust passes
         float tint = clamp((cn - 0.5) * 2.6 + iRnd.w * 0.45 + (aBlade.z - 0.8) * 0.9, -1.0, 1.0);
         float amt = clamp(0.7 + 0.34 * tint + 0.3 * gust * uWind, 0.0, 1.15) * m.a;
-        vTip = mix(m.rgb, tipColor(m.rgb, uTip), amt);
+        vTip = mix(m.rgb, tipColor(m.rgb, uTip, dry), amt);
         // painterly: the whole tuft takes ONE flat tone, chosen by the brush stroke it stands in.
         // The tone never changes with the wind (tufts hopping between flat tones would flicker); a gust only adds a soft sheen.
         float v = cn * 0.45 + strokeAt(xz) * 0.55 + iRnd.w * 0.05 + step(1.2, iRnd.y) * 0.1;
-        vec3 dab = mix(m.rgb, dabColor(m.rgb, uTip, v), m.a) * (1.0 + 0.07 * (gust - 0.4) * uWind);
+        vec3 dab = mix(m.rgb, dabColor(m.rgb, uTip, v, dry), m.a) * (1.0 + 0.07 * (gust - 0.4) * uWind);
         vMid = mix(vMid, dab, uPaint);
         vTip = mix(vTip, dab, uPaint);
         vFade = length(root.xz - uMapRect.xy);

@@ -4,6 +4,7 @@
      const west = await joinWestFringe({ raw, plan, url });      // as the level reads its land, before it makes anything from it
      west.raw            the land's numbers with the fringe's columns added on the west (plan.land says how wide it is now)
      west.dryAt(x, z)    0..1: how much a spot is the bed of the fringe's dry water (bare and sandy: no grass grows in it)
+     west.deadAt(x, z)   0..1: how dead the land is there (the curse's picture, as it is set here)
 
    One job: make the two lands one as they are read. The fringe (assets/heightmaps/west-fringe.bin + .json, written by
    tools/make-west-fringe-heightmap.py) is the neglected countryside west of the village: the old road, a lost hamlet, a dry
@@ -17,11 +18,13 @@
      inflows   the brook that came in through the old margin's hill comes in no more: its bed out there is dry
      views     the fringe's places (teleport-menu.js lists them)
    Its plants are not added here: the dead trees are in the map's own foliage (put in once by the fringe's tool, --into-map),
-   so they are arranged by hand like any other plant. What is done here is to make them dead: dryness (anime-tree.js) takes
-   the leaves off every tree west of the seam, and thins those just east of it.
+   so they are arranged by hand like any other plant. What is done here is to make the land dead: the dryness picture
+   (stylized-nature's setDryness) takes the leaves off every tree west of the seam and thins those just east of it
+   (anime-tree.js), and turns the meadow there to dry earth with dry grass in patches (stylized-grassfield.js, the land's
+   paint, and the woods past the land's edge: map-rim.js).
    ========================================================================== */
 import * as THREE from 'three';
-import { setAnimeDryness } from './anime-tree.js';
+import { setDryness } from './stylized-nature.js';
 
 export const WEST_FRINGE = { land: './assets/heightmaps/west-fringe.bin', plan: './assets/heightmaps/west-fringe.json' };
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -60,12 +63,22 @@ export async function joinWestFringe({ raw, plan: P, url }) {
   P.inflows = (P.inflows || []).filter(f => !gone(f.rows[0][0], f.rows[0][1]));
   for (const [k, v] of Object.entries(F.go)) P.views[k] = v;
 
-  // ---- the trees' dryness: dead west of the seam, dying in the village's last metres beside it, alive from there east
+  // ---- the land's dryness (the curse's picture: stylized-nature's setDryness): dead west of the seam, dying in the
+  // village's last metres beside it, alive from there east. The trees die by it (anime-tree.js), and the grass and the
+  // ground under it (stylized-grassfield.js, and the land's paint)
+  // Its edge is no ruled line: it wanders a few metres either way as it runs south, and north of the fringe it swings
+  // away west, so the village's own wooded margin up there (its pines: they do not die) is left alive. Past the land's
+  // edges the picture's last row and column go on: the country west and south-west of the fringe is dead too
+  const edgeX = z => seam - 15 - Math.max(0, W.z0 + 20 - z) * 1.2 + 5 * Math.sin(z * 0.045 + 1.3) + 3 * Math.sin(z * 0.11 + 0.4) - 4;
+  const deadAt = (x, z) => { const e = edgeX(z); return ss(e + 20, e, x); };
   {
-    const n = 128, data = new Uint8Array(n * 4), width = (nx - 1) * cell;
-    for (let i = 0; i < n; i++) { data[i * 4] = Math.round(255 * ss(seam + 5, seam - 15, L.x0 + (i + 0.5) / n * width)); data[i * 4 + 3] = 255; }
-    const tex = new THREE.DataTexture(data, n, 1); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
-    setAnimeDryness(tex, [L.x0, L.z0, width, (L.nz - 1) * cell]);
+    const n = 128, data = new Uint8Array(n * n * 4), width = (nx - 1) * cell, depth = (L.nz - 1) * cell;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const o = (j * n + i) * 4;
+      data[o] = Math.round(255 * deadAt(L.x0 + (i + 0.5) / n * width, L.z0 + (j + 0.5) / n * depth)); data[o + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, n, n); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    setDryness(tex, [L.x0, L.z0, width, depth]);
   }
 
   // ---- the dry water's bed: the gully, the pond's floor, the brook's reaches
@@ -83,5 +96,5 @@ export async function joinWestFringe({ raw, plan: P, url }) {
     }
     return dry * ss(seam, seam - 3, x);                                   // (at the seam the village's own brook takes over)
   };
-  return { raw: out, dryAt, plan: F };
+  return { raw: out, dryAt, deadAt, plan: F };
 }
