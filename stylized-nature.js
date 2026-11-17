@@ -1190,6 +1190,9 @@ function buildTrunk(rng, spec, grow = null) {
   const trunk = taperedTube(pts, trunkR, TREE_LOD.trunkRadial, TREE_LOD.trunkLength, trunkShape,
     { crev: (t, a) => 0.45 * Math.exp(-t * height / 0.7) * (0.5 - 0.5 * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)), ease: TREE_LOD.trunkEase });
   parts.push(trunk.geo);
+  // where the wood runs: the stem's and each limb's middle line, as a row of points from its foot to its tip (not the
+  // roots). Whatever has to stand on the wood finds it by these (the anime trees' bare twigs: anime-tree.js, TWIGS)
+  const bones = [trunk.curve.getSpacedPoints(24)];
   const up = new THREE.Vector3(0, 1, 0);
   const hollow = (t, a, w) => 0.2 * w * w;              // shadow in the crotch, fading out along the limb
   // a limb leaves the trunk heading out and mostly up, then reaches for the light: it starts nearly as thick as the wood
@@ -1212,6 +1215,7 @@ function buildTrunk(rng, spec, grow = null) {
       return (collar + (r0 - collar) * e) * (1 - 0.72 * t) * (1 + 0.14 * (1 - Math.min(1, t / 0.2)));   // a little flare where it joins
     }, TREE_LOD.branchRadial, TREE_LOD.branchLength, null, { axis: axisPt, blend, crev: axisPt ? hollow : null });
     parts.push(tube.geo);
+    bones.push(tube.curve.getSpacedPoints(12));
     return tube.curve;
   };
   // buttress roots: short thick limbs that leave the trunk low down and dive into the ground
@@ -1244,6 +1248,7 @@ function buildTrunk(rng, spec, grow = null) {
   if (grow) grow({ curve: trunk.curve, trunkR, addTube });
   const g = mergeGeometries(parts);
   parts.forEach(p => p.dispose());
+  g.userData.bones = bones;
   return g;
 }
 
@@ -1914,7 +1919,8 @@ export const treeSpec = type => TREE_TYPES[type];
 
 // The wood and the leaf masses of a tree from a spec shaped like the TREE_TYPES ones (trunk, grow or tiers, bark ...), for a
 // kit that dresses the crown its own way (anime-tree.js). trunk: bark mesh, ready to add; tiers: one leaf mass per limb tip
-// (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space.
+// (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space. bones: where
+// the wood runs, the stem's and each limb's middle line as a row of points, foot to tip (mesh space; none for a custom tree).
 // wood: { trunkRadial, trunkLength, branchRadial, branchLength } for this frame only: the same tree (stem, limbs and roots
 // where they are), its wood with fewer sides and rings, for a tree seen from far off.
 export function growTreeFrame(spec, seed = 1, wood = null) {
@@ -1927,7 +1933,7 @@ export function growTreeFrame(spec, seed = 1, wood = null) {
   } finally { Object.assign(TREE_LOD, usual); }
   const mesh = new THREE.Mesh(withBase(trunk), barkMaterial(spec));
   mesh.frustumCulled = false;
-  return { trunk: mesh, tiers, rng };
+  return { trunk: mesh, tiers, rng, bones: trunk.userData.bones || [] };      // bones: where its wood runs (buildTrunk)
 }
 export const treeSpecScale = type => TREE_TYPES[type]?.scale ?? 1;
 
