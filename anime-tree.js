@@ -42,7 +42,7 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { mulberry32, uniforms as natureUniforms, growTreeFrame, treeSpec, setDryness, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
+import { mulberry32, uniforms as natureUniforms, growTreeFrame, bareBark, treeSpec, setDryness, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
 
 const range = (rng, a, b) => a + rng() * (b - a);
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
@@ -103,9 +103,14 @@ export function setAnimeSun(v) {
 // ?woodlod=old: as it was before (one step at 40 m, the stem never plainer), to compare
 const OLD_WOOD = typeof location !== 'undefined' && new URLSearchParams(location.search).get('woodlod') === 'old';
 const MID_WOOD = OLD_WOOD ? { branchRadial: 4, branchLength: 5 }
-  : { trunkRadial: 7, trunkLength: 10, trunkEase: 1.6, branchRadial: 4, branchLength: 3, rootRadial: 4, rootLength: 3 };
-const FAR_WOOD = { trunkRadial: 5, trunkLength: 6, trunkEase: 1.8, branchRadial: 3, branchLength: 2, rootRadial: 3, rootLength: 2 };
+  : { trunkRadial: 7, trunkLength: 10, trunkEase: 1.6, branchRadial: 4, branchLength: 3, rootRadial: 4, rootLength: 3, bare: 1, bareRadial: 3, bareLength: 2, bareThick: 1.5 };
+const FAR_WOOD = { trunkRadial: 5, trunkLength: 6, trunkEase: 1.8, branchRadial: 3, branchLength: 2, rootRadial: 3, rootLength: 2, bare: 0 };
 const WOOD_MID = 40, WOOD_FAR = OLD_WOOD ? Infinity : 100;
+// A dead tree's bare branches (see DRYNESS) are thin wood: all of them only from near (for the tree's size: metres per unit
+// of it, as the wood's own steps are), then its side branches alone, a little thicker (MID_WOOD: their twigs would be
+// thinner than a pixel), then none: far off a dead tree is its stem and limbs. And none is drawn where the land is alive
+// (BARE_FROM: how dry it must be, anywhere under a cell's trees; the bark shader draws them out from there).
+const BARE_NEAR = 22, BARE_MID = 48, BARE_FROM = 0.12;
 const FAR_ON = [8, 13, 16, 48];
 const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
 export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
@@ -131,39 +136,23 @@ export const animeBrush = () => BRUSH.value > 0.5;
 // falling leaves go brown with it, and a dead plant drops none. As it starts the picture is one black pixel: every plant
 // alive, nothing changed.
 //   stylized-nature's setDryness(texture, rect)   rect: [x0, z0, width, depth] of the land the picture covers (metres, world)
-// A dead plant is not its limbs alone (a few thick sticks, far smaller than the crown was): it keeps its crown's shape, in
-// bare twigs. TWIGS: a share of the leaf cards (TWIG.share: the ones with the lowest numbers, so a far crown keeps them
-// all) carry a spray of twigs once their leaves are gone. Such a card is laid from the wood out to where its leaves
-// were (reaching TWIG.past of a card beyond: the crown keeps its size), turned so its spray points that way as the eye
-// sees it, in the dead wood's tones. Its foot stands ON the wood (twigRoots): on the stem or limb nearest its leaves, a
-// little way back toward that limb's foot (TWIG.lean of the way out to the leaves: a twig leaves its limb heading for
-// the limb's tip, not square to it), so no spray hangs in the air beside a limb or under it; only a tree's boughs' tips
-// sit on wood, the puffs beside and below them do not. A spray that has far to go (longer than TWIG.widest cards) is
-// the narrower the longer it is: a thin whip from the limb, not a wide fan on a thick stalk. A plant with no wood (a
-// bush) roots its sprays inside its own puffs (TWIG.root puff radii back toward the puff's middle, TWIG.least cards at
-// the least). A small
-// puff has few cards: more of them carry twigs (up to TWIG.small times the share, for puffs under half a metre); a far
-// crown keeps TWIG.far of its sprays (a haze of twigs: fewer do). They come a card at a time as the plant
-// dries (each at its own dryness, between TWIG.from and TWIG.to), so a dying crown is brown leaves and bare twigs
-// together. No card is added for it: the twigs are drawn on cards that would have shrunk to nothing, and their picture
-// lies in the alpha of the leaves' own mask (twigAlpha: painted in soft strokes of the brush, see BRUSH TWIGS there). And the wood itself goes pale and grey, its bark peeling
-// (stylized-nature's bark shader, DRYNESS, by the same picture).
+// A dead tree is its wood, bare: no card is drawn for it at all. So that it is not a few thick sticks, far smaller than
+// its crown was, its wood has BARE BRANCHES (stylized-nature's growTreeFrame: off every limb two or three crooked side
+// branches that fork into twigs, real wood, drawn out to points): a living tree has none of them (they lie in its
+// leaves, and would be a tangle seen from below), and they are drawn out of the limbs as the land dries, so a dying
+// crown is brown leaves and bare branches together. Being wood they are one piece with the limbs, painted as the limbs
+// are, and stand still as the eye goes round them. And the wood itself goes pale and grey, its bark peeling
+// (stylized-nature's bark shader, DRYNESS, by the same picture). A bush has no wood: dead, it is gone.
 const DRY_TONES = ['#3a2f24', '#5a4632', '#7d6243', '#a08356', '#c4aa78'];      // deep shade -> sunlit: dead leaves, ochre to grey-brown
-const TWIG_TONES = ['#4a4541', '#69635b', '#8b857a'];                            // shade -> sunlit: bare twigs, a dry grey
-const TWIG_PALE = '#aaa397';                                                     // the palest: the fine hairs of a sunlit spray (BRUSH TWIGS: a spray's hairs are a tone paler than its wood)
+const THIN_WOOD = '#69635b';                                                     // what a dead tree's thin wood darkens to (its bare branches): a dry grey
 const DEAD_WOOD = ['#b4aea2', '#918b81', '#69645f', '#cdc6b6', '#45413e'];       // dead wood: light, body, shade; bare wood where the bark has peeled; cracks
-const TWIG = { share: 0.12, small: 1.5, far: 0.4, root: 0.86, past: 0.62, wide: 0.82, foot: 0.36, least: 1.7, from: 0.12, to: 0.72, lean: 0.5, widest: 2.4, reach: 8 };
 const DRY = {
   uDryMap: natureUniforms.uDryMap, uDryRect: natureUniforms.uDryRect,      // (the picture is the kit's: the grass and the ground die by it too, stylized-nature's setDryness)
   uD0: { value: rgb(DRY_TONES[0]) }, uD1: { value: rgb(DRY_TONES[1]) }, uD2: { value: rgb(DRY_TONES[2]) }, uD3: { value: rgb(DRY_TONES[3]) }, uD4: { value: rgb(DRY_TONES[4]) },
-  uT0: { value: rgb(TWIG_TONES[0]) }, uT1: { value: rgb(TWIG_TONES[1]) }, uT2: { value: rgb(TWIG_TONES[2]) },
-  uT3: { value: rgb(TWIG_PALE) },
-  uTwigLay: { value: new THREE.Vector3(TWIG.widest, TWIG.past, TWIG.wide) },
-  uTwigAt: { value: new THREE.Vector4(TWIG.from, TWIG.to, TWIG.foot, TWIG.far) },
 };
 // the same picture and the dead wood's tones, for the bark (stylized-nature's bark shader, DRYNESS)
 const DRY_WOOD = { uDryMap: DRY.uDryMap, uDryRect: DRY.uDryRect, uDW0: { value: rgb(DEAD_WOOD[0]) }, uDW1: { value: rgb(DEAD_WOOD[1]) },
-  uDW2: { value: rgb(DEAD_WOOD[2]) }, uDW3: { value: rgb(DEAD_WOOD[3]) }, uDW4: { value: rgb(DEAD_WOOD[4]) }, uDW5: { value: rgb(TWIG_TONES[1]) } };
+  uDW2: { value: rgb(DEAD_WOOD[2]) }, uDW3: { value: rgb(DEAD_WOOD[3]) }, uDW4: { value: rgb(DEAD_WOOD[4]) }, uDW5: { value: rgb(THIN_WOOD) } };
 export function setAnimeDryness(texture, rect) { setDryness(texture, rect); }      // (as it was called before the grass died by it too)
 // a trunk's bark (stylized-nature's growTreeFrame) made to die by the same picture, in the same dead wood (the pines' too)
 export function dyingWood(material) { Object.assign(material.uniforms, DRY_WOOD); material.defines = { ...material.defines, DRYNESS: 1 }; return material; }
@@ -188,6 +177,7 @@ const BROADLEAF = {
     floor: -0.55, tuck: 0.5,
     clump: { r: 0.86, flat: 0.75, vary: [0.72, 1.3], push: 0.12, lift: 0.08 },
     top: 1.05, fill: [5, 0.45, 0.9],
+    bare: { n: [2, 3], reach: [0.4, 0.58], twigs: [1, 2] },
   },
   boughs: { canopy: [0.62, 0.8], side: { n: [1, 2], size: [0.6, 0.86], out: [0.8, 1.15], drop: [0.15, 0.5] },
     sprays: { n: [2, 3], r: [0.34, 0.48], f: [1.15, 1.6], drop: [0.55, 0.95], out: [0.5, 0.9] } },
@@ -209,6 +199,7 @@ const OAK = {
     floor: -0.46, tuck: 0.6,
     clump: { r: 1.08, flat: 0.7, vary: [0.62, 1.45], push: 0.12, lift: 0.08 },
     top: 1.3, fill: [5, 0.5, 1.0],
+    bare: { n: [3, 4], reach: [0.36, 0.52], twigs: [2, 3], crook: 1.0 },      // heavy limbs: more on each, and more crooked
   },
   boughs: { canopy: [0.6, 0.82], side: { n: [1, 2], size: [0.6, 0.9], out: [0.85, 1.2], drop: [0.1, 0.5] },
     sprays: { n: [2, 3], r: [0.3, 0.44], f: [1.2, 1.8], drop: [0.55, 1.05], out: [0.55, 0.95] } },
@@ -230,6 +221,7 @@ const SAPLING = {
     floor: -0.55, tuck: 0.5,
     clump: { r: 0.34, flat: 0.85, vary: [0.7, 1.3], push: 0.1, lift: 0.05 },
     top: 0.9,
+    bare: { n: [1, 2], reach: [0.45, 0.65], twigs: [1, 2], fine: 0.4 },
   },
   boughs: { canopy: [0.72, 0.9], side: { n: [0, 1], p: 0.6, size: [0.6, 0.82], out: [0.8, 1.1], drop: [0.15, 0.5] },
     sprays: { n: [1, 2], r: [0.34, 0.46], f: [1.5, 2.1], drop: [0.7, 1.15], out: [0.4, 0.8] } },
@@ -250,6 +242,7 @@ const BIRCH = {
     floor: -0.7, tuck: 0.55,
     clump: { r: 0.58, flat: 0.8, vary: [0.7, 1.35], push: 0.1, lift: 0.05 },
     top: 0.85,
+    bare: { n: [2, 3], reach: [0.32, 0.48], twigs: [1, 2], crook: 0.6, lift: -0.16 },      // a birch's thin wood hangs
   },
   boughs: { canopy: [0.7, 0.85], side: { n: [0, 1], p: 0.85, size: [0.6, 0.85], out: [0.8, 1.1], drop: [0.2, 0.55] },
     sprays: { n: [2, 3], p: 0.4, r: [0.3, 0.44], f: [1.9, 2.7], drop: [0.75, 1.3], out: [0.45, 0.85] } },
@@ -324,105 +317,6 @@ function floretPath(g, R, turn) {                                   // five roun
     g.ellipse(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, R * 0.5, R * 0.37, a, 0, Math.PI * 2);
   }
   g.moveTo(R * 0.3, 0); g.arc(0, 0, R * 0.3, 0, Math.PI * 2);
-}
-// TWIGS (see DRYNESS): what a leaf card shows once its leaves are gone. Four sprays of bare twigs, one to a cell as the
-// leaves' clusters are, each rooted at the middle of its cell's lower edge and reaching up to fill the cell. A spray is
-// a twig: a leader that turns a little at each joint and thinner as it goes, and at each joint a side twig, to one side
-// and then the other, the lower ones longest, each a twig of the same kind (one upright, two leaning, one forked low
-// into two leaders).
-// BRUSH TWIGS: a spray is painted, not drawn in wire. No leaves are put on it: it is the twigs themselves that are soft.
-//   - every twig is a stroke of the brush: wide where it leaves its parent, drawn out to a point, and bending one way
-//     along its length (TWIG_BRUSH.curl) where a wire would zigzag
-//   - where a stroke ends the brush's hairs splay: a narrow fan of hairs at every twig's tip, and a hair or two off each
-//     joint along it (TWIG_BRUSH.fan, .side: how many; .hair: how long, in cells; .thick: how thick at the foot, pixels).
-//     A hair is a twig still, never a leaf: long for its width and as thin as the thinnest wood all its length, bending
-//     one way, forking once, a point only at its very end. So the outside of a spray is a soft fringe of fine strokes,
-//     and from a little way off a haze
-//   - the hairs are a tone paler than the wood they leave (the leaf shader: by the picture's own value, TWIG_HAIR for a
-//     hair, 255 for wood), so a spray is dark at its heart and pale at its edge: it reads as soft
-// The hairs fill what was air between the twigs, and a dead crown is one soft mass of them, sprays lying into each other.
-// -> its coverage, a byte a pixel, rows from the top
-const TWIG_HAIR = 196;
-const TWIG_BRUSH = { curl: [0.05, 0.14], fan: [3, 5], spread: 1.15, side: 2, hair: [0.07, 0.14], thick: [2.5, 3.0], from: 0.2, rim: 0.085, dome: 0.4 };      // from: how far up the cell the hairs begin (the stalk below is bare)
-let twigs = null;
-function twigAlpha(S, C) {
-  if (twigs) return twigs;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = S;
-  const g = cv.getContext('2d'), rng = mulberry32(8123), UP = -Math.PI / 2, THIN = 2.6, B = TWIG_BRUSH;
-  g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
-  for (let v = 0; v < 4; v++) {
-    const ox = (v % 2) * C, oy = Math.floor(v / 2) * C, pad = 12;
-    // (a spray keeps inside a wedge, TWIG.foot of the cell wide at its foot and all of it at its top: its card is cut to
-    // that wedge, so no card is drawn where no spray has a twig. Its wood keeps well inside that, under a round top
-    // (B.rim from the wedge's sides, a dome B.dome of a cell wide): the hairs reach on past it, fewer and fewer, so a
-    // spray has no edge, only a fringe, and the card's own straight sides are never seen)
-    const within = (x, y, pad) => y > pad && y < C - 2 && Math.abs(x - C / 2) < (TWIG.foot + (1 - TWIG.foot) * (1 - y / C)) * C / 2 - pad;
-    const hairIn = (x, y) => within(x, y, 6);
-    const inside = (x, y) => within(x, y, C * B.rim) && (y > C * 0.5 || Math.hypot(x - C / 2, y - C * 0.5) < C * B.dome);
-    const wood = [], hairs = [];                                              // strokes: [x0, y0, width there, x1, y1, width there]
-    // a hair: a fine stroke in four lengths, bending one way, thin all along and a point only at its end; half way out a
-    // shorter one forks off it (fork: to which side, 0: none)
-    const hair = (x, y, way, len, fork = rng() < 0.5 ? 1 : -1) => {
-      const w = range(rng, ...B.thick) * (fork ? 1 : 0.9), curl = (rng() - 0.5) * 0.26;
-      for (let k = 0; k < 4; k++) {
-        way += curl;
-        const ex = x + Math.cos(way) * len / 4, ey = y + Math.sin(way) * len / 4;
-        if (!hairIn(ex, ey)) return;
-        hairs.push([x, y, w * (k < 3 ? 1 - k * 0.07 : 0.79), ex, ey, k < 3 ? w * (1 - (k + 1) * 0.07) : 0.9]);
-        x = ex; y = ey;
-        if (fork && k === 1) hair(x, y, way + fork * range(rng, 0.4, 0.7), len * range(rng, 0.45, 0.6), 0);
-      }
-    };
-    const twig = (x, y, dir, len, w, depth, side) => {
-      const joints = depth === 0 ? 9 : depth === 3 ? 2 : Math.max(depth === 1 ? 3 : 2, Math.round(len / (C * 0.072))), step = len / joints;
-      const curl = (rng() < 0.5 ? -1 : 1) * range(rng, ...B.curl) * (depth === 0 ? 0.4 : 1);      // (it bends one way all along)
-      const wide = j => Math.max(w * (1 - 0.62 * j / joints), THIN);
-      for (let j = 0; j < joints; j++) {
-        let a = dir + curl + (rng() - 0.5) * (depth === 0 ? 0.14 : 0.2), ex = x + Math.cos(a) * step, ey = y + Math.sin(a) * step;
-        if (!inside(ex, ey)) {                                                // it would leave its cell: more upright and shorter, or it ends here
-          a += (UP - a) * 0.6; ex = x + Math.cos(a) * step * 0.7; ey = y + Math.sin(a) * step * 0.7;
-          if (!inside(ex, ey)) { if (y < C * (1 - B.from)) for (let k = 0, n = B.fan[0]; k < n; k++) hair(x, y, dir + (k / (n - 1) - 0.5) * B.spread, C * range(rng, ...B.hair)); return; }
-        }
-        const last = j === joints - 1;
-        wood.push([x, y, wide(j), ex, ey, last ? 1.2 : wide(j + 1)]);          // (its last length: drawn out to a point)
-        x = ex; y = ey; dir = a;
-        if (y < C * (1 - B.from)) {
-          if (last) {                                                         // the tip: the hairs splay
-            const n = Math.round(range(rng, ...B.fan));
-            for (let k = 0; k < n; k++) hair(x, y, dir + (k / (n - 1) - 0.5) * B.spread + (rng() - 0.5) * 0.16, C * range(rng, ...B.hair) * (k === 0 || k === n - 1 ? 0.75 : 1));
-          } else if (depth > 0 || j > 1) {                                    // a joint: a hair or two off it
-            for (let k = 0; k < B.side; k++) hair(x, y, dir + (k % 2 ? 1 : -1) * range(rng, 0.4, 0.8), C * range(rng, ...B.hair) * 0.8);
-          }
-        }
-        if (depth < 3 && !last && (depth > 0 || j > 0)) {                     // (the leader's first length is bare: it lies inside the crown)
-          const reach = (len - step * (j + 1)) * range(rng, 0.7, 1) * (depth === 0 ? 0.86 : 0.8);
-          if (reach > C * 0.03) twig(x, y, dir + side * range(rng, 0.52, 0.9), reach, Math.max(wide(j + 1) * 0.66, THIN), depth + 1, -side);
-          side = -side;
-        }
-      }
-    };
-    if (v === 3) { twig(C / 2, C - 2, UP - 0.34, C * 0.9, 9, 0, -1); twig(C / 2, C - 2, UP + 0.3, C * 0.84, 8, 0, 1); }
-    else twig(C / 2, C - 2, UP + [0, -0.16, 0.2][v], C * 0.95, 10, 0, v === 1 ? 1 : -1);
-    // laid on: the hairs first, then the wood over them. A stroke: the shape between its two ends' widths, round where it starts
-    g.save(); g.beginPath(); g.rect(ox + 5, oy, C - 10, C); g.clip();
-    const lay = (strokes, tone) => {
-      g.fillStyle = `rgb(${tone}, ${tone}, ${tone})`;
-      for (const [x0, y0, w0, x1, y1, w1] of strokes) {
-        const a = Math.atan2(y1 - y0, x1 - x0), nx = -Math.sin(a) / 2, ny = Math.cos(a) / 2;
-        g.beginPath();
-        g.moveTo(ox + x0 + nx * w0, oy + y0 + ny * w0); g.lineTo(ox + x1 + nx * w1, oy + y1 + ny * w1);
-        g.lineTo(ox + x1 - nx * w1, oy + y1 - ny * w1); g.lineTo(ox + x0 - nx * w0, oy + y0 - ny * w0);
-        g.closePath(); g.fill();
-        g.beginPath(); g.arc(ox + x0, oy + y0, w0 / 2, 0, Math.PI * 2); g.fill();
-      }
-    };
-    lay(hairs, TWIG_HAIR); lay(wood, 255);
-    g.restore();
-  }
-  const px = g.getImageData(0, 0, S, S).data, out = new Uint8Array(S * S);
-  for (let i = 0; i < out.length; i++) out[i] = px[i * 4];
-  return (twigs = out);
 }
 function clusterMask(style) {
   if (masks[style]) return masks[style];
@@ -509,18 +403,7 @@ function clusterMask(style) {
     }
     g.restore();
   }
-  let t;
-  if (style === 'leaf' || style === 'brush') {
-    // the leafy plants' mask carries the bare twigs too (see TWIGS), in its alpha: the picture's own bytes, rows from the
-    // bottom as a texture's are, so nothing multiplies the leaves' colours by it
-    const px = g.getImageData(0, 0, S, S).data, tw = twigAlpha(S, C), data = new Uint8Array(S * S * 4);
-    for (let y = 0; y < S; y++) for (let x = 0, from = y * S * 4, to = (S - 1 - y) * S * 4; x < S; x++, from += 4, to += 4) {
-      data[to] = px[from]; data[to + 1] = px[from + 1]; data[to + 2] = px[from + 2]; data[to + 3] = tw[y * S + x];
-    }
-    t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
-    t.generateMipmaps = true;
-    t.needsUpdate = true;
-  } else t = new THREE.CanvasTexture(cv);
+  const t = new THREE.CanvasTexture(cv);
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
   t.anisotropy = 4;
@@ -544,13 +427,8 @@ attribute vec4 iShade;    // x: height in the plant 0..1, y: AO 0..1, z: tint, w
 attribute vec4 iCN;       // xyz: the whole crown's normal here, w: the puff's height / width
 attribute vec4 iBase;     // plant foot + scale; (0,0,0,1) for a single plant
 attribute float iHid;     // from which eighths of the compass this card lies behind others: a bit each (hiddenFrom)
-attribute vec3 iRoot;     // TWIGS: where this card's spray of bare twigs stands, on the wood (twigRoots): from the card's middle, -1..1 = ${TWIG.reach} m at the plant's own size
 uniform sampler2D uDryMap;  // DRYNESS: how dead the land is here (red), over the rect uDryRect
 uniform vec4 uDryRect;
-uniform vec2 uTwigs;      // TWIGS: x: the share of the cards that carry bare twigs once their leaves are gone (0: none do), y: times as many in a small puff
-uniform vec3 uTwigLay;    // x: how long a spray may be and still be as wide as that makes it (cards: a longer one is narrower the longer it is), y: how far past the card's middle it reaches (cards: to where its leaves reached), z: its width / its length
-uniform vec4 uTwigAt;     // x, y: between which two drynesses the sprays come, each at its own; z: how wide a spray's card is at its foot (of its width); w: the share of the sprays a far crown keeps
-varying float vTwig;
 varying vec2 vUv;
 varying vec3 vCard;
 varying vec4 vPuff;
@@ -576,8 +454,7 @@ void main() {
   wc.y -= push * clamp(wy * 0.4, 0.0, 0.14);
   vec4 mv = viewMatrix * wc;
   float fl = uWind * (0.25 + iShade.x) * 0.02 * iBase.w;
-  vec2 flut = vec2(sin(uTime * 2.1 + iShade.w * 140.0 + ph), sin(uTime * 2.7 + iShade.w * 90.0) * 0.5) * fl * sc;
-  mv.xy += flut;
+  mv.xy += vec2(sin(uTime * 2.1 + iShade.w * 140.0 + ph), sin(uTime * 2.7 + iShade.w * 90.0) * 0.5) * fl * sc;
   // away from the eye: a card that lies behind others from where the eye is shrinks to nothing (iHid: yes or no for eight
   // sides round the plant, blended between the two the eye is between, so a card comes and goes softly as she walks round;
   // only for an eye about level with the crown, as it was worked out), and far off some of the rest do too (which: by
@@ -594,45 +471,15 @@ void main() {
   float dry = texture2D(uDryMap, clamp(dryUv, 0.0, 1.0)).r;
   float leafLeft = pow(clamp(1.0 - dry * 1.03, 0.0, 1.0), 1.5);      // (a crown is many leaves deep: thinned on a curve, so half dry looks half bare)
   float leafOn = mix(1.0, 1.0 - smoothstep(leafLeft - 0.05, leafLeft, iShade.w), step(0.002, dry)) * (1.0 - 0.18 * dry);
-  // TWIGS: a card that carries a spray loses its leaves at its own dryness, and its twigs stand bare from then on
-  float bareAt = mix(uTwigAt.x, uTwigAt.y, fract(iShade.w * 61.7));
-  float twigShare = uTwigs.x * mix(uTwigs.y, 1.0, smoothstep(0.45, 1.0, iPuff.w)) * mix(1.0, uTwigAt.w, few);
-  float carries = step(iShade.w, twigShare) * step(0.002, dry);
-  float twig = carries * step(bareAt, dry);
-  leafOn *= 1.0 - carries * smoothstep(bareAt - 0.06, bareAt, dry);
   vDry = dry;
-  vTwig = twig;
   float cs = cos(iCard.x), sn = sin(iCard.x);
   vec2 hs = vec2(iCard.z, 1.0 / iCard.z) * iCard.y * lod * leafOn;
-  vec2 cell = uv;
-  if (twig > 0.5) {
-    // laid from the wood out past where the leaves were, its foot on the wood (iRoot, swaying as the wood there does):
-    // the card's own up is the way from there to its leaves as the eye sees it. A spray that points at the eye, or away,
-    // is a short narrow tuft. Its foot keeps still on the wood: only its tip trembles in the wind
-    vec3 foot = iCenter + iRoot * (${TWIG.reach.toFixed(1)} * iBase.w);
-    vec3 outM = c - (foot + windOffset((foot - iBase.xyz) / iBase.w, ph) * iBase.w);
-    float far3 = length(outM);
-    vec3 way = mat3(modelViewMatrix) * (outM / max(far3, 1e-4));      // (its length: the plant's own size on screen)
-    float back = far3, whole = back + iCard.y * uTwigLay.y;
-    float flat2 = length(way.xy), sz = length(way);
-    vec2 dir = flat2 > 1e-4 * sz ? way.xy / flat2 : vec2(0.0, 1.0);
-    float grown = smoothstep(bareAt, bareAt + 0.06, dry) * (1.0 - smoothstep(twigShare * 0.8, twigShare, iShade.w) * few);      // (the ones a far crown is about to lose: smaller first)
-    float across = flat2 / max(sz, 1e-5);                                  // (1: it lies across the view; 0: it points at the eye, a small tuft that keeps still as she moves)
-    float most = iCard.y * uTwigLay.x, span = whole > most ? most * sqrt(most / whole) : whole;      // (a long spray: a thin whip from the limb, not a wide fan on a thick stalk)
-    float tall = max(flat2, 0.3 * sz) * whole * grown, wide = sz * span * uTwigLay.z * grown * mix(1.0, uFarKeep.y, few) * mix(0.55, 1.0, smoothstep(0.2, 0.6, across));
-    mv.xy -= flut * (1.0 - uv.y);
-    mv.xyz += vec3(-way.xy * back + dir * tall * 0.5, way.z * (whole * 0.5 - back));
-    float wedge = mix(uTwigAt.z, 1.0, uv.y);                               // (the card: a wedge, as narrow at its foot as the sprays are drawn)
-    mv.xy += vec2(dir.y, -dir.x) * position.x * wide * wedge + dir * position.y * tall;
-    cs = dir.y; sn = dir.x; hs = vec2(wide, tall);
-    cell.x = 0.5 + (cell.x - 0.5) * wedge * (1.0 - 2.0 * step(0.5, fract(iShade.w * 173.3)));      // (half of them mirrored: eight sprays of four)
-  } else {
-    vec2 q = position.xy * hs * sc;
-    mv.xy += vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);        // camera-facing card
-  }
+  vec2 q = position.xy * hs * sc;
+
+  mv.xy += vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);        // camera-facing card
   vHaze = hazeAt(mv.xyz);
   gl_Position = projectionMatrix * mv;
-  vUv = cell * 0.5 + vec2(mod(iCard.w, 2.0), floor(iCard.w / 2.0)) * 0.5;
+  vUv = uv * 0.5 + vec2(mod(iCard.w, 2.0), floor(iCard.w / 2.0)) * 0.5;
   mat3 mvm = mat3(modelViewMatrix);
   vRight = normalize(vec3(1.0, 0.0, 0.0) * mvm);                   // the screen's right and up, in mesh space
   vUp = normalize(vec3(0.0, 1.0, 0.0) * mvm);
@@ -644,24 +491,13 @@ void main() {
   vShade = iShade;
 }`;
 
-// what a card covers of a pixel, for the colour pass and the depth pass alike: the leaves' outline (the mask's red), or a
-// twig card's spray (its alpha). Near, a spray's strokes have their outline as the leaves have (its hairs are paler in
-// the picture than its wood: they count from a little lower). From where a hair is thinner than a pixel the hairs run
-// together: the spray is one soft flat shape where its strokes lie thick, and nothing where they are few (the picture
-// read coarse says how thick they lie), so a far crown of twigs is soft heaps of one tone, its outline as ragged as the
-// sprays', not a film over each card nor dots. Between the two: the strokes on a wash of that shape, as a brush leaves
-// them. No branch: the leaves' sums are as they were
+// what a card covers of a pixel, for the colour pass and the depth pass alike: the leaves' outline (the mask's red)
 const LEAF_COVER = /* glsl */`
 uniform sampler2D uMask;
 varying vec2 vUv;
-varying float vTwig;
 float cover(vec4 t) {
-  float a = mix(t.r, t.a, vTwig);
-  float w = max(fwidth(a), 1e-3) * 0.75;
-  float perPx = (fwidth(vUv.x) + fwidth(vUv.y)) * 720.0;                 // the mask's pixels to one of the screen's (about)
-  float edge = 0.5 - 0.12 * vTwig;
-  float heap = smoothstep(0.1, 0.46, a);
-  return mix(smoothstep(edge - w, edge + w, a), heap, vTwig * smoothstep(1.5, 4.0, perPx));
+  float w = max(fwidth(t.r), 1e-3) * 0.75;
+  return smoothstep(0.5 - w, 0.5 + w, t.r);
 }`;
 const LEAF_FS = /* glsl */`
 ${NATURE_HAZEF}
@@ -672,8 +508,6 @@ uniform vec4 uStep;       // where each flat tone starts
 uniform float uCrownMix, uLightW, uHeightW, uAOW, uLeafTint, uSkyW;
 uniform float uBrush, uBrushW;      // the tones laid in brush strokes (see BRUSH), and how far a stroke moves a tone
 uniform vec3 uD0, uD1, uD2, uD3, uD4;   // DRYNESS: the dead leaves' tones
-uniform vec3 uT0, uT1, uT2;             // TWIGS: bare twigs' tones
-uniform vec3 uT3;                       // BRUSH TWIGS: the palest, for the hairs of a sunlit spray
 varying float vDry;
 #ifdef BLOSSOM
 uniform sampler2D uCentre;
@@ -692,23 +526,6 @@ void main() {
   vec3 t = t4.rgb;
   float alpha = cover(t4);
   if (alpha < 0.02) discard;
-  if (vTwig > 0.5) {
-    // a spray of bare twigs: one flat tone to its wood, by how high in the crown it is, how deep among the others, which
-    // way the crown faces the sun there, and its own number: the sprays read one behind another. BRUSH TWIGS: its fine
-    // hairs (the picture's value under the wood's: twigAlpha) are the next tone paler, so its edge is soft
-    float tv = vShade.x * 0.45 + (dot(normalize(vCN.xyz), vSun) * 0.5 + 0.5) * 0.5 - vShade.y * 0.35 + (fract(vShade.w * 37.0) - 0.5) * 0.3;
-    float lit = step(0.34, tv), sun = step(0.6, tv);
-    vec3 tc = mix(mix(uT0, uT1, lit), uT2, sun);
-    vec3 hc = mix(mix(uT1, uT2, lit), uT3, sun);
-    // (which is wood: near, the picture's value itself. Far off, where the hairs have run together into one soft shape
-    // (cover), the picture read coarse: where the strokes lie thickest is where the wood runs, so the spray keeps its
-    // twigs as dark soft strokes inside its pale heap, and is never one flat blot)
-    float coarse = smoothstep(1.5, 4.0, (fwidth(vUv.x) + fwidth(vUv.y)) * 720.0);
-    float woodAt = mix(0.89, 0.52, coarse);
-    tc = mix(hc, tc, smoothstep(woodAt - 0.05, woodAt + 0.05, t4.a));
-    gl_FragColor = vec4(mix(tc, uHaze, vHaze), alpha);
-    return;
-  }
   // this leaf's middle, in mesh space: every pixel of one leaf is lit alike
   vec2 lc = t.gb / max(t.r, 0.05);
   vec2 lq = (lc - 0.5) * vRS.zw;
@@ -853,7 +670,6 @@ function materials(palette, mask = 'leaf') {
     uniforms: {
       ...U, uMask: { value: clusterMask(mask === 'leaf' && BRUSH.value > 0.5 ? 'brush' : mask) },
       uBrush: mask === 'leaf' ? BRUSH : { value: 0 }, uBrushW: { value: W.brush ?? 0.36 },
-      uTwigs: { value: new THREE.Vector2(mask === 'leaf' ? TWIG.share : 0, TWIG.small) },      // (needles and flowers: none; their masks carry no twigs)
       uStep: { value: new THREE.Vector4(...st) },
       uCrownMix: { value: 0.3 }, uLightW: { value: W.light ?? 0.85 }, uHeightW: { value: W.height ?? 0.28 }, uAOW: { value: W.ao ?? 0.5 }, uLeafTint: { value: W.tint ?? 0.08 }, uSkyW: { value: W.sky ?? 0 },
     },
@@ -1031,53 +847,7 @@ function hiddenByCompass(bits, sides) {
   return out;
 }
 
-// Where each card's spray of bare twigs stands (TWIGS), for the cards that can carry one (the others: nothing, never
-// used) -> cards.RT: from each card's middle to its spray's foot (metres, mesh space; cardGeometry packs it small).
-// bones: where the plant's wood runs (growTreeFrame), each a row of points from a stem's or limb's foot to its tip. The
-// spray stands on the wood nearest its card, TWIG.lean of that distance back along that limb toward its foot (so it
-// leaves the limb heading for the limb's tip). No bones (a bush): inside the card's own puff, as the sprays always were
-// (toward the puff's middle as the leaves are lit by it: call this after the puffs' middles are moved for that).
-function twigRoots(cards, bones = null) {
-  const { C, PF, K, SH } = cards, n = C.length / 3, RT = new Float32Array(n * 3);
-  const segs = [];                                                   // every length of wood: its two ends, and how far along its limb it starts
-  for (const pts of bones || []) for (let i = 0, along = 0; i + 1 < pts.length; i++) {
-    const len = pts[i].distanceTo(pts[i + 1]);
-    if (len > 1e-6) segs.push({ a: pts[i], b: pts[i + 1], len, along, pts });
-    along += len;
-  }
-  const A = new THREE.Vector3(), p = new THREE.Vector3(), q = new THREE.Vector3(), best = new THREE.Vector3();
-  for (let i = 0; i < n; i++) {
-    if (SH[i * 4 + 3] > TWIG.share * TWIG.small) continue;          // (never carries a spray)
-    const cx = C[i * 3], cy = C[i * 3 + 1], cz = C[i * 3 + 2];
-    p.set(cx, cy, cz);
-    if (!segs.length) {
-      const px = PF[i * 4] - cx, py = PF[i * 4 + 1] - cy, pz = PF[i * 4 + 2] - cz, far = Math.hypot(px, py, pz);
-      const k = far > 1e-6 ? Math.min(far * 0.94, Math.max(PF[i * 4 + 3] * TWIG.root, K[i * 4 + 1] * TWIG.least)) / far : 0;
-      RT[i * 3] = px * k; RT[i * 3 + 1] = py * k; RT[i * 3 + 2] = pz * k;
-      continue;
-    }
-    let near = Infinity, hit = null, at = 0;
-    for (const s of segs) {
-      const t = THREE.MathUtils.clamp(A.subVectors(s.b, s.a).dot(q.subVectors(p, s.a)) / (s.len * s.len), 0, 1);
-      const d = q.copy(s.a).addScaledVector(A, t).distanceTo(p);
-      if (d < near) { near = d; hit = s; at = s.along + t * s.len; }
-    }
-    // back along that limb toward its foot (not past it), then the point of it there
-    let want = Math.max(0, at - near * TWIG.lean * (0.5 + ((SH[i * 4 + 3] * 977.3) % 1)));      // (each by its own number: sprays to one puff leave a limb at different places, not in a row like a comb's teeth)
-    const pts = hit.pts;
-    best.copy(pts[0]);
-    for (let j = 0; j + 1 < pts.length; j++) {
-      const len = pts[j].distanceTo(pts[j + 1]);
-      if (want <= len || j + 2 === pts.length) { best.copy(pts[j]).lerp(pts[j + 1], len > 1e-6 ? Math.min(1, want / len) : 0); break; }
-      want -= len;
-    }
-    RT[i * 3] = best.x - cx; RT[i * 3 + 1] = best.y - cy; RT[i * 3 + 2] = best.z - cz;
-  }
-  cards.RT = RT;
-  return cards;
-}
-
-function cardGeometry({ C, PF, K, SH, CN, RT = null, B = null, HD = null }, order = null) {      // order: the cards' order in it (inOwnOrder), else as they are
+function cardGeometry({ C, PF, K, SH, CN, B = null, HD = null }, order = null) {      // order: the cards' order in it (inOwnOrder), else as they are
   const quad = new THREE.PlaneGeometry(1, 1);
   const g = new THREE.InstancedBufferGeometry();
   g.index = quad.index;
@@ -1099,11 +869,6 @@ function cardGeometry({ C, PF, K, SH, CN, RT = null, B = null, HD = null }, orde
   g.setAttribute('iCN', new THREE.InstancedBufferAttribute(laid(CN, 4), 4));
   g.setAttribute('iBase', new THREE.InstancedBufferAttribute(base, 4));
   g.setAttribute('iHid', new THREE.InstancedBufferAttribute(HD ? laid(HD, 1) : new Float32Array(n), 1));
-  // (iRoot: sixteen bits a number, -1..1 = TWIG.reach metres at the plant's own size: a quarter of a millimetre fine. RT is
-  // given at that size already; none given: every spray at its own card's middle)
-  const root = new Int16Array(n * 3), far = RT ? laid(RT, 3) : null;
-  if (far) for (let i = 0; i < root.length; i++) root[i] = Math.round(Math.max(-1, Math.min(1, far[i] / TWIG.reach)) * 32767);
-  g.setAttribute('iRoot', new THREE.InstancedBufferAttribute(root, 3, true));
   g.instanceCount = n;
   return g;
 }
@@ -1172,11 +937,13 @@ function boughsOf(rng, tips, crown, B) {
 // one tree's wood and leaf cards (far: fewer, bigger cards)
 function treeParts(type, seed, far = false) {
   const kind = KINDS[type] || KINDS.broadleaf, spec = kind.spec();
-  const { trunk, tiers, bones } = growTreeFrame(spec, seed);
+  const { trunk, tiers, bare } = growTreeFrame(spec, seed);
   trunk.material.uniforms.uLight = SUN;                             // the bark is lit by the same sun
   dyingWood(trunk.material);                                        // and dies by the same picture (DRYNESS)
+  const bareMat = bare ? bareBark(trunk.material) : null;           // its bare branches: the same bark, on wood only a dead tree shows
   const plain = {};                                                  // the same wood with fewer sides and rings (MID_WOOD, FAR_WOOD): made when a forest first asks for it
-  const trunkAt = step => plain[step] || (plain[step] = growTreeFrame(spec, seed, step === 'far' ? FAR_WOOD : MID_WOOD).trunk.geometry);
+  const frameAt = step => plain[step] || (plain[step] = growTreeFrame(spec, seed, step === 'far' ? FAR_WOOD : MID_WOOD));
+  const trunkAt = step => frameAt(step).trunk.geometry, bareAt = step => frameAt(step).bare;
   const rng = mulberry32(seed * 131 + 7);
   const puffs = tiers.map(T => ({ c: new THREE.Vector3(...T.c), r: T.r[0] * (kind.wide || 1), f: T.r[1] / T.r[0] * (kind.thick || 1) / (kind.wide || 1),
     taper: T.taper || 0, egg: T.egg || 0 }));
@@ -1189,11 +956,10 @@ function treeParts(type, seed, far = false) {
     const m = new THREE.Vector3(crown.c.x, crown.c.y - crown.r.y * 0.25, crown.c.z), u = kind.unity, PF = cards.PF;
     for (let i = 0; i < PF.length; i += 4) { PF[i] += (m.x - PF[i]) * u; PF[i + 1] += (m.y - PF[i + 1]) * u; PF[i + 2] += (m.z - PF[i + 2]) * u; }
   }
-  twigRoots(cards, bones);                                           // its bare twigs stand on its wood (TWIGS)
   cards.HID = hiddenFrom(cards);                                   // (by the tree's own sides: a forest turns them to the compass's)
   const sides = compassSides();
   cards.HD = Array.from(cards.HID, bits => hiddenByCompass(bits, sides));
-  return { kind, spec, trunk, trunkAt, cards, leaf, rng };
+  return { kind, spec, trunk, trunkAt, bare, bareMat, bareAt, cards, leaf, rng };
 }
 // a bush: puffs of small leaves, leaves all through (it is seen from above), smallest leaves of all. Small puffs, so the
 // crevices between them show; the light up the bush is gentler than up a tree (it is short). Five shapes, so bushes side
@@ -1275,7 +1041,7 @@ function bushParts(seed, far = false, bloom = false, clump = false) {
   // down, so the bush has one sunlit side and one shaded side, and its puffs only ripple that
   const mass = new THREE.Vector3(env.c.x, env.c.y * 0.35, env.c.z);
   const asOne = c => { for (let i = 0; i < c.PF.length; i += 4) { c.PF[i] += (mass.x - c.PF[i]) * BUSH_UNITY; c.PF[i + 1] += (mass.y - c.PF[i + 1]) * BUSH_UNITY; c.PF[i + 2] += (mass.z - c.PF[i + 2]) * BUSH_UNITY; } return c; };
-  return { cards: twigRoots(asOne(cards)), leaf, shape, height: hi.y + leaf * 0.5, bloom: bloom || clump ? twigRoots(asOne(bloomParts(seed, puffs, env, far, clump))) : null };
+  return { cards: asOne(cards), leaf, shape, height: hi.y + leaf * 0.5, bloom: bloom || clump ? asOne(bloomParts(seed, puffs, env, far, clump)) : null };
 }
 
 // a flowering bush's flowers: open flowers about two leaves across (one to three to a card, now and then a bud), sitting on
@@ -1339,16 +1105,17 @@ function leafMeshes(rng, cards, palette, mask, falling, fallCount, leaf) {
 
 // --------------------------------------------------------------------------
 export function createAnimeTree({ type = 'broadleaf', seed = 1, falling = true } = {}) {
-  const { kind, spec, trunk, cards, leaf, rng } = treeParts(type, seed);
+  const { kind, spec, trunk, bare, bareMat, cards, leaf, rng } = treeParts(type, seed);
   const { leaves, fall } = leafMeshes(rng, cards, kind.palette, kind.mask, falling, kind.fall, leaf);
   const group = new THREE.Group();
   group.add(trunk, leaves);
+  if (bare) { const m = new THREE.Mesh(bare, bareMat); m.frustumCulled = false; m.name = 'anime_bare'; group.add(m); }      // (nothing of it shows while the land is alive)
   if (fall) group.add(fall);
   group.name = 'anime_tree_' + type;
   group.userData = {
     kind: 'tree', type, height: spec.height, cards: leaves.geometry.instanceCount,
     setFalling(on) { if (fall) fall.visible = !!on; },
-    dispose() { trunk.geometry.dispose(); trunk.material.dispose(); leaves.geometry.dispose(); if (fall) fall.geometry.dispose(); },
+    dispose() { trunk.geometry.dispose(); trunk.material.dispose(); if (bare) { bare.dispose(); bareMat.dispose(); } leaves.geometry.dispose(); if (fall) fall.geometry.dispose(); },
   };
   return group;
 }
@@ -1392,6 +1159,15 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
   const UP = new THREE.Vector3(0, 1, 0), BOX = new THREE.Box3(), BALL = new THREE.Sphere();
   const leafB = {}, barkB = {}, fallB = {};
   const rng = mulberry32(list.length * 7 + 3);
+  const standAt = (geo, at, x, y, z, s) => {                           // a tree's wood, stood where the tree stands
+    const g = geo.clone();
+    g.applyMatrix4(at);
+    if (g.attributes.aCtr) g.attributes.aCtr.applyMatrix4(at);
+    if (g.attributes.aAx) g.attributes.aAx.applyMatrix4(at);
+    const ab = g.attributes.aBase;
+    for (let i = 0; i < ab.count; i++) ab.setXYZW(i, x, y, z, s);
+    return g;
+  };
   for (const e of list) {
     const bush = e.kind === 'bush', s = e.scale ?? 1, far = (e.detail ?? 1) < 0.8, v = Math.abs(Math.round(e.seed ?? 0)) % (bush ? BUSH_VARIANTS : VARIANTS);
     const type = bush ? (e.type === 'flowering' || e.type === 'clump' ? e.type : 'bush') : (KINDS[e.type] ? e.type : 'broadleaf');
@@ -1399,7 +1175,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
     const palette = bush ? (type === 'clump' ? 'tree' : 'game') : part.kind.palette, mask = bush ? 'leaf' : (part.kind.mask || 'leaf');
     M.compose(T3.set(e.x, e.y, e.z), Q.setFromAxisAngle(UP, e.rotY ?? 0), S3.set(s, s, s));
     const at = cell ? '@' + Math.floor(e.x / cell) + ',' + Math.floor(e.z / cell) : '', key = palette + '/' + mask + at;
-    const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], RT: [], B: [], HD: [], T: [] });
+    const b = leafB[key] || (leafB[key] = { palette, mask, C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [], T: [] });
     const c = part.cards, n = c.C.length / 3, sides = c.HID ? compassSides(e.rotY ?? 0) : null;
     let big = 0;                                                       // its biggest card, corner to corner
     BOX.makeEmpty();
@@ -1408,7 +1184,6 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
       b.HD.push(sides ? hiddenByCompass(c.HID[i], sides) : 0);
       V.set(c.C[i * 3], c.C[i * 3 + 1], c.C[i * 3 + 2]).applyMatrix4(M); b.C.push(V.x, V.y, V.z); BOX.expandByPoint(V);
       V.set(c.PF[i * 4], c.PF[i * 4 + 1], c.PF[i * 4 + 2]).applyMatrix4(M); b.PF.push(V.x, V.y, V.z, c.PF[i * 4 + 3] * s);
-      V.set(c.RT[i * 3], c.RT[i * 3 + 1], c.RT[i * 3 + 2]).applyQuaternion(Q); b.RT.push(V.x, V.y, V.z);      // (turned with the plant; not sized: it is kept at the plant's own size)
       b.K.push(c.K[i * 4], c.K[i * 4 + 1] * s, c.K[i * 4 + 2], c.K[i * 4 + 3]);
       b.SH.push(c.SH[i * 4], c.SH[i * 4 + 1], c.SH[i * 4 + 2], c.SH[i * 4 + 3]);
       V.set(c.CN[i * 4], c.CN[i * 4 + 1], c.CN[i * 4 + 2]).applyQuaternion(Q); b.CN.push(V.x, V.y, V.z, c.CN[i * 4 + 3]);
@@ -1419,7 +1194,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
       const col = BLOOM_COLORS.includes(e.bloom) ? e.bloom      // its own colour, or its neighbourhood's (18 m: bushes side by side flower alike)
         : BLOOM_COLORS[Math.abs((Math.floor(e.x / 18) * 73856093) ^ (Math.floor(e.z / 18) * 19349663)) % BLOOM_COLORS.length];
       const fk = 'bloom-' + col + '/blossom' + at;
-      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], RT: [], B: [], HD: [], T: [] });
+      const fb = leafB[fk] || (leafB[fk] = { palette: 'bloom-' + col, mask: 'blossom', C: [], PF: [], K: [], SH: [], CN: [], B: [], HD: [], T: [] });
       const f = part.bloom, nf = f.C.length / 3;
       let bigF = 0;
       BOX.makeEmpty();
@@ -1428,7 +1203,6 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
         fb.HD.push(0);
         V.set(f.C[i * 3], f.C[i * 3 + 1], f.C[i * 3 + 2]).applyMatrix4(M); fb.C.push(V.x, V.y, V.z); BOX.expandByPoint(V);
         V.set(f.PF[i * 4], f.PF[i * 4 + 1], f.PF[i * 4 + 2]).applyMatrix4(M); fb.PF.push(V.x, V.y, V.z, f.PF[i * 4 + 3] * s);
-        fb.RT.push(0, 0, 0);                                           // (flowers carry no twigs)
         fb.K.push(f.K[i * 4], f.K[i * 4 + 1] * s, f.K[i * 4 + 2], f.K[i * 4 + 3]);
         fb.SH.push(f.SH[i * 4], f.SH[i * 4 + 1], f.SH[i * 4 + 2], f.SH[i * 4 + 3]);
         V.set(f.CN[i * 4], f.CN[i * 4 + 1], f.CN[i * 4 + 2]).applyQuaternion(Q); fb.CN.push(V.x, V.y, V.z, f.CN[i * 4 + 3]);
@@ -1437,23 +1211,22 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
       if (nf) { BOX.getBoundingSphere(BALL); fb.T.push(BALL.center.x, BALL.center.y, BALL.center.z, BALL.radius + bigF * 1.1 + 0.6 * s + 0.4, s); }
     }
     if (bush) continue;
-    const stood = geo => {                                             // a tree's wood, stood where the tree stands
-      const g = geo.clone();
-      g.applyMatrix4(M);
-      if (g.attributes.aCtr) g.attributes.aCtr.applyMatrix4(M);
-      if (g.attributes.aAx) g.attributes.aAx.applyMatrix4(M);
-      const ab = g.attributes.aBase;
-      for (let i = 0; i < ab.count; i++) ab.setXYZW(i, e.x, e.y, e.z, s);
-      return g;
-    };
-    const wood = barkB[type + at] || (barkB[type + at] = { type, mat: part.trunk.material, geos: [], mid: [], far: [], T: [] });
+    const stood = geo => standAt(geo, M, e.x, e.y, e.z, s);
+    const wood = barkB[type + at] || (barkB[type + at] = { type, mat: part.trunk.material, bareMat: part.bareMat, geos: [], mid: [], far: [], bare: [], later: [], T: [] });
     const g = stood(part.trunk.geometry);
     wood.geos.push(g);
     if (cell) {                                                        // (kept in cells: its plainer wood too, and the ball its wood lies in)
       wood.mid.push(stood(part.trunkAt('mid')));
       if (WOOD_FAR < Infinity) wood.far.push(stood(part.trunkAt('far')));
-      g.computeBoundingSphere(); wood.T.push(g.boundingSphere.center.x, g.boundingSphere.center.y, g.boundingSphere.center.z, g.boundingSphere.radius + 0.3 * s, s);
-    }
+      g.computeBoundingSphere();
+      let reach = g.boundingSphere.radius;
+      if (part.bare) {                                                 // (its bare branches reach out past its limbs: the ball holds them too)
+        if (!part.bare.boundingSphere) part.bare.computeBoundingSphere();
+        reach = Math.max(reach, V.copy(part.bare.boundingSphere.center).applyMatrix4(M).distanceTo(g.boundingSphere.center) + part.bare.boundingSphere.radius * s);
+        wood.later.push({ part, M: M.clone(), x: e.x, y: e.y, z: e.z, s });      // its bare branches: made when the cell first shows them (see BARE_NEAR)
+      }
+      wood.T.push(g.boundingSphere.center.x, g.boundingSphere.center.y, g.boundingSphere.center.z, reach + 0.3 * s, s);
+    } else if (part.bare) wood.bare.push(stood(part.bare));           // (not in cells: its bare branches with its wood, a dead tree's: see DRYNESS)
     if (!far && part.kind.fall) {                                     // the near trees drop leaves (half as many as a lone tree)
       const f = fallB[palette] || (fallB[palette] = { S: [], P: [], T: [], G: [] });
       addFalls(f, rng, c, Math.ceil(part.kind.fall * 0.5), part.leaf, M, s, e.y);
@@ -1461,46 +1234,57 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
   }
   const group = new THREE.Group(), owned = [];
   const add = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.name = name; group.add(m); owned.push(geo); };
-  const woods = [];                                                    // each cell's wood: its mesh, its plainer meshes, its trees (T: the ball each one's wood lies in, its size)
-  for (const { type, mat, geos, mid, far, T } of Object.values(barkB)) {
-    add(mergeGeometries(geos), mat, 'anime_bark_' + type); geos.forEach(g => g.dispose());
-    if (!mid.length) continue;
-    const near = group.children[group.children.length - 1];
-    const plainer = (list, name) => { add(mergeGeometries(list), mat, name); list.forEach(g => g.dispose()); const m = group.children[group.children.length - 1]; m.visible = false; return m; };
-    woods.push({ near, mid: plainer(mid, 'anime_bark_mid_' + type), far: far.length ? plainer(far, 'anime_bark_far_' + type) : null, T });
+  const woods = [];                                                    // each cell's wood: its mesh, its plainer meshes, its bare branches, its trees (T: the ball each one's wood lies in, its size)
+  const made = (list, m, name) => { add(mergeGeometries(list), m, name); list.forEach(g => g.dispose()); return group.children[group.children.length - 1]; };
+  for (const { type, mat, bareMat, geos, mid, far, bare, later, T } of Object.values(barkB)) {
+    const near = made(geos, mat, 'anime_bark_' + type);
+    if (bare.length) made(bare, bareMat, 'anime_bare_' + type);
+    if (!mid.length) continue;                                         // (not kept in cells: all of it is drawn, always; the bare branches show by the land's dryness alone)
+    const plainer = (list, name) => { const mesh = made(list, mat, name); mesh.visible = false; return mesh; };
+    woods.push({ type, near, mid: plainer(mid, 'anime_bark_mid_' + type), far: far.length ? plainer(far, 'anime_bark_far_' + type) : null, bareMat, later, bare: null, bareMid: null, T, dry: 0 });
   }
+  // a cell's bare branches (all of them, or the plainer ones): made the first time the cell shows them, and kept. Most of a
+  // map is never dry, or never come near: its trees' branches are never made
+  const branchesOf = (w, plain) => {
+    const list = w.later.map(({ part, M: at, x, y, z, s }) => standAt(plain ? part.bareAt('mid') : part.bare, at, x, y, z, s));
+    return made(list, w.bareMat, (plain ? 'anime_bare_mid_' : 'anime_bare_') + w.type);
+  };
   let cards = 0;
   const leaves = [];                                                   // each mesh of cards: the mesh, its cards' own numbers in order, its plants (T: the ball each one's cards lie in, its size)
   for (const b of Object.values(leafB)) {
     const { order, own } = inOwnOrder(b), geo = cardGeometry(b, order);
     add(geo, materials(b.palette, b.mask).leaf, 'anime_leaves'); cards += own.length;
-    leaves.push({ mesh: withPrepass(group.children[group.children.length - 1]), geo, own, T: b.T, twigs: b.mask === 'leaf', dry: 0 });
+    leaves.push({ mesh: withPrepass(group.children[group.children.length - 1]), geo, own, T: b.T, dry: 0 });
   }
   for (const [palette, f] of Object.entries(fallB)) if (f.S.length) add(fallGeometry(f), materials(palette).fall, 'anime_falling');
   group.name = 'anime_forest';
   const eyeHere = new THREE.Vector3(), ball = new THREE.Sphere();
   // DEAD LAND. Where the land is dry a plant's leaves are gone, all of them or some (DRYNESS: which, by each card's own
   // number), and those cards shrink to nothing in the shader: not drawn, but still sent, and where each would stand still
-  // worked out, four corners a card, in the depth pass and again in colour. A dead tree shows one card in six (the ones
-  // that carry its bare twigs). So a mesh of cards knows how dry the land under its plants is at the least (read from the
-  // dryness picture's own bytes, over the square each plant's cards lie in: no card of it is on wetter land than that),
-  // and lod sends no card past the last that can still show there: the same saving the far crowns have, for the dead.
-  // Worked out again only when the picture changes (or is another, or the forest has been moved).
+  // worked out, four corners a card, in the depth pass and again in colour. So a mesh of cards knows how dry the land
+  // under its plants is at the least (read from the dryness picture's own bytes, over the square each plant's cards lie
+  // in: no card of it is on wetter land than that), and lod sends no card past the last that can still show there (the
+  // same saving the far crowns have, for the dead), and none at all, nor draws the mesh, where every leaf is gone. A
+  // cell's wood knows how dry its land is at the most: where that is not dry enough for a bare branch to show (BARE_FROM)
+  // its bare branches are not drawn. Worked out again only when the picture changes (or is another, or the forest moves).
   const dryAt = { tex: null, version: -1, rect: new THREE.Vector4(NaN), ox: NaN, oz: NaN };
   const readDryness = (ox, oz) => {
     const tex = DRY.uDryMap.value, R = DRY.uDryRect.value;
     if (tex === dryAt.tex && (tex ? tex.version : -1) === dryAt.version && R.equals(dryAt.rect) && ox === dryAt.ox && oz === dryAt.oz) return;
     dryAt.tex = tex; dryAt.version = tex ? tex.version : -1; dryAt.rect.copy(R); dryAt.ox = ox; dryAt.oz = oz;
-    const im = tex && tex.image, data = im && im.data, nx = data ? im.width : 0, nz = data ? im.height : 0;
-    for (const l of leaves) {
-      let least = data && nx && nz ? 255 : 0;
-      for (let i = 0, T = l.T; i < T.length && least > 0; i += 5) {
+    const im = tex && tex.image, data = im && im.data, nx = data ? im.width : 0, nz = data ? im.height : 0, can = !!(data && nx && nz);
+    const span = [0, 0];                                               // the least and the most of the picture over the squares these plants lie in
+    const over = T => {
+      let least = 255, most = 0;
+      for (let i = 0; i < T.length; i += 5) {
         const i0 = Math.max(0, Math.min(nx - 1, Math.floor((T[i] + ox - T[i + 3] - R.x) * R.z * nx - 0.5))), i1 = Math.max(0, Math.min(nx - 1, Math.ceil((T[i] + ox + T[i + 3] - R.x) * R.z * nx - 0.5)));
         const j0 = Math.max(0, Math.min(nz - 1, Math.floor((T[i + 2] + oz - T[i + 3] - R.y) * R.w * nz - 0.5))), j1 = Math.max(0, Math.min(nz - 1, Math.ceil((T[i + 2] + oz + T[i + 3] - R.y) * R.w * nz - 0.5)));
-        for (let j = j0; j <= j1; j++) for (let k = i0; k <= i1; k++) { const v = data[(j * nx + k) * 4]; if (v < least) least = v; }
+        for (let j = j0; j <= j1; j++) for (let k = i0; k <= i1; k++) { const v = data[(j * nx + k) * 4]; if (v < least) least = v; if (v > most) most = v; }
       }
-      l.dry = least / 255;
-    }
+      span[0] = least / 255; span[1] = most / 255;
+    };
+    for (const l of leaves) { if (can) over(l.T); l.dry = can ? span[0] : 0; }
+    for (const w of woods) { if (can) over(w.T); w.dry = can ? span[1] : 1; }      // (a picture that cannot be read here: the bare branches are drawn, and the bark shader shows what is dry)
   };
   group.userData = {
     kind: 'forest', plants: list.length, cards, drawCalls: group.children.length,
@@ -1513,6 +1297,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
       const far = FAR_LEAVES.value, keep = FAR_KEEP.value.x;
       if (eye) group.worldToLocal(eyeHere.copy(eye));
       const e = group.matrixWorld.elements, ox = e[12], oy = e[13], oz = e[14];      // where the forest has been moved to
+      if (eye) readDryness(ox, oz);
       for (const w of woods) {                                       // the wood: not out of view; far wood from far off
         const T = w.T;
         let span = eye ? Infinity : 0, seen = !eye || !frustum;
@@ -1527,9 +1312,13 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
         }
         w.near.visible = seen && span <= WOOD_MID; w.mid.visible = seen && span > WOOD_MID && span <= WOOD_FAR;
         if (w.far) w.far.visible = seen && span > WOOD_FAR;
+        // its bare branches: on dry land only, all of them from near, the plainer ones further off, then none (lod(null): all)
+        const dryLand = !eye || w.dry > BARE_FROM, all = seen && dryLand && span <= BARE_NEAR, some = seen && dryLand && span > BARE_NEAR && span <= BARE_MID;
+        if (eye && w.later.length) { if (all && !w.bare) w.bare = branchesOf(w, false); if (some && !w.bareMid) w.bareMid = branchesOf(w, true); }
+        if (w.bare) w.bare.visible = all;
+        if (w.bareMid) w.bareMid.visible = some;
       }
-      if (eye) readDryness(ox, oz);
-      for (const { mesh, geo, own, T, twigs, dry } of leaves) {
+      for (const { mesh, geo, own, T, dry } of leaves) {
         let span = eye ? Infinity : 0, seen = !eye || !frustum;      // how far off its nearest plant is, for its size; is any of its plants in view
         for (let i = 0; i < T.length; i += 5) {
           if (span > 0) span = Math.min(span, Math.max(0, Math.hypot(eyeHere.x - T[i], eyeHere.y - T[i + 1], eyeHere.z - T[i + 2]) - T[i + 3]) / Math.max(T[i + 4], 1));
@@ -1544,8 +1333,11 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
         if (!seen) continue;
         const t = Math.min(1, Math.max(0, (span - far.z) / (far.w - far.z))), few = t * t * (3 - 2 * t);
         let last = 1 + (keep - 1) * few + 0.08;      // a card whose number is under this may still show
-        // (on dry land: the cards that still have leaves there, and the ones that carry twigs: see DEAD LAND)
-        if (eye && dry > 0.002) last = Math.min(last, Math.max(Math.pow(Math.max(0, 1 - dry * 1.03), 1.5), twigs ? TWIG.share * TWIG.small * (1 + (TWIG.far - 1) * few) : 0) + 0.002);      // (far off fewer cards carry twigs: TWIG.far)
+        if (eye && dry > 0.002) {                                    // (on dry land: the cards that still have leaves there, see DEAD LAND)
+          const left = Math.pow(Math.max(0, 1 - dry * 1.03), 1.5);
+          if (left <= 0) { mesh.visible = false; continue; }         // (every leaf gone: nothing to draw)
+          last = Math.min(last, left + 0.002);
+        }
         let lo = 0, hi = own.length;
         while (lo < hi) { const m = (lo + hi) >> 1; if (own[m] < last) lo = m + 1; else hi = m; }
         geo.instanceCount = Math.max(1, lo);

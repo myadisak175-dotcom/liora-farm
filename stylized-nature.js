@@ -640,7 +640,16 @@ function barkMaterial(spec) {
       #endif
       void main() {
         vec3 local = (position - aBase.xyz) / aBase.w;
-        vec3 p = position + windOffset(local, objPhase() + aBase.x * 0.37 + aBase.z * 0.23) * aBase.w;
+        vec3 at = position;
+        #ifdef DRYNESS
+        vDry = texture2D(uDryMap, clamp(((modelMatrix * vec4(position, 1.0)).xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
+        #ifdef BARE
+        // BARE BRANCHES: wood a living tree does not show. None of it where the land is alive; drawn out of its own middle
+        // line as the land dries, thin at first
+        at = mix(aCtr, position, smoothstep(0.12, 0.6, vDry));
+        #endif
+        #endif
+        vec3 p = at + windOffset(local, objPhase() + aBase.x * 0.37 + aBase.z * 0.23) * aBase.w;
         vN = normalize(mat3(modelMatrix) * normal);
         vOP = local;
         vON = normal;
@@ -650,9 +659,6 @@ function barkMaterial(spec) {
         vCrev = aCrev;
         vec4 wp = modelMatrix * vec4(p, 1.0);
         vec4 mv = viewMatrix * wp;
-        #ifdef DRYNESS
-        vDry = texture2D(uDryMap, clamp((wp.xz - uDryRect.xy) * uDryRect.zw, 0.0, 1.0)).r;
-        #endif
         // Wood writes its real depth, matching the closed geometry from every viewing direction.
         vHaze = hazeAt(mv.xyz);
         gl_Position = projectionMatrix * mv;
@@ -1092,7 +1098,10 @@ function rockMaterial(moss, tone = 'warm') {
 // --------------------------------------------------------------------------
 // How finely wood and the leaf core are cut. A forest of hundreds of trees is drawn twice a frame (once more in the water's mirror),
 // so every triangle here is paid hundreds of times. Smooth-shaded tubes hide the lower counts well.
-const TREE_LOD = { trunkRadial: 10, trunkLength: 24, trunkEase: 1, branchRadial: 7, branchLength: 8, rootRadial: 5, rootLength: 5, coreDetail: 2 };      // (growTreeFrame can grow one frame's wood with other numbers: a far tree's)
+const TREE_LOD = { trunkRadial: 10, trunkLength: 24, trunkEase: 1, branchRadial: 7, branchLength: 8, rootRadial: 5, rootLength: 5, coreDetail: 2,
+  bare: 2, bareRadial: 4, bareLength: 5, twigRadial: 3, twigLength: 3, bareThick: 1 };      // (growTreeFrame can grow one frame's wood with other numbers: a far tree's)
+// bare (BARE BRANCHES): 2 the side branches and their twigs, 1 the side branches only, 0 none; bareThick: times as thick (a
+// tree seen from further off: its thin wood is not left thinner than a pixel)
 // trunkEase: the stem's rings closer together at its foot (1: evenly), so a stem of few rings keeps the swell into its roots
 
 function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null, opt = {}) {
@@ -1135,8 +1144,8 @@ function taperedTube(points, radiusAt, radialSeg = 10, lenSeg = 40, shape = null
     // N cos(a) + B sin(a), with B = tangent x N: this order faces OUT.
     idx.push(a, a + 1, b, b, a + 1, b + 1);
   }
-  // Close each end. Duplicate the rim so cap normals do not flatten the bark.
-  for (const end of [0, lenSeg]) {
+  // Close each end. Duplicate the rim so cap normals do not flatten the bark. (opt.caps false: left open)
+  for (const end of opt.caps === false ? [] : [0, lenSeg]) {
     const offset = end * row, centre = pos.length / 3;
     const c = ctr.slice(offset * 3, offset * 3 + 3);
     const capN = frames.tangents[end === 0 ? 0 : FR].clone().multiplyScalar(end === 0 ? -1 : 1);
@@ -1190,9 +1199,6 @@ function buildTrunk(rng, spec, grow = null) {
   const trunk = taperedTube(pts, trunkR, TREE_LOD.trunkRadial, TREE_LOD.trunkLength, trunkShape,
     { crev: (t, a) => 0.45 * Math.exp(-t * height / 0.7) * (0.5 - 0.5 * Math.cos(a * Math.max(rootsOn, 3) + lph * 3)), ease: TREE_LOD.trunkEase });
   parts.push(trunk.geo);
-  // where the wood runs: the stem's and each limb's middle line, as a row of points from its foot to its tip (not the
-  // roots). Whatever has to stand on the wood finds it by these (the anime trees' bare twigs: anime-tree.js, TWIGS)
-  const bones = [trunk.curve.getSpacedPoints(24)];
   const up = new THREE.Vector3(0, 1, 0);
   const hollow = (t, a, w) => 0.2 * w * w;              // shadow in the crotch, fading out along the limb
   // a limb leaves the trunk heading out and mostly up, then reaches for the light: it starts nearly as thick as the wood
@@ -1215,7 +1221,6 @@ function buildTrunk(rng, spec, grow = null) {
       return (collar + (r0 - collar) * e) * (1 - 0.72 * t) * (1 + 0.14 * (1 - Math.min(1, t / 0.2)));   // a little flare where it joins
     }, TREE_LOD.branchRadial, TREE_LOD.branchLength, null, { axis: axisPt, blend, crev: axisPt ? hollow : null });
     parts.push(tube.geo);
-    bones.push(tube.curve.getSpacedPoints(12));
     return tube.curve;
   };
   // buttress roots: short thick limbs that leave the trunk low down and dive into the ground
@@ -1248,7 +1253,6 @@ function buildTrunk(rng, spec, grow = null) {
   if (grow) grow({ curve: trunk.curve, trunkR, addTube });
   const g = mergeGeometries(parts);
   parts.forEach(p => p.dispose());
-  g.userData.bones = bones;
   return g;
 }
 
@@ -1499,8 +1503,8 @@ function placeFruit(rng, F, spots) {
 //   subs.hidden: the side branches' wood is not drawn (their leaf clumps are): a clean fork of a few limbs from below
 //   clump: { r, flat, push, lift, clump, n, openBelow, vary, varySub, shade, taper, bough, rough, noise, stray, tint, card, pad, heart, heartTint, displace, tidy, ball }   the leaf clump on each tip (vary: size
 //          spread on limbs / side branches, shade: its own SHADE_WEIGHTS, taper: smaller toward the top); top: clump size on the leader
-function buildGrown(rng, spec) {
-  const G = spec.grow, tiers = [];
+function buildGrown(rng, spec, seed = 1) {
+  const G = spec.grow, tiers = [], limbs = [];      // limbs: each limb's middle line, how thick it leaves the stem, and (the leader) how thick it is along its length
   const env = { c: new THREE.Vector3(...G.crown.c), r: new THREE.Vector3(...G.crown.r) };
   const tp = G.crown.taper ?? 0, tpl = G.crown.taperLow ?? 0, egg = G.crown.egg ?? 0;
   const up = new THREE.Vector3(0, 1, 0);
@@ -1557,6 +1561,7 @@ function buildGrown(rng, spec) {
       const tip = onCrown(dirAt(az, el), range(rng, L.reach[0], L.reach[1]) * tuck(el));
       const r0 = L.r * range(rng, 0.85, 1.15) * 1.3;
       const limb = addTube(bend(start, tip, L), r0, trunkR(t0), start, 0.26);
+      limbs.push({ curve: limb, r: t => r0 * (1 - 0.72 * t), from: 0.3, to: 0.9 });
       const first = tiers.length;
       clump(tip, K.vary ? range(rng, K.vary[0], K.vary[1]) : range(rng, 0.9, 1.15));
       if (!S) { bough(first); continue; }
@@ -1573,6 +1578,7 @@ function buildGrown(rng, spec) {
       bough(first);
     }
     const last = tiers.length;
+    limbs.push({ curve, r: trunkR, from: 0.74, to: 0.95, reach: (env.r.x + env.r.z) * 0.55 });      // (the leader: only its length inside the crown's top)
     clump(curve.getPointAt(1), G.top ?? 1);                               // the leader ends inside the top of the crown
     bough(last);
     // G.fill [n, spread, scale]: more clumps round the leader's top, inside the ring the limbs' tips make, so a wide crown
@@ -1583,7 +1589,83 @@ function buildGrown(rng, spec) {
       bough(first);
     }
   });
+  trunk.userData.bare = G.bare && TREE_LOD.bare ? buildBare(mulberry32(seed * 31337 + 11), limbs, G.bare) : null;
   return { trunk, tiers };
+}
+
+// BARE BRANCHES (spec.grow.bare): the thin wood a living crown keeps in its leaves, and a dead one shows. A tree of a
+// stem and a dozen limbs, its leaves gone, is a few thick sticks, far smaller than its crown was; a real one carries its
+// crown on branches, and those are grown here: off each limb's outer part (and off the leader) a few side branches, set
+// round the limb in turn and leaving it at a sharp angle toward its tip, each crooked (it turns a little at every joint,
+// and lifts: bare.lift, or droops if that is under 0) and drawn out to a point; each forks into a twig or two of the
+// same kind, a twig now and then into a finer one, and the limb's own blunt end forks in two. Real wood, so one piece
+// with the limb it leaves, painted as it is, and the same from every side.
+//   bare: { n: [a, b] side branches a limb, reach: [a, b] their length (of the limb's), twigs: [a, b] a branch, fine: 0..1
+//           how often a twig forks again, crook, lift, r: a branch's thickness (of the limb's where it leaves) }
+// Its own dice (the tree's are not thrown for it: the living tree is the tree it always was), and the same branches
+// however finely they are made (TREE_LOD.bare, bareRadial ...). -> one geometry, or null if nothing was to be made.
+function buildBare(rng, limbs, B) {
+  const parts = [], up = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
+  const T = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3(), w = new THREE.Vector3(), p = new THREE.Vector3();
+  const crook = B.crook ?? 0.8, lift = B.lift ?? 0.2, thick = TREE_LOD.bareThick, twigs = TREE_LOD.bare > 1;
+  // a length of thin wood from s, heading d: len long, r thick at its foot, in so many joints -> its middle line. made: its
+  // wood is; if not, only where it would run (the dice are thrown alike, so a plainer frame has the same branches)
+  const shoot = (s, d, len, r, joints, made, radial, rings) => {
+    const pts = [s.clone()];
+    w.copy(d); p.copy(s);
+    for (let j = 0; j < joints; j++) {
+      w.x += (rng() - 0.5) * crook; w.y += (rng() - 0.5) * crook + lift * 0.35; w.z += (rng() - 0.5) * crook; w.normalize();
+      pts.push(p.addScaledVector(w, len / joints).clone());
+    }
+    if (!made) return new THREE.CatmullRomCurve3(pts);
+    const r0 = r * thick, tip = Math.max(0.0035 * thick, r0 * 0.1);
+    const tube = taperedTube(pts, t => (r0 - tip) * Math.pow(1 - t, 0.85) + tip, radial, rings, null, { caps: false });      // (its foot is inside the wood it leaves, its tip a point: no ends to close)
+    parts.push(tube.geo);
+    return tube.curve;
+  };
+  // the way a shoot leaves wood that runs along T: turned off it by `off`, toward the side `az` round it; never steeply down
+  const away = (off, az) => {
+    u.crossVectors(T, Math.abs(T.y) < 0.95 ? up : X).normalize(); v.crossVectors(u, T);
+    const d = new THREE.Vector3();
+    for (let k = 0; k < 2; k++) {
+      d.copy(T).multiplyScalar(Math.cos(off)).addScaledVector(u, Math.cos(az) * Math.sin(off)).addScaledVector(v, Math.sin(az) * Math.sin(off));
+      if (d.y > -0.3) break;
+      az += Math.PI;                                                          // (to the other side of the limb)
+    }
+    if (d.y < -0.3) d.setY(-0.3);
+    return d.normalize();
+  };
+  // a twig off a branch (or a finer one off a twig): from part way along it, to one side
+  const twigOff = (curve, r, len, at, side, made, depth) => {
+    curve.getTangentAt(at, T);
+    const twig = shoot(curve.getPointAt(at), away(range(rng, 0.5, 0.9), side), len, r, 3, made, TREE_LOD.twigRadial, TREE_LOD.twigLength);
+    const again = rng() < (B.fine ?? 0.6), where = range(rng, 0.35, 0.65), turn = rng() * 6.28;
+    if (depth < 1 && again) twigOff(twig, r * 0.6, len * 0.55, where, turn, made, depth + 1);
+  };
+  limbs.forEach((limb, li) => {
+    const { curve, r } = limb, len = limb.reach ?? curve.getLength(), n = Math.round(range(rng, ...(B.n || [2, 3]))), turn = rng() * 6.28;
+    for (let k = 0; k < n; k++) {
+      const t = lerp(limb.from, limb.to, (k + rng()) / n);
+      curve.getTangentAt(t, T);
+      const reach = len * range(rng, ...(B.reach || [0.4, 0.58])) * (1.05 - 0.4 * t), rb = Math.max(r(t) * (B.r ?? 0.7), 0.012);
+      const branch = shoot(curve.getPointAt(t), away(range(rng, 0.55, 0.95), turn + k * 2.39996 + (rng() - 0.5) * 0.7), reach, rb, 4, true, TREE_LOD.bareRadial, TREE_LOD.bareLength);
+      const nt = Math.round(range(rng, ...(B.twigs || [1, 2])));
+      for (let j = 0; j < nt; j++) {
+        const at = lerp(0.28, 0.82, (j + rng()) / nt);
+        twigOff(branch, rb * Math.pow(1 - at, 0.85) * 0.8, reach * range(rng, 0.4, 0.6) * (1 - 0.35 * at), at, rng() * 6.28, twigs, 0);
+      }
+    }
+    if (limb.reach) return;                                                   // (the leader ends in the crown's top clump: no fork there)
+    // the limb's own end: it forks in two
+    curve.getTangentAt(1, T);
+    const end = curve.getPointAt(0.97), side = rng() * 6.28;
+    for (let k = 0; k < 2; k++) shoot(end, away(range(rng, 0.3, 0.6), side + k * Math.PI), len * range(rng, 0.2, 0.32), Math.max(r(1) * 0.95, 0.01), 3, true, TREE_LOD.twigRadial, TREE_LOD.twigLength);
+  });
+  if (!parts.length) return null;
+  const g = mergeGeometries(parts);
+  parts.forEach(q => q.dispose());
+  for (const name of ['aJoin', 'aAx', 'aCrev']) g.deleteAttribute(name);      // (no limb's foot on the stem and no hollow in it: the bark reads nothing for them, as it does for none)
+  return g;
 }
 
 // bamboo: a clump of thin culms leaning out from one foot, leaf sprays on their upper half
@@ -1919,8 +2001,8 @@ export const treeSpec = type => TREE_TYPES[type];
 
 // The wood and the leaf masses of a tree from a spec shaped like the TREE_TYPES ones (trunk, grow or tiers, bark ...), for a
 // kit that dresses the crown its own way (anime-tree.js). trunk: bark mesh, ready to add; tiers: one leaf mass per limb tip
-// (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space. bones: where
-// the wood runs, the stem's and each limb's middle line as a row of points, foot to tip (mesh space; none for a custom tree).
+// (grown trees) or per skirt (the pine), { c: [x, y, z], r: [rx, ry, rz], taper, egg, ... } in mesh space. bare: the
+// tree's bare branches (BARE BRANCHES: a geometry for the same bark, drawn with bareBark(trunk.material)), or null.
 // wood: { trunkRadial, trunkLength, branchRadial, branchLength } for this frame only: the same tree (stem, limbs and roots
 // where they are), its wood with fewer sides and rings, for a tree seen from far off.
 export function growTreeFrame(spec, seed = 1, wood = null) {
@@ -1928,12 +2010,18 @@ export function growTreeFrame(spec, seed = 1, wood = null) {
   let trunk, tiers;
   if (wood) Object.assign(TREE_LOD, wood);
   try {
-    if (spec.custom || spec.grow) ({ trunk, tiers } = (spec.custom || buildGrown)(rng, spec));
+    if (spec.custom || spec.grow) ({ trunk, tiers } = (spec.custom || buildGrown)(rng, spec, seed));
     else { tiers = typeof spec.tiers === 'function' ? spec.tiers(rng) : spec.tiers; trunk = buildTrunk(rng, spec); }
   } finally { Object.assign(TREE_LOD, usual); }
   const mesh = new THREE.Mesh(withBase(trunk), barkMaterial(spec));
   mesh.frustumCulled = false;
-  return { trunk: mesh, tiers, rng, bones: trunk.userData.bones || [] };      // bones: where its wood runs (buildTrunk)
+  return { trunk: mesh, tiers, rng, bare: trunk.userData.bare ? withBase(trunk.userData.bare) : null };
+}
+// The bark for a tree's bare branches (BARE BRANCHES): the tree's own bark (the same uniforms: it dies, is lit and sways as
+// the wood does), on wood that is drawn out of nothing as the land dries (the bark shader, BARE). The bark must die by the
+// dryness picture (anime-tree.js's dyingWood) before this is asked for.
+export function bareBark(bark) {
+  return new THREE.ShaderMaterial({ uniforms: bark.uniforms, defines: { ...bark.defines, BARE: 1 }, vertexShader: bark.vertexShader, fragmentShader: bark.fragmentShader });
 }
 export const treeSpecScale = type => TREE_TYPES[type]?.scale ?? 1;
 
