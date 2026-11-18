@@ -13,7 +13,8 @@
    wheelGeometry      a water wheel, turning about its x axis (a mesh of its own, so it can spin)
    stoneBridgeGeometry  a humpbacked stone bridge along x; stoneBridgeDeck(u, opts) is the height of its deck above its base
    wellGeometry       a round stone well under a little roof
-   fenceGeometry      posts and two rails along a line of points on the ground (world space)
+   fenceGeometry      posts and two rails along a line of points on the ground (world space); userData.circles: colliders
+                      [x, z, r, lo, hi, top] along it, top the top rail's height (player-hurdle.js: she may vault it)
    ropeBridgeGeometry a rope bridge slung along x from 0 to length, sagging between two pairs of posts, with a wider
                       landing in the middle; ropeBridgeDeck(x, opts) / ropeBridgeHalfWidth(x, opts) for walking on it
    propGeometry       small things that make a village look lived in: 'stall', 'table', 'bench', 'barrels', 'crates', 'hay',
@@ -275,7 +276,7 @@ export function fenceGeometry({ points, heightAt, closed = true, gap = null, spa
     if (open) { K.box(x1, y1 - 0.3, z1, 0.16, 1.5, 0.16, C.timber); continue; }
     const ry = Math.atan2(-(z1 - z0), x1 - x0), rz = Math.atan2(y1 - y0, len);
     for (const h of [0.42, 0.85]) K.box((x0 + x1) / 2, (y0 + y1) / 2 + h, (z0 + z1) / 2, len + 0.1, 0.09, 0.07, C.timber, { rz, ry });
-    for (let t = 0.25; t < len; t += 0.5) out.push([x0 + (x1 - x0) * t / len, z0 + (z1 - z0) * t / len, 0.22]);
+    for (let t = 0.25; t < len; t += 0.5) out.push([x0 + (x1 - x0) * t / len, z0 + (z1 - z0) * t / len, 0.22, undefined, undefined, y0 + (y1 - y0) * t / len + 0.94]);      // (and the top rail's top: she may vault it)
   }
   const g = K.done();
   g.userData = { circles: out };

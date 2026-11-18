@@ -627,6 +627,14 @@
       "loop": true
     },
     {
+      "name": "Vault",
+      "file": "Vault.vrma",
+      "source": "liora-farm",
+      "duration": 0.6,
+      "frames": 19,
+      "loop": false
+    },
+    {
       "name": "Walk_Carry_Loop",
       "file": "Walk_Carry_Loop.vrma",
       "source": "UAL2",

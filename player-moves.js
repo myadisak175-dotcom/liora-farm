@@ -18,6 +18,9 @@
 //     falling down a face, pushing at it takes hold again. No stamina: any face can be climbed.
 //   - swim. Water too deep to wade carries her: she swims where the stick points and treads water when it is let go, wades
 //     out where it shallows, and climbs out up a rock bank. Not over a waterfall, nor up one.
+//   - go over low things: running (or walking, for a moment) at a fence, a bridge's parapet, a barrel, she vaults it, one hand
+//     on its top, her legs swung over beside it (player-hurdle.js finds it; the clip is tools/make-vault-anim.py's), and
+//     runs on; over a bridge's parapet she falls into the river. The jump button by one vaults it too.
 //   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
@@ -36,6 +39,7 @@ import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
 import { createFootsteps } from './player-footsteps.js';
 import { createFace } from './player-climb.js';
+import { findHurdle, hurdlePath, CLIP as HURDLE } from './player-hurdle.js';
 
 const TUNED_HEIGHT = 1.412;                   // Vivi as modelled: the numbers below are for her at this height (x 1.24 at 1.75 m)
 const WALK0 = 1.2, RUN0 = 3.39, SPRINT0 = 4.7, DASH0 = 8.0;      // m/s (at 1.75 m: 1.5, 4.2, 5.8, 9.9; the walker runs at 4.1)
@@ -59,6 +63,7 @@ const LEAP = 2.5, LEAP_T = 0.3, LEAP_COOL = 0.55;      // a jump on the rock: th
 const REACH0 = 1.6;                           // m over the rock from her feet to her hands (2.0 at 1.75 m): a top that near, she vaults over
 const VAULT_T = 0.62, VAULT_FROM = 0.08;      // the vault over a top: how long it takes (s), and how far into the clip it starts (s)
 const WALL_HH = 0.44, SPAN_HH = 1.80;         // the climbing clip's wall, in front of her root, and how far up it her hands reach from her root, in hips heights (tools/make-climb-anim.py)
+const HURDLE_WAIT = 0.1;                      // s she walks at a low thing before she goes over it (running: at once)
 const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -79,7 +84,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const face = createFace(standAt, footing || (() => 'ground'));
   pos.y = standOn(pos.x, pos.z);
   let heading = level.spawn.yaw;              // where she faces (0 = +Z)
-  // 'ground' | 'air' (a jump, a hop, a fall) | 'slide' (down a cliff's face) | 'climb' | 'vault' (over a top) | 'swim'
+  // 'ground' | 'air' (a jump, a hop, a fall) | 'slide' (down a cliff's face) | 'climb' | 'vault' (over a top) | 'hurdle' (over a low thing) | 'swim'
   let mode = 'ground';
   let speed = 0, went = 0, paceWas = 0, pace = 0;      // how fast she means to go, how fast she really went (last frame), the pace before, the pace her legs go at
   let vy = 0, peakY = pos.y, airBase = pos.y, slideV = 0, slideT = 0, stuckT = 0;
@@ -92,6 +97,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let onRock = false, climbT = 0, leapT = 0, leapCool = 0, climbRate = 0;      // climbing: her feet have left the ground; for how long; a leap; the clip's rate
   let climbW = 0, tilt = 0, nX = 0, nY = 1, nZ = 0, standOff = 0;      // how far she is laid against the rock (0..1), by what angle, the way out of the face, and how far the rock's bulges hold her off it (m)
   const lie = { angle: 0, off: 0 };
+  let hurdleT = 0, hurdleU = 0;                 // going over a low thing: how long she has walked at it; how far through the vault (0..1)
+  const ahead = {}, crossing = {};              // the one before her (player-hurdle.js), and the one she is going over, with where she began and comes down
+  const path = { along: 0, lift: 0 }, pathWas = { along: 0, lift: 0 };
   let vaultT = 0;                             // s into a vault
   const vault0 = new THREE.Vector3(), vault1 = new THREE.Vector3();
   let wake = 0;                               // s to the next ring she leaves swimming
@@ -326,6 +334,37 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     climbRate = moved > 1e-5 ? (up < -0.3 ? -1 : 1) * Math.min(1.7, Math.max(0.5, v * Math.hypot(up, side) / (character.speeds.climb || 1))) : 0;
     heading += wrap(Math.atan2(ux, uz) - heading) * Math.min(1, dt * 9);
   }
+  // ---- going over a low thing (player-hurdle.js found it: ahead). Where she comes down must be somewhere to be: ground no
+  // higher than its top, or a drop (water, ground far below, a face) that she falls to once she is over
+  function startHurdle(k) {
+    const dx = Math.sin(heading), dz = Math.cos(heading), lx = pos.x + dx * ahead.clear, lz = pos.z + dz * ahead.clear;
+    const f = footing(lx, lz), ground = standAt(lx, lz);
+    let drop = false;
+    if (f === 'ground') { if (ground > ahead.top - 0.1) return false; drop = ground < pos.y - 0.6 * k; }
+    else if (f === 'water' || (f === 'cliff' && ground < pos.y)) drop = true;
+    else return false;
+    Object.assign(crossing, ahead, { x: pos.x, y: pos.y, z: pos.z, dx, dz, land: drop ? pos.y : ground, drop, speed: Math.max(speed, WALK0 * k) });
+    mode = 'hurdle'; hurdleU = 0; hurdleT = 0; landT = -1; hardT = 0; rollT = 0; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0;
+    character.play('hurdle', 0.08, false); character.setRate(1);
+    return true;
+  }
+  function hurdleStep(dt, k) {
+    const hh = (character.hipsHeight || 1) * (character.size || 1), was = hurdleU;
+    hurdleU = Math.min(1, hurdleU + dt / HURDLE.length);
+    const p = hurdlePath(crossing, hurdleU, hh, path), base = crossing.y + (crossing.land - crossing.y) * smooth((hurdleU - HURDLE.plant) / (HURDLE.land - HURDLE.plant));
+    tmp.set(crossing.x + crossing.dx * p.along, 0, crossing.z + crossing.dz * p.along);
+    went = (p.along - hurdlePath(crossing, was, hh, pathWas).along) / Math.max(dt, 1e-4);
+    // down on the far side she runs on out of it: solid things are in her way again, and where the ground ends (a face, the
+    // water) the vault ends and the ground has its say, as ever
+    if (!crossing.drop && hurdleU > HURDLE.land) {
+      solids(tmp, k);
+      if (footing(tmp.x, tmp.z) !== 'ground') hurdleU = 1;
+      else pos.set(tmp.x, standAt(tmp.x, tmp.z), tmp.z);
+    } else pos.set(tmp.x, base + p.lift, tmp.z);
+    // over a parapet with the river below: once her legs are over and her hand off the top, she falls
+    if (crossing.drop && hurdleU >= HURDLE.release) { speed = Math.min(went, RUN0 * k); leave(0.5 * k, k, false); return; }
+    if (hurdleU >= 1) { mode = 'ground'; speed = Math.min(Math.max(crossing.speed, WALK0 * k), RUN0 * k); pos.y = standAt(pos.x, pos.z); lastSafe.copy(pos); }
+  }
   function vaultStep(dt, k) {
     vaultT += dt;
     const u = vaultT / VAULT_T, rise = smooth(u / 0.7), over = smooth((u - 0.25) / 0.75);
@@ -478,6 +517,13 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       pos.x = tmp.x; pos.z = tmp.z;
       if (went < speed * 0.3) speed = Math.min(speed, went * 1.15 + 0.05);    // pushing against something: stop walking on the spot
     } else went = 0;
+    // ---- a low thing in her way (a fence, a parapet, a barrel): going at it, she goes over it. Running, at once; walking,
+    // after a moment (not every brush of a fence's rail as she walks by)
+    if (footing && mode === 'ground' && pushing && rollT <= 0 && hardT <= 0 && shallow && Math.abs(wrap(want - heading)) < 0.5
+        && findHurdle(level.colliders, pos.x, pos.z, pos.y, Math.sin(heading), Math.cos(heading), k, 0.06 + speed * 0.1, ahead)) {
+      hurdleT += dt;
+      if ((hurdleT >= HURDLE_WAIT || speed > WALK * 1.5 || jumpWanted > 0) && startHurdle(k)) { jumpWanted = 0; return; }
+    } else hurdleT = 0;
     // pushing at a face (or stopped by one, at whatever angle): after a moment she takes hold of it
     if (faceAhead && pushing && went < 0.35 * WALK) grabPush = true;
     grabT = grabPush && mode === 'ground' ? grabT + dt : 0;
@@ -490,6 +536,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // ---- jumping: off the ground at once, unless she is deeper in the water than her knees
     if (mode === 'ground' && jumpWanted > 0 && rollT <= 0 && shallow) {
       jumpWanted = 0;
+      // (by a low thing she faces: over it)
+      if (footing && findHurdle(level.colliders, pos.x, pos.z, pos.y, Math.sin(heading), Math.cos(heading), k, 0.8 * k, ahead) && startHurdle(k)) return;
       leave(Math.sqrt(2 * GRAV0 * JUMP0) * k, k, true);
       if (depthHere > 0.04 && level.ripple) level.ripple(pos.x, pos.z, 0.8, 0.3, 'splash');      // pushing off from the water
     }
@@ -531,7 +579,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (mode === 'climb') {
       if (character.state !== 'climb') character.play('climb', 0.18);
       character.setRate(climbRate);
-    } else if (mode === 'vault') {
+    } else if (mode === 'vault' || mode === 'hurdle') {
       /* (the vault's clip and rate were set as it began) */
     } else if (mode === 'swim') {
       const sw = speed > 0.5 * k ? 'swim' : 'swim_idle';
@@ -621,9 +669,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       // ---- she moves, as what she is doing has it
       if (mode === 'climb') climbStep(dt, k, amount, pushing, want);
       else if (mode === 'vault') vaultStep(dt, k);
+      else if (mode === 'hurdle') hurdleStep(dt, k);
       else if (mode === 'swim') swimStep(dt, k, pushing, running, want);
       else walkStep(dt, k, amount, pushing, running, want);
-      if (mode === 'climb' || mode === 'vault' || mode === 'swim') { pace = 0; paceWas = 0; grade = 0; if (mode !== 'swim') turned = 0; }
+      if (mode === 'climb' || mode === 'vault' || mode === 'hurdle' || mode === 'swim') { pace = 0; paceWas = 0; grade = 0; if (mode !== 'swim') turned = 0; }
       wasDepth = depthHere;
       // what has been in the water is wet (a run splashes her higher; a swim, all over), and dries in a quarter of a minute once she is out
       if (mode === 'swim') { wetH = Math.max(wetH, 2 * k); wetAmt = 1; }
@@ -631,7 +680,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       else { wetAmt = Math.max(0, wetAmt - dt / 15); if (wetAmt === 0) wetH = 0; }
       pose(dt, k, WALK, RUN);
       // the blob stays on the ground under her, smaller the higher she is; none on a face or in the water
-      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : 0, onFeet = mode === 'ground' || mode === 'air' || mode === 'slide';
+      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : 0, onFeet = mode === 'ground' || mode === 'air' || mode === 'slide' || mode === 'hurdle';
       shadow.position.y = 0.06 - lift;
       shadow.scale.setScalar(onFeet ? k * (1 - 0.35 * Math.min(1, lift / (1.2 * k))) : 1e-4);
       // tell her materials where the water's surface is (far below when she is on land) and how high she is wet

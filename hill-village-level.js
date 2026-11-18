@@ -383,7 +383,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.1, wide: 1.45, y: deckY, arch });
     for (let u = -bL / 2; u <= bL / 2; u += 1) for (const v of [-0.8, 0.8]) bare.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 1.3]);
     // its parapets (and no stepping off its side): only for her up on it, not for her down under its arch
-    for (const v of [-1.45, 1.45]) for (let u = -(bL / 2 + 0.6); u <= bL / 2 + 0.6 + 1e-6; u += 0.8) colliders.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 0.42, deckY(Math.max(-bL / 2, Math.min(bL / 2, u))) - UNDER]);
+    // (each with its top, the coping's, 0.74 m over the deck: she may vault it, and fall into the river: player-hurdle.js)
+    for (const v of [-1.45, 1.45]) for (let u = -(bL / 2 + 0.6); u <= bL / 2 + 0.6 + 1e-6; u += 0.8) { const dy = deckY(Math.max(-bL / 2, Math.min(bL / 2, u))); colliders.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 0.42, dy - UNDER, undefined, dy + 0.74]); }
     // the camera does not go into its stone, from under the arch: its body, as short posts from the arch's underside (or the
     // ground, at its piers) up to under its deck, three across and every 0.6 m along
     for (let u = -bL / 2 + 0.3; u <= bL / 2 - 0.3 + 1e-6; u += 0.6) for (const v of [-0.95, 0, 0.95]) {
@@ -414,18 +415,22 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   }
   // the fields: ridges of turned earth and what grows on them
   for (const [k, f] of P.fields.entries()) builds.push(fieldGeometry({ ...f, heightAt: H, seed: 40 + k }));
-  // the small things: the market's stalls, barrels, carts, sheep
+  // the small things: the market's stalls, barrels, carts, sheep. The low ones she may go over (player-hurdle.js: their
+  // colliders carry their tops); not a stall (its awning), a cart, a lamp, a signpost, nor a sheep
+  const OVER = new Set(['barrels', 'crates', 'hay', 'bench', 'table', 'woodpile']);
   let propSeed = 60;
   for (const [i, [kind, x, z, yaw]] of P.props.entries()) {
-    let rad = 0.7;
+    let rad = 0.7, top;                                                    // top: how high it stands, if she may go over it
     const at = { x, z, yaw }, b = placeBase.filter(t => t.kind === 'prop')[i];
     if (kind.startsWith('kit:')) { addThing(b.id, at, (x, z) => ({ y: H(x, z) - 0.02, deep: 0 }), (k, out, x, y, z, yaw) => k.piece(kind.slice(4), x, y, z, yaw)); rad = 1.3; }
     else {
       const ps = propSeed++;
-      const g0 = BD.propGeometry(kind, { seed: ps }); rad = g0.userData.solid; g0.dispose();
+      const g0 = BD.propGeometry(kind, { seed: ps }); rad = g0.userData.solid;
+      if (OVER.has(kind)) { g0.computeBoundingBox(); top = H(x, z) - 0.03 + g0.boundingBox.max.y; }
+      g0.dispose();
       addThing(b.id, at, (x, z) => ({ y: H(x, z) - 0.03, deep: 0 }), (k, out, x, y, z, yaw) => out.push(BD.place(BD.propGeometry(kind, { seed: ps }), x, y, z, yaw)));
     }
-    if (rad > 0.3) { colliders.push([x, z, rad * 0.8]); press.push([x, z, rad * 1.5]); casters.push([x, z, 1.0, rad * 0.9, 0.75]); }
+    if (rad > 0.3) { colliders.push([x, z, rad * 0.8, undefined, undefined, top]); press.push([x, z, rad * 1.5]); casters.push([x, z, 1.0, rad * 0.9, 0.75]); }
     else colliders.push([x, z, 0.22]);
   }
   // the great tree: a forest of one

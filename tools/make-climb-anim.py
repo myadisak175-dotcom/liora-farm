@@ -27,6 +27,9 @@ two-bone IK. The hands lie flat on the wall, open, fingers up while they are hig
 down; the feet stand on their toes, pointing at the wall. A knee goes up no higher than her belly, so a foot holds for
 a shorter way than a hand does (her legs are bent as in a crawl, they do not reach as her arms do).
 
+The pieces it shares with the other clips made in code (the skeleton, the characters' proportions, IK, writing the .vrma)
+are in tools/vrma_pose.py.
+
 Usage (from the repo folder; needs numpy):
   python3 tools/make-climb-anim.py
 writes assets/animations/vrma/Climb_Loop.vrma and adds it to assets/animations/vrma/index.json, then prints how
@@ -34,20 +37,15 @@ well the limbs reach their points and how near her knees, elbows, chest and head
   python3 tools/bake-character-anim.py assets/animations/vrma
 (its pace there, CLIPS' "climb", is SPEED below; the wall's distance, WALL, is player-moves.js's WALL_HH).
 """
-import glob
-import json
 import math
 import os
-import struct
 import sys
 
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(HERE)
-LIB = os.path.join(REPO, "assets", "animations", "vrma")
-CHARACTERS = os.path.join(REPO, "assets", "characters")
-TEMPLATE = os.path.join(LIB, "Idle_Loop.vrma")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vrma_pose import add_frame, fitted_skeleton, frame, hermite, rx, ry, rz, slerp_m, two_bone, unit, write_clip  # noqa: E402
+
 OUT_NAME = "Climb_Loop"
 
 FPS = 30
@@ -68,183 +66,7 @@ SWAY = 0.03              # her hips over the foot that pushes
 LEAN = 24.0              # degrees her body leans in to the wall from her hips
 
 
-# ---------------------------------------------------------------- small maths (quaternions x, y, z, w; 3x3 matrices)
-
-def rx(a):
-    c, s = math.cos(a), math.sin(a)
-    return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
-
-
-def ry(a):
-    c, s = math.cos(a), math.sin(a)
-    return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
-
-
-def rz(a):
-    c, s = math.cos(a), math.sin(a)
-    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
-
-
-def unit(v):
-    return v / np.linalg.norm(v)
-
-
-def frame(d, n):
-    """Rotation whose columns are d, n, d x n (d, n unit and square to each other)."""
-    n = unit(n - d * np.dot(n, d))
-    return np.column_stack([d, n, np.cross(d, n)])
-
-
-def quat_of(m):
-    t = np.trace(m)
-    if t > 0:
-        s = math.sqrt(t + 1.0) * 2
-        q = [(m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s, 0.25 * s]
-    elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
-        s = math.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2]) * 2
-        q = [0.25 * s, (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s, (m[2, 1] - m[1, 2]) / s]
-    elif m[1, 1] > m[2, 2]:
-        s = math.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2]) * 2
-        q = [(m[0, 1] + m[1, 0]) / s, 0.25 * s, (m[1, 2] + m[2, 1]) / s, (m[0, 2] - m[2, 0]) / s]
-    else:
-        s = math.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1]) * 2
-        q = [(m[0, 2] + m[2, 0]) / s, (m[1, 2] + m[2, 1]) / s, 0.25 * s, (m[1, 0] - m[0, 1]) / s]
-    q = np.array(q)
-    return q / np.linalg.norm(q)
-
-
-def mat_of(q):
-    x, y, z, w = q
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-    ])
-
-
-def slerp_m(a, b, t):
-    qa, qb = quat_of(a), quat_of(b)
-    if np.dot(qa, qb) < 0:
-        qb = -qb
-    d = min(1.0, float(np.dot(qa, qb)))
-    if d > 0.9995:
-        q = qa + (qb - qa) * t
-    else:
-        th = math.acos(d)
-        q = (math.sin((1 - t) * th) * qa + math.sin(t * th) * qb) / math.sin(th)
-    return mat_of(q / np.linalg.norm(q))
-
-
-def smooth(u):
-    return u * u * (3 - 2 * u)
-
-
-# ---------------------------------------------------------------- the template skeleton
-
-def read_glb(path):
-    data = open(path, "rb").read()
-    if data[:4] != b"glTF":
-        raise ValueError(f"{path}: not a GLB")
-    off, js, binary = 12, None, b""
-    while off < len(data):
-        n, kind = struct.unpack_from("<I4s", data, off)
-        chunk = data[off + 8: off + 8 + n]
-        if kind == b"JSON":
-            js = json.loads(chunk)
-        elif kind == b"BIN\x00":
-            binary = chunk
-        off += 8 + n
-    return js, binary
-
-
-def read_floats(js, binary, index):
-    acc = js["accessors"][index]
-    view = js["bufferViews"][acc["bufferView"]]
-    n = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}[acc["type"]]
-    off = view.get("byteOffset", 0) + acc.get("byteOffset", 0)
-    return np.frombuffer(binary, dtype="<f4", count=acc["count"] * n, offset=off).reshape(acc["count"], n)
-
-
-class Skeleton:
-    def __init__(self, path):
-        self.js, self.bin = read_glb(path)
-        ext = self.js["extensions"]["VRMC_vrm_animation"]["humanoid"]["humanBones"]
-        self.node = {b: v["node"] for b, v in ext.items()}
-        self.bone = {i: b for b, i in self.node.items()}
-        nodes = self.js["nodes"]
-        self.parent = {}
-        for i, n in enumerate(nodes):
-            for c in n.get("children", []):
-                self.parent[self.bone[c]] = self.bone[i]
-        self.offset = {b: np.array(nodes[i].get("translation", [0, 0, 0]), dtype=float) for b, i in self.node.items()}
-        # the template's first frame of every bone (the fingers' relaxed curl is kept from it)
-        anim = self.js["animations"][0]
-        self.first = {}
-        for ch in anim["channels"]:
-            if ch["target"]["path"] == "rotation":
-                vals = read_floats(self.js, self.bin, anim["samplers"][ch["sampler"]]["output"])
-                self.first[self.bone[ch["target"]["node"]]] = mat_of(vals[0])
-
-    def length(self, b):
-        return float(np.linalg.norm(self.offset[b]))
-
-
-# ---------------------------------------------------------------- the bodies that play it
-
-VROID = {"hips": "J_Bip_C_Hips", "spine": "J_Bip_C_Spine", "chest": "J_Bip_C_Chest", "upperChest": "J_Bip_C_UpperChest",
-         "neck": "J_Bip_C_Neck", "head": "J_Bip_C_Head"}
-for _side, _s in (("left", "L"), ("right", "R")):
-    for _bone, _name in (("Shoulder", "Shoulder"), ("UpperArm", "UpperArm"), ("LowerArm", "LowerArm"), ("Hand", "Hand"),
-                         ("UpperLeg", "UpperLeg"), ("LowerLeg", "LowerLeg"), ("Foot", "Foot"), ("Toes", "ToeBase")):
-        VROID[f"{_side}{_bone}"] = f"J_Bip_{_s}_{_name}"
-
-
-def playable_proportions(sk):
-    """Each bone's place from its parent bone, in hips heights: the mean of the playable characters, the same on both
-    sides, in the library's directions (+Z forward, her left +X; a VRoid model is VRM 0.x and faces -Z, so x and z are
-    turned over). -> ({bone: offset}, how many characters)"""
-    files = sorted(glob.glob(os.path.join(CHARACTERS, "*.glb")))
-    if not files:
-        raise SystemExit(f"no playable characters in {CHARACTERS}: the climb is fitted to their proportions")
-    total = {b: np.zeros(3) for b in VROID}
-    for path in files:
-        js, _ = read_glb(path)
-        nodes = js["nodes"]
-        index = {n.get("name"): i for i, n in enumerate(nodes)}
-        parent = {c: i for i, n in enumerate(nodes) for c in n.get("children", [])}
-
-        def world(i):
-            p = np.zeros(3)
-            while i is not None:
-                p = p + np.array(nodes[i].get("translation", [0, 0, 0]), dtype=float)
-                i = parent.get(i)
-            return p
-
-        at = {b: world(index[name]) for b, name in VROID.items()}
-        hips_height = at["hips"][1]
-        for b in VROID:
-            p = sk.parent.get(b)
-            if p:
-                total[b] += (at[b] - at[p]) / hips_height * np.array([-1.0, 1.0, -1.0])
-    mean = {b: v / len(files) for b, v in total.items()}
-    out = {}
-    for b, v in mean.items():
-        if b.startswith("left"):
-            v = (v + mean["right" + b[4:]] * np.array([-1.0, 1.0, 1.0])) / 2
-            out[b], out["right" + b[4:]] = v, v * np.array([-1.0, 1.0, 1.0])
-        elif not b.startswith("right") and b != "hips":
-            out[b] = v * np.array([0.0, 1.0, 1.0])
-    return out, len(files)
-
-
-HH = 1.0                 # the library skeleton's hips height (m): what a hips height is in the clip's own lengths (set in main)
-
-
 # ---------------------------------------------------------------- one frame of the climb
-
-def hermite(p0, p1, m0, m1, s):
-    return (2 * s ** 3 - 3 * s * s + 1) * p0 + (s ** 3 - 2 * s * s + s) * m0 + (-2 * s ** 3 + 3 * s * s) * p1 + (s ** 3 - s * s) * m1
-
 
 def contact(limb, ph):
     """Where a hand (its wrist) or a foot (its ankle) is at phase ph of the cycle, in hips heights from her root:
@@ -264,19 +86,6 @@ def contact(limb, ph):
     y = hermite(top - STRIDE * stance, top, -STRIDE * (1 - stance) * (0.8 if hand else 0.2), 0.0, s)
     out = math.sin(math.pi * s)
     return np.array([side * (x + SWING_WIDE * out), y, WALL - off - lift * out ** 1.2]), s
-
-
-def two_bone(root, target, a, b, pole):
-    """The joint between root and target (a and b the two bones' lengths), bent toward pole (a direction), and the
-    axis it bends about."""
-    d_vec = target - root
-    d = float(np.linalg.norm(d_vec))
-    d = min(max(d, abs(a - b) + 1e-4), a + b - 1e-4)
-    u = unit(d_vec)
-    cos_a = (a * a + d * d - b * b) / (2 * a * d)
-    sin_a = math.sqrt(max(0.0, 1 - cos_a * cos_a))
-    v = unit(pole - u * np.dot(pole, u))
-    return root + u * a * cos_a + v * a * sin_a, unit(np.cross(v, u))
 
 
 def pose(sk, ph):
@@ -357,96 +166,23 @@ def pose(sk, ph):
     return D, P["hips"], report, loose
 
 
-def locals_of(sk, D, loose):
-    out = {}
-    for b in sk.node:
-        if b in D:
-            p = sk.parent.get(b)
-            out[b] = quat_of((D[p].T @ D[b]) if p else D[b])
-        else:
-            rest = sk.first.get(b, np.eye(3))                # the template's relaxed curl
-            side = "left" if b.startswith("left") else "right" if b.startswith("right") else None
-            finger = side and any(f in b for f in ("Thumb", "Index", "Middle", "Ring", "Little"))
-            # a hand that holds lies open on the wall; off it, its fingers curl as they hang (a thumb always half way)
-            out[b] = quat_of(slerp_m(np.eye(3), rest, 0.5 if "Thumb" in b else loose[side])) if finger else quat_of(rest)
-    return out
-
-
-# ---------------------------------------------------------------- writing the .vrma
-
-def write_vrma(path, sk, times, rot, hips):
-    blobs, views, accessors = [], [], []
-
-    def add(arr, kind, minmax=False):
-        data = np.ascontiguousarray(arr, dtype="<f4").tobytes()
-        views.append({"buffer": 0, "byteOffset": sum(len(b) for b in blobs), "byteLength": len(data)})
-        blobs.append(data)
-        acc = {"bufferView": len(views) - 1, "componentType": 5126, "count": int(arr.shape[0]), "type": kind}
-        if minmax:
-            acc["min"] = [float(v) for v in arr.min(axis=0)]
-            acc["max"] = [float(v) for v in arr.max(axis=0)]
-        accessors.append(acc)
-        return len(accessors) - 1
-
-    t_acc = add(times[:, None], "SCALAR", True)
-    samplers, channels = [], []
-    for b, i in sk.node.items():
-        samplers.append({"input": t_acc, "output": add(rot[b], "VEC4"), "interpolation": "LINEAR"})
-        channels.append({"sampler": len(samplers) - 1, "target": {"node": i, "path": "rotation"}})
-    samplers.append({"input": t_acc, "output": add(hips, "VEC3"), "interpolation": "LINEAR"})
-    channels.append({"sampler": len(samplers) - 1, "target": {"node": sk.node["hips"], "path": "translation"}})
-    binary = b"".join(blobs)
-    js = {
-        "asset": {"version": "2.0", "generator": "make-climb-anim.py (liora-farm; on the skeleton of Quaternius' UAL, CC0)"},
-        "extensionsUsed": ["VRMC_vrm_animation"],
-        "extensions": sk.js["extensions"],
-        "scene": 0, "scenes": sk.js["scenes"], "nodes": sk.js["nodes"],
-        "animations": [{"name": OUT_NAME, "samplers": samplers, "channels": channels}],
-        "accessors": accessors, "bufferViews": views, "buffers": [{"byteLength": len(binary)}],
-    }
-    jb = json.dumps(js, separators=(",", ":")).encode()
-    jb += b" " * ((4 - len(jb) % 4) % 4)
-    binary += b"\x00" * ((4 - len(binary) % 4) % 4)
-    with open(path, "wb") as f:
-        f.write(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(jb) + 8 + len(binary)))
-        f.write(struct.pack("<I4s", len(jb), b"JSON")); f.write(jb)
-        f.write(struct.pack("<I4s", len(binary), b"BIN\x00")); f.write(binary)
+HH = 1.0                 # the library skeleton's hips height (m): what a hips height is in the clip's own lengths (set in main)
 
 
 def main():
     global HH
-    sk = Skeleton(TEMPLATE)
-    HH = float(sk.offset["hips"][1])
-    props, count = playable_proportions(sk)
-    for b, v in props.items():                               # the limbs are solved on the playable characters' proportions
-        sk.offset[b] = v * HH
+    sk, HH, count = fitted_skeleton()                        # the limbs are solved on the playable characters' proportions
     n = int(round(PERIOD * FPS)) + 1
     times = np.linspace(0.0, PERIOD, n)
     rot = {b: [] for b in sk.node}
     hips, worst = [], {}
     for t in times:
         D, hp, report, loose = pose(sk, (t / PERIOD) % 1.0)
-        for b, q in locals_of(sk, D, loose).items():
-            if rot[b] and np.dot(rot[b][-1], q) < 0:
-                q = -q                                       # (no sign flips between frames: the turn between them stays short)
-            rot[b].append(q)
+        add_frame(sk, rot, D, loose)
         hips.append(hp)
         for k, v in report.items():
             worst[k] = (min if "from the wall" in k else max)(worst.get(k, v), v)
-    rot = {b: np.array(v) for b, v in rot.items()}
-    for b in rot:                                            # the last frame is the first again: a seamless loop
-        if np.dot(rot[b][-1], rot[b][0]) < 0:
-            rot[b][-1] = -rot[b][-1]
-    out = os.path.join(LIB, f"{OUT_NAME}.vrma")
-    write_vrma(out, sk, times, rot, np.array(hips))
-    idx_path = os.path.join(LIB, "index.json")
-    idx = json.load(open(idx_path, encoding="utf-8"))
-    idx["clips"] = [c for c in idx["clips"] if c["name"] != OUT_NAME]
-    idx["clips"].append({"name": OUT_NAME, "file": f"{OUT_NAME}.vrma", "source": "liora-farm", "duration": round(PERIOD, 4),
-                         "frames": n, "loop": True})
-    idx["clips"].sort(key=lambda c: c["name"])
-    with open(idx_path, "w", encoding="utf-8") as f:
-        json.dump(idx, f, indent=2)
+    out = write_clip(OUT_NAME, sk, times, rot, hips, True, "make-climb-anim.py (liora-farm; on the skeleton of Quaternius' UAL, CC0)")
     cm = 96.2                                                # a hips height on a 1.75 m character, cm
     print(f"wrote {out} ({os.path.getsize(out) // 1024} KB, {n} frames), fitted to the mean of {count} playable characters")
     print(f"  climbs {SPEED:.2f} hips heights a second ({SPEED * cm / 100:.2f} m/s at 1.75 m): {STRIDE * cm:.0f} cm a cycle, "
