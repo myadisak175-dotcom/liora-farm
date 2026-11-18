@@ -11,7 +11,8 @@
                                                             the boss's foot. lift: metres the ground's light is laid over
                                                             the ground (over the grass's tips)
      scene.add(fx.object)
-     moves.onEvent = e => fx.event(e)          it starts at the thicket's 'warn' (its shape: where and how wide), and
+     moves.onEvent = e => fx.event(e)          it starts at the thicket's 'warn' (its shape: where and how wide; the ultimate's
+                                               thicket too), and
                                                follows 'cancel' (all of it goes, quickly)
      every frame: fx.update(dt, camera)        (the same dt the moves get, so it keeps time with them, slowed or not)
      fx.shake                                  0..1: how hard the ground jolts now (the camera's to shake, if it likes)
@@ -952,7 +953,7 @@ export function createThicketFx({ heightAt = null, seed = 1, lift = 0.08, vines:
   function once(key, when, fn) { if (T >= when && !fired[key]) { fired[key] = true; fn(); } }
   function setSun(v) { sun.copy(v).normalize(); V.material.uniforms.uSun.value.copy(sun); }
   function event(e) {
-    if (e.move !== 'thicket') return;
+    if (e.move !== 'thicket' && !(e.move === 'ultimate' && e.drop === undefined)) return;      // (the ultimate has the thicket in it; its drops of rain are not the thicket's)
     if (e.type === 'warn' && e.shape) {
       origin.set(e.shape.x, e.shape.y, e.shape.z);
       R = e.shape.radius; K = R / M.radius;

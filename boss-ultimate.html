@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7fb4e6">
+<title>บอสต้นไม้ — ท่าไม้ตาย พงหนาม + ฝนพิษ</title>
+<!--
+  boss-ultimate.html  —  the plant boss's ultimate (plant-boss-moves.js: play('ultimate')) and all it draws, in a meadow,
+  to play: it spits the poison up into the sky (the gathering's light: howl-fx.js, without its breath; the rain:
+  poison-rain-fx.js), then the thicket, as it is on its own (thicket-fx.js: the bud, the ring, the vines, the green burst),
+  while the rain falls all over the field. Vivi stands far off, as she would casting: the rain comes after her there, and
+  its pools slow her and turn her green. Close in, the thicket's vines strike whoever is in its ring, unless she is behind
+  a barrier (here a stand-in, a dome of water, until hers is made). Move her with the stick (or the arrow keys), the
+  barrier with its button (or the space bar); or let her do both by herself. One job: try the move. Nothing here goes into
+  the game.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb4e6; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; }
+  #name { position: fixed; left: 0; right: 0; top: calc(10px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 17px system-ui; color: #fff; text-shadow: 0 1px 6px #0008; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(58px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #fff; text-shadow: 0 1px 6px #000a; }
+  #sick { position: fixed; left: 50%; top: calc(86px + env(safe-area-inset-top)); transform: translateX(-50%); pointer-events: none;
+    padding: 5px 12px; border-radius: 999px; background: #2c5a14e0; border: 1px solid #c8ff5a; color: #eaffc8; font: 800 13px system-ui;
+    opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
+  #say { position: fixed; left: 0; right: 0; top: 38%; text-align: center; pointer-events: none; font: 900 26px system-ui; color: #fff;
+    text-shadow: 0 2px 10px #000c; opacity: 0; transform: scale(0.8); transition: opacity 0.15s, transform 0.15s; }
+  #say.on { opacity: 1; transform: scale(1); }
+  #score { position: fixed; right: calc(12px + env(safe-area-inset-right)); top: calc(116px + env(safe-area-inset-top)); pointer-events: none;
+    font: 700 12px system-ui; color: #fff; text-shadow: 0 1px 4px #000a; text-align: right; line-height: 1.5; }
+  #ui { position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 8px; pointer-events: none; }
+  #ui > * { pointer-events: auto; }
+  .track { position: relative; width: min(86vw, 420px); height: 8px; border-radius: 99px; background: #3b3147b0; border: 1px solid #ffffff90; overflow: hidden; }
+  .track i { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffffffa0; }
+  .track b { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #6fd23a, #ff9a5c); }
+  .bar { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 9px 13px; background: #3b3147d9; color: #fff; font: 700 13px system-ui; touch-action: manipulation; }
+  .bar button.on { background: #8a6a3a; }
+  .bar button.go { background: #b4462c; }
+  #stick { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: calc(132px + env(safe-area-inset-bottom)); width: 116px; height: 116px; border-radius: 50%;
+    background: #ffffff22; border: 2px solid #ffffff88; touch-action: none; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: #ffffffcc; box-shadow: 0 2px 8px #0005; pointer-events: none; }
+  #shield { position: fixed; right: calc(18px + env(safe-area-inset-right)); bottom: calc(140px + env(safe-area-inset-bottom)); width: 92px; height: 92px; border-radius: 50%;
+    border: 3px solid #e6f8ff; background: radial-gradient(circle at 40% 35%, #8fe0ff, #2a7fc0); color: #fff; font: 900 15px system-ui; text-shadow: 0 1px 3px #0008;
+    box-shadow: 0 3px 12px #0006; touch-action: none; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+  #shield span { font-size: 30px; }
+  #shield.wait { filter: grayscale(0.85) brightness(0.7); }
+  #shield.ping { animation: ping 0.5s ease-in-out infinite alternate; }
+  @keyframes ping { from { box-shadow: 0 0 0 0 #ffb06aaa, 0 3px 12px #0006; } to { box-shadow: 0 0 0 12px #ffb06a00, 0 3px 12px #0006; } }
+  @media (max-height: 520px) {                       /* a phone on its side: the buttons in one row, the title shorter */
+    #name small { display: none; }
+    #beat { top: calc(34px + env(safe-area-inset-top)); }
+    #sick { top: calc(58px + env(safe-area-inset-top)); }
+    #ui { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; }
+    .track { width: min(26vw, 260px); }
+    #stick { bottom: calc(64px + env(safe-area-inset-bottom)); }
+    #shield { bottom: calc(70px + env(safe-area-inset-bottom)); }
+    #score { top: calc(10px + env(safe-area-inset-top)); }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="name">บอสต้นไม้ · ท่าไม้ตาย<small>พ่นพิษขึ้นฟ้า → พงหนาม + ฝนพิษตกทั่วแมพ ไล่ตามวีวี่</small></div>
+<div id="beat"></div>
+<div id="sick">☠️ เหยียบพิษ — เดินช้าลง</div>
+<div id="say"></div>
+<div id="score"></div>
+<div id="stick"><div id="knob"></div></div>
+<button id="shield"><span>🛡️</span>บาเรีย</button>
+<div id="ui">
+  <div class="track" id="track"><b id="fill"></b></div>
+  <div class="bar">
+    <button id="play" class="go">▶ ปล่อยท่า</button>
+    <button id="loop" class="on">🔁 เล่นวน</button>
+    <button id="auto" class="on">🤖 เล่นเอง</button>
+  </div>
+  <div class="bar">
+    <button data-speed="1" class="on">×1</button>
+    <button data-speed="0.5">×½</button>
+    <button data-speed="0.25">×¼</button>
+    <button id="cam">🧍 มุมวีวี่</button>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { createPlantBoss, setPlantBossSun } from './plant-boss.js';
+import { createBossMoves, BOSS_MOVES } from './plant-boss-moves.js';
+import { createBossTurn } from './plant-boss-turn.js';
+import { HOWL } from './plant-boss-talk.js';
+import { createHowlFx } from './howl-fx.js';
+import { createPoisonRainFx, poolStrength, SKY } from './poison-rain-fx.js';
+import { createThicketFx } from './thicket-fx.js';
+
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass, wide enough for the whole field the rain falls on
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 55, far: 170, max: 0.65 });
+const ground = N.createGround({ radius: 130, flat: 36, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 130, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+scene.add(G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 34, far: FAR }));
+
+// ---- the boss: how it fights, turning on its roots to her; the light of its gathering (the howl's, without the
+// breath at her); its poison rain; its thicket
+const boss = createPlantBoss({ seed: 1, clip: true });
+boss.position.set(0, H(0, 0) - 0.05, 0);
+scene.add(boss);
+const moves = createBossMoves(boss, { snaps: true }), turn = createBossTurn(boss);
+const howl = createHowlFx({ seed: 1, breath: false });
+const rain = createPoisonRainFx({ heightAt: H, seed: 3, lift: 0.3 });
+const thicket = createThicketFx({ heightAt: H, seed: 2, lift: 0.3 });
+scene.add(howl.object, rain.object, thicket.object);
+const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
+setPlantBossSun(sun); howl.setSun(sun); rain.setSun(sun); thicket.setSun(sun);
+const B = BOSS_MOVES.ultimate, TK = BOSS_MOVES.thicket;
+
+// ---- her: far off, as she would stand casting; the stick moves her (or she does by herself)
+const HOME = 15;
+const her = new THREE.Vector3(0, 0, HOME);
+her.y = H(her.x, her.z);
+let vivi = null, mark = null, facing = Math.PI, moving = '', arc = 0, arcWay = 1, arcTurn = 3;
+(async () => {
+  try {
+    const [{ loadCharacter }, { VIVI_GLB }, { CHARACTER_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./character-anim.js')]);
+    vivi = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);
+    if (vivi.setSize) vivi.setSize(1.75 / vivi.baseHeight);
+    vivi.play('idle');
+    scene.add(vivi.object);
+  } catch (err) {
+    // (no Vivi here: a pole as tall as she is, on a ring where she stands)
+    console.warn('Vivi not loaded', err);
+    mark = new THREE.Group();
+    const pale = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.75, 10), pale); pole.position.y = 0.875 + 0.3;
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), pale); top.position.y = 1.75 + 0.3;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), pale); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.32;
+    mark.add(pole, top, ring);
+    scene.add(mark);
+  }
+})();
+
+// ---- the barrier, a stand-in until hers is made: a dome of water round her for BARRIER.lasts seconds, then a short
+// wait before it can be raised again. The thicket's vines bursting up under her while it stands are held off; raised
+// only just before (BARRIER.sharp), it is a perfect block
+const BARRIER = { lasts: 1.0, wait: 0.7, sharp: 0.35, radius: 1.35 };
+const domeMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, premultipliedAlpha: true,
+  uniforms: { uA: { value: 0 }, uHit: { value: 0 }, uTime: { value: 0 }, uC: { value: new THREE.Color('#6fd0ff') }, uRim: { value: new THREE.Color('#effbff') } },
+  vertexShader: /* glsl */`
+    varying vec3 vN, vV, vP;
+    void main() {
+      vP = position; vec4 w = modelMatrix * vec4(position, 1.0);
+      vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz);
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }`,
+  fragmentShader: /* glsl */`
+    uniform float uA, uHit, uTime;
+    uniform vec3 uC, uRim;
+    varying vec3 vN, vV, vP;
+    void main() {
+      float f = pow(1.0 - abs(dot(normalize(vN), vV)), 2.0);
+      float ripple = 0.5 + 0.5 * sin(vP.y * 13.0 - uTime * 7.0 + sin(vP.x * 9.0 + uTime * 3.0) * 1.5);
+      float a = ((0.1 + 0.62 * f) + 0.16 * ripple * f) * uA + uHit * (0.3 + 0.6 * f);
+      vec3 c = mix(uC, uRim, clamp(f * 1.2 + ripple * 0.15, 0.0, 1.0)) + uHit * 0.6;
+      gl_FragColor = vec4(c * a, a);
+    }`,
+});
+const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 24), domeMat);
+dome.renderOrder = 9; dome.visible = false;
+scene.add(dome);
+let shieldT = 99, shieldHit = 0;                 // seconds since it was raised; how lit up it is from a blow
+const shieldUp = () => shieldT < BARRIER.lasts;
+const shieldReady = () => shieldT >= BARRIER.lasts + BARRIER.wait;
+function raise() { if (shieldReady()) shieldT = 0; }
+
+// the pools lying now, the warnings of the drops, the thicket's ring (all from the moves' events)
+const pools = [], warns = new Map();
+let ring = null;                                      // { x, z, r, hitAt (the page's clock) }
+let clockT = 0, sick = 0;
+function poisonAt(p) {
+  let k = 0;
+  for (const q of pools) {
+    const d = Math.hypot(p.x - q.x, p.z - q.z);
+    k = Math.max(k, poolStrength(clockT - q.born, q.lasts) * (1 - THREE.MathUtils.smoothstep(d, q.r * 0.65, q.r * 0.95)));
+  }
+  return k;
+}
+// how bad a spot is to stand on, for her playing by herself: a drop's warning there (worse in its middle), a pool, too
+// near it or too far off
+function dangerAt(x, z) {
+  let k = 0;
+  for (const w of warns.values()) { const d = Math.hypot(x - w.x, z - w.z); if (d < w.r + 0.9) k += 1 + 3 * (1 - d / (w.r + 0.9)); }
+  for (const q of pools) { const st = poolStrength(clockT - q.born, q.lasts), d = Math.hypot(x - q.x, z - q.z); if (st > 0.1 && d < q.r * 1.05) k += 2 * st; }
+  const far = Math.hypot(x, z);
+  return k + Math.max(0, 8 - far) + Math.max(0, far - 21);
+}
+
+// ---- the stick (and the arrow keys / WASD), the barrier's button (and the space bar)
+const stick = new THREE.Vector2(), keys = new Set();
+{
+  const el = document.getElementById('stick'), knob = document.getElementById('knob');
+  let id = null;
+  const at = e => {
+    const r = el.getBoundingClientRect(), R = r.width / 2;
+    let x = (e.clientX - r.left - R) / (R * 0.8), y = -(e.clientY - r.top - R) / (R * 0.8);
+    const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+    stick.set(x, y); knob.style.transform = `translate(${x * R * 0.8}px, ${-y * R * 0.8}px)`;
+  };
+  el.addEventListener('pointerdown', e => { id = e.pointerId; el.setPointerCapture(id); at(e); setAuto(false); e.preventDefault(); });
+  el.addEventListener('pointermove', e => { if (e.pointerId === id) at(e); });
+  const up = e => { if (e.pointerId !== id) return; id = null; stick.set(0, 0); knob.style.transform = ''; };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  document.getElementById('shield').addEventListener('pointerdown', e => { e.preventDefault(); setAuto(false); raise(); });
+}
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); setAuto(false); raise(); return; }
+  keys.add(k); if (/^(arrow|[wasd]$)/.test(k)) setAuto(false);
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+function keyStick() {
+  const x = (keys.has('arrowright') || keys.has('d') ? 1 : 0) - (keys.has('arrowleft') || keys.has('a') ? 1 : 0);
+  const y = (keys.has('arrowup') || keys.has('w') ? 1 : 0) - (keys.has('arrowdown') || keys.has('s') ? 1 : 0);
+  const l = Math.hypot(x, y) || 1;
+  return new THREE.Vector2(x / l, y / l);
+}
+
+// ---- the camera: behind her (the rain comes after her), or as in the clip (in front of it, the whole of it and the sky)
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 700);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.52; controls.minDistance = 4; controls.maxDistance = 120; controls.enablePan = false;
+let view = 'her';
+const SKY_TOP = new THREE.Vector3(0, SKY + 1.5, 0), HER_L = new THREE.Vector3(-6.4, 0.2, HOME - 1.4), HER_R = new THREE.Vector3(6.4, 0.2, HOME - 1.4), WHIRL_SIDE = new THREE.Vector3(6.5, SKY, 0);
+function frame() {
+  controls.enabled = view === 'clip';
+  camera.fov = view === 'clip' ? 50 : 60; camera.updateProjectionMatrix();
+  if (view !== 'clip') return;
+  // in front of it, low, as near as it can be while her ground (just over the buttons), the plant and the whirl in the
+  // sky all fit in the picture: found by trying, whenever the screen's shape changes
+  const under = (innerHeight - document.getElementById('ui').getBoundingClientRect().top + 10) / innerHeight, over = (document.getElementById('beat').getBoundingClientRect().top + 22) / innerHeight;
+  const low = -1 + 2 * under, high = 1 - 2 * over, p = new THREE.Vector3();
+  const at = v => p.copy(v).project(camera);
+  let best = null;
+  for (let d = 18; d <= 90 && !best; d += 1) for (let ty = 0; ty <= 12 && !best; ty += 0.5) {
+    camera.position.set(0, 4 + d * 0.12, d); camera.lookAt(0, ty, 3); camera.updateMatrixWorld();
+    if (at(HER_L).y < low || Math.abs(p.x) > 0.92 || at(HER_R).y < low || Math.abs(p.x) > 0.92) continue;
+    if (at(SKY_TOP).y > high || Math.abs(at(WHIRL_SIDE).x) > 0.98) continue;
+    best = [d, ty];
+  }
+  const [d, ty] = best || [50, 6];
+  camera.position.set(0, 4 + d * 0.12, d);
+  controls.target.set(0, ty, 3);
+  controls.update();
+}
+const behind = new THREE.Vector3(), look = new THREE.Vector3(), lookAt = new THREE.Vector3(0, 4, 0);
+function follow(dt, snap = false) {
+  // behind her, away from the boss, high enough to see the ground round her and the plant beyond
+  const away = behind.set(her.x - boss.position.x, 0, her.z - boss.position.z);
+  if (away.lengthSq() < 1e-4) away.set(0, 0, 1);
+  away.normalize();
+  const want = look.set(her.x + away.x * 9.5, her.y + 6.5, her.z + away.z * 9.5);
+  const k = snap ? 1 : 1 - Math.exp(-dt * 4);
+  camera.position.lerp(want, k);
+  lookAt.lerp(new THREE.Vector3(her.x - away.x * 5, her.y + 2.4, her.z - away.z * 5), k);
+  camera.lookAt(lookAt);
+}
+frame(); follow(0, true);
+
+// ---- what is happening, shown over it
+const at0 = B.thicket;
+const BEATS = [[0, 'สะดุ้ง หันมาหาวีวี่'], [B.gather, 'รวมพลัง'], [B.beam, 'แสงพุ่งขึ้นฟ้า วังวนพิษก่อตัว'], [B.volley[0], 'พ่นพิษขึ้นฟ้ารัวๆ'],
+  [at0, 'ฟ่อขู่ หุบเข้าดอกตูม'], [B.rain[0] + B.lead, 'ฝนพิษตกทั่วแมพ — หลบวงเขียว!'], [at0 + TK.warn + 0.4, 'วงพงหนามกางออก — อยู่ในวงต้องกางบาเรีย!'],
+  [at0 + TK.hit, 'หนามพุ่ง!'], [at0 + TK.sink, 'หนามมุดกลับ · ฝนยังตก'], [at0 + TK.burst, 'ระเบิดเขียว · ดอกบาน']];
+const track = document.getElementById('track');
+for (const [t] of BEATS.slice(1)) { const i = document.createElement('i'); i.style.left = (t / B.length * 100) + '%'; track.appendChild(i); }
+const beatEl = document.getElementById('beat'), fillEl = document.getElementById('fill'), sickEl = document.getElementById('sick');
+const sayEl = document.getElementById('say'), scoreEl = document.getElementById('score'), shieldEl = document.getElementById('shield');
+let sayT = 0;
+function say(text, color = '#fff') { sayEl.textContent = text; sayEl.style.color = color; sayEl.classList.add('on'); sayT = 1.1; }
+const score = { perfect: 0, blocked: 0, struck: 0, drops: 0 };
+function showScore() { scoreEl.innerHTML = `☠️ โดนลูกพิษ ${score.drops} · 💥 โดนหนาม ${score.struck}<br>🛡️ กัน ${score.blocked} · ✨ เป๊ะ ${score.perfect}`; }
+showScore();
+
+let loop = true, speed = 1, wait = 1.5, auto = true;
+moves.onEvent = e => {
+  rain.event(e); thicket.event(e);
+  if (e.move !== 'ultimate') return;
+  if (e.drop !== undefined) {
+    if (e.type === 'warn') warns.set(e.drop, { x: e.shape.x, z: e.shape.z, r: e.shape.radius });
+    if (e.type === 'hit') {
+      warns.delete(e.drop);
+      if (e.pool) pools.push({ x: e.shape.x, z: e.shape.z, r: e.pool.radius, born: clockT, lasts: e.pool.lasts });
+      if (Math.hypot(her.x - e.shape.x, her.z - e.shape.z) < e.shape.radius) { score.drops++; showScore(); say('☠️ โดนลูกพิษ!', '#d6ff7a'); }
+    }
+  } else if (e.type === 'warn' && e.shape) ring = { x: e.shape.x, z: e.shape.z, r: e.shape.radius, hitAt: clockT + e.lead };
+  else if (e.type === 'hit' && e.shape) thorns(e.shape);
+  if (e.type === 'cancel') { warns.clear(); ring = null; }
+  if (e.type === 'end') { wait = 3; ring = null; }
+};
+const play = () => { if (moves.state === 'idle') moves.play('ultimate'); };
+const btn = id => document.getElementById(id);
+function setAuto(on) { auto = on; btn('auto').classList.toggle('on', on); }
+btn('play').onclick = () => { wait = -1; play(); };
+btn('loop').onclick = () => { loop = !loop; btn('loop').classList.toggle('on', loop); };
+btn('auto').onclick = () => setAuto(!auto);
+for (const b of document.querySelectorAll('[data-speed]')) b.onclick = () => {
+  speed = +b.dataset.speed;
+  for (const o of document.querySelectorAll('[data-speed]')) o.classList.toggle('on', o === b);
+};
+btn('cam').onclick = () => { view = view === 'clip' ? 'her' : 'clip'; btn('cam').textContent = view === 'clip' ? '🎬 มุมคลิป' : '🧍 มุมวีวี่'; if (view === 'her') follow(0, true); frame(); };
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); frame(); });
+
+// ---- the thicket's vines bursting up: if she is in its ring, held off by the barrier (perfect if raised only just
+// before), or she is struck: thrown out of it, down for a moment
+let knock = null;                                    // { x, z (the way she is thrown), t }
+function thorns(shape) {
+  const d = Math.hypot(her.x - shape.x, her.z - shape.z);
+  if (d > shape.radius) return;
+  if (shieldUp()) {
+    if (shieldT <= BARRIER.sharp) { score.perfect++; say('✨ จังหวะเป๊ะ!', '#bff4ff'); } else { score.blocked++; say('🛡️ กันได้!', '#e6f8ff'); }
+    shieldHit = 1;
+  } else {
+    score.struck++; say('💥 โดนหนาม!', '#ffb38a');
+    knock = { x: (her.x - shape.x) / (d || 1), z: (her.z - shape.z) / (d || 1), t: 0 };
+    if (vivi) vivi.play('jump_land', 0.08, false);
+  }
+  showScore();
+}
+
+// ---- every frame
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), go = new THREE.Vector3(), aim = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+let spot = null;
+function walk(dt) {
+  const runSpeed = vivi ? vivi.speeds.run : 4.6, walkSpeed = vivi ? vivi.speeds.walk : 1.6;
+  const pace = Math.max(walkSpeed * 1.4, runSpeed * (1 - 0.55 * Math.min(1, sick * 1.3)));      // (poisoned: she can only trudge)
+  let gone = 0, down = false;
+  if (knock) {
+    // thrown back, then down for a moment: she cannot move
+    knock.t += dt;
+    const push = Math.max(0, 1 - knock.t / 0.35) * 6.5 * dt;
+    her.x += knock.x * push; her.z += knock.z * push;
+    down = true;
+    if (knock.t > 0.95) knock = null;
+  } else if (auto) {
+    // by herself: where she would like to be goes to and fro along an arc in front of it, far off; she picks the safest
+    // spot near her on the way there, clear of the drops' warnings and the pools, and runs to it
+    if ((arcTurn -= dt) <= 0 || Math.abs(arc) > 0.45) { arcWay = Math.abs(arc) > 0.45 ? -Math.sign(arc) : -arcWay; arcTurn = 1.6 + Math.random() * 2.6; }
+    arc += arcWay * 0.3 * dt;
+    const gx = Math.sin(arc) * HOME, gz = Math.cos(arc) * HOME;
+    const badness = (x, z) => dangerAt(x, z) + 0.1 * Math.hypot(x - gx, z - gz);
+    let bx = her.x, bz = her.z, best = badness(bx, bz);
+    for (let i = 0; i < 12; i++) for (const r of [1.5, 3]) {
+      const a = i / 12 * Math.PI * 2, x = her.x + Math.sin(a) * r, z = her.z + Math.cos(a) * r, v = badness(x, z) + 0.04 * r;
+      if (v < best) { best = v; bx = x; bz = z; }
+    }
+    if (spot && badness(spot.x, spot.z) <= best + 0.25) { bx = spot.x; bz = spot.z; } else spot = { x: bx, z: bz };
+    aim.set(bx - her.x, 0, bz - her.z);
+    if (aim.length() > 0.3) { go.copy(aim).setLength(Math.min(aim.length(), pace * dt)); her.add(go); gone = go.length(); }
+    else spot = null;
+    // ...and, if she is in the thicket's ring, raises the barrier just before the vines burst up
+    if (ring && Math.hypot(her.x - ring.x, her.z - ring.z) < ring.r + 0.5 && ring.hitAt - clockT < 0.2 && ring.hitAt - clockT > -0.1) raise();
+  } else {
+    const s = stick.lengthSq() > 0.001 ? stick : keyStick();
+    if (s.lengthSq() > 0.001) {
+      camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+      right.crossVectors(fwd, UP).normalize();
+      go.copy(right).multiplyScalar(s.x).addScaledVector(fwd, s.y);
+      const m = Math.min(1, go.length());
+      go.normalize().multiplyScalar(pace * m * dt);
+      her.add(go); gone = go.length();
+    }
+  }
+  // not into it, not off the meadow
+  const d = Math.hypot(her.x, her.z);
+  if (d < 3.4) { her.x *= 3.4 / d; her.z *= 3.4 / d; }
+  if (d > 30) { her.x *= 30 / d; her.z *= 30 / d; }
+  her.y = H(her.x, her.z);
+  if (gone > 1e-4) facing = Math.atan2(go.x, go.z);
+  else if (!knock) facing = Math.atan2(-her.x, -her.z);                     // (standing, she faces it: she is casting at it)
+  const sp = gone / Math.max(dt, 1e-4), state = down ? 'down' : sp < 0.3 ? 'idle' : (sick > 0.35 ? 'walk' : 'run');
+  const who = vivi ? vivi.object : mark;
+  if (who) {
+    who.position.copy(her);
+    let a = facing - who.rotation.y; a = Math.atan2(Math.sin(a), Math.cos(a));
+    who.rotation.y += a * Math.min(1, dt * 12);
+  }
+  if (vivi) {
+    if (state !== moving && state !== 'down') vivi.play(state);
+    if (state !== 'down') vivi.setRate(state === 'walk' ? Math.min(1.6, sp / walkSpeed) : state === 'run' ? Math.max(0.6, sp / runSpeed) : 1);
+    // poisoned: washed green; struck: a flash of hot orange
+    const hurt = knock ? Math.max(0, 1 - knock.t / 0.5) : 0;
+    if (hurt > 0) vivi.tint.set(1.0, 0.55, 0.3, 0.55 * hurt);
+    else vivi.tint.set(0.42, 1.0, 0.18, Math.min(0.5, sick * 0.5) * (0.8 + 0.2 * Math.sin(clockT * 7)));
+  }
+  moving = state;
+}
+function step(dt) {
+  clockT += dt;
+  if (moves.state === 'idle' && wait >= 0) { wait -= dt; if (wait < 0 && (loop || !step.started)) { step.started = true; play(); } }
+  for (let i = pools.length - 1; i >= 0; i--) if (clockT - pools[i].born > pools[i].lasts) pools.splice(i, 1);
+  const k = poisonAt(her);
+  sick += (k - sick) * Math.min(1, dt * (k > sick ? 8 : 1.1));
+  shieldT += dt;
+  walk(dt);
+  // the barrier: it springs up round her, stands, and goes; lit up when a wave breaks on it
+  shieldHit = Math.max(0, shieldHit - dt * 3);
+  const up = shieldUp(), pop = Math.min(1, shieldT / 0.12), out = THREE.MathUtils.smoothstep(shieldT, BARRIER.lasts - 0.15, BARRIER.lasts);
+  dome.visible = up || shieldHit > 0.02;
+  dome.position.set(her.x, her.y + 0.95, her.z);
+  dome.scale.setScalar(BARRIER.radius * (0.6 + 0.4 * (1 + 2.2 * Math.pow(pop - 1, 3) + 1.2 * Math.pow(pop - 1, 2))) * (1 + 0.06 * shieldHit));
+  domeMat.uniforms.uA.value = up ? 1 - out : 0;
+  domeMat.uniforms.uHit.value = shieldHit;
+  domeMat.uniforms.uTime.value += dt;
+  shieldEl.classList.toggle('wait', !shieldReady());
+  shieldEl.classList.toggle('ping', !!ring && clockT < ring.hitAt + 0.3 && Math.hypot(her.x - ring.x, her.z - ring.z) < ring.r + 1);
+  N.update(dt);
+  turn.update(dt, her, true);
+  moves.update(dt, her);
+  const t = moves.state === 'ultimate' ? moves.time : -1;
+  howl.update(dt, camera, boss, t >= 0 && t < HOWL.length ? t : -1, her);
+  rain.afflict(her, sick);
+  rain.update(dt, camera, boss, t, 'ultimate');
+  thicket.update(dt, camera);
+  if (vivi) vivi.update(dt);
+  if (view === 'her') follow(dt);
+  let label = '';
+  if (t >= 0) for (const [bt, s] of BEATS) if (t >= bt) label = s;
+  beatEl.textContent = label;
+  fillEl.style.width = (t >= 0 ? t / B.length * 100 : 0) + '%';
+  sickEl.style.opacity = sick > 0.2 ? 1 : 0;
+  if (sayT > 0 && (sayT -= dt) <= 0) sayEl.classList.remove('on');
+}
+const shakeOff = new THREE.Vector3();
+let shakeT = 0;
+function draw(dt) {
+  if (view === 'clip') controls.update();
+  shakeT += dt;
+  const k = Math.max(howl.shake * 0.16, rain.shake * 0.22, thicket.shake * 0.22);
+  shakeOff.set(Math.sin(shakeT * 71) * k, Math.sin(shakeT * 83 + 1) * k * 0.7, Math.sin(shakeT * 67 + 2) * k * 0.5);
+  camera.position.add(shakeOff);
+  renderer.render(scene, camera);
+  camera.position.sub(shakeOff);
+}
+const clock = new THREE.Clock();
+let manual = false;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (manual) return;
+  step(dt * speed); draw(dt * speed);
+});
+// for tests: run it by hand, a fixed step at a time
+window.__scene = {
+  scene, camera, controls, boss, moves, rain, thicket, howl, her, pools, score,
+  get sick() { return sick; },
+  manual(on) { manual = on; },
+  run(seconds, fps = 30) { const n = Math.round(seconds * fps); for (let i = 0; i < n; i++) step(1 / fps); draw(1 / fps); },
+  view(v) { view = v; if (v === 'her') follow(0, true); frame(); },
+  auto(on) { setAuto(on); },
+  raise,
+  ready: () => !!(vivi || mark),
+};
+</script>
+</body>
+</html>

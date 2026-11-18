@@ -13,10 +13,11 @@
                                                                moves' shapes have it. lift: metres the ground's marks are
                                                                laid over the ground (over the grass's tips)
      scene.add(fx.object)
-     moves.onEvent = e => fx.event(e)          the poison rain's 'spit', 'warn' and 'hit'; 'cancel' (the rain still to come
-                                               goes; pools already down stay)
-     every frame: fx.update(dt, camera, boss, t)   t: seconds into the poison rain (moves.time while moves.state is
-                                               'poison'), or < 0. The same dt the moves get, so it keeps time with them
+     moves.onEvent = e => fx.event(e)          the poison rain's (and the ultimate's) 'spit', and 'warn' and 'hit' of its
+                                               drops; 'cancel' (the rain still to come goes; pools already down stay)
+     every frame: fx.update(dt, camera, boss, t, move)   t: seconds into the move (moves.time while moves.state is move),
+                                               or < 0; move: 'poison' (as it starts) or 'ultimate' (the same rain, at its
+                                               beats). The same dt the moves get, so it keeps time with them
      fx.afflict(at, k)                         she stands in poison: green bubbles and motes rise off her (at: her feet,
                                                world; k 0..1: how strongly, 0: not at all). Every frame, before update
      fx.shake                                  0..1: how hard the ground jolts now (the camera's to shake, if it likes)
@@ -24,7 +25,7 @@
    poolStrength(age, lasts)                    how strongly a pool still lies, seconds after it landed (0 .. 1 .. 0 as it
                                                dries away): what is drawn, and how hard it should slow her
 
-   The times are BOSS_MOVES.poison's; FLIGHT, SKY and WHIRL (below) are this file's own.
+   The times are BOSS_MOVES.poison's (or .ultimate's); FLIGHT, SKY and WHIRL (below) are this file's own.
 
    How it is drawn, the kit's way: flat tones and hard edges for what is solid (the balls, the pools), soft light added
    for what glows.
@@ -42,7 +43,6 @@ import { mulberry32, _internal as natureInternal } from './stylized-nature.js';
 
 const { NOISE } = natureInternal;
 const { SPARK_VS, SPARK_FS, PUFF_VS, HAZE_FS, makePool, col } = _fx;
-const B = BOSS_MOVES.poison;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
@@ -441,7 +441,7 @@ export function createPoisonRainFx({ heightAt = null, seed = 1, lift = 0.08, loo
   // ---- what the moves say
   let swell = 0, gone = 0, jolt = 0, kick = 0;
   function event(e) {
-    if (e.move !== 'poison' && e.type !== 'cancel') return;
+    if (e.move !== 'poison' && e.move !== 'ultimate' && e.type !== 'cancel') return;
     if (e.type === 'spit' && haveBoss) {
       const i = e.head, m = mouthAt[i];
       // the ball, up toward the whirl (a little apart from the others)
@@ -454,11 +454,11 @@ export function createPoisonRainFx({ heightAt = null, seed = 1, lift = 0.08, loo
       for (let k = 0; k < 12; k++) spark(m, tmp.copy(v).normalize().multiplyScalar(6 + Math.random() * 8).add(tmp2.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 5)), 0.06 + Math.random() * 0.05, 0.25 + Math.random() * 0.3, Math.random() < 0.4 ? 1 : 0);
       orb(m, tmp.set(0, 0, 0), 2, 1.1, 0.2);
       kick = Math.max(kick, 0.18);
-    } else if (e.type === 'warn' && e.shape) {
+    } else if (e.type === 'warn' && e.shape && e.drop !== undefined) {
       const s = e.shape, y = groundAt(s.x, s.z, s.y);
       mark(0, s.x, s.y, s.z, s.radius, e.lead, e.drop);
       pending.push({ at: T.value + Math.max(0, e.lead - FLIGHT), dur: Math.min(FLIGHT, e.lead), to: new THREE.Vector3(s.x, y + lift, s.z), drop: e.drop });
-    } else if (e.type === 'hit' && e.shape) {
+    } else if (e.type === 'hit' && e.shape && e.drop !== undefined) {
       const s = e.shape, y = groundAt(s.x, s.z, s.y) + lift, p = at.set(s.x, y, s.z);
       for (let i = balls.length - 1; i >= 0; i--) if (balls[i].drop === e.drop) balls.splice(i, 1);
       unmark(m => m.kind === 0 && m.drop === e.drop);
@@ -496,7 +496,8 @@ export function createPoisonRainFx({ heightAt = null, seed = 1, lift = 0.08, loo
   let last = -1;
   function setSun(v) { sun.copy(v).normalize(); }
 
-  function update(dt, camera, boss, t) {
+  function update(dt, camera, boss, t, move = 'poison') {
+    const B = BOSS_MOVES[move] || BOSS_MOVES.poison;
     T.value += dt;
     const on = t >= 0;
     if (on && (last < 0 || t < last)) { swell = 0; gone = 0; }                     // a new rain
