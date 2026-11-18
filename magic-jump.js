@@ -4,10 +4,14 @@
 
      const air = createMagicJump({ character, circles })
      air.takeOff(me)                 the jump button on the ground: the first jump (a small circle on the ground)
-     air.drop(me)                    she walked off an edge: falling, three jumps left
+     air.drop(me, up)                she left the ground some other way (off an edge, out of a hop: up m/s): falling, three
+                                     jumps left
      air.press(me, stick)            the jump button in the air: the next one, if she has one left (false: none)
+     air.end()                       the flight is over some other way (she took hold of a rock, swims, was put back): no
+                                     landing; her body eases out of it into whatever plays next
      every frame she is in the air (air.active), after she has been moved across the ground:
-       air.step(dt, me, stick, ground)  -> 'landed' on the frame she comes down (her clip is the landing's then)
+       air.step(dt, me, stick, ground, catchable)  -> 'landed' on the frame she comes down (her clip is the landing's then).
+                                     catchable: false where no circle should catch her (coming down into deep water)
      every frame (on the ground too: she eases out of the flight into the landing), after character.update(dt) and once
      she is placed (her object at her feet, turned to her heading):
        air.pose(dt, me)              her whole body in the air: its turns (the flip, the spin, her lean) and her limbs
@@ -15,6 +19,7 @@
                                      long fall would blow her skirt up), hard through the flip and the spin
      air.upside                      0..1: how far she is upside down (her hair and skirt should not hang by their weight then)
      air.tier, air.beat              how many jumps this flight; what she is doing now (for a label)
+     air.vy                          how fast she is going up (m/s; down: below 0)
      air.impact                      0..1, for a moment after she lands: how hard she came down (a page may slow her by it)
 
    me: { pos (her feet, world), vel (her speed over the ground: x, z), heading }, the page's, changed here.
@@ -283,8 +288,14 @@ export function createMagicJump({ character, circles }) {
 
   const air = {
     get active() { return active; }, get tier() { return tier; }, get held() { return held; }, get upside() { return upside; }, get beat() { return beat; },
-    get impact() { return impact; },
-    setCharacter(next) { ch = next; findBones(); },
+    get impact() { return impact; }, get vy() { return vy; },
+    // another character in her place: the one leaving gets back what its clip had (a bone its clip holds still would
+    // otherwise keep this jump's turn for good), the one coming takes the flight on from here
+    setCharacter(next) {
+      if (next === ch) return;
+      for (const m of kept) if (m.bone.quaternion.equals(m.out)) m.bone.quaternion.copy(m.base);
+      ch = next; findBones();
+    },
     takeOff(me) {
       active = true; tier = 1; t = 0; wind = -1; caught = false; fell = 0; queued = null; fromGround = true; over = 1e9;
       vy = speedFor(1); peak = me.pos.y;
@@ -295,10 +306,10 @@ export function createMagicJump({ character, circles }) {
       circles.open(v.set(me.pos.x, me.pos.y + 0.02, me.pos.z), 1, { ground: true, size: size() });
       beat = 'ชั้น 1';
     },
-    // walking off a rock's top: falling, with the first jump as good as used (three are left)
-    drop(me) {
+    // walking off a rock's top (or a little hop off it): falling, with the first jump as good as used (three are left)
+    drop(me, up = 0) {
       active = true; tier = 1; t = 1; wind = -1; caught = false; fell = 0; queued = null; fromGround = false; over = 1e9;
-      vy = 0; peak = me.pos.y;
+      vy = up; peak = me.pos.y;
       x.set(ROWS.ready); xv.fill(0); kickLean = 0;
       ch.play('jump_air', 0.25, false);
       beat = '';
@@ -314,7 +325,11 @@ export function createMagicJump({ character, circles }) {
       if (ch.state !== 'jump_air') { ch.play('jump_air', 0.14, false); ch.setRate(1); }
       return true;
     },
-    step(dt, me, stick, ground) {
+    end() {
+      if (!active) return;
+      active = false; tier = 0; wind = -1; vy = 0; queued = null; beat = '';
+    },
+    step(dt, me, stick, ground, catchable = true) {
       const k = size();
       t += dt;
       if (queued && t >= M.flip * M.flipKick - M.windup) air.press(me, queued);
@@ -354,7 +369,7 @@ export function createMagicJump({ character, circles }) {
         const was = vy;
         vy = Math.max(vy - g * dt, -M.fall * k);
         // a long fall: a circle opens on the ground under her, and close over it she is slowed
-        if (!caught && vy < 0 && peak - ground > M.cushion * k && me.pos.y - ground < 0.5 * k - vy * 0.2) {
+        if (catchable && !caught && vy < 0 && peak - ground > M.cushion * k && me.pos.y - ground < 0.5 * k - vy * 0.2) {
           caught = true;
           circles.open(v.set(me.pos.x, ground + 0.02, me.pos.z), 'land', { ground: true, size: k });
         }

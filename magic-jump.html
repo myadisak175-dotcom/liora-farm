@@ -10,7 +10,7 @@
   her feet (magic-jump.js: her body in the air; magic-circle-fx.js: the circles), in a meadow with four rocks to jump on,
   one for each number of jumps it takes to reach its top. Walk and run as in the game (the joystick, dragging to look);
   the jump button again in the air is the next jump; the stick pushed sends her its way, let go she goes straight up.
-  One job: try the jump. Nothing here goes into the game.
+  One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -181,7 +181,6 @@ const TUNED = 1.412;
 const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), heading: 0 };
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
-const winds = [];
 let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0;
 const WALK = 1.5, RUN = 4.2, LAND_RATE = 1.4, LAND_HOLD = 0.14;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
@@ -208,8 +207,6 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEven
   if (data) {
     springs = createSprings(hero.model, data);
     hero.attachSprings(springs);
-    const seen = new Set();
-    for (const j of springs.manager.joints) if (!seen.has(j.settings)) { seen.add(j.settings); winds.push([j.settings, j.settings.stiffness, j.settings.gravityPower]); }
   }
   hero.setSize(1.75 / hero.baseHeight);
   root.add(hero.object);
@@ -307,7 +304,7 @@ function step(dt) {
   air.pose(dt, me);
   // her hair and skirt: held harder in the air (a long fall would blow her skirt up) and harder still through a flip or a
   // turn, and not pulled down by their weight while she is upside down (her skirt would fall over her head)
-  for (const [s, stiff, grav] of winds) { s.stiffness = stiff * (1 + 4 * air.held); s.gravityPower = grav * (1 - air.upside); }
+  hero.holdSprings(1 + 4 * air.held, 1 - air.upside);
   hero.updateSprings(dt);
   grass.userData.setWalker(me.pos, 0.55);
   circles.update(dt, camera);

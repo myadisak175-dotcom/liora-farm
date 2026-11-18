@@ -5,6 +5,8 @@
 //   const springs = createSprings(model, data);   // model: her loaded scene; data: assets/characters/<id>.springs.json
 //   springs.setScale(k);       // she is drawn k times her modelled size: the collision spheres grow with her
 //   springs.reset();           // after a teleport: the hair starts at rest where she lands instead of whipping across the map
+//   springs.hold(stiff, grav); // held harder (stiff times their stiffness) and pulled less by their weight (grav times it):
+//                              // in a flight, a flip or a spin (magic-jump.js). hold(1, 1): as they are made
 //   every frame, after her pose and her place in the world are set: springs.update(dt)
 //
 // Built the way three-vrm's VRMSpringBoneLoaderPlugin builds a VRM 0.x file's springs: every bone under a chain's root is
@@ -53,6 +55,8 @@ export function createSprings(model, data) {
   }
   model.updateMatrixWorld(true);
   manager.setInitState();
+  const made = new Map();     // each spring's own stiffness and weight, as made (hold() goes from these)
+  for (const [joint] of joints) if (!made.has(joint.settings)) made.set(joint.settings, [joint.settings.stiffness, joint.settings.gravityPower]);
 
   let resetDue = false;
   return {
@@ -64,6 +68,9 @@ export function createSprings(model, data) {
       resetDue = true;
     },
     reset() { resetDue = true; },
+    hold(stiff = 1, grav = 1) {
+      for (const [settings, [stiffness, gravityPower]] of made) { settings.stiffness = stiffness * stiff; settings.gravityPower = gravityPower * grav; }
+    },
     update(dt) {
       if (resetDue) { resetDue = false; manager.reset(); return; }
       manager.update(Math.min(dt, 0.05));

@@ -17,7 +17,9 @@
      fx.setNight(on)                by night the light is let shine more (the page dims the land, not this)
      fx.dispose()
 
-   How it is drawn, all of it light laid over the picture (one blend: a line covers what is under it, its glow adds to it):
+   How it is drawn, all of it light laid over the picture (one blend: a line covers what is under it, its glow adds to it),
+   its own light at any hour: every material is marked userData.noGrade, which the game's light of the hour
+   (cloud-shadows.js) and its curse (curse.js) leave alone:
      - a circle: one flat square, everything on it worked out by the shader from where it is on it. Its light: an open tube
        standing on it (up off the ground, down under her in the air). The crystal: a small stretched octahedron. 3 draws
        each, 8 circles at most
@@ -369,5 +371,6 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       sMat.dispose();
     },
   };
+  object.traverse(o => { if (o.material) o.material.userData.noGrade = true; });
   return fx;
 }

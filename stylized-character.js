@@ -6,7 +6,8 @@
 //   vivi.play('walk');                 // 'idle' | 'walk' | 'run' | 'jump_start' | 'jump_air' | 'jump_land' (character-anim.js)
 //   every frame: vivi.update(dt)
 //   hair and cloth that swing: vivi.attachSprings(createSprings(vivi.model, springsData)) (character-springs.js);
-//   then every frame, once she has been placed: vivi.updateSprings(dt)
+//   then every frame, once she has been placed: vivi.updateSprings(dt); vivi.holdSprings(stiff, grav): held harder, pulled
+//   less by their weight (in the air: magic-jump.js's held and upside)
 //   vivi.setSize(k)                    // k times her modelled size: height and the clips' ground speeds go with it
 //   vivi.tint.set(r, g, b, k)          // a colour washed over all of her, k 0..1 (0: none, as she starts): poisoned, she glows green
 //
@@ -162,6 +163,7 @@ export async function loadCharacter(source, anim) {
     // after her pose and her place in the world are set for this frame (player.js)
     updateSprings(dt) { if (springs) springs.update(dt); },
     resetSprings() { if (springs) springs.reset(); },
+    holdSprings(stiff, grav) { if (springs && springs.hold) springs.hold(stiff, grav); },
     // warp: blend the two clips' paces during the fade (walk <-> run); a one-shot keeps its own timing (warp = false)
     play(name, fade = 0.22, warp = true) {
       const next = actions[name];

@@ -135,9 +135,9 @@
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1",
-  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
-  "./character-springs.js": "./character-springs.js?v=1",
+  "./character-springs.js": "./character-springs.js?v=2",
   "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1hop1",
   "./characters.js": "./characters.js?v=1",
   "./character-picker.js": "./character-picker.js?v=1",
@@ -161,7 +161,9 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=8",
+  "./player-moves.js": "./player-moves.js?v=9",
+  "./magic-jump.js": "./magic-jump.js?v=1",
+  "./magic-circle-fx.js": "./magic-circle-fx.js?v=1",
   "./player-input.js": "./player-input.js?v=1",
   "./player-camera.js": "./player-camera.js?v=3",
   "./player-climb.js": "./player-climb.js?v=2",
@@ -253,6 +255,7 @@ import { createTimeOfDay } from './time-of-day.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { CHARACTERS, DEFAULT_CHARACTER, faceOf, loadPlayable } from './characters.js';
 import { createCharacterPicker } from './character-picker.js';
+import { createMagicCircles } from './magic-circle-fx.js';
 import DEER_GLB from './deer-glb.js';
 import { createSceneEditor } from './scene-editor.js';
 import { createRockEditor } from './rock-editor.js';
@@ -342,7 +345,11 @@ if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z:
 // the player with the moves (player-moves.js: off a cliff's top, climbing, swimming, dash). ?move=0: the old walker
 // (player.js) instead, to compare (it was the game's player until the moves were put in its place)
 const createPlayer = Q.get('move') === '0' ? createWalker : (await import('./player-moves.js')).createPlayer;
-const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
+// the magic jump's circles (magic-circle-fx.js): the jump (player-moves.js, magic-jump.js) says where they open; drawn here,
+// in their own light at any hour
+const circles = createMagicCircles({ seed: 2 });
+scene.add(circles.object);
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles });
 scene.add(player.object);
 level.addUnderwater(player.object);
 // the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
@@ -612,6 +619,8 @@ const frame = (dt = clock.getDelta()) => {
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  circles.setNight(!!tod && tod.daylight < 0.3);                          // (by night their light is let shine more)
+  circles.update(dt, camera);
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
   if (dashBtn && dashBtn.hidden !== editing()) dashBtn.hidden = editing();
   if (dashBtn && dashLabel && (player.mode === 'climb') !== climbing) { climbing = !climbing; dashLabel.textContent = climbing ? 'ปล่อย' : 'พุ่ง'; }      // (on a rock face the dash button lets go)
