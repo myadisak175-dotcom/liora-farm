@@ -9,9 +9,10 @@
   boss-ultimate.html  —  the plant boss's ultimate (plant-boss-moves.js: play('ultimate')) and all it draws, in a meadow,
   to play: it spits the poison up into the sky (the gathering's light: howl-fx.js, without its breath; the rain:
   poison-rain-fx.js), then the thicket, as it is on its own (thicket-fx.js: the bud, the ring, the vines, the green burst),
-  while the rain falls all over the field. Vivi stands far off, as she would casting: the rain comes after her there, and
-  its pools slow her and turn her green. Close in, the thicket's vines strike whoever is in its ring, unless she is behind
-  a barrier (here a stand-in, a dome of water, until hers is made). Move her with the stick (or the arrow keys), the
+  while the rain falls all over the field and patches of the same thorns burst up out of the ground all over it, one where
+  she will be (thorn-patches-fx.js). Vivi stands far off, as she would casting: the rain and the thorns come after her
+  there, and the rain's pools slow her and turn her green. Thorns bursting up under her strike her, unless she is behind a
+  barrier (here a stand-in, a dome of water, until hers is made). Move her with the stick (or the arrow keys), the
   barrier with its button (or the space bar); or let her do both by herself. One job: try the move. Nothing here goes into
   the game.
 -->
@@ -69,7 +70,7 @@
 </script>
 </head>
 <body>
-<div id="name">บอสต้นไม้ · ท่าไม้ตาย<small>พ่นพิษขึ้นฟ้า → พงหนาม + ฝนพิษตกทั่วแมพ ไล่ตามวีวี่</small></div>
+<div id="name">บอสต้นไม้ · ท่าไม้ตาย<small>พ่นพิษขึ้นฟ้า → พงหนาม + ฝนพิษ + หนามผุดทั่วแมพ ไล่ตามวีวี่</small></div>
 <div id="beat"></div>
 <div id="sick">☠️ เหยียบพิษ — เดินช้าลง</div>
 <div id="say"></div>
@@ -102,6 +103,7 @@ import { HOWL } from './plant-boss-talk.js';
 import { createHowlFx } from './howl-fx.js';
 import { createPoisonRainFx, poolStrength, SKY } from './poison-rain-fx.js';
 import { createThicketFx } from './thicket-fx.js';
+import { createThornPatchesFx } from './thorn-patches-fx.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -131,17 +133,17 @@ G.applyGroundMap(ground, map, { far: FAR });
 scene.add(G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 34, far: FAR }));
 
 // ---- the boss: how it fights, turning on its roots to her; the light of its gathering (the howl's, without the
-// breath at her); its poison rain; its thicket
+// breath at her); its poison rain; its thicket; its patches of thorns all over the field
 const boss = createPlantBoss({ seed: 1, clip: true });
 boss.position.set(0, H(0, 0) - 0.05, 0);
 scene.add(boss);
 const moves = createBossMoves(boss, { snaps: true }), turn = createBossTurn(boss);
 const howl = createHowlFx({ seed: 1, breath: false });
 const rain = createPoisonRainFx({ heightAt: H, seed: 3, lift: 0.3 });
-const thicket = createThicketFx({ heightAt: H, seed: 2, lift: 0.3 });
-scene.add(howl.object, rain.object, thicket.object);
+const thicket = createThicketFx({ heightAt: H, seed: 2, lift: 0.3 }), patches = createThornPatchesFx({ heightAt: H, seed: 4, lift: 0.3 });
+scene.add(howl.object, rain.object, thicket.object, patches.object);
 const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
-setPlantBossSun(sun); howl.setSun(sun); rain.setSun(sun); thicket.setSun(sun);
+setPlantBossSun(sun); howl.setSun(sun); rain.setSun(sun); thicket.setSun(sun); patches.setSun(sun);
 const B = BOSS_MOVES.ultimate, TK = BOSS_MOVES.thicket;
 
 // ---- her: far off, as she would stand casting; the stick moves her (or she does by herself)
@@ -170,8 +172,8 @@ let vivi = null, mark = null, facing = Math.PI, moving = '', arc = 0, arcWay = 1
 })();
 
 // ---- the barrier, a stand-in until hers is made: a dome of water round her for BARRIER.lasts seconds, then a short
-// wait before it can be raised again. The thicket's vines bursting up under her while it stands are held off; raised
-// only just before (BARRIER.sharp), it is a perfect block
+// wait before it can be raised again. Thorns bursting up under her (the thicket's, or a patch's) while it stands are held
+// off; raised only just before (BARRIER.sharp), it is a perfect block
 const BARRIER = { lasts: 1.0, wait: 0.7, sharp: 0.35, radius: 1.35 };
 const domeMat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -204,8 +206,8 @@ const shieldUp = () => shieldT < BARRIER.lasts;
 const shieldReady = () => shieldT >= BARRIER.lasts + BARRIER.wait;
 function raise() { if (shieldReady()) shieldT = 0; }
 
-// the pools lying now, the warnings of the drops, the thicket's ring (all from the moves' events)
-const pools = [], warns = new Map();
+// the pools lying now, the warnings of the drops and of the patches of thorns, the thicket's ring (all from the moves' events)
+const pools = [], warns = new Map(), thornWarns = new Map();      // thornWarns: patch -> { x, z, r, hitAt (the page's clock) }
 let ring = null;                                      // { x, z, r, hitAt (the page's clock) }
 let clockT = 0, sick = 0;
 function poisonAt(p) {
@@ -222,6 +224,7 @@ function dangerAt(x, z) {
   let k = 0;
   for (const w of warns.values()) { const d = Math.hypot(x - w.x, z - w.z); if (d < w.r + 0.9) k += 1 + 3 * (1 - d / (w.r + 0.9)); }
   for (const q of pools) { const st = poolStrength(clockT - q.born, q.lasts), d = Math.hypot(x - q.x, z - q.z); if (st > 0.1 && d < q.r * 1.05) k += 2 * st; }
+  for (const w of thornWarns.values()) { const d = Math.hypot(x - w.x, z - w.z); if (d < w.r + 0.8) k += 2 + 3 * (1 - d / (w.r + 0.8)); }
   const far = Math.hypot(x, z);
   return k + Math.max(0, 8 - far) + Math.max(0, far - 21);
 }
@@ -302,6 +305,8 @@ const at0 = B.thicket;
 const BEATS = [[0, 'สะดุ้ง หันมาหาวีวี่'], [B.gather, 'รวมพลัง'], [B.beam, 'แสงพุ่งขึ้นฟ้า วังวนพิษก่อตัว'], [B.volley[0], 'พ่นพิษขึ้นฟ้ารัวๆ'],
   [at0, 'ฟ่อขู่ หุบเข้าดอกตูม'], [B.rain[0] + B.lead, 'ฝนพิษตกทั่วแมพ — หลบวงเขียว!'], [at0 + TK.warn + 0.4, 'วงพงหนามกางออก — อยู่ในวงต้องกางบาเรีย!'],
   [at0 + TK.hit, 'หนามพุ่ง!'], [at0 + TK.sink, 'หนามมุดกลับ · ฝนยังตก'], [at0 + TK.burst, 'ระเบิดเขียว · ดอกบาน']];
+for (const [w, h] of B.patches.waves) BEATS.push([w, 'วงส้มทั่วแมพ — หนามจะผุด!'], [h, 'หนามผุดทั่วแมพ!']);
+BEATS.sort((a, b) => a[0] - b[0]);
 const track = document.getElementById('track');
 for (const [t] of BEATS.slice(1)) { const i = document.createElement('i'); i.style.left = (t / B.length * 100) + '%'; track.appendChild(i); }
 const beatEl = document.getElementById('beat'), fillEl = document.getElementById('fill'), sickEl = document.getElementById('sick');
@@ -314,7 +319,7 @@ showScore();
 
 let loop = true, speed = 1, wait = 1.5, auto = true;
 moves.onEvent = e => {
-  rain.event(e); thicket.event(e);
+  rain.event(e); thicket.event(e); patches.event(e);
   if (e.move !== 'ultimate') return;
   if (e.drop !== undefined) {
     if (e.type === 'warn') warns.set(e.drop, { x: e.shape.x, z: e.shape.z, r: e.shape.radius });
@@ -323,9 +328,12 @@ moves.onEvent = e => {
       if (e.pool) pools.push({ x: e.shape.x, z: e.shape.z, r: e.pool.radius, born: clockT, lasts: e.pool.lasts });
       if (Math.hypot(her.x - e.shape.x, her.z - e.shape.z) < e.shape.radius) { score.drops++; showScore(); say('☠️ โดนลูกพิษ!', '#d6ff7a'); }
     }
+  } else if (e.patch !== undefined) {
+    if (e.type === 'warn') thornWarns.set(e.patch, { x: e.shape.x, z: e.shape.z, r: e.shape.radius, hitAt: clockT + e.lead });
+    if (e.type === 'hit') { thornWarns.delete(e.patch); thorns(e.shape); }
   } else if (e.type === 'warn' && e.shape) ring = { x: e.shape.x, z: e.shape.z, r: e.shape.radius, hitAt: clockT + e.lead };
   else if (e.type === 'hit' && e.shape) thorns(e.shape);
-  if (e.type === 'cancel') { warns.clear(); ring = null; }
+  if (e.type === 'cancel') { warns.clear(); thornWarns.clear(); ring = null; }
   if (e.type === 'end') { wait = 3; ring = null; }
 };
 const play = () => { if (moves.state === 'idle') moves.play('ultimate'); };
@@ -341,7 +349,7 @@ for (const b of document.querySelectorAll('[data-speed]')) b.onclick = () => {
 btn('cam').onclick = () => { view = view === 'clip' ? 'her' : 'clip'; btn('cam').textContent = view === 'clip' ? '🎬 มุมคลิป' : '🧍 มุมวีวี่'; if (view === 'her') follow(0, true); frame(); };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); frame(); });
 
-// ---- the thicket's vines bursting up: if she is in its ring, held off by the barrier (perfect if raised only just
+// ---- thorns bursting up (the thicket's, or a patch's): if she is in its ring, held off by the barrier (perfect if raised only just
 // before), or she is struck: thrown out of it, down for a moment
 let knock = null;                                    // { x, z (the way she is thrown), t }
 function thorns(shape) {
@@ -388,8 +396,8 @@ function walk(dt) {
     aim.set(bx - her.x, 0, bz - her.z);
     if (aim.length() > 0.3) { go.copy(aim).setLength(Math.min(aim.length(), pace * dt)); her.add(go); gone = go.length(); }
     else spot = null;
-    // ...and, if she is in the thicket's ring, raises the barrier just before the vines burst up
-    if (ring && Math.hypot(her.x - ring.x, her.z - ring.z) < ring.r + 0.5 && ring.hitAt - clockT < 0.2 && ring.hitAt - clockT > -0.1) raise();
+    // ...and, if she is still in a ring of thorns as they come, raises the barrier just before they burst up
+    for (const w of [ring, ...thornWarns.values()]) if (w && Math.hypot(her.x - w.x, her.z - w.z) < w.r + 0.3 && w.hitAt - clockT < 0.2 && w.hitAt - clockT > -0.1) raise();
   } else {
     const s = stick.lengthSq() > 0.001 ? stick : keyStick();
     if (s.lengthSq() > 0.001) {
@@ -443,7 +451,7 @@ function step(dt) {
   domeMat.uniforms.uHit.value = shieldHit;
   domeMat.uniforms.uTime.value += dt;
   shieldEl.classList.toggle('wait', !shieldReady());
-  shieldEl.classList.toggle('ping', !!ring && clockT < ring.hitAt + 0.3 && Math.hypot(her.x - ring.x, her.z - ring.z) < ring.r + 1);
+  shieldEl.classList.toggle('ping', [ring, ...thornWarns.values()].some(w => w && clockT < w.hitAt + 0.3 && Math.hypot(her.x - w.x, her.z - w.z) < w.r + 1));
   N.update(dt);
   turn.update(dt, her, true);
   moves.update(dt, her);
@@ -452,6 +460,7 @@ function step(dt) {
   rain.afflict(her, sick);
   rain.update(dt, camera, boss, t, 'ultimate');
   thicket.update(dt, camera);
+  patches.update(dt, camera);
   if (vivi) vivi.update(dt);
   if (view === 'her') follow(dt);
   let label = '';
@@ -466,7 +475,7 @@ let shakeT = 0;
 function draw(dt) {
   if (view === 'clip') controls.update();
   shakeT += dt;
-  const k = Math.max(howl.shake * 0.16, rain.shake * 0.22, thicket.shake * 0.22);
+  const k = Math.max(howl.shake * 0.16, rain.shake * 0.22, thicket.shake * 0.22, patches.shake * 0.2);
   shakeOff.set(Math.sin(shakeT * 71) * k, Math.sin(shakeT * 83 + 1) * k * 0.7, Math.sin(shakeT * 67 + 2) * k * 0.5);
   camera.position.add(shakeOff);
   renderer.render(scene, camera);
@@ -481,7 +490,7 @@ renderer.setAnimationLoop(() => {
 });
 // for tests: run it by hand, a fixed step at a time
 window.__scene = {
-  scene, camera, controls, boss, moves, rain, thicket, howl, her, pools, score,
+  scene, camera, controls, boss, moves, rain, thicket, patches, howl, her, pools, score,
   get sick() { return sick; },
   manual(on) { manual = on; },
   run(seconds, fps = 30) { const n = Math.round(seconds * fps); for (let i = 0; i < n; i++) step(1 / fps); draw(1 / fps); },

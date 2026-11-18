@@ -46,7 +46,11 @@
                                                             it lands a pool of poison lies that wide (metres), that long
                                                             (seconds). Whoever stands in it is slowed: the game's to say
          (the ultimate tells the poison rain's events and the thicket's, all with move: 'ultimate'; the thicket's warn and hit
-         are those without a drop)
+         are those with neither a drop nor a patch)
+         { type: 'warn' | 'hit', move: 'ultimate', patch, wave, shape, lead, lasts }   a patch of thorns bursting up out of the
+                                                            ground (shape: a ring): where, and in how many seconds; then as it
+                                                            bursts. Whoever stands in it then is struck (unless the game's
+                                                            barrier is up)
          { type: 'burst' | 'roar', move: 'rise' }           it breaks out of the ground; it roars
          { type: 'end', move }                              a blow, its dying, or its coming up, is over
      moves.rest()                              as built at once (all heads up, vines away): for when something else acts it
@@ -92,7 +96,9 @@
    (All it draws is poison-rain-fx.js's.)
    The ultimate: the poison rain's spitting; then the thicket, as it is on its own (they hiss, draw down into the bud, the
    ring, the vines, the green burst), while the rain falls all over the field, every fourth drop where she will be: she
-   cannot stand off far from it and wait. (The thicket's drawing is thicket-fx.js's, the rain's poison-rain-fx.js's.)
+   cannot stand off far from it and wait. And in waves, patches of the thicket's thorns burst up out of the ground all over
+   the field: one where she will be, one near her, the rest anywhere, each warned first by a ring filling with orange light.
+   (The thicket's drawing is thicket-fx.js's, the patches' thorn-patches-fx.js's, the rain's poison-rain-fx.js's.)
    Coming up: three small harmless heads look out of the ground, wide-eyed, bobbing; then a sly look, a rumble, and it
    bursts up as a bud that springs open, and roars at her.
    Nothing snaps: reaches and turns go through springs (a soft heavy limb overshoots and settles), faces ease.
@@ -121,9 +127,12 @@ export const BOSS_MOVES = {
     rain: [3.0, 5.9], drops: 15, aim: 3, lead: 1.05, radius: 1.2, lasts: 0.3, ahead: 0.5, pool: 1.5, linger: 8 },
   // the ultimate: the poison rain's spitting (its beats as above); then, from thicket on, the thicket, beat for beat as on its
   // own (BOSS_MOVES.thicket's times, counted from there), while the rain comes down: drops over rain, every aim-th where
-  // she will be, the rest anywhere out to far metres
+  // she will be, the rest anywhere out to far metres; and patches of thorns burst up all over the field, in waves (each
+  // warned at the first of its pair, bursting at the second), count of them in each, radius metres wide: one where she
+  // will be, one near her, the rest anywhere on the field (out of the thicket's ring)
   ultimate: { length: 4.45 + 8.7, gather: HOWL.gather, beam: HOWL.beam, swirl: HOWL.swirl, up: 2.1, volley: [2.35, 4.2], shots: 12, thicket: 4.45,
-    rain: [4.6, 11.6], drops: 30, aim: 4, far: 22, lead: 1.05, radius: 1.2, lasts: 0.3, ahead: 0.5, pool: 1.5, linger: 8 },
+    rain: [4.6, 11.6], drops: 30, aim: 4, far: 22, lead: 1.05, radius: 1.2, lasts: 0.3, ahead: 0.5, pool: 1.5, linger: 8,
+    patches: { waves: [[5.7, 6.9], [8.4, 9.6], [9.9, 11.1], [11.3, 12.5]], count: [5, 6, 6, 7], radius: 2.4, lasts: 0.7 } },
   hit:   { length: 0.65 },                                                  // a head's flinch (over whatever it does)
   down:  { length: 2.8 },                                                   // a head going down (then it stays down)
   rise:  { length: 8.0, down: 0.6, sly: 4.2, burst: 4.8, roar: 6.05 },      // (its beats are counted from when it is under the ground)
@@ -647,9 +656,34 @@ export function createBossMoves(boss, { snaps = true } = {}) {
 
   // ---- the ultimate: they spit the poison up as in the poison rain; then the thicket, beat for beat as on its own, while
   // the rain comes down all over the field (the spitting's last gesture fades out under the thicket's hiss)
+  // where each patch of a wave of the ultimate's thorns bursts up (in its own space): one where she will be, one near her,
+  // the rest anywhere on the field out of the thicket's ring, not on top of one another
+  function patchesAt(n, U) {
+    const v = tmp2.copy(ctx.herVel).applyAxisAngle(UP, -turned()).divideScalar(size), ahead = (U.patches.waves[0][1] - U.patches.waves[0][0]) * U.ahead;
+    const list = [{ x: tgt.x + v.x * ahead, z: tgt.z + v.z * ahead }];
+    { const a = Math.random() * Math.PI * 2, d = 3.2 + Math.random() * 1.8; list.push({ x: tgt.x + Math.sin(a) * d, z: tgt.z + Math.cos(a) * d }); }
+    const inner = BOSS_MOVES.thicket.radius + U.patches.radius + 0.5;
+    for (let i = 2; i < n; i++) {
+      let q = null;
+      for (let k = 0; k < 8 && !q; k++) {
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(inner * inner + Math.random() * (U.far * U.far - inner * inner)), x = Math.sin(a) * d, z = Math.cos(a) * d;
+        if (list.every(o => Math.hypot(o.x - x, o.z - z) > U.patches.radius * 2.4)) q = { x, z };
+      }
+      if (q) list.push(q);
+    }
+    for (const q of list) { const far = Math.hypot(q.x, q.z), min = 3.5; if (far < min) { const k = min / (far || 1); q.x *= k; q.z *= k; } }      // (not inside the plant)
+    return list;
+  }
   function ultimate(t) {
-    const U = BOSS_MOVES.ultimate;
+    const U = BOSS_MOVES.ultimate, PA = U.patches;
     spits(U); rains(U);
+    PA.waves.forEach(([warn, hit], w) => {
+      once('patchWarn' + w, warn, () => {
+        ctx.patches[w] = patchesAt(PA.count[w], U).map(q => { const o = toWorld(tmp.set(q.x, 0, q.z)); return { kind: 'ring', x: o.x, y: o.y, z: o.z, radius: PA.radius * size }; });
+        ctx.patches[w].forEach((shape, i) => tell('warn', { patch: w * 10 + i, wave: w, shape, lead: hit - warn, lasts: PA.lasts }));
+      });
+      once('patchHit' + w, hit, () => (ctx.patches[w] || []).forEach((shape, i) => tell('hit', { patch: w * 10 + i, wave: w, shape })));
+    });
     if (t < U.thicket) {
       stance(false);
       const { gather, sky, jolt, tremble } = skyward(t, U);

@@ -579,8 +579,71 @@ function arcGeometry(span, rho, segs = 28) {
   return g;
 }
 
-// shared pieces for the boss's other effects (howl-fx.js)
-export const _fx = { SPARK_VS, SPARK_FS, PUFF_VS, HAZE_FS, GLOW_VS, makePool, col };
+// a vine laid along its curve, every frame: s, how it lies (foot, plane, side, len, thick, lean, curl, wig, sway, swayW,
+// ph, spear); g, how far it is out of the ground (0 .. a little past 1); writhe 0..1; T, the clock; K, how big (1: as the
+// thicket's are at its own radius). Written into V (makeVines). thorn-patches-fx.js lays its vines with it too
+function vineBuilder(V) {
+  const pts = [], tan = [], nrm = [];
+  for (let j = 0; j <= RINGS; j++) { pts.push(new THREE.Vector3()); tan.push(new THREE.Vector3()); nrm.push(new THREE.Vector3()); }
+  const tv = new THREE.Vector3(), tb = new THREE.Vector3(), tn = new THREE.Vector3(), tq = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  return function buildVine(i, s, g, writhe, T, K) {
+    const v = V.vines[i], P = V.pos, Nn = V.nor, Rd = V.rad, b = v.base;
+    if (g <= 0.002) {                              // under the ground: drawn to nothing
+      for (let k = b; k < b + V.perVine; k++) { P[k * 3] = s.foot.x; P[k * 3 + 1] = s.foot.y - 1; P[k * 3 + 2] = s.foot.z; Rd[k] = 0; }
+      return;
+    }
+    const len = s.len, ds = (len * g) / RINGS;
+    let x = 0, y = 0;
+    for (let j = 0; j <= RINGS; j++) {
+      const u = (j / RINGS) * g;
+      const wave = s.sway * Math.sin(T * s.swayW - u * 4.5 + s.ph) * u * writhe;
+      const curl = s.curl * (1 + 0.18 * Math.sin(T * 1.9 + s.ph) * writhe);                 // (its hook clenches and loosens)
+      const th = s.lean + curl * Math.pow(Math.min(u, 1.15), s.spear ? 2 : 3.2) + wave;
+      const sideOff = s.wig * Math.sin(u * 5 + s.ph) * u + 0.5 * K * Math.sin(T * s.swayW * 0.7 + s.ph - u * 3) * u * u * writhe * (s.spear ? 0 : 1);
+      pts[j].copy(s.foot).addScaledVector(s.plane, x).addScaledVector(up, y).addScaledVector(s.side, sideOff);
+      x += Math.sin(th) * ds; y += Math.cos(th) * ds;
+    }
+    for (let j = 0; j <= RINGS; j++) tan[j].subVectors(pts[Math.min(RINGS, j + 1)], pts[Math.max(0, j - 1)]).normalize();
+    // a frame carried along it (it does not twist)
+    nrm[0].copy(s.side).addScaledVector(tan[0], -s.side.dot(tan[0])).normalize();
+    for (let j = 1; j <= RINGS; j++) nrm[j].copy(nrm[j - 1]).addScaledVector(tan[j], -nrm[j - 1].dot(tan[j])).normalize();
+    const thickNow = s.thick * (0.55 + 0.45 * Math.min(1, g));
+    const radius = j => { const w = j / RINGS; return thickNow * (Math.pow(1 - w, 0.72) * 0.94 + 0.06 * (1 - w)) * (1 + 0.3 * (1 - sstep(0, 0.1, w))) * (1 + 0.06 * Math.sin(w * 29 + s.ph)); };
+    for (let j = 0; j <= RINGS; j++) {
+      tb.crossVectors(tan[j], nrm[j]);
+      const r = radius(j);
+      for (let q = 0; q < SIDES; q++) {
+        const a = (q / SIDES) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a), k = b + j * SIDES + q;
+        tn.copy(nrm[j]).multiplyScalar(c).addScaledVector(tb, sn);
+        P[k * 3] = pts[j].x + tn.x * r; P[k * 3 + 1] = pts[j].y + tn.y * r; P[k * 3 + 2] = pts[j].z + tn.z * r;
+        Nn[k * 3] = tn.x; Nn[k * 3 + 1] = tn.y; Nn[k * 3 + 2] = tn.z; Rd[k] = r;
+      }
+    }
+    // its thorns: each where it sits along the vine, once that much of it is out of the ground
+    v.thorns.forEach((th, ti) => {
+      const k0 = b + V.ringV + ti * V.thornV, f = th.u / Math.max(g, 0.001), j = Math.round(clamp(f, 0, 1) * RINGS);
+      const shown = sstep(th.u, th.u + 0.08, g) * (f < 0.97 ? 1 : 0);
+      tb.crossVectors(tan[j], nrm[j]);
+      const out = tn.copy(nrm[j]).multiplyScalar(Math.cos(th.a)).addScaledVector(tb, Math.sin(th.a));
+      const r = radius(j), longT = (r * 2.5 + 0.2 * K) * th.long * shown, wide = (r * 0.62 + 0.045 * K) * shown;
+      const c = tq.copy(pts[j]).addScaledVector(out, r * 0.7);
+      const e2 = tv.crossVectors(out, tan[j]).normalize();
+      const corners = [[tan[j], 1], [e2, 1], [tan[j], -1], [e2, -1]];
+      corners.forEach(([e, sg], q) => {
+        const k = k0 + q;
+        P[k * 3] = c.x + e.x * wide * sg; P[k * 3 + 1] = c.y + e.y * wide * sg; P[k * 3 + 2] = c.z + e.z * wide * sg;
+        Nn[k * 3] = e.x * sg * 0.6 + out.x * 0.4; Nn[k * 3 + 1] = e.y * sg * 0.6 + out.y * 0.4; Nn[k * 3 + 2] = e.z * sg * 0.6 + out.z * 0.4; Rd[k] = wide * 0.5;
+      });
+      // its point: out, bent a little toward the vine's end
+      const k = k0 + 4;
+      P[k * 3] = c.x + (out.x * 0.85 + tan[j].x * 0.5) * longT; P[k * 3 + 1] = c.y + (out.y * 0.85 + tan[j].y * 0.5) * longT; P[k * 3 + 2] = c.z + (out.z * 0.85 + tan[j].z * 0.5) * longT;
+      Nn[k * 3] = out.x; Nn[k * 3 + 1] = out.y; Nn[k * 3 + 2] = out.z; Rd[k] = 0.004;
+    });
+  };
+}
+
+// shared pieces for the boss's other effects (howl-fx.js, poison-rain-fx.js, thorn-patches-fx.js)
+export const _fx = { SPARK_VS, SPARK_FS, PUFF_VS, PUFF_FS, HAZE_FS, GLOW_VS, ROCK_VS, ROCK_FS, makePool, col, makeVines, vineBuilder, RINGS, SIDES };
 
 // ==========================================================================
 export function createThicketFx({ heightAt = null, seed = 1, lift = 0.08, vines: vineCount = 18, look = THICKET_LOOK } = {}) {
@@ -773,63 +836,9 @@ export function createThicketFx({ heightAt = null, seed = 1, lift = 0.08, vines:
       });
     }
   }
-  const pts = [], tan = [], nrm = [];
-  for (let j = 0; j <= RINGS; j++) { pts.push(new THREE.Vector3()); tan.push(new THREE.Vector3()); nrm.push(new THREE.Vector3()); }
-  const tv = new THREE.Vector3(), tb = new THREE.Vector3(), tn = new THREE.Vector3(), tq = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  function buildVine(i, s, g, writhe, T) {
-    const v = V.vines[i], P = V.pos, Nn = V.nor, Rd = V.rad, b = v.base;
-    if (g <= 0.002) {                              // under the ground: drawn to nothing
-      for (let k = b; k < b + V.perVine; k++) { P[k * 3] = s.foot.x; P[k * 3 + 1] = s.foot.y - 1; P[k * 3 + 2] = s.foot.z; Rd[k] = 0; }
-      return;
-    }
-    const len = s.len, ds = (len * g) / RINGS;
-    let x = 0, y = 0;
-    for (let j = 0; j <= RINGS; j++) {
-      const u = (j / RINGS) * g;
-      const wave = s.sway * Math.sin(T * s.swayW - u * 4.5 + s.ph) * u * writhe;
-      const curl = s.curl * (1 + 0.18 * Math.sin(T * 1.9 + s.ph) * writhe);                 // (its hook clenches and loosens)
-      const th = s.lean + curl * Math.pow(Math.min(u, 1.15), s.spear ? 2 : 3.2) + wave;
-      const sideOff = s.wig * Math.sin(u * 5 + s.ph) * u + 0.5 * K * Math.sin(T * s.swayW * 0.7 + s.ph - u * 3) * u * u * writhe * (s.spear ? 0 : 1);
-      pts[j].copy(s.foot).addScaledVector(s.plane, x).addScaledVector(up, y).addScaledVector(s.side, sideOff);
-      x += Math.sin(th) * ds; y += Math.cos(th) * ds;
-    }
-    for (let j = 0; j <= RINGS; j++) tan[j].subVectors(pts[Math.min(RINGS, j + 1)], pts[Math.max(0, j - 1)]).normalize();
-    // a frame carried along it (it does not twist)
-    nrm[0].copy(s.side).addScaledVector(tan[0], -s.side.dot(tan[0])).normalize();
-    for (let j = 1; j <= RINGS; j++) nrm[j].copy(nrm[j - 1]).addScaledVector(tan[j], -nrm[j - 1].dot(tan[j])).normalize();
-    const thickNow = s.thick * (0.55 + 0.45 * Math.min(1, g));
-    const radius = j => { const w = j / RINGS; return thickNow * (Math.pow(1 - w, 0.72) * 0.94 + 0.06 * (1 - w)) * (1 + 0.3 * (1 - sstep(0, 0.1, w))) * (1 + 0.06 * Math.sin(w * 29 + s.ph)); };
-    for (let j = 0; j <= RINGS; j++) {
-      tb.crossVectors(tan[j], nrm[j]);
-      const r = radius(j);
-      for (let q = 0; q < SIDES; q++) {
-        const a = (q / SIDES) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a), k = b + j * SIDES + q;
-        tn.copy(nrm[j]).multiplyScalar(c).addScaledVector(tb, sn);
-        P[k * 3] = pts[j].x + tn.x * r; P[k * 3 + 1] = pts[j].y + tn.y * r; P[k * 3 + 2] = pts[j].z + tn.z * r;
-        Nn[k * 3] = tn.x; Nn[k * 3 + 1] = tn.y; Nn[k * 3 + 2] = tn.z; Rd[k] = r;
-      }
-    }
-    // its thorns: each where it sits along the vine, once that much of it is out of the ground
-    v.thorns.forEach((th, ti) => {
-      const k0 = b + V.ringV + ti * V.thornV, f = th.u / Math.max(g, 0.001), j = Math.round(clamp(f, 0, 1) * RINGS);
-      const shown = sstep(th.u, th.u + 0.08, g) * (f < 0.97 ? 1 : 0);
-      tb.crossVectors(tan[j], nrm[j]);
-      const out = tn.copy(nrm[j]).multiplyScalar(Math.cos(th.a)).addScaledVector(tb, Math.sin(th.a));
-      const r = radius(j), longT = (r * 2.5 + 0.2 * K) * th.long * shown, wide = (r * 0.62 + 0.045 * K) * shown;
-      const c = tq.copy(pts[j]).addScaledVector(out, r * 0.7);
-      const e2 = tv.crossVectors(out, tan[j]).normalize();
-      const corners = [[tan[j], 1], [e2, 1], [tan[j], -1], [e2, -1]];
-      corners.forEach(([e, sg], q) => {
-        const k = k0 + q;
-        P[k * 3] = c.x + e.x * wide * sg; P[k * 3 + 1] = c.y + e.y * wide * sg; P[k * 3 + 2] = c.z + e.z * wide * sg;
-        Nn[k * 3] = e.x * sg * 0.6 + out.x * 0.4; Nn[k * 3 + 1] = e.y * sg * 0.6 + out.y * 0.4; Nn[k * 3 + 2] = e.z * sg * 0.6 + out.z * 0.4; Rd[k] = wide * 0.5;
-      });
-      // its point: out, bent a little toward the vine's end
-      const k = k0 + 4;
-      P[k * 3] = c.x + (out.x * 0.85 + tan[j].x * 0.5) * longT; P[k * 3 + 1] = c.y + (out.y * 0.85 + tan[j].y * 0.5) * longT; P[k * 3 + 2] = c.z + (out.z * 0.85 + tan[j].z * 0.5) * longT;
-      Nn[k * 3] = out.x; Nn[k * 3 + 1] = out.y; Nn[k * 3 + 2] = out.z; Rd[k] = 0.004;
-    });
-  }
+  const vineAt = vineBuilder(V);
+  function buildVine(i, s, g, writhe, T) { vineAt(i, s, g, writhe, T, K); }
+  const tv = new THREE.Vector3(), tn = new THREE.Vector3(), tq = new THREE.Vector3();      // (scratch, for the bolts)
 
   // ---- stones
   const ROCKS = 200;
@@ -953,7 +962,7 @@ export function createThicketFx({ heightAt = null, seed = 1, lift = 0.08, vines:
   function once(key, when, fn) { if (T >= when && !fired[key]) { fired[key] = true; fn(); } }
   function setSun(v) { sun.copy(v).normalize(); V.material.uniforms.uSun.value.copy(sun); }
   function event(e) {
-    if (e.move !== 'thicket' && !(e.move === 'ultimate' && e.drop === undefined)) return;      // (the ultimate has the thicket in it; its drops of rain are not the thicket's)
+    if (e.move !== 'thicket' && !(e.move === 'ultimate' && e.drop === undefined && e.patch === undefined)) return;      // (the ultimate has the thicket in it; its drops of rain and its patches of thorns are not the thicket's)
     if (e.type === 'warn' && e.shape) {
       origin.set(e.shape.x, e.shape.y, e.shape.z);
       R = e.shape.radius; K = R / M.radius;
