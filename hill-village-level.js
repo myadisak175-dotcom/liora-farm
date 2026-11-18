@@ -796,11 +796,18 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const standAt = (x, z, y) => { const d = deckAt(x, z, y); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
   const walkableAt = walkable;
   // what is under her feet at a spot, for the moves (player-moves.js): 'ground' she may stand on (the same answer as walkable),
-  // 'cliff' too steep to stand on (she may fall past it or slide down it), 'water' too deep to wade, 'out' off the map
+  // 'cliff' too steep to stand on (she may fall past it or slide down it), 'water' too deep to wade, 'wall' a solid thing
+  // she may not go into (under a bridge, where its arch comes down lower than her head, and its piers), 'out' off the map
   // (the pit's shaft, below its lowest shelf, is not a place: 114 m down to a floor that is only there to close the land. It is 'out')
   // (y, as for walkable: about how high she stands, which tells a bridge's deck from the bed under it; none: the deck)
   const shaftTop = P.pit ? Math.min(...P.pit.shelves.map(sh => sh.y)) + P.pit.shift - 3 : -Infinity;
-  const footing = (x, z, y) => !inMap(x, z) || H(x, z) < shaftTop ? 'out' : deckAt(x, z, y) ? 'ground' : waterDepthAt(x, z, y) >= 1.05 ? 'water' : slope(x, z) >= 0.9 ? 'cliff' : 'ground';
+  const footing = (x, z, y) => {
+    if (!inMap(x, z) || H(x, z) < shaftTop) return 'out';
+    if (deckAt(x, z, y)) return 'ground';
+    const over = archOver(x, z, y);
+    if (over !== null && over < HEADROOM) return 'wall';
+    return waterDepthAt(x, z, y) >= 1.05 ? 'water' : slope(x, z) >= 0.9 ? 'cliff' : 'ground';
+  };
   console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};

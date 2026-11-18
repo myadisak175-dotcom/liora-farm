@@ -20,8 +20,10 @@
 //     and her legs go at the pace she really goes.
 //   - run faster: the run clip is the library's sprint, and its stride suits a faster pace than the walker ran at.
 //
-// It needs the level to say what the ground is like: level.footing(x, z) -> 'ground' | 'cliff' | 'water' | 'out' (the hill
-// village). On a map that cannot say, cliffs stay walls (level.confine, as in player.js); the rest works the same.
+// It needs the level to say what the ground is like: level.footing(x, z, y) -> 'ground' | 'cliff' | 'water' | 'wall' | 'out'
+// (the hill village). On a map that cannot say, cliffs stay walls (level.confine, as in player.js); the rest works the same.
+// The level is asked with her height (y: standAt, footing, waterDepthAt, the colliders' heights), as player.js asks it, where
+// that tells two grounds apart: on a bridge's deck, or on the bed under it (she may walk under the stone bridge's arch).
 //
 // Her height (character.height, against Vivi's 1.412 m as modelled, the height every number here is given at) scales what
 // goes with her body, whoever is playing, as in player.js.
@@ -52,10 +54,15 @@ const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
 
 export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
-  const standAt = level.standAt || level.heightAt;   // where her feet are: the land, or (on maps that know them) the tops of rocks, the decks of bridges
-  const footing = level.footing || null;      // what the ground is like (see above); null: this map cannot say
+  // the level, asked at her height (see above): where her feet are (the land, or on maps that know them the tops of rocks, the
+  // decks of bridges, or the bed under one if that is where she is), what the ground is like (null: this map cannot say), how
+  // deep the water is. standOn(x, z): with no height, the top
+  const standOn = level.standAt || level.heightAt;
+  const standAt = (x, z) => standOn(x, z, pos.y);
+  const footing = level.footing ? (x, z) => level.footing(x, z, pos.y) : null;
+  const depthAt = (x, z) => level.waterDepthAt(x, z, pos.y);
   const pos = new THREE.Vector3(level.spawn.x, 0, level.spawn.z);
-  pos.y = standAt(pos.x, pos.z);
+  pos.y = standOn(pos.x, pos.z);
   let heading = level.spawn.yaw;              // where she faces (0 = +Z)
   let mode = 'ground';                        // 'ground' | 'air' (a jump, a hop, a fall) | 'slide' (down a cliff's face)
   let speed = 0, went = 0, paceWas = 0;       // how fast she means to go, how fast she really went (last frame), and the pace before
@@ -98,7 +105,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)
   function solids(p, k) {
-    for (const [cx, cz, cr] of level.colliders) {
+    for (const [cx, cz, cr, lo, hi] of level.colliders) {
+      if (lo !== undefined && (pos.y < lo || (hi !== undefined && pos.y > hi))) continue;      // (one only at some heights: a bridge's parapets are not there for her under it)
       const dx = p.x - cx, dz = p.z - cz, r = cr + 0.28 * k, d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * r; p.z = cz + dz / d * r; }
     }
@@ -210,10 +218,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // a slide that got her nowhere (a face that ends in deep water): back onto the nearest ground, or where she last stood.
   // home: straight back to where she last stood (a fall that went on past any drop she takes: down the abyss's shaft)
   function rescue(home = false) {
-    tmp.set(pos.x, 0, pos.z);
-    if (!home && level.confine) level.confine(tmp);
+    tmp.set(pos.x, pos.y, pos.z);
+    if (!home && level.confine) level.confine(tmp, pos);
     if (home || footing(tmp.x, tmp.z) !== 'ground') tmp.copy(lastSafe);
-    pos.set(tmp.x, standAt(tmp.x, tmp.z), tmp.z);
+    pos.set(tmp.x, standOn(tmp.x, tmp.z, tmp.y), tmp.z);
     mode = 'ground'; vy = 0; speed = 0; landT = -1; hardT = 0; rollT = 0; shy = 2;
     character.play('idle', 0.2);
   }
@@ -236,8 +244,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       character.play(mode === 'ground' ? 'idle' : 'jump_air', 0);
       if (character.resetSprings) character.resetSprings();
     },
-    teleport(x, z, yaw = heading) {
-      pos.set(x, standAt(x, z), z); heading = yaw; cam.setView(yaw - Math.PI);
+    // (y: about how high she stands, where that tells two grounds apart: on a bridge's deck, or on the bed under it. None: the top)
+    teleport(x, z, yaw = heading, y) {
+      pos.set(x, standOn(x, z, y), z); heading = yaw; cam.setView(yaw - Math.PI);
       mode = 'ground'; vy = 0; landT = -1; hardT = 0; rollT = 0; dashT = 0; edgeT = 0; edgeGrace = 0; lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
@@ -251,7 +260,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const amount = input.stick(stickV), pushing = amount > 0.12, running = amount > 0.72;
       const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = -fz, rz = fx;      // away from the camera; to its right
       const want = pushing ? Math.atan2(rx * stickV.x - fx * stickV.y, rz * stickV.x - fz * stickV.y) : heading;
-      const depthHere = level.waterDepthAt(pos.x, pos.z), shallow = depthHere < 0.32 * k;      // (deeper than her knees: no jump, no dash)
+      const depthHere = depthAt(pos.x, pos.z), shallow = depthHere < 0.32 * k;      // (deeper than her knees: no jump, no dash)
       jumpWanted = Math.max(0, jumpWanted - dt); dashWanted = Math.max(0, dashWanted - dt); dashCool = Math.max(0, dashCool - dt); shy = Math.max(0, shy - dt);
       // ---- dash: a burst the way the stick points, then a sprint while she keeps running
       if (dashWanted > 0 && dashCool === 0 && mode === 'ground' && rollT <= 0 && shallow) {
@@ -322,7 +331,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
           tmp.set(pos.x + dx * pace * dt, 0, pos.z + dz * pace * dt);
           solids(tmp, k);
           const f = footing(tmp.x, tmp.z);
-          if (f === 'water' || f === 'out') tmp.set(pos.x, 0, pos.z);         // (nowhere to go on that way)
+          if (f !== 'ground' && f !== 'cliff') tmp.set(pos.x, 0, pos.z);      // (nowhere to go on that way: deep water, a wall, the map's end)
           moved = Math.hypot(tmp.x - pos.x, tmp.z - pos.z);
           pos.x = tmp.x; pos.z = tmp.z;
           const d = wrap(Math.atan2(dx, dz) - heading);
@@ -332,11 +341,11 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         stuckT = moved < pace * dt * 0.2 ? stuckT + dt : 0;
       } else if (speed > 0.02) {
         tmp.set(pos.x + Math.sin(heading) * speed * dt, 0, pos.z + Math.cos(heading) * speed * dt);
-        if (level.waterDepthAt(tmp.x, tmp.z) > DEEP && level.waterDepthAt(tmp.x, tmp.z) > depthHere) {
+        if (depthAt(tmp.x, tmp.z) > DEEP && depthAt(tmp.x, tmp.z) > depthHere) {
           // too deep ahead: try sliding along the shore instead of walking in
           const ax = pos.x + Math.sin(heading + 1.1) * speed * dt, az = pos.z + Math.cos(heading + 1.1) * speed * dt;
           const bx = pos.x + Math.sin(heading - 1.1) * speed * dt, bz = pos.z + Math.cos(heading - 1.1) * speed * dt;
-          const da = level.waterDepthAt(ax, az), db = level.waterDepthAt(bx, bz);
+          const da = depthAt(ax, az), db = depthAt(bx, bz);
           if (Math.min(da, db) > DEEP) tmp.set(pos.x, 0, pos.z); else if (da < db) tmp.set(ax, 0, az); else tmp.set(bx, 0, bz);
         }
         solids(tmp, k);

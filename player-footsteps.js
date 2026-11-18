@@ -36,7 +36,7 @@ export function createFootsteps(level) {
         if (y > f.lo + range * 0.55) f.up = true;
         else if (f.up && y < f.lo + range * 0.28) {
           f.up = false;
-          const d = level.waterDepthAt(footPos.x, footPos.z);
+          const d = level.waterDepthAt(footPos.x, footPos.z, footPos.y);      // (at the foot's height: under a bridge, the water there, not its deck's none)
           if (d > 0.04 && f.since > 0.18) {
             f.since = 0;
             // harder the faster she goes and the deeper the water; a run kicks up a wider ring than a walk

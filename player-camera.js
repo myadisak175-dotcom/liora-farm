@@ -64,7 +64,7 @@ export function createFollowCamera({ camera, level }) {
       if (sinceTouch > FOLLOW_AFTER) {
         if (mode === 'ground') {
           const fx = -Math.sin(yaw), fz = -Math.cos(yaw);      // the way the camera looks, on the ground
-          const along = (groundAt(pos.x + fx * 2.5, pos.z + fz * 2.5) - groundAt(pos.x - fx * 1.5, pos.z - fz * 1.5)) / 4;
+          const along = (groundAt(pos.x + fx * 2.5, pos.z + fz * 2.5, pos.y) - groundAt(pos.x - fx * 1.5, pos.z - fz * 1.5, pos.y)) / 4;      // (at her height: under a bridge, the bed, not its deck)
           want = Math.min(0.22, Math.max(-0.1, -along * 0.4));
         } else want = gap > 0.4 ? Math.min(0.4, 0.14 + gap * 0.15) : 0;      // (the further she falls ahead of it, the more it looks down after her)
       }
