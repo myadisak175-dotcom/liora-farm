@@ -5,7 +5,8 @@
    tearing leaves off and flinging them; then, as they bellow, green breath streaming out of all three mouths at her.
    One job: draw that. It decides nothing: the talking says when (talk.howl / banter.howl), this follows.
 
-     const fx = createHowlFx({ seed })
+     const fx = createHowlFx({ seed, breath })      breath: false: no breath streaming out at her as they bellow (the
+                                                    poison rain borrows the rest: they spit up at the sky instead)
      scene.add(fx.object)
      every frame: fx.update(dt, camera, boss, t, her)   t: seconds into the howl (banter.howl), or < 0 when there is none;
                                                        her: where she stands (her feet, world): the breath goes at her
@@ -145,7 +146,7 @@ const additive = extra => ({ transparent: true, depthWrite: false, blending: THR
 // (laid over what is behind, not added onto it: green on the blue sky stays green)
 const over = extra => ({ transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, premultipliedAlpha: true, ...extra });
 
-export function createHowlFx({ seed = 1, look = HOWL_LOOK } = {}) {
+export function createHowlFx({ seed = 1, look = HOWL_LOOK, breath = true } = {}) {
   const rng = mulberry32(seed * 911 + 3);
   const object = new THREE.Group();
   object.name = 'howl_fx';
@@ -309,7 +310,7 @@ export function createHowlFx({ seed = 1, look = HOWL_LOOK } = {}) {
     disc.position.set(foot.x, foot.y + 0.28, foot.z); disc.scale.setScalar(4.8);
     disc.material.uniforms.uA.value = glowA * 0.55;
     // bellowing: green breath streaming out of all three mouths at her; leaves blown off at her
-    const roarK = on ? pulse(tt, H.roar - 0.05, H.roar + 0.1, H.roarEnd - 0.25, H.roarEnd + 0.1) : 0;
+    const roarK = on && breath ? pulse(tt, H.roar - 0.05, H.roar + 0.1, H.roarEnd - 0.25, H.roarEnd + 0.1) : 0;
     if (roarK > 0.05) {
       for (let i = 0; i < 3; i++) {
         dir.subVectors(chest, mouthAt[i]); dir.y = dir.y * 0.5 + 0.4; dir.normalize();
@@ -323,7 +324,7 @@ export function createHowlFx({ seed = 1, look = HOWL_LOOK } = {}) {
         if (Math.random() < dt * 7 * roarK) puff(mouthAt[i], tmp.copy(dir).multiplyScalar(4 + Math.random() * 2), 0.8 + Math.random() * 0.4, 0.6 + Math.random() * 0.3, 0.9);
       }
     }
-    if (on) once('blow', tt, H.roar + 0.05, () => {
+    if (on && breath) once('blow', tt, H.roar + 0.05, () => {
       for (let k = 0; k < 18; k++) {
         const i = k % 3;
         at.copy(headAt[i]).add(tmp.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 1.0, (Math.random() - 0.5) * 1.6));

@@ -15,6 +15,7 @@
                                                or another blow is under way, or it is dying, dead or coming up
      moves.play('bramble')                     the great blow (below)
      moves.play('thicket')                     shut in its bud, it makes thorned vines burst up all round itself (below)
+     moves.play('poison')                      all three spit poison up into the sky and it rains down on her (below)
      moves.play('hit', head)                   that head (0: middle, 1: right, 2: left) is struck: it flinches, over
                                                whatever it is doing (a blow it is striking goes on). false if it is down,
                                                or shut away in the bud
@@ -38,6 +39,11 @@
          { type: 'down', head }                             a head is beaten
          { type: 'shut' | 'bloom', move }                   the bud is shut over the heads; it bursts open (bramble, thicket)
          { type: 'sink', move: 'thicket' }                  the thicket's vines go back into the ground
+         { type: 'spit', move: 'poison', head, shot }       a head spits a ball of poison up into the sky (shot: which, from 0)
+         { type: 'warn' | 'hit', move: 'poison', drop, shape, pool }   a drop of the poison rain: where it will land, and as
+                                                            it lands (drop: which, from 0); pool: { radius, lasts }: where
+                                                            it lands a pool of poison lies that wide (metres), that long
+                                                            (seconds). Whoever stands in it is slowed: the game's to say
          { type: 'burst' | 'roar', move: 'rise' }           it breaks out of the ground; it roars
          { type: 'end', move }                              a blow, its dying, or its coming up, is over
      moves.rest()                              as built at once (all heads up, vines away): for when something else acts it
@@ -73,12 +79,21 @@
    out. Then thorned vines burst up all over that ring (the 'hit': she must be out of it by then), writhe there, and
    sink; the bud clenches, the ground spits green and it bursts open, the heads springing out, mouths wide, and shaking
    themselves off. (Everything that ring draws is thicket-fx.js's.)
+   The poison rain (the poison clip): startled round to her, all three gather themselves as in the howl (plant-boss-talk.js:
+   low, drawn in, mouths shut tight, shaking; the middle one rears at the sky as the light goes up out of its crown, at the
+   howl's own beats, so howl-fx.js draws that light); then they throw their heads back to the sky and spit poison up into
+   it, one after another, quick (right, middle, left, round again): a breath drawn in, then a jab up, mouth snapped wide.
+   It comes down as a rain of poison, each drop warned on the ground before it lands: every third where she will be, the
+   rest round her, so she must keep moving; where a drop lands it leaves a pool that lies a while and slows whoever steps
+   in it. They watch it come down on her: the middle one glaring, the right one snapping at her, the left one cackling.
+   (All it draws is poison-rain-fx.js's.)
    Coming up: three small harmless heads look out of the ground, wide-eyed, bobbing; then a sly look, a rumble, and it
    bursts up as a bud that springs open, and roars at her.
    Nothing snaps: reaches and turns go through springs (a soft heavy limb overshoots and settles), faces ease.
    ========================================================================== */
 import * as THREE from 'three';
 import { BOSS_HEAD_REST, aimHead } from './plant-boss.js';
+import { HOWL } from './plant-boss-talk.js';
 
 // when each move's beats fall (seconds from its start): roar: how long its head roars first; warn: the warning shows;
 // hit: the blow lands; lasts: for how long
@@ -92,6 +107,12 @@ export const BOSS_MOVES = {
   // for lasts; they go back into the ground (sink); the bud bursts open (burst)
   thicket: { length: 8.7, shut: 1.75, warn: 1.6, hit: 4.2, lasts: 0.6, sink: 6.75, burst: 7.2, radius: 6 },
   bramble: { length: 11.7, shut: 2.1, burst: 7.3, open: 7.75, tired: 10.7, waves: [[2.4, 3.7], [4.1, 5.2], [5.6, 6.5]], patches: [5, 7, 9], radius: 1.6, lasts: 0.55 },
+  // the poison rain: they gather themselves and the middle one rears up at the howl's own beats (gather, beam, swirl:
+  // howl-fx.js draws that light); heads back to the sky (up); shots spits, one after another over volley; the drops of
+  // rain, one warned every so often over rain (each lead seconds before it lands, radius metres wide; every third where
+  // she will be: ahead, how far along her way); where each lands, a pool, pool metres wide, for linger seconds
+  poison: { length: 8.6, gather: HOWL.gather, beam: HOWL.beam, swirl: HOWL.swirl, up: 2.1, volley: [2.35, 4.2], shots: 12,
+    rain: [3.0, 5.9], drops: 15, lead: 1.05, radius: 1.2, lasts: 0.3, ahead: 0.5, pool: 1.5, linger: 8 },
   hit:   { length: 0.65 },                                                  // a head's flinch (over whatever it does)
   down:  { length: 2.8 },                                                   // a head going down (then it stays down)
   rise:  { length: 8.0, down: 0.6, sly: 4.2, burst: 4.8, roar: 6.05 },      // (its beats are counted from when it is under the ground)
@@ -115,7 +136,9 @@ const PERSONA = [
 // a beaten head: the way it falls (x, z) and how far out it lies. Dying with heads still up, the order they go in
 const FALLS = [[0.25, 1, 3.3], [0.85, 0.52, 2.7], [-0.85, 0.52, 2.7]];
 const DIE_ORDER = [R, L, C];
+const SPIT_ORDER = [R, C, L];                   // the poison rain: who spits each ball, round and round
 const FRONT = new THREE.Vector3(0, 0, 2.6);    // (a head looks a little in front of another, not at the back of its head)
+const UP = new THREE.Vector3(0, 1, 0);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -132,7 +155,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
   const sp = () => ({ x: 0, v: 0 });
   const S = heads.map(() => ({ yaw: sp(), nod: sp(), tilt: sp(), lx: sp(), ly: sp(), lz: sp(), bx: sp(), by: sp(), bz: sp(), sc: { x: 1, v: 0 } }));
   // what each head is told this frame, before the springs: where it looks, how it is carried, its face
-  const P = heads.map(() => ({ at: null, share: 0.8, most: 0.75, lean: new THREE.Vector3(), bow: new THREE.Vector3(), yaw: 0, nod: 0, nodMax: 0.3, tilt: 0, wave: 0.95, quick: 1, scale: 1, face: {} }));
+  const P = heads.map(() => ({ at: null, share: 0.8, most: 0.75, lean: new THREE.Vector3(), bow: new THREE.Vector3(), yaw: 0, nod: 0, nodMin: -0.6, nodMax: 0.3, tilt: 0, wave: 0.95, quick: 1, scale: 1, face: {} }));
   const tgt = new THREE.Vector3(0, 0, 9), chest = new THREE.Vector3(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
   const dirs = heads.map(() => new THREE.Vector3(0, 0, 1));                       // from each head toward her, along the ground
   const ctx = {
@@ -142,6 +165,8 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     mourn: null,                      // { head, t }: the others grieving a head that has just gone down
     wiltFrom: 1, dieLength: 4.4,
     patches: [],                      // the bramble's patches of each wave (in its own space): [{ x, z }]
+    drops: [],                        // the poison rain: each drop's shape, as warned (world)
+    herAt: null, herVel: new THREE.Vector3(),      // where she was last frame, and how she goes (world, metres a second, smoothed)
   };
   const me = { state: 'idle', time: 0, onEvent: null, shut: false, open: false, play, update, rest, isDown };
 
@@ -151,7 +176,9 @@ export function createBossMoves(boss, { snaps = true } = {}) {
   function once(key, when, fn) { if (me.time >= when && !ctx.fired[key]) { ctx.fired[key] = true; fn(); } }
   function isDown(i) { return ctx.down[i] !== null && ctx.down[i] >= 0; }
   const downCount = () => [C, R, L].filter(isDown).length;
-  const striking = () => BOSS_OWNERS[me.state] ?? ((me.state === 'bramble' || me.state === 'thicket') && me.time < BOSS_MOVES[me.state].burst ? -1 : undefined);      // the head whose blow is under way (-1: all of them; undefined: none)
+  const PR = BOSS_MOVES.poison;
+  const striking = () => BOSS_OWNERS[me.state] ?? (((me.state === 'bramble' || me.state === 'thicket') && me.time < BOSS_MOVES[me.state].burst)
+    || (me.state === 'poison' && me.time < PR.rain[1] + PR.lead) ? -1 : undefined);      // the head whose blow is under way (-1: all of them; undefined: none)
 
   function play(name, head) {
     const busy = me.state === 'die' || me.state === 'dead' || me.state === 'rise';
@@ -176,9 +203,9 @@ export function createBossMoves(boss, { snaps = true } = {}) {
       me.state = 'rise'; me.time = 0; ctx.fired = {};
       return true;
     }
-    if (name === 'bramble' || name === 'thicket') {
+    if (name === 'bramble' || name === 'thicket' || name === 'poison') {
       if (me.state !== 'idle') return false;
-      me.state = name; me.time = 0; ctx.fired = {}; ctx.patches = [];
+      me.state = name; me.time = 0; ctx.fired = {}; ctx.patches = []; ctx.drops = [];
       return true;
     }
     // a head's blow
@@ -490,6 +517,105 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     body.shake.set(Math.sin(t * 61) * 0.04 * rumble, 0.14 * jolt + 0.12 * pulse(t, B.burst - 0.02, B.burst + 0.03, B.burst + 0.08, B.burst + 0.3), Math.sin(t * 47) * 0.04 * rumble);
   }
 
+  // ---- the poison rain
+  // where a drop of it lands (in its own space): every third where she will be (where she stands, a little ahead along
+  // her way), the rest round her; none inside the plant
+  function dropAt(k) {
+    let x, z;
+    if (k % 3 === 0) {
+      const v = tmp2.copy(ctx.herVel).applyAxisAngle(UP, -turned()).divideScalar(size);      // (her way, turned into its own space)
+      x = tgt.x + v.x * PR.lead * PR.ahead; z = tgt.z + v.z * PR.lead * PR.ahead;
+    } else {
+      const a = Math.random() * Math.PI * 2, d = 2.0 + Math.random() * 3.2;
+      x = tgt.x + Math.sin(a) * d; z = tgt.z + Math.cos(a) * d;
+    }
+    const far = Math.hypot(x, z), min = 3.5;
+    if (far < min) { const k2 = min / (far || 1); x *= k2; z *= k2; }
+    return { x, z };
+  }
+  // startled round to her, they gather themselves as in the howl (low, drawn in, mouths shut tight, shaking; the middle
+  // one rears at the sky as the light goes up out of its crown); then all three throw their heads back and spit poison up
+  // into the sky, one after another, quick: each spit a breath drawn in, then a jab up, mouth snapped wide. Then they
+  // watch it come down on her: the middle one glaring, the right one snapping at her, the left one cackling
+  function poison(t) {
+    const B = PR, gap = (B.volley[1] - B.volley[0]) / (B.shots - 1), every = (B.rain[1] - B.rain[0]) / (B.drops - 1);
+    const pool = { radius: B.pool * size, lasts: B.linger };
+    once('roar', 0.12, () => tell('roar'));
+    for (let k = 0; k < B.shots; k++) {
+      const who = SPIT_ORDER[k % 3];
+      once('spit' + k, B.volley[0] + k * gap, () => { if (!isDown(who)) tell('spit', { head: who, shot: k }); });
+    }
+    for (let k = 0; k < B.drops; k++) {
+      const w = B.rain[0] + k * every;
+      once('warn' + k, w, () => {
+        const q = dropAt(k), o = toWorld(tmp.set(q.x, 0, q.z));
+        ctx.drops[k] = { kind: 'ring', x: o.x, y: o.y, z: o.z, radius: B.radius * size };
+        tell('warn', { drop: k, shape: ctx.drops[k], lead: B.lead, lasts: B.lasts, pool });
+      });
+      once('hit' + k, w + B.lead, () => { if (ctx.drops[k]) tell('hit', { drop: k, shape: ctx.drops[k], pool }); });
+    }
+    stance(false);
+    const snap = pulse(t, 0, 0.12, 0.3, 0.55), gather = pulse(t, B.gather, B.gather + 0.4, B.up - 0.15, B.up + 0.1);
+    const sky = pulse(t, B.up, B.up + 0.3, B.volley[1] + 0.12, B.volley[1] + 0.5);
+    const watch = pulse(t, B.volley[1] + 0.25, B.volley[1] + 0.7, B.length - 0.9, B.length - 0.25);
+    const tremble = Math.max(gather * 0.6, sky * 0.3);
+    let jolt = 0;
+    for (const h of heads) {
+      const i = h.index, p = P[i], d = dirs[i], n = i * 1.7, side = i === R ? 1 : i === L ? -1 : 0;
+      // its spits: a breath drawn in just before each, then the jab
+      let jab = 0, inhale = 0;
+      for (let k = SPIT_ORDER.indexOf(i); k < B.shots; k += 3) {
+        const u = t - (B.volley[0] + k * gap);
+        jab = Math.max(jab, pulse(u, -0.02, 0.03, 0.07, 0.26)); inhale = Math.max(inhale, pulse(u, -0.24, -0.12, -0.05, -0.015));
+      }
+      jab *= sky; inhale *= sky; jolt = Math.max(jolt, jab);
+      // startled round to her
+      for (const [k, v] of Object.entries({ size: 1.35, flare: 1, lid: 1, jaw: 0.5 })) p.face[k] = lerp(p.face[k], v, snap);
+      // gathering: low, drawn in, its mouth shut tight, glaring; the middle one rears up at the sky as the light goes up out of it
+      const rear = i === C ? pulse(t, B.beam - 0.35, B.beam, B.swirl, B.up + 0.1) : 0;
+      p.lean.lerp(tmp.set(-d.x * 0.3, lerp(-0.4, 1.15, rear), -d.z * 0.3), gather);
+      p.nod = lerp(p.nod, -0.5 * rear, gather);
+      if (rear > 0.5) p.at = null;
+      for (const [k, v] of Object.entries({ jaw: 0.06, lid: 0.72, slant: 1, flare: 0.9, curve: -1, size: 0.95, smile: 0 })) p.face[k] = lerp(p.face[k], v, gather * (1 - rear));
+      for (const [k, v] of Object.entries({ jaw: 0.75, lid: 1, size: 1.2, flare: 1 })) p.face[k] = lerp(p.face[k], v, rear);
+      // heads back to the sky, the side ones splayed out, mouths open, shaking; each spit a jab up, a breath before it
+      p.lean.lerp(tmp.set(-d.x * 0.35 + side * 0.35, 0.85, -d.z * 0.35), sky);
+      p.lean.add(tmp.set(d.x * 0.15 * jab - d.x * 0.1 * inhale, 0.4 * jab - 0.14 * inhale, d.z * 0.15 * jab - d.z * 0.1 * inhale));
+      p.nod = lerp(p.nod, -0.9, sky) - 0.12 * jab; p.nodMin = lerp(-0.6, -1.05, sky);      // (its face right up to the sky)
+      p.yaw = lerp(p.yaw, 0, Math.max(gather, sky)); p.tilt = lerp(p.tilt, 0, Math.max(gather, sky));
+      if (sky > 0.5) p.at = null;
+      for (const [k, v] of Object.entries({ jaw: 0.5, lid: 1, slant: 0.8, flare: 1, curve: -1, size: 1.12, smile: 0 })) p.face[k] = lerp(p.face[k], v, sky);
+      p.face.jaw = lerp(lerp(p.face.jaw, 0.15, inhale), 1, jab); p.face.size += 0.13 * jab; p.face.flare = lerp(p.face.flare, 0.6, inhale);
+      // shaking with it
+      p.lean.add(tmp.set(Math.sin(ctx.t * (31 + i * 5)) * 0.035 * tremble, Math.sin(ctx.t * (35 + i * 5) + 1) * 0.03 * tremble, Math.cos(ctx.t * (28 + i * 5)) * 0.035 * tremble));
+      p.wave = lerp(p.wave, 0.45, Math.max(gather, sky));
+      p.quick = Math.max(p.quick, 1 + 2 * Math.max(snap, rear), 1 + 1.4 * sky, 1 + 2.5 * jab);
+      // watching it come down on her, each in its own way
+      if (watch > 0) {
+        const u = t - B.volley[1], laugh = Math.sin(u * 11.5);
+        if (i === C) {                                                          // the leader: a steady glare, drawn up
+          p.lean.lerp(tmp.set(d.x * 0.25, 0.25, d.z * 0.25), watch);
+          for (const [k, v] of Object.entries({ lid: 0.8, slant: 0.9, flare: 0.6, curve: -0.6, jaw: 0.3, smile: 0 })) p.face[k] = lerp(p.face[k], v, watch);
+        } else if (i === R) {                                                   // the hot head: it darts at her and bites the air
+          const s = u % 0.95, bite = pulse(s, 0, 0.12, 0.42, 0.7);
+          p.lean.lerp(tmp.set(d.x * (0.3 + 0.6 * bite), -0.1 * bite, d.z * (0.3 + 0.6 * bite)), watch);
+          for (const [k, v] of Object.entries({ jaw: s < 0.14 ? 0.95 : (s < 0.26 ? 0.05 : (s < 0.4 ? 0.9 : 0.1)), slant: 1, flare: 0.9, curve: -0.8, smile: 0, lid: 0.95 })) p.face[k] = lerp(p.face[k], v, watch);
+        } else {                                                                // the trickster: thrown back, cackling
+          p.lean.lerp(tmp.set(d.x * 0.15, 0.3 + 0.12 * laugh, d.z * 0.15), watch);
+          p.nod = lerp(p.nod, -0.22 + 0.05 * laugh, watch);
+          for (const [k, v] of Object.entries({ smile: 1, jaw: 0.7 + 0.3 * Math.abs(laugh), curve: 1, flare: 0.5, size: 1.05, slant: 0 })) p.face[k] = lerp(p.face[k], v, watch);
+        }
+        p.quick = Math.max(p.quick, 1 + 1.2 * watch);
+      }
+    }
+    // the skirt spreads and stands up trembling round the ring while they gather and spit; its veins burn green; a little
+    // jolt with each spit, a rumble while they gather
+    body.skirt = Math.min(body.skirt, -0.14 * Math.max(gather, sky));
+    body.ring.lift = Math.max(body.ring.lift, 0.12 * gather + 0.16 * sky); body.ring.stir = Math.max(body.ring.stir, tremble, 0.5 * sky);
+    body.glow = Math.min(1, 0.3 * gather + 0.35 * sky + 0.35 * jolt);
+    body.shake.set(Math.sin(t * 61) * 0.025 * gather, 0.035 * jolt, Math.sin(t * 47) * 0.025 * gather);
+  }
+
   // ---- its dying (all three heads down, or going down): the skirt wilts and all its colours dry
   function wilt(t) {
     const w = -sstep(ctx.wiltFrom, ctx.wiltFrom + 2.2, t);
@@ -605,10 +731,18 @@ export function createBossMoves(boss, { snaps = true } = {}) {
   function update(dt, player) {
     dt = Math.min(dt, 0.05);
     ctx.t += dt; me.time += dt;
-    if (player) tgt.copy(boss.worldToLocal(tmp.copy(player))).divideScalar(size);
+    if (player) {
+      tgt.copy(boss.worldToLocal(tmp.copy(player))).divideScalar(size);
+      // how she goes (the poison rain falls a little ahead of her)
+      if (ctx.herAt) {
+        const v = tmp2.subVectors(player, ctx.herAt).divideScalar(Math.max(dt, 1e-3)); v.y = 0;
+        if (v.lengthSq() > 144) v.setLength(12);                                      // (a jump from one place to another is not a run)
+        ctx.herVel.lerp(v, Math.min(1, dt * 6)); ctx.herAt.copy(player);
+      } else ctx.herAt = player.clone();
+    }
     chest.set(tgt.x, tgt.y + 1.2, tgt.z);
     for (const h of heads) { const d = dirs[h.index].set(tgt.x - h.centre.x, 0, tgt.z - h.centre.z); if (d.lengthSq() > 1e-6) d.normalize(); else d.set(0, 0, 1); }
-    for (const p of P) { p.at = null; p.share = 0.8; p.most = 0.75; p.lean.set(0, 0, 0); p.bow.set(0, 0, 0); p.yaw = 0; p.nod = 0; p.nodMax = 0.3; p.tilt = 0; p.wave = 0.95; p.quick = 1; p.scale = 1; p.face = { ...BOSS_HEAD_REST }; }
+    for (const p of P) { p.at = null; p.share = 0.8; p.most = 0.75; p.lean.set(0, 0, 0); p.bow.set(0, 0, 0); p.yaw = 0; p.nod = 0; p.nodMin = -0.6; p.nodMax = 0.3; p.tilt = 0; p.wave = 0.95; p.quick = 1; p.scale = 1; p.face = { ...BOSS_HEAD_REST }; }
     // as it stands unless a move says otherwise: its skirt eased back as built, still, unlit, not dried
     // (eased, not at once: a bud cut short opens, and its light dies down)
     body.skirt += (0 - body.skirt) * Math.min(1, dt * 6); body.swirl += (0 - body.swirl) * Math.min(1, dt * 6); body.glow += (0 - body.glow) * Math.min(1, dt * 8);
@@ -635,6 +769,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     else if (st === 'roots') roots(tt);
     else if (st === 'bramble') bramble(tt);
     else if (st === 'thicket') thicket(tt);
+    else if (st === 'poison') poison(tt);
     else if (st === 'die') { stance(false); wilt(tt); }
     else if (st === 'dead') { stance(false); wilt(ctx.dieLength); }
     else if (st === 'rise') rise(tt);
@@ -649,7 +784,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
       let yaw = p.yaw, nod = p.nod, gx = 0, gy = 0;
       if (p.at) { const a = aimHead(h, p.at, p.share, p.most); yaw += a.yaw; nod += a.nod; gx = a.gazeX; gy = a.gazeY; }
       h.yaw = spring(s.yaw, yaw, dt, 8 * q, 0.65);
-      h.nod = spring(s.nod, clamp(nod, -0.6, p.nodMax), dt, 9 * q, 0.62);
+      h.nod = spring(s.nod, clamp(nod, p.nodMin, p.nodMax), dt, 9 * q, 0.62);
       h.tilt = spring(s.tilt, p.tilt, dt, 6 * q, 0.6);
       h.lean.set(spring(s.lx, p.lean.x, dt, 7 * q, 0.55), spring(s.ly, p.lean.y, dt, 7.5 * q, 0.55), spring(s.lz, p.lean.z, dt, 7 * q, 0.55));
       h.bow.set(spring(s.bx, p.bow.x, dt, 7 * q, 0.6), spring(s.by, p.bow.y, dt, 7 * q, 0.6), spring(s.bz, p.bow.z, dt, 7 * q, 0.6));

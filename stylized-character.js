@@ -8,6 +8,7 @@
 //   hair and cloth that swing: vivi.attachSprings(createSprings(vivi.model, springsData)) (character-springs.js);
 //   then every frame, once she has been placed: vivi.updateSprings(dt)
 //   vivi.setSize(k)                    // k times her modelled size: height and the clips' ground speeds go with it
+//   vivi.tint.set(r, g, b, k)          // a colour washed over all of her, k 0..1 (0: none, as she starts): poisoned, she glows green
 //
 // In water (player.js tells her: vivi.water.level, vivi.water.wet): what is under the surface says how deep it is in the
 // picture's alpha, for the water drawn over it (stylized-water.js), and what has been under stays darker until it dries.
@@ -21,7 +22,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const SUN = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();   // same sun as the trees and rocks
 
-function celMaterial(src, water) {
+function celMaterial(src, water, tint) {
   const ex = src.userData || {};
   const map = src.map || null;
   if (map) { map.colorSpace = THREE.NoColorSpace; map.needsUpdate = true; }   // raw sRGB, like the rest of the kit
@@ -37,6 +38,7 @@ function celMaterial(src, water) {
       uFlat: { value: ex.face ? 0.82 : 0.0 },          // faces stay almost unshaded, like hand-drawn anime
       uCut: { value: mask ? src.alphaTest : (hair ? 0.5 : 0.0) },
       uWaterY: water.level, uWet: water.wet,
+      uTint: tint,
       uSolid: { value: blend && !hair ? 0 : 1 },         // (a blended overlay keeps its own alpha)
     },
     vertexShader: /* glsl */`
@@ -62,6 +64,7 @@ function celMaterial(src, water) {
       uniform vec3 uShade, uLight;
       uniform float uFlat, uCut, uWaterY, uSolid;
       uniform vec2 uWet;             // the height (in the world) she is wet up to, and how wet still (1 just out of the water .. 0 dry)
+      uniform vec4 uTint;            // a colour washed over her, and how much (poisoned: green)
       varying vec2 vUv;
       varying vec3 vWN;
       varying float vWY;
@@ -76,6 +79,8 @@ function celMaterial(src, water) {
         // wet: what has been under water is darker and a touch bluer until it dries; the line it reached is not ruler-straight
         float wet = uWet.y * (1.0 - smoothstep(-0.04, 0.03, vWY - uWet.x + 0.02 * sin(vUv.x * 55.0 + vUv.y * 31.0)));
         col *= mix(vec3(1.0), vec3(0.76, 0.81, 0.88), wet);
+        // a colour washed over her: her light and shade kept, her own colours taken toward it
+        col = mix(col, uTint.rgb * (0.35 + 1.15 * dot(col, vec3(0.3, 0.59, 0.11))), uTint.w);
         // under the water: how far under (0 at the surface .. 0.5 a metre down) goes out as alpha. Nothing on screen reads it;
         // the water does, in the picture of what lies under it, and shows her through as much water as really covers her.
         float a = mix(t.a, vWY < uWaterY ? clamp(uWaterY - vWY, 0.0, 1.0) * 0.5 : 1.0, uSolid);
@@ -114,9 +119,10 @@ export async function loadCharacter(source, anim) {
   const model = gltf.scene;
   const made = new Map();
   const water = { level: { value: -1e5 }, wet: { value: new THREE.Vector2(-1e5, 0) } };      // shared by all her materials; on land: no water, dry
+  const tint = { value: new THREE.Vector4(0, 0, 0, 0) };                                       // shared too: no colour washed over her
   model.traverse(o => {
     if (!o.isMesh) return;
-    if (!made.has(o.material)) made.set(o.material, celMaterial(o.material, water));
+    if (!made.has(o.material)) made.set(o.material, celMaterial(o.material, water, tint));
     const queue = (o.material.userData && o.material.userData.queue) || 2000;
     o.material = made.get(o.material);
     o.renderOrder = queue > 2500 ? 10 + (queue - 2500) / 1000 : 0;      // face overlays (brows, lashes, highlights) after the skin
@@ -141,7 +147,7 @@ export async function loadCharacter(source, anim) {
   const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
   let springs = null;
   const ch = {
-    object, model, mixer, actions, height: baseHeight, water, baseHeight, hipsHeight, size: 1,
+    object, model, mixer, actions, height: baseHeight, water, tint: tint.value, baseHeight, hipsHeight, size: 1,
     speeds: { ...baseSpeeds },
     // k times her modelled size (1 = as the GLB is, ~1.41 m). A bigger step covers more ground: the clips' speeds grow with her
     setSize(k) {
