@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7fb4e6">
+<title>วีวี่ — บาเรียน้ำ</title>
+<!--
+  barrier.html  —  Vivi's water barrier, to look at: the move she casts it with (the clip Barrier_Cast, made by
+  tools/make-barrier-anim.py from the library's Spell_Simple_Enter and baked into barrier-anim.js) and all it draws
+  (barrier-fx.js), in a meadow, by day or by night, from where the clip was filmed or from where the game's camera
+  stands. Her hair and skirt are lifted by its draught, the grass leans away from its water, the ground jolts.
+  One job: try the move. Nothing here goes into the game.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb4e6; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; }
+  #name { position: fixed; left: 0; right: 0; top: calc(10px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 17px system-ui; color: #fff; text-shadow: 0 1px 6px #0008; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(58px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #fff; text-shadow: 0 1px 6px #000a; }
+  #ui { position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 0 calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left)); pointer-events: none; }
+  #ui > * { pointer-events: auto; }
+  .track { position: relative; width: min(86vw, 420px); height: 8px; border-radius: 99px; background: #2b3a55b0; border: 1px solid #ffffff90; overflow: hidden; }
+  .track i { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffffffa0; }
+  .track b { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #4fc3e8, #c8f4ff); }
+  .bar { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 9px 13px; background: #2b3a55d9; color: #fff; font: 700 13px system-ui; touch-action: manipulation; }
+  .bar button.on { background: #2f7f9e; }
+  .bar button.go { background: #1f8fbf; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; }
+  @media (max-height: 520px) {                       /* a phone on its side: the buttons in one row, the title shorter */
+    #name small { display: none; }
+    #beat { top: calc(34px + env(safe-area-inset-top)); }
+    #ui { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; }
+    .track { width: min(26vw, 260px); }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="name">วีวี่ · บาเรียน้ำ<small>รวมน้ำในมือ → ชูขึ้น → น้ำพุ่งจากพื้น → โดมน้ำ → ฟองใส → จาง</small></div>
+<div id="beat"></div>
+<div id="wait">กำลังโหลดวีวี่…</div>
+<div id="ui">
+  <div class="track" id="track"><b id="fill"></b></div>
+  <div class="bar">
+    <button id="play" class="go">▶ ร่าย</button>
+    <button id="loop" class="on">🔁 เล่นวน</button>
+    <button data-speed="1" class="on">×1</button>
+    <button data-speed="0.5">×½</button>
+    <button data-speed="0.25">×¼</button>
+  </div>
+  <div class="bar">
+    <button id="cam">🎬 มุมคลิป</button>
+    <button id="hour">☀ กลางวัน</button>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM as BARRIER_ANIM } from './barrier-anim.js';
+import { createBarrierFx, BARRIER } from './barrier-fx.js';
+
+const B = BARRIER;
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+
+// ---- the barrier's pictures, in a scene of their own drawn over the meadow's: by night the meadow is dimmed to the
+// hour's light first (as the game does it: the whole picture multiplied by one colour) and the barrier's own light is
+// drawn after it, undimmed
+const fxScene = new THREE.Scene();
+const LIFT = 0.12;                                   // the water on the ground stands in the grass: the blades' tips come through it
+const fx = createBarrierFx({ lift: LIFT, seed: 1 });
+fxScene.add(fx.object);
+const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
+fx.setSun(sun);
+const NIGHT = [0.3, 0.38, 0.66];
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: false, depthWrite: false,
+}));
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+let night = false;
+
+// ---- her
+const her = new THREE.Vector3(0, H(0, 0), 0);
+let vivi = null, hand = null, springs = null;
+const handAt = new THREE.Vector3(0, 1.2, 0.3);
+const winds = [];                                    // each of her springs' settings, and how stiff it is as she was made
+(async () => {
+  const [{ VIVI_GLB }, data] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),      // (no springs: stiff hair, still to be seen)
+  ]);
+  vivi = await loadCharacter(VIVI_GLB, BARRIER_ANIM);
+  if (data) {
+    springs = createSprings(vivi.model, data);
+    vivi.attachSprings(springs);
+    const seen = new Set();
+    for (const j of springs.manager.joints) if (!seen.has(j.settings)) { seen.add(j.settings); winds.push([j.settings, j.settings.stiffness]); }
+  }
+  vivi.setSize(1.75 / vivi.baseHeight);
+  vivi.object.position.copy(her);
+  vivi.play('idle', 0);
+  hand = vivi.model.getObjectByName('J_Bip_L_Middle1') || vivi.model.getObjectByName('J_Bip_L_Hand');
+  scene.add(vivi.object);
+  document.getElementById('wait').remove();
+  window.barrierTrial.ready = true;
+})().catch(err => { document.getElementById('wait').textContent = 'โหลดวีวี่ไม่ได้: ' + err.message; console.error(err); });
+
+// ---- the camera: where the clip was filmed from (in front of her, low), or where the game's stands (behind her, above)
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 600);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.53; controls.minDistance = 3; controls.maxDistance = 40; controls.enablePan = false;
+let view = 'clip';
+function frame() {
+  // as near as it can be while the whole barrier fits in the picture, between the title and the buttons
+  const R = B.radius, v = THREE.MathUtils.degToRad(camera.fov) / 2, h = Math.atan(Math.tan(v) * camera.aspect);
+  const free = 1 - (document.getElementById('ui').getBoundingClientRect().height + 96) / innerHeight;
+  const d = Math.max(R * 1.22 / Math.tan(h), (R * 0.66) / Math.tan(v) / Math.max(0.35, free));
+  const yaw = view === 'clip' ? 0.5 : Math.PI, pitch = view === 'clip' ? 0.1 : 0.42;
+  controls.target.set(her.x, her.y + R * (view === 'clip' ? 0.42 : 0.3), her.z);
+  camera.position.set(her.x + Math.sin(yaw) * Math.cos(pitch) * d, controls.target.y + Math.sin(pitch) * d, her.z + Math.cos(yaw) * Math.cos(pitch) * d);
+  controls.update();
+}
+frame();
+
+// ---- what is happening, shown over it
+const BEATS = [[0, 'รวมน้ำไว้ในมือ'], [B.raise, 'ชูขึ้นเหนือหัว น้ำหมุนตามขึ้นไป'], [B.burst, 'น้ำพุ่งขึ้นจากพื้น!'], [B.pour[0] + 0.1, 'โดมน้ำครอบลงมา'],
+  [B.clear[0], 'น้ำไหลออก เหลือฟองใส'], [B.fade[0], 'ฟองจางจากยอดลงมา'], [B.end, '']];
+const track = document.getElementById('track');
+for (const [t] of BEATS.slice(1, -1)) { const i = document.createElement('i'); i.style.left = (t / B.gone * 100) + '%'; track.appendChild(i); }
+const beatEl = document.getElementById('beat'), fillEl = document.getElementById('fill');
+
+// ---- the cast: its clock (-1: none), and what goes with it
+let cast = -1, loop = true, speed = 1, wait = 1.2, clock = 0;
+function begin() {
+  if (!vivi) return;
+  cast = 0;
+  vivi.play('barrier', 0.1, false);
+}
+const btn = id => document.getElementById(id);
+btn('play').onclick = () => { wait = -1; begin(); };
+btn('loop').onclick = () => { loop = !loop; btn('loop').classList.toggle('on', loop); if (loop && cast < 0) wait = 0.3; };
+for (const b of document.querySelectorAll('[data-speed]')) b.onclick = () => {
+  speed = +b.dataset.speed;
+  for (const o of document.querySelectorAll('[data-speed]')) o.classList.toggle('on', o === b);
+};
+btn('cam').onclick = () => { view = view === 'clip' ? 'game' : 'clip'; btn('cam').textContent = view === 'clip' ? '🎬 มุมคลิป' : '🎮 มุมเกม'; frame(); };
+btn('hour').onclick = () => {
+  night = !night;
+  btn('hour').textContent = night ? '🌙 กลางคืน' : '☀ กลางวัน';
+  if (night) fx.setLight(0.5, 0.58, 0.8); else fx.setLight(1, 1, 1);      // (the water keeps more of its light than the land does)
+};
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); frame(); });
+
+const UP = new THREE.Vector3(0, 1, 0), gust = new THREE.Vector3(), jolt = new THREE.Vector3();
+function step(dt) {
+  dt = Math.min(dt, 0.05) * speed;
+  clock += dt;
+  if (cast < 0 && wait >= 0 && vivi) { wait -= dt / speed; if (wait < 0 && (loop || !step.begun)) { step.begun = true; begin(); } }
+  if (cast >= 0) {
+    const was = cast;
+    cast += dt;
+    if (was < B.end && cast >= B.end) vivi.play('idle', 0.15, false);
+    if (cast > B.gone) { cast = -1; wait = loop ? 1.0 : -1; }
+  }
+  N.update(dt);
+  if (vivi) {
+    vivi.update(dt);
+    vivi.object.updateMatrixWorld(true);
+    hand.getWorldPosition(handAt);
+  }
+  fx.update(dt, renderer, camera, cast, her, handAt);
+  if (vivi) {
+    // the water's draught lifts her skirt (her stiff springs: as hard as each is stiff) and only stirs her hair and
+    // sleeves; and while she is lifted and let down her hair is held more firmly, or it flies up into two horns
+    gust.set(0.3 * Math.sin(clock * 7.1), 1, 0.3 * Math.cos(clock * 5.3)).normalize();
+    const held = cast < 0 ? 0 : THREE.MathUtils.smoothstep(cast, B.burst - 0.1, B.burst + 0.1) * (1 - THREE.MathUtils.smoothstep(cast, B.end, B.end + 0.4));
+    for (const [s, stiff] of winds) {
+      s.gravityDir.copy(gust); s.gravityPower = fx.wind * (stiff > 1 ? 0.45 : 0.1) * stiff;
+      s.stiffness = stiff > 1 ? stiff : stiff * (1 + 3 * held);
+    }
+    vivi.updateSprings(dt);
+  }
+  // the grass round her leans away from the water as it breaks out, and stands again when it has gone (only round her:
+  // leant over, the blades show their pale tips, and a whole barrier's width of that looks dry, not wet)
+  const wet = cast < 0 ? 0 : THREE.MathUtils.smoothstep(cast, B.burst, B.burst + 0.3) * (1 - THREE.MathUtils.smoothstep(cast, B.pour[1], B.clear[1]));
+  grass.userData.setWalker(her, 0.55 + 0.7 * wet);
+  const now = cast < 0 ? 0 : cast;
+  let label = '';
+  for (const [t, text] of BEATS) if (cast >= t) label = text;
+  beatEl.textContent = label;
+  fillEl.style.width = (Math.min(1, now / B.gone) * 100) + '%';
+}
+function draw() {
+  controls.update();
+  // the ground's jolt: the camera's, for this picture only
+  const k = fx.shake * 0.045;
+  jolt.set((Math.sin(clock * 91) + Math.sin(clock * 57)) * k, (Math.sin(clock * 73) + Math.cos(clock * 41)) * k, 0);
+  camera.position.add(jolt);
+  camera.updateMatrixWorld();
+  renderer.clear();
+  renderer.render(scene, camera);
+  if (night) renderer.render(dimScene, camera);
+  renderer.render(fxScene, camera);
+  camera.position.sub(jolt);
+}
+
+// for looking at one moment of it (a test's, or the console's): the cast played from its start to t, then drawn
+window.barrierTrial = {
+  ready: false,
+  at(t, { speed: s = 1, hold = false } = {}) {
+    this.held = true; loop = false; wait = -1; speed = 1;
+    if (vivi) { vivi.play('idle', 0); vivi.resetSprings(); }
+    cast = -1; fx.update(0, renderer, camera, -1, her, handAt);
+    begin();
+    for (let u = 0; u < t; u += 1 / 60) step(1 / 60);
+    draw();
+    return cast;
+  },
+  view(name, near = 1) { view = name; frame(); camera.position.sub(controls.target).multiplyScalar(near).add(controls.target); controls.update(); }, night(on) { if (on !== night) btn('hour').onclick(); },
+  camera, controls,
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;                // 60 pictures a second at most: no hotter than it need be
+  shown = now;
+  if (window.barrierTrial.held) return;
+  const dt = (now - then) / 1000; then = now;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

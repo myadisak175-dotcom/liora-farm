@@ -15,6 +15,11 @@ the same T-pose with no rest rotations, so one bake serves every playable charac
 Usage (from the repo folder):
   python3 tools/bake-character-anim.py assets/animations/vrma      (or any folder holding the library's .vrma files)
 writes character-anim.js next to index.html. No packages needed beyond Python 3.
+
+A page kept apart from the game bakes the few clips it plays into a file of its own, so the game's character-anim.js
+is not made bigger by them: name the file and the clips (game name:library clip; one with Loop in its name loops,
+and every one is played in place):
+  python3 tools/bake-character-anim.py assets/animations/vrma barrier-anim.js idle:Idle_Loop barrier:Barrier_Cast
 """
 import json
 import os
@@ -200,9 +205,18 @@ def main(argv):
         return 1
     lib = argv[1]
     out_path = argv[2] if len(argv) > 2 else os.path.join(REPO, "character-anim.js")
+    clips = CLIPS
+    if len(argv) > 3:                                                           # a page's own few clips (see Usage)
+        clips = []
+        for spec in argv[3:]:
+            game_name, _, lib_name = spec.partition(":")
+            if not game_name or not lib_name:
+                print(f"not a clip: {spec!r} (game name:library clip, e.g. barrier:Barrier_Cast)")
+                return 1
+            clips.append((game_name, lib_name, "Loop" in lib_name, 0.0))
     anim = {"fps": 30, "forwardYaw": 3.1416, "hipsBone": "J_Bip_C_Hips", "hipsUnit": "hipsHeight", "clips": {}}
     lines = []
-    for game_name, lib_name, loop, speed in CLIPS:
+    for game_name, lib_name, loop, speed in clips:
         clip = read_vrma(os.path.join(lib, f"{lib_name}.vrma"))
         measured = planted_foot_speed(clip) / clip["rest_hips"][1]
         tracks, hips, frames = bake(clip)
@@ -216,8 +230,9 @@ def main(argv):
                      + (f", ground speed {measured:.2f} hips heights/s" if speed is None or speed > 0 else "")
                      + (f" (played as {speed:.2f})" if speed else ""))
         print(lines[-1][4:])
-    head = ("// character-anim.js: written by tools/bake-character-anim.py from the shared animation library; do not edit by hand.\n"
-            "// Every playable character's moves: Quaternius' Universal Animation Library 1+2 (CC0), for VRoid bones.\n"
+    head = (f"// {os.path.basename(out_path)}: written by tools/bake-character-anim.py from the shared animation library; do not edit by hand.\n"
+            + ("// Every playable character's moves" if clips is CLIPS else "// The moves one page plays")
+            + ": Quaternius' Universal Animation Library 1+2 (CC0), for VRoid bones.\n"
             "// Hips path and ground speeds are in hips heights: stylized-character.js scales them to each model.\n"
             + "\n".join(lines) + "\n")
     with open(out_path, "w", encoding="utf-8") as f:

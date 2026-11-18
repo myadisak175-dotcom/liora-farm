@@ -3,6 +3,14 @@
   "license": "CC0-1.0 (Quaternius)",
   "clips": [
     {
+      "name": "Barrier_Cast",
+      "file": "Barrier_Cast.vrma",
+      "source": "liora-farm",
+      "duration": 3.3,
+      "frames": 100,
+      "loop": false
+    },
+    {
       "name": "Chest_Open",
       "file": "Chest_Open.vrma",
       "source": "UAL2",
