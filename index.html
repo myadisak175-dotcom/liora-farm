@@ -108,7 +108,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=56",
+  "./hill-village-level.js": "./hill-village-level.js?v=57",
   "./west-fringe.js": "./west-fringe.js?v=6",
   "./village-kit.js": "./village-kit.js?v=bridge3",
   "./map-rim.js": "./map-rim.js?v=4",
@@ -118,7 +118,7 @@
   "./foliage-editor.js": "./foliage-editor.js?v=2",
   "./foliage-edits.js": "./foliage-edits.js?v=4",
   "./place-edits.js": "./place-edits.js?v=2",
-  "./land-water.js": "./land-water.js?v=8",
+  "./land-water.js": "./land-water.js?v=10",
   "./blockout-layout.js": "./blockout-layout.js?v=1",
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
   "./rock-editor.js": "./rock-editor.js?v=3",
@@ -127,7 +127,7 @@
   "./stylized-sky.js": "./stylized-sky.js?v=alps1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1",
   "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./character-springs.js": "./character-springs.js?v=1",
@@ -139,7 +139,7 @@
   "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
   "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
-  "./time-of-day.js": "./time-of-day.js?v=tod3",
+  "./time-of-day.js": "./time-of-day.js?v=tod4",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./hills-level.js": "./hills-level.js?v=rocks1t4",
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1t4",
@@ -153,7 +153,7 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
   "./player-moves.js": "./player-moves.js?v=2",
   "./player-input.js": "./player-input.js?v=1",
   "./player-camera.js": "./player-camera.js?v=1",
@@ -163,9 +163,10 @@
   "./stylized-props.js": "./stylized-props.js?v=sails1",
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
   "./character-shadow.js": "./character-shadow.js?v=shadow2swap1",
-  "./curse.js": "./curse.js?v=1",
-  "./world-switch.js": "./world-switch.js?v=1",
-  "./drought.js": "./drought.js?v=2",
+  "./curse.js": "./curse.js?v=3",
+  "./world-switch.js": "./world-switch.js?v=2",
+  "./curse-weather.js": "./curse-weather.js?v=3",
+  "./drought.js": "./drought.js?v=3",
   "./dark-mist.js": "./dark-mist.js?v=2"
 } }
 </script>
@@ -252,8 +253,9 @@ import { createPathBrush } from './path-brush.js';
 import { createTeleportMenu, teleportPlaces } from './teleport-menu.js';
 import { createGameMap } from './game-map.js';
 import { createWarpUI } from './warp-ui.js';
-import { createCurse, CURSE_TUNE, CURSE_CONTROLS } from './curse.js';
+import { createCurse, CURSE_TUNE, CURSE_CONTROLS, CURSE_SKY, CURSE_MOON } from './curse.js';
 import { createWorldSwitch } from './world-switch.js';
+import { createCurseWeather } from './curse-weather.js';
 import { createTunerPanel } from './tuner-panel.js';
 
 const HAZE = '#cde6f2';
@@ -436,7 +438,8 @@ if (sky.userData.tune) createSkyTuner({ sky, button: skyBtn, panel: document.get
 // ---- day, evening, night: the clock runs by itself, slowly; the button jumps to the next of noon / dusk / night
 const timeBtn = document.getElementById('timeBtn'), timeRun = document.getElementById('timeRun');
 const tod = sky.userData.look && shadows
-  ? createTimeOfDay({ sky, shadows, scene, level, rgb: N._internal.rgb, setHaze: c => N._internal.shared.uHaze.value.copy(c), hour: Q.has('hour') ? +Q.get('hour') : 12 })
+  ? createTimeOfDay({ sky, shadows, scene, level, rgb: N._internal.rgb, setHaze: c => N._internal.shared.uHaze.value.copy(c), hour: Q.has('hour') ? +Q.get('hour') : 12,
+      ...(Q.has('curse') ? { keys: CURSE_SKY, moon: CURSE_MOON } : {}) })      // (the cursed world: a blood-red sky, curse.js)
   : null;
 const ICON = { 'เช้า': '🌅', 'กลางวัน': '☀', 'เย็น': '🌇', 'กลางคืน': '🌙' };
 const showTime = () => { if (tod) timeBtn.textContent = ICON[tod.phase] + ' ' + tod.phase; };
@@ -455,9 +458,15 @@ if (worldSwitch && worldSwitch.restored && tod) { showTime(); timeRun.textConten
 
 // ---- ☠ the curse (a trial, ?curse=1): the world drained of colour, dimmer and misty, to find how gloomy the game should begin.
 // She stays in colour. The sliders are remembered on this device; "คัดลอกค่า" gives the numbers to send back
-let curse = null;
+let curse = null, weather = null;
 if (Q.has('curse')) {
   curse = createCurse({ sky, haze: N.uniforms });
+  // its weather: a hard wind, thin mist among the houses, dry leaves blown along (curse-weather.js); laid on before the curse
+  if (level.homes) {
+    weather = createCurseWeather({ homes: level.homes, heightAt: level.heightAt, sky });
+    scene.add(weather.group);
+    if (shadows) shadows.apply(weather.leaves);
+  }
   curse.apply(scene, { keep: [player.object] });
   const btn = document.createElement('button'); btn.id = 'curseBtn'; btn.textContent = '☠ คำสาป';
   btn.onpointerdown = e => e.stopPropagation();
@@ -611,6 +620,7 @@ const frame = (dt = clock.getDelta()) => {
   if (tod) tod.update(dt);
   if (shadows) shadows.update();
   if (curse) curse.update(renderer);
+  if (weather) weather.update(player.position);
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
   if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(dt);      // (an editor draws fewer frames on purpose: that is not the phone struggling)

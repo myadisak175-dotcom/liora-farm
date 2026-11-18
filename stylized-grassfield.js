@@ -409,8 +409,8 @@ const BLADE_BODY = /* glsl */`
         float ca = cos(a), sa = sin(a);
         vec2 f = vec2(toCam.x * ca - toCam.y * sa, toCam.x * sa + toCam.y * ca);
         vec2 right = vec2(f.y, -f.x);
-        // wind: slow gusts rolling over the field + a small flutter per blade
-        float gust = noise2(root.xz * 0.085 - uTime * vec2(0.5, 0.3));
+        // wind: slow gusts rolling over the field + a small flutter per blade (a hard wind, uWind over 1: the gusts roll by faster)
+        float gust = noise2(root.xz * 0.085 - uTime * vec2(0.5, 0.3) * (1.0 + max(uWind - 1.0, 0.0) * 0.8));
         float sway = (gust - 0.3) * 1.25 + sin(uTime * 2.4 + iRnd.z * 6.283) * 0.1;
         vec2 lean = vec2(0.86, 0.5) * sway * 0.5 * uWind + vec2(cos(iRnd.z * 6.283), sin(iRnd.z * 6.283)) * 0.2;
         // someone walking through: the blades right at their feet part a little, nothing gets flattened
@@ -772,7 +772,7 @@ export function createFollowGrass({
         vec2 f = vec2(toCam.x * ca - toCam.y * sa, toCam.x * sa + toCam.y * ca);
         vec2 right = vec2(f.y, -f.x);
         // wind: slow gusts rolling over the field + a small flutter per blade; blades also splay out of their tuft
-        float gust = noise2(xz * 0.085 - uTime * vec2(0.5, 0.3));
+        float gust = noise2(xz * 0.085 - uTime * vec2(0.5, 0.3) * (1.0 + max(uWind - 1.0, 0.0) * 0.8));      // (a hard wind: faster)
         float sway = (gust - 0.3) * 1.25 + sin(uTime * 2.4 + (iRnd.z + aBlade.w * 0.13) * 6.283) * 0.12;
         vec2 lean = vec2(0.86, 0.5) * sway * 0.5 * uWind + off * 0.42;
         // someone walking through: the blades right at their feet part a little, nothing gets flattened

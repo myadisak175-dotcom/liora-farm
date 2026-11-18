@@ -11,7 +11,8 @@
      scene    the haze the land fades into, and the colour the distant land blends toward (uFar of every material)
      shadows  the light of the hour: one colour every material is multiplied by (white at noon, warm at dusk, blue at night)
      level    where the sun is, so the shadows on the ground lie the right way (drawn in the background by the level)
-   The look between two key hours is a smooth blend of their colours.
+   The look between two key hours is a smooth blend of their colours. Another world can bring its own looks (keys: hours
+   and colours as KEYS has them; moon: the moon's colour), the cursed one its blood-red sky (curse.js, CURSE_SKY).
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -36,10 +37,10 @@ const NAMES = [[5.5, 8, 'เช้า'], [8, 16.5, 'กลางวัน'], [16
 const smooth = t => t * t * (3 - 2 * t);
 const sstep = (a, b, x) => smooth(Math.min(1, Math.max(0, (x - a) / (b - a))));
 
-export function createTimeOfDay({ sky, shadows = null, scene, level = null, rgb, setHaze = null, hour = 11, daySeconds = 720, azimuthNoon = 128.7, maxElevation = 56 } = {}) {
+export function createTimeOfDay({ sky, shadows = null, scene, level = null, rgb, setHaze = null, hour = 11, daySeconds = 720, azimuthNoon = 128.7, maxElevation = 56, keys: looks = KEYS, moon: moonTint = [0.86, 0.91, 1.0] } = {}) {
   const look = sky.userData.look;
   // the keys, with their colours turned into the kit's own raw colour vectors once
-  const keys = KEYS.map(k => ({ ...k, c: Object.fromEntries(['top', 'mid', 'hor', 'sunCol', 'light', 'ambTop', 'ambBot'].map(n => [n, rgb(k[n])])), g: new THREE.Vector3(...k.grade) }));
+  const keys = looks.map(k => ({ ...k, c: Object.fromEntries(['top', 'mid', 'hor', 'sunCol', 'light', 'ambTop', 'ambBot'].map(n => [n, rgb(k[n])])), g: new THREE.Vector3(...k.grade) }));
   // everything that fades into the haze colour at a distance, and the soft mist sprites
   const fars = [], sprites = [];
   scene.traverse(o => {
@@ -79,7 +80,7 @@ export function createTimeOfDay({ sky, shadows = null, scene, level = null, rgb,
     look.uMoon.value.copy(moon);
     look.uStars.value = stars;
     const moonSee = sstep(-0.02, 0.14, moon.y) * (1 - day * 0.92);
-    look.uMoonCol.value.set(0.86, 0.91, 1.0).multiplyScalar(moonSee);
+    look.uMoonCol.value.set(...moonTint).multiplyScalar(moonSee);
     sky.userData.lightDir.copy(sinEl > 0.04 ? sun : moon);            // clouds are lit by whichever of the two is up
 
     // the land fades into the colour of the horizon

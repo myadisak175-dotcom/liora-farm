@@ -23,7 +23,7 @@ export function createWorldSwitch({ player, tod = null, map }) {
     const s = JSON.parse(sessionStorage.getItem(KEY) || 'null');
     sessionStorage.removeItem(KEY);
     if (s && s.map === map && Number.isFinite(s.x) && Number.isFinite(s.z)) {
-      player.teleport(s.x, s.z, Number.isFinite(s.heading) ? s.heading : undefined);
+      player.teleport(s.x, s.z, Number.isFinite(s.heading) ? s.heading : undefined, Number.isFinite(s.y) ? s.y : undefined);      // (y: on a bridge, or under it)
       if (Number.isFinite(s.camYaw)) player.setView(s.camYaw, s.camPitch, s.camDist);
       if (tod && Number.isFinite(s.hour)) { tod.set(s.hour); tod.auto = !!s.auto; }
       restored = true;
@@ -40,7 +40,7 @@ export function createWorldSwitch({ player, tod = null, map }) {
     btn.disabled = true; btn.textContent = '…กำลังสลับโลก';
     try {
       sessionStorage.setItem(KEY, JSON.stringify({
-        map, x: player.position.x, z: player.position.z, heading: player.heading,
+        map, x: player.position.x, y: player.position.y, z: player.position.z, heading: player.heading,
         camYaw: player.camYaw, camPitch: player.camPitch, camDist: player.camDist,
         hour: tod ? tod.hour : null, auto: tod ? tod.auto : null,
       }));

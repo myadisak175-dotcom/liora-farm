@@ -31,7 +31,9 @@
 //   land's and stay as they are; the water is cut to its new shore and goes over its lip only where it still reaches it,
 //   so a stretch drawn down spills in a narrower fall or in none. The lookup is to be made from the stretches as they stand
 //   (their levels lowered), so the falls land on the water as it is. still: the stretches drawn down below their lips on
-//   purpose (pools, no fall): the check does not ask a fall of them
+//   purpose (pools, no fall): the check does not ask a fall of them, and their sheets are not drawn in to a shore found
+//   by walking out from the line: each is the ground under its level joined to its line (on a half-metre grid), and one
+//   step on onto the banks, whose ground hides the sheet's edge, so each pool takes its hollow's own shape
 //   lipLanes(rows, heightAt), lipRuns(lanes, level, parted): how the lip is found, for a level that chooses how low to stand
 //
 // (Before this each level laid a strip or a sheet from the line alone, ended it on a straight line, and stood a ready-made
@@ -148,7 +150,9 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
 
     // ---- the lip: lane by lane across its end, how far down the lane the ground holds (lim), and whether water reaches it there;
     // the runs of lanes it goes over by (lips), each run's line eased (the ground is a grid of half metres)
+    // (past: how low the ground must be to count as gone over a side edge: as deep as its bed was, at the level it was planned at)
     const { lanes, past } = lipLanes(rows, H), parted = split.includes(k), lips = lipRuns(lanes, lv, parted), lines = lips.map(r => lipLine(rows, lanes, r));
+    const pools = still.includes(k);                                       // drawn down: what is left of it lies in pools
     {
       const lim = lanes.map(l => l.lim);
       for (const { a, b } of lips) for (let i = a; i <= b; i++) lanes[i].lim = (lim[Math.max(a, i - 1)] + lim[i] * 2 + lim[Math.min(b, i + 1)]) / 4;
@@ -162,7 +166,7 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
     // ---- the surface: a grid over the stretch; each point: the nearest spot on the stretch's line, and whether water lies there
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, wide = 0;
     for (const [x, z, , hw] of rows) { x0 = Math.min(x0, x - hw - 1.5); x1 = Math.max(x1, x + hw + 1.5); z0 = Math.min(z0, z - hw - 1.5); z1 = Math.max(z1, z + hw + 1.5); wide = Math.max(wide, hw); }
-    const cs = wide > 6 ? 1.0 : wide > 3 ? 0.7 : 0.5, gx = Math.ceil((x1 - x0) / cs) + 1, gz = Math.ceil((z1 - z0) / cs) + 1;
+    const cs = pools ? 0.5 : wide > 6 ? 1.0 : wide > 3 ? 0.7 : 0.5, gx = Math.ceil((x1 - x0) / cs) + 1, gz = Math.ceil((z1 - z0) / cs) + 1;
     const pts = new Array(gx * gz);
     for (let j = 0; j < gz; j++) for (let i = 0; i < gx; i++) {
       let x = x0 + i * cs, z = z0 + j * cs, best = Infinity, bk = 0, bt = 0, snap = 0;
@@ -178,6 +182,8 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
       let inside = best <= hw && before >= 0 && al <= lim;
       // behind its first row (under the fall that feeds it) the water lies on as far as the cliff's foot
       if (!inside && before < 0 && before > -3.5 && Math.abs((x - A[0]) * -tA[1] + (z - A[1]) * tA[0]) <= A[3] + 0.5 && H(x, z) < lv - 0.03) inside = true;
+      // pools: no drawing in here: which points are water is worked out for the whole grid at once, below (inside: may lie here)
+      if (pools) { pts[j * gx + i] = { x, z, inside, line: best <= cs * 0.75, g: H(x, z), snap: 0, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 }; continue; }
       if (!inside && !(before < 0 && H(x, z) >= lv - 0.03)) {               // not water: drawn in to the water's outline (unless it lies inside the cliff behind the fall, where it is never seen)
         if (al > lim) { x = B[0] + nB[0] * la + tB[0] * lim; z = B[1] + nB[1] * la + tB[1] * lim; snap = 1; }      // past the edge: back onto the edge, in its own lane
         else if (before < 0) {                                              // short of its first row: onto the line across that row, no wider than the water is there
@@ -206,6 +212,20 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
         if (stop >= 0 && stop < best) { x = qx + dx * stop; z = qz + dz * stop; inside = false; } else snap = 0;
       }
       pts[j * gx + i] = { x, z, inside, snap, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 };
+    }
+    if (pools) {
+      // the water is where the ground lies under it, joined to the stretch's line; the sheet runs one step on past that,
+      // onto the banks, where the ground hides its edge: each pool's shore is its hollow's own, not a line of the grid
+      const N = gx * gz, wet = c => pts[c].inside && pts[c].g < lv - 0.02, mask = new Uint8Array(N), stack = [];
+      const around = (c, f) => { const i = c % gx, j = (c - i) / gx; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if ((di || dj) && ii >= 0 && jj >= 0 && ii < gx && jj < gz) f(jj * gx + ii); } };
+      for (let c = 0; c < N; c++) if (pts[c].line && wet(c)) { mask[c] = 1; stack.push(c); }
+      while (stack.length) around(stack.pop(), e => { if (!mask[e] && wet(e)) { mask[e] = 1; stack.push(e); } });
+      for (let c = 0; c < N; c++) {
+        const p = pts[c]; p.inside = !!mask[c];
+        // a step on that is no bank (the ground still under the water there, where it may not lie: drought.js lowers it
+        // until there are next to none): drawn back nearly to the pool, its edge cut short there
+        if (!mask[c] && p.g < lv - 0.02) { let q = null; around(c, e => { if (mask[e] && !q) q = pts[e]; }); if (q) { p.x = q.x + (p.x - q.x) * 0.3; p.z = q.z + (p.z - q.z) * 0.3; p.snap = 2; } }
+      }
     }
     const pos = [], flow = [], dir = [], idx = [], was = [report.open, report.short];
     const use = p => {

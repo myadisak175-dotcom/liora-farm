@@ -9,7 +9,10 @@
 //   every frame: player.update(dt)
 //
 // A jump: she leaves the ground at once (no wind-up), flies a plain ballistic arc and lands on whatever standAt says is
-// under her, a rock's top included. The clips (character-anim.js): jump_start plays through the rise, jump_air holds a long
+// under her, a rock's top included.
+// What the level is asked about the ground (standAt, waterDepthAt, walkable through confine) is asked with her height too,
+// and a collider may hold only for some heights ([x, z, r, from, to]): so a level can tell a bridge's deck from the bed
+// under its arch, and let her walk on the one or under the other. A level that does not care leaves them out. The clips (character-anim.js): jump_start plays through the rise, jump_air holds a long
 // fall, jump_land takes the landing; moving on, she runs straight out of the landing.
 //
 // Her height (character.height, against Vivi's 1.412 m as modelled, the height every number here was tuned at) scales what
@@ -143,7 +146,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
 
   // slide along anything solid: tree trunks, rocks, deep water, the edge of the map
   function collide(p, k = 1, from = null) {
-    for (const [cx, cz, cr] of level.colliders) {
+    const y = from ? from.y : pos.y;
+    for (const [cx, cz, cr, lo, hi] of level.colliders) {
+      if (lo !== undefined && (y < lo || (hi !== undefined && y > hi))) continue;      // (a wall that is only there at some heights: a parapet over an arch)
       const dx = p.x - cx, dz = p.z - cz, r = cr + 0.28 * k, d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * r; p.z = cz + dz / d * r; }
     }
@@ -170,7 +175,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       character.play(air ? 'jump_air' : 'idle', 0);
       if (character.resetSprings) character.resetSprings();
     },
-    teleport(x, z, yaw = heading) { pos.set(x, standAt(x, z), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; air = false; vy = 0; landT = -1; if (character.resetSprings) character.resetSprings(); },
+    // (y: about how high she stands, where that tells two grounds apart: on a bridge's deck, or on the bed under it. None: the top)
+    teleport(x, z, yaw = heading, y) { pos.set(x, standAt(x, z, y), z); heading = yaw; camYaw = yaw - Math.PI; camReady = false; air = false; vy = 0; landT = -1; if (character.resetSprings) character.resetSprings(); },
     setView(yaw, pitch, dist) { camYaw = yaw; if (pitch !== undefined) camPitch = pitch; if (dist !== undefined) camDist = dist; camReady = false; },
     update(dt) {
       dt = Math.min(dt, 0.05);
@@ -197,7 +203,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         heading += d * Math.min(1, dt * (air ? 4 : 11));      // in the air she can only lean into a turn
       }
       // wading slows you down, the more the deeper it is (ankle-deep hardly at all, knee-deep she cannot run); deep water stops you
-      const depthHere = level.waterDepthAt(pos.x, pos.z);
+      const depthHere = level.waterDepthAt(pos.x, pos.z, pos.y);
       const heavy = Math.min(1, Math.max(0, (depthHere - 0.1 * k) / (0.4 * k))), drag = heavy * heavy * (3 - 2 * heavy);
       target *= 1 - 0.52 * drag;
       // running into the water: one splash where she breaks the surface
@@ -223,11 +229,11 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       speed += (target - speed) * Math.min(1, dt * (air ? 1.5 : target > speed ? 7 - 4 * drag : 10 + 5 * drag));
       if (speed > 0.02) {
         tmp.set(pos.x + Math.sin(heading) * speed * dt, 0, pos.z + Math.cos(heading) * speed * dt);
-        if (level.waterDepthAt(tmp.x, tmp.z) > DEEP && level.waterDepthAt(tmp.x, tmp.z) > depthHere) {
+        if (level.waterDepthAt(tmp.x, tmp.z, pos.y) > DEEP && level.waterDepthAt(tmp.x, tmp.z, pos.y) > depthHere) {
           // too deep ahead: try sliding along the shore instead of walking in
           const ax = pos.x + Math.sin(heading + 1.1) * speed * dt, az = pos.z + Math.cos(heading + 1.1) * speed * dt;
           const bx = pos.x + Math.sin(heading - 1.1) * speed * dt, bz = pos.z + Math.cos(heading - 1.1) * speed * dt;
-          const da = level.waterDepthAt(ax, az), db = level.waterDepthAt(bx, bz);
+          const da = level.waterDepthAt(ax, az, pos.y), db = level.waterDepthAt(bx, bz, pos.y);
           if (Math.min(da, db) > DEEP) tmp.set(pos.x, 0, pos.z); else if (da < db) tmp.set(ax, 0, az); else tmp.set(bx, 0, bz);
         }
         collide(tmp, k, pos);
@@ -239,7 +245,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       // and keeps meaning to (her speed was cut to the pace each frame: she crept along the edge with her legs going)
       const paceNow = Math.min(speed, went * 1.1 + 0.05), pace = Math.min(paceNow, paceWas);      // (a pace held for one frame only does not change her gait)
       paceWas = paceNow;
-      const ground = standAt(pos.x, pos.z);
+      const ground = standAt(pos.x, pos.z, pos.y);
       // ---- jumping: off the ground at once, unless she is deeper in the water than her knees
       jumpWanted = Math.max(0, jumpWanted - dt);
       if (!air && jumpWanted > 0 && depthHere < 0.32 * k) {
@@ -308,7 +314,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
           if (y > f.lo + range * 0.55) f.up = true;
           else if (f.up && y < f.lo + range * 0.28) {
             f.up = false;
-            const d = level.waterDepthAt(footPos.x, footPos.z);
+            const d = level.waterDepthAt(footPos.x, footPos.z, pos.y);
             if (d > 0.04 && f.since > 0.18) {
               f.since = 0;
               // harder the faster she goes and the deeper the water; a run kicks up a wider ring than a walk

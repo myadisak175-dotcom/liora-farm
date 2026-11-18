@@ -232,11 +232,20 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // how high a spot stands above the water beside it (and a quarter of how far out from the water's edge it is), or 10 with no
   // water near: the land's sand and the ways' wet earth both go by it, so they agree on where the ground is wet
   const bankAt = (x, z, y = H(x, z)) => { const b = brookAt(x, z); return b ? y - b.level + b.d * 0.25 : 10; };
-  // the bridges' decks: where each lies (u along it, v across) and how high its boards are. On one she is over the water, not in it
-  const decks = [];
+  // the bridges' decks: where each lies (u along it, v across) and how high its boards are. On one she is over the water, not in it.
+  // UNDER A BRIDGE: asked with her height (y), a deck is hers only while she is no more than UNDER below its boards: further
+  // down she is on the ground under it (the bed under the stone bridge's arch, where the curse has drawn the river down to
+  // pools), and walks there as anywhere else. A deck with an arch (arch: how high its underside is, u metres from its middle,
+  // over its base) lets her through only where there is HEADROOM under it; elsewhere its piers are solid (walkable). Asked
+  // without a height, a deck is hers wherever it lies, as before
+  const decks = [], UNDER = 1.0, HEADROOM = 1.9;
   const deckUV = (d, x, z) => { const c = Math.cos(d.yaw), s = Math.sin(d.yaw); return [(x - d.x) * c - (z - d.z) * s, (x - d.x) * s + (z - d.z) * c]; };
-  const deckAt = (x, z) => { for (const d of decks) { const [u, v] = deckUV(d, x, z); if (Math.abs(u) < d.len / 2 && Math.abs(v) < d.halfW) return d; } return null; };
-  const waterDepthAt = (x, z) => { if (deckAt(x, z)) return 0; const b = brookAt(x, z); return b ? Math.max(0, b.level - H(x, z)) : 0; };      // (the player will not walk into water deeper than half a metre: without the decks the river under a bridge stopped her on it)
+  // (a deck's way is halfW either side of its line; its body, over her when she is under it, is wide either side)
+  const deckIn = (x, z, body = false) => { for (const d of decks) { const [u, v] = deckUV(d, x, z); if (Math.abs(u) < d.len / 2 && Math.abs(v) < (body ? d.wide || d.halfW : d.halfW)) return [d, u]; } return null; };
+  const deckAt = (x, z, y) => { const f = deckIn(x, z); return f && (y === undefined || y > f[0].y(f[1]) - UNDER) ? f[0] : null; };
+  // under a deck (at height y): how high its arch is over the ground there (-Infinity: its solid pier; null: not under a deck)
+  const archOver = (x, z, y) => { const f = deckIn(x, z, true); if (!f || y === undefined || y > f[0].y(f[1]) - UNDER) return null; const [d, u] = f; return d.arch ? d.arch(u) - H(x, z) : -Infinity; };
+  const waterDepthAt = (x, z, y) => { if (deckAt(x, z, y)) return 0; const b = brookAt(x, z); return b ? Math.max(0, b.level - H(x, z)) : 0; };      // (the player will not walk into water deeper than half a metre: without the decks the river under a bridge stopped her on it)
   const inRect = (f, x, z, pad = 0) => { const c = Math.cos(f.yaw), s = Math.sin(f.yaw), lx = (x - f.x) * c - (z - f.z) * s, lz = (x - f.x) * s + (z - f.z) * c; return Math.abs(lx) < f.w / 2 + pad && Math.abs(lz) < f.d / 2 + pad; };
   const inField = (x, z, pad = 0) => P.fields.some(f => inRect(f, x, z, pad));
 
@@ -367,9 +376,20 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const bEnd = s => [br.x + s * (bL / 2 - 0.4) * bc, br.z - s * (bL / 2 - 0.4) * bs];
     const by = Math.min(H(...bEnd(-1)), H(...bEnd(1))) - 0.12;
     kb.bridge({ length: bL, width: 2.9, deck: u => BD.stoneBridgeDeck(u, { length: bL }) }, br.x, by, br.z, br.yaw);      // (in the houses' own stone: village-kit.js)
-    decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.1, y: u => by + BD.stoneBridgeDeck(u, { length: bL }) });      // (the way between its parapets: 1.13 m either side)
+    // its arch (village-kit.js's bridge: an arch 2.7 m either side of its middle, springing 1 m under its base and rising 1.75 m)
+    const SPAN = 2.7, SPRING = -1.0, CROWN = 1.75, deckY = u => by + BD.stoneBridgeDeck(u, { length: bL });
+    const arch = u => Math.abs(u) < SPAN ? by + SPRING + CROWN * Math.sqrt(1 - (u / SPAN) * (u / SPAN)) : -Infinity;
+    // (halfW: the way between its parapets, 1.13 m either side; wide: under it, the whole of its width is over her)
+    decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.1, wide: 1.45, y: deckY, arch });
     for (let u = -bL / 2; u <= bL / 2; u += 1) for (const v of [-0.8, 0.8]) bare.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 1.3]);
-    for (const v of [-1.45, 1.45]) for (let u = -(bL / 2 + 0.6); u <= bL / 2 + 0.6 + 1e-6; u += 0.8) colliders.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 0.42]);      // its parapets (and no stepping off its side). (They began 1 m either side of its middle: there, at its highest, she could walk through the parapet, off the deck, and down into the river under it)
+    // its parapets (and no stepping off its side): only for her up on it, not for her down under its arch
+    for (const v of [-1.45, 1.45]) for (let u = -(bL / 2 + 0.6); u <= bL / 2 + 0.6 + 1e-6; u += 0.8) colliders.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 0.42, deckY(Math.max(-bL / 2, Math.min(bL / 2, u))) - UNDER]);
+    // the camera does not go into its stone, from under the arch: its body, as short posts from the arch's underside (or the
+    // ground, at its piers) up to under its deck, three across and every 0.6 m along
+    for (let u = -bL / 2 + 0.3; u <= bL / 2 - 0.3 + 1e-6; u += 0.6) for (const v of [-0.95, 0, 0.95]) {
+      const x = br.x + u * bc + v * bs, z = br.z - u * bs + v * bc, low = Math.abs(u) < SPAN - 0.4 ? arch(u) : H(x, z) - 0.5;
+      if (deckY(u) - 0.35 > low) cameraTrunks.push([x, z, 0.5, low, deckY(u) - 0.35]);
+    }      // its parapets (and no stepping off its side). (They began 1 m either side of its middle: there, at its highest, she could walk through the parapet, off the deck, and down into the river under it)
     casters.push([br.x, br.z, 0.6, 4.2, 0.7]);
   }
   // the plank bridges (the first valley's: stylized-terrain.js): one over the valley's river, and one over each of the three
@@ -380,7 +400,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const planks = T.createBridge({ length: pL, seed: seed + 5 + i });
     planks.position.set(pl.x, pby, pl.z); planks.rotation.y = pl.yaw; planks.name = 'plankBridge';
     group.add(planks);
-    decks.push({ x: pl.x, z: pl.z, yaw: pl.yaw, len: pL, halfW: 0.95, y: u => pby + 0.41 + 0.7 * (1 - Math.pow(2 * u / pL, 2)) });
+    const plankY = u => pby + 0.41 + 0.7 * (1 - Math.pow(2 * u / pL, 2));
+    decks.push({ x: pl.x, z: pl.z, yaw: pl.yaw, len: pL, halfW: 0.95, wide: 1.05, y: plankY, arch: u => plankY(u) - 0.3 });      // (under its boards, where they are high enough over the bed, she may pass)
     for (let u = -pL / 2; u <= pL / 2; u += 1) bare.push([pl.x + u * pc, pl.z - u * ps, 1.5]);
     casters.push([pl.x, pl.z, 0.4, Math.min(3.6, pL * 0.36), 0.65]);
   }
@@ -766,13 +787,20 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   let castSun = L.clone(), castK = 1, wantSun = castSun.clone(), wantK = 1, lastCast = -99, castBusy = false;
   const cast = { dir: castSun.clone(), k: 1 };
   const inMap = (x, z) => inPlay(x, z, 1);
-  const walkable = (x, z) => inMap(x, z) && (!!deckAt(x, z) || (slope(x, z) < 0.9 && waterDepthAt(x, z) < 1.05));      // off the cliffs, out of deep water
-  const standAt = (x, z) => { const d = deckAt(x, z); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
+  const walkable = (x, z, y) => {                                         // off the cliffs, out of deep water; under a bridge, only where its arch is high enough over her
+    if (!inMap(x, z)) return false;
+    if (deckAt(x, z, y)) return true;
+    const over = archOver(x, z, y);
+    return (over === null || over >= HEADROOM) && slope(x, z) < 0.9 && waterDepthAt(x, z, y) < 1.05;
+  };
+  const standAt = (x, z, y) => { const d = deckAt(x, z, y); return d ? d.y(deckUV(d, x, z)[0]) : H(x, z); };
+  const walkableAt = walkable;
   // what is under her feet at a spot, for the moves (player-moves.js): 'ground' she may stand on (the same answer as walkable),
   // 'cliff' too steep to stand on (she may fall past it or slide down it), 'water' too deep to wade, 'out' off the map
   // (the pit's shaft, below its lowest shelf, is not a place: 114 m down to a floor that is only there to close the land. It is 'out')
+  // (y, as for walkable: about how high she stands, which tells a bridge's deck from the bed under it; none: the deck)
   const shaftTop = P.pit ? Math.min(...P.pit.shelves.map(sh => sh.y)) + P.pit.shift - 3 : -Infinity;
-  const footing = (x, z) => !inMap(x, z) || H(x, z) < shaftTop ? 'out' : deckAt(x, z) ? 'ground' : waterDepthAt(x, z) >= 1.05 ? 'water' : slope(x, z) >= 0.9 ? 'cliff' : 'ground';
+  const footing = (x, z, y) => !inMap(x, z) || H(x, z) < shaftTop ? 'out' : deckAt(x, z, y) ? 'ground' : waterDepthAt(x, z, y) >= 1.05 ? 'water' : slope(x, z) >= 0.9 ? 'cliff' : 'ground';
   console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};
@@ -915,6 +943,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
+    homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
     map: url(cursed ? M.mapCursed : M.map), mapOverlay,
@@ -929,7 +958,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       }
       return false;
     },
-    confine(p, from = null) {                                              // off the cliffs and out of deep water
+    confine(p, from = null) {                                              // off the cliffs and out of deep water (and under a bridge, out of its piers: at her height, from's)
+      const y = from ? from.y : undefined, walkable = (x, z) => walkableAt(x, z, y);
       if (walkable(p.x, p.z)) return;
       // walking into a cliff's edge (from: where she was, where she may be): she goes along the edge with the part of her step that
       // runs along it, or stops at it if she walks (nearly) straight in. (She was put back on the nearest ground she may stand on,

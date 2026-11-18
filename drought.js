@@ -11,7 +11,10 @@
    The water. No fall runs: every stretch stands below the lowest point of its lip, so it goes over nowhere, and what is left
    of it lies in pools in the deepest parts of its bed (a pool under each old fall, where the water dug deepest; pools along
    the streams and the rivers' deep reaches; the rest dry). How low at least, by the kind of water (KIND); lower still where
-   its lip lies deep. The sheet, its shore, wading and the wet sand all follow from that one number (land-water.js, lower).
+   its lip lies deep; and lower still until every pool lies in a hollow of its own (spillLevel): a stretch's sheet ends
+   where its bed ends, and a pool reaching that end over ground that goes on lower was a flat film cut off on a straight
+   line, not water lying in a dip. The sheet, its shore, wading and the wet sand all follow from that one number
+   (land-water.js, lower).
 
    The land. Dead all round: the hills, the woods, the valley, the pit's rim, the fringe. The village itself (its houses,
    yards, fields, pasture, stalls) is not dead yet but nearly (NEAR: a little life left in it, in patches), and the edge
@@ -36,12 +39,91 @@ export function droughtWater({ stretches, heightAt: H, names = [] }) {
   const lower = stretches.map((rows, k) => {
     const lv = rows[0][2], { lanes } = lipLanes(rows, H), sills = lanes.filter(l => l.sill !== null).map(l => l.sill);
     const under = sills.length ? lv - Math.min(...sills) + UNDER_LIP : 0;          // (how far down it must stand to go over nowhere)
-    const drop = Math.max(KIND[kindOf(names[k] || '')].least, under);
-    report.push({ k, name: names[k], drop: +drop.toFixed(2) });
+    let drop = Math.max(KIND[kindOf(names[k] || '')].least, under);
+    const held = spillLevel(rows, H, lv - drop);                                  // (and down to where its pools lie in hollows)
+    const spill = +(lv - drop - held).toFixed(2);
+    drop = lv - held;
+    report.push({ k, name: names[k], drop: +drop.toFixed(2), spill });
     return drop;
   });
   console.info('[drought] water', JSON.stringify(report));
   return { lower, report };
+}
+
+// SPILL: the highest level, no higher than `level`, at which every pool of a stretch lies in a hollow. Where the water lies is
+// worked out as land-water.js lays a sheet: over the stretch's bed (within its width of its line, from its first row, a few
+// metres back under where a fall came in; at its end, lane by lane, no further than the ground holds before its lip drops
+// away: lipLanes), out from its line as far as the ground stays under the water. A level is no good if a pool there
+//   - spills: it reaches the edge of that bed where the ground beyond is lower still, so it would be cut off there on a
+//     straight line, standing over lower ground
+//   - lies flat: much of its shore (SPILL.flat) is on ground that hardly rises past it (under SPILL.rise a metre out), or
+//     most of it (SPILL.film) is shallower than SPILL.thin. A pool over a flat bed is a film a few centimetres deep with a
+//     ragged edge anywhere, not water in a dip
+// and the level goes down a few centimetres and is looked at again, until every pool there is good (or the bed is dry).
+// On a grid of half metres
+const SPILL = { cell: 0.5, step: 0.03, end: 0.6, behind: 3.5, edge: 0.5, lane: 0.4, up: 8, rise: 0.07, flat: 0.4, thin: 0.07, film: 0.5, least: 4 };      // (least: a pool of fewer cells than this is not looked at)      // (lane, up: land-water.js's LANE and UP)
+export function spillLevel(rows, H, level, why = null) {      // why: an array to note where it spills, at each level tried (for looking into it)
+  const n = rows.length, C = SPILL.cell;
+  if (n < 2) return level;
+  const A = rows[0], B = rows[n - 1];
+  const dir = (p, q) => { const l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1; return [(q[0] - p[0]) / l, (q[1] - p[1]) / l]; };
+  const tA = dir(rows[0], rows[1]);
+  // its end, lane by lane, as land-water.js has it: no further than the ground holds (no lip: the water goes over nowhere)
+  const { lanes } = lipLanes(rows, H), drop = lanes.some(l => l.lim < Infinity);
+  const lims = lanes.map(l => !drop ? 0 : l.lim === Infinity ? SPILL.end : l.lim);
+  const limitAt = u => { const f = Math.min(lanes.length - 1, Math.max(0, (u - lanes[0].u) / SPILL.lane)), i = Math.min(lanes.length - 2, Math.floor(f)); return lanes.length < 2 ? lims[0] : lims[i] + (lims[i + 1] - lims[i]) * (f - i); };
+  const tB = (() => { const a = rows[Math.max(0, n - 2)], b = rows[n - 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), nB = [-tB[1], tB[0]];
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, z, , hw] of rows) { x0 = Math.min(x0, x - hw - SPILL.behind - 1); x1 = Math.max(x1, x + hw + SPILL.behind + 1); z0 = Math.min(z0, z - hw - SPILL.behind - 1); z1 = Math.max(z1, z + hw + SPILL.behind + 1); }
+  const gx = Math.ceil((x1 - x0) / C) + 1, gz = Math.ceil((z1 - z0) / C) + 1, N = gx * gz;
+  const ground = new Float32Array(N), bed = new Uint8Array(N), line = new Uint8Array(N);      // bed: water may lie here; line: on the stretch's line (where a sheet always starts)
+  for (let j = 0; j < gz; j++) for (let i = 0; i < gx; i++) {
+    const x = x0 + i * C, z = z0 + j * C, c = j * gx + i;
+    ground[c] = H(x, z);
+    let best = Infinity, bk = 0, bt = 0;
+    for (let q = 0; q < n - 1; q++) {
+      const ax = rows[q][0], az = rows[q][1], dx = rows[q + 1][0] - ax, dz = rows[q + 1][1] - az;
+      const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1))), d = Math.hypot(x - ax - dx * t, z - az - dz * t);
+      if (d < best) { best = d; bk = q; bt = t; }
+    }
+    const hw = rows[bk][3] + (rows[bk + 1][3] - rows[bk][3]) * bt + SPILL.edge;
+    const before = (x - A[0]) * tA[0] + (z - A[1]) * tA[1], al = (x - B[0]) * tB[0] + (z - B[1]) * tB[1], la = (x - B[0]) * nB[0] + (z - B[1]) * nB[1];
+    const atEnd = bk >= n - 12 && al > -SPILL.up && Math.abs(la) <= B[3] + SPILL.edge + SPILL.lane;
+    const behind = before < 0 && before > -SPILL.behind && Math.abs((x - A[0]) * -tA[1] + (z - A[1]) * tA[0]) <= A[3] + SPILL.edge;
+    bed[c] = (best <= hw && (bk > 0 || before >= 0) && (!atEnd || al <= limitAt(la))) || behind ? 1 : 0;
+    line[c] = bed[c] && best <= C * 0.75 ? 1 : 0;
+  }
+  let lowest = Infinity;
+  for (let c = 0; c < N; c++) if (bed[c] && ground[c] < lowest) lowest = ground[c];
+  const seen = new Uint8Array(N), stack = new Int32Array(N);
+  const at = (i, j) => (i < 0 || j < 0 || i >= gx || j >= gz ? -Infinity : ground[j * gx + i]);
+  for (let L = level; L > lowest; L -= SPILL.step) {
+    seen.fill(0);
+    let bad = false;
+    for (let c0 = 0; c0 < N && !bad; c0++) {
+      if (!line[c0] || seen[c0] || ground[c0] >= L - 0.02) continue;
+      let top = 0, cells = 0, shore = 0, flat = 0, thin = 0; stack[top++] = c0; seen[c0] = 1;
+      while (top && !bad) {
+        const c = stack[--top], i = c % gx, j = (c - i) / gx;
+        cells++; if (L - ground[c] < SPILL.thin) thin++;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ii = i + di, jj = j + dj;
+          if (ii < 0 || jj < 0 || ii >= gx || jj >= gz) { bad = true; if (why) why.push([+L.toFixed(2), 'box', +(x0 + i * C).toFixed(1), +(z0 + j * C).toFixed(1)]); break; }
+          const e = jj * gx + ii;
+          if (ground[e] >= L - 0.02) {                                     // a bank: the water stops against it. Does the ground rise past it?
+            shore++;
+            if (Math.max(ground[e], at(i + 2 * di, j + 2 * dj)) - L < SPILL.rise) flat++;
+            continue;
+          }
+          if (!bed[e]) { if (ground[e] < L - 0.03) { bad = true; if (why) why.push([+L.toFixed(2), 'spill', +(x0 + ii * C).toFixed(1), +(z0 + jj * C).toFixed(1), +ground[e].toFixed(2), +ground[c].toFixed(2)]); break; } continue; }      // the bed's edge, with the ground going on lower past it
+          if (!seen[e]) { seen[e] = 1; stack[top++] = e; }
+        }
+      }
+      if (!bad && cells >= SPILL.least && ((shore && flat / shore > SPILL.flat) || thin / cells > SPILL.film)) { bad = true; if (why) why.push([+L.toFixed(2), 'flat', +(x0 + (c0 % gx) * C).toFixed(1), +(z0 + Math.floor(c0 / gx) * C).toFixed(1), cells, +(shore ? flat / shore : 0).toFixed(2), +(thin / cells).toFixed(2)]); }
+    }
+    if (!bad) return L;
+  }
+  return Math.min(level, lowest);                                          // (no hollow holds any: dry)
 }
 
 // the water that is left, pool by pool: the triangles of each sheet that lie over the ground (a sheet runs on under a dry
