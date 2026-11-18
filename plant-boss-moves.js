@@ -203,6 +203,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     ctx.down = [null, null, null]; ctx.flinch = [9, 9, 9]; ctx.mourn = null; ctx.patches = []; me.shut = me.open = false;
     for (const v of vines) hide(v);
     body.skirt = 0; body.swirl = 0; body.glow = 0; body.wither = 0; body.flash = 0; body.sink = 0; body.shake.set(0, 0, 0);
+    for (const l of [...body.leaves, body.ring]) l.lift = l.stir = 0;
     for (const h of heads) { Object.assign(h, BOSS_HEAD_REST); h.lean.set(0, 0, 0); h.bow.set(0, 0, 0); for (const k in S[h.index]) { S[h.index][k].x = k === 'sc' ? 1 : 0; S[h.index][k].v = 0; } }
     pose();
   }
@@ -545,6 +546,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     // (eased, not at once: a bud cut short opens, and its light dies down)
     body.skirt += (0 - body.skirt) * Math.min(1, dt * 6); body.swirl += (0 - body.swirl) * Math.min(1, dt * 6); body.glow += (0 - body.glow) * Math.min(1, dt * 8);
     body.shake.set(0, 0, 0); body.flash = 0; body.wither = 0;
+    for (const l of [...body.leaves, body.ring]) { l.lift += (0 - l.lift) * Math.min(1, dt * 6); l.stir += (0 - l.stir) * Math.min(1, dt * 6); }      // (its leaves as the talking left them: let down)
     // heads going down (and those that will, as it dies); flinches and grief going on
     for (let i = 0; i < 3; i++) {
       ctx.flinch[i] += dt;

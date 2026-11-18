@@ -39,7 +39,9 @@ export function createBossTrial({ level, scene, camera, shade = null }) {
   const banter = createBossBanter(boss), bubbles = createSpeechBubbles({ camera });
   banter.onSay = e => { if (e.cut) bubbles.clear(); bubbles.say(e.head, e.text, e); };      // (cutting in: what was being said goes)
   const { heads, mesh } = boss.userData;
-  const mouth = (i, out) => { const h = heads[i]; out.copy(h.centre).add(h.lean); out.y += h.radius * h.scale * 1.55; mesh.localToWorld(out); return true; };      // (over its hood)
+  // where a head's words hang: over its hood, going after it softly (a head's beats and a roar's shake are not the words' to make: they stay readable)
+  const over = heads.map(h => h.centre.clone()), tmp = new THREE.Vector3();
+  const mouth = (i, out) => { out.copy(over[i]); out.y += heads[i].radius * heads[i].scale * 1.55; mesh.localToWorld(out); return true; };
 
   // its real shadow on the ground: hers, made for it (a wider picture, a coarser patch: it is four times her height)
   const shadow = createCharacterShadow({ character: { object: boss, height: BOSS_HEIGHT }, heightAt: H, shade, size: 512, cell: 0.5 });
@@ -61,6 +63,7 @@ export function createBossTrial({ level, scene, camera, shade = null }) {
     update(dt, renderer, her, sun, k = 1) {
       setPlantBossSun(sun);
       banter.update(dt, her);
+      for (const h of heads) over[h.index].lerp(tmp.copy(h.centre).add(h.lean), 1 - Math.exp(-dt * 6));
       bubbles.update(dt, mouth);
       shadow.update(renderer, feet, sun, k);
     },

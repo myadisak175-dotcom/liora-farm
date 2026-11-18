@@ -25,6 +25,9 @@
          glow 0..1        the skirt lit from within: its midribs and veins burn
          wither 0..1      its colours dried out                              flash 0..1   lit up white (it was struck)
          sink             metres it stands down in the ground                shake (Vector3)   moved off its place (a rumble)
+         leaves[0..2]     the skirt's leaves under each head (the middle one's in front, the others' to its sides):
+                          lift (radians: raised like hackles; less than 0: drooped), stir 0..1 (how hard they tremble)
+         ring             the same, for the whole skirt all round: { lift, stir }
      boss.userData.pose()                          writes those numbers into the shader: call it after changing them
      aimHead(head, point, share, most)             how to pose a head to look at a point (see the function)
      setPlantBossSun(vec3)                         world direction toward the sun (as setAnimeSun)
@@ -52,7 +55,9 @@
    numbers (above). The wind makes all of it larger, never still: it is alive.
    A neck bends as a limb does, not as a sheared stack: every ring of it is carried with the neck's middle line and
    turned to stay square to it, so it keeps its thickness however far it reaches (and its thorns go with it). A whip
-   vine is built standing straight and laid along its curve the same way. A skirt leaf turns about its foot.
+   vine is built standing straight and laid along its curve the same way. A skirt leaf turns about its foot: the
+   skirt breathes (a slow swell that goes round the ring), and its leaves can be raised, drooped and set trembling,
+   those under each head by that head's own numbers (a leaf between two heads takes some of each).
    ========================================================================== */
 import * as THREE from 'three';
 import { mulberry32, uniforms as natureUniforms, NATURE_VCOMMON, NATURE_HAZEF, _internal as natureInternal } from './stylized-nature.js';
@@ -89,6 +94,9 @@ ${NATURE_VCOMMON}
 uniform float uMove;
 uniform vec4 uBody;                         // x: the skirt (-1 wilted .. 0 as built .. 1 shut into a bud), y: withered 0..1, z: flash 0..1, w: the skirt's glow 0..1
 uniform float uSwirl;                       // closing, the skirt's leaves go one after another and wind round the bud 0..1
+uniform vec4 uLeafLift;                     // the skirt's leaves raised (radians; less than 0: drooped): xyz those under each head, w all round
+uniform vec4 uLeafStir;                     // how hard they tremble 0..1: the same
+uniform vec3 uLeafAz;                       // where round the ring each head's leaves are (radians from +z toward +x)
 uniform vec4 uPose0, uPose1, uPose2;        // a head's: xyz where its neck's end is carried to (metres), w how wide its neck waves
 uniform vec4 uBow0, uBow1, uBow2;           // xyz where the middle of its neck is pushed to (metres), w how withered it is
 uniform mat3 uTurn0, uTurn1, uTurn2;        // how it is turned about its neck's end
@@ -188,13 +196,21 @@ void main() {
     // a skirt leaf. Down (less than 0): it turns about its foot, wilting. Up (more than 0): it curls up and in, hardly
     // at all near its foot and far over at its tip, so that all of them together shut into a bud over the necks.
     // With swirl they go one after another round the ring, and wind round the bud as they shut
-    float s = aUV.y, c = uBody.x;
+    float s = aUV.y, c = uBody.x, az = atan(aPivot.x, aPivot.z);               // (az: where round the ring its foot is)
     if (c > 0.0) {
-      float az = fract(atan(aPivot.x, aPivot.z) / 6.2831 + 0.5);                 // where round the ring its foot is, 0..1
-      c = clamp(c * (1.0 + 0.6 * uSwirl) - 0.6 * uSwirl * az, 0.0, 1.0);
+      c = clamp(c * (1.0 + 0.6 * uSwirl) - 0.6 * uSwirl * fract(az / 6.2831 + 0.5), 0.0, 1.0);
       c = c * c * (3.0 - 2.0 * c);
     }
-    mat3 R = hinge(aAxis, c > 0.0 ? -c * 2.02 * s * s : -c * 0.62);
+    float turn = c > 0.0 ? -c * 2.02 * s * s : -c * 0.62;
+    // alive (open as built; not shut into a bud or wilted): it breathes, a slow swell going round the ring; raised or
+    // drooped and trembling as the head over it has it (a leaf between two heads: some of each), more toward its tip
+    vec3 near = pow(0.5 + 0.5 * cos(az - uLeafAz), vec3(2.0));
+    near /= max(1.0, near.x + near.y + near.z);
+    float lift = dot(near, uLeafLift.xyz) + uLeafLift.w, stir = min(dot(near, uLeafStir.xyz) + uLeafStir.w, 1.5);
+    float alive = 1.0 - min(abs(uBody.x) * 1.5, 1.0);
+    turn -= (lift * (0.35 + 0.65 * s) + sin(T * 0.9 + az * 2.0 + ph) * 0.028 * k * s
+           + sin(T * 37.0 + aPart.z * 40.0 - s * 5.0) * 0.05 * stir * s) * alive;
+    mat3 R = hinge(aAxis, turn);
     p = aPivot + R * (p - aPivot);
     n = R * n;
     if (c > 0.0 && uSwirl > 0.0) { mat3 W = hinge(vec3(0.0, 1.0, 0.0), c * uSwirl * 0.9 * s); p = W * p; n = W * n; }
@@ -380,7 +396,8 @@ export function setPlantBossMotion(k) { MOVE.value = Math.min(1, Math.max(0, +k 
 const REST = { wave: 1, yaw: 0, nod: 0, tilt: 0, jaw: 0.44, lid: 1, slant: 0, smile: 0, size: 1, flare: 0, brow: 0, curve: 0, gazeX: 0, gazeY: 0, glow: 1, flash: 0, wither: 0, scale: 1 };   // a head as it starts
 export const BOSS_HEAD_REST = REST;
 function material() {
-  const L = BOSS_LOOK, U = { ...natureUniforms, uSun: SUN, uMove: MOVE, uBody: { value: new THREE.Vector4(0, 0, 0, 0) }, uSwirl: { value: 0 } };
+  const L = BOSS_LOOK, U = { ...natureUniforms, uSun: SUN, uMove: MOVE, uBody: { value: new THREE.Vector4(0, 0, 0, 0) }, uSwirl: { value: 0 },
+    uLeafLift: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafStir: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafAz: { value: new THREE.Vector3(0, 1.3, -1.3) } };
   const set = (names, cols) => names.forEach((nm, i) => { U[nm] = { value: rgb(cols[i]) }; });
   set(['uS0', 'uS1', 'uS2', 'uS3'], L.stem);
   set(['uL0', 'uL1', 'uL2', 'uL3', 'uL4'], L.leaf);
@@ -775,7 +792,9 @@ export function createPlantBoss({ seed = 1, size = 1 } = {}) {
     const under = () => new THREE.Vector3(b.foot.x, -1, b.foot.z);
     return { index, foot: b.foot.clone(), length: BOSS_VINE_LENGTH, p1: under(), p2: under(), p3: under(), width: 0, footY: -1 };
   });
-  const body = { skirt: 0, swirl: 0, glow: 0, wither: 0, flash: 0, sink: 0, shake: new THREE.Vector3() };
+  const body = { skirt: 0, swirl: 0, glow: 0, wither: 0, flash: 0, sink: 0, shake: new THREE.Vector3(),
+    leaves: heads.map(() => ({ lift: 0, stir: 0 })), ring: { lift: 0, stir: 0 } };
+  U.uLeafAz.value.set(...heads.map(h => Math.atan2(h.centre.x, h.centre.z)));          // (each head's leaves: those on the side it stands over)
   const inv = new THREE.Matrix4(), m4 = new THREE.Matrix4(), e = new THREE.Euler();
   function pose() {
     for (const h of heads) {
@@ -795,6 +814,9 @@ export function createPlantBoss({ seed = 1, size = 1 } = {}) {
     }
     U.uBody.value.set(body.skirt, body.wither, body.flash, body.glow);
     U.uSwirl.value = body.swirl;
+    const [l0, l1, l2] = body.leaves;
+    U.uLeafLift.value.set(l0.lift, l1.lift, l2.lift, body.ring.lift);
+    U.uLeafStir.value.set(l0.stir, l1.stir, l2.stir, body.ring.stir);
     mesh.position.set(body.shake.x * size, (body.shake.y - body.sink) * size, body.shake.z * size);
   }
   pose();

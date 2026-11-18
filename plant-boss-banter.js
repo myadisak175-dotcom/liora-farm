@@ -2,7 +2,8 @@
    plant-boss-banter.js  —  what the plant boss's three heads say in the game while it does not fight: among themselves
    when she is far off, about her when she comes near, and a roar to warn her off when she comes too close. They do
    not strike. One job: direct the talking: who says what to whom, when, in what mood. It moves no head itself:
-   plant-boss-talk.js acts each line, and the words go out as events for whatever draws them (speech-bubbles.js).
+   plant-boss-talk.js acts each line (each head in its own manner, the skirt's leaves answering), and the words go out
+   as events for whatever draws them (speech-bubbles.js).
 
      const banter = createBossBanter(boss)     (it makes its own plant-boss-talk.js, with itself directing)
      every frame: banter.update(dt, her)       her: where she stands (her feet, world, a Vector3)
@@ -105,7 +106,7 @@ export function createBossBanter(boss) {
       else if (line) heads.push([line.to === 'you' && zone !== 'far' ? 'you' : NAMES[line.head], ease[i], 0, null]);      // listening: to who is spoken to, or to who speaks
       else heads.push([zone === 'far' ? IDLE_LOOKS[Math.floor(quiet / 2.6) % IDLE_LOOKS.length][i] : 'you', ease[i], 0, null]);
     }
-    return { heads, since: line ? lineT : quiet };
+    return { heads };
   }
   const talk = createBossTalk(boss, { direct });
 
