@@ -962,7 +962,7 @@ export function createThicketFx({ heightAt = null, seed = 1, lift = 0.08, vines:
   function once(key, when, fn) { if (T >= when && !fired[key]) { fired[key] = true; fn(); } }
   function setSun(v) { sun.copy(v).normalize(); V.material.uniforms.uSun.value.copy(sun); }
   function event(e) {
-    if (e.move !== 'thicket' && !(e.move === 'ultimate' && e.drop === undefined && e.patch === undefined)) return;      // (the ultimate has the thicket in it; its drops of rain and its patches of thorns are not the thicket's)
+    if (e.move !== 'thicket' && !(e.move === 'ultimate' && e.drop === undefined && e.patch === undefined && e.ripple === undefined)) return;      // (the ultimate has the thicket in it; its drops of rain, its patches of thorns and its ripples are not the thicket's)
     if (e.type === 'warn' && e.shape) {
       origin.set(e.shape.x, e.shape.y, e.shape.z);
       R = e.shape.radius; K = R / M.radius;

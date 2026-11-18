@@ -47,6 +47,11 @@
                                                             (seconds). Whoever stands in it is slowed: the game's to say
          (the ultimate tells the poison rain's events and the thicket's, all with move: 'ultimate'; the thicket's warn and hit
          are those with neither a drop nor a patch)
+         { type: 'warn' | 'hit', move: 'ultimate', ripple, shape, lead }   a ripple out of the thicket's ring: warned, then
+                                                            setting off. shape: { kind: 'wave', x, y, z, from, to, speed, width,
+                                                            height }: its crest runs out from its middle (x, z), from metres to to
+                                                            metres at speed metres a second; whoever it passes on the ground is
+                                                            struck: she must be in the air (a jump) or behind the barrier
          { type: 'warn' | 'hit', move: 'ultimate', patch, wave, shape, lead, lasts }   a patch of thorns bursting up out of the
                                                             ground (shape: a ring): where, and in how many seconds; then as it
                                                             bursts. Whoever stands in it then is struck (unless the game's
@@ -98,7 +103,10 @@
    ring, the vines, the green burst), while the rain falls all over the field, every fourth drop where she will be: she
    cannot stand off far from it and wait. And in waves, patches of the thicket's thorns burst up out of the ground all over
    the field: one where she will be, one near her, the rest anywhere, each warned first by a ring filling with orange light.
-   (The thicket's drawing is thicket-fx.js's, the patches' thorn-patches-fx.js's, the rain's poison-rain-fx.js's.)
+   As the thicket's vines burst up, its ring sends three ripples out across the whole field, low ridges of heaved earth set
+   with short thorns: she must jump them (or be behind her barrier) as each passes her.
+   (The thicket's drawing is thicket-fx.js's, the patches' thorn-patches-fx.js's, the ripples' thorn-ripple-fx.js's, the rain's
+   poison-rain-fx.js's.)
    Coming up: three small harmless heads look out of the ground, wide-eyed, bobbing; then a sly look, a rumble, and it
    bursts up as a bud that springs open, and roars at her.
    Nothing snaps: reaches and turns go through springs (a soft heavy limb overshoots and settles), faces ease.
@@ -129,10 +137,14 @@ export const BOSS_MOVES = {
   // own (BOSS_MOVES.thicket's times, counted from there), while the rain comes down: drops over rain, every aim-th where
   // she will be, the rest anywhere out to far metres; and patches of thorns burst up all over the field, in waves (each
   // warned at the first of its pair, bursting at the second), count of them in each, radius metres wide: one where she
-  // will be, one near her, the rest anywhere on the field (out of the thicket's ring)
+  // will be, one near her, the rest anywhere on the field (out of the thicket's ring); and as the thicket's vines burst up,
+  // its ring sends ripples out across the field: a ridge of heaved earth set with short thorns, low enough to jump, each
+  // setting off at its time after the thicket's hit (warned lead seconds before), running from the ring's rim out to
+  // reach metres at speed metres a second, width metres wide, height metres high
   ultimate: { length: 4.45 + 8.7, gather: HOWL.gather, beam: HOWL.beam, swirl: HOWL.swirl, up: 2.1, volley: [2.35, 4.2], shots: 12, thicket: 4.45,
     rain: [4.6, 11.6], drops: 30, aim: 4, far: 22, lead: 1.05, radius: 1.2, lasts: 0.3, ahead: 0.5, pool: 1.5, linger: 8,
-    patches: { waves: [[5.7, 6.9], [8.4, 9.6], [9.9, 11.1], [11.3, 12.5]], count: [5, 6, 6, 7], radius: 2.4, lasts: 0.7 } },
+    patches: { waves: [[5.3, 6.5], [6.8, 8.0], [11.6, 12.8]], count: [5, 6, 7], radius: 2.4, lasts: 0.7 },
+    ripples: { at: [0, 1.2, 2.4], lead: 0.6, reach: 26, speed: 9, width: 1.6, height: 0.6 } },
   hit:   { length: 0.65 },                                                  // a head's flinch (over whatever it does)
   down:  { length: 2.8 },                                                   // a head going down (then it stays down)
   rise:  { length: 8.0, down: 0.6, sly: 4.2, burst: 4.8, roar: 6.05 },      // (its beats are counted from when it is under the ground)
@@ -683,6 +695,15 @@ export function createBossMoves(boss, { snaps = true } = {}) {
         ctx.patches[w].forEach((shape, i) => tell('warn', { patch: w * 10 + i, wave: w, shape, lead: hit - warn, lasts: PA.lasts }));
       });
       once('patchHit' + w, hit, () => (ctx.patches[w] || []).forEach((shape, i) => tell('hit', { patch: w * 10 + i, wave: w, shape })));
+    });
+    const RI = U.ripples, hitAt = U.thicket + BOSS_MOVES.thicket.hit;
+    RI.at.forEach((after, k) => {
+      once('rippleWarn' + k, hitAt + after - RI.lead, () => {
+        const o = toWorld(tmp.set(0, 0, 0));
+        ctx.ripple = { kind: 'wave', x: o.x, y: o.y, z: o.z, from: BOSS_MOVES.thicket.radius * size, to: RI.reach * size, speed: RI.speed * size, width: RI.width * size, height: RI.height * size };
+        tell('warn', { ripple: k, shape: ctx.ripple, lead: RI.lead });
+      });
+      once('rippleGo' + k, hitAt + after, () => tell('hit', { ripple: k, shape: ctx.ripple }));
     });
     if (t < U.thicket) {
       stance(false);
