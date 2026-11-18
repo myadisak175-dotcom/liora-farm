@@ -1,6 +1,6 @@
 // player-moves.js
-// The player with the moves (a trial: index.html uses it with ?move=1, in place of player.js; the same createPlayer, the same
-// player object, plus player.dash() and player.mode). Her hands are read in player-input.js, her camera is player-camera.js
+// The player with the moves: the game's player (index.html; with ?move=0 it uses the old walker, player.js, instead: the same
+// createPlayer, the same player object, less player.dash() and player.mode). Her hands are read in player-input.js, her camera is player-camera.js
 // (the walker's camera), a cliff's face is measured in player-climb.js, her feet in the water are player-footsteps.js; this
 // file is her body in the world.
 //

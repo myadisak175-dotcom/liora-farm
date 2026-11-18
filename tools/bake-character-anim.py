@@ -35,7 +35,7 @@ CLIPS = [
     ("jump_start", "Jump_Start", False, 0.0),
     ("jump_air", "Jump_Loop", True, 0.0),
     ("jump_land", "Jump_Land", False, 0.0),
-    # the moves (player-moves.js, ?move=1): a long fall ends in a forward roll; climbing a face (Climb_Loop: made for this
+    # the moves (player-moves.js): a long fall ends in a forward roll; climbing a face (Climb_Loop: made for this
     # game by tools/make-climb-anim.py, the library has no climbing loop; its pace, 1.21 m a second on the library's
     # skeleton, is written in hips heights); the vault that takes her over a cliff's top; swimming and treading water
     # (both clips have the water's surface at her root)
