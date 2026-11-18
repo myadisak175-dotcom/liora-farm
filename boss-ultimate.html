@@ -10,8 +10,8 @@
   to play: it spits the poison up into the sky (the gathering's light: howl-fx.js, without its breath; the rain:
   poison-rain-fx.js), then the thicket, as it is on its own (thicket-fx.js: the bud, the ring, the vines, the green burst),
   while the rain falls all over the field and patches of the same thorns burst up out of the ground all over it, one where
-  she will be (thorn-patches-fx.js); as the thicket's vines burst up its ring sends three ripples out across the field,
-  low ridges of earth set with thorns (thorn-ripple-fx.js). Vivi stands far off, as she would casting: the rain and the
+  she will be (thorn-patches-fx.js); as the thicket's vines burst up its ring sends three shockwaves out across the
+  field, rings of red light breaking out of its middle (shockwave-fx.js). Vivi stands far off, as she would casting: the rain and the
   thorns come after her there, and the rain's pools slow her and turn her green. Thorns bursting up under her strike her,
   unless she is behind a barrier (here a stand-in, a dome of water, until hers is made); a ripple strikes her unless she
   jumps it (or is behind the barrier). Move her with the stick (or the arrow keys), jump with its button (or the space
@@ -78,7 +78,7 @@
 </script>
 </head>
 <body>
-<div id="name">บอสต้นไม้ · ท่าไม้ตาย<small>พ่นพิษขึ้นฟ้า → พงหนาม + คลื่นหนาม (กระโดด!) + ฝนพิษ + หนามผุดทั่วแมพ</small></div>
+<div id="name">บอสต้นไม้ · ท่าไม้ตาย<small>พ่นพิษขึ้นฟ้า → พงหนาม + คลื่นกระแทก (กระโดด!) + ฝนพิษ + หนามผุดทั่วแมพ</small></div>
 <div id="beat"></div>
 <div id="sick">☠️ เหยียบพิษ — เดินช้าลง</div>
 <div id="say"></div>
@@ -113,7 +113,7 @@ import { createHowlFx } from './howl-fx.js';
 import { createPoisonRainFx, poolStrength, SKY } from './poison-rain-fx.js';
 import { createThicketFx } from './thicket-fx.js';
 import { createThornPatchesFx } from './thorn-patches-fx.js';
-import { createThornRippleFx } from './thorn-ripple-fx.js';
+import { createShockwaveFx } from './shockwave-fx.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -150,7 +150,7 @@ scene.add(boss);
 const moves = createBossMoves(boss, { snaps: true }), turn = createBossTurn(boss);
 const howl = createHowlFx({ seed: 1, breath: false });
 const rain = createPoisonRainFx({ heightAt: H, seed: 3, lift: 0.3 });
-const thicket = createThicketFx({ heightAt: H, seed: 2, lift: 0.3 }), patches = createThornPatchesFx({ heightAt: H, seed: 4, lift: 0.3 }), ripples = createThornRippleFx({ heightAt: H, seed: 6, lift: 0.28 });
+const thicket = createThicketFx({ heightAt: H, seed: 2, lift: 0.3 }), patches = createThornPatchesFx({ heightAt: H, seed: 4, lift: 0.3 }), ripples = createShockwaveFx({ heightAt: H, lift: 0.28 });
 scene.add(howl.object, rain.object, thicket.object, patches.object, ripples.object);
 const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
 setPlantBossSun(sun); howl.setSun(sun); rain.setSun(sun); thicket.setSun(sun); patches.setSun(sun); ripples.setSun(sun);
@@ -322,7 +322,7 @@ const BEATS = [[0, 'สะดุ้ง หันมาหาวีวี่'], [
   [at0, 'ฟ่อขู่ หุบเข้าดอกตูม'], [B.rain[0] + B.lead, 'ฝนพิษตกทั่วแมพ — หลบวงเขียว!'], [at0 + TK.warn + 0.4, 'วงพงหนามกางออก — อยู่ในวงต้องกางบาเรีย!'],
   [at0 + TK.hit, 'หนามพุ่ง!'], [at0 + TK.sink, 'หนามมุดกลับ · ฝนยังตก'], [at0 + TK.burst, 'ระเบิดเขียว · ดอกบาน']];
 for (const [w, h] of B.patches.waves) BEATS.push([w, 'วงส้มทั่วแมพ — หนามจะผุด!'], [h, 'หนามผุดทั่วแมพ!']);
-B.ripples.at.forEach((a, k) => BEATS.push([at0 + TK.hit + a, `คลื่นหนาม ${k + 1} — กระโดด!`]));
+B.ripples.at.forEach((a, k) => BEATS.push([at0 + TK.hit + a, `คลื่นกระแทก ${k + 1} — กระโดด!`]));
 BEATS.sort((a, b) => a[0] - b[0]);
 const track = document.getElementById('track');
 for (const [t] of BEATS.slice(1)) { const i = document.createElement('i'); i.style.left = (t / B.length * 100) + '%'; track.appendChild(i); }
@@ -397,7 +397,7 @@ function crests() {
     if (air.h > s.height * 0.75) { score.jumped++; say('🦘 กระโดดข้าม!', '#ffe2b8'); }
     else if (shieldUp()) { if (shieldT <= BARRIER.sharp) { score.perfect++; say('✨ จังหวะเป๊ะ!', '#bff4ff'); } else { score.blocked++; say('🛡️ กันได้!', '#e6f8ff'); } shieldHit = 1; }
     else {
-      score.struck++; say('💥 โดนคลื่นหนาม!', '#ffb38a');
+      score.struck++; say('💥 โดนคลื่นกระแทก!', '#ffb38a');
       knock = { x: (her.x - s.x) / (d || 1), z: (her.z - s.z) / (d || 1), t: 0 };
       if (vivi) vivi.play('jump_land', 0.08, false);
     }

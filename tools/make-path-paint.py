@@ -22,7 +22,11 @@
 # it, pale dusty patches in place of damp ones, more grit. And cracks, as earth that has dried out breaks into plates:
 # they are not in the colour but in the picture's alpha (255: none .. 0: the middle of a crack), so the game can leave
 # them out, and has them only in stretches. A crack is the line between two of a scatter of points (the plates'
-# middles), wavering, wider here and thinner there, and broken off in places as a brush would leave it.
+# middles), wavering, wider here and thinner there, and broken off in places as a brush would leave it. With it, the
+# plates' own outlines (assets/ground/dry-plates.json: each plate's edge in the picture's pixels, x across and y down
+# from its top, wavering as its cracks do; a plate by the picture's edge runs past it, as the picture repeats): for
+# whatever breaks this earth into pieces, so it breaks along the cracks that are drawn (broken-earth.js, the plant
+# boss's thicket).
 #
 #   python3 tools/make-path-paint.py            (Termux: pip install numpy scipy pillow)
 #   python3 tools/make-path-paint.py sand
@@ -147,5 +151,38 @@ if look.get('CRACKS'):
     img = np.dstack([img, (255 * (1 - np.clip(crack, 0, 1))).astype(np.uint8)])
     Image.fromarray(img, 'RGBA').save(OUT, quality=90, method=6, exact=True)                # (exact: the colour is kept under a crack too)
     print(f'{OUT.name}: cracks over {100 * (crack > 0.5).mean():.1f} % of it')
+    # ---- 7. the plates' outlines: a crack lies where a point, read a little to the side (wx, wy), is as far from two
+    # plates' middles. So a plate's edge is its cell's edge carried back by that sideways reading: a point v of the cell's
+    # edge is drawn at p where p + (wx, wy)(p) = v, found by going back and reading again a few times
+    import json
+    from scipy.spatial import Voronoi
+    vor = Voronoi(tiled)
+    def warp(p):                                                                            # (wx, wy) at points p, read between pixels, round the edges
+        x, y = p[:, 0] % N, p[:, 1] % N
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int); fx, fy = x - x0, y - y0
+        x1, y1 = (x0 + 1) % N, (y0 + 1) % N
+        at = lambda g: (g[y0, x0] * (1 - fx) + g[y0, x1] * fx) * (1 - fy) + (g[y1, x0] * (1 - fx) + g[y1, x1] * fx) * fy
+        return np.stack([at(wx), at(wy)], -1)
+    plates, STEP = [], 12.0                                                                 # (a point every STEP px along an edge)
+    for i in range(4 * n, 5 * n):                                                           # the points of the middle copy: (dx, dy) = (0, 0), the fifth of the nine
+        cell = vor.vertices[vor.regions[vor.point_region[i]]]
+        cell = cell[np.argsort(np.arctan2(cell[:, 1] - tiled[i, 1], cell[:, 0] - tiled[i, 0]))]      # (round it in order)
+        edge = []
+        for a, b in zip(cell, np.roll(cell, -1, 0)):
+            k = max(1, int(np.ceil(np.hypot(*(b - a)) / STEP)))
+            edge += [a + (b - a) * s / k for s in range(k)]
+        v = np.array(edge); q = v.copy()
+        for _ in range(6): q = v - warp(q)
+        plates.append([[round(float(x), 1), round(float(y), 1)] for x, y in q])
+    PLATES = OUT.with_name('dry-plates.json')
+    PLATES.write_text(json.dumps({'size': N, 'plates': plates}, separators=(',', ':')))
+    # how well they keep to the cracks drawn: of the points along their edges, how many lie on a crack (the rest are
+    # where a crack is left out); and of their middles, how many lie on none
+    a = np.concatenate([np.array(pl) for pl in plates]) % N
+    on = crack[a[:, 1].astype(int), a[:, 0].astype(int)] > 0.3
+    mid = np.array([np.mean(pl, 0) for pl in plates]) % N
+    clear = crack[mid[:, 1].astype(int), mid[:, 0].astype(int)] < 0.1
+    print(f'{PLATES.name}: {len(plates)} plates, {len(a)} points on their edges; {100 * on.mean():.0f} % of them on a drawn crack, '
+          f'{100 * clear.mean():.0f} % of their middles clear of one')
 else: Image.fromarray(img).save(OUT, quality=90, method=6)
 print(f'{OUT.name}: {N} x {N}, tones {t.min():.2f} .. {t.max():.2f}, {OUT.stat().st_size // 1024} kB')

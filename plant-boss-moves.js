@@ -103,9 +103,9 @@
    ring, the vines, the green burst), while the rain falls all over the field, every fourth drop where she will be: she
    cannot stand off far from it and wait. And in waves, patches of the thicket's thorns burst up out of the ground all over
    the field: one where she will be, one near her, the rest anywhere, each warned first by a ring filling with orange light.
-   As the thicket's vines burst up, its ring sends three ripples out across the whole field, low ridges of heaved earth set
-   with short thorns: she must jump them (or be behind her barrier) as each passes her.
-   (The thicket's drawing is thicket-fx.js's, the patches' thorn-patches-fx.js's, the ripples' thorn-ripple-fx.js's, the rain's
+   As the thicket's vines burst up, its ring sends three shockwaves out across the whole field, low walls of red light on a
+   ring of it: she must jump them (or be behind her barrier) as each passes her.
+   (The thicket's drawing is thicket-fx.js's, the patches' thorn-patches-fx.js's, the shockwaves' shockwave-fx.js's, the rain's
    poison-rain-fx.js's.)
    Coming up: three small harmless heads look out of the ground, wide-eyed, bobbing; then a sly look, a rumble, and it
    bursts up as a bud that springs open, and roars at her.

@@ -4,7 +4,8 @@
    laid with its vineBuilder, so they look and move as the thicket's do), a handful of them, smaller than the thicket's.
    Before they come, the warning: a ring of orange light on the ground that fills from its middle, its rim beating, cracks
    glowing in it and pebbles hopping. Then they burst up through the broken ground with dust, flying stones and sparks,
-   writhe a moment, and sink back; the broken earth fades. One job: draw that. It decides nothing: the moves say when.
+   writhe a moment, and sink back; the broken earth fades. The earth and its cracks are the game's own dry earth, as the
+   thicket's are (broken-earth.js), read where each patch lies. One job: draw that. It decides nothing: the moves say when.
 
      const fx = createThornPatchesFx({ heightAt, seed, lift })   heightAt(x, z): the ground's height (world); null: the
                                                                  patches' own height. lift: metres the ground's light is
@@ -26,6 +27,7 @@
 import * as THREE from 'three';
 import { _fx, THICKET_LOOK } from './thicket-fx.js';
 import { mulberry32, _internal as natureInternal } from './stylized-nature.js';
+import { brokenEarth, earthUniforms, BROKEN_EARTH_GLSL } from './broken-earth.js';
 
 const { NOISE } = natureInternal;
 const { SPARK_VS, SPARK_FS, PUFF_VS, PUFF_FS, ROCK_VS, ROCK_FS, makePool, col, makeVines, vineBuilder } = _fx;
@@ -49,18 +51,21 @@ attribute vec2 aLocal;
 attribute vec3 aTimes;
 attribute float aDice;
 varying vec2 vL;
+varying vec2 vW;             // where it lies on the world (x, z): the earth is read there
 varying vec3 vT;
 varying float vDice;
 void main() {
-  vL = aLocal; vT = aTimes; vDice = aDice;
+  vL = aLocal; vT = aTimes; vDice = aDice; vW = position.xz;
   if (aTimes.x < 0.0 || uTime < aTimes.x || uTime > aTimes.z) { gl_Position = vec4(0.0, 0.0, -2.0, 1.0); return; }
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 const MARK_FS = /* glsl */`
 ${NOISE}
+${BROKEN_EARTH_GLSL}
 uniform float uTime;
-uniform vec3 uWarn, uWarnHot, uRim, uRimGlow, uCrack, uCrackHot, uE0, uE1, uE2, uSeam;
+uniform vec3 uWarn, uWarnHot, uRim, uRimGlow, uCrack, uCrackHot, uSeam;
 varying vec2 vL;
+varying vec2 vW;
 varying vec3 vT;
 varying float vDice;
 vec4 acc;
@@ -71,17 +76,9 @@ void main() {
   float warned = vT.x, hit = vT.y, gone = vT.z, t = uTime;
   acc = vec4(0.0);
   float n = noise2(vL * 3.0 + vDice * 30.0);
-  // the broken plates and the cracks between them (cells of the ground, a little warped)
-  vec2 q = vL * 3.2 + (vec2(noise2(vL * 2.0 + vDice * 7.0), noise2(vL * 2.0 - vDice * 5.0)) - 0.5) * 0.8;
-  vec2 ci = floor(q), cf = fract(q);
-  float d1 = 9.0, d2 = 9.0, id = 0.0;
-  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-    vec2 c = ci + vec2(float(i), float(j));
-    vec2 p = vec2(hash2(c / 16.0), hash2((c + 5.0) / 16.0)) + vec2(float(i), float(j)) - cf;
-    float d = dot(p, p);
-    if (d < d1) { d2 = d1; d1 = d; id = hash2((c + 9.0) / 16.0); } else if (d < d2) d2 = d;
-  }
-  float seam = 1.0 - smoothstep(0.02, 0.08, sqrt(d2) - sqrt(d1));
+  // the earth here, and its cracks (the game's own dry earth: broken-earth.js)
+  vec4 e = earthAt(vW);
+  float seam = smoothstep(0.15, 0.6, e.a), halo = crackGlowAt(vW), id = n;
   float lead = hit - warned, fill = clamp((t - warned) / max(lead, 0.01), 0.0, 1.0);
   if (t < hit) {
     // the warning: a ring of orange light filling from its middle, its rim beating; cracks glowing in it
@@ -95,17 +92,19 @@ void main() {
     float d = r - 1.0;
     glow(uRimGlow, show * (exp(-max(d, 0.0) / 0.08) * step(0.0, d) * 0.8 + exp(min(d, 0.0) / 0.1) * step(d, 0.0) * 0.5) * beat);
     over(uRim, show * (1.0 - smoothstep(0.02, 0.04, abs(d + 0.03))));
-    float cracks = seam * (1.0 - smoothstep(fill * 1.05 - 0.05, fill * 1.05, r)) * inside;
-    over(mix(uCrack, uCrackHot, 0.5 + 0.5 * sin(t * 18.0 + id * 9.0)), cracks * smoothstep(0.3, 0.9, fill) * show);
+    float ran = (1.0 - smoothstep(fill * 1.05 - 0.05, fill * 1.05, r)) * inside;
+    glow(uRimGlow, halo * ran * smoothstep(0.3, 0.9, fill) * show * 0.35);
+    over(mix(uCrack, uCrackHot, 0.5 + 0.5 * sin(t * 18.0 + id * 9.0)), seam * ran * smoothstep(0.3, 0.9, fill) * show);
   } else {
     // broken ground where they came up: plates of earth, their seams glowing, then cooling; it fades once they have sunk
     float since = t - hit, fade = 1.0 - smoothstep(gone - hit - 1.0, gone - hit, since);
     float edge = 0.85 + 0.1 * sin(a * 5.0 + vDice * 30.0) + (n - 0.5) * 0.2;
     float earth = (1.0 - smoothstep(edge - 0.05, edge, r)) * smoothstep(0.0, 0.08, since);
-    vec3 e = id < 0.33 ? uE0 : (id < 0.7 ? uE1 : uE2);
-    e = mix(e, uSeam, seam);
-    over(e, earth * fade * 0.9);
-    glow(uCrackHot, seam * earth * fade * (1.0 - smoothstep(0.0, 1.2, since)) * 0.7);
+    vec3 ground = mix(e.rgb * 0.9, uSeam, seam);
+    over(ground, earth * fade * 0.92 * uEarthOn);
+    float cool = 1.0 - smoothstep(0.0, 1.2, since);
+    glow(uCrackHot, seam * earth * fade * cool * 0.7);
+    glow(uRimGlow, halo * earth * fade * cool * 0.3);
     glow(uRimGlow, exp(-max(r - edge, 0.0) / 0.1) * step(edge, r) * (1.0 - smoothstep(0.0, 0.6, since)) * 0.5);
   }
   if (acc.a < 0.003 && max(acc.r, max(acc.g, acc.b)) < 0.003) discard;
@@ -136,8 +135,7 @@ export function createThornPatchesFx({ heightAt = null, seed = 1, lift = 0.08, l
   mg.setAttribute('position', aPos); mg.setAttribute('aLocal', aLoc); mg.setAttribute('aTimes', aTimes); mg.setAttribute('aDice', aDice);
   const markMat = new THREE.ShaderMaterial({ vertexShader: MARK_VS, fragmentShader: MARK_FS, ...over({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -3 }),
     uniforms: { uTime: T, uWarn: { value: col(look.warn) }, uWarnHot: { value: col(look.warnHot) }, uRim: { value: col(look.rim) }, uRimGlow: { value: col(look.rimGlow) },
-      uCrack: { value: col(look.crack) }, uCrackHot: { value: col(look.crackHot) }, uE0: { value: col(look.earth[0]) }, uE1: { value: col(look.earth[1]) },
-      uE2: { value: col(look.earth[2]) }, uSeam: { value: col(look.seam) } } });
+      uCrack: { value: col(look.crack) }, uCrackHot: { value: col(look.crackHot) }, uSeam: { value: col(look.seam) }, ...earthUniforms(brokenEarth()) } });
   const marks = new THREE.Mesh(mg, markMat);
   marks.frustumCulled = false; marks.renderOrder = 2;
   object.add(marks);
