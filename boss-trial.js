@@ -1,13 +1,15 @@
 /* ==========================================================================
    boss-trial.js  —  ?boss=1 (a trial): the three-headed plant boss (plant-boss.js) standing in the west fringe's sag field,
    to see how it looks in the game: its size beside her, in the land's light and the hour's, with its real shadow on
-   the ground. It does not fight yet: it sways, and its heads turn to watch her when she comes near
-   (plant-boss-moves.js, standing, without darting at her).
+   the ground. It does not fight yet: its three heads talk (plant-boss-banter.js, acted by plant-boss-talk.js), and
+   what they say shows over their heads (speech-bubbles.js): among themselves when she is far off, about her when she
+   comes near, a roar to warn her off when she comes too close. They never strike.
 
      const trial = createBossTrial({ level, scene, shade })   shade: the level's picture of the shadows already on the
                                                               ground, as her own shadow takes it (character-shadow.js)
      every frame: trial.update(dt, renderer, feet, sun, k)    feet: where she stands; sun, k: the sun the shadows are
                                                               cast by, and how strongly (as her own shadow is given them)
+     trial.banter    who says what (plant-boss-banter.js): its zone, its lines
      trial.spot      { x, z, yaw }: where to stand before it, facing it. The same place is level.views['wf-boss']: the
                      map's pin, and the 📍 menu (teleport-menu.js)
 
@@ -16,15 +18,15 @@
    ========================================================================== */
 import * as THREE from 'three';
 import { createPlantBoss, setPlantBossSun, BOSS_HEIGHT } from './plant-boss.js';
-import { createBossMoves } from './plant-boss-moves.js';
+import { createBossBanter } from './plant-boss-banter.js';
+import { createSpeechBubbles } from './speech-bubbles.js';
 import { createCharacterShadow } from './character-shadow.js';
 
 // the middle of the sag field (west-fringe.json: sunken.sag_field), facing east: the way she comes from the village
 export const BOSS_SPOT = { x: -133, z: 116, faces: Math.PI / 2 };
-const NOTICE = 26;                      // metres: nearer than this, its heads watch her
 const STAND = 13;                       // metres before it: where the pin puts her
 
-export function createBossTrial({ level, scene, shade = null }) {
+export function createBossTrial({ level, scene, camera, shade = null }) {
   const { x, z, faces } = BOSS_SPOT, H = level.heightAt;
   const boss = createPlantBoss({ seed: 1 });
   // its foot on the lowest of the ground round it, so no root hangs in the air on a slope
@@ -33,7 +35,11 @@ export function createBossTrial({ level, scene, shade = null }) {
   boss.position.set(x, y - 0.05, z);
   boss.rotation.y = faces;
   scene.add(boss);
-  const moves = createBossMoves(boss, { snaps: false });
+  // its heads talk; the words over them
+  const banter = createBossBanter(boss), bubbles = createSpeechBubbles({ camera });
+  banter.onSay = e => { if (e.cut) bubbles.clear(); bubbles.say(e.head, e.text, e); };      // (cutting in: what was being said goes)
+  const { heads, mesh } = boss.userData;
+  const mouth = (i, out) => { const h = heads[i]; out.copy(h.centre).add(h.lean); out.y += h.radius * h.scale * 1.55; mesh.localToWorld(out); return true; };      // (over its hood)
 
   // its real shadow on the ground: hers, made for it (a wider picture, a coarser patch: it is four times her height)
   const shadow = createCharacterShadow({ character: { object: boss, height: BOSS_HEIGHT }, heightAt: H, shade, size: 512, cell: 0.5 });
@@ -49,12 +55,13 @@ export function createBossTrial({ level, scene, shade = null }) {
   const spot = { x: x + fx * STAND, z: z + fz * STAND, yaw: Math.atan2(-fx, -fz) };
   if (level.views) level.views['wf-boss'] = spot;
 
-  const feet = new THREE.Vector3(x, y, z), ahead = boss.localToWorld(new THREE.Vector3(0, 0, 12));
+  const feet = new THREE.Vector3(x, y, z);
   return {
-    boss, spot,
+    boss, spot, banter,
     update(dt, renderer, her, sun, k = 1) {
       setPlantBossSun(sun);
-      moves.update(dt, Math.hypot(her.x - x, her.z - z) < NOTICE ? her : ahead);     // (far off: they look out ahead of it)
+      banter.update(dt, her);
+      bubbles.update(dt, mouth);
       shadow.update(renderer, feet, sun, k);
     },
   };

@@ -112,7 +112,10 @@
   "./west-fringe.js": "./west-fringe.js?v=6",
   "./plant-boss.js": "./plant-boss.js?v=1",
   "./plant-boss-moves.js": "./plant-boss-moves.js?v=1",
-  "./boss-trial.js": "./boss-trial.js?v=1",
+  "./plant-boss-talk.js": "./plant-boss-talk.js?v=1",
+  "./plant-boss-banter.js": "./plant-boss-banter.js?v=1",
+  "./speech-bubbles.js": "./speech-bubbles.js?v=1",
+  "./boss-trial.js": "./boss-trial.js?v=2",
   "./village-kit.js": "./village-kit.js?v=bridge3",
   "./map-rim.js": "./map-rim.js?v=4",
   "./path-brush.js": "./path-brush.js?v=1",
@@ -366,7 +369,7 @@ const NOON = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();
 // (boss-trial.js). It does not fight yet. Made before the cloud shadows and the curse reach the scene, so they reach it too.
 // Without it nothing of the trial is loaded
 const bossTrial = Q.has('boss') && MAP === 'hillvillage'
-  ? (await import('./boss-trial.js')).createBossTrial({ level, scene, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null })
+  ? (await import('./boss-trial.js')).createBossTrial({ level, scene, camera, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null })
   : null;
 fit();
 
