@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7fb4e6">
+<title>บอสต้นไม้ — ท่าพงหนาม</title>
+<!--
+  boss-thicket.html  —  the plant boss's thicket (plant-boss-moves.js: play('thicket')) and all it draws (thicket-fx.js),
+  in a meadow, to watch: the boss shuts itself in its bud, the warning ring opens round it, the ground cracks, thorned vines
+  burst up, sink, the ground spits green and it bursts open. Vivi stands just outside the ring, for its size.
+  One job: see the move. Nothing here goes into the game.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb4e6; font-family: system-ui, sans-serif; touch-action: none; }
+  canvas { display: block; }
+  #name { position: fixed; left: 0; right: 0; top: calc(10px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 17px system-ui; color: #fff; text-shadow: 0 1px 6px #0008; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(58px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #fff; text-shadow: 0 1px 6px #000a; transition: opacity 0.2s; }
+  #ui { position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 8px; }
+  .track { position: relative; width: min(86vw, 420px); height: 8px; border-radius: 99px; background: #3b3147b0; border: 1px solid #ffffff90; overflow: hidden; }
+  .track i { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffffffa0; }
+  .track b { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #ff9a5c, #b6ff4a); }
+  .bar { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 9px 13px; background: #3b3147d9; color: #fff; font: 700 13px system-ui; touch-action: manipulation; }
+  .bar button.on { background: #8a6a3a; }
+  .bar button.go { background: #b4462c; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="name">บอสต้นไม้ · ท่าพงหนาม<small>หุบดอก → วงเตือน → พื้นแตก → หนามพุ่ง → ระเบิดเขียว · ลากหมุนดูได้</small></div>
+<div id="beat"></div>
+<div id="ui">
+  <div class="track" id="track"><b id="fill"></b></div>
+  <div class="bar">
+    <button id="play" class="go">▶ ปล่อยท่า</button>
+    <button id="loop" class="on">🔁 เล่นวน</button>
+  </div>
+  <div class="bar">
+    <button data-speed="1" class="on">×1</button>
+    <button data-speed="0.5">×½</button>
+    <button data-speed="0.25">×¼</button>
+    <button id="cam">🎬 มุมคลิป</button>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { createPlantBoss, setPlantBossSun } from './plant-boss.js';
+import { createBossMoves, BOSS_MOVES } from './plant-boss-moves.js';
+import { createThicketFx } from './thicket-fx.js';
+
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 30, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+scene.add(G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 30, far: FAR }));
+
+// ---- the boss, how it fights, and what its thicket draws
+const boss = createPlantBoss({ seed: 1 });
+boss.position.set(0, H(0, 0) - 0.05, 0);
+scene.add(boss);
+const moves = createBossMoves(boss, { snaps: false });
+const fx = createThicketFx({ heightAt: H, seed: 2, lift: 0.3 });
+scene.add(fx.object);
+const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
+setPlantBossSun(sun); fx.setSun(sun);
+
+// where she stands: just outside the ring, a little to one side
+const her = new THREE.Vector3(2.6, 0, BOSS_MOVES.thicket.radius + 3.2);
+her.y = H(her.x, her.z);
+let vivi = null;
+(async () => {
+  try {
+    const [{ loadCharacter }, { VIVI_GLB }, { CHARACTER_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./character-anim.js')]);
+    vivi = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);
+    if (vivi.setSize) vivi.setSize(1.75 / vivi.baseHeight);
+    vivi.play('idle');
+    vivi.object.position.copy(her);
+    vivi.object.rotation.y = Math.atan2(-her.x, -her.z);
+    scene.add(vivi.object);
+  } catch (err) {
+    // (no Vivi here: a pole as tall as she is, on a ring where she would stand)
+    console.warn('Vivi not loaded', err);
+    const mark = new THREE.Group(), pale = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.75, 10), pale); pole.position.y = 0.875 + 0.3;
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), pale); top.position.y = 1.75 + 0.3;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), pale); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.32;
+    mark.add(pole, top, ring); mark.position.copy(her);
+    scene.add(mark);
+  }
+})();
+
+// ---- the camera: as in the clip (in front, looking down on it), or behind her
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 600);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.48; controls.minDistance = 4; controls.maxDistance = 90; controls.enablePan = false;
+let view = 'clip';
+function frame() {
+  const vHalf = THREE.MathUtils.degToRad(camera.fov / 2), hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+  if (view === 'clip') {
+    const w = 12.5, h = 12;
+    const d = Math.max((h / 2) / Math.tan(vHalf), (w / 2) / Math.tan(hHalf)) * 1.05;
+    const wide = camera.aspect > 1, ty = wide ? 1.2 : 2.3, tz = wide ? 2.2 : 0.6;      // (wide: it sits higher, clear of the buttons)
+    controls.target.set(0, ty, tz);
+    const el = 0.45;
+    camera.position.set(0, ty + Math.sin(el) * d, tz + Math.cos(el) * d);
+  } else {
+    const back = new THREE.Vector3(her.x, 0, her.z).normalize();
+    controls.target.set(0, 2.2, 0);
+    camera.position.set(her.x + back.x * 7 + 1.4, her.y + 4.6, her.z + back.z * 7);
+  }
+  controls.update();
+}
+frame();
+
+// ---- what is happening, shown over it
+const B = BOSS_MOVES.thicket;
+const BEATS = [[0, 'ฟ่อขู่'], [0.75, 'หุบเข้าดอกตูม'], [B.warn, 'วงเตือนกางออก — หนีออกนอกวง!'], [B.warn + 1.0, 'พื้นแตก ร้อนแดง'], [B.hit, 'หนามพุ่ง!'], [B.sink, 'หนามมุดกลับ'], [B.burst, 'ระเบิดเขียว · ดอกบาน'], [B.burst + 0.9, 'กลับมายืน']];
+const track = document.getElementById('track');
+for (const [t] of BEATS.slice(1)) { const i = document.createElement('i'); i.style.left = (t / B.length * 100) + '%'; track.appendChild(i); }
+const beatEl = document.getElementById('beat'), fillEl = document.getElementById('fill');
+
+let loop = true, speed = 1, wait = 1.2;
+moves.onEvent = e => {
+  fx.event(e);
+  if (e.type === 'end' && e.move === 'thicket') wait = 1.6;
+};
+const play = () => { if (moves.state === 'idle') moves.play('thicket'); };
+const btn = id => document.getElementById(id);
+btn('play').onclick = () => { wait = -1; play(); };
+btn('loop').onclick = () => { loop = !loop; btn('loop').classList.toggle('on', loop); };
+for (const b of document.querySelectorAll('[data-speed]')) b.onclick = () => {
+  speed = +b.dataset.speed;
+  for (const o of document.querySelectorAll('[data-speed]')) o.classList.toggle('on', o === b);
+};
+btn('cam').onclick = () => { view = view === 'clip' ? 'her' : 'clip'; btn('cam').textContent = view === 'clip' ? '🎬 มุมคลิป' : '🧍 มุมวีวี่'; frame(); };
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); frame(); });
+
+// ---- every frame
+const shakeOff = new THREE.Vector3();
+let shakeT = 0;
+function step(dt) {
+  if (moves.state === 'idle' && wait >= 0) { wait -= dt; if (wait < 0 && (loop || !step.started)) { step.started = true; play(); } }
+  N.update(dt);
+  moves.update(dt, her);
+  fx.update(dt, camera);
+  if (vivi) vivi.update(dt);
+  const inMove = moves.state === 'thicket';
+  let label = '';
+  if (inMove) for (const [t, s] of BEATS) if (moves.time >= t) label = s;
+  beatEl.textContent = label;
+  fillEl.style.width = (inMove ? moves.time / B.length * 100 : 0) + '%';
+}
+function draw(dt) {
+  controls.update();
+  shakeT += dt;
+  const k = fx.shake * 0.22;
+  shakeOff.set(Math.sin(shakeT * 71) * k, Math.sin(shakeT * 83 + 1) * k * 0.7, Math.sin(shakeT * 67 + 2) * k * 0.5);
+  camera.position.add(shakeOff);
+  renderer.render(scene, camera);
+  camera.position.sub(shakeOff);
+}
+const clock = new THREE.Clock();
+let manual = false;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (manual) return;
+  step(dt * speed); draw(dt * speed);
+});
+// for tests: run it by hand, a fixed step at a time
+window.__scene = {
+  scene, camera, controls, boss, moves, fx,
+  manual(on) { manual = on; },
+  run(seconds, fps = 30) { const n = Math.round(seconds * fps); for (let i = 0; i < n; i++) step(1 / fps); draw(1 / fps); },
+  view(v) { view = v; frame(); },
+  ready: () => !!vivi,
+};
+</script>
+</body>
+</html>

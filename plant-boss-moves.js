@@ -14,6 +14,7 @@
      moves.play('whip' | 'spit' | 'roots')     a head's blow (BOSS_OWNERS says whose). false if that head is down,
                                                or another blow is under way, or it is dying, dead or coming up
      moves.play('bramble')                     the great blow (below)
+     moves.play('thicket')                     shut in its bud, it makes thorned vines burst up all round itself (below)
      moves.play('hit', head)                   that head (0: middle, 1: right, 2: left) is struck: it flinches, over
                                                whatever it is doing (a blow it is striking goes on). false if it is down,
                                                or shut away in the bud
@@ -35,7 +36,8 @@
          { type: 'hit', move, head, shape }                 it lands now: whoever stands in the shape is struck
          { type: 'cancel', move, head }                     its head went down before it was over: the warning goes
          { type: 'down', head }                             a head is beaten
-         { type: 'shut' | 'bloom', move: 'bramble' }        the bud is shut over the heads; it bursts open
+         { type: 'shut' | 'bloom', move }                   the bud is shut over the heads; it bursts open (bramble, thicket)
+         { type: 'sink', move: 'thicket' }                  the thicket's vines go back into the ground
          { type: 'burst' | 'roar', move: 'rise' }           it breaks out of the ground; it roars
          { type: 'end', move }                              a blow, its dying, or its coming up, is over
      moves.rest()                              as built at once (all heads up, vines away): for when something else acts it
@@ -65,6 +67,12 @@
    bud's light swells as a wave's warning fills, and it clenches and flares as the thorns break out. Then it bursts
    open, the heads spring out, and hang there worn out, panting, eyes half shut: the moment to strike them. (The
    thorns are thorn-spikes.js's, the roots that run to each patch root-trails.js's.)
+   The thicket (the one in the clip): all three hiss at her, drawn back with their hoods up; then they draw down into the
+   bud as the skirt winds shut. The ground round it glows, then the warning: a ring of ground all round it, out to
+   BOSS_MOVES.thicket.radius, that fills as the bud beats faster and the ground shakes; it cracks, glowing, from the roots
+   out. Then thorned vines burst up all over that ring (the 'hit': she must be out of it by then), writhe there, and
+   sink; the bud clenches, the ground spits green and it bursts open, the heads springing out, mouths wide, and shaking
+   themselves off. (Everything that ring draws is thicket-fx.js's.)
    Coming up: three small harmless heads look out of the ground, wide-eyed, bobbing; then a sly look, a rumble, and it
    bursts up as a bud that springs open, and roars at her.
    Nothing snaps: reaches and turns go through springs (a soft heavy limb overshoots and settles), faces ease.
@@ -80,6 +88,9 @@ export const BOSS_MOVES = {
   roots: { length: 3.9, roar: 0.7, warn: 0.75, hit: 2.1, lasts: 0.55 },
   // the great blow: when the bud is shut, bursts open, the heads are worn out (open), and recover; each wave's warning
   // and the moment its thorns break out; how many patches each wave has, how wide one is (metres), how long it stands
+  // the thicket: the bud shut; the warning (a ring round it, out to radius metres), the vines burst up (hit) and stand
+  // for lasts; they go back into the ground (sink); the bud bursts open (burst)
+  thicket: { length: 8.7, shut: 1.75, warn: 1.6, hit: 4.2, lasts: 0.6, sink: 6.75, burst: 7.2, radius: 6 },
   bramble: { length: 11.7, shut: 2.1, burst: 7.3, open: 7.75, tired: 10.7, waves: [[2.4, 3.7], [4.1, 5.2], [5.6, 6.5]], patches: [5, 7, 9], radius: 1.6, lasts: 0.55 },
   hit:   { length: 0.65 },                                                  // a head's flinch (over whatever it does)
   down:  { length: 2.8 },                                                   // a head going down (then it stays down)
@@ -140,7 +151,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
   function once(key, when, fn) { if (me.time >= when && !ctx.fired[key]) { ctx.fired[key] = true; fn(); } }
   function isDown(i) { return ctx.down[i] !== null && ctx.down[i] >= 0; }
   const downCount = () => [C, R, L].filter(isDown).length;
-  const striking = () => BOSS_OWNERS[me.state] ?? (me.state === 'bramble' && me.time < BOSS_MOVES.bramble.burst ? -1 : undefined);      // the head whose blow is under way (-1: all of them; undefined: none)
+  const striking = () => BOSS_OWNERS[me.state] ?? ((me.state === 'bramble' || me.state === 'thicket') && me.time < BOSS_MOVES[me.state].burst ? -1 : undefined);      // the head whose blow is under way (-1: all of them; undefined: none)
 
   function play(name, head) {
     const busy = me.state === 'die' || me.state === 'dead' || me.state === 'rise';
@@ -165,7 +176,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
       me.state = 'rise'; me.time = 0; ctx.fired = {};
       return true;
     }
-    if (name === 'bramble') {
+    if (name === 'bramble' || name === 'thicket') {
       if (me.state !== 'idle') return false;
       me.state = name; me.time = 0; ctx.fired = {}; ctx.patches = [];
       return true;
@@ -423,6 +434,62 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     body.shake.set(Math.sin(t * 61) * 0.035 * rumble, 0.13 * jolt + 0.12 * pulse(t, B.burst - 0.02, B.burst + 0.03, B.burst + 0.08, B.burst + 0.3), Math.sin(t * 47) * 0.035 * rumble);
   }
 
+  // ---- the thicket: all three hiss at her; they draw down into the bud as the skirt winds shut; the bud beats, faster
+  // as the warning fills, and clenches as the vines burst up; it trembles while they writhe, gathers itself as they
+  // sink, and bursts open: the heads spring out, mouths wide, and shake themselves off
+  function thicket(t) {
+    const B = BOSS_MOVES.thicket;
+    once('roar', 0.12, () => tell('roar'));
+    once('warn', B.warn, () => {
+      const o = toWorld(tmp.set(0, 0, 0));
+      tell('warn', { shape: ctx.shape = { kind: 'ring', x: o.x, y: o.y, z: o.z, radius: B.radius * size }, lead: B.hit - B.warn, lasts: B.lasts });
+    });
+    once('shut', B.shut, () => tell('shut'));
+    once('hit', B.hit, () => tell('hit', { shape: ctx.shape }));
+    once('sink', B.sink, () => tell('sink'));
+    once('bloom', B.burst, () => tell('bloom'));
+    stance(false);
+    const hiss = pulse(t, 0.08, 0.3, 0.55, 0.85), hide = sstep(0.6, 1.35, t) * (1 - sstep(B.burst - 0.02, B.burst + 0.16, t));
+    const sprung = pulse(t, B.burst, B.burst + 0.14, B.burst + 0.35, B.burst + 0.8), shakeOff = pulse(t, B.burst + 0.55, B.burst + 0.7, B.burst + 1.05, B.burst + 1.35);
+    for (const h of heads) {
+      const i = h.index, p = P[i], d = dirs[i], c = h.centre, n = i * 1.3;
+      // hissing at her: drawn back and up, hoods bristling, mouths wide, quivering
+      p.lean.lerp(tmp.set(-d.x * 0.45 + Math.sin(t * 40 + n) * 0.03, 0.35 + Math.sin(t * 47 + n) * 0.03, -d.z * 0.45), hiss);
+      p.nod = lerp(p.nod, -0.12, hiss);
+      for (const [k, v] of Object.entries({ jaw: 0.9, flare: 1, slant: 1, size: 1.1, curve: -1, smile: 0, lid: 1 })) p.face[k] = lerp(p.face[k], v, hiss);
+      p.quick = Math.max(p.quick, 1 + 1.5 * hiss);
+      // down into the bud, growing small
+      p.lean.lerp(tmp.set(HIDE[i][0] - c.x, HIDE[i][1] - c.y, HIDE[i][2] - c.z), hide);
+      p.bow.lerp(tmp.set(-c.x * 0.25, -0.3, 0), hide);
+      p.scale = lerp(1, 0.55, hide);
+      if (hide > 0.5) { p.at = null; p.nod = 0; p.yaw = 0; p.tilt = 0; Object.assign(p.face, { lid: 0.3, jaw: 0.1, flare: -1, smile: 0 }); }
+      p.wave = lerp(p.wave, 0.1, hide);
+      // out again: sprung up, mouths wide
+      p.lean.lerp(tmp.set(d.x * 0.25, 0.75, d.z * 0.25), sprung);
+      for (const [k, v] of Object.entries({ jaw: 1, lid: 1, size: 1.25, flare: 1, slant: 0.6, curve: -0.6, smile: 0 })) p.face[k] = lerp(p.face[k], v, sprung);
+      p.quick = Math.max(p.quick, 1 + 2 * sprung);
+      // shaking themselves off, eyes screwed up
+      p.tilt += Math.sin(t * 17 + n * 2) * 0.3 * shakeOff; p.yaw += Math.sin(t * 13 + n) * 0.16 * shakeOff;
+      for (const [k, v] of Object.entries({ lid: 0.15, jaw: 0.25, flare: 0.6, smile: 0 })) p.face[k] = lerp(p.face[k], v, shakeOff);
+      p.quick = Math.max(p.quick, 1 + 3 * shakeOff);
+    }
+    // the ground gathers (charge) as the warning fills; a jolt as the vines burst up; they writhe; it clenches to burst
+    const charge = Math.pow(seg(t, B.warn + 0.4, B.hit), 1.5) * (t < B.hit ? 1 : 0), jolt = pulse(t, B.hit - 0.03, B.hit + 0.02, B.hit + 0.08, B.hit + 0.45);
+    const writhe = sstep(B.hit, B.hit + 0.3, t) * (1 - sstep(B.sink, B.sink + 0.3, t)), clench = pulse(t, B.sink, B.burst - 0.1, B.burst - 0.02, B.burst + 0.05);
+    // the skirt: spread as they hiss; its leaves curl shut one after another, winding; shut, it breathes and trembles;
+    // it springs open (a little past) as they burst out
+    const shutTo = sstep(0.75, B.shut, t), opened = outBack(seg(t, B.burst, B.burst + 0.5)), shut = shutTo * (1 - sstep(B.burst - 0.02, B.burst + 0.1, t));
+    body.swirl = 1;
+    body.skirt = -0.25 * hiss + shutTo * (1 - opened) * (0.93 + 0.025 * Math.sin(t * 5) + 0.05 * jolt + 0.03 * writhe * Math.sin(t * 13) + 0.05 * clench);
+    body.ring.lift = Math.max(body.ring.lift, 0.3 * hiss); body.ring.stir = Math.max(body.ring.stir, hiss, 0.5 * writhe);
+    // its light: a heart's double beat, quicker as the warning fills; burning while the vines are up; a flare as they burst
+    // up, and as it bursts open
+    const rate = 1.3 + 2.2 * charge + 1.4 * writhe, ph = (t * rate) % 1, beat = Math.exp(-ph * 9) + 0.6 * Math.exp(-Math.pow((ph - 0.28) * 9, 2));
+    body.glow = Math.min(1, shut * (0.25 + 0.22 * beat + 0.45 * charge + 0.3 * writhe) + jolt + 0.8 * clench + (t >= B.burst ? 1 - sstep(B.burst, B.burst + 0.9, t) : 0));
+    const rumble = Math.max(charge, 0.7 * writhe, clench);
+    body.shake.set(Math.sin(t * 61) * 0.04 * rumble, 0.14 * jolt + 0.12 * pulse(t, B.burst - 0.02, B.burst + 0.03, B.burst + 0.08, B.burst + 0.3), Math.sin(t * 47) * 0.04 * rumble);
+  }
+
   // ---- its dying (all three heads down, or going down): the skirt wilts and all its colours dry
   function wilt(t) {
     const w = -sstep(ctx.wiltFrom, ctx.wiltFrom + 2.2, t);
@@ -567,12 +634,13 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     else if (st === 'spit') spit(tt);
     else if (st === 'roots') roots(tt);
     else if (st === 'bramble') bramble(tt);
+    else if (st === 'thicket') thicket(tt);
     else if (st === 'die') { stance(false); wilt(tt); }
     else if (st === 'dead') { stance(false); wilt(ctx.dieLength); }
     else if (st === 'rise') rise(tt);
     grieve(); flinches(); beaten();
     const B = BOSS_MOVES.bramble;
-    me.shut = me.state === 'bramble' && me.time > 1.15 && me.time < B.burst + 0.12;
+    me.shut = (me.state === 'bramble' && me.time > 1.15 && me.time < B.burst + 0.12) || (me.state === 'thicket' && me.time > 1.0 && me.time < BOSS_MOVES.thicket.burst + 0.12);
     me.open = me.state === 'bramble' && me.time >= B.open - 0.2 && me.time < B.tired + 0.3;
     vinesBack(dt);
 
