@@ -35,8 +35,15 @@ CLIPS = [
     ("jump_start", "Jump_Start", False, 0.0),
     ("jump_air", "Jump_Loop", True, 0.0),
     ("jump_land", "Jump_Land", False, 0.0),
-    # the moves (player-moves.js, ?move=1): a long fall ends in a forward roll
+    # the moves (player-moves.js, ?move=1): a long fall ends in a forward roll; climbing a face (Climb_Loop: made for this
+    # game by tools/make-climb-anim.py, the library has no climbing loop; its pace, 1.21 m a second on the library's
+    # skeleton, is written in hips heights); the vault that takes her over a cliff's top; swimming and treading water
+    # (both clips have the water's surface at her root)
     ("roll", "Roll", False, 0.0),
+    ("climb", "Climb_Loop", True, 1.322),
+    ("climb_up", "ClimbUp_1m", False, 0.0),
+    ("swim", "Swim_Fwd_Loop", True, 0.0),
+    ("swim_idle", "Swim_Idle_Loop", True, 0.0),
 ]
 
 # VRM 1.0 humanoid bone (the library's names) -> VRoid bone. VRM 0.x thumbs are one joint further out than VRM 1.0's:

@@ -19,6 +19,14 @@
       "loop": false
     },
     {
+      "name": "Climb_Loop",
+      "file": "Climb_Loop.vrma",
+      "source": "liora-farm",
+      "duration": 0.84,
+      "frames": 26,
+      "loop": true
+    },
+    {
       "name": "Consume",
       "file": "Consume.vrma",
       "source": "UAL2",

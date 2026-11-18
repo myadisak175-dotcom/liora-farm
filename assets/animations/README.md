@@ -1,6 +1,6 @@
 # คลังท่า UAL → VRMA
 
-84 ท่าจาก Quaternius Universal Animation Library 1 + 2 (รุ่น Standard) แปลงเป็น `.vrma`
+84 ท่าจาก Quaternius Universal Animation Library 1 + 2 (รุ่น Standard) แปลงเป็น `.vrma` และอีก 1 ท่าที่ทำขึ้นเอง: `Climb_Loop` (ท่าปีนผนังวนลูป สร้างด้วย `tools/make-climb-anim.py` เพราะคลังไม่มีท่านี้)
 ใช้กับโมเดล VRM ตัวไหนก็ได้ (ทดสอบแล้วกับ VRoid ชุด CC0) — ลิขสิทธิ์ CC0 ตาม `LICENSE.txt`
 
 ## โครงสร้าง
