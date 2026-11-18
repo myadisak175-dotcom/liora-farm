@@ -28,12 +28,18 @@
          leaves[0..2]     the skirt's leaves under each head (the middle one's in front, the others' to its sides):
                           lift (radians: raised like hackles; less than 0: drooped), stir 0..1 (how hard they tremble)
          ring             the same, for the whole skirt all round: { lift, stir }
+         roots            radians its roots are turned back about the upright. Whoever turns the whole boss (its Group's
+                          rotation.y: plant-boss-turn.js) sets this to as much the other way, and the roots stay where
+                          they are in the ground: it turns on its roots
+         twist            radians its top is turned further than its foot (less than 0: behind it): turning, its heads
+                          come round after its foot, and a skirt leaf's tip after the leaf's foot
      boss.userData.pose()                          writes those numbers into the shader: call it after changing them
      aimHead(head, point, share, most)             how to pose a head to look at a point (see the function)
      setPlantBossSun(vec3)                         world direction toward the sun (as setAnimeSun)
      setPlantBossMotion(k)                         0: stands still .. 1: sways (as it starts)
      every frame: stylized-nature's update(dt)     (it moves on the same time and wind as the other plants)
-   (plant-boss-talk.js acts with these: the three heads talking. plant-boss-moves.js: how it fights.)
+   (plant-boss-talk.js acts with these: the three heads talking. plant-boss-moves.js: how it fights. plant-boss-turn.js
+   turns it on its roots to whoever walks round it.)
 
    How it is made
      - ONE head (buildHead): pod, mouth, eyes, hood, curl. It is built three times, once on the end of each neck, each
@@ -97,6 +103,7 @@ uniform float uSwirl;                       // closing, the skirt's leaves go on
 uniform vec4 uLeafLift;                     // the skirt's leaves raised (radians; less than 0: drooped): xyz those under each head, w all round
 uniform vec4 uLeafStir;                     // how hard they tremble 0..1: the same
 uniform vec3 uLeafAz;                       // where round the ring each head's leaves are (radians from +z toward +x)
+uniform vec2 uRooted;                       // x: its roots turned back about the upright (radians), y: its top turned further than its foot
 uniform vec4 uPose0, uPose1, uPose2;        // a head's: xyz where its neck's end is carried to (metres), w how wide its neck waves
 uniform vec4 uBow0, uBow1, uBow2;           // xyz where the middle of its neck is pushed to (metres), w how withered it is
 uniform mat3 uTurn0, uTurn1, uTurn2;        // how it is turned about its neck's end
@@ -206,7 +213,7 @@ void main() {
     // drooped and trembling as the head over it has it (a leaf between two heads: some of each), more toward its tip
     vec3 near = pow(0.5 + 0.5 * cos(az - uLeafAz), vec3(2.0));
     near /= max(1.0, near.x + near.y + near.z);
-    float lift = dot(near, uLeafLift.xyz) + uLeafLift.w, stir = min(dot(near, uLeafStir.xyz) + uLeafStir.w, 1.5);
+    float lift = dot(near, uLeafLift.xyz) + uLeafLift.w + abs(uRooted.y) * 0.45, stir = min(dot(near, uLeafStir.xyz) + uLeafStir.w, 1.5);      // (turning, they swing out)
     float alive = 1.0 - min(abs(uBody.x) * 1.5, 1.0);
     turn -= (lift * (0.35 + 0.65 * s) + sin(T * 0.9 + az * 2.0 + ph) * 0.028 * k * s
            + sin(T * 37.0 + aPart.z * 40.0 - s * 5.0) * 0.05 * stir * s) * alive;
@@ -214,6 +221,15 @@ void main() {
     p = aPivot + R * (p - aPivot);
     n = R * n;
     if (c > 0.0 && uSwirl > 0.0) { mat3 W = hinge(vec3(0.0, 1.0, 0.0), c * uSwirl * 0.9 * s); p = W * p; n = W * n; }
+  }
+  // on its roots: the whole of it is turned by whoever places it; its roots are turned back by as much, so they stay
+  // where they are in the ground. And twisted as it turns: its top comes round after its foot (a skirt leaf's tip
+  // after the leaf's foot). The whip vines, laid along their own curves, are left as they are
+  float round = aPart.x > 5.5 ? uRooted.x : (limb < 2.5 ? uRooted.y * (aPart.x > 4.5 ? 0.25 + 0.75 * aUV.y : smoothstep(0.6, 5.0, p.y)) : 0.0);
+  if (round != 0.0) {
+    float rc = cos(round), rs = sin(round);
+    p.xz = vec2(rc * p.x + rs * p.z, rc * p.z - rs * p.x);
+    n.xz = vec2(rc * n.x + rs * n.z, rc * n.z - rs * n.x);
   }
   // the eyes blink: shut for a moment every few seconds, each head in its own time
   float b = abs(fract(T * 0.21 + aAnim.y * 3.7) - 0.5);
@@ -397,7 +413,8 @@ const REST = { wave: 1, yaw: 0, nod: 0, tilt: 0, jaw: 0.44, lid: 1, slant: 0, sm
 export const BOSS_HEAD_REST = REST;
 function material() {
   const L = BOSS_LOOK, U = { ...natureUniforms, uSun: SUN, uMove: MOVE, uBody: { value: new THREE.Vector4(0, 0, 0, 0) }, uSwirl: { value: 0 },
-    uLeafLift: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafStir: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafAz: { value: new THREE.Vector3(0, 1.3, -1.3) } };
+    uLeafLift: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafStir: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafAz: { value: new THREE.Vector3(0, 1.3, -1.3) },
+    uRooted: { value: new THREE.Vector2(0, 0) } };
   const set = (names, cols) => names.forEach((nm, i) => { U[nm] = { value: rgb(cols[i]) }; });
   set(['uS0', 'uS1', 'uS2', 'uS3'], L.stem);
   set(['uL0', 'uL1', 'uL2', 'uL3', 'uL4'], L.leaf);
@@ -793,7 +810,7 @@ export function createPlantBoss({ seed = 1, size = 1 } = {}) {
     return { index, foot: b.foot.clone(), length: BOSS_VINE_LENGTH, p1: under(), p2: under(), p3: under(), width: 0, footY: -1 };
   });
   const body = { skirt: 0, swirl: 0, glow: 0, wither: 0, flash: 0, sink: 0, shake: new THREE.Vector3(),
-    leaves: heads.map(() => ({ lift: 0, stir: 0 })), ring: { lift: 0, stir: 0 } };
+    leaves: heads.map(() => ({ lift: 0, stir: 0 })), ring: { lift: 0, stir: 0 }, roots: 0, twist: 0 };
   U.uLeafAz.value.set(...heads.map(h => Math.atan2(h.centre.x, h.centre.z)));          // (each head's leaves: those on the side it stands over)
   const inv = new THREE.Matrix4(), m4 = new THREE.Matrix4(), e = new THREE.Euler();
   function pose() {
@@ -817,6 +834,7 @@ export function createPlantBoss({ seed = 1, size = 1 } = {}) {
     const [l0, l1, l2] = body.leaves;
     U.uLeafLift.value.set(l0.lift, l1.lift, l2.lift, body.ring.lift);
     U.uLeafStir.value.set(l0.stir, l1.stir, l2.stir, body.ring.stir);
+    U.uRooted.value.set(body.roots, body.twist);
     mesh.position.set(body.shake.x * size, (body.shake.y - body.sink) * size, body.shake.z * size);
   }
   pose();

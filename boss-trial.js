@@ -3,13 +3,16 @@
    to see how it looks in the game: its size beside her, in the land's light and the hour's, with its real shadow on
    the ground. It does not fight yet: its three heads talk (plant-boss-banter.js, acted by plant-boss-talk.js), and
    what they say shows over their heads (speech-bubbles.js): among themselves when she is far off, about her when she
-   comes near, a roar to warn her off when she comes too close. They never strike.
+   comes near, a roar to warn her off when she comes too close. They never strike. Once it has seen her (from the
+   moment its heads start at her until she is far off again) it turns on its roots to keep its faces to her as she
+   walks round it (plant-boss-turn.js): slowly, so running round it close by she gets behind it for a moment.
 
      const trial = createBossTrial({ level, scene, shade })   shade: the level's picture of the shadows already on the
                                                               ground, as her own shadow takes it (character-shadow.js)
      every frame: trial.update(dt, renderer, feet, sun, k)    feet: where she stands; sun, k: the sun the shadows are
                                                               cast by, and how strongly (as her own shadow is given them)
      trial.banter    who says what (plant-boss-banter.js): its zone, its lines
+     trial.turn      how far it has turned to her (plant-boss-turn.js)
      trial.spot      { x, z, yaw }: where to stand before it, facing it. The same place is level.views['wf-boss']: the
                      map's pin, and the 📍 menu (teleport-menu.js)
 
@@ -19,6 +22,7 @@
 import * as THREE from 'three';
 import { createPlantBoss, setPlantBossSun, BOSS_HEIGHT } from './plant-boss.js';
 import { createBossBanter } from './plant-boss-banter.js';
+import { createBossTurn } from './plant-boss-turn.js';
 import { createSpeechBubbles } from './speech-bubbles.js';
 import { createCharacterShadow } from './character-shadow.js';
 
@@ -35,8 +39,8 @@ export function createBossTrial({ level, scene, camera, shade = null }) {
   boss.position.set(x, y - 0.05, z);
   boss.rotation.y = faces;
   scene.add(boss);
-  // its heads talk; the words over them
-  const banter = createBossBanter(boss), bubbles = createSpeechBubbles({ camera });
+  // its heads talk; the words over them. It turns on its roots to her, once it has seen her
+  const banter = createBossBanter(boss), bubbles = createSpeechBubbles({ camera }), turn = createBossTurn(boss);
   banter.onSay = e => { if (e.cut) bubbles.clear(); bubbles.say(e.head, e.text, e); };      // (cutting in: what was being said goes)
   const { heads, mesh } = boss.userData;
   // where a head's words hang: over its hood, going after it softly (a head's beats and a roar's shake are not the words' to make: they stay readable)
@@ -59,9 +63,10 @@ export function createBossTrial({ level, scene, camera, shade = null }) {
 
   const feet = new THREE.Vector3(x, y, z);
   return {
-    boss, spot, banter,
+    boss, spot, banter, turn,
     update(dt, renderer, her, sun, k = 1) {
       setPlantBossSun(sun);
+      turn.update(dt, her, banter.zone !== 'far');
       banter.update(dt, her);
       for (const h of heads) over[h.index].lerp(tmp.copy(h.centre).add(h.lean), 1 - Math.exp(-dt * 6));
       bubbles.update(dt, mouth);
