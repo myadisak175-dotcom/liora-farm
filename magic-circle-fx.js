@@ -1,8 +1,8 @@
 /* ==========================================================================
    magic-circle-fx.js  —  the magic circles of Vivi's magic jump (magic-jump.js), as in the clip it was asked after (a girl
    running with a glowing circle opening under each step: rings, marks round a band, a crystal standing in the middle,
-   light going up off it, sparks, and a ribbon of light curling round her legs).
-   One job: draw them. It decides nothing: the jump says where a circle opens, how grand, and when the ribbon is on.
+   light going up off it, sparks. The clip's ribbon of light curling round her legs was tried and taken out: too busy).
+   One job: draw them. It decides nothing: the jump says where a circle opens and how grand.
 
      const fx = createMagicCircles({ lift })   lift: how far over the ground a circle on the ground lies (m): over the
                                      grass, its blades' tips coming through it
@@ -12,8 +12,6 @@
                                      squares turning, light off it; 4: + a star and points round its rim, the most sparks).
                                      tier 'land': the circle that catches a long fall. ground: on the ground (its light goes
                                      up) or in the air (she pushes off it: its light goes down, it breaks up sooner)
-     fx.trail(on, feet, size)        the ribbon curling round her legs: on while she is going up the jumps; feet: where her
-                                     feet are (world); size: how tall she is, against 1.75 m. Call it every frame
      every frame: fx.update(dt, camera)
      fx.setLook('rose' | 'water')   the clip's rose light, or the cold blue of her water barrier (barrier-fx.js)
      fx.setNight(on)                by night the light is let shine more (the page dims the land, not this)
@@ -23,7 +21,7 @@
      - a circle: one flat square, everything on it worked out by the shader from where it is on it. Its light: an open tube
        standing on it (up off the ground, down under her in the air). The crystal: a small stretched octahedron. 3 draws
        each, 8 circles at most
-     - sparks: one cloud of points shared by every circle. The ribbon: one strip, bent on the CPU, facing the camera
+     - sparks: one cloud of points shared by every circle
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -218,23 +216,6 @@ const SPARK_F = /* glsl */`
     gl_FragColor = vec4(col * f, min(1.0, f) * uDay * 0.6);
   }`;
 
-/* ---------------------------------------------------------------- the ribbon */
-const RIBBON_V = /* glsl */`
-  attribute vec2 aT;                                  // x: 0 at its head .. 1 at its tail; y: -1..1 across it
-  varying vec2 vT;
-  void main() { vT = aT; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
-const RIBBON_F = /* glsl */`
-  uniform vec3 uMain, uCore, uDeep;
-  uniform float uK, uDay;
-  varying vec2 vT;
-  void main() {
-    float along = pow(1.0 - vT.x, 1.6);
-    float across = 1.0 - smoothstep(0.15, 1.0, abs(vT.y));
-    float heart = 1.0 - smoothstep(0.0, 0.45, abs(vT.y));
-    vec3 col = mix(uMain, uCore, heart * smoothstep(0.6, 1.0, 1.0 - vT.x)) * across * along + uDeep * along * 0.15 * across;
-    gl_FragColor = vec4(col * uK, min(1.0, across * along * uK) * uDay * 0.6);
-  }`;
-
 export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   const object = new THREE.Group();
   object.name = 'magicCircles';
@@ -293,30 +274,6 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   let rnd = (seed * 9301 + 49297) % 233280;
   const rand = () => { rnd = (rnd * 9301 + 49297) % 233280; return rnd / 233280; };
 
-  // ---- the ribbon: N points of her path, each a pair of vertices
-  const N = 40;
-  const rPos = new Float32Array(N * 2 * 3), rT = new Float32Array(N * 2 * 2);
-  for (let i = 0; i < N; i++) { rT[i * 4] = rT[i * 4 + 2] = i / (N - 1); rT[i * 4 + 1] = -1; rT[i * 4 + 3] = 1; }
-  const rIdx = [];
-  for (let i = 0; i < N - 1; i++) { const a = i * 2; rIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-  const rGeo = new THREE.BufferGeometry();
-  rGeo.setAttribute('position', new THREE.BufferAttribute(rPos, 3).setUsage(THREE.DynamicDrawUsage));
-  rGeo.setAttribute('aT', new THREE.BufferAttribute(rT, 2));
-  rGeo.setIndex(rIdx);
-  const rMat = new THREE.ShaderMaterial({
-    uniforms: { ...colours, uK: { value: 0 } },
-    vertexShader: RIBBON_V, fragmentShader: RIBBON_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...BLEND,
-  });
-  const ribbon = new THREE.Mesh(rGeo, rMat);
-  ribbon.frustumCulled = false;
-  ribbon.renderOrder = 24;
-  object.add(ribbon);
-  const path = [];                                    // where its head has been, newest first, from her feet: it curls round her
-  for (let i = 0; i < N; i++) path.push(new THREE.Vector3());                 // as she goes, never strung out behind her
-  let rOn = false, rK = 0, rAngle = 0, rHas = false, rSize = 1;
-  const rFeet = new THREE.Vector3(), side = new THREE.Vector3(), along = new THREE.Vector3(), view = new THREE.Vector3();
-  const W = path.map(() => new THREE.Vector3());      // the path, in the world, this frame
-
   function burst(s, at) {
     const k = s.kind, R = s.radius;
     for (let i = 0; i < k.sparks; i++) {
@@ -356,16 +313,12 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       s.gem.visible = tier !== 1;
       burst(s, at);
     },
-    trail(on, feet, size = 1) {
-      rOn = on; rSize = size;
-      if (feet) rFeet.copy(feet);
-    },
     setLook(name) {
       look = CIRCLE_LOOKS[name] || CIRCLE_LOOKS.rose;
       colours.uCore.value.copy(rgb(look.core)); colours.uMain.value.copy(rgb(look.main)); colours.uDeep.value.copy(rgb(look.deep));
     },
     setNight(on) { night = on; colours.uDay.value = on ? 0 : 1; },
-    get busy() { return slots.some(s => s.g.visible) || rK > 0.01; },
+    get busy() { return slots.some(s => s.g.visible); },
     update(dt, camera) {
       const glow = night ? 1.25 : 0.85, cover = night ? 0.7 : 0.92;
       for (const s of slots) {
@@ -409,38 +362,11 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       }
       if (any) { sGeo.attributes.position.needsUpdate = true; sGeo.attributes.aLife.needsUpdate = true; }
       sMat.uniforms.uScale.value = (camera.isPerspectiveCamera ? innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) : 300) * (night ? 1.1 : 1);
-      // the ribbon: its head goes round her legs, climbing from her shins to her hips and back; its tail is where the head has
-      // been, round her as she is now, spreading out and sinking a little the older it is (a curl of light left in the air)
-      rK += ((rOn ? 1 : 0) - rK) * Math.min(1, dt * (rOn ? 10 : 3.2));
-      ribbon.visible = rK > 0.01;
-      if (rOn || rK > 0.01) {
-        rAngle += dt * 10.5;
-        const head = path.pop();
-        const up = 0.28 + 0.34 * (0.5 + 0.5 * Math.sin(rAngle * 0.45));
-        head.set(Math.cos(rAngle) * 0.4, up, Math.sin(rAngle) * 0.4);
-        if (!rHas) { for (const p of path) p.copy(head); rHas = true; }
-        path.unshift(head);
-        for (let i = 1; i < N; i++) { const p = path[i]; p.x *= 1 + dt * 0.9; p.z *= 1 + dt * 0.9; p.y -= dt * 0.35; }
-        const cam = camera.position;
-        for (let i = 0; i < N; i++) W[i].set(rFeet.x + path[i].x * rSize, rFeet.y + path[i].y * rSize, rFeet.z + path[i].z * rSize);
-        for (let i = 0; i < N; i++) {
-          const p = W[i], q = W[Math.min(N - 1, i + 1)], o = W[Math.max(0, i - 1)];
-          along.subVectors(o, q);
-          if (along.lengthSq() < 1e-8) along.set(0, 1, 0);
-          view.subVectors(cam, p);
-          side.crossVectors(along, view).normalize();
-          const w = 0.07 * rSize * (1 - 0.75 * i / (N - 1)) * (0.6 + 0.4 * rK);
-          rPos[i * 6] = p.x - side.x * w; rPos[i * 6 + 1] = p.y - side.y * w; rPos[i * 6 + 2] = p.z - side.z * w;
-          rPos[i * 6 + 3] = p.x + side.x * w; rPos[i * 6 + 4] = p.y + side.y * w; rPos[i * 6 + 5] = p.z + side.z * w;
-        }
-        rGeo.attributes.position.needsUpdate = true;
-        rMat.uniforms.uK.value = rK * (night ? 1.25 : 0.95);
-      } else rHas = false;
     },
     dispose() {
-      flat.dispose(); pillarGeo.dispose(); gemGeo.dispose(); sGeo.dispose(); rGeo.dispose();
+      flat.dispose(); pillarGeo.dispose(); gemGeo.dispose(); sGeo.dispose();
       for (const s of slots) { s.disc.material.dispose(); s.pillar.material.dispose(); s.gem.material.dispose(); }
-      sMat.dispose(); rMat.dispose();
+      sMat.dispose();
     },
   };
   return fx;

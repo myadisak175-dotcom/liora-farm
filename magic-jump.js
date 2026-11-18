@@ -453,8 +453,6 @@ export function createMagicJump({ character, circles }) {
         }
       }
       remember(W > 0.001);
-      // ---- the ribbon round her legs: from the 2nd jump until she has been falling a while
-      circles.trail(active && tier >= 2 && fell < 0.35, me.pos, size());
     },
     // for a test: the state of the jump now
     get debug() { return { tier, t, wind, vy, peak, caught, flipA, spinA, W, lean, pose: Array.from(x) }; },
