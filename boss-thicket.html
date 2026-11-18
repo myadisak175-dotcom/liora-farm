@@ -88,7 +88,7 @@ G.applyGroundMap(ground, map, { far: FAR });
 scene.add(G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 30, far: FAR }));
 
 // ---- the boss, how it fights, and what its thicket draws
-const boss = createPlantBoss({ seed: 1 });
+const boss = createPlantBoss({ seed: 1, clip: true });
 boss.position.set(0, H(0, 0) - 0.05, 0);
 scene.add(boss);
 const moves = createBossMoves(boss, { snaps: false });

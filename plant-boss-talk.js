@@ -3,12 +3,16 @@
    One job: act it. It builds nothing and draws nothing: it only sets the numbers plant-boss.js gives each head
    (boss.userData.heads) and its skirt (boss.userData.body), and calls boss.userData.pose().
 
-     const talk = createBossTalk(boss, { direct })   direct: who says what, when (below); without it, TALK_SCENE
+     const talk = createBossTalk(boss, { direct, clip })   direct: who says what, when (below); without it, TALK_SCENE.
+                                            clip: true: the heads talk as in the talking clip (CLIP_MANNERS: they turn
+                                            right round to one another, lean far over, their necks in an S, the side
+                                            ones standing apart); false (as the game has them for now): as before
      every frame: talk.update(dt, eye)      eye: where 'you' is (world, a Vector3): the eye that watches (the trial
                                             page), or her (the game)
      talk.on = false                        they stop and settle back to standing; true: the scene goes on
      talk.restart()                         from the top
      talk.time, talk.length                 where the scene is, and how long it is (seconds)
+     talk.howl                              seconds into the howl (all three heads' move 'howl'), or -1: for howl-fx.js
    direct (dt) -> { heads }                 the scene from elsewhere (plant-boss-banter.js: the game): what each head does
                                             now, as one of TALK_SCENE's beats gives it ([who it looks at, mood, how much it
                                             talks, a move])
@@ -29,6 +33,10 @@
      - a roar (the move 'roar'): it rears and bellows at who it looks at, shaking, each head in its own way (the middle
        one drawn up tall, the right one lunging, the left one with its head thrown back); the bush shakes, and the
        other heads shrink from it
+     - the howl (the move 'howl', all three at once, as in the end of the talking clip): they snap round to who they look
+       at, crouch and gather themselves, shaking, mouths shut tight; the middle one rears up at the sky (the green light
+       goes up out of its crown: howl-fx.js); they draw back, then all three lunge at her and bellow, mouths wide open,
+       shaking, the whole skirt standing up trembling. HOWL holds its times
 
    Each head in its own manner (MANNERS), whatever it says:
      - the middle one, the leader: heavy and slow. It turns to a new speaker late and stops dead on its mark, more
@@ -78,7 +86,10 @@ export const MOODS = {
 //   share   how much of a look its head makes (the eyes make up the rest)
 //   trail, loose  how far the middle of its neck trails its head, and how quick that comes after (less: later)
 //   wave    how wide its neck waves, of its mood's
-//   hold    how it carries itself always: up, in (metres), nod, tilt (radians; tilt more than 0: its top toward -x), and what its face adds
+//   hold    how it carries itself always: up, in, side (out past its own side) (metres), nod, tilt (radians; tilt more
+//           than 0: its top toward -x), and what its face adds
+//   reach   metres it leans in toward who it speaks to (CLIP_MANNERS only: the head goes right over to the other)
+//   s       how far the middle of its neck is pushed the other way to where its head is carried: an S (CLIP_MANNERS only)
 //   breath  [metres, how fast]: it rises and falls
 //   fidget  it cannot keep still        sway   it sways, weaving
 //   glance  now and then, listening, its eyes go elsewhere for a moment: every [from, to] seconds, lasts; to: [sideways, up] (its eyes
@@ -109,6 +120,15 @@ export const MANNERS = [
     laugh: { hz: 15, bounce: 0.07, back: 0.8, jaw: [0.6, 0.3], wobble: 0.1 },
     flinch: 0.3, leaf: [8, 0.36] },
 ];
+
+// the clip's manners (clip: true): as MANNERS, but each head turns further to who it looks at, leans right over to who
+// it speaks to (reach), its neck in an S (s), the side heads stand apart and taller (hold.side, hold.up), nods harder
+const CLIP = [
+  { share: 0.72, reach: 0.35, s: 0.45, hold: { up: 0.32, side: 0 }, word: { nod: 0.15, jab: 0.1 } },
+  { share: 0.92, reach: 0.62, s: 0.6, hold: { up: 0.24, side: 0.55 }, word: { nod: 0.19, jab: 0.3 } },
+  { share: 0.85, reach: 0.75, s: 0.7, hold: { up: 0.24, side: 0.55 }, word: { nod: 0.11, jab: 0.12, side: 0.18 } },
+];
+export const CLIP_MANNERS = MANNERS.map((m, i) => ({ ...m, ...CLIP[i], hold: { ...m.hold, ...CLIP[i].hold }, word: { ...m.word, ...CLIP[i].word } }));
 
 // the scene. heads: [middle, right (+x), left (-x)], each [who it looks at, mood, how much it talks 0..1, a move of its
 // own]. Looks at: 'C' 'R' 'L' (a head), 'you' (the player), 'away', 'down', or two of them (it looks from one to the other).
@@ -147,6 +167,10 @@ const ROARS = [
   { up: 0.7, at: -0.3, shake: 0.032, hz: 26, nod: -0.5, slant: 0.5, curve: 0.9 },        // left: its head thrown back, for show
 ];
 const roarAt = t => pulse(t, 0.1, 0.26, 1.55, 1.95);                               // how much of its roar a head is in, seconds after it began
+// the howl's beats (seconds from its start): they gather themselves; the middle one rears up (the green light goes up at
+// beam); the green wind goes round (swirl); they draw back (pull) and bellow (roar .. roarEnd); it is over (length)
+export const HOWL = { length: 4.9, gather: 0.35, beam: 1.45, swirl: 1.9, pull: 2.1, roar: 2.4, roarEnd: 4.3 };
+const HOWL_AT = [0.45, 0.85, 0.7];                                                 // metres each head lunges at her as it bellows
 // a soft heavy thing going to where it is sent: it goes past a little and settles (w: how quick, z: how damped). In
 // steps of no more than a 120th of a second, so it moves the same at any frame rate
 function spring(s, to, dt, w, z) {
@@ -155,7 +179,8 @@ function spring(s, to, dt, w, z) {
   return s.x;
 }
 
-export function createBossTalk(boss, { direct = null } = {}) {
+export function createBossTalk(boss, { direct = null, clip = false } = {}) {
+  const MAN = clip ? CLIP_MANNERS : MANNERS;
   const { heads, pose, mesh, body } = boss.userData;
   const sp = (x = 0) => ({ x, v: 0 });
   // what each head carries from frame to frame
@@ -170,13 +195,14 @@ export function createBossTalk(boss, { direct = null } = {}) {
     blink: 0, glanceIn: 1.5 + Math.random() * 3, glance: 0,
   }));
   const eyeIn = new THREE.Vector3(), at = new THREE.Vector3(), at2 = new THREE.Vector3();
-  const talk = { on: true, time: 0, length: TALK_SCENE.length, restart() { talk.time = 0; }, update };
+  const talk = { on: true, time: 0, length: TALK_SCENE.length, howl: -1, restart() { talk.time = 0; }, update };
   let life = 0, ringK = 0;                                                       // a clock that never turns back (for what beats); how far round the ring a roar has got
 
   // where a head looks: a point in the boss's own space
   function aim(h, who, since, m) {
     if (Array.isArray(who)) who = who[Math.floor(since * m.tempo / 0.8) % who.length];   // from one to the other
-    if (who in NAMES) return at.copy(heads[NAMES[who]].centre).add(at2.set(0, 0, 2.6));  // (a little in front of that head: it does not turn its back on the player)
+    if (who in NAMES) return clip ? at.copy(heads[NAMES[who]].centre).add(heads[NAMES[who]].lean).add(at2.set(0, 0, 0.8))      // (a little in front of that head, where it is now: it does not quite turn its back on the player)
+                                  : at.copy(heads[NAMES[who]].centre).add(at2.set(0, 0, 2.6));                                  // (well in front of it: it keeps its face to the player, as on a stage)
     if (who === 'you') return at.copy(eyeIn);
     const side = h.index === 1 ? 1 : -1;
     if (who === 'down') return at.copy(h.centre).add(at2.set(side * 0.8, -1.9, 3));
@@ -199,9 +225,10 @@ export function createBossTalk(boss, { direct = null } = {}) {
 
     // what each head takes up. What it does (speaking, a move) at once. Who it looks at and in what mood: at once if
     // it is the one that speaks or is startled, otherwise a little late, each in its own time: they never all turn together
-    let roarK = 0, roarer = -1;
+    let roarK = 0, roarer = -1, howlK = 0;
+    talk.howl = -1;
     for (const h of heads) {
-      const s = S[h.index], m = MANNERS[h.index], want = cast[h.index];
+      const s = S[h.index], m = MAN[h.index], want = cast[h.index];
       const act = talk.on ? (want[2] > 0 ? 'say' : '') + (want[3] || '') : '';
       if (act !== s.act) { s.act = act; s.actT = 0; s.on = 0; if (act) s.leaf.v += 0.35; } else s.actT += dt;
       const key = String(want[0]) + '|' + want[1];
@@ -216,10 +243,11 @@ export function createBossTalk(boss, { direct = null } = {}) {
       }
       s.lookT += dt;
       if (act.endsWith('roar')) { const k = roarAt(s.actT); if (k > roarK) { roarK = k; roarer = h.index; } }
+      if (act.endsWith('howl')) { talk.howl = Math.max(talk.howl, s.actT); howlK = Math.max(howlK, pulse(s.actT, HOWL.roar - 0.05, HOWL.roar + 0.1, HOWL.roarEnd - 0.2, HOWL.roarEnd + 0.3)); }
     }
 
     for (const h of heads) {
-      const i = h.index, s = S[i], m = MANNERS[i], n = i * 1.7 + 0.3, want = cast[i];
+      const i = h.index, s = S[i], m = MAN[i], n = i * 1.7 + 0.3, want = cast[i];
       // where it is sent (springs take it there) ...
       let yaw = 0, nod = 0, tilt = 0, lx = 0, ly = 0, lz = 0, gx = 0, gy = 0, wave = REST.wave, quick = 1, leaf = 0, stir = 0;
       // ... and what beats over that (laid on after the springs)
@@ -232,11 +260,14 @@ export function createBossTalk(boss, { direct = null } = {}) {
         for (const k of FACE) if (k in mood) face[k] = mood[k];
         for (const k in hold.face) face[k] += hold.face[k];
         // turned to who it looks at, tipped up or down to them, carried a little toward them; held as its manner has it
-        const look = aimHead(h, aim(h, who, s.lookT, m), m.share), dx = look.dx, dz = look.dz;
+        const atHead = clip && !Array.isArray(who) && who in NAMES;
+        const look = aimHead(h, aim(h, who, s.lookT, m), m.share, atHead ? 0.95 : 0.55), dx = look.dx, dz = look.dz;
         yaw = look.yaw; nod = look.nod + (c.nod || 0) + hold.nod; gx = look.gazeX; gy = look.gazeY;
         tilt = (c.tilt || 0) * (i === 1 ? -1 : 1) + hold.tilt;
-        const reach = (c.in || 0) + hold.in;
-        lx = dx * reach; lz = dz * reach; ly = (c.up || 0) + hold.up;
+        const reach = (c.in || 0) + hold.in + (atHead ? 0.15 : 0);              // (listening to another head, it leans in a little)
+        const out = (hold.side || 0) * (i === 1 ? 1 : i === 2 ? -1 : 0);        // the side heads stand apart (the clip's manners)
+        const fwd = atHead ? 0.4 : 1;                                           // (to another head: across, not out in front of it)
+        lx = dx * reach + out; lz = dz * reach * fwd; ly = (c.up || 0) + hold.up;
         wave = (c.wave ?? 0.7) * m.wave;
         leaf = mood.leaf || 0; stir = mood.stir || 0;
         if (moodName === 'shock') quick = 2.2;
@@ -269,8 +300,10 @@ export function createBossTalk(boss, { direct = null } = {}) {
             s.beat = 0; s.beatK = (0.65 + 0.35 * Math.sin(ph * 0.53 + n * 3)) * speaks * said * (0.6 + 0.4 * loud); s.beatSide = -s.beatSide;
           }
           s.on = on; s.up = up;
-          face.jaw = 0.12 + syl * rest * speaks * (0.5 + 0.35 * loud);
+          face.jaw = 0.12 + syl * rest * speaks * (clip ? 0.47 + 0.2 * loud : 0.5 + 0.35 * loud);
           ly += 0.1 * breath + 0.03 * rest; lx -= dx * 0.12 * breath; lz -= dz * 0.12 * breath;
+          const over = (m.reach || 0) * on * speaks * (atHead ? 1 : 0.45);        // over to who it speaks to (less, to the player)
+          lx += dx * over; lz += dz * over * fwd; ly -= 0.12 * over;
           leaf += 0.03 * rest * speaks - 0.04 * breath;
           talks = speaks * said; quick = 1.6;
         }
@@ -302,6 +335,28 @@ export function createBossTalk(boss, { direct = null } = {}) {
           for (const [key, v] of Object.entries({ jaw: 1, flare: 1, slant: r.slant, size: 1.15, curve: r.curve, smile: 0, lid: 1 })) face[key] = lerp(face[key], v, k);
           quick = Math.max(quick, 1 + 1.6 * k);
           leaf += 0.2 * k - 0.08 * pull; stir = Math.max(stir, k);     // (its leaves stand up, trembling)
+        } else if (move === 'howl') {                                  // the howl (see the top of the file)
+          const t = s.actT, H2 = HOWL;
+          const snap = pulse(t, 0, 0.12, 0.3, 0.55), gather = pulse(t, H2.gather, H2.gather + 0.4, H2.pull - 0.1, H2.roar);
+          const rear = i === 0 ? pulse(t, H2.beam - 0.35, H2.beam, H2.swirl, H2.pull + 0.1) : 0;
+          const pull = pulse(t, H2.pull, H2.pull + 0.15, H2.roar - 0.05, H2.roar + 0.05), k = pulse(t, H2.roar - 0.05, H2.roar + 0.12, H2.roarEnd - 0.15, H2.roarEnd + 0.35);
+          const tremble = Math.max(gather * 0.6, k);
+          // startled round to her
+          for (const [key, v] of Object.entries({ size: 1.35, flare: 1, lid: 1, jaw: 0.5 })) face[key] = lerp(face[key], v, snap);
+          // gathering: low, drawn in, its mouth shut tight, glaring; shaking with it
+          lx -= dx * 0.3 * gather; lz -= dz * 0.3 * gather; ly -= 0.4 * gather * (1 - rear);
+          for (const [key, v] of Object.entries({ jaw: 0.06, lid: 0.72, slant: 1, flare: 0.9, curve: -1, size: 0.95, smile: 0 })) face[key] = lerp(face[key], v, gather);
+          // the middle one rears up at the sky as the light goes up out of it
+          ly += 1.15 * rear; nod = lerp(nod, -0.5, rear);
+          for (const [key, v] of Object.entries({ jaw: 0.75, lid: 1, size: 1.2 })) face[key] = lerp(face[key], v, rear);
+          // drawn back, then it lunges at her and bellows, mouth wide
+          lx += dx * (-0.45 * pull + HOWL_AT[i] * k); lz += dz * (-0.45 * pull + HOWL_AT[i] * k); ly += 0.1 * pull + 0.15 * k;
+          nod = lerp(nod, -0.12, k);
+          for (const [key, v] of Object.entries({ jaw: 1, lid: 1, slant: 1, flare: 1.1, curve: -1, size: 1.2, smile: 0 })) face[key] = lerp(face[key], v, k);
+          const hz = 27 + i * 5, sh = 0.03 * tremble + 0.03 * k;
+          sx = Math.sin(life * hz) * sh; sy = Math.sin(life * hz * 1.13 + 1) * sh; sz = Math.cos(life * hz * 0.9) * sh;
+          quick = Math.max(quick, 1 + 2.2 * Math.max(snap, k, rear, pull));
+          leaf += 0.12 * gather + 0.25 * k; stir = Math.max(stir, tremble);
         } else if (roarK > 0 && roarer >= 0) {                        // another head roars: it shrinks from it, squinting, each as far as its manner
           const o = heads[roarer].centre, ax = h.centre.x - o.x, az = h.centre.z - o.z, far = Math.hypot(ax, az) || 1, f = m.flinch * roarK;
           lx += ax / far * f; lz += az / far * f; ly -= 0.35 * f;
@@ -332,6 +387,15 @@ export function createBossTalk(boss, { direct = null } = {}) {
       bNod += 0.12 * Math.pow(Math.max(0, Math.sin(life * 5.2 * m.tempo + n)), 2) * sstep(-0.3, 0.1, Math.sin(life * 0.9 + n * 2.0)) * kNod;
       bYaw += 0.16 * Math.sin(life * 9.0 * m.tempo + n) * kShake;
 
+      // the heads lean far over to one another now, as in the clip: never into one another, nor in front of one another
+      // as the player sees them. Where it is sent is kept clear of where each other head is, side to side and up and down
+      // (their pods' sizes apart), whatever their depth
+      if (clip) for (const o of heads) {
+        if (o === h) continue;
+        const px = h.centre.x + lx - o.centre.x - o.lean.x, py = h.centre.y + ly - o.centre.y - o.lean.y;
+        const d = Math.hypot(px, py) || 1e-3, need = (h.radius + o.radius) * 1.3;      // (their hoods stand out past their pods)
+        if (d < need) { lx += px / d * (need - d); ly += py / d * (need - d) * 0.6; }
+      }
       // nothing snaps: springs for where it is carried and turned, as quick and as damped as its manner; its head tips
       // against the way it is carried (its top comes after)
       const W = Math.sqrt(quick) * m.quick, Z = m.damp;
@@ -343,6 +407,7 @@ export function createBossTalk(boss, { direct = null } = {}) {
       // the neck comes after the head: its middle trails where its end has gone, and swings through
       h.bow.set((spring(s.tx, h.lean.x, dt, m.loose, 0.45) - h.lean.x) * m.trail, (spring(s.ty, h.lean.y, dt, m.loose, 0.45) - h.lean.y) * m.trail * 0.4,
         (spring(s.tz, h.lean.z, dt, m.loose, 0.45) - h.lean.z) * m.trail);
+      if (m.s) { h.bow.x -= h.lean.x * m.s; h.bow.z -= h.lean.z * m.s; }      // an S: the middle of its neck the other way to its head
       h.lean.x += sx; h.lean.y += sy; h.lean.z += sz;                 // (a roar's shake: the head only)
       h.gazeX += (gx - h.gazeX) * ease(dt, 16); h.gazeY += (gy - h.gazeY) * ease(dt, 16);      // (the eyes are quick: they get there before the head)
       h.wave += (wave - h.wave) * ease(dt, 2.5);
@@ -364,6 +429,7 @@ export function createBossTalk(boss, { direct = null } = {}) {
       }
     }
     // a roar shakes the bush, and goes round the ring: the whole skirt stands up after the roarer's own leaves, trembling
+    roarK = Math.max(roarK, howlK);
     ringK += (roarK - ringK) * ease(dt, roarK > ringK ? 5 : 3);
     if (body) {
       body.shake.set(Math.sin(life * 38) * 0.022 * roarK, 0, Math.sin(life * 31) * 0.022 * roarK);

@@ -3,7 +3,11 @@
    on a mound of roots, each neck ending in a round pod with a dark jagged mouth, two glowing eyes and a hood of leaves
    with a curl on top. One job: build it, and let each head be posed. One mesh, one material, one draw call.
 
-     createPlantBoss({ seed, size }) -> Group      about 7 m high at size 1 (BOSS_HEIGHT), its faces toward +Z, its foot at y = 0
+     createPlantBoss({ seed, size, clip }) -> Group   about 7 m high at size 1 (BOSS_HEIGHT), its faces toward +Z, its foot at y = 0.
+                                                  clip: true: as in the talking clip: more leaves (off its necks, and a ring of
+                                                  green ones on the ground round its foot), a little texture (flecks on its
+                                                  necks and pods, plainer veins), and opened wide its mouth is a maw with
+                                                  bone teeth, a throat and a tongue. false (as the game has it for now): as before
      boss.userData.heads[0..2]                     the middle head, the one toward +x, the one toward -x: numbers that pose it
          lean (Vector3)   where its neck's end is carried to, metres        wave   how wide its neck waves (1 as it starts)
          yaw, nod, tilt   its head turned about the upright / tipped face down / tipped over to its side, radians
@@ -86,6 +90,8 @@ export const BOSS_LOOK = {
   moss: ['#6c8a35', '#a9bd3c'],
   thorn: ['#a08a62', '#d9c79a', '#f6ecc9'],
   mouth: ['#2a2811', '#444119'],                                         // the hollow: deep, and where light gets in
+  throat: ['#2e1410', '#4f1f17'],                                        // ...and its lower part, the throat, seen when it opens wide
+  tongue: ['#9c3443', '#cf5a66', '#ec8a90'],                             // the tongue: shade, body, its wet top
   eye: ['#7d7a1f', '#ffe536', '#fff8ad'],                                // glow round an eye, the eye, its hot middle
 };
 
@@ -255,9 +261,10 @@ uniform vec3 uL0, uL1, uL2, uL3, uL4;
 uniform vec3 uR0, uR1, uR2, uRB;
 uniform vec3 uW0, uW1, uW2, uW3, uM0, uM1;
 uniform vec3 uT0, uT1, uT2;
-uniform vec3 uD0, uD1;
+uniform vec3 uD0, uD1, uQ0, uQ1, uG0, uG1, uG2;
 uniform vec3 uE0, uE1, uE2;
 uniform vec4 uBody;         // y: withered 0..1, z: flash 0..1, w: the skirt's glow 0..1
+uniform float uClip;        // 1: as in the talking clip (the maw, its teeth, throat and tongue; flecks; plainer veins)
 varying vec3 vN;
 varying vec3 vV;
 varying vec3 vPaint;
@@ -293,14 +300,20 @@ vec3 leafTone(float v) {
 // the mouth: a jagged band across the pod's face. d: the direction out from the pod's middle (its own: +z the face, +y its top).
 // jaw 0..1: how far the lower lip has dropped; curve -1..1: its corners turned down .. up.
 // More than 0 inside the hole, less outside; about radians from its edge
-float mouthAt(vec3 d, float jaw, float curve) {
+// Opened right up (jaw past 0.6: a roar) the lower lip drops nearly to the pod's chin and the upper one lifts: a maw,
+// as in the talking clip, its teeth longer.
+// tooth: how far a point of the shell is into one of the lips' teeth (0: not a tooth), for colouring them
+float mouthAt(vec3 d, float jaw, float curve, out float tooth) {
   float az = abs(atan(d.x, d.z)), el = asin(clamp(d.y, -1.0, 1.0));
-  float span = clamp(1.0 - az / 1.72, 0.0, 1.0);                      // 1 in the middle of the face, 0 at the mouth's corner
+  float wide = smoothstep(0.62, 1.0, jaw) * uClip;
+  float span = clamp(1.0 - az / (1.72 + 0.22 * wide), 0.0, 1.0);      // 1 in the middle of the face, 0 at the mouth's corner
   float sq = sqrt(span);                                              // (it closes to a point at each corner)
   float mid = 0.12 + (0.20 + 0.22 * curve) * (1.0 - span) * (1.0 - span);        // the corners turn up: a grin (down: a scowl)
-  float teeth = 0.21 * smoothstep(0.0, 0.3, span);
-  float lo = mid - mix(0.25, 0.66, jaw) * sq + teeth * abs(fract(az * 1.62) - 0.5) * 2.0;      // lower lip: teeth pointing up (one in the middle)
-  float hi = mid + 0.43 * sq - teeth * abs(fract(az * 1.62 + 0.5) - 0.5) * 2.0;                // upper lip: teeth pointing down, between them
+  float teeth = 0.21 * smoothstep(0.0, 0.3, span) * (1.0 + 0.45 * wide);
+  float lo0 = mid - (mix(0.25, 0.66, jaw) + 0.6 * wide) * sq, hi0 = mid + (0.43 + 0.14 * wide) * sq;
+  float lo = lo0 + teeth * abs(fract(az * 1.62) - 0.5) * 2.0;        // lower lip: teeth pointing up (one in the middle)
+  float hi = hi0 - teeth * abs(fract(az * 1.62 + 0.5) - 0.5) * 2.0;  // upper lip: teeth pointing down, between them
+  tooth = max(smoothstep(lo0 - 0.01, lo0 + 0.05, el) * step(el, lo), smoothstep(hi0 + 0.01, hi0 - 0.05, el) * step(hi, el));
   return min(el - lo, hi - el);
 }
 void main() {
@@ -317,6 +330,10 @@ void main() {
     // a neck: long strokes laid along it break the edge between one green and the next
     float st = noise3(vec3(vPaint.xy * 0.62, vPaint.z * 0.2) + dice * 9.0) * 0.6 + noise3(vec3(vPaint.xy * 1.7, vPaint.z * 0.55) + 3.7) * 0.4;
     col = stemTone(lam * 0.62 + sky * 0.12 + (st - 0.5) * 0.22 + rim * 0.20 - shade * 0.36 + 0.09);
+    // a little texture, as in the talking clip: small darker flecks, a few lighter ones, longer along the neck
+    float fl = noise3(vec3(vPaint.xy * 5.5, vPaint.z * 2.2) + dice * 17.0);
+    col = mix(col, uS0, smoothstep(0.74, 0.8, fl) * 0.45 * uClip);
+    col = mix(col, uS3, smoothstep(0.8, 0.86, 1.0 - fl) * 0.22 * uClip);
   } else if (part < 1.5) {
     // a thorn: three bone tones, paler toward its point
     float v = lam + rim * 0.15 + vUV.y * 0.12 - shade * 0.3;
@@ -325,20 +342,37 @@ void main() {
   } else if (part < 2.5) {
     // a pod: the necks' greens. Its shell is cut by the mouth; the lip catches the light; its top, under the hood, is leaf shade
     vec3 d = normalize(vPaint);
-    float m = mouthAt(d, vFaceA.x, vFaceB.w);
+    float tooth;
+    float m = mouthAt(d, vFaceA.x, vFaceB.w, tooth);
     float w = min(max(fwidth(m), 1e-4) * 0.75, 0.03);
     alpha = 1.0 - smoothstep(-w, w, m);
     float st = noise3(d * vec3(2.1, 0.9, 2.1) + dice * 9.0) * 0.6 + noise3(d * vec3(5.2, 2.0, 5.2) + 3.7) * 0.4;      // (strokes that run down it)
     float v = lam * 0.62 + sky * 0.12 + (st - 0.5) * 0.20 + rim * 0.20 - shade * 0.40 + 0.09;
     col = stemTone(v + (1.0 - smoothstep(0.0, 0.085, -m)) * 0.26);
+    float fl = noise3(d * 9.0 + dice * 17.0);                         // (flecks, as on the necks)
+    col = mix(col, uS0, smoothstep(0.75, 0.81, fl) * 0.4 * uClip);
     col = mix(col, mix(uL0, uL1, edge(0.5, v + 0.25)), smoothstep(0.42, 0.62, d.y));
-    if (back) col = uD0;                                              // the shell's inside, seen through the mouth
+    // its teeth: bone, as its thorns, once the mouth is open wide
+    vec3 bone = mix(uT1, uT2, edge(0.55, lam + 0.2));
+    col = mix(col, bone, tooth * smoothstep(0.45, 0.8, vFaceA.x) * uClip);
+    if (back) col = mix(uD0, uQ0, smoothstep(0.1, -0.4, d.y) * uClip);     // the shell's inside, seen through the mouth
   } else if (part < 3.5) {
     // the hollow behind the mouth, and the eyes on it
     vec3 d = normalize(vPaint);
     float az = abs(atan(d.x, d.z)), el = asin(clamp(d.y, -1.0, 1.0));
     float st = noise3(d * 3.0 + dice * 9.0);
     col = mix(uD0, uD1, edge(0.5, 0.55 - el * 0.9 + (st - 0.5) * 0.5 - az * 0.12));
+    float wide = smoothstep(0.55, 1.0, vFaceA.x);
+    if (uClip > 0.5) {
+    col = mix(col, mix(uQ0, uQ1, edge(0.5, 0.5 + el * 0.6 + (st - 0.5) * 0.4)), smoothstep(-0.05, -0.45, el));      // lower down: the throat
+    // the tongue: an oval lying in the bottom of it, a groove down its middle, its top wet and light; it rises as it opens
+    vec2 tg = vec2(atan(d.x, d.z) / 0.5, (el + 0.72 - 0.12 * wide) / 0.3);
+    float tl = 1.0 - length(tg), tq = max(fwidth(tl), 1e-4);
+    vec3 tc = mix(uG0, uG1, edge(0.5, 0.6 + tg.y * 0.45 - abs(tg.x) * 0.25));
+    tc = mix(tc, uG2, edge(0.82, 0.55 + tg.y * 0.35 + (st - 0.5) * 0.5) * 0.85);
+    tc = mix(tc, uG0, (1.0 - smoothstep(0.03, 0.07, abs(tg.x * 0.5))) * smoothstep(-0.6, 0.2, tg.y) * 0.7);
+    col = mix(col, tc, smoothstep(-tq, tq, tl));
+    }
     // an eye: an oval; the lid comes down over it (slanted: angry, or sad the other way); laughing, it is wider and a
     // bite is taken out of it from below, which leaves an arch. brow: one eye more open than the other. Both eyes slide
     // over the hollow to where it looks
@@ -376,7 +410,8 @@ void main() {
     // side veins: thin lines that leave the midrib and sweep toward the tip, faint
     float q = s * (part > 4.5 ? 7.0 : 5.0) - abs(u) * 1.9, fq = max(fwidth(q), 1e-4);
     float vein = (1.0 - smoothstep(0.035, 0.035 + fq * 1.5, abs(fract(q) - 0.5))) * smoothstep(0.06, 0.2, abs(u)) * (1.0 - smoothstep(0.6, 0.9, abs(u))) * (1.0 - smoothstep(0.25, 0.6, fq));
-    if (!back) col = mix(col, mix(leafTone(v + 0.2), uR2, tip), max(rib * 0.8, vein * 0.3));
+    if (!back) col = mix(col, mix(leafTone(v + 0.2), uR2, tip), max(rib * mix(0.8, 0.85, uClip), vein * mix(0.3, 0.5, uClip)));
+    col = mix(col, leafTone(v - 0.22), (1.0 - smoothstep(0.0, 0.5, s)) * smoothstep(0.55, 0.95, abs(u)) * 0.35 * uClip);      // (deeper toward its foot's edges)
     if (part > 4.5 && uBody.w > 0.001) {
       // the skirt lit from within (both its faces: shut into a bud, it is the undersides that show): its midrib and
       // veins burn, light soaks out from the midrib, its red tip glows
@@ -411,7 +446,7 @@ export function setPlantBossSun(v) { SUN.value.copy(v); if (SUN.value.y < 0.12) 
 export function setPlantBossMotion(k) { MOVE.value = Math.min(1, Math.max(0, +k || 0)); }
 const REST = { wave: 1, yaw: 0, nod: 0, tilt: 0, jaw: 0.44, lid: 1, slant: 0, smile: 0, size: 1, flare: 0, brow: 0, curve: 0, gazeX: 0, gazeY: 0, glow: 1, flash: 0, wither: 0, scale: 1 };   // a head as it starts
 export const BOSS_HEAD_REST = REST;
-function material() {
+function material(clip) {
   const L = BOSS_LOOK, U = { ...natureUniforms, uSun: SUN, uMove: MOVE, uBody: { value: new THREE.Vector4(0, 0, 0, 0) }, uSwirl: { value: 0 },
     uLeafLift: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafStir: { value: new THREE.Vector4(0, 0, 0, 0) }, uLeafAz: { value: new THREE.Vector3(0, 1.3, -1.3) },
     uRooted: { value: new THREE.Vector2(0, 0) } };
@@ -422,6 +457,8 @@ function material() {
   set(['uW0', 'uW1', 'uW2', 'uW3', 'uM0', 'uM1'], [...L.wood, ...L.moss]);
   set(['uT0', 'uT1', 'uT2'], L.thorn);
   set(['uD0', 'uD1'], L.mouth);
+  set(['uQ0', 'uQ1'], L.throat);
+  set(['uG0', 'uG1', 'uG2'], L.tongue);
   set(['uE0', 'uE1', 'uE2'], L.eye);
   for (let i = 0; i < 3; i++) {                                       // (one of each for each head: no arrays, as the kit's shaders)
     U['uPose' + i] = { value: new THREE.Vector4(0, 0, 0, REST.wave) };
@@ -434,6 +471,7 @@ function material() {
   for (let i = 0; i < 2; i++) for (const nm of ['uVineA', 'uVineB', 'uVineC']) U[nm + i] = { value: new THREE.Vector4(0, -1, 0, nm === 'uVineB' ? -1 : 0) };      // (under the ground, drawn to nothing)
   // (both sides: a leaf has an underside, and the pod's shell is seen from inside through the mouth. The mouth's edge is
   // smoothed by coverage, as the kit's leaf cards are: a scene needs createAlphaFix())
+  U.uClip = { value: clip ? 1 : 0 };
   return new THREE.ShaderMaterial({ uniforms: U, vertexShader: VS, fragmentShader: FS, side: THREE.DoubleSide, alphaToCoverage: true });
 }
 
@@ -504,7 +542,8 @@ function addTube(B, { curve, rings, sides, radius, ref, part, dice = 0, shade = 
 // a leaf: a sheet along a spine. frame(s) -> { c, T, up } (up: the way its top face looks, about); half(s): half its width;
 // bend(s, x, w): how far a point x across lies off the spine along the leaf's own up; hinge: { pivot, axis }: its foot and
 // the line it turns about there
-function addLeaf(B, { frame, half, bend, NU = 6, NV = 12, part, dice, shade = () => 0, flutter = s => s * s, length, hinge = null }) {
+// ride: { t, beat, pivot, axis }: it rides a limb there (as a thorn does): a leaf growing off a neck
+function addLeaf(B, { frame, half, bend, NU = 6, NV = 12, part, dice, shade = () => 0, flutter = s => s * s, length, hinge = null, ride = null }) {
   const rows = [];
   for (let j = 0; j <= NV; j++) {
     const s = j / NV, f = frame(s);
@@ -515,8 +554,8 @@ function addLeaf(B, { frame, half, bend, NU = 6, NV = 12, part, dice, shade = ()
     const r = rows[j], u = (i / NU) * 2 - 1, x = u * r.w;
     return {
       p: r.c.clone().addScaledVector(r.side, x).addScaledVector(r.up, bend(r.s, x, r.w)), fallback: r.up,
-      paint: [x, r.s * length, dice * 31.7], uv: [u, r.s], shade: shade(r.s, u), anim: [0, 0, 0, flutter(r.s)],
-      pivot: hinge ? hinge.pivot : null, axis: hinge ? hinge.axis : null,
+      paint: [x, r.s * length, dice * 31.7], uv: [u, r.s], shade: shade(r.s, u), anim: ride ? [ride.t, ride.beat, 0, flutter(r.s)] : [0, 0, 0, flutter(r.s)],
+      pivot: ride ? ride.pivot : (hinge ? hinge.pivot : null), axis: ride ? ride.axis : (hinge ? hinge.axis : null),
     };
   }, part, dice);
 }
@@ -540,9 +579,9 @@ function buildHead(rng, R) {
     return { p: onPod(az, el, 1), fallback: d, paint: [d.x, d.y, d.z], uv: [i / 28, j / 16], shade: sstep(0.0, 0.75, d.y) * 0.5, anim: [0, 0, 0, 0] };
   }, POD, dice, true);
   // the hollow: a dark shell inside, only as much of it as the mouth can show
-  addSheet(B, 18, 10, (i, j) => {
-    const az = -2.0 + (i / 18) * 4.0, el = -0.8 + (j / 10) * 1.85, d = ballDir(az, el);
-    return { p: onPod(az, el, 0.86), fallback: d, paint: [d.x, d.y, d.z], uv: [i / 18, j / 10], shade: 0, anim: [0, 0, 0, 0] };
+  addSheet(B, 18, 13, (i, j) => {                                    // (down to its chin: opened wide, it is a maw)
+    const az = -2.1 + (i / 18) * 4.2, el = -1.3 + (j / 13) * 2.35, d = ballDir(az, el);
+    return { p: onPod(az, el, 0.86), fallback: d, paint: [d.x, d.y, d.z], uv: [i / 18, j / 13], shade: 0, anim: [0, 0, 0, 0] };
   }, MOUTH, dice);
 
   // the hood: leaves that leave the pod's top and lie down over it, their tips lifting off it like a brim. Round the
@@ -625,6 +664,15 @@ const THORNS = [
   [[0.31, -125], [0.48, -55], [0.65, -150], [0.41, 25], [0.57, 115]],
 ];
 
+// the leaves off each neck: [how far along it, which way round (degrees: 0 the front, 90 toward +x), how long (parts of the height)]
+const NECK_LEAVES = [
+  [[0.52, -70, 0.13]],
+  [[0.5, 95, 0.135], [0.66, 160, 0.1]],
+  [[0.52, -95, 0.135], [0.68, -160, 0.1]],
+];
+// the leaves on the ground round its foot, under the red skirt: plain green, broad, lying out on the ground
+const GROUND_LEAVES = 11;
+
 // a thorn on a limb: a bone spike bent toward the limb's end, standing in a small green socket. t: how far along the limb,
 // a: which way round it (0: toward ref), r: the limb's radius there; long, wide: the spike's size; all of it rides the limb there
 function addThorn(B, rng, { curve, len, t, a, r, ref, long, wide, dice, beat }) {
@@ -640,8 +688,9 @@ function addThorn(B, rng, { curve, len, t, a, r, ref, long, wide, dice, beat }) 
 const VINES = [[0.37, 0.3], [-0.37, 0.3]];
 export const BOSS_VINE_LENGTH = 7.4;
 
-function bossGeometry(seed) {
+function bossGeometry(seed, clip = false) {
   const rng = mulberry32(seed * 761 + 29), B = newArrays(), heads = [];
+  const lrng = mulberry32(seed * 37 + 5);                             // (the leaves added since: their own dice)
   const jit = k => (rng() - 0.5) * 2 * k;
   const Z = V3(0, 0, 1), Y = V3(0, 1, 0);
 
@@ -665,6 +714,21 @@ function bossGeometry(seed) {
       const t = t0 + jit(0.015), a = (deg + jit(8)) * Math.PI / 180;
       addThorn(B, rng, { curve, len, t, a, r: radius(t), ref: Z, long: range(rng, 0.062, 0.082) * H, wide: range(rng, 0.021, 0.025) * H, dice, beat: hd.beat });
     }
+    // a leaf or two growing off it, low down, out to its own side and drooping (as in the talking clip)
+    if (clip) NECK_LEAVES[hi].forEach(([t0, deg, k]) => {
+      const t = t0 + (lrng() - 0.5) * 0.03, a = (deg + (lrng() - 0.5) * 16) * Math.PI / 180, c = curve.getPointAt(t), T = curve.getTangentAt(t);
+      const N0 = Z.clone().addScaledVector(T, -Z.dot(T)).normalize(), Bn = new THREE.Vector3().crossVectors(T, N0);
+      const out = N0.multiplyScalar(Math.cos(a)).addScaledVector(Bn, Math.sin(a)).setY(0).normalize(), foot = c.clone().addScaledVector(out, radius(t) * 0.8);
+      const Lf = k * H * range(lrng, 0.95, 1.1), side = new THREE.Vector3().crossVectors(Y, out), d = lrng();
+      const lc = new THREE.CatmullRomCurve3([foot, foot.clone().addScaledVector(out, Lf * 0.3).add(V3(0, Lf * 0.18, 0)), foot.clone().addScaledVector(out, Lf * 0.7).add(V3(0, Lf * 0.08, 0)), foot.clone().addScaledVector(out, Lf).add(V3(0, -Lf * 0.22, 0))], false, 'centripetal');
+      addLeaf(B, {
+        part: HOOD, dice: d, NU: 6, NV: 12, length: lc.getLength(), ride: { t, beat: hd.beat, pivot: c, axis: T.clone().multiplyScalar(len) },
+        frame: s2 => { const TT = lc.getTangentAt(s2); return { c: lc.getPointAt(s2), T: TT, up: new THREE.Vector3().crossVectors(TT, side) }; },
+        half: s2 => 0.24 * Lf * leafShape(s2, 0.42, 0.8),
+        bend: (s2, x, w) => Math.abs(x) * lerp(0.25, -0.08, s2) - (x * x) / (w + 0.001) * 0.12 * s2,
+        shade: s2 => 0.15 * (1 - s2), flutter: s2 => s2 * s2 * 1.1,
+      });
+    });
     // the head: the one head, built for this neck and stood on its end
     const h = buildHead(mulberry32(seed * 131 + hi * 977 + 7), R), base = B.n, p = new THREE.Vector3(), endAxis = curve.getTangentAt(1).multiplyScalar(len);
     for (let i = 0; i < h.n; i++) {
@@ -712,6 +776,20 @@ function bossGeometry(seed) {
     const az = a0 + ((i + 0.25) / 6) * Math.PI * 2 + jit(0.2);
     skirtLeaf({ az, W: range(rng, 0.05, 0.06), shade: 0.12, roll: jit(0.3), NU: 6, NV: 10, at: 0.5,
       pts: [[0.06, 0.27], [0.105, 0.34], [0.15, 0.385], [0.2, 0.395], [0.235, 0.375]] });
+  }
+
+  // ---- a ring of plain green leaves on the ground round its foot, under the skirt, lying out (as in the talking clip)
+  const g0 = lrng() * 6.28;
+  for (let i = 0; i < (clip ? GROUND_LEAVES : 0); i++) {
+    const az = g0 + (i + (lrng() - 0.5) * 0.5) / GROUND_LEAVES * Math.PI * 2, out = ballDir(az, 0), side = new THREE.Vector3().crossVectors(Y, out), d = lrng(), k = range(lrng, 0.85, 1.15), dr = (lrng() - 0.5) * 0.02, W = range(lrng, 0.075, 0.09);
+    const c = new THREE.CatmullRomCurve3([[0.16, 0.085], [0.27, 0.105 + dr], [0.4, 0.07 + dr], [0.5 * k, 0.012]].map(([r, y]) => out.clone().multiplyScalar(r * H).add(V3(0, y * H, 0))), false, 'centripetal');
+    addLeaf(B, {
+      part: HOOD, dice: d, NU: 8, NV: 14, length: c.getLength(), hinge: { pivot: c.getPointAt(0), axis: side },
+      frame: s2 => { const T = c.getTangentAt(s2); return { c: c.getPointAt(s2), T, up: new THREE.Vector3().crossVectors(T, side).applyAxisAngle(T, (d - 0.5) * 0.4) }; },
+      half: s2 => W * H * leafShape(s2, 0.45, 0.78),
+      bend: (s2, x, w) => Math.abs(x) * lerp(0.28, -0.06, sstep(0.0, 0.8, s2)) - (x * x) / (w + 0.001) * 0.14 * s2,
+      shade: s2 => 0.35 * (1 - sstep(0.0, 0.5, s2)), flutter: s2 => s2 * s2 * 0.6,
+    });
   }
 
   // ---- the roots: a lumpy mound, and thick roots that leave it, run over the ground and go into it; a few fork
@@ -788,9 +866,9 @@ export function aimHead(h, point, share = 0.7, most = 0.55) {
   return { yaw, nod, gazeX: clamp((turn - yaw) / 0.5, -1, 1), gazeY: clamp((nod - tip) / 0.5, -1, 1), dx: dx / far, dz: dz / far };
 }
 
-export function createPlantBoss({ seed = 1, size = 1 } = {}) {
-  const { geometry, heads: built, vines: builtVines } = bossGeometry(seed);
-  const mat = material(), U = mat.uniforms;
+export function createPlantBoss({ seed = 1, size = 1, clip = false } = {}) {
+  const { geometry, heads: built, vines: builtVines } = bossGeometry(seed, clip);
+  const mat = material(clip), U = mat.uniforms;
   const mesh = new THREE.Mesh(geometry, mat);
   mesh.name = 'plant_boss_mesh';
   mesh.scale.setScalar(size);

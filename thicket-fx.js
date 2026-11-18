@@ -578,6 +578,9 @@ function arcGeometry(span, rho, segs = 28) {
   return g;
 }
 
+// shared pieces for the boss's other effects (howl-fx.js)
+export const _fx = { SPARK_VS, SPARK_FS, PUFF_VS, HAZE_FS, GLOW_VS, makePool, col };
+
 // ==========================================================================
 export function createThicketFx({ heightAt = null, seed = 1, lift = 0.08, vines: vineCount = 18, look = THICKET_LOOK } = {}) {
   const rng = mulberry32(seed * 313 + 5);

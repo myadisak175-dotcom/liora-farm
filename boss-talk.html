@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7fb4e6">
+<title>บอสต้นไม้ — คุยกัน และคำรามพลังเขียว</title>
+<!--
+  boss-talk.html  —  the plant boss's three heads as the game has them while it does not fight (plant-boss-banter.js,
+  acted by plant-boss-talk.js): chatting among themselves when she is far off, talking about her as she comes in, and,
+  when she comes too close, the howl (all three, with its green light: howl-fx.js). Vivi runs to where a button sends
+  her. Both as in the talking clip (createPlantBoss({ clip: true }), createBossBanter(boss, { clip: true, howl: true })):
+  the game keeps them as they were until those are turned on there. One job: watch them talk. Nothing here goes into the game.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb4e6; font-family: system-ui, sans-serif; touch-action: none; }
+  canvas { display: block; }
+  #name { position: fixed; left: 0; right: 0; top: calc(10px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 17px system-ui; color: #fff; text-shadow: 0 1px 6px #0008; z-index: 4; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #ui { position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 0 8px; z-index: 5; }
+  .bar { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 9px 12px; background: #3b3147d9; color: #fff; font: 700 13px system-ui; touch-action: manipulation; }
+  .bar button.on { background: #8a6a3a; }
+  .bar button.go { background: #2f7a2a; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="name">บอสต้นไม้ · คุยกัน<small id="zone">ไกล: คุยกันเอง</small></div>
+<div id="ui">
+  <div class="bar">
+    <button data-at="far" class="on">💬 อยู่ไกล</button>
+    <button data-at="mid">👀 เดินเข้าไป</button>
+    <button data-at="near">⚠️ เข้าใกล้</button>
+  </div>
+  <div class="bar">
+    <button id="howl" class="go">🟢 คำรามอีกครั้ง</button>
+    <button id="cam">🎬 มุมคลิป</button>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { createPlantBoss, setPlantBossSun } from './plant-boss.js';
+import { createBossBanter } from './plant-boss-banter.js';
+import { createBossTurn } from './plant-boss-turn.js';
+import { createSpeechBubbles } from './speech-bubbles.js';
+import { createHowlFx } from './howl-fx.js';
+
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 40, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+scene.add(G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 36, far: FAR }));
+
+// ---- the boss: its heads talk (the banter), it turns on its roots to her, the howl's green light
+const boss = createPlantBoss({ seed: 1, clip: true });
+boss.position.set(0, H(0, 0) - 0.05, 0);
+scene.add(boss);
+const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
+setPlantBossSun(sun);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 600);
+const banter = createBossBanter(boss, { clip: true, howl: true }), turn = createBossTurn(boss), bubbles = createSpeechBubbles({ camera });
+banter.onSay = e => { if (e.cut) bubbles.clear(); bubbles.say(e.head, e.text, e); };
+const fx = createHowlFx({ seed: 1 });
+fx.setSun(sun);
+scene.add(fx.object);
+const { heads, mesh } = boss.userData;
+const over = heads.map(h => h.centre.clone()), tmp = new THREE.Vector3();
+const mouth = (i, out) => { out.copy(over[i]); out.y += heads[i].radius * heads[i].scale * 1.55; mesh.localToWorld(out); return true; };
+
+// ---- her: she runs to where a button sends her (far: they chat; coming in: they talk about her; close: the howl)
+const SPOTS = { far: 32, mid: 16, near: 7.5 };
+const her = new THREE.Vector3(1.5, 0, SPOTS.far);
+her.y = H(her.x, her.z);
+let goal = SPOTS.far, vivi = null, mark = null;
+(async () => {
+  try {
+    const [{ loadCharacter }, { VIVI_GLB }, { CHARACTER_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./character-anim.js')]);
+    vivi = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);
+    if (vivi.setSize) vivi.setSize(1.75 / vivi.baseHeight);
+    vivi.play('idle');
+    scene.add(vivi.object);
+  } catch (err) {
+    // (no Vivi here: a pole as tall as she is, on a ring where she stands)
+    console.warn('Vivi not loaded', err);
+    mark = new THREE.Group();
+    const pale = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.75, 10), pale); pole.position.y = 0.875 + 0.3;
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), pale); top.position.y = 1.75 + 0.3;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), pale); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.32;
+    mark.add(pole, top, ring);
+    scene.add(mark);
+  }
+})();
+
+// ---- the camera: as in the clip (in front, low, close on the heads), or behind her
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.5; controls.minDistance = 4; controls.maxDistance = 90; controls.enablePan = false;
+let view = 'clip';
+function frame() {
+  const vHalf = THREE.MathUtils.degToRad(camera.fov / 2), hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+  if (view === 'clip') {
+    const w = 11, h = 11, d = Math.max((h / 2) / Math.tan(vHalf), (w / 2) / Math.tan(hHalf)) * 1.02;
+    controls.target.set(0, 4.7, 0);
+    camera.position.set(1.2, 3.3, d);
+  } else {
+    controls.target.set(0, 3.6, 0);
+    camera.position.set(her.x + 1.6, her.y + 3.2, her.z + 6.5);
+  }
+  controls.update();
+}
+frame();
+
+const zoneName = { far: 'ไกล: คุยกันเอง', mid: 'เข้ามาใกล้: เห็นวีวี่แล้ว นินทาเธอ', near: 'ใกล้เกินไป: คำรามไล่ พลังสีเขียว' };
+const btn = id => document.getElementById(id);
+for (const b of document.querySelectorAll('[data-at]')) b.onclick = () => {
+  goal = SPOTS[b.dataset.at];
+  for (const o of document.querySelectorAll('[data-at]')) o.classList.toggle('on', o === b);
+};
+btn('howl').onclick = () => {
+  if (banter.zone !== 'near') { goal = SPOTS.near; for (const o of document.querySelectorAll('[data-at]')) o.classList.toggle('on', o.dataset.at === 'near'); }
+  else banter.howlNow();
+};
+btn('cam').onclick = () => { view = view === 'clip' ? 'her' : 'clip'; btn('cam').textContent = view === 'clip' ? '🎬 มุมคลิป' : '🧍 มุมวีวี่'; frame(); };
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); frame(); });
+
+// ---- every frame
+let moving = false;
+function step(dt) {
+  // she runs to her spot, facing the way she goes; standing, she faces the boss
+  const dz = goal - her.z, run = Math.abs(dz) > 0.05;
+  if (run) her.z += Math.sign(dz) * Math.min(Math.abs(dz), 3.9 * dt);
+  her.y = H(her.x, her.z);
+  const who = vivi ? vivi.object : mark;
+  if (who) {
+    who.position.copy(her);
+    who.rotation.y = run && dz > 0 ? 0 : Math.PI;
+    if (vivi && run !== moving) vivi.play(run ? 'run' : 'idle');
+  }
+  moving = run;
+  N.update(dt);
+  turn.update(dt, her, banter.zone !== 'far');
+  banter.update(dt, her);
+  fx.update(dt, camera, boss, banter.howl, her);
+  if (vivi) vivi.update(dt);
+  for (const h of heads) over[h.index].lerp(tmp.copy(h.centre).add(h.lean), 1 - Math.exp(-dt * 6));
+  bubbles.update(dt, mouth);
+  btn('zone').textContent = zoneName[banter.zone];
+}
+const shakeOff = new THREE.Vector3();
+let shakeT = 0;
+function draw(dt) {
+  controls.update();
+  shakeT += dt;
+  const k = fx.shake * 0.16;
+  shakeOff.set(Math.sin(shakeT * 71) * k, Math.sin(shakeT * 83 + 1) * k * 0.7, Math.sin(shakeT * 67 + 2) * k * 0.5);
+  camera.position.add(shakeOff);
+  renderer.render(scene, camera);
+  camera.position.sub(shakeOff);
+}
+const clock = new THREE.Clock();
+let manual = false;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (manual) return;
+  step(dt); draw(dt);
+});
+// for tests: run it by hand, a fixed step at a time
+window.__scene = {
+  scene, camera, boss, banter, fx,
+  moves: { get state() { return banter.zone; }, get time() { return banter.howl; } },
+  manual(on) { manual = on; },
+  run(seconds, fps = 30) { const n = Math.round(seconds * fps); for (let i = 0; i < n; i++) step(1 / fps); draw(1 / fps); },
+  go(at) { goal = SPOTS[at]; },
+  view(v) { view = v; frame(); },
+  ready: () => !!(vivi || mark),
+};
+</script>
+</body>
+</html>
