@@ -1,6 +1,6 @@
-"""Shared by the tools that make clips for the animation library in code (tools/make-climb-anim.py, tools/make-vault-anim.py):
-small maths, the library's skeleton, the playable characters' proportions, two-bone IK, and writing a .vrma into the
-library. A clip made with these is turns of the library's bones away from T-pose, like every other clip there, and is
+"""Shared by the tools that make clips for the animation library in code (tools/make-climb-anim.py, tools/make-hop-anim.py):
+small maths, the library's skeleton, the playable characters' proportions, two-bone IK, reading one of the library's
+clips, and writing a .vrma into the library. A clip made with these is turns of the library's bones away from T-pose, like every other clip there, and is
 baked for the game like every other (tools/bake-character-anim.py).
 
   sk, hh, count = fitted_skeleton()     the library's skeleton (Idle_Loop.vrma), its bones' lengths and places those of the
@@ -10,6 +10,7 @@ baked for the game like every other (tools/bake-character-anim.py).
   two_bone(root, target, a, b, pole)    the joint between root and target, bent toward pole; and the axis it bends about
   locals_of(sk, D, loose)               each bone's turn from its parent, from world turns D (bones not in D: the template's;
                                         loose: how far each hand's fingers curl, 0 flat .. 1 as they hang at rest)
+  read_clip(name)                       one of the library's clips: (sk, times, rot, hips), as write_clip takes them
   write_clip(name, sk, times, rot, hips, loop, generator)   the .vrma into the library, and into its index.json
 """
 import glob
@@ -150,6 +151,29 @@ class Skeleton:
 
     def length(self, b):
         return float(np.linalg.norm(self.offset[b]))
+
+
+def read_clip(name):
+    """LIB/name.vrma -> (sk, times, rot, hips): its skeleton, its frames' times, {bone: [quaternion per frame]} and the
+    hips' place per frame (the clip's own lengths)."""
+    sk = Skeleton(os.path.join(LIB, f"{name}.vrma"))
+    anim = sk.js["animations"][0]
+    times, rot, hips = None, {}, None
+    for ch in anim["channels"]:
+        smp = anim["samplers"][ch["sampler"]]
+        bone = sk.bone.get(ch["target"]["node"])
+        if bone is None:
+            continue
+        if times is None:
+            times = np.array(read_floats(sk.js, sk.bin, smp["input"])[:, 0], dtype=float)
+        values = np.array(read_floats(sk.js, sk.bin, smp["output"]), dtype=float)
+        if ch["target"]["path"] == "rotation":
+            rot[bone] = values
+        elif ch["target"]["path"] == "translation" and bone == "hips":
+            hips = values
+    for b in sk.node:                                        # (a bone the clip does not turn: as it is in T-pose)
+        rot.setdefault(b, np.tile([0.0, 0.0, 0.0, 1.0], (len(times), 1)))
+    return sk, times, rot, hips
 
 
 # ---------------------------------------------------------------- the bodies that play it

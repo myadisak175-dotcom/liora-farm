@@ -131,6 +131,14 @@
       "loop": false
     },
     {
+      "name": "Hop",
+      "file": "Hop.vrma",
+      "source": "liora-farm",
+      "duration": 0.9667,
+      "frames": 30,
+      "loop": false
+    },
+    {
       "name": "Idle_FoldArms_Loop",
       "file": "Idle_FoldArms_Loop.vrma",
       "source": "UAL2",
@@ -625,14 +633,6 @@
       "duration": 0.967,
       "frames": 30,
       "loop": true
-    },
-    {
-      "name": "Vault",
-      "file": "Vault.vrma",
-      "source": "liora-farm",
-      "duration": 0.6,
-      "frames": 19,
-      "loop": false
     },
     {
       "name": "Walk_Carry_Loop",
