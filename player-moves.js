@@ -58,7 +58,7 @@ const GRAB_WAIT = 0.12, GRAB_SHY = 0.5;       // s she pushes at a face before s
 const LEAP = 2.5, LEAP_T = 0.3, LEAP_COOL = 0.55;      // a jump on the rock: this many times her climbing pace for LEAP_T s; again after LEAP_COOL s
 const REACH0 = 1.6;                           // m over the rock from her feet to her hands (2.0 at 1.75 m): a top that near, she vaults over
 const VAULT_T = 0.62, VAULT_FROM = 0.08;      // the vault over a top: how long it takes (s), and how far into the clip it starts (s)
-const WALL_LIB = 0.30, LIB_HIPS = 0.917;      // the climbing clip's wall, in front of her root, and the hips height of the skeleton it was made on (m: tools/make-climb-anim.py)
+const WALL_HH = 0.44, SPAN_HH = 1.80;         // the climbing clip's wall, in front of her root, and how far up it her hands reach from her root, in hips heights (tools/make-climb-anim.py)
 const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -90,7 +90,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let shy = 0;                                // s after a slide that got her nowhere: edges are walls for a moment
   let grabPush = false, faceAhead = false, grabT = 0, grabShy = 0, lipT = 0;      // pushing at a face this frame; for how long; s before she will take hold again
   let onRock = false, climbT = 0, leapT = 0, leapCool = 0, climbRate = 0;      // climbing: her feet have left the ground; for how long; a leap; the clip's rate
-  let climbW = 0, tilt = 0, nX = 0, nY = 1, nZ = 0;      // how far she is laid against the rock (0..1), by what angle, and the way out of the face
+  let climbW = 0, tilt = 0, nX = 0, nY = 1, nZ = 0, standOff = 0;      // how far she is laid against the rock (0..1), by what angle, the way out of the face, and how far the rock's bulges hold her off it (m)
+  const lie = { angle: 0, off: 0 };
   let vaultT = 0;                             // s into a vault
   const vault0 = new THREE.Vector3(), vault1 = new THREE.Vector3();
   let wake = 0;                               // s to the next ring she leaves swimming
@@ -555,19 +556,25 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     }
     character.update(dt);
     // ---- her body leans: forward up a hill and back down one (walking it, not standing on it), forward in a dash and a
-    // sprint, and into her turns. Climbing, she is laid against the rock: tilted to the face about her feet, a little out of it
+    // sprint, and into her turns. Climbing, she is laid against the rock: tilted to it about her feet, as far out of it as the clip's wall is
     const going = Math.min(1, pace / WALK), walking = mode === 'ground' && rollT <= 0;
     const wantLean = !walking ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : sprint && pace > RUN ? 0.06 : 0);
     const wantRoll = !walking || dt <= 0 ? 0 : Math.min(0.14, Math.max(-0.14, -turned / dt * 0.03 * Math.min(1, pace / RUN)));
     lean += (wantLean - lean) * ease(8, dt); roll += (wantRoll - roll) * ease(6, dt);
+    // The flat she is laid on is taken from the rock under her whole body, from her feet to her hands (player-climb.js),
+    // the way she faces: the rock's angle under her feet alone put her chest and head inside it wherever the face curved
+    const hh = (character.hipsHeight || 1) * (character.size || 1);
     if (mode === 'climb') {
-      const at = face.at(pos.x, pos.z), flat = 1 / Math.hypot(1, at.slope);
-      tilt += (Math.PI / 2 - Math.atan(at.slope) - tilt) * ease(climbW < 0.05 ? 60 : 8, dt);
-      nX = -at.ux * at.slope * flat; nY = flat; nZ = -at.uz * at.slope * flat;
+      const hx = Math.sin(heading), hz = Math.cos(heading);
+      face.lie(pos.x, pos.z, hx, hz, SPAN_HH * hh, 0.26 * hh, lie);
+      const first = climbW < 0.05;
+      tilt += (Math.PI / 2 - lie.angle - tilt) * ease(first ? 60 : 8, dt);
+      standOff += (lie.off - standOff) * ease(first ? 60 : lie.off > standOff ? 30 : 6, dt);      // (out of a bulge's way at once; back onto the rock gently)
+      nX = -hx * Math.cos(tilt); nY = Math.sin(tilt); nZ = -hz * Math.cos(tilt);                  // (out of the flat, square to her body as it now lies)
     }
     climbW += ((mode === 'climb' ? 1 : 0) - climbW) * ease(mode === 'climb' ? 9 : 12, dt);
-    if (climbW < 0.002) climbW = 0;
-    const out = WALL_LIB * (character.hipsHeight || 1) * (character.size || 1) / LIB_HIPS * climbW;
+    if (climbW < 0.002) { climbW = 0; standOff = 0; }
+    const out = (WALL_HH * hh + standOff) * climbW;
     root.position.copy(pos);
     character.object.position.set(nX * out, nY * out, nZ * out);
     character.object.rotation.set(lean + tilt * climbW, heading, roll, 'YXZ');
