@@ -182,7 +182,7 @@ const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), he
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
 const winds = [];
-let speed = 0, landT = -1, jumpWanted = 0, demo = null, slow = 1, airBase = 0;
+let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0;
 const WALK = 1.5, RUN = 4.2, LAND_RATE = 1.4, LAND_HOLD = 0.14;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
@@ -281,7 +281,8 @@ function step(dt) {
     // the demo presses at the top of each jump
     if (demo && air.tier < 4 && air.debug.wind < 0 && air.debug.vy < 0.4 * k && air.debug.t > 0.15) air.press(me, stick);
     if (air.step(dt, me, stick, g) === 'landed') {
-      landT = 0; speed = Math.hypot(me.vel.x, me.vel.z);
+      // down: the harder she lands, the more of her pace her legs take up and the longer before she is off again
+      landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = LAND_HOLD + 0.1 * air.impact;
       if (demo) { demo = null; speed = 0; }
     }
   }
@@ -290,12 +291,12 @@ function step(dt) {
     if (landT >= 0) {
       landT += dt;
       const land = hero.actions.jump_land;
-      if ((speed > 0.25 && landT > LAND_HOLD) || hero.state !== 'jump_land' || (land && land.time >= land.getClip().duration - 0.02)) landT = -1;
+      if ((speed > 0.25 && landT > landHold) || hero.state !== 'jump_land' || (land && land.time >= land.getClip().duration - 0.02)) landT = -1;
       else hero.setRate(LAND_RATE);
     }
     if (landT < 0) {
       const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 * k ? 'walk' : 'run';
-      if (hero.state !== st) hero.play(st, st === 'idle' ? 0.3 : 0.2);
+      if (hero.state !== st) hero.play(st, st === 'idle' ? 0.3 : hero.state === 'jump_land' ? 0.28 : 0.2);      // (up out of a landing: a longer blend)
       hero.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (hero.speeds[st] || 1))));
     }
   }
