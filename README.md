@@ -270,6 +270,13 @@ With `?move=1` the page uses `player-moves.js` in place of `player.js` (the same
 - **Tested** without drawing, on the hill village: from the foot of 140 faces (0.4 to 13 m) she reached ground above on 137 (the other three reached a different top than the one measured); from 70 shores she swam on 67 (three lines crossed a bridge) and got out again on 66; 50 minutes of random hands: never off the map, never in a wall, no jump of more than 0.3 m in a frame.
 - **Files**: `player-moves.js` (her body in the world), `player-climb.js` (a cliff's face: which way it rises, a step over it, where its top is), `player-input.js` (joystick, look, keys), `player-camera.js` (the walker's camera), `player-footsteps.js` (her feet in the water). If the trial becomes the game, `player-moves.js` takes `player.js`'s place.
 
+### The plant boss (a trial: `?boss=1`)
+
+With `?boss=1` the hill village has the three-headed plant boss standing in the west fringe's sag field (`boss-trial.js`), to see how it looks in the game; she starts some 13 m before it, facing it, and the map has a pin for it (🌿 บอสต้นไม้, view `wf-boss`). Without it nothing of the trial is loaded and the game is as it was.
+
+- **The boss** is `plant-boss.js`: sculpted in code (one head, built three times on thorned necks, a skirt of red-tipped leaves, a mound of roots), 7 m high, about 29,000 triangles, one draw call, painted in the kit's flat tones. Its necks sway like an octopus's arms, its eyes blink.
+- **It does not fight yet.** Its heads turn to watch her when she comes within 26 m (`plant-boss-moves.js`, standing, without darting at her). The moves are written (a roar before each, the right head's vine whip, the middle head's pollen, the left head's thorn roots, the great bramble, struck, beaten head by head, dying, coming up out of the ground), but the game does not call them yet.
+- **In the world**: the cloud shadows, the light of the hour and the curse reach it as they reach everything else (it is made before they are laid on the scene); its real shadow is thrown on the ground by the same sun as hers (`character-shadow.js`, made for it); it is solid (a collider, and a crown the camera keeps out of).
 
 ![The pit at the valley's end](docs/previews/hill-village-pit.jpg)
 
