@@ -1,8 +1,8 @@
 // player-vault.js
 // Her vault over a fence, a parapet, a barrel: a motion capture (vault-anim.js, made by tools/make-vault-anim.py from
-// Mixamo's "Vault Over Box" and "Jumping Down"), fitted to the thing she goes over. She runs at it, plants her left hand on
-// its top, springs up with her right foot on it and her left knee drawn up, pushes off it forward and drops down past it,
-// and runs on (or, the stick let go, rises from the landing).
+// Mixamo's "Vault Over Box", and the library's sprint), fitted to the thing she goes over. She runs at it, plants her left
+// hand on its top, springs up with her right foot on it and her left knee drawn up, leaps off it forward onto her left
+// foot, her right heel kicked up behind her over the top, and runs on (or, the stick let go, comes down into a landing).
 //
 // The clip is made over a flat ground with a top VAULT.top hips heights high, and in place: VAULT.along is how far she
 // goes along her way, per frame. Fitted to a real thing (player-hurdle.js finds it: its near and far sides along her way,
@@ -21,7 +21,8 @@
 //      hh: her hips' height (m); y0: the ground she is on; y1: the ground past it, where she comes down
 //   vaultAt(plan, c, out) -> out: c seconds into the clip: out.along (m along her way from where it began), out.y (her
 //      feet's height: the ground's, and how much she is raised), out.rate (how fast the clip plays here)
-//   const ik = createVaultIK(character); every frame after her pose and place are set: ik.apply(plan, c, start, dx, dz)
+//   const ik = createVaultIK(character); every frame after her pose and place are set: ik.apply(plan, c, start, dx, dz),
+//   and for a moment after she is down, ik.apply(..., fade) with fade going from 1 to 0 (a foot still held up lets go gently)
 //
 // The clip's times (VAULT): her hand on the top from hand.from to hand.to, her right foot from foot.from to foot.to, her
 // left foot off the ground at offGround, off the top at push, down at touch.
@@ -31,6 +32,7 @@ import { VAULT } from './vault-anim.js';
 
 const FPS = 30;
 const BODY0 = 0.28;            // her own half-width (player-hurdle.js), at Vivi's modelled size
+const DROP = 2.2;              // m/s (of clip time) a foot held up over the top is let down at most
 const INSET = 0.18;            // her hand and foot this far in from the top's near and far sides (m), or in its middle if thinner
 const CLEAR = 0.3;             // her feet come down at least this far past the far side (m)
 const LATE = 0.32;             // begun nearer than her run-up allows: at most this much of the clip left out (s: up to her take-off step)
@@ -165,10 +167,12 @@ export function createVaultIK(character) {
   const bone = n => character.model.getObjectByName(n);
   const arm = [bone('J_Bip_L_UpperArm'), bone('J_Bip_L_LowerArm'), bone('J_Bip_L_Hand'), bone('J_Bip_L_Middle1')];
   const leg = [bone('J_Bip_R_UpperLeg'), bone('J_Bip_R_LowerLeg'), bone('J_Bip_R_Foot'), bone('J_Bip_R_ToeBase')];
+  const hips = bone('J_Bip_C_Hips');
   const legL = [bone('J_Bip_L_UpperLeg'), bone('J_Bip_L_LowerLeg'), bone('J_Bip_L_Foot'), bone('J_Bip_L_ToeBase')];
-  const ok = arm.every(Boolean) && leg.every(Boolean) && legL.every(Boolean);
+  const ok = arm.every(Boolean) && leg.every(Boolean) && legL.every(Boolean) && !!hips;
   const handAt = new THREE.Vector3(), footAt = new THREE.Vector3();
-  let handSet = false, footSet = false, plan = null;
+  let handSet = false, footSet = false, plan = null, lastC = 0;
+  const held = [0, 0];                    // how far each foot (left, right) is held up now
   const sole = () => VAULT.sole * (character.hipsHeight || 1) * (character.size || 1);
   const sideOf = (o, start, dx, dz) => { o.getWorldPosition(_p); return (_p.x - start.x) * dz - (_p.z - start.z) * dx; };      // her left of her way (m)
   return {
@@ -178,9 +182,10 @@ export function createVaultIK(character) {
       return [smooth((c - H.from + 0.03) / 0.1) * (1 - smooth((c - H.to + 0.1) / 0.1)),
         smooth((c - F.from + 0.02) / 0.08) * (1 - smooth((c - F.to + 0.08) / 0.08))];
     },
-    apply(p, c, start, dx, dz) {
+    // fade: 1 through the vault; after it (her run or her landing has taken over), let go of over a moment, not at once
+    apply(p, c, start, dx, dz, fade = 1) {
       if (!ok) return;
-      if (p !== plan) { plan = p; handSet = footSet = false; }
+      if (p !== plan || c < lastC) { plan = p; handSet = footSet = false; held[0] = held[1] = 0; lastC = c; }
       const [wh, wf] = this.weights(c);
       character.object.updateMatrixWorld(true);
       // where they go: across her way, where the clip has them as they first touch; along it, the plan's; up, the top
@@ -203,20 +208,31 @@ export function createVaultIK(character) {
       // her feet over the top, not through it: a foot (its toes, its heel) under the top while over it is drawn up, the
       // knee bending more (the clip's top is flat and its own height; a real one may be deeper, or not)
       if (c > VAULT.hand.from) {
+        // (off the top, her hips over it, a foot still on the near side under the top would be a leg through it too).
+        // How much a foot is held up fades in and out over a few cm at the ends of where it must be, and over a moment
+        // as she leaves the top: no foot ever jumps
+        hips.getWorldPosition(_p);
+        const over = (_p.x - start.x) * dx + (_p.z - start.z) * dz > p.near ? smooth((c - VAULT.push) / 0.08) : 0;
+        const from = p.near - 0.12 - 0.78 * over, to = p.far + 0.12;
         for (const [i, chain] of [legL, leg].entries()) {
           if (i === 1 && wf >= 1) continue;
           let lift = 0;
           for (const [joint, clear] of [[chain[3], sole() + 0.012], [chain[2], 0.075]]) {
             joint.getWorldPosition(_p);
             const a = (_p.x - start.x) * dx + (_p.z - start.z) * dz;
-            if (a > p.near - 0.12 && a < p.far + 0.12) lift = Math.max(lift, p.top + clear - _p.y);
+            const w = smooth((a - from + 0.1) / 0.2) * (1 - smooth((a - to + 0.05) / 0.3));
+            lift = Math.max(lift, (p.top + clear - _p.y) * w * fade);
           }
+          // (let down no faster than DROP: a foot let go of by the top drops as a foot does, not in a frame)
+          lift = Math.max(lift, held[i] - DROP * Math.max(0, c - lastC));
+          held[i] = lift;
           if (lift > 0.002) {
             chain[3].getWorldPosition(_t2).y += lift;
             reach(chain[0], chain[1], chain[2], chain[3], _t2, 1);
           }
         }
       }
+      lastC = c;
     },
   };
 }

@@ -7,10 +7,10 @@
 <title>ท่าข้ามรั้ว (mocap)</title>
 <!--
   vault.html  —  her vault over low things, to try: a motion capture (vault-anim.js: Mixamo's "Vault Over Box" up to the top,
-  "Jumping Down" off it), fitted to each thing she goes over (player-vault.js: where it begins, how high, how far, her
+  then a leap off it onto her front foot into her run), fitted to each thing she goes over (player-vault.js: where it begins, how high, how far, her
   hand and right foot put on the top). In a meadow with the village's low things: a fence, barrels, crates, hay, a bench,
   a woodpile. Run at one and she goes over it; walking, push at it a moment (or press the jump button by it).
-  The stick let go as she lands: she rises from the landing; held: she runs on.
+  The stick let go as she lands: she comes down into the jump's landing and stops; held: she runs on.
   One job: try the vault, alone, before the game has it (it still has the hop, player-hurdle.js).
 -->
 <style>
@@ -160,7 +160,8 @@ const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, ik = null, loading = false, who = 0;
 let speed = 0, mode = 'ground', pushT = 0, jumpWanted = 0, slow = 1, demo = null, ikOn = true, landT = -1;
 const plan = {}, path = {}, ahead = {}, start = new THREE.Vector3();
-let c = 0, dx = 0, dz = 1, ranOn = false;
+let c = 0, dx = 0, dz = 1, ranOn = false, tail = 0;
+const TAIL = 0.16;          // s her feet are let go of by the vault's IK once she is down
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
   dom: renderer.domElement, ui: document.getElementById('stick'),
@@ -274,12 +275,19 @@ function step(dt) {
     me.pos.set(start.x + dx * path.along, path.y, start.z + dz * path.along);
     hero.actions[VAULT_CLIP].time = Math.min(c, hero.actions[VAULT_CLIP].getClip().duration);
     if (path.down && pushing) {
-      // down, the stick held: she runs on, out of the landing (its dip, under her stride as it fades in)
-      mode = 'ground'; speed = Math.min(Math.max(pace, WALK), RUN); landT = 0.3;
-      hero.play(speed < (WALK + RUN) * 0.5 ? 'walk' : 'run', 0.3, false);
+      // down on her front foot, the stick held: she runs on. The clip's last stride is her run's own (the sprint), so her
+      // run takes over at the same moment of its stride: no seam
+      mode = 'ground'; speed = Math.min(Math.max(pace, WALK), RUN); landT = -1; tail = TAIL;
+      hero.play('run', 0.2, false);
+      const run = hero.actions.run;
+      run.time = (VAULT_TIMES.runPhase + (c - VAULT_TIMES.touch)) % run.getClip().duration;
       hero.setRate(Math.min(1.9, Math.max(0.7, speed / (hero.speeds.run || 1))));
-    } else if (c >= hero.actions[VAULT_CLIP].getClip().duration - 0.02) {
-      mode = 'ground'; speed = 0; landT = 0; hero.play('idle', 0.35);
+    } else if (path.down) {
+      // the stick let go: she comes down into the jump's landing and stops
+      mode = 'ground'; speed = Math.min(pace, RUN) * 0.5; landT = 0.45; tail = TAIL;
+      hero.play('jump_land', 0.22, false);
+      hero.actions.jump_land.time = 0.1;
+      hero.setRate(1.15);
     }
   }
   hero.update(dt);
@@ -288,6 +296,7 @@ function step(dt) {
   hero.object.rotation.set(0, me.heading, 0);
   root.updateMatrixWorld(true);
   if (mode === 'vault' && ikOn) ik.apply(plan, c, start, dx, dz);
+  else if (tail > 0) { tail -= dt; c += dt; if (ikOn) ik.apply(plan, c, start, dx, dz, Math.max(0, tail / TAIL)); }
   hero.holdSprings(mode === 'vault' ? 2 : 1, 1);
   hero.updateSprings(dt);
   grass.userData.setWalker(me.pos, 0.55);
