@@ -115,11 +115,11 @@ const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150
 scene.add(grass);
 
 // ---- four rocks ahead of her, each as tall as that many jumps reach and one jump fewer does not (their tops: measured,
-// below). She gets over a rock's side once her feet are within 0.35 m of its top: her tops are 0.8, 2.2, 3.4, 4.4 m (at the
+// below). She gets over a rock's side once her feet are within 0.35 m of its top: her tops are 1.0, 2.35, 3.45, 4.4 m (at the
 // top of each jump), and each rock's top a little under one of them
 const ROCKS = [
-  { x: 6.2, z: 7.5, h: 0.93, seed: 3 }, { x: 2.3, z: 10, h: 2.33, seed: 8 },         // (+x is her left: from behind her, 1 to 4 left to right)
-  { x: -2.3, z: 10, h: 3.48, seed: 5 }, { x: -6.2, z: 7.5, h: 4.48, seed: 11 },
+  { x: 6.2, z: 7.5, h: 1.13, seed: 3 }, { x: 2.3, z: 10, h: 2.45, seed: 8 },         // (+x is her left: from behind her, 1 to 4 left to right)
+  { x: -2.3, z: 10, h: 3.53, seed: 5 }, { x: -6.2, z: 7.5, h: 4.48, seed: 11 },
 ].map(r => ({ ...r, w: 2.8, d: 2.8, y: H(r.x, r.z) - 0.25, rotY: r.seed * 0.7 }));
 const blocks = createRockBlocks(ROCKS);
 scene.add(blocks);

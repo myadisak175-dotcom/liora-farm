@@ -27,7 +27,7 @@
    ground: the height of what is under her now.
 
    The four jumps (numbers for a girl 1.75 m tall; a smaller or bigger one gets them in her own size):
-     1  off the ground: the game's take-off clip, waist high                           rises HEIGHTS[0]
+     1  off the ground: the game's take-off clip, a little over waist high            rises HEIGHTS[0]
      2  a leap: her hand flicked down at the circle she kicks off, then reaching up     rises HEIGHTS[1] more
      3  a front flip: stretched, tucked, opened out                                    rises HEIGHTS[2] more
      4  a full turn: her hands at her chest, then one swept up over her head            rises HEIGHTS[3] more
@@ -53,9 +53,9 @@
 import * as THREE from 'three';
 
 export const MAGIC_JUMP = {
-  // m each jump rises: the first off the ground a jump's (waist high), the rest each a little less than the one before;
-  // 4.4 m up in all, at the top of each (0.8, 2.2, 3.4, 4.4)
-  heights: [0.8, 1.43, 1.17, 1.0],
+  // m each jump rises: the first off the ground a jump's (a little over waist high), the rest each a little less than the one before;
+  // 4.4 m up in all, at the top of each (1.0, 2.35, 3.45, 4.4)
+  heights: [1.0, 1.35, 1.1, 0.95],
   grav: 24.8,                         // m/s²: the game's own jump's (at 1.75 m)
   fallGrav: 1.2,                      // the pull on the way down, times that
   // at the very top of each jump (slower than hangV m/s, up or down) the pull is cut to `hang` of itself
