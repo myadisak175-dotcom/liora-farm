@@ -106,18 +106,18 @@ const POSES = {
     lL: [[0.03, -0.99, 0.06], [0.01, -0.99, -0.08]], lR: [[0.03, -0.99, 0.02], [0.01, -0.99, -0.12]],
     toe: [0.9, 0.9], spine: [-0.06, 0, 0], head: [-0.05, 0, 0],
   },
-  // 1: up. Her knees drawn up in front of her, side by side and straight ahead, bent square (thighs near level, shins
-  // hanging under them); her arms out a little for balance, elbows bent
+  // 1: up. Her left knee drawn up in front of her, pointing ahead, bent square (thigh near level, shin hanging under it);
+  // her right leg straight down under her, as she stands; her arms out a little for balance, elbows bent
   tuck1: {
     aL: [[0.66, -0.6, 0.45], [0.5, -0.32, 0.8]], aR: [[0.66, -0.6, 0.45], [0.5, -0.32, 0.8]],
-    lL: [[0.04, -0.3, 0.95], [0.02, -0.97, -0.24]], lR: [[0.04, -0.42, 0.91], [0.02, -0.95, -0.31]],
-    toe: [0.7, 0.7], spine: [0.12, 0, 0], head: [-0.04, 0, 0],
+    lL: [[0.04, -0.3, 0.95], [0.02, -0.97, -0.24]], lR: [[0.03, -0.995, 0.02], [0.01, -0.995, -0.06]],
+    toe: [0.7, 0.35], spine: [0.1, 0, 0], head: [-0.04, 0, 0],
   },
-  // waiting at the top of a jump: gathered a little under her, ready to kick again
+  // waiting at the top of a jump: her left knee a little up, her right leg straight down as she stands, ready to kick again
   ready: {
     aL: [[0.55, -0.8, -0.2], [0.5, -0.8, 0.33]], aR: [[0.55, -0.8, -0.2], [0.5, -0.8, 0.33]],
-    lL: [[0.04, -0.72, 0.69], [0.02, -0.9, -0.43]], lR: [[0.04, -0.9, 0.42], [0.02, -0.95, -0.3]],
-    toe: [0.6, 0.6], spine: [0.08, 0, 0], head: [0, 0, 0],
+    lL: [[0.04, -0.72, 0.69], [0.02, -0.9, -0.43]], lR: [[0.03, -0.995, 0.03], [0.01, -0.99, -0.1]],
+    toe: [0.6, 0.35], spine: [0.08, 0, 0], head: [0, 0, 0],
   },
   // the wind-up of a kick: her knees right up under her, her arms swung back, her back curled
   gather: {
@@ -347,13 +347,15 @@ export function createMagicJump({ character, circles }) {
     goal.set(ROWS[name]);
     if (name !== 'ready' || wind >= 0) return;
     // out of a jump's move and coming down: her falling pose, the faster the more the air lifts her arms. Nothing in it
-    // holds still: her legs change places slowly, the air goes through her arms, her back sways
+    // holds still: her left knee comes up and down a little (her right leg stays down under her, as she stands, swaying
+    // only a little), the air goes through her arms, her back sways
     const down = sstep(1.2 * k, 4.5 * k, -vy), fast = sstep(6 * k, 13 * k, -vy);
     if (down > 0) {
       const F = ROWS.fall, FF = ROWS.fallFast;
       for (let i = 0; i < N; i++) goal[i] += ((F[i] + (FF[i] - F[i]) * fast) - goal[i]) * down;
       const swap = 0.3 * down * (0.5 + 0.5 * Math.sin(clock * 3.6));
-      for (let i = LEGS; i < LEGS + 6; i++) { const l = goal[i], r = goal[i + 6]; goal[i] = l + (r - l) * swap; goal[i + 6] = r + (l - r) * swap; }
+      for (let i = LEGS; i < LEGS + 6; i++) goal[i] += (goal[i + 6] - goal[i]) * swap;
+      goal[LEGS + 8] += 0.04 * down * Math.sin(clock * 2.6 + 1);                // (her right thigh: a little forward and back)
       const fl = (0.035 + 0.06 * fast) * down;
       goal[1] += fl * Math.sin(clock * 21); goal[4] += fl * 1.6 * Math.sin(clock * 21 - 0.9);
       goal[7] += fl * Math.sin(clock * 18.2 + 1.7); goal[10] += fl * 1.6 * Math.sin(clock * 18.2 + 0.8);
