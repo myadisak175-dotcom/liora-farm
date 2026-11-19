@@ -107,16 +107,18 @@ const POSES = {
     toe: [0.9, 0.9], spine: [-0.06, 0, 0], head: [-0.05, 0, 0],
   },
   // 1: up. Her left knee drawn up in front of her, pointing ahead, bent square (thigh near level, shin hanging under it);
-  // her right leg straight down under her, as she stands; her arms out a little for balance, elbows bent
+  // her right thigh down under her as she stands (not forward), its knee bent, her foot tucked back behind her; her arms
+  // out a little for balance, elbows bent
   tuck1: {
     aL: [[0.66, -0.6, 0.45], [0.5, -0.32, 0.8]], aR: [[0.66, -0.6, 0.45], [0.5, -0.32, 0.8]],
-    lL: [[0.04, -0.3, 0.95], [0.02, -0.97, -0.24]], lR: [[0.03, -0.995, 0.02], [0.01, -0.995, -0.06]],
+    lL: [[0.04, -0.3, 0.95], [0.02, -0.97, -0.24]], lR: [[0.03, -0.99, -0.1], [0.01, -0.42, -0.91]],
     toe: [0.7, 0.35], spine: [0.1, 0, 0], head: [-0.04, 0, 0],
   },
-  // waiting at the top of a jump: her left knee a little up, her right leg straight down as she stands, ready to kick again
+  // waiting at the top of a jump: her left knee a little up, her right thigh down under her as she stands (its knee bent
+  // a little, her foot back), ready to kick again
   ready: {
     aL: [[0.55, -0.8, -0.2], [0.5, -0.8, 0.33]], aR: [[0.55, -0.8, -0.2], [0.5, -0.8, 0.33]],
-    lL: [[0.04, -0.72, 0.69], [0.02, -0.9, -0.43]], lR: [[0.03, -0.995, 0.03], [0.01, -0.99, -0.1]],
+    lL: [[0.04, -0.72, 0.69], [0.02, -0.9, -0.43]], lR: [[0.03, -0.995, -0.06], [0.01, -0.72, -0.69]],
     toe: [0.6, 0.35], spine: [0.08, 0, 0], head: [0, 0, 0],
   },
   // the wind-up of a kick: her knees right up under her, her arms swung back, her back curled
