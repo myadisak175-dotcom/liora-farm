@@ -2,8 +2,7 @@
 """Make the magic jump's take-off and landing from two Mixamo moves (mocap), posed again for her:
 
   MJ_Up   <- Mixamo "Jumping Up"    the first jump off the ground: a crouch, a push, her knees coming up under her
-  MJ_Land <- Mixamo "Jumping Down"  the landing from high: down into a deep crouch, both hands to the ground, and up
-                                    again into her standing pose
+  MJ_Land <- Mixamo "Jumping Down"  the landing from high: down into a crouch and up again into her standing pose
 
 Both are first made .vrma by tools/mixamo-to-vrma.mjs (the vault's too: three-vrm's Mixamo retarget onto the library's
 skeleton), into assets/animations/mixamo/, which is not in the repo: Mixamo's moves are Adobe's, free to use in the
@@ -20,12 +19,12 @@ part, its arms, back, head and hips' turns, the way its weight goes. What is pos
     (her hips leave as fast as the game's first jump does: printed). From then on the clip is in place: the game moves
     her up (magic-jump.js), so her hips stay where they were as she left the ground and only her body moves about them,
     up to the top of the first jump (UP_AIR s, the game's own time to the top). Off the ground her legs are the mocap's.
-  - MJ_Land begins as her feet touch. Her hips go down as the mocap's (LAND_IN times as fast: she comes down faster
-    in the game), it holds the bottom LAND_HOLD times as fast as the mocap, and then rises into her standing pose in
-    LAND_RISE s: her hands come off the ground first, her hips rise, her back straightens last. Its hands are put on
-    the ground (exactly) wherever the mocap's are down there. LAND_DEPTH: how deep (1: as the mocap; less, her hips
-    stay higher and her back straighter); MJ_Land_Soft is the same at SOFT_DEPTH, for a lower fall, her hands to
-    her knees instead of the ground.
+  - MJ_Land begins as her feet touch, and is only a crouch: her hips go down as the mocap's (LAND_IN times as fast:
+    she comes down faster in the game) but LAND_DEPTH as deep, her back leaning in LAND_BEND as far as the mocap's,
+    her arms as she stands (the mocap bends right over and puts both hands on the ground: not wanted, she runs on out
+    of it). It holds the bottom LAND_HOLD times as fast as the mocap, then rises into her standing pose in LAND_RISE s.
+    MJ_Land_Soft is the same less deep (SOFT_DEPTH, SOFT_BEND): for a lower fall, and for a landing she runs on out of
+    (magic-jump.js).
 
 Lengths and turns are the library's (T-pose, +Z forward, her left +X, up +Y), on the playable characters' proportions
 (tools/vrma_pose.py: fitted_skeleton). Usage (from the repo folder; needs numpy):
@@ -61,11 +60,12 @@ UP_AIR = 0.3             # s from leaving the ground to the top of the first jum
 UP_SRC = (0.04, 0.335, 0.51, 0.8333)     # the mocap's own times: beginning to go down, the bottom, toes off, its end
 LAND_SRC = (1.80, 2.03, 2.6667)          # the mocap's: a foot touching, the bottom, its end (still down)
 LAND_IN = 1.2            # how much faster than the mocap she goes down
-LAND_HOLD = 1.9          # how much faster than the mocap she stays down
+LAND_HOLD = 2.4          # how much faster than the mocap she stays down
 LAND_RISE = 0.45         # s from the mocap's end up into her standing pose
-LAND_DEPTH = 1.0
-SOFT_DEPTH = 0.62
-WRIST_DOWN = 0.12        # her wrist over the ground with her fingers on it
+LAND_DEPTH = 0.6         # of the mocap's crouch (its hips go down to half their height)
+LAND_BEND = 0.3          # of how far over the mocap bends (its head goes down to its knees): she leans in a little
+SOFT_DEPTH = 0.4
+SOFT_BEND = 0.2
 
 sk, HH, _ = fitted_skeleton()
 ORDER = []
@@ -212,25 +212,6 @@ def knee_pole(R, side, foot_R):
     toes = foot_R @ IDLE_R[f"{side}Foot"].T @ (IDLE_P[f"{side}Toes"] - IDLE_P[f"{side}Foot"])
     toes[1] = 0
     return unit(ahead) + 0.5 * unit(toes)
-
-
-def lay_arm(R, P, side, hand_at, w):
-    """Her arm w of the way to its hand (wrist) at hand_at, its elbow bent as it was."""
-    if w <= 1e-4:
-        return
-    ua, la, hd = (f"{side}{b}" for b in ("UpperArm", "LowerArm", "Hand"))
-    sh = P[ua]
-    target = P[hd] + (hand_at - P[hd]) * w
-    a, b = np.linalg.norm(sk.offset[la]), np.linalg.norm(sk.offset[hd])
-    elbow, _ = two_bone(sh, target, a, b, P[la] - (sh + P[hd]) / 2)
-    hand_R = R[hd].copy()
-    for bone, child, to in ((ua, la, elbow), (la, hd, target)):
-        d_now = unit(R[bone] @ sk.offset[child])
-        d_want = unit(to - P[bone])
-        R[bone] = shortest(d_now, d_want) @ R[bone]
-        P[child] = P[bone] + R[bone] @ sk.offset[child]
-    R[hd] = hand_R                                            # her hand lies as it was (flat on the ground)
-    # (her fingers' world turns follow her hand: they are children of it, laid by locals again below)
 
 
 def shortest(a, b):
@@ -395,7 +376,7 @@ def make_up():
 
 # ---------------------------------------------------------------- MJ_Land
 
-def make_land(name, depth):
+def make_land(name, depth, bend):
     src = Clip(os.path.join(MOCAP, "Jumping_Down.vrma"))
     up = Clip(os.path.join(MOCAP, "Jumping_Up.vrma"))
     Lst, hst = up.at(0.0)
@@ -416,58 +397,43 @@ def make_land(name, depth):
         R, P = fk(L, h)
         mid = (P["leftToes"] + P["rightToes"]) / 2
         rel = (h - mid) * scale
-        y = h[1] * scale
-        y = IDLE_HIPS[1] + (y - IDLE_HIPS[1]) * depth
+        y = IDLE_HIPS[1] + (h[1] * scale - IDLE_HIPS[1]) * depth
         hp = np.array([idle_mid[0] + rel[0], y, idle_mid[2] + rel[2]])
-        # less deep: her hips a little more over her feet, her back and head straighter (the idle's, partly)
-        if depth < 1:
-            hp[[0, 2]] = IDLE_HIPS[[0, 2]] + (hp[[0, 2]] - IDLE_HIPS[[0, 2]]) * depth
-            for b in ("hips", "spine", "chest", "upperChest", "neck", "head"):
-                L[b] = slerp_m(IDLE_L[b], L[b], depth)
+        # her hips not as low as the mocap's (depth) and a little more over her feet; her back and head not bent as far
+        # over (bend: the rest of the way the idle's)
+        hp[[0, 2]] = IDLE_HIPS[[0, 2]] + (hp[[0, 2]] - IDLE_HIPS[[0, 2]]) * depth
+        for b in ("hips", "spine", "chest", "upperChest", "neck", "head"):
+            L[b] = slerp_m(IDLE_L[b], L[b], bend)
+        # her arms: as she stands (only her legs and hips are the mocap's: she just crouches)
+        for b in ARM_BONES:
+            L[b] = IDLE_L[b]
         tip = [max(0.0, pitch_of(R[f"{s}Foot"], s) - f) for s, f in zip(("left", "right"), flat0)]
-        hands = {}
-        for side in ("left", "right"):
-            hands[side] = (ease((0.30 - P[f"{side}Hand"][1]) / 0.12), WRIST_DOWN)    # how much on the ground; its wrist's height
-        return L, hp, tip, hands
+        return L, hp, tip
 
-    frames, hips_y, short, gap = [], [], 0.0, 0.0
-    Lend, hend, tip_end, hands_end = body_at(s_end)
+    frames, hips_y, short, low_hand = [], [], 0.0, 9.0
+    Lend, hend, tip_end = body_at(s_end)
     for i in range(n):
         tau = i / FPS
         if i <= n_src:
-            L, hp, tip, hands = body_at(warp(tau))
+            L, hp, tip = body_at(warp(tau))
         else:
             u = (tau - t_end) / LAND_RISE
-            uh, us, ua = ease((u - 0.05) / 0.95), ease(u / 0.8), ease(u / 0.7)
+            uh, us, ua = ease((u - 0.05) / 0.95), ease(u / 0.8), ease(u / 0.8)
             L = {}
             for b in sk.node:
                 k = ua if b in ARM_BONES else us if b in ("spine", "chest", "upperChest", "neck", "head") else uh
                 L[b] = slerp_m(Lend[b], IDLE_L[b], k)
             hp = hend + (IDLE_HIPS - hend) * uh
             tip = [t * (1 - uh) for t in tip_end]
-            hands = {s: (c * (1 - ease(u / 0.35)), y) for s, (c, y) in hands_end.items()}
         R, P = fk(L, hp)
         short = max(short, stand_still_feet(R, P, tip))
-        # her hands to the ground, where the mocap's are down there
-        for side, (c, wy) in hands.items():
-            if c > 1e-3:
-                at = P[f"{side}Hand"].copy()
-                at[1] = wy
-                if depth < 1:
-                    # less deep, her hands do not reach the ground: they go to her knees instead (her weight on them)
-                    out = 1.0 if side == "left" else -1.0
-                    at = P[f"{side}LowerLeg"] + R["hips"] @ np.array([0.03 * out, 0.06, 0.06])
-                lay_arm(R, P, side, at, c)
-                R2, P2 = fk(locals_from(R), hp)
-                gap = max(gap, c * abs(P2[f"{side}Hand"][1] - at[1]))
-                R, P = R2, P2
-                stand_still_feet(R, P, tip)
+        low_hand = min(low_hand, P["leftHand"][1], P["rightHand"][1])
         frames.append((locals_from(R), hp))
         hips_y.append(hp[1])
     out, times = write(name, frames, FPS)
     print(f"{out}: {times[-1]:.3f} s (down {t_bot:.2f} s, up from {t_end:.2f} s); lowest hips {min(hips_y):.3f} "
-          f"(standing {IDLE_HIPS[1]:.3f}); feet short of the ground by {short * 1000:.0f} mm at most; hands off "
-          f"their spot by {gap * 1000:.0f} mm at most")
+          f"(standing {IDLE_HIPS[1]:.3f}); lowest wrist {low_hand:.2f} over the ground; feet short of the ground by "
+          f"{short * 1000:.0f} mm at most")
     return frames
 
 
@@ -476,5 +442,5 @@ if __name__ == "__main__":
         if not os.path.exists(os.path.join(MOCAP, f"{f}.vrma")):
             raise SystemExit(f"no {f}.vrma in {MOCAP}: make it first with tools/mixamo-to-vrma.mjs (see above)")
     make_up()
-    make_land("MJ_Land", LAND_DEPTH)
-    make_land("MJ_Land_Soft", SOFT_DEPTH)
+    make_land("MJ_Land", LAND_DEPTH, LAND_BEND)
+    make_land("MJ_Land_Soft", SOFT_DEPTH, SOFT_BEND)

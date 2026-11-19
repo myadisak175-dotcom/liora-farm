@@ -67,9 +67,9 @@
    starts at the push, out of her stride. Up to the top of the first jump her body is the mocap's (in place: the game
    lifts her); then the poses above take her on, beginning from where the mocap left her (her limbs as they are, going
    as they were going), at the top, or as soon as she presses again or starts down. A fall from higher than
-   LAND_HIGH m ends in the mocap's landing: down into a deep crouch, both hands to the ground, and up into her standing
-   pose (from higher than LAND_DEEP m all the way down; lower, a little less deep: mj_land_soft). Lower than that,
-   the landing above.
+   LAND_HIGH m ends in the mocap's landing, only its crouch: down and up into her standing pose (from higher than LAND_DEEP m deeper; lower, or coming down with the stick
+   pushed, less deep: mj_land_soft, and with the stick pushed quicker, and she runs on out of it at its bottom).
+   Lower than that, the landing above.
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -579,12 +579,14 @@ export function createMagicJump({ character, circles, mocap = false }) {
         upBody = upLegs = false;
         const high = (peak - ground) / k;
         if (hasMocap() && high > LAND_HIGH) {
-          // from high: the mocap's landing (all the way down from higher than LAND_DEEP), played through into her
-          // standing pose; she may run on out of it once she is past its bottom
-          const clip = high > LAND_DEEP || !ch.actions.mj_land_soft ? 'mj_land' : 'mj_land_soft';
-          landing = { clip, rate: 1, hold: 0.3 + 0.08 * sstep(LAND_HIGH, LAND_DEEP + 1, high) };
+          // from high: the mocap's landing. Coming down with the stick pushed she runs on out of it: the less deep one,
+          // quicker, left for her run at its bottom. Let go, she lands and stands up out of it: deeper from higher
+          // than LAND_DEEP
+          const run = stick.amount > 0.12 && !!ch.actions.mj_land_soft;
+          const clip = !run && (high > LAND_DEEP || !ch.actions.mj_land_soft) ? 'mj_land' : 'mj_land_soft';
+          landing = run ? { clip, rate: 1.25, hold: 0.15 } : { clip, rate: 1, hold: 0.22 };
           ch.play(clip, 0, false);
-          ch.setRate(1);
+          ch.setRate(landing.rate);
         } else {
           landing = { clip: 'jump_land', rate: 1.4, hold: 0.14 + 0.1 * impact };
           ch.play('jump_land', 0, false);
