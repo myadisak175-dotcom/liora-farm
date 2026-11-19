@@ -11,8 +11,8 @@
   one for each number of jumps it takes to reach its top. Walk and run as in the game (the joystick, dragging to look);
   the jump button again in the air is the next jump; the stick pushed sends her its way, let go she goes straight up.
   One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
-  ?mocap=1: the first jump off the ground and a landing from high are the mocap's (magic-jump.js, mocap; its clips:
-  magic-jump-mocap-anim.js). The 🎞 button switches between the two.
+  The first jump off the ground and a landing from high are the mocap's, as in the game (magic-jump.js, mocap; its clips:
+  magic-jump-mocap-anim.js); ?mocap=0 (the 🎞 button) is the jump as it was before them.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -89,7 +89,7 @@ import { createMagicCircles } from './magic-circle-fx.js';
 import { createMagicJump } from './magic-jump.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
-const MOCAP = new URLSearchParams(location.search).has('mocap');
+const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -353,7 +353,7 @@ btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.len
 btn('demo').onclick = () => startDemo();
 // the mocap's take-off and landing, or the jump as it is in the game
 btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
-btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.delete('mocap'); else u.searchParams.set('mocap', '1'); location.href = u.href; };
+btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.set('mocap', '0'); else u.searchParams.delete('mocap'); location.href = u.href; };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
 // for a test (or the console): step the world by hand, look from a chosen spot

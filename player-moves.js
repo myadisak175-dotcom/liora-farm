@@ -98,6 +98,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let speed = 0, went = 0, paceWas = 0, pace = 0;      // how fast she means to go, how fast she really went (last frame), the pace before, the pace her legs go at
   let vy = 0, peakY = pos.y, airBase = pos.y, slideV = 0, slideT = 0, stuckT = 0;
   let landT = -1, landHold = LAND_HOLD, jumpWanted = 0;
+  let landClip = 'jump_land', landRate = LAND_RATE;       // the landing she is in: its clip, how fast it plays
   let dashWanted = 0, dashT = 0, dashCool = 0, sprint = false, easedOff = 0;
   let edgeT = 0, edgeGrace = 0;               // how long she has pushed at a tall cliff's brink
   let shy = 0;                                // s after a slide that got her nowhere: edges are walls for a moment
@@ -145,7 +146,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   steps.find(character);
   // ---- the magic jump: her flight, and her body in it. It moves what it is given (her feet's height, her way across
   // in the air, her heading), and reads the stick as a way over the ground
-  const air = createMagicJump({ character, circles });
+  // (mocap: the first jump off the ground and a landing from high are the Mixamo captures', where her clips have them:
+  // magic-jump-mocap-anim.js, merged into them by index.html)
+  const air = createMagicJump({ character, circles, mocap: true });
   const me = { pos, vel: new THREE.Vector3(), heading: 0 }, airStick = { x: 0, z: 1, amount: 0 };
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)
@@ -265,8 +268,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     mode = 'ground'; vy = 0;
     const hit = slid ? 0.25 : air.impact;
     if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1 + 0.4 * hit, 0.32, 'splash');
-    landT = 0; landHold = LAND_HOLD + 0.1 * hit; speed *= 1 - 0.4 * hit;
-    character.play('jump_land', 0.06, false);
+    landT = 0; speed *= 1 - 0.4 * hit;
+    if (slid) { landClip = 'jump_land'; landRate = LAND_RATE; landHold = LAND_HOLD + 0.1 * hit; }
+    else ({ clip: landClip, rate: landRate, hold: landHold } = air.landing);      // (the flight's: from high, the mocap's crouch)
+    character.play(landClip, 0.06, false);
   }
   function startSlide(k) {
     if (mode !== 'air') peakY = pos.y;                                        // (not from a fall: how far she comes down is counted from here)
@@ -403,7 +408,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       if (run) run.time = (VAULT_TIMES.runPhase + (overC - VAULT_TIMES.touch)) % run.getClip().duration;
     } else {
       // the stick let go: down into the jump's landing, and she stops
-      speed = Math.min(went, RUN0 * k) * 0.5; landT = 0; landHold = LAND_HOLD;
+      speed = Math.min(went, RUN0 * k) * 0.5; landT = 0; landHold = LAND_HOLD; landClip = 'jump_land'; landRate = LAND_RATE;
       character.play('jump_land', 0.22, false);
       if (character.actions.jump_land) character.actions.jump_land.time = 0.1;
     }
@@ -644,12 +649,12 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       character.setRate(character.state === 'jump_start' ? START_RATE : 1);
     } else if (landT >= 0) {
       landT += dt;
-      const landing = character.actions.jump_land;
-      if ((pace >= 0.25 && landT > landHold) || character.state !== 'jump_land' || (landing && landing.time >= landing.getClip().duration - 0.02)) landT = -1;
-      else character.setRate(LAND_RATE);
+      const landing = character.actions[landClip];
+      if ((pace >= 0.25 && landT > landHold) || character.state !== landClip || (landing && landing.time >= landing.getClip().duration - 0.02)) landT = -1;
+      else character.setRate(landRate);
     }
     if (mode === 'ground' && landT < 0) {
-      if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : character.state === 'jump_land' ? 0.28 : 0.2);      // (up out of a landing: a longer blend)
+      if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : /land/.test(character.state) ? 0.28 : 0.2);      // (up out of a landing: a longer blend)
       character.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, pace / (character.speeds[st] || 1))));      // (her legs at the pace she goes, as the walker's)
     }
     character.update(dt);

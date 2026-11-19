@@ -161,10 +161,11 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=11",
+  "./player-moves.js": "./player-moves.js?v=12",
   "./player-vault.js": "./player-vault.js?v=1",
   "./vault-anim.js": "./vault-anim.js?v=1",
-  "./magic-jump.js": "./magic-jump.js?v=7",
+  "./magic-jump-mocap-anim.js": "./magic-jump-mocap-anim.js?v=2",
+  "./magic-jump.js": "./magic-jump.js?v=8",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=1",
   "./player-input.js": "./player-input.js?v=1",
   "./player-camera.js": "./player-camera.js?v=3",
@@ -256,6 +257,7 @@ import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
 import { CHARACTERS, DEFAULT_CHARACTER, faceOf, loadPlayable } from './characters.js';
 import { createCharacterPicker } from './character-picker.js';
 import { createMagicCircles } from './magic-circle-fx.js';
@@ -326,8 +328,9 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
 }
 // who plays: the one chosen last time in the picker (top left), Vivi at first (characters.js). Every character stands 1.75 m,
 // right beside the building kit's doors and the trees (Vivi as modelled is ~1.41 m: a child next to a 3 m storey). Sized
-// her clips: the shared library's (character-anim.js) and her vault over low things (vault-anim.js: player-vault.js)
-const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips } };
+// her clips: the shared library's (character-anim.js), her vault over low things (vault-anim.js: player-vault.js) and
+// the magic jump's take-off and landing from high (magic-jump-mocap-anim.js: magic-jump.js)
+const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips } };
 // before her shadow is made, so its picture fits her
 const HERO_HEIGHT = 1.75, HERO_KEY = 'liora.character';
 let heroId = DEFAULT_CHARACTER;

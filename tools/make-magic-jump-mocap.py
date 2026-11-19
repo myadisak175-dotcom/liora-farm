@@ -24,7 +24,7 @@ part, its arms, back, head and hips' turns, the way its weight goes. What is pos
     her arms as she stands (the mocap bends right over and puts both hands on the ground: not wanted, she runs on out
     of it). It holds the bottom LAND_HOLD times as fast as the mocap, then rises into her standing pose in LAND_RISE s.
     MJ_Land_Soft is the same less deep (SOFT_DEPTH, SOFT_BEND): for a lower fall, and for a landing she runs on out of
-    (magic-jump.js).
+    (magic-jump.js). The game merges the baked clips into every character's (index.html).
 
 Lengths and turns are the library's (T-pose, +Z forward, her left +X, up +Y), on the playable characters' proportions
 (tools/vrma_pose.py: fitted_skeleton). Usage (from the repo folder; needs numpy):
