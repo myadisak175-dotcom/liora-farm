@@ -3,7 +3,8 @@
 for her:
 
   MJ_Up   <- Mixamo "Jumping Up"      the first jump off the ground: a crouch, a push, her knees coming up under her
-  MJ_Land <- Mixamo "Jumping Down" 3  every landing from a flight: her feet come down and she stands, no crouch
+  MJ_Land <- Mixamo "Falling To Landing"  every landing (from a jump, from high, off a slide or a vault): down into a
+                                      crouch, and up into her standing pose
   MJ_Wall <- Mixamo "Jump From Wall"  climbing, the jump button with the stick pulled away from the rock: she kicks off
                                       it backwards and turns round in the air to face away from it
 
@@ -22,10 +23,12 @@ turns, the way its weight goes. What is posed again, every frame:
     (her hips leave as fast as the game's first jump does: printed). From then on the clip is in place: the game moves
     her up (magic-jump.js), so her hips stay where they were as she left the ground and only her body moves about them,
     up to the top of the first jump (UP_AIR s, the game's own time to the top). Off the ground her legs are the mocap's.
-  - MJ_Land begins as her feet touch (the mocap's LAND_TOUCH s) and she stands: the mocap comes down out of a hop and
-    straightens with no crouch, so she can run on out of it at once (a deep crouch was tried first, and not wanted).
-    It stands turned LAND_TURN degrees too far to its right and flings its arms out level as it lands: turned to face
-    ahead, and its arms lowered (LAND_ARMS), and then in LAND_SETTLE s into her standing pose.
+  - MJ_Land begins as her feet touch (the mocap's LAND_TOUCH s): down into its crouch (its hips to two thirds of
+    their height, its back leaning in) and up again; the mocap ends standing, and then in LAND_SETTLE s she is in her
+    standing pose. It stands turned LAND_TURN degrees too far to its right and leans out to its right as it crouches:
+    turned to face ahead and stood upright from behind (UP_UPRIGHT), and its arms, out level as it lands, lowered
+    (LAND_ARMS). (Made before from Jumping Down: a deep crouch with both hands on the ground, then only its crouch;
+    then from Jumping Down 3: no crouch at all. The user chose this one for every landing.)
   - MJ_Wall begins as its hands are about to leave the rock (WALL_FROM) and is played WALL_RATE times as fast. It is in
     place: the game kicks her away from the rock and up (magic-jump.js), and turns her round, the way she faces going
     from the rock to away from it as wall_turn() goes (the same curve as magic-jump.js' WALL_TURN): here her hips are
@@ -38,7 +41,7 @@ Lengths and turns are the library's (T-pose, +Z forward, her left +X, up +Y), on
 the repo folder; needs numpy):
 
   npm install --no-save three@0.170.0                (once)
-  node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jumping_Up.fbx Jumping_Down_3.fbx Jump_From_Wall.fbx
+  node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jumping_Up.fbx Falling_To_Landing.fbx Jump_From_Wall.fbx
   python3 tools/make-magic-jump-mocap.py
   python3 tools/bake-character-anim.py assets/animations/mixamo magic-jump-mocap-anim.js mj_up:MJ_Up mj_land:MJ_Land mj_wall:MJ_Wall
 """
@@ -66,10 +69,10 @@ UP_UPRIGHT = 0.85        # of its lean out to her side taken away (from behind s
 UP_TURN = 45.0           # degrees the mocap is turned to her left: it stands turned 43 degrees to its right (its head looking ahead)
 UP_AIR = 0.3             # s from leaving the ground to the top of the first jump (the game's: magic-jump.js)
 UP_SRC = (0.04, 0.335, 0.51, 0.8333)     # the mocap's own times: beginning to go down, the bottom, toes off, its end
-LAND_TOUCH = 0.2         # the mocap's time when its feet are on the ground (Jumping Down 3: 0.37 s in all)
-LAND_TURN = 25.0         # degrees it is turned to her left (it lands turned 33 degrees to its right)
+LAND_TOUCH = 0.28        # the mocap's time when its feet are on the ground (Falling To Landing: 1.07 s in all)
+LAND_TURN = 30.0         # degrees it is turned to her left (it lands turned 12 to 43 degrees to its right)
 LAND_ARMS = 40.0         # degrees its arms, out level as it lands, are lowered
-LAND_SETTLE = 0.2        # s from the mocap's end into her standing pose
+LAND_SETTLE = 0.15       # s from the mocap's end into her standing pose
 WALL_FROM = 0.35         # the mocap's time to begin at: its hands are about to leave the rock (Jump From Wall: 1.27 s)
 WALL_RATE = 1.6          # how much faster than the mocap it is played (the game's pull is harder than the world's)
 WALL_TURN = (0.42, 1.27)  # the mocap's times her turn round (180 degrees, to her right) begins and ends (wall_turn)
@@ -391,7 +394,7 @@ def lower_arms(L, hp, degrees, w):
 
 
 def make_land():
-    src = Clip(os.path.join(MOCAP, "Jumping_Down_3.vrma"))
+    src = Clip(os.path.join(MOCAP, "Falling_To_Landing.vrma"))
     up = Clip(os.path.join(MOCAP, "Jumping_Up.vrma"))
     Lst, hst = up.at(0.0)
     Rst, _ = fk(dict(Lst, hips=ry(math.radians(UP_TURN)) @ Lst["hips"]), hst)
@@ -464,7 +467,7 @@ def make_wall():
 
 
 if __name__ == "__main__":
-    for f in ("Jumping_Up", "Jumping_Down_3", "Jump_From_Wall"):
+    for f in ("Jumping_Up", "Falling_To_Landing", "Jump_From_Wall"):
         if not os.path.exists(os.path.join(MOCAP, f"{f}.vrma")):
             raise SystemExit(f"no {f}.vrma in {MOCAP}: make it first with tools/mixamo-to-vrma.mjs (see above)")
     make_up()

@@ -279,7 +279,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // a landing not out of a flight (at the foot of a slide, off a vault with the stick let go): the mocap's touch-down where
   // her clips have it (magic-jump-mocap-anim.js), else the library's landing
   function lightLanding(hold) {
-    if (character.actions.mj_land) { landClip = 'mj_land'; landRate = 1; landHold = 0.08; }
+    if (character.actions.mj_land) { landClip = 'mj_land'; landRate = 1; landHold = 0.12; }
     else { landClip = 'jump_land'; landRate = LAND_RATE; landHold = hold; }
   }
   function startSlide(k) {

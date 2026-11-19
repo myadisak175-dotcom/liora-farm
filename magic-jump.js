@@ -70,8 +70,8 @@
    starts at the push, out of her stride. Up to the top of the first jump her body is the mocap's (in place: the game
    lifts her); then the poses above take her on, beginning from where the mocap left her (her limbs as they are, going
    as they were going), at the top, or as soon as she presses again or starts down. Every flight ends in the mocap's
-   landing (mj_land): her feet come down and she stands, no crouch (a deep crouch was tried, and not wanted: she runs on
-   out of it at once). Kicking off a rock (kickOff) she is the mocap's until its clip ends or she presses again (not
+   landing (mj_land, Mixamo's Falling To Landing): down into a crouch and up into her standing pose; coming down with
+   the stick pushed she runs on out of it before its bottom. Kicking off a rock (kickOff) she is the mocap's until its clip ends or she presses again (not
    when she starts down: she is still turning), and the way she faces goes round 180 degrees to her right as WALL_TURN
    goes (the clip has her hips turned back by as much: tools/make-magic-jump-mocap.py, wall_turn); the stick does not
    turn her until she is round.
@@ -615,10 +615,11 @@ export function createMagicJump({ character, circles, mocap = false }) {
         active = false; tier = 0; wind = -1; vy = 0; queued = null; beat = caught ? 'วงเวทรับ' : '';
         upBody = upLegs = false; wall = null;
         if (hasMocap()) {
-          // the mocap's: her feet come down and she stands (she may run on out of it at once)
-          landing = { clip: 'mj_land', rate: 1, hold: 0.08 };
+          // the mocap's: down into its crouch and up into her standing pose. Coming down with the stick pushed, a little
+          // quicker, and she runs on out of it before its bottom
+          landing = stick.amount > 0.12 ? { clip: 'mj_land', rate: 1.3, hold: 0.12 } : { clip: 'mj_land', rate: 1, hold: 0.3 };
           ch.play('mj_land', 0, false);
-          ch.setRate(1);
+          ch.setRate(landing.rate);
         } else {
           landing = { clip: 'jump_land', rate: 1.4, hold: 0.14 + 0.1 * impact };
           ch.play('jump_land', 0, false);
