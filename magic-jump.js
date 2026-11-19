@@ -95,20 +95,34 @@ const SPIN = turnCurve(0.8, 2.0);                    // the turn: quick with her
    leg's x as it is, her right's the other way), so a pose with the same numbers on both sides is even.
      aL, aR: [upper arm, forearm]      lL, lR: [thigh, shin]      toe: [left, right] 0..1 how far her feet are pointed
      spine: [bend forward, turn to her left, lean to her right] (radians, over her whole back)      head: the same, her neck's
-   A pose says where she is going; the springs below take her there. Two things kept to in all of them: her elbows are
-   never locked straight, and her arms are never both straight out to the sides. */
+   A pose says where she is going; the springs below take her there. Things kept to in all of them: her elbows are never
+   locked straight, her arms are never both straight out to the sides, and her knees point the way she faces (not out to
+   her sides) unless the move turns one out (the 4th's passé). */
 const both = (arm, leg, rest) => ({ aL: arm, aR: arm, lL: leg, lR: leg, ...rest });
 const POSES = {
+  // 1: leaving the ground. Her legs straight down under her, her toes pointed, her arms swinging up in front
+  push1: {
+    aL: [[0.3, -0.7, 0.65], [0.2, -0.35, 0.92]], aR: [[0.3, -0.7, 0.65], [0.2, -0.35, 0.92]],
+    lL: [[0.03, -0.99, 0.06], [0.01, -0.99, -0.08]], lR: [[0.03, -0.99, 0.02], [0.01, -0.99, -0.12]],
+    toe: [0.9, 0.9], spine: [-0.06, 0, 0], head: [-0.05, 0, 0],
+  },
+  // 1: up. Her knees drawn up in front of her, side by side and straight ahead, bent square (thighs near level, shins
+  // hanging under them); her arms out a little for balance, elbows bent
+  tuck1: {
+    aL: [[0.66, -0.6, 0.45], [0.5, -0.32, 0.8]], aR: [[0.66, -0.6, 0.45], [0.5, -0.32, 0.8]],
+    lL: [[0.04, -0.3, 0.95], [0.02, -0.97, -0.24]], lR: [[0.04, -0.42, 0.91], [0.02, -0.95, -0.31]],
+    toe: [0.7, 0.7], spine: [0.12, 0, 0], head: [-0.04, 0, 0],
+  },
   // waiting at the top of a jump: gathered a little under her, ready to kick again
   ready: {
     aL: [[0.55, -0.8, -0.2], [0.5, -0.8, 0.33]], aR: [[0.55, -0.8, -0.2], [0.5, -0.8, 0.33]],
-    lL: [[0.09, -0.72, 0.69], [0.02, -0.9, -0.43]], lR: [[0.08, -0.9, 0.42], [0.02, -0.95, -0.3]],
+    lL: [[0.04, -0.72, 0.69], [0.02, -0.9, -0.43]], lR: [[0.04, -0.9, 0.42], [0.02, -0.95, -0.3]],
     toe: [0.6, 0.6], spine: [0.08, 0, 0], head: [0, 0, 0],
   },
   // the wind-up of a kick: her knees right up under her, her arms swung back, her back curled
   gather: {
     aL: [[0.42, -0.78, -0.46], [0.38, -0.88, -0.28]], aR: [[0.42, -0.78, -0.46], [0.38, -0.88, -0.28]],
-    lL: [[0.1, -0.48, 0.87], [0.02, -0.8, -0.6]], lR: [[0.1, -0.66, 0.74], [0.02, -0.88, -0.47]],
+    lL: [[0.05, -0.48, 0.87], [0.02, -0.8, -0.6]], lR: [[0.05, -0.66, 0.74], [0.02, -0.88, -0.47]],
     toe: [0.35, 0.35], spine: [0.24, 0, 0], head: [-0.1, 0, 0],
   },
   // 2: the kick. Her right leg driven down through the circle, her left knee coming up, her right hand flung down at it
@@ -184,7 +198,7 @@ PACE.fill(0.9, TOES, BACK); PACE.fill(1.15, BACK, HEAD); PACE.fill(0.85, HEAD, N
 /* each jump after its kick: [until (s after the kick), pose, pace (how hard the springs pull, 1/s), how it settles (1: it
    stops there; less: it runs a little past and comes back)]; after the last, 'ready' until she falls */
 const MOVES = {
-  1: [],
+  1: [[0.06, 'push1', 40, 0.85], [0.3, 'tuck1', 26, 0.8]],          // (from the ground only: off an edge she is past them)
   2: [[0.1, 'kick2', 40, 0.72], [0.34, 'leap2', 19, 0.74]],
   3: [[0.07, 'kick3', 42, 0.8], [0.31, 'tuck3', 38, 0.9], [0.53, 'open3', 24, 0.7]],
   4: [[0.08, 'kick4', 42, 0.8], [0.21, 'twirl4', 26, 0.85], [0.95, 'bloom4', 15, 0.7]],
@@ -199,6 +213,7 @@ export function createMagicJump({ character, circles }) {
   let over = 1e9;                             // m of air under her feet (from the last step), for her legs' reach
   let clock = 0;                              // s, for what never stops (her arms and legs falling)
   let W = 0, Wl = 0;                          // how much of her is the poses' (the rest: the clip under them): her body, her legs
+  let Wh = 0;                                 // how far her knees are laid as hinges over what the clip has (in the air and through the landing)
   let held = 0, upside = 0, flipA = 0, spinA = 0, lean = 0, leanV = 0, kickLean = 0, impact = 0;
   let pace = 15, settle = 0.9;                // how the springs pull now
   const x = new Float32Array(N), xv = new Float32Array(N), goal = new Float32Array(N);      // her pose now, how fast it is changing, where it is going
@@ -213,6 +228,26 @@ export function createMagicJump({ character, circles }) {
     for (const s of ['L', 'R']) {
       bones[s] = [g(`J_Bip_${s}_UpperArm`), g(`J_Bip_${s}_LowerArm`), g(`J_Bip_${s}_Hand`)];
       bones[s + 'leg'] = [g(`J_Bip_${s}_UpperLeg`), g(`J_Bip_${s}_LowerLeg`), g(`J_Bip_${s}_Foot`), g(`J_Bip_${s}_ToeBase`)];
+    }
+    // each leg as a hinge, from how it was made (the bind pose: straight down, her toes ahead): for her thigh and her shin,
+    // the bone's own way along it and its own front (the way her toes point, square to it)
+    bones.hinge = {};
+    let sk = null;
+    ch.model.traverse(o => { if (!sk && o.isSkinnedMesh && o.skeleton.bones.includes(bones.Lleg[0])) sk = o.skeleton; });
+    if (sk) for (const s of ['L', 'R']) {
+      const [ul, ll, foot, toe] = bones[s + 'leg'], made = bone => {
+        const i = sk.bones.indexOf(bone), m = new THREE.Matrix4().copy(sk.boneInverses[i]).invert(), p = new THREE.Vector3(), r = new THREE.Quaternion();
+        m.decompose(p, r, new THREE.Vector3());
+        return { p, r };
+      };
+      if (!toe || sk.bones.indexOf(toe) < 0 || sk.bones.indexOf(ul) < 0) continue;
+      const T0 = made(ul), S0 = made(ll), F0 = made(foot), O0 = made(toe), ahead = new THREE.Vector3().subVectors(O0.p, F0.p);
+      const own = (B, from, to) => {
+        const along = new THREE.Vector3().subVectors(to.p, from.p).normalize(), front = ahead.clone().addScaledVector(along, -ahead.dot(along)).normalize();
+        const back = B.r.clone().invert();
+        return { along: along.applyQuaternion(back), front: front.applyQuaternion(back) };
+      };
+      bones.hinge[s] = { thigh: own(T0, T0, S0), shin: own(S0, S0, F0) };
     }
     // every bone turned here, with how its clip had it and how it was left (below)
     kept = [];
@@ -245,6 +280,47 @@ export function createMagicJump({ character, circles }) {
     Pi.copy(P).invert();
     bone.quaternion.premultiply(P).premultiply(q).premultiply(Pi);
     bone.updateMatrixWorld(true);
+  }
+  // turn a bone (k of the way from where its clip has it) so that its own way along (own.along) points along `along` and
+  // its own front (own.front) faces `front`, both in the world (square to each other)
+  const mB = new THREE.Matrix4(), mW = new THREE.Matrix4(), side = new THREE.Vector3(), side0 = new THREE.Vector3();
+  function orient(bone, own, along, front, k) {
+    side0.crossVectors(own.along, own.front); side.crossVectors(along, front);
+    mB.makeBasis(own.along, own.front, side0); mW.makeBasis(along, front, side);
+    qt.setFromRotationMatrix(mW.multiply(mB.transpose()));
+    bone.parent.getWorldQuaternion(P);
+    q.copy(P).invert().multiply(qt);
+    bone.quaternion.slerp(q, Math.min(1, k));
+    bone.updateMatrixWorld(true);
+  }
+  // her leg as a hinge: her thigh along d1, her shin along d2, her knee facing the way it bends from (forward, as a knee
+  // does, unless the pose turns it out), and her thigh and shin turned about themselves to match (a clip may leave her
+  // thigh turned out: laid by its direction alone, her knee then bent out to her side)
+  const d1 = new THREE.Vector3(), d2 = new THREE.Vector3(), f1 = new THREE.Vector3(), f2 = new THREE.Vector3(), fw = new THREE.Vector3(), up = new THREE.Vector3();
+  function layLeg(hinge, thigh, shin, k) {
+    const c = clamp(d1.dot(d2), -1, 1), sn = Math.sqrt(1 - c * c);
+    fw.set(0, 0, 1).applyQuaternion(objQ); fw.addScaledVector(d1, -fw.dot(d1));             // her front, square to her thigh
+    up.set(0, 1, 0).applyQuaternion(objQ); up.addScaledVector(d1, -up.dot(d1));
+    fw.addScaledVector(up, 0.25).normalize();                                                // (a leg straight out ahead: her knee faces up)
+    f1.copy(d2).addScaledVector(d1, -c).multiplyScalar(-1);                                  // away from where her shin goes
+    const bent = sstep(0.12, 0.45, sn);
+    if (f1.lengthSq() > 1e-8) f1.normalize(); else f1.copy(fw);
+    f1.multiplyScalar(bent).addScaledVector(fw, 1 - bent);
+    f1.addScaledVector(d1, -f1.dot(d1)).normalize();
+    orient(thigh, hinge.thigh, d1, f1, k);
+    f2.copy(f1).multiplyScalar(c).addScaledVector(d1, sn);                                  // her shin's front: her thigh's, turned with the knee
+    f2.addScaledVector(d2, -f2.dot(d2)).normalize();
+    orient(shin, hinge.shin, d2, f2, k);
+  }
+  // where the clip shows (the landing: its right knee swings out to her side), a leg's swing out to her side is turned
+  // into its way forward (thigh) or back (shin), its height kept, so her feet stay where the clip has them on the ground.
+  // Her own poses (Wl) are left as they are (the 4th's passé turns a knee out on purpose)
+  function ahead(d, way) {
+    d.applyQuaternion(objQi);
+    const keep = 1 - 0.7 * (1 - Wl), x2 = d.x * d.x * (1 - keep * keep);
+    d.x *= keep;
+    d.z = (Math.abs(d.z) > 0.1 ? Math.sign(d.z) : way) * Math.sqrt(d.z * d.z + x2);
+    d.applyQuaternion(objQ);
   }
   // (`want`: direction number i of her pose, in the world; mirror: her right side's x is the other way)
   const wantDir = (i, mirror) => want.set(x[i * 3] * mirror, x[i * 3 + 1], x[i * 3 + 2]).normalize().applyQuaternion(objQ);
@@ -301,7 +377,7 @@ export function createMagicJump({ character, circles }) {
     takeOff(me) {
       active = true; tier = 1; t = 0; wind = -1; caught = false; fell = 0; queued = null; fromGround = true; over = 1e9;
       vy = speedFor(1); peak = me.pos.y;
-      x.set(ROWS.ready); xv.fill(0); kickLean = 0;
+      x.set(ROWS.push1); xv.fill(0); kickLean = 0;
       ch.play('jump_start', 0.08, false);
       if (ch.actions.jump_start) ch.actions.jump_start.time = START_AT;
       ch.setRate(START_RATE);
@@ -404,11 +480,16 @@ export function createMagicJump({ character, circles }) {
       clock += dt;
       impact = Math.max(0, impact - dt * 2.4);
       asTheClipHas();
-      // ---- how much of her is the poses': not the take-off (the clip's), all of her from near the top of the first jump
-      // on, and out again into the landing (her legs first: they are the landing clip's as soon as they touch)
-      const wantW = !active ? 0 : (tier === 1 && fromGround && wind < 0 ? sstep(0.12, 0.3, t) : 1);
+      // ---- how much of her is the poses': all of her in the air, her legs at once off the ground (the take-off clip has her
+      // body for a moment, not her legs: its knees fly out to her sides), and out again into the landing (her legs first:
+      // they are the landing clip's as soon as they touch)
+      const lift = active && tier === 1 && fromGround && wind < 0;
+      const wantW = !active ? 0 : lift ? sstep(0.03, 0.2, t) : 1, wantWl = !active ? 0 : lift ? sstep(0, 0.07, t) : 1;
       W += (wantW - W) * Math.min(1, dt * (wantW > W ? 16 : 11));
-      Wl += (wantW - Wl) * Math.min(1, dt * (wantW > Wl ? 16 : 28));
+      Wl += (wantWl - Wl) * Math.min(1, dt * (wantWl > Wl ? 40 : 28));
+      // (through the landing too her knees are hinges: the landing clip turns her left knee in across her)
+      const hinged = active || ch.state === 'jump_land';
+      Wh += ((hinged ? 1 : 0) - Wh) * Math.min(1, dt * (hinged ? 30 : 6));
       // ---- her pose: each number carried toward where it is going by a spring (in small steps: the same at any frame rate)
       if (active) {
         choosePose();
@@ -453,7 +534,7 @@ export function createMagicJump({ character, circles }) {
       obj.getWorldQuaternion(objQ);
       objQi.copy(objQ).invert();
       // ---- her back and her head, over the clip; then her arms and legs, and her feet pointed
-      if (W > 0.001) {
+      if (W > 0.001 || Wl > 0.001 || Wh > 0.001) {
         const nb = bones.back.length, nn = bones.neck.length;
         for (const bone of bones.back) bend(bone, x[BACK] * W / nb, x[BACK + 1] * W / nb, x[BACK + 2] * W / nb);
         for (const bone of bones.neck) bend(bone, x[HEAD] * W / nn, x[HEAD + 1] * W / nn, x[HEAD + 2] * W / nn);
@@ -462,14 +543,21 @@ export function createMagicJump({ character, circles }) {
           const [ua, la, hand] = bones[s], [ul, ll, foot, toe] = bones[s + 'leg'];
           wantDir(arm, mirror); aimAt(ua, la, W);
           wantDir(arm + 1, mirror); aimAt(la, hand, W);
-          wantDir(leg, mirror); aimAt(ul, ll, Wl);
-          wantDir(leg + 1, mirror); aimAt(ll, foot, Wl);
+          if (bones.hinge[s]) {
+            if (Wl > 0.001) { wantDir(leg, mirror); d1.copy(want); wantDir(leg + 1, mirror); d2.copy(want); layLeg(bones.hinge[s], ul, ll, Wl); }
+            if (Wh > 0.001) {                              // her knees as hinges, her legs where they now are (the clip's, under the poses)
+              ul.getWorldPosition(a); ll.getWorldPosition(b); d1.subVectors(b, a).normalize();
+              foot.getWorldPosition(a); d2.subVectors(a, b).normalize();
+              ahead(d1, 1); ahead(d2, -1);
+              layLeg(bones.hinge[s], ul, ll, Wh);
+            }
+          } else if (Wl > 0.001) { wantDir(leg, mirror); aimAt(ul, ll, Wl); wantDir(leg + 1, mirror); aimAt(ll, foot, Wl); }
           // her foot: pointed along her shin (her toes down, not her sole)
           const point = x[TOES + (s === 'L' ? 0 : 1)] * Wl;
           if (point > 0.01 && ll && foot && toe) { ll.getWorldPosition(a); foot.getWorldPosition(b); want.subVectors(b, a).normalize(); aimAt(foot, toe, point * 0.8); }
         }
       }
-      remember(W > 0.001);
+      remember(W > 0.001 || Wl > 0.001 || Wh > 0.001);
     },
     // for a test: the state of the jump now
     get debug() { return { tier, t, wind, vy, peak, caught, flipA, spinA, W, lean, pose: Array.from(x) }; },
