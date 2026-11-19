@@ -138,7 +138,7 @@
   "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./character-springs.js": "./character-springs.js?v=2",
-  "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1hop1",
+  "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1vault1",
   "./characters.js": "./characters.js?v=1",
   "./character-picker.js": "./character-picker.js?v=1",
   "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
@@ -161,13 +161,15 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=10",
+  "./player-moves.js": "./player-moves.js?v=11",
+  "./player-vault.js": "./player-vault.js?v=1",
+  "./vault-anim.js": "./vault-anim.js?v=1",
   "./magic-jump.js": "./magic-jump.js?v=7",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=1",
   "./player-input.js": "./player-input.js?v=1",
   "./player-camera.js": "./player-camera.js?v=3",
   "./player-climb.js": "./player-climb.js?v=2",
-  "./player-hurdle.js": "./player-hurdle.js?v=2",
+  "./player-hurdle.js": "./player-hurdle.js?v=3",
   "./player-footsteps.js": "./player-footsteps.js?v=2",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
@@ -253,6 +255,7 @@ import { createSkyTuner } from './sky-tuner.js';
 import { createCloudShadows } from './cloud-shadows.js';
 import { createTimeOfDay } from './time-of-day.js';
 import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
 import { CHARACTERS, DEFAULT_CHARACTER, faceOf, loadPlayable } from './characters.js';
 import { createCharacterPicker } from './character-picker.js';
 import { createMagicCircles } from './magic-circle-fx.js';
@@ -323,17 +326,19 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
 }
 // who plays: the one chosen last time in the picker (top left), Vivi at first (characters.js). Every character stands 1.75 m,
 // right beside the building kit's doors and the trees (Vivi as modelled is ~1.41 m: a child next to a 3 m storey). Sized
+// her clips: the shared library's (character-anim.js) and her vault over low things (vault-anim.js: player-vault.js)
+const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips } };
 // before her shadow is made, so its picture fits her
 const HERO_HEIGHT = 1.75, HERO_KEY = 'liora.character';
 let heroId = DEFAULT_CHARACTER;
 try { const saved = localStorage.getItem(HERO_KEY); if (CHARACTERS.some(c => c.id === saved)) heroId = saved; } catch (e) { /* not remembered: Vivi */ }
 await onStep(`ปลุก ${CHARACTERS.find(c => c.id === heroId).name}`);
 let hero;
-try { hero = await loadPlayable(heroId, CHARACTER_ANIM, { height: HERO_HEIGHT }); }
+try { hero = await loadPlayable(heroId, PLAYER_ANIM, { height: HERO_HEIGHT }); }
 catch (err) {                                                     // the remembered one would not load: Vivi plays
   console.warn('[character]', heroId, err);
   heroId = DEFAULT_CHARACTER;
-  hero = await loadPlayable(heroId, CHARACTER_ANIM, { height: HERO_HEIGHT });
+  hero = await loadPlayable(heroId, PLAYER_ANIM, { height: HERO_HEIGHT });
 }
 const ray = new THREE.Raycaster();
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
@@ -586,7 +591,7 @@ const picker = createCharacterPicker({
   characters: CHARACTERS, current: heroId, faceOf,
   top: LEFT_TOP + 42 * ((sceneEditor ? 1 : 0) + (rockEditor ? 1 : 0) + (placeEditor ? 1 : 0) + (pathBrush ? 1 : 0) + (foliageEditor ? 1 : 0)),
   onPick: async id => {
-    const next = await loadPlayable(id, CHARACTER_ANIM, { height: HERO_HEIGHT });
+    const next = await loadPlayable(id, PLAYER_ANIM, { height: HERO_HEIGHT });
     const old = hero;
     level.addUnderwater(next.object);                     // seen through the water, like the one before
     player.setCharacter(next);

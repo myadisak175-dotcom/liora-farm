@@ -57,7 +57,7 @@ export const VAULT_TIMES = VAULT;
 
 // how near the thing's collider she is (h.from) when a running vault from the clip's first frame begins
 export function vaultLead(h, hh, k) {
-  const body = BODY0 * k, near = h.from + body, far = h.to - body, inset = Math.min(INSET, (far - near) / 2);
+  const body = BODY0 * k, near = h.from + body, far = Math.max(near, h.to - body), inset = Math.min(INSET, (far - near) / 2);
   return VAULT.hand.along * hh - body - inset;
 }
 

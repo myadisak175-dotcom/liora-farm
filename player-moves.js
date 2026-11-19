@@ -10,7 +10,7 @@
 // The point of the moves: she gets about the land without going round. What she can do that the walker cannot:
 //   - jump: the magic jump (magic-jump.js). The jump button is the first jump, off a magic circle that opens on the ground;
 //     pressed again in the air, up to three more, each off a circle under her feet (4.4 m up in all, at 1.75 m). Her body
-//     in the air, and how she comes down, are its too: whenever she is in the air (off an edge, out of a hop) she is in a
+//     in the air, and how she comes down, are its too: whenever she is in the air (off an edge, over a parapet) she is in a
 //     flight, three jumps left if it was not the button that sent her. A long fall is caught by a circle on the ground.
 //   - leave a cliff's top. Walking square at an edge she hops off it (a tall one holds her at the brink for a moment first, so
 //     she is not thrown off a height by brushing its edge; a jump or a dash goes at once), falls, and lands at its foot, on
@@ -23,9 +23,10 @@
 //     face can be climbed.
 //   - swim. Water too deep to wade carries her: she swims where the stick points and treads water when it is let go, wades
 //     out where it shallows, and climbs out up a rock bank. Not over a waterfall, nor up one.
-//   - go over low things: running (or walking, for a moment) at a fence, a bridge's parapet, a barrel, she hops over it, her
-//     knees drawn up (player-hurdle.js finds it and makes the hop's arc; the clip is the library's tucked jump), lands as
-//     from a jump and runs on; over a bridge's parapet she falls into the river. The jump button by one hops it too.
+//   - go over low things: running (or walking, for a moment) at a fence, a bridge's parapet, a barrel, she vaults it: her
+//     left hand planted on the top, her right foot on it, a leap off it onto her front foot and on into her run (player-
+//     hurdle.js finds it; player-vault.js fits the vault, a motion capture, to it). The stick let go as she lands, she comes
+//     down into a landing and stops; over a bridge's parapet she falls into the river. The jump button by one vaults it too.
 //   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
@@ -44,7 +45,8 @@ import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
 import { createFootsteps } from './player-footsteps.js';
 import { createFace } from './player-climb.js';
-import { findHurdle, hopLead, planHop, hopAt } from './player-hurdle.js';
+import { findHurdle } from './player-hurdle.js';
+import { VAULT_CLIP, VAULT_TIMES, vaultLead, planVault, vaultAt, createVaultIK } from './player-vault.js';
 import { createMagicJump } from './magic-jump.js';
 
 const TUNED_HEIGHT = 1.412;                   // Vivi as modelled: the numbers below are for her at this height (x 1.24 at 1.75 m)
@@ -67,8 +69,8 @@ const REACH0 = 1.6;                           // m over the rock from her feet t
 const VAULT_T = 0.62, VAULT_FROM = 0.08;      // the vault over a top: how long it takes (s), and how far into the clip it starts (s)
 const WALL_HH = 0.44, SPAN_HH = 1.80;         // the climbing clip's wall, in front of her root, and how far up it her hands reach from her root, in hips heights (tools/make-climb-anim.py)
 const HURDLE_WAIT = 0.1;                      // s she walks at a low thing before she goes over it (running: at once)
-const HOP_FADE = 0.12, HOP_UNTUCK = 0.22;     // the hop over it: s to blend into its clip, and from her knees up to her legs down for the landing
-const HOP_LAND = 0.24, HOP_LAND_RATE = 0.6;   // landing from it on the move: s to blend from the landing into her stride, the landing clip going on this much slower (a light dip, not a jump's crouch)
+const NOWHERE = { from: 0, to: 0 };            // (a thing right at her: how far ahead the vault's run-up looks)
+const VAULT_TAIL = 0.16;                       // s her hand and feet are let go of by the vault's IK once she is down (not in a frame)
 const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -104,9 +106,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const reachFrom = new THREE.Vector3();        // taking hold in the air: where she was, from where she is put on the rock (shown easing over)
   let climbW = 0, tilt = 0, nX = 0, nY = 1, nZ = 0, standOff = 0;      // how far she is laid against the rock (0..1), by what angle, the way out of the face, and how far the rock's bulges hold her off it (m)
   const lie = { angle: 0, off: 0 };
-  let hurdleT = 0, hopT = 0, hopLift = 0, untucked = false;      // going over a low thing: how long she has walked at it; s into the hop; how high it has her; her legs are coming down
-  const ahead = {}, crossing = {};              // the one before her (player-hurdle.js), and where the hop began and comes down
-  const hop = {}, path = {};                    // the hop (planHop), and where she is in it (hopAt)
+  let hurdleT = 0, overC = 0, hopLift = 0, ikTail = 0;      // going over a low thing: how long she has walked at it; s into the vault's clip; how much it raises her; s left of letting go of her hand and feet
+  const ahead = {}, crossing = {};              // the one before her (player-hurdle.js), and where the vault began
+  const plan = {}, path = {};                   // the vault fitted to it (planVault), and where she is in it (vaultAt)
+  let vaultIK = createVaultIK(character);       // her hand and foot put on its top
   let vaultT = 0;                             // s into a vault
   const vault0 = new THREE.Vector3(), vault1 = new THREE.Vector3();
   let wake = 0;                               // s to the next ring she leaves swimming
@@ -247,7 +250,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (mayFly(p.x, p.z, k)) return;
     if (mayFly(p.x, pos.z, k)) p.z = pos.z; else if (mayFly(pos.x, p.z, k)) p.x = pos.x; else { p.x = pos.x; p.z = pos.z; }      // along what stops her, or straight down
   }
-  // off the ground, into a flight (magic-jump.js): jump, the button's first jump; or not (off an edge, out of a hop), up
+  // off the ground, into a flight (magic-jump.js): jump, the button's first jump; or not (off an edge, over a parapet), up
   // m/s (0: the ground fell away), out at least this pace
   function leave(up, k, jump, out = 0) {
     mode = 'air'; peakY = airBase = pos.y; landT = -1; edgeT = 0; edgeGrace = 0;
@@ -352,55 +355,59 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     climbRate = moved > 1e-5 ? (up < -0.3 ? -1 : 1) * Math.min(1.7, Math.max(0.5, v * Math.hypot(up, side) / (character.speeds.climb || 1))) : 0;
     heading += wrap(Math.atan2(ux, uz) - heading) * Math.min(1, dt * 9);
   }
-  // ---- going over a low thing (player-hurdle.js found it: ahead): a hop along the arc planHop makes, her knees drawn up.
-  // Where she comes down must be somewhere to be: ground no higher than its top, or a drop (water, ground far below, a
-  // face) that she falls to once she is over
+  // ---- going over a low thing (player-hurdle.js found it: ahead): her vault, fitted to it (player-vault.js). Where she
+  // comes down must be somewhere to be: ground no higher than its top, or a drop (water, ground far below, a face) that she
+  // falls to once she is off the top
   function startHurdle(k) {
     const hh = (character.hipsHeight || 1) * (character.size || 1), dx = Math.sin(heading), dz = Math.cos(heading);
-    let drop = false, ground = pos.y;
-    for (let again = 0; ; again++) {
-      if (!planHop(ahead, speed, k, hh, hop)) return false;
-      const lx = pos.x + dx * hop.far, lz = pos.z + dz * hop.far, f = footing(lx, lz);
-      ground = standAt(lx, lz);
-      if (f === 'ground' && ground <= ahead.top - 0.1) { drop = ground < pos.y - 0.6 * k; break; }
-      if (f === 'water' || (f === 'cliff' && ground < pos.y)) { drop = true; break; }
-      if (again || ahead.room < 0.2) return false;
-      ahead.room = 0.1;                                                       // (nowhere to be that far on: just past it, then)
-    }
-    Object.assign(crossing, { x: pos.x, y: pos.y, z: pos.z, dx, dz, land: drop ? pos.y : ground, drop, speed: Math.max(speed, WALK0 * k) });
-    mode = 'hurdle'; hopT = 0; hopLift = 0; untucked = false; hurdleT = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0;
-    character.play('hop', HOP_FADE, false); character.setRate(1);
-    if (character.actions.hop) character.actions.hop.time = hop.start;
+    if (!character.actions[VAULT_CLIP] || !planVault(ahead, { speed, hh, k, y0: pos.y }, plan)) return false;
+    const along = vaultAt(plan, VAULT_TIMES.touch, path).along;
+    const lx = pos.x + dx * along, lz = pos.z + dz * along, f = footing(lx, lz), ground = standAt(lx, lz);
+    let drop = false;
+    if (f === 'ground' && ground <= ahead.top - 0.1) drop = ground < pos.y - 0.6 * k;
+    else if (f === 'water' || (f === 'cliff' && ground < pos.y)) drop = true;
+    else return false;
+    planVault(ahead, { speed, hh, k, y0: pos.y, y1: drop ? pos.y : ground }, plan);
+    Object.assign(crossing, { x: pos.x, y: pos.y, z: pos.z, dx, dz, drop });
+    mode = 'hurdle'; overC = plan.c0; hopLift = 0; ikTail = 0; hurdleT = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0;
+    character.play(VAULT_CLIP, plan.c0 > 0.05 ? 0.2 : 0.14, false); character.setRate(0);
+    character.actions[VAULT_CLIP].time = overC;
     return true;
   }
   function hurdleStep(dt, k, pushing) {
-    hopT += dt;
-    const p = hopAt(hop, hopT, path);
-    pos.set(crossing.x + crossing.dx * p.along, crossing.y + (crossing.land - crossing.y) * smooth(p.u) + p.lift, crossing.z + crossing.dz * p.along);
-    hopLift = p.lift; went = p.pace;
-    // past it, her legs come down to land: the landing clip's first moment (her legs long, her toes down), held till she is down
-    if (!untucked && hopT >= hop.untuck) { untucked = true; character.play('jump_land', HOP_UNTUCK, false); character.setRate(0); }
-    // over a parapet with the river below: once she is past it and on her way down, she falls
-    if (crossing.drop) {
-      if (p.u >= Math.max(0.5, hop.over)) { speed = Math.min(p.pace, RUN0 * k); hopLift = 0; leave(p.up, k, false); airBase = crossing.y; }      // (airBase: the camera stays where it was)
+    const was = vaultAt(plan, overC, path).along;
+    overC += dt * path.rate;
+    vaultAt(plan, overC, path);
+    went = (path.along - was) / Math.max(dt, 1e-4);
+    pos.set(crossing.x + crossing.dx * path.along, path.y, crossing.z + crossing.dz * path.along);
+    hopLift = Math.max(0, path.y - crossing.y);
+    const clip = character.actions[VAULT_CLIP];
+    clip.time = Math.min(overC, clip.getClip().duration);
+    // over a parapet with the river below: off the top, she falls (a flight: magic-jump.js)
+    if (crossing.drop && overC >= VAULT_TIMES.push + 0.06) {
+      speed = Math.min(went, RUN0 * k); hopLift = 0; ikTail = VAULT_TAIL;
+      leave(0, k, false); airBase = crossing.y;                               // (airBase: the camera stays where it was)
       return;
     }
-    if (hopT >= hop.wait + hop.time) {
-      speed = Math.min(Math.max(crossing.speed, WALK0 * k), RUN0 * k);
-      const on = (hopT - hop.wait - hop.time) * speed;                        // (what is left of this frame, she is on her way already)
-      pos.x += crossing.dx * on; pos.z += crossing.dz * on;
-      pos.y = standAt(pos.x, pos.z); peakY = pos.y; hopLift = 0;
-      const depth = depthAt(pos.x, pos.z);
-      if (!pushing) touchDown(k, depth, false);                               // the stick let go: the jump's own landing, played out
-      else {
-        // going on: straight into her stride, the landing clip running on gently under it as it fades (a light dip)
-        mode = 'ground'; vy = 0; landT = -1; pace = paceWas = speed;
-        if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1.0, 0.32, 'splash');
-        character.setRate(HOP_LAND_RATE);
-        character.play(speed < (WALK0 + RUN0) * 0.5 * k ? 'walk' : 'run', HOP_LAND, false);
-      }
-      lastSafe.copy(pos);
+    if (!path.down) return;
+    // down on her front foot
+    pos.y = standAt(pos.x, pos.z); peakY = pos.y; hopLift = 0; ikTail = VAULT_TAIL;
+    mode = 'ground'; vy = 0;
+    const depth = depthAt(pos.x, pos.z);
+    if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1.0, 0.32, 'splash');
+    if (pushing) {
+      // going on: the clip's last stride is her run's own (the sprint), so her run takes over at the same moment of its stride
+      speed = Math.min(Math.max(went, WALK0 * k), RUN0 * k); landT = -1; pace = paceWas = speed;
+      character.play('run', 0.2, false);
+      const run = character.actions.run;
+      if (run) run.time = (VAULT_TIMES.runPhase + (overC - VAULT_TIMES.touch)) % run.getClip().duration;
+    } else {
+      // the stick let go: down into the jump's landing, and she stops
+      speed = Math.min(went, RUN0 * k) * 0.5; landT = 0; landHold = LAND_HOLD;
+      character.play('jump_land', 0.22, false);
+      if (character.actions.jump_land) character.actions.jump_land.time = 0.1;
     }
+    lastSafe.copy(pos);
   }
   function vaultStep(dt, k) {
     vaultT += dt;
@@ -551,14 +558,15 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       if (mode === 'air' && went < speed * 0.9) me.vel.multiplyScalar(went / speed);      // stopped by something in the air: her flight across is too
       if (went < speed * 0.3) speed = Math.min(speed, went * 1.15 + 0.05);    // pushing against something: stop walking on the spot
     } else went = 0;
-    // ---- a low thing in her way (a fence, a parapet, a barrel): going at it, she hops over it, from as far before it as
-    // the hop at her pace wants (hopLead). Running, at once; walking, after a moment (not every brush of a fence's rail as
-    // she walks by)
+    // ---- a low thing in her way (a fence, a parapet, a barrel): running at it, she vaults it from as far before it as the
+    // vault's run-up wants (vaultLead: her hand comes down on its near side); walking, once she is at it and has pushed at
+    // it a moment (not every brush of a fence's rail as she walks by)
+    const hh = (character.hipsHeight || 1) * (character.size || 1), runAt = speed > WALK * 1.5;
     if (footing && mode === 'ground' && pushing && shallow && Math.abs(wrap(want - heading)) < 0.5
-        && findHurdle(level.colliders, pos.x, pos.z, pos.y, Math.sin(heading), Math.cos(heading), k, 0.5 * k + speed * 0.4, ahead)
-        && ahead.from <= hopLead(ahead, speed, k, (character.hipsHeight || 1) * (character.size || 1)) + (speed > WALK * 1.5 ? 0 : speed * HURDLE_WAIT)) {
+        && findHurdle(level.colliders, pos.x, pos.z, pos.y, Math.sin(heading), Math.cos(heading), k, vaultLead(NOWHERE, hh, k) + 0.2, ahead)
+        && ahead.from <= (runAt ? vaultLead(ahead, hh, k) : 0.45 * k)) {
       hurdleT += dt;
-      if ((hurdleT >= HURDLE_WAIT || speed > WALK * 1.5 || jumpWanted > 0) && startHurdle(k)) { jumpWanted = 0; return; }
+      if ((runAt || hurdleT >= HURDLE_WAIT || jumpWanted > 0) && startHurdle(k)) { jumpWanted = 0; return; }
     } else hurdleT = 0;
     // pushing at a face (or stopped by one, at whatever angle): after a moment she takes hold of it
     if (faceAhead && pushing && went < 0.35 * WALK) grabPush = true;
@@ -622,7 +630,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       if (character.state !== 'climb') character.play('climb', 0.18);
       character.setRate(climbRate);
     } else if (mode === 'vault' || mode === 'hurdle') {
-      /* (the vault's clip and rate were set as it began; the hop's are set as it goes) */
+      /* (the clip's rate was set as it began; a low thing's vault sets the clip's moment as it goes) */
     } else if (mode === 'swim') {
       const sw = speed > 0.5 * k ? 'swim' : 'swim_idle';
       if (character.state !== sw) character.play(sw, 0.35);
@@ -670,6 +678,12 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     character.object.position.set(nX * out + reachFrom.x, nY * out, nZ * out + reachFrom.z);
     character.object.rotation.set(lean + tilt * climbW, heading, roll, 'YXZ');
     air.pose(dt, me);                                              // her body in a flight (and easing out of one), over her clip
+    // vaulting a low thing: her hand and foot on its top and her feet over it (player-vault.js); let go of gently once she is down
+    if (mode === 'hurdle' || ikTail > 0) {
+      if (mode !== 'hurdle') { ikTail = Math.max(0, ikTail - dt); overC += dt; }
+      root.updateMatrixWorld(true);
+      vaultIK.apply(plan, overC, crossing, crossing.dx, crossing.dz, mode === 'hurdle' ? 1 : ikTail / VAULT_TAIL);
+    }
     if (character.holdSprings) character.holdSprings(1 + 4 * air.held, 1 - air.upside);      // her hair and skirt held harder in the air
     if (character.updateSprings) character.updateSprings(dt);      // hair and cloth follow where she now is
   }
@@ -690,15 +704,17 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       root.add(character.object);
       steps.find(character);
       air.setCharacter(character);
+      vaultIK = createVaultIK(character);
       landT = -1;
       if (mode === 'vault') { pos.copy(vault1); mode = 'ground'; }
-      character.play(mode === 'ground' ? 'idle' : mode === 'climb' ? 'climb' : mode === 'swim' ? 'swim_idle' : 'jump_air', 0);
+      if (mode === 'hurdle') { character.play(VAULT_CLIP, 0); character.setRate(0); character.actions[VAULT_CLIP].time = overC; }
+      else character.play(mode === 'ground' ? 'idle' : mode === 'climb' ? 'climb' : mode === 'swim' ? 'swim_idle' : 'jump_air', 0);
       if (character.resetSprings) character.resetSprings();
     },
     // (y: about how high she stands, where that tells two grounds apart: on a bridge's deck, or on the bed under it. None: the top)
     teleport(x, z, yaw = heading, y) {
       pos.set(x, standOn(x, z, y), z); heading = yaw; cam.setView(yaw - Math.PI);
-      air.end(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; reachFrom.set(0, 0, 0); lastSafe.copy(pos);
+      air.end(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; ikTail = 0; reachFrom.set(0, 0, 0); lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
     setView(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
@@ -737,7 +753,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       }
       steps.update(dt, { root, pos, speed, walk: WALK, run: RUN, still: mode !== 'ground' || landT >= 0 });
       // ---- the camera: the walker's, standing on her feet's height (in a flight, the ground she left and most of the way
-      // up: four jumps go 4.4 m up; over a low thing, the ground and a little of the hop; swimming, a little under the
+      // up: four jumps go 4.4 m up; over a low thing, the ground and a little of how far the vault raises her; swimming, a little under the
       // surface, so it looks at her head)
       const aimY = mode === 'air' ? pos.y - 0.3 * Math.max(0, pos.y - Math.max(airBase, standAt(pos.x, pos.z)))
         : mode === 'hurdle' ? pos.y - 0.6 * hopLift

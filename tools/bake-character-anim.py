@@ -47,10 +47,8 @@ CLIPS = [
     ("roll", "Roll", False, 0.0),
     ("climb", "Climb_Loop", True, 1.75),
     ("climb_up", "ClimbUp_1m", False, 0.0),
-    # going over a fence, a parapet, a barrel (player-moves.js, player-hurdle.js): a hop with her knees drawn up, the
-    # library's tucked jump with its knees brought together and its arms lowered (Hop: tools/make-hop-anim.py). It is
-    # in place: the game moves her along the hop's arc (player-hurdle.js has how high her soles are through this clip)
-    ("hop", "Hop", False, 0.0),
+    # (going over a fence, a parapet, a barrel is her vault: vault-anim.js, not from this library; the hop it replaced,
+    # Hop.vrma, stays in the library)
     ("swim", "Swim_Fwd_Loop", True, 0.0),
     ("swim_idle", "Swim_Idle_Loop", True, 0.0),
 ]
