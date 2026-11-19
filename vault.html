@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7fb4e6">
+<title>ท่าข้ามรั้ว (mocap)</title>
+<!--
+  vault.html  —  her vault over low things, to try: a motion capture (vault-anim.js: Mixamo's "Vault Over Box" up to the top,
+  "Jumping Down" off it), fitted to each thing she goes over (player-vault.js: where it begins, how high, how far, her
+  hand and right foot put on the top). In a meadow with the village's low things: a fence, barrels, crates, hay, a bench,
+  a woodpile. Run at one and she goes over it; walking, push at it a moment (or press the jump button by it).
+  The stick let go as she lands: she rises from the landing; held: she runs on.
+  One job: try the vault, alone, before the game has it (it still has the hop, player-hurdle.js).
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb4e6; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #2b3a55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+    z-index: 4; width: 72px; height: 72px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 104px; text-align: center; pointer-events: none;
+    font: 500 12px system-ui; color: #fff; opacity: .9; text-shadow: 0 1px 4px #000a; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; }
+  @media (max-width: 640px) { #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); } #name small { display: none; } }
+  @media (max-height: 520px) { #name small { display: none; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="name">ท่าข้ามรั้ว (mocap)<small>วิ่งเข้าหารั้ว ถังไม้ ลังไม้ ฟาง ม้านั่ง กองฟืน แล้วข้ามเอง</small></div>
+<div id="bar">
+  <button id="who">👤 Vivi</button>
+  <button id="slow">⏱ ×1</button>
+  <button id="demo">▶ เดโมข้ามรั้ว</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>ข้าม</span></button>
+<div id="hint">วิ่งเข้าหา = ข้ามเอง · เดินดันค้างไว้ หรือกดปุ่มข้างๆ ก็ข้าม · ปล่อยจอยตอนลง = หยุดยืน</div>
+<div id="wait">กำลังโหลด…</div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import * as BD from './stylized-buildings.js';
+import { propMaterial } from './stylized-props.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CHARACTERS, loadPlayable } from './characters.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { createPlayerInput } from './player-input.js';
+import { createFollowCamera } from './player-camera.js';
+import { findHurdle } from './player-hurdle.js';
+import { VAULT_CLIP, VAULT_TIMES, vaultLead, planVault, vaultAt, createVaultIK } from './player-vault.js';
+
+const ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips } };
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass (as magic-jump.html's)
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+
+// ---- the village's low things, as the game builds them, and their colliders (with tops: she may go over them)
+const colliders = [], builds = [], labels = [];
+let propsMesh = null;
+function label(text, x, y, z) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 96;
+  const g = c.getContext('2d');
+  g.font = '800 46px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 10; g.strokeStyle = 'rgba(30,30,60,0.6)'; g.strokeText(text, 128, 50);
+  g.fillStyle = '#fff'; g.fillText(text, 128, 50);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+  s.scale.set(1.2, 0.45, 1); s.position.set(x, y, z);
+  labels.push(s); scene.add(s);
+}
+{
+  // a fence across her way, a little ahead (the game's fence: its top rail 0.94 m up)
+  const pts = [[-5, 6], [5, 6]];
+  const f = BD.fenceGeometry({ points: pts, heightAt: H, closed: false, seed: 26 });
+  builds.push(f); colliders.push(...f.userData.circles);
+  label('รั้ว', 0, H(0, 6) + 1.75, 6);
+  // the low props, around her: kind, x, z, yaw
+  const PROPS = [['barrels', -6.5, 10.5, 0.4], ['crates', 6.5, 10.5, -0.5], ['hay', -3.2, 14, 0], ['bench', 3.4, 14, 0],
+    ['woodpile', -8, 16, 1.2], ['barrels', 8.5, 16, 2.0]];
+  const NAMES = { barrels: 'ถังไม้', crates: 'ลังไม้', hay: 'ฟาง', bench: 'ม้านั่ง', woodpile: 'กองฟืน' };
+  for (const [kind, x, z, yaw] of PROPS) {
+    let seed = 60, g = null, top = 0;
+    for (; seed < 90; seed++) {                                   // (a pile she can go over: no hay stacked three high, nor two deep)
+      g = BD.propGeometry(kind, { seed }); g.computeBoundingBox();
+      top = g.boundingBox.max.y;
+      const bb = g.boundingBox;
+      if (top < 1.2 && (kind !== 'hay' || bb.max.z - bb.min.z < 1.2)) break;
+      g.dispose();
+    }
+    const y = H(x, z) - 0.03, bb = g.boundingBox.clone();
+    builds.push(BD.place(g, x, y, z, yaw));
+    // its collider: one circle round all of it (the game's is round its middle, as wide as g.userData.solid says)
+    const mx = (bb.min.x + bb.max.x) / 2, mz = (bb.min.z + bb.max.z) / 2, cs = Math.cos(yaw), sn = Math.sin(yaw);
+    const r = 0.5 * Math.hypot(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * 0.92;
+    colliders.push([x + mx * cs + mz * sn, z - mx * sn + mz * cs, r, undefined, undefined, y + top]);
+    label(NAMES[kind], x, y + top + 0.75, z);
+  }
+  propsMesh = new THREE.Mesh(mergeGeometries(builds), propMaterial());
+  scene.add(propsMesh);
+}
+
+// ---- the camera: the game's (player-camera.js), behind her
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
+const level = { heightAt: H, crowns: [], cameraTrunks: [] };
+const cam = createFollowCamera({ camera, level });
+cam.setView(-Math.PI, 0.22);
+
+// ---- her: walking and running as in the game (player-moves.js' numbers), the vault over low things
+const TUNED = 1.412;
+const WALK0 = 1.2, RUN0 = 3.39;
+const START = new THREE.Vector3(0, H(0, 0), 0);
+const me = { pos: START.clone(), heading: 0 };
+const root = new THREE.Group(); root.name = 'player'; scene.add(root);
+let hero = null, ik = null, loading = false, who = 0;
+let speed = 0, mode = 'ground', pushT = 0, jumpWanted = 0, slow = 1, demo = null, ikOn = true, landT = -1;
+const plan = {}, path = {}, ahead = {}, start = new THREE.Vector3();
+let c = 0, dx = 0, dz = 1, ranOn = false;
+const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
+const input = createPlayerInput({
+  dom: renderer.domElement, ui: document.getElementById('stick'),
+  onJump: () => { jumpWanted = 0.2; },
+  onLook: (y, p) => cam.turn(y, p), onZoom: d => cam.zoom(d),
+});
+const jumpBtn = document.getElementById('jumpBtn');
+jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); jumpWanted = 0.2; });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
+
+async function useCharacter(i) {
+  if (loading) return;
+  loading = true;
+  try {
+    const next = await loadPlayable(CHARACTERS[i].id, ANIM, { height: 1.75 });
+    if (hero) { root.remove(hero.object); hero.dispose(); }
+    hero = next; who = i;
+    root.add(hero.object);
+    ik = createVaultIK(hero);
+    hero.play('idle', 0);
+    mode = 'ground'; speed = 0;
+    document.getElementById('who').textContent = `👤 ${CHARACTERS[i].name}`;
+    const w = document.getElementById('wait'); if (w) w.remove();
+    window.vaultTrial.ready = true;
+  } catch (err) {
+    document.getElementById('wait').textContent = 'โหลดตัวละครไม่ได้: ' + err.message; console.error(err);
+  }
+  loading = false;
+}
+useCharacter(0);
+
+// she walks round solid things (not over them, until she vaults), and stays in the meadow
+function collide(p) {
+  const body = 0.28 * (hero.height / TUNED);
+  for (const [x, z, r] of colliders) {
+    const ox = p.x - x, oz = p.z - z, R = r + body, d2 = ox * ox + oz * oz;
+    if (d2 < R * R && d2 > 1e-8) { const d = Math.sqrt(d2); p.x = x + ox / d * R; p.z = z + oz / d * R; }
+  }
+  const rr = Math.hypot(p.x, p.z);
+  if (rr > 30) { p.x *= 30 / rr; p.z *= 30 / rr; }
+}
+
+function startVault(k) {
+  const hh = hero.hipsHeight * hero.size;
+  dx = Math.sin(me.heading); dz = Math.cos(me.heading);
+  // where she comes down: the ground past it (flat here)
+  if (!planVault(ahead, { speed, hh, k, y0: me.pos.y, y1: H(me.pos.x + dx * (ahead.to + 0.6), me.pos.z + dz * (ahead.to + 0.6)) }, plan)) return false;
+  start.copy(me.pos);
+  mode = 'vault'; c = plan.c0; ranOn = false; landT = -1;
+  hero.play(VAULT_CLIP, plan.c0 > 0.05 ? 0.2 : 0.14, false);
+  hero.setRate(0);
+  hero.actions[VAULT_CLIP].time = c;
+  return true;
+}
+
+const tmp = new THREE.Vector3();
+function step(dt) {
+  if (!hero) return;
+  dt = Math.min(dt, 0.05) * slow;
+  const k = hero.height / TUNED, WALK = WALK0 * k, RUN = RUN0 * k;
+  // ---- the stick, as a way over the ground (relative to the camera, as in the game)
+  let amount = input.stick(stickV);
+  if (window.vaultTrial.stick) { stickV.set(...window.vaultTrial.stick); amount = Math.min(1, stickV.length()); }
+  let mx = stickV.x, mz = stickV.y;
+  if (demo) { demo.t += dt; amount = demo.t < demo.go ? 1 : 0; mx = 0; mz = -1; if (demo.t > demo.go + 2.5) demo = null; }
+  const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = -fz, rz = fx;
+  let wx = rx * mx - fx * mz, wz = rz * mx - fz * mz;
+  const wl = Math.hypot(wx, wz);
+  if (wl > 1e-4) { wx /= wl; wz /= wl; }
+  stick.x = wx; stick.z = wz; stick.amount = Math.min(1, amount);
+  const pushing = stick.amount > 0.12;
+  jumpWanted = Math.max(0, jumpWanted - dt);
+
+  if (mode === 'ground') {
+    let target = 0;
+    if (pushing) {
+      target = stick.amount > 0.72 ? RUN : WALK * Math.max(0.6, stick.amount / 0.72);
+      const want = demo ? 0 : Math.atan2(wx, wz);
+      me.heading += Math.atan2(Math.sin(want - me.heading), Math.cos(want - me.heading)) * Math.min(1, dt * 11);
+    }
+    speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 : 10));
+    // ---- a low thing before her: running, she goes over it from as far as the vault's run-up wants; walking, once she
+    // has pushed at it a moment (or the jump button by it)
+    const hh = hero.hipsHeight * hero.size, hx = Math.sin(me.heading), hz = Math.cos(me.heading);
+    let went = false;
+    if ((pushing || jumpWanted > 0) && findHurdle(colliders, me.pos.x, me.pos.z, me.pos.y, hx, hz, k, vaultLead({ from: 0, to: 0.4 }, hh, k) + 1.2, ahead)) {
+      const running = speed > WALK * 1.5, near = ahead.from <= 0.45 * k;
+      if (running && ahead.from <= vaultLead(ahead, hh, k)) went = startVault(k);
+      else if (!running && near) { pushT += dt; if (pushT >= 0.12 || jumpWanted > 0) went = startVault(k); }
+      else pushT = 0;
+      if (went) { jumpWanted = 0; pushT = 0; }
+    } else pushT = 0;
+    if (!went) {
+      tmp.set(me.pos.x + Math.sin(me.heading) * speed * dt, 0, me.pos.z + Math.cos(me.heading) * speed * dt);
+      collide(tmp);
+      me.pos.x = tmp.x; me.pos.z = tmp.z; me.pos.y = H(me.pos.x, me.pos.z);
+      // her clips: as the game's (her legs at her pace)
+      if (landT >= 0) { landT -= dt; }
+      else {
+        const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 ? 'walk' : 'run';
+        if (hero.state !== st) hero.play(st, st === 'idle' ? 0.3 : 0.2);
+        hero.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (hero.speeds[st] || 1))));
+      }
+    }
+  }
+  if (mode === 'vault') {
+    const v0 = vaultAt(plan, c, path).along;
+    c += dt * path.rate;
+    vaultAt(plan, c, path);
+    const pace = (path.along - v0) / Math.max(1e-4, dt);
+    me.pos.set(start.x + dx * path.along, path.y, start.z + dz * path.along);
+    hero.actions[VAULT_CLIP].time = Math.min(c, hero.actions[VAULT_CLIP].getClip().duration);
+    if (path.down && pushing) {
+      // down, the stick held: she runs on, out of the landing (its dip, under her stride as it fades in)
+      mode = 'ground'; speed = Math.min(Math.max(pace, WALK), RUN); landT = 0.3;
+      hero.play(speed < (WALK + RUN) * 0.5 ? 'walk' : 'run', 0.3, false);
+      hero.setRate(Math.min(1.9, Math.max(0.7, speed / (hero.speeds.run || 1))));
+    } else if (c >= hero.actions[VAULT_CLIP].getClip().duration - 0.02) {
+      mode = 'ground'; speed = 0; landT = 0; hero.play('idle', 0.35);
+    }
+  }
+  hero.update(dt);
+  root.position.copy(me.pos);
+  hero.object.position.set(0, 0, 0);
+  hero.object.rotation.set(0, me.heading, 0);
+  root.updateMatrixWorld(true);
+  if (mode === 'vault' && ikOn) ik.apply(plan, c, start, dx, dz);
+  hero.holdSprings(mode === 'vault' ? 2 : 1, 1);
+  hero.updateSprings(dt);
+  grass.userData.setWalker(me.pos, 0.55);
+  cam.update(dt, { pos: me.pos, aimY: mode === 'vault' ? Math.min(me.pos.y, start.y + 0.25) : me.pos.y, height: hero.height, k: hero.height / TUNED, steady: true });
+}
+
+let fixedCam = null;      // (a test's camera, held still)
+function draw() {
+  if (fixedCam) { camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]); camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]); }
+  renderer.render(scene, camera);
+}
+
+// ---- the buttons
+const btn = id => document.getElementById(id);
+btn('who').onclick = () => useCharacter((who + 1) % CHARACTERS.length);
+const SLOWS = [1, 0.5, 0.25];
+btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
+function startDemo() {
+  if (!hero || mode !== 'ground') return;
+  me.pos.copy(START); me.pos.x = 0.85; me.pos.y = H(0.85, 0); me.heading = 0; speed = 0; hero.play('idle', 0);      // (between two of the fence's posts)
+  cam.setView(-Math.PI, 0.2);
+  demo = { t: 0, go: 2.6 };
+}
+btn('demo').onclick = () => startDemo();
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// for a test (or the console): step the world by hand, look from a chosen spot
+window.vaultTrial = {
+  ready: false, held: false, stick: null,
+  me, cam, camera, colliders, plan, get mode() { return mode; }, get c() { return c; }, get hero() { return hero; }, get speed() { return speed; },
+  run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
+  demo() { startDemo(); },
+  place(x, z, heading) { me.pos.set(x, H(x, z), z); me.heading = heading; speed = 0; mode = 'ground'; hero.play('idle', 0); },
+  ik(on) { ikOn = on; },
+  use(i) { return useCharacter(i); },
+  look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
+  fix(...v) { fixedCam = v.length ? v : null; },
+  draw, VAULT_TIMES, THREE, get props() { return propsMesh; },
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.vaultTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
