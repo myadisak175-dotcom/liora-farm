@@ -272,9 +272,15 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     const hit = slid ? 0.25 : air.impact;
     if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1 + 0.4 * hit, 0.32, 'splash');
     landT = 0; speed *= 1 - 0.4 * hit;
-    if (slid) { landClip = 'jump_land'; landRate = LAND_RATE; landHold = LAND_HOLD + 0.1 * hit; }
-    else ({ clip: landClip, rate: landRate, hold: landHold } = air.landing);      // (the flight's: from high, the mocap's crouch)
+    if (slid) lightLanding(LAND_HOLD + 0.1 * hit);
+    else ({ clip: landClip, rate: landRate, hold: landHold } = air.landing);      // (the flight's: the mocap's touch-down)
     character.play(landClip, 0.06, false);
+  }
+  // a landing not out of a flight (at the foot of a slide, off a vault with the stick let go): the mocap's touch-down where
+  // her clips have it (magic-jump-mocap-anim.js), else the library's landing
+  function lightLanding(hold) {
+    if (character.actions.mj_land) { landClip = 'mj_land'; landRate = 1; landHold = 0.08; }
+    else { landClip = 'jump_land'; landRate = LAND_RATE; landHold = hold; }
   }
   function startSlide(k) {
     if (mode !== 'air') peakY = pos.y;                                        // (not from a fall: how far she comes down is counted from here)
@@ -326,11 +332,19 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     const clip = character.actions.climb_up;
     if (clip) { character.play('climb_up', 0.12, false); clip.time = VAULT_FROM; character.setRate((clip.getClip().duration - VAULT_FROM) / VAULT_T); }
   }
+  // climbing, she kicks off the rock (ux, uz: into it, over the ground) into a flight. false: her clips have no kick
+  function kickOff(k, ux, uz) {
+    me.heading = heading;
+    if (!air.kickOff(me, -ux, -uz)) return false;
+    pos.x -= ux * 0.1 * k; pos.z -= uz * 0.1 * k;                              // (a hand's breadth off the rock)
+    mode = 'air'; peakY = airBase = pos.y; landT = -1; edgeT = 0; edgeGrace = 0; grabShy = GRAB_SHY; leapT = 0;
+    speed = Math.hypot(me.vel.x, me.vel.z); vy = air.vy;
+    return true;
+  }
   function climbStep(dt, k, amount, pushing, want) {
     const CLIMB = CLIMB0 * k;
     climbT += dt; leapT = Math.max(0, leapT - dt); leapCool = Math.max(0, leapCool - dt);
     if (dashWanted > 0) { dashWanted = 0; grabShy = GRAB_SHY; vy = 0; startSlide(k); return; }      // the dash button lets go
-    if (jumpWanted > 0 && leapCool === 0) { jumpWanted = 0; leapT = LEAP_T; leapCool = LEAP_COOL; }
     const at = face.at(pos.x, pos.z), ux = at.ux, uz = at.uz;
     // the stick, read against the rock: towards it is up, away from it down, across it along (whatever the camera's angle)
     let up = 0, side = 0;
@@ -340,6 +354,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       if (Math.abs(up) > 0.2) up = Math.sign(up) * Math.min(1, Math.abs(up) * 1.6);      // (a stick that leans at the rock means up it)
       const l = Math.hypot(up, side); if (l > 1) { up /= l; side /= l; }
     }
+    // the jump button with the stick pulled away from the rock: she kicks off it, backwards, and turns round in the air
+    // (a flight with three jumps left: magic-jump.js, the mocap's kick off a wall). Else it is a leap up the rock
+    if (jumpWanted > 0 && up < -0.3 && kickOff(k, ux, uz)) { jumpWanted = 0; return; }
+    if (jumpWanted > 0 && leapCool === 0) { jumpWanted = 0; leapT = LEAP_T; leapCool = LEAP_COOL; }
     if (leapT > 0 && !pushing) up = 1;
     // her hands at the top: over it
     if (up > 0.3 && face.top(pos.x, pos.z, REACH0 * k, spot) >= 0) { startVault(k); return; }
@@ -411,9 +429,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       if (run) run.time = (VAULT_TIMES.runPhase + (overC - VAULT_TIMES.touch)) % run.getClip().duration;
     } else {
       // the stick let go: down into the jump's landing, and she stops
-      speed = Math.min(went, RUN0 * k) * 0.5; landT = 0; landHold = LAND_HOLD; landClip = 'jump_land'; landRate = LAND_RATE;
-      character.play('jump_land', 0.22, false);
-      if (character.actions.jump_land) character.actions.jump_land.time = 0.1;
+      speed = Math.min(went, RUN0 * k) * 0.5; landT = 0;
+      lightLanding(LAND_HOLD);
+      character.play(landClip, 0.22, false);
+      if (landClip === 'jump_land' && character.actions.jump_land) character.actions.jump_land.time = 0.1;
     }
     lastSafe.copy(pos);
   }

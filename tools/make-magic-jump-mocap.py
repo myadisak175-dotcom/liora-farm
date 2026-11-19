@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Make the magic jump's take-off and landing from two Mixamo moves (mocap), posed again for her:
+"""Make the magic jump's take-off, its landing and her kick off a cliff's face from Mixamo moves (mocap), posed again
+for her:
 
-  MJ_Up   <- Mixamo "Jumping Up"    the first jump off the ground: a crouch, a push, her knees coming up under her
-  MJ_Land <- Mixamo "Jumping Down"  the landing from high: down into a crouch and up again into her standing pose
+  MJ_Up   <- Mixamo "Jumping Up"      the first jump off the ground: a crouch, a push, her knees coming up under her
+  MJ_Land <- Mixamo "Jumping Down" 3  every landing from a flight: her feet come down and she stands, no crouch
+  MJ_Wall <- Mixamo "Jump From Wall"  climbing, the jump button with the stick pulled away from the rock: she kicks off
+                                      it backwards and turns round in the air to face away from it
 
-Both are first made .vrma by tools/mixamo-to-vrma.mjs (the vault's too: three-vrm's Mixamo retarget onto the library's
+They are first made .vrma by tools/mixamo-to-vrma.mjs (the vault's too: three-vrm's Mixamo retarget onto the library's
 skeleton), into assets/animations/mixamo/, which is not in the repo: Mixamo's moves are Adobe's, free to use in the
-game, not to hand on as files. What the mocap keeps: its timing within each
-part, its arms, back, head and hips' turns, the way its weight goes. What is posed again, every frame:
+game, not to hand on as files. What the mocap keeps: its timing within each part, its arms, back, head and hips'
+turns, the way its weight goes. What is posed again, every frame:
 
   - Her standing pose is the base (README, "The animation standard"). Every foot on the ground is where the library's
     idle has it (her left ahead, her right 0.3 m behind and turned out), and the clip begins (MJ_Up) or ends (MJ_Land)
@@ -19,20 +22,25 @@ part, its arms, back, head and hips' turns, the way its weight goes. What is pos
     (her hips leave as fast as the game's first jump does: printed). From then on the clip is in place: the game moves
     her up (magic-jump.js), so her hips stay where they were as she left the ground and only her body moves about them,
     up to the top of the first jump (UP_AIR s, the game's own time to the top). Off the ground her legs are the mocap's.
-  - MJ_Land begins as her feet touch, and is only a crouch: her hips go down as the mocap's (LAND_IN times as fast:
-    she comes down faster in the game) but LAND_DEPTH as deep, her back leaning in LAND_BEND as far as the mocap's,
-    her arms as she stands (the mocap bends right over and puts both hands on the ground: not wanted, she runs on out
-    of it). It holds the bottom LAND_HOLD times as fast as the mocap, then rises into her standing pose in LAND_RISE s.
-    MJ_Land_Soft is the same less deep (SOFT_DEPTH, SOFT_BEND): for a lower fall, and for a landing she runs on out of
-    (magic-jump.js). The game merges the baked clips into every character's (index.html).
+  - MJ_Land begins as her feet touch (the mocap's LAND_TOUCH s) and she stands: the mocap comes down out of a hop and
+    straightens with no crouch, so she can run on out of it at once (a deep crouch was tried first, and not wanted).
+    It stands turned LAND_TURN degrees too far to its right and flings its arms out level as it lands: turned to face
+    ahead, and its arms lowered (LAND_ARMS), and then in LAND_SETTLE s into her standing pose.
+  - MJ_Wall begins as its hands are about to leave the rock (WALL_FROM) and is played WALL_RATE times as fast. It is in
+    place: the game kicks her away from the rock and up (magic-jump.js), and turns her round, the way she faces going
+    from the rock to away from it as wall_turn() goes (the same curve as magic-jump.js' WALL_TURN): here her hips are
+    turned back by as much, so her body goes round as the mocap's does. Her hips stay as high over her feet as they are
+    climbing (the library's Climb_Loop). Its arms, flung out level as it turns, are lowered (UP_ARMS) and its knees
+    brought in (UP_KNEES).
 
 Lengths and turns are the library's (T-pose, +Z forward, her left +X, up +Y), on the playable characters' proportions
-(tools/vrma_pose.py: fitted_skeleton). Usage (from the repo folder; needs numpy):
+(tools/vrma_pose.py: fitted_skeleton). The game merges the baked clips into every character's (index.html). Usage (from
+the repo folder; needs numpy):
 
   npm install --no-save three@0.170.0                (once)
-  node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jumping_Up.fbx Jumping_Down.fbx
+  node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jumping_Up.fbx Jumping_Down_3.fbx Jump_From_Wall.fbx
   python3 tools/make-magic-jump-mocap.py
-  python3 tools/bake-character-anim.py assets/animations/mixamo magic-jump-mocap-anim.js mj_up:MJ_Up mj_land:MJ_Land mj_land_soft:MJ_Land_Soft
+  python3 tools/bake-character-anim.py assets/animations/mixamo magic-jump-mocap-anim.js mj_up:MJ_Up mj_land:MJ_Land mj_wall:MJ_Wall
 """
 import math
 import os
@@ -58,14 +66,13 @@ UP_UPRIGHT = 0.85        # of its lean out to her side taken away (from behind s
 UP_TURN = 45.0           # degrees the mocap is turned to her left: it stands turned 43 degrees to its right (its head looking ahead)
 UP_AIR = 0.3             # s from leaving the ground to the top of the first jump (the game's: magic-jump.js)
 UP_SRC = (0.04, 0.335, 0.51, 0.8333)     # the mocap's own times: beginning to go down, the bottom, toes off, its end
-LAND_SRC = (1.80, 2.03, 2.6667)          # the mocap's: a foot touching, the bottom, its end (still down)
-LAND_IN = 1.2            # how much faster than the mocap she goes down
-LAND_HOLD = 2.4          # how much faster than the mocap she stays down
-LAND_RISE = 0.45         # s from the mocap's end up into her standing pose
-LAND_DEPTH = 0.6         # of the mocap's crouch (its hips go down to half their height)
-LAND_BEND = 0.3          # of how far over the mocap bends (its head goes down to its knees): she leans in a little
-SOFT_DEPTH = 0.4
-SOFT_BEND = 0.2
+LAND_TOUCH = 0.2         # the mocap's time when its feet are on the ground (Jumping Down 3: 0.37 s in all)
+LAND_TURN = 25.0         # degrees it is turned to her left (it lands turned 33 degrees to its right)
+LAND_ARMS = 40.0         # degrees its arms, out level as it lands, are lowered
+LAND_SETTLE = 0.2        # s from the mocap's end into her standing pose
+WALL_FROM = 0.35         # the mocap's time to begin at: its hands are about to leave the rock (Jump From Wall: 1.27 s)
+WALL_RATE = 1.6          # how much faster than the mocap it is played (the game's pull is harder than the world's)
+WALL_TURN = (0.42, 1.27)  # the mocap's times her turn round (180 degrees, to her right) begins and ends (wall_turn)
 
 sk, HH, _ = fitted_skeleton()
 ORDER = []
@@ -81,8 +88,6 @@ def _visit(b):
 
 for _b in sk.node:
     _visit(_b)
-ARM_BONES = [b for b in sk.node if any(k in b for k in ("Shoulder", "UpperArm", "LowerArm", "Hand", "Thumb", "Index",
-                                                         "Middle", "Ring", "Little"))]
 LEG_BONES = [f"{s}{b}" for s in ("left", "right") for b in ("UpperLeg", "LowerLeg", "Foot", "Toes")]
 
 
@@ -148,23 +153,6 @@ def hermite_curve(xs, ys, ms):
         s = (x - xs[k]) / h
         return ((2 * s ** 3 - 3 * s ** 2 + 1) * ys[k] + (s ** 3 - 2 * s ** 2 + s) * h * ms[k]
                 + (-2 * s ** 3 + 3 * s ** 2) * ys[k + 1] + (s ** 3 - s ** 2) * h * ms[k + 1])
-    return f
-
-
-def pchip(xs, ys):
-    """A smooth, never-turning-back curve through the points (Fritsch-Carlson)."""
-    xs, ys = np.array(xs, float), np.array(ys, float)
-    h, d = np.diff(xs), np.diff(ys) / np.diff(xs)
-    m = np.zeros(len(xs))
-    m[0], m[-1] = d[0], d[-1]
-    for k in range(1, len(xs) - 1):
-        m[k] = 0 if d[k - 1] * d[k] <= 0 else (h[k - 1] + 2 * h[k] + 2 * h[k - 1] + h[k]) / ((2 * h[k] + h[k - 1]) / d[k - 1] + (h[k] + 2 * h[k - 1]) / d[k])
-
-    def f(x):
-        k = int(min(max(np.searchsorted(xs, x, side="right") - 1, 0), len(xs) - 2))
-        s = (x - xs[k]) / h[k]
-        return ((2 * s ** 3 - 3 * s ** 2 + 1) * ys[k] + (s ** 3 - 2 * s ** 2 + s) * h[k] * m[k]
-                + (-2 * s ** 3 + 3 * s ** 2) * ys[k + 1] + (s ** 3 - s ** 2) * h[k] * m[k + 1])
     return f
 
 
@@ -376,71 +364,109 @@ def make_up():
 
 # ---------------------------------------------------------------- MJ_Land
 
-def make_land(name, depth, bend):
-    src = Clip(os.path.join(MOCAP, "Jumping_Down.vrma"))
+def turned_ahead(L, h, turn):
+    """The mocap turned `turn` degrees to her left (its hips), its chest and neck turned back half each (its head keeps
+    looking where it looked), and stood upright from behind (its lean out to a side taken away, UP_UPRIGHT)."""
+    L = dict(L)
+    L["hips"] = ry(math.radians(turn)) @ L["hips"]
+    for bone in ("chest", "neck"):
+        R, _ = fk(L, h)
+        Rp = R[sk.parent[bone]]
+        L[bone] = Rp.T @ ry(math.radians(-turn / 2)) @ Rp @ L[bone]
+    R, _ = fk(L, h)
+    up = R["upperChest"] @ np.array([0.0, 1.0, 0.0])
+    Rp = R["hips"]
+    L["spine"] = Rp.T @ rz(-math.asin(-up[0]) * UP_UPRIGHT) @ Rp @ L["spine"]
+    return L
+
+
+def lower_arms(L, hp, degrees, w):
+    """Its arms lowered (less the higher they already are: in_the_air's), w of the way."""
+    keep = globals()["UP_ARMS"], globals()["UP_KNEES"]
+    globals()["UP_ARMS"], globals()["UP_KNEES"] = degrees, 0.0
+    try:
+        return in_the_air(L, hp, w)
+    finally:
+        globals()["UP_ARMS"], globals()["UP_KNEES"] = keep
+
+
+def make_land():
+    src = Clip(os.path.join(MOCAP, "Jumping_Down_3.vrma"))
     up = Clip(os.path.join(MOCAP, "Jumping_Up.vrma"))
     Lst, hst = up.at(0.0)
-    Rst, _ = fk(Lst, hst)
+    Rst, _ = fk(dict(Lst, hips=ry(math.radians(UP_TURN)) @ Lst["hips"]), hst)
     flat0 = [pitch_of(Rst[f"{s}Foot"], s) for s in ("left", "right")]   # the mocap's feet, flat
     scale = IDLE_HIPS[1] / hst[1]
-    s_td, s_bot, s_end = LAND_SRC
-    t_bot = (s_bot - s_td) / LAND_IN
-    t_end = t_bot + (s_end - s_bot) / LAND_HOLD
-    warp = pchip([0, t_bot, t_end], [s_td, s_bot, s_end])
-    n_src = int(round(t_end * FPS))
-    n = n_src + int(round(LAND_RISE * FPS)) + 1
-    # the hips over the feet: the mocap's hips from the middle of its feet (its feet slide on after landing; hers don't)
-    idle_mid = (IDLE_P["leftToes"] + IDLE_P["rightToes"]) / 2
-
-    def body_at(s):
-        L, h = src.at(s)
-        R, P = fk(L, h)
-        mid = (P["leftToes"] + P["rightToes"]) / 2
-        rel = (h - mid) * scale
-        y = IDLE_HIPS[1] + (h[1] * scale - IDLE_HIPS[1]) * depth
-        hp = np.array([idle_mid[0] + rel[0], y, idle_mid[2] + rel[2]])
-        # her hips not as low as the mocap's (depth) and a little more over her feet; her back and head not bent as far
-        # over (bend: the rest of the way the idle's)
-        hp[[0, 2]] = IDLE_HIPS[[0, 2]] + (hp[[0, 2]] - IDLE_HIPS[[0, 2]]) * depth
-        for b in ("hips", "spine", "chest", "upperChest", "neck", "head"):
-            L[b] = slerp_m(IDLE_L[b], L[b], bend)
-        # her arms: as she stands (only her legs and hips are the mocap's: she just crouches)
-        for b in ARM_BONES:
-            L[b] = IDLE_L[b]
-        tip = [max(0.0, pitch_of(R[f"{s}Foot"], s) - f) for s, f in zip(("left", "right"), flat0)]
-        return L, hp, tip
-
-    frames, hips_y, short, low_hand = [], [], 0.0, 9.0
-    Lend, hend, tip_end = body_at(s_end)
+    s_end = float(src.times[-1])
+    _, h_end = src.at(s_end)
+    n_src = int(round((s_end - LAND_TOUCH) * FPS))
+    n = n_src + int(round(LAND_SETTLE * FPS)) + 1
+    frames, hips_y, short = [], [], 0.0
+    last = None
     for i in range(n):
         tau = i / FPS
         if i <= n_src:
-            L, hp, tip = body_at(warp(tau))
+            s = LAND_TOUCH + tau
+            L, h = src.at(s)
+            L = turned_ahead(L, h, LAND_TURN)
+            # her hips from where she stands, as the mocap's go from where they end (it ends standing)
+            rel = ry(math.radians(LAND_TURN)) @ ((h - h_end) * scale)
+            rel[[0, 2]] *= 0.5
+            hp = IDLE_HIPS + rel
+            L = lower_arms(L, hp, LAND_ARMS, 1.0)
+            R, _ = fk(L, hp)
+            tip = [max(0.0, pitch_of(R[f"{s_}Foot"], s_) - f) for s_, f in zip(("left", "right"), flat0)]
+            last = (L, hp, tip)
         else:
-            u = (tau - t_end) / LAND_RISE
-            uh, us, ua = ease((u - 0.05) / 0.95), ease(u / 0.8), ease(u / 0.8)
-            L = {}
-            for b in sk.node:
-                k = ua if b in ARM_BONES else us if b in ("spine", "chest", "upperChest", "neck", "head") else uh
-                L[b] = slerp_m(Lend[b], IDLE_L[b], k)
-            hp = hend + (IDLE_HIPS - hend) * uh
-            tip = [t * (1 - uh) for t in tip_end]
+            u = ease((tau - (s_end - LAND_TOUCH)) / LAND_SETTLE)
+            Le, he, te = last
+            L = {b: slerp_m(Le[b], IDLE_L[b], u) for b in sk.node}
+            hp = he + (IDLE_HIPS - he) * u
+            tip = [t * (1 - u) for t in te]
         R, P = fk(L, hp)
         short = max(short, stand_still_feet(R, P, tip))
-        low_hand = min(low_hand, P["leftHand"][1], P["rightHand"][1])
         frames.append((locals_from(R), hp))
         hips_y.append(hp[1])
-    out, times = write(name, frames, FPS)
-    print(f"{out}: {times[-1]:.3f} s (down {t_bot:.2f} s, up from {t_end:.2f} s); lowest hips {min(hips_y):.3f} "
-          f"(standing {IDLE_HIPS[1]:.3f}); lowest wrist {low_hand:.2f} over the ground; feet short of the ground by "
-          f"{short * 1000:.0f} mm at most")
+    out, times = write("MJ_Land", frames, FPS)
+    print(f"{out}: {times[-1]:.3f} s; hips from {hips_y[0]:.3f} to {hips_y[-1]:.3f} (standing {IDLE_HIPS[1]:.3f}), lowest "
+          f"{min(hips_y):.3f}; feet short of the ground by {short * 1000:.0f} mm at most")
+    return frames
+
+
+def wall_turn(c):
+    """How far round she has turned (0..1 of 180 degrees, to her right) at the mocap's time c (magic-jump.js: WALL_TURN)."""
+    a, b = WALL_TURN
+    u = min(1.0, max(0.0, (c - a) / (b - a)))
+    return u * u * (3 - 2 * u)
+
+
+def make_wall():
+    src = Clip(os.path.join(MOCAP, "Jump_From_Wall.vrma"))
+    climb = Clip(os.path.join(LIB, "Climb_Loop.vrma"))
+    hy = float(np.mean(climb.hips[:, 1]))                    # her hips over her feet, climbing
+    end = float(src.times[-1])
+    n = int(round((end - WALL_FROM) / WALL_RATE * FPS)) + 1
+    frames = []
+    for i in range(n):
+        c = min(end, WALL_FROM + i / FPS * WALL_RATE)
+        L, h = src.at(c)
+        # the way she faces is turned round by the game: her hips turned back by as much (her body goes round as the
+        # mocap's, the whole of her turned with the way she faces)
+        L = dict(L)
+        L["hips"] = ry(math.radians(180.0 * wall_turn(c))) @ L["hips"]
+        hp = np.array([0.0, hy, 0.0])
+        L = in_the_air(L, hp, 1.0)
+        frames.append((L, hp))
+    out, times = write("MJ_Wall", frames, FPS)
+    print(f"{out}: {times[-1]:.3f} s (the mocap's {WALL_FROM}..{end:.2f} s at x{WALL_RATE}); her turn round from "
+          f"{(WALL_TURN[0] - WALL_FROM) / WALL_RATE:.3f} to {(WALL_TURN[1] - WALL_FROM) / WALL_RATE:.3f} s")
     return frames
 
 
 if __name__ == "__main__":
-    for f in ("Jumping_Up", "Jumping_Down"):
+    for f in ("Jumping_Up", "Jumping_Down_3", "Jump_From_Wall"):
         if not os.path.exists(os.path.join(MOCAP, f"{f}.vrma")):
             raise SystemExit(f"no {f}.vrma in {MOCAP}: make it first with tools/mixamo-to-vrma.mjs (see above)")
     make_up()
-    make_land("MJ_Land", LAND_DEPTH, LAND_BEND)
-    make_land("MJ_Land_Soft", SOFT_DEPTH, SOFT_BEND)
+    make_land()
+    make_wall()
