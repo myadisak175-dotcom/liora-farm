@@ -26,7 +26,7 @@
 //   - go over low things: running (or walking, for a moment) at a fence, a bridge's parapet, a barrel, she vaults it: her
 //     left hand planted on the top, her right foot on it, a leap off it onto her front foot and on into her run (player-
 //     hurdle.js finds it; player-vault.js fits the vault, a motion capture, to it). The stick let go as she lands, she comes
-//     down into a landing and stops; over a bridge's parapet she falls into the river. The jump button by one vaults it too.
+//     down into a landing and stops; over a bridge's parapet she falls into the river. The jump button by one is the magic jump, not the vault.
 //   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
@@ -574,7 +574,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         && findHurdle(level.colliders, pos.x, pos.z, pos.y, Math.sin(heading), Math.cos(heading), k, vaultLead(NOWHERE, hh, k) + 0.2, ahead)
         && ahead.from <= (runAt ? vaultLead(ahead, hh, k) : 0.45 * k)) {
       hurdleT += dt;
-      if ((runAt || hurdleT >= HURDLE_WAIT || jumpWanted > 0) && startHurdle(k)) { jumpWanted = 0; return; }
+      if ((runAt || hurdleT >= HURDLE_WAIT) && jumpWanted <= 0 && startHurdle(k)) return;      // (the jump button: the magic jump, below)
     } else hurdleT = 0;
     // pushing at a face (or stopped by one, at whatever angle): after a moment she takes hold of it
     if (faceAhead && pushing && went < 0.35 * WALK) grabPush = true;
@@ -589,9 +589,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // ---- jumping: off the ground at once, unless she is deeper in the water than her knees; in the air, the next jump
     // of the flight (a press it cannot take yet is kept a moment, JUMP_BUFFER)
     if (mode === 'ground' && jumpWanted > 0 && shallow) {
+      // (by a low thing too: the magic jump, not the vault, so four jumps can go up over it. Until 19 Nov 2026 the button by
+      // a fence vaulted it, and the presses after were lost: "รั้วด้วย โดด 4 ชั้นไม่ได้")
       jumpWanted = 0;
-      // (by a low thing she faces: over it)
-      if (footing && findHurdle(level.colliders, pos.x, pos.z, pos.y, Math.sin(heading), Math.cos(heading), k, 0.8 * k, ahead) && startHurdle(k)) return;
       leave(0, k, true);
       if (depthHere > 0.04 && level.ripple) level.ripple(pos.x, pos.z, 0.8, 0.3, 'splash');      // pushing off from the water
     } else if (mode === 'air' && jumpWanted > 0 && air.press(me, airStick)) jumpWanted = 0;
