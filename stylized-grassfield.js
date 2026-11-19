@@ -419,6 +419,13 @@ const BLADE_BODY = /* glsl */`
         float push = (1.0 - smoothstep(0.08, uWalker.w, wd)) * (1.0 - smoothstep(1.0, 2.5, abs(root.y - uWalker.y)));
         lean += away / max(wd, 0.05) * push * 0.42;
         h *= 1.0 - 0.12 * push;
+        // a blast running out over the field (uBlast, none as it starts): the blades its front is passing are thrown flat,
+        // away from its middle, and those behind it are still coming back up
+        vec2 blown = root.xz - uBlast.xy;
+        float bd = length(blown), behind = uBlast.z - bd;                   // metres behind its front (less than 0: ahead of it)
+        float blow = uBlast.w * (behind > 0.0 ? exp(-behind / 5.5) : exp(behind / 0.5));
+        lean += blown / max(bd, 0.05) * blow * 1.5;
+        h *= 1.0 - 0.3 * min(blow, 1.0);
         // blades right in front of the lens would fill the screen: let them sink away
         h *= smoothstep(0.7, 2.4, distance(cameraPosition, root));
         float y = position.y;
@@ -446,6 +453,7 @@ const BLADE_PARS = /* glsl */`
       uniform vec2 uBlade;       // width, height
       uniform vec3 uTip;
       uniform vec4 uWalker;      // x, y, z of whoever walks through the grass, w = radius
+      uniform vec4 uBlast;       // a blast over the field: x, z of its middle, how far out its front is (metres), how hard it blows (0: none)
       uniform float uHazeNear, uHazeFar, uHazeMax;
       varying vec3 vRoot;        // ground colour under the blade
       varying vec3 vTip;
@@ -475,6 +483,7 @@ function bladeUniforms(map, { tip, far, fadeA, fadeB, bladeHeight, bladeWidth })
     uTip: { value: rgb(tip) }, uFar: { value: rgb(far) }, uFadeA: { value: fadeA ?? map.radius * 0.55 }, uFadeB: { value: fadeB ?? map.radius * 0.97 },
     uBlade: { value: new THREE.Vector2(bladeWidth, bladeHeight) },
     uWalker: { value: new THREE.Vector4(0, -999, 0, 1) },
+    uBlast: { value: new THREE.Vector4(0, 0, 0, 0) },
     ...HAZE_UNI(),
   };
 }
@@ -545,6 +554,9 @@ export function createFluffyGrass({
   group.userData = {
     kind: 'fluffyGrass', blades,
     setWalker(pos, r = 0.55) { mat.uniforms.uWalker.value.set(pos.x, pos.y, pos.z, r); },
+    // a blast running out over the field from (x, z): its front `front` metres out now, blowing `power` hard (0..1; 0: none).
+    // The blades its front is passing are thrown flat away from its middle, and come back up behind it
+    setBlast(x, z, front, power) { mat.uniforms.uBlast.value.set(x, z, front, power); },
     dispose() { group.children.forEach(m => m.geometry.dispose()); blade.dispose(); mat.dispose(); },
   };
   return group;

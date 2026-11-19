@@ -17,6 +17,7 @@
      moves.play('thicket')                     shut in its bud, it makes thorned vines burst up all round itself (below)
      moves.play('poison')                      all three spit poison up into the sky and it rains down on her (below)
      moves.play('ultimate')                    the poison rain all over the field, with the thicket (below)
+     moves.play('skybeam')                     a circle under it, circles in the sky, and the light they send down on it (below)
      moves.play('hit', head)                   that head (0: middle, 1: right, 2: left) is struck: it flinches, over
                                                whatever it is doing (a blow it is striking goes on). false if it is down,
                                                or shut away in the bud
@@ -56,6 +57,14 @@
                                                             ground (shape: a ring): where, and in how many seconds; then as it
                                                             bursts. Whoever stands in it then is struck (unless the game's
                                                             barrier is up)
+         { type: 'warn' | 'hit', move: 'skybeam', shape, lead, lasts }   the sky beam: the circle that opens on the ground
+                                                            round it (shape: a ring), and how long until the light comes down
+                                                            on it; then as it lands: whoever stands in the circle is struck
+         { type: 'fire', move: 'skybeam' }                  its three beams go up into the sky: the light is about to come down
+         { type: 'warn' | 'hit', move: 'skybeam', ripple, shape, lead }   the shockwave the light sends out over the whole
+                                                            field as it lands (a 'wave' shape, as the ultimate's ripples):
+                                                            warned as the light lands, setting off from the circle's rim
+                                                            lead seconds after. She must be in the air or behind the barrier
          { type: 'burst' | 'roar', move: 'rise' }           it breaks out of the ground; it roars
          { type: 'end', move }                              a blow, its dying, or its coming up, is over
      moves.rest()                              as built at once (all heads up, vines away): for when something else acts it
@@ -107,6 +116,15 @@
    ring of it: she must jump them (or be behind her barrier) as each passes her.
    (The thicket's drawing is thicket-fx.js's, the patches' thorn-patches-fx.js's, the shockwaves' shockwave-fx.js's, the rain's
    poison-rain-fx.js's.)
+   The sky beam (the sky-beam clip): a circle of runes opens on the ground round it and they look down at it; their eyes
+   narrow to slits and flash. They draw themselves up tall and roar, shaking, as wind winds round them and roots break
+   out of the ground; the sky goes dark and circles open in it, and they turn their faces up to them, each in its own
+   way (the leader still, the hot head starting at the lightning, the trickster swaying and grinning). Heads back, a
+   breath drawn in, and all three send a beam up into the circles; the circles answer with a column of light that comes
+   down on the plant itself and bursts out over the ground: whoever stands in the circle is struck, and a shockwave runs
+   out from its rim over the whole field. They stand in the light, braced under it, lit white; it thins, they sag and
+   shake themselves off, and watch what is left of it drift down. (All it draws is skybeam-fx.js's; the sky, storm-sky.js's;
+   the shockwave, shockwave-fx.js's.)
    Coming up: three small harmless heads look out of the ground, wide-eyed, bobbing; then a sly look, a rumble, and it
    bursts up as a bud that springs open, and roars at her.
    Nothing snaps: reaches and turns go through springs (a soft heavy limb overshoots and settles), faces ease.
@@ -145,6 +163,14 @@ export const BOSS_MOVES = {
     rain: [4.6, 11.6], drops: 30, aim: 4, far: 22, lead: 1.05, radius: 1.2, lasts: 0.3, ahead: 0.5, pool: 1.5, linger: 8,
     patches: { waves: [[5.3, 6.5], [6.8, 8.0], [11.6, 12.8]], count: [5, 6, 7], radius: 2.4, lasts: 0.7 },
     ripples: { at: [0, 1.2, 2.4], lead: 0.6, reach: 26, speed: 9, width: 1.6, height: 0.6 } },
+  // the sky beam: the circle opens on the ground (warn: whoever is in it, radius metres, when the light lands is struck);
+  // their eyes flash (glint); they draw up tall (tall) and rouse themselves (rouse: wind round them, roots breaking out);
+  // the sky darkens (dusk) and the circles open in it (sky), light winding up to them (helix); heads back (up), the three
+  // beams go up (fire), the light comes down on it (hit) and stands for lasts; it thins away (fade) and what is left
+  // drifts down (calm). ripple: the shockwave its landing sends out: it crosses the circle's rim `after` seconds after the
+  // light lands (so it is seen running out from the middle), then on to reach metres at speed metres a second
+  skybeam: { length: 10.6, warn: 0.45, glint: 1.05, tall: 1.6, rouse: 2.2, dusk: 3.9, sky: 4.4, helix: 4.6, up: 5.55, fire: 6.05, hit: 6.75, lasts: 1.25, fade: 8.0, calm: 8.5, radius: 7,
+    ripple: { after: 0.5, reach: 36, speed: 14, width: 1.6, height: 0.6 } },
   hit:   { length: 0.65 },                                                  // a head's flinch (over whatever it does)
   down:  { length: 2.8 },                                                   // a head going down (then it stays down)
   rise:  { length: 8.0, down: 0.6, sly: 4.2, burst: 4.8, roar: 6.05 },      // (its beats are counted from when it is under the ground)
@@ -210,7 +236,8 @@ export function createBossMoves(boss, { snaps = true } = {}) {
   const downCount = () => [C, R, L].filter(isDown).length;
   const PR = BOSS_MOVES.poison;
   const striking = () => BOSS_OWNERS[me.state] ?? (((me.state === 'bramble' || me.state === 'thicket') && me.time < BOSS_MOVES[me.state].burst)
-    || (me.state === 'poison' && me.time < PR.rain[1] + PR.lead) || (me.state === 'ultimate' && me.time < BOSS_MOVES.ultimate.thicket + BOSS_MOVES.thicket.burst) ? -1 : undefined);      // the head whose blow is under way (-1: all of them; undefined: none)
+    || (me.state === 'poison' && me.time < PR.rain[1] + PR.lead) || (me.state === 'ultimate' && me.time < BOSS_MOVES.ultimate.thicket + BOSS_MOVES.thicket.burst)
+    || (me.state === 'skybeam' && me.time < BOSS_MOVES.skybeam.fade) ? -1 : undefined);      // the head whose blow is under way (-1: all of them; undefined: none)
 
   function play(name, head) {
     const busy = me.state === 'die' || me.state === 'dead' || me.state === 'rise';
@@ -235,7 +262,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
       me.state = 'rise'; me.time = 0; ctx.fired = {};
       return true;
     }
-    if (name === 'bramble' || name === 'thicket' || name === 'poison' || name === 'ultimate') {
+    if (name === 'bramble' || name === 'thicket' || name === 'poison' || name === 'ultimate' || name === 'skybeam') {
       if (me.state !== 'idle') return false;
       me.state = name; me.time = 0; ctx.fired = {}; ctx.patches = []; ctx.drops = [];
       return true;
@@ -718,6 +745,127 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     }
   }
 
+  // ---- the sky beam: a circle under it, circles in the sky over it, three beams up into them, and the light they send
+  // down on it, bursting out over the ground. Each head in its own way all through: the leader heavy and still, the hot
+  // head jerky, the trickster loose and grinning
+  function skybeam(t) {
+    const B = BOSS_MOVES.skybeam, RI = B.ripple;
+    once('roar', 0.12, () => tell('roar'));
+    once('warn', B.warn, () => {
+      const o = toWorld(tmp.set(0, 0, 0));
+      tell('warn', { shape: ctx.shape = { kind: 'ring', x: o.x, y: o.y, z: o.z, radius: B.radius * size }, lead: B.hit - B.warn, lasts: B.lasts });
+    });
+    once('fire', B.fire, () => tell('fire'));
+    once('hit', B.hit, () => {
+      tell('hit', { shape: ctx.shape });
+      const o = toWorld(tmp.set(0, 0, 0));
+      ctx.ripple = { kind: 'wave', x: o.x, y: o.y, z: o.z, from: B.radius * size, to: RI.reach * size, speed: RI.speed * size, width: RI.width * size, height: RI.height * size };
+      tell('warn', { ripple: 0, shape: ctx.ripple, lead: RI.after });
+    });
+    once('rippleGo', B.hit + RI.after, () => tell('hit', { ripple: 0, shape: ctx.ripple }));
+    stance(false);
+    // how far into each beat it is
+    const start = pulse(t, 0, 0.1, B.warn, B.warn + 0.25);                                          // startled: what is it doing?
+    const down = pulse(t, B.warn + 0.05, B.warn + 0.28, B.glint - 0.12, B.glint + 0.06);            // they look down at the circle opening under them
+    const glint = pulse(t, B.glint - 0.06, B.glint + 0.04, B.tall, B.tall + 0.3);                   // eyes to slits: they flash
+    const tall = sstep(B.tall, B.tall + 0.55, t) * (1 - sstep(B.up - 0.25, B.up + 0.05, t));        // drawn up tall
+    const rouse = sstep(B.rouse, B.rouse + 0.3, t) * (1 - sstep(B.sky + 0.15, B.sky + 0.9, t));     // roaring with it, shaking
+    const gaze = sstep(B.sky + 0.1, B.sky + 0.9, t) * (1 - sstep(B.up - 0.2, B.up + 0.05, t));      // faces up to the circles in the sky
+    const coil = pulse(t, B.up - 0.12, B.up + 0.14, B.fire - 0.07, B.fire + 0.02);                  // heads back, drawn down: a breath in
+    const sky = sstep(B.up, B.up + 0.28, t) * (1 - sstep(B.fade - 0.05, B.fade + 0.45, t));         // faces right up to the sky
+    const fire = pulse(t, B.fire - 0.03, B.fire + 0.05, B.hit - 0.04, B.hit + 0.04);                // the beams go up out of them
+    const under = pulse(t, B.hit - 0.02, B.hit + 0.07, B.fade - 0.1, B.fade + 0.35);                // under the light, braced
+    const jolt = pulse(t, B.hit - 0.02, B.hit + 0.03, B.hit + 0.1, B.hit + 0.5);                    // as it lands
+    const spent = pulse(t, B.fade + 0.25, B.fade + 0.6, B.calm + 0.55, B.calm + 1.0);               // sagging, shaking themselves off
+    const calm = pulse(t, B.calm + 0.5, B.calm + 1.0, B.length - 0.75, B.length - 0.2);             // watching what is left drift down
+    const set = (p, to, k) => { for (const key in to) p.face[key] = lerp(p.face[key], to[key], k); };
+    for (const h of heads) {
+      const i = h.index, p = P[i], d = dirs[i], n = i * 1.7, side = i === R ? 1 : i === L ? -1 : 0;
+      const slow = i === C ? 0.75 : i === R ? 1.25 : 1.0;                    // (how quick its own shaking and swaying is)
+      // startled, then down at the circle: eyes wide, mouths a little open; the trickster leans right over it
+      set(p, { size: 1.3, lid: 1, flare: 0.7, jaw: 0.55, slant: -0.2, curve: -0.3, smile: 0 }, start);
+      if (down > 0.3) { p.at = tmp2.set(h.centre.x * 0.7, 0, 3.4 + (i === L ? 0.6 : 0)).clone(); p.share = 0.95; p.most = 0.6; p.nodMax = 0.5; }
+      p.nod = lerp(p.nod, 0.34, down);
+      p.lean.lerp(tmp.set(d.x * 0.2, i === L ? -0.5 : -0.2, d.z * 0.2 + 0.35), down);
+      set(p, { size: 1.25, lid: 1, jaw: i === L ? 0.7 : 0.4, flare: 0.3, slant: 0, curve: i === L ? 0.8 : 0, smile: 0 }, down);
+      // eyes to slits, back on her, quite still: the flash across them
+      p.lean.lerp(tmp.set(-d.x * 0.25, 0.1, -d.z * 0.25), glint);
+      set(p, { lid: 0.3, slant: 1, size: 1.15, jaw: 0.12, flare: 0.9, curve: -1, smile: 0, brow: 0 }, glint);
+      p.wave = lerp(p.wave, 0.25, glint);
+      // drawn up tall (the leader tallest), the side heads apart; roaring with it, shaking: the hot head lunges at her,
+      // the trickster throws its head about
+      p.lean.lerp(tmp.set(side * 0.3, i === C ? 1.15 : 0.8, 0.05), tall);
+      const sh = (i === R ? 0.07 : i === L ? 0.045 : 0.03) * rouse, hz = (i === R ? 53 : i === L ? 41 : 33);
+      p.lean.add(tmp.set(Math.sin(t * hz + n) * sh + d.x * (i === R ? 0.5 : 0.1) * rouse, Math.sin(t * hz * 1.13 + 1) * sh, Math.cos(t * hz * 0.9) * sh + d.z * (i === R ? 0.5 : 0.1) * rouse));
+      p.nod = lerp(p.nod, i === L ? -0.42 : (i === C ? -0.24 : -0.05), rouse);
+      p.tilt += (i === L ? 0.3 : 0.08) * Math.sin(t * 2.6 * slow + n) * rouse;
+      p.yaw += (i === R ? 0.14 : 0.05) * Math.sin(t * 5.3 * slow + n) * rouse;
+      set(p, { jaw: 0.86 + 0.14 * Math.sin(t * 19 + n), lid: 0.92, slant: 1, size: 1.2, flare: 1, curve: i === L ? 0.7 : -1, smile: 0, brow: 0 }, rouse);
+      if (rouse > 0.5 && i === L) p.at = null;
+      // faces up to the circles opening in the sky: the leader still and proud, the hot head starting at each flash of
+      // lightning, the trickster swaying its head from side to side, grinning
+      const start2 = i === R ? pulse((t - B.sky) % 0.62, 0, 0.05, 0.2, 0.34) : 0;
+      p.nod = lerp(p.nod, -0.62 - 0.1 * start2, gaze); p.nodMin = lerp(p.nodMin, -0.9, gaze);
+      p.yaw = lerp(p.yaw, i === R ? 0.3 * Math.sin(Math.floor((t - B.sky) / 0.62) * 2.4) : 0, gaze);
+      p.tilt = lerp(p.tilt, i === L ? 0.34 * Math.sin(t * 2.4) : 0, gaze);
+      p.lean.lerp(tmp.set(side * 0.35 + (i === L ? 0.3 * Math.sin(t * 2.4) : 0), i === C ? 1.0 : 0.6, -0.15), gaze);
+      set(p, { jaw: i === L ? 0.7 : 0.4, lid: 1, size: 1.2 + 0.15 * start2, slant: i === C ? 0.6 : 0.1, flare: 0.6 + 0.4 * start2, curve: i === L ? 1 : -0.4, smile: i === L ? 0.6 : 0, brow: 0 }, gaze);
+      if (gaze > 0.4) p.at = null;
+      // heads back to the sky, the side ones splayed out; drawn down with a breath in, mouths shut tight
+      p.lean.lerp(tmp.set(side * 0.55, 0.7, -0.35), sky);
+      p.nod = lerp(p.nod, -1.0, sky); p.nodMin = lerp(p.nodMin, -1.1, sky);
+      p.yaw = lerp(p.yaw, 0, sky); p.tilt = lerp(p.tilt, 0, sky);
+      if (sky > 0.4) p.at = null;
+      set(p, { jaw: 0.5, lid: 1, slant: 0.8, flare: 1, curve: -1, size: 1.12, smile: 0, brow: 0 }, sky);
+      p.lean.add(tmp.set(0, -0.5 * coil, 0.1 * coil));
+      set(p, { jaw: 0.04, lid: 0.7, size: 0.95, flare: 0.5 }, coil);
+      // the beams go up out of them: a jab up, mouths snapped wide, shaking hard
+      p.lean.add(tmp.set(Math.sin(t * (47 + i * 6)) * 0.05 * fire, 0.5 * fire + Math.sin(t * (53 + i * 5) + 1) * 0.04 * fire, Math.cos(t * (43 + i * 4)) * 0.05 * fire));
+      set(p, { jaw: 1, lid: 1, size: 1.3, flare: 1 }, fire);
+      // under the light: pressed down by it, braced, faces still up to it, mouths wide, eyes screwed up as it lands and
+      // then wide
+      p.lean.add(tmp.set(Math.sin(t * (29 + i * 5)) * 0.03 * under, -0.55 * under - 0.3 * jolt, Math.cos(t * (31 + i * 4)) * 0.03 * under));
+      p.bow.lerp(tmp.set(side * 0.25, -0.1, 0.2), under);
+      set(p, { jaw: 0.9, lid: lerp(1, 0.15, jolt), size: 1.25, flare: 1, slant: 0.5, curve: -0.5 }, under);
+      p.wave = lerp(p.wave, 0.3, Math.max(sky, fire, under));
+      // it thins: they sag, then shake themselves off, eyes screwed up
+      p.lean.lerp(tmp.set(d.x * 0.25, -0.45, d.z * 0.25), spent * (1 - sstep(B.calm, B.calm + 0.4, t)));
+      const shakeOff = pulse(t, B.calm, B.calm + 0.15, B.calm + 0.55, B.calm + 0.9);
+      p.tilt += Math.sin(t * 17 + n * 2) * 0.3 * shakeOff; p.yaw += Math.sin(t * 13 + n) * 0.16 * shakeOff;
+      set(p, { lid: lerp(0.45, 0.15, shakeOff), jaw: 0.3, flare: lerp(-0.4, 0.6, shakeOff), slant: -0.3, curve: -0.4, smile: 0, size: 1 }, spent);
+      // and watch what is left of it drift down: the leader drawn up, pleased with itself; the hot head snapping at a
+      // leaf going by; the trickster thrown back, cackling
+      if (calm > 0) {
+        const u = t - B.calm, laugh = Math.sin(u * 11.5);
+        if (i === C) {
+          p.lean.lerp(tmp.set(0, 0.45, 0.1), calm); p.nod = lerp(p.nod, -0.2, calm);
+          set(p, { lid: 0.78, slant: 0.5, flare: 0.5, curve: 0.5, jaw: 0.32, smile: 0 }, calm);
+        } else if (i === R) {
+          const s2 = u % 1.1, bite = pulse(s2, 0, 0.12, 0.42, 0.7);
+          p.lean.lerp(tmp.set(0.6 + 0.5 * bite, 0.35 + 0.5 * bite, 0.5), calm); p.nod = lerp(p.nod, -0.3, calm); p.yaw = lerp(p.yaw, 0.35, calm);
+          set(p, { jaw: s2 < 0.14 ? 0.95 : (s2 < 0.26 ? 0.05 : (s2 < 0.4 ? 0.9 : 0.15)), slant: 0.7, flare: 0.8, curve: -0.6, smile: 0, lid: 0.95 }, calm);
+          if (calm > 0.5) p.at = null;
+        } else {
+          p.lean.lerp(tmp.set(-0.2, 0.3 + 0.12 * laugh, 0.1), calm); p.nod = lerp(p.nod, -0.3 + 0.05 * laugh, calm);
+          set(p, { smile: 1, jaw: 0.7 + 0.3 * Math.abs(laugh), curve: 1, flare: 0.5, size: 1.05, slant: 0 }, calm);
+        }
+      }
+      p.quick = Math.max(p.quick, 1 + 2 * start, 1 + 1.4 * down, 1 + 1.2 * rouse * slow, 1 + 2.5 * fire, 1 + 2 * jolt, 1 + 3 * shakeOff, i === C ? 1 : 1 + 0.6 * gaze);
+    }
+    // the skirt: its hackles up and trembling as it rouses itself; spread flat by the beams and by the light landing;
+    // its veins burn brighter all the way to the beams. The whole plant is lit white while the light stands on it
+    const power = Math.max(0.18 * sstep(B.warn, B.glint, t), 0.5 * rouse, 0.45 * gaze, 0.7 * coil, fire, under) * (1 - sstep(B.fade, B.calm, t));
+    body.skirt = Math.min(body.skirt, -0.1 * rouse - 0.16 * gaze - 0.24 * fire - 0.3 * under - 0.12 * jolt);
+    body.ring.lift = Math.max(body.ring.lift, 0.3 * rouse + 0.2 * gaze + 0.12 * Math.max(fire, under));
+    body.ring.stir = Math.max(body.ring.stir, rouse, 0.6 * gaze, fire, under);
+    body.glow = Math.min(1, power);
+    body.flash = Math.min(1, 0.5 * under + 0.45 * jolt + 0.18 * fire);
+    // the ground under it: a rumble as the roots break out, each breaking out a small jolt; a great jolt as the light lands
+    const breaks = [0.08, 0.32, 0.6, 0.95].reduce((a, w) => Math.max(a, pulse(t - B.rouse, w - 0.02, w + 0.03, w + 0.08, w + 0.3)), 0);
+    const rumble = Math.max(0.6 * rouse, 0.5 * fire, 0.8 * under);
+    body.shake.set(Math.sin(t * 61) * 0.035 * rumble, 0.06 * breaks + 0.2 * jolt, Math.sin(t * 47) * 0.035 * rumble);
+  }
+
   // ---- its dying (all three heads down, or going down): the skirt wilts and all its colours dry
   function wilt(t) {
     const w = -sstep(ctx.wiltFrom, ctx.wiltFrom + 2.2, t);
@@ -873,6 +1021,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     else if (st === 'thicket') thicket(tt);
     else if (st === 'poison') poison(tt);
     else if (st === 'ultimate') ultimate(tt);
+    else if (st === 'skybeam') skybeam(tt);
     else if (st === 'die') { stance(false); wilt(tt); }
     else if (st === 'dead') { stance(false); wilt(ctx.dieLength); }
     else if (st === 'rise') rise(tt);

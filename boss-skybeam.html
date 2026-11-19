@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7fb4e6">
+<title>บอสต้นไม้ — ท่าลำแสงฟ้า</title>
+<!--
+  boss-skybeam.html  —  the plant boss's sky beam (plant-boss-moves.js: play('skybeam')) and all it draws, in a meadow, to
+  watch: a circle of runes opens under it, its eyes flash, it rouses itself (green wind, roots breaking out, the ground
+  cracking), the sky goes dark and storm cloud winds round an eye over it (storm-sky.js), circles open in the sky one over
+  another, three beams go up into them, and the light comes down on it and bursts out over the ground (skybeam-fx.js); a
+  shockwave runs out over the whole field (shockwave-fx.js, in gold) and the grass is thrown flat before it; then the
+  cloud is blown open and bright petals drift down. Vivi stands outside the circle, for its size, and jumps the shockwave
+  by herself. The camera cuts as the clip does (or stands back, to be turned by hand; or behind her).
+  One job: see the move. Nothing here goes into the game.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb4e6; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; }
+  /* its name, what it is, and what is happening now: one under another, however the lines break on a narrow screen */
+  #head { position: fixed; left: 0; right: 0; top: calc(10px + env(safe-area-inset-top)); text-align: center; pointer-events: none; padding: 0 12px; color: #fff; }
+  #name { font: 700 17px system-ui; text-shadow: 0 1px 6px #0008; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { margin-top: 6px; min-height: 20px; font: 800 15px system-ui; text-shadow: 0 1px 6px #000a; }
+  #say { position: fixed; left: 0; right: 0; top: 40%; text-align: center; pointer-events: none; font: 900 24px system-ui; color: #ffe2b8;
+    text-shadow: 0 2px 10px #000c; opacity: 0; transform: scale(0.8); transition: opacity 0.15s, transform 0.15s; }
+  #say.on { opacity: 1; transform: scale(1); }
+  #ui { position: fixed; left: 0; right: 0; bottom: calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 8px; pointer-events: none; }
+  #ui > * { pointer-events: auto; }
+  .track { position: relative; width: min(86vw, 420px); height: 8px; border-radius: 99px; background: #3b3147b0; border: 1px solid #ffffff90; overflow: hidden; }
+  .track i { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffffffa0; }
+  .track b { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #ffd84a, #b6ff6a); }
+  .bar { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 9px 13px; background: #3b3147d9; color: #fff; font: 700 13px system-ui; touch-action: manipulation; }
+  .bar button.on { background: #8a6a3a; }
+  .bar button.go { background: #b4462c; }
+  /* lying on its side: the buttons go to the bottom left corner, out of the picture's middle */
+  @media (orientation: landscape) {
+    #name small { display: none; }
+    #beat { margin-top: 3px; }
+    #ui { right: auto; left: calc(10px + env(safe-area-inset-left)); align-items: flex-start; gap: 6px; padding: 0; }
+    .track { width: 228px; }
+    .bar { justify-content: flex-start; }
+    .bar button { padding: 7px 11px; font-size: 12px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="head">
+  <div id="name">บอสต้นไม้ · ท่าลำแสงฟ้า<small>วงเวท → ปลุกพลัง → ฟ้ามืด → ยิงขึ้นฟ้า → ลำแสงฟาดลง · ลากจอเพื่อหมุนดูเอง</small></div>
+  <div id="beat"></div>
+</div>
+<div id="say"></div>
+<div id="ui">
+  <div class="track" id="track"><b id="fill"></b></div>
+  <div class="bar">
+    <button id="play" class="go">▶ ปล่อยท่า</button>
+    <button id="loop" class="on">🔁 เล่นวน</button>
+    <button id="cam">🎬 มุมคลิป</button>
+  </div>
+  <div class="bar">
+    <button data-speed="1" class="on">×1</button>
+    <button data-speed="0.5">×½</button>
+    <button data-speed="0.25">×¼</button>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { createPlantBoss, setPlantBossSun } from './plant-boss.js';
+import { createBossMoves, BOSS_MOVES } from './plant-boss-moves.js';
+import { createSkybeamFx, SKYBEAM, SKYBEAM_SHOCK_LOOK } from './skybeam-fx.js';
+import { createStormSky } from './storm-sky.js';
+import { createShockwaveFx } from './shockwave-fx.js';
+
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+renderer.info.autoReset = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's ground and grass. Its sky is the storm's (the day's, until the move darkens it)
+const scene = new THREE.Scene();
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 40, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 100000 : 190000, radius: 36, far: FAR });      // (as thick as the other pages' grass, out to where the shockwave ends)
+scene.add(grass);
+
+// ---- the boss, how it fights, and all its sky beam draws: what is solid with the land, what is light after it
+const boss = createPlantBoss({ seed: 1, clip: true });
+boss.position.set(0, H(0, 0) - 0.05, 0);
+scene.add(boss);
+const moves = createBossMoves(boss, { snaps: false });
+const B = BOSS_MOVES.skybeam;
+const LIFT = 0.3;                                    // its marks on the ground lie over the grass's tips
+const fx = createSkybeamFx({ heightAt: H, seed: 2, lift: LIFT });
+const sky = createStormSky({ far: FAR, seed: 3 });
+const shock = createShockwaveFx({ heightAt: H, lift: LIFT, look: SKYBEAM_SHOCK_LOOK });
+scene.add(fx.solid);
+const skyScene = new THREE.Scene(); skyScene.add(sky.object);
+const fxScene = new THREE.Scene(); fxScene.add(sky.rays, fx.object, shock.object);
+const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
+setPlantBossSun(sun); fx.setSun(sun);
+const foot = new THREE.Vector3(0, H(0, 0), 0);
+
+// the land's picture is multiplied by the storm's light (as the game does the hour's: the whole picture by one colour),
+// after it is drawn and before the spell's own light is: so the light is not dimmed. Not the sky: it is drawn already
+// as dark as it is (the quad lies just before the far end of the depth, and is drawn only where something is nearer)
+const dimMat = new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(1, 1, 1) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.9999, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: true, depthFunc: THREE.GreaterDepth, depthWrite: false,
+});
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), dimMat);
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+// the wash of light as it lands: the whole picture, added to
+const washMat = new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(1.0, 0.97, 0.8) }, uA: { value: 0 } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; uniform float uA; void main() { gl_FragColor = vec4(uC * uA, uA); }',
+  transparent: true, blending: THREE.AdditiveBlending, premultipliedAlpha: true, depthTest: false, depthWrite: false,
+});
+const wash = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), washMat);
+wash.frustumCulled = false; wash.renderOrder = 99; wash.visible = false;
+fxScene.add(wash);
+
+// ---- her: outside the circle, a little to one side, facing it. She jumps the shockwave by herself
+const her = new THREE.Vector3(3.4, 0, B.radius + 5.6);
+her.y = H(her.x, her.z);
+let vivi = null, mark = null;
+const JUMP = { up: 6.4, fall: 15 };
+const air = { h: 0, vy: 0, t: 0, landed: 9 };
+function jump() { if (air.h > 0) return; air.vy = JUMP.up; air.h = 0.001; air.t = 0; if (vivi) vivi.play('jump_start', 0.06, false); }
+(async () => {
+  try {
+    const [{ loadCharacter }, { VIVI_GLB }, { CHARACTER_ANIM }] = await Promise.all([import('./stylized-character.js'), import('./vivi-data.js'), import('./character-anim.js')]);
+    vivi = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);
+    if (vivi.setSize) vivi.setSize(1.75 / vivi.baseHeight);
+    vivi.play('idle');
+    vivi.object.position.copy(her);
+    vivi.object.rotation.y = Math.atan2(-her.x, -her.z);
+    scene.add(vivi.object);
+  } catch (err) {
+    // (no Vivi here: a pole as tall as she is, on a ring where she would stand)
+    console.warn('Vivi not loaded', err);
+    mark = new THREE.Group();
+    const pale = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.75, 10), pale); pole.position.y = 0.875 + 0.3;
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), pale); top.position.y = 1.75 + 0.3;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40), pale); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.32;
+    mark.add(pole, top, ring); mark.position.copy(her);
+    scene.add(mark);
+  }
+})();
+
+// ---- the camera. 'clip': it cuts as the clip does (before it; low and close as it rouses itself; back and looking up as
+// the sky opens; nearer again as the petals drift down). 'free': standing back, to be turned by hand. 'her': behind her
+const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.1, 600);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.54; controls.minDistance = 5; controls.maxDistance = 110; controls.enablePan = false;
+let view = 'clip';
+// how far back the camera must stand for something `tall` and `wide` (metres) to fit, at this field of view
+const fit = (tall, wide, fov) => { const v = THREE.MathUtils.degToRad(fov / 2), h = Math.atan(Math.tan(v) * camera.aspect); return Math.max((tall / 2) / Math.tan(v), (wide / 2) / Math.tan(h)) * 1.04; };
+const pose = (x, y, z, ax, ay, az, fov) => ({ pos: new THREE.Vector3(x, y, z), at: new THREE.Vector3(ax, ay, az), fov });
+// looking up at it all from low before it: as near as it can stand and still have in the picture the plant's foot, the
+// highest circle's nearest rim, and the great circle from side to side
+function lookingUp(fov, y) {
+  const rad = THREE.MathUtils.degToRad, v = rad(fov / 2), h = Math.atan(Math.tan(v) * camera.aspect);
+  const under = camera.aspect < 1 ? 9 : 5;           // (degrees left under its foot: standing up, the buttons lie across the picture's foot)
+  const top = d => Math.atan2(SKYBEAM.halo.y - y, d - SKYBEAM.halo.r) + rad(3), bottom = d => Math.atan2(-y, d) - rad(under);
+  let d = SKYBEAM.halo.r + 12;
+  while (d < 95 && (top(d) - bottom(d) > 2 * v || Math.atan2(SKYBEAM.main.r + 0.8, d - SKYBEAM.main.r) > h)) d += 0.5;
+  return { d, at: y + Math.tan((top(d) + bottom(d)) / 2) * d };
+}
+let SHOT = null;
+function shots() {
+  const dFront = fit(9.6, 12.5, 46), up = lookingUp(60, 2.3), dCalm = fit(19, 20, 55);
+  SHOT = {
+    front: pose(0, 4.4, dFront, 0, 3.9, 0, 46), frontIn: pose(0, 4.2, dFront * 0.9, 0, 4.0, 0, 46),
+    close: pose(1.3, 1.5, Math.max(9.4, dFront * 0.62), 0, 4.7, 0, 52), closeUp: pose(0.9, 1.9, Math.max(9.0, dFront * 0.58), 0, 5.2, 0, 52),
+    wide: pose(0, 2.3, up.d, 0, up.at, 0, 60), wideEnd: pose(1.4, 2.7, up.d * 0.98, 0, up.at, 0, 60),
+    calm: pose(0, 3.1, dCalm, 0, 7.6, 0, 55),
+  };
+}
+const cur = pose(0, 0, 0, 0, 0, 0, 46), mix = pose(0, 0, 0, 0, 0, 0, 46);
+const ease = x => x * x * (3 - 2 * x), seg = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+function blend(a, b, k, out = cur) { out.pos.lerpVectors(a.pos, b.pos, k); out.at.lerpVectors(a.at, b.at, k); out.fov = a.fov + (b.fov - a.fov) * k; return out; }
+let rest = 9;                                        // seconds since the move was over
+function clipPose(t) {
+  const S = SHOT;
+  if (t < 0) return blend(S.calm, S.front, ease(seg(rest, 0, 0.9)));                              // (standing: back before it)
+  if (t < B.rouse - 0.1) return blend(S.front, S.frontIn, t / (B.rouse - 0.1));                   // before it, coming in slowly
+  if (t < B.dusk - 0.05) return blend(S.close, S.closeUp, seg(t, B.rouse - 0.1, B.dusk - 0.05));  // a cut: low and close
+  if (t < B.sky + 0.35) return blend(S.closeUp, S.wide, ease(seg(t, B.dusk - 0.05, B.sky + 0.35)));      // back, and up to the sky
+  if (t < B.fade + 0.3) return blend(S.wide, S.wideEnd, seg(t, B.sky + 0.35, B.fade + 0.3));      // looking up at it all
+  blend(S.wide, S.wideEnd, 1, mix);
+  return blend(mix, S.calm, ease(seg(t, B.fade + 0.3, B.calm + 0.8)));                            // nearer again, as it drifts down
+}
+function frame() {
+  shots();
+  controls.enabled = view === 'free';
+  if (view === 'free') {
+    const S = SHOT.wide;
+    camera.fov = 55; camera.updateProjectionMatrix();
+    controls.target.set(0, 9, 0);
+    camera.position.set(S.pos.z * 0.42, 6, S.pos.z * 0.84);
+    controls.update();
+  } else if (view === 'her') {
+    const back = new THREE.Vector3(her.x, 0, her.z).normalize();
+    camera.fov = 64; camera.updateProjectionMatrix();
+    camera.position.set(her.x + back.x * 6.5 + 1.8, her.y + 2.3, her.z + back.z * 6.5);
+    camera.lookAt(0, 12.5, 0);
+  }
+}
+frame();
+// everything the move draws is made ready now (its shaders, the circles' pictures), so nothing stalls as the light lands
+for (const t of fx.pictures) renderer.initTexture(t);
+for (const s of [skyScene, scene, fxScene]) renderer.compile(s, camera);
+// turning it by hand while it cuts as the clip does: it is the hand's from there
+renderer.domElement.addEventListener('pointerdown', () => { if (view === 'clip') setView('free', true); });
+function setView(v, keep = false) {
+  const was = camera.position.clone();
+  view = v;
+  btn('cam').textContent = v === 'clip' ? '🎬 มุมคลิป' : v === 'free' ? '🌄 หมุนดูเอง' : '🧍 มุมวีวี่';
+  frame();
+  if (keep) { camera.position.copy(was); controls.target.set(0, Math.min(14, Math.max(4, cur.at.y)), 0); controls.update(); }
+}
+
+// ---- what is happening, shown over it
+const BEATS = [[0, 'คำรามเรียกพลัง'], [B.warn, 'วงเวทกางใต้เท้า — ออกนอกวง!'], [B.glint, 'ตาวาบ'], [B.rouse, 'ปลุกพลัง · ลมเขียวหมุน รากผุด พื้นแตก'], [B.dusk, 'ฟ้ามืด เมฆหมุนวน ฟ้าผ่า'],
+  [B.sky, 'วงเวทซ้อนชั้นเปิดบนฟ้า'], [B.up, 'เงยหน้า อมพลัง'], [B.fire, 'ยิงลำแสงสามสายขึ้นฟ้า!'], [B.hit, 'ลำแสงฟ้าฟาดลง! · คลื่นกระแทกวิ่งทั่วทุ่ง'], [B.fade, 'แสงจาง เมฆแตกออก'], [B.calm, 'กลีบแสงโปรยลงมา']];
+const track = document.getElementById('track');
+for (const [t] of BEATS.slice(1)) { const i = document.createElement('i'); i.style.left = (t / B.length * 100) + '%'; track.appendChild(i); }
+const beatEl = document.getElementById('beat'), fillEl = document.getElementById('fill'), sayEl = document.getElementById('say');
+let sayT = 0;
+function say(text) { sayEl.textContent = text; sayEl.classList.add('on'); sayT = 1.0; }
+
+let loop = true, speed = 1, wait = 1.2, clockT = 0;
+let wave = null;                                     // the shockwave running now: { shape, bornAt: when the light landed, goAt: when it crosses the circle's rim, passed }
+moves.onEvent = e => {
+  shock.event(e);
+  if (e.move !== 'skybeam') return;
+  if (e.type === 'warn' && e.ripple !== undefined) wave = { shape: e.shape, bornAt: clockT, goAt: clockT + e.lead, passed: false };
+  if (e.type === 'hit' && e.ripple === undefined && Math.hypot(her.x - e.shape.x, her.z - e.shape.z) < e.shape.radius) say('💥 อยู่ในวง โดนลำแสง!');
+  if (e.type === 'cancel') wave = null;
+  if (e.type === 'end') wait = 1.6;
+};
+const play = () => { if (moves.state === 'idle') moves.play('skybeam'); };
+const btn = id => document.getElementById(id);
+btn('play').onclick = () => { wait = -1; play(); };
+btn('loop').onclick = () => { loop = !loop; btn('loop').classList.toggle('on', loop); };
+btn('cam').onclick = () => setView(view === 'clip' ? 'free' : view === 'free' ? 'her' : 'clip');
+for (const b of document.querySelectorAll('[data-speed]')) b.onclick = () => {
+  speed = +b.dataset.speed;
+  for (const o of document.querySelectorAll('[data-speed]')) o.classList.toggle('on', o === b);
+};
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); frame(); });
+
+// ---- every frame
+function step(dt) {
+  clockT += dt;
+  if (moves.state === 'idle' && wait >= 0) { wait -= dt; if (wait < 0 && (loop || !step.started)) { step.started = true; play(); } }
+  N.update(dt);
+  moves.update(dt, her);
+  const inMove = moves.state === 'skybeam', t = inMove ? moves.time : -1;
+  rest = inMove ? 0 : rest + dt;
+  fx.update(dt, camera, boss, t);
+  sky.update(dt, camera, foot, t);
+  shock.update(dt, camera);
+
+  // the shockwave: the grass is thrown flat before it and comes back up behind it; she jumps it as it reaches her
+  if (wave) {
+    const s = wave.shape, front = s.speed * (clockT - wave.bornAt), d = Math.hypot(her.x - s.x, her.z - s.z);      // (it runs out from the middle at the pace it keeps past the rim)
+    grass.userData.setBlast(s.x, s.z, front, 1 - THREE.MathUtils.smoothstep(front, s.to - 4, s.to + 6));
+    const soon = (d - front) / s.speed;
+    if (soon < 0.2 && soon > -0.05 && d > s.from) jump();
+    if (!wave.passed && front > d - s.width * 0.3) { wave.passed = true; say(air.h > s.height * 0.75 ? '🦘 กระโดดข้ามคลื่น!' : '💥 โดนคลื่นกระแทก!'); }
+    if (front > s.to + 30) { wave = null; grass.userData.setBlast(0, 0, 0, 0); }
+  }
+  // her jump: rising, falling, landing
+  air.landed += dt;
+  if (air.h > 0) {
+    air.t += dt; air.vy -= JUMP.fall * dt; air.h += air.vy * dt;
+    if (air.h <= 0) { air.h = 0; air.vy = 0; air.landed = 0; if (vivi) vivi.play('jump_land', 0.06, false); }
+    else if (vivi && air.t > 0.14 && !air.up) { air.up = true; vivi.play('jump_air', 0.12); }
+  } else if (air.up || (air.landed > 0.45 && air.landed - dt <= 0.45)) { air.up = false; if (vivi && air.landed > 0.45) vivi.play('idle', 0.2); }
+  const who = vivi ? vivi.object : mark;
+  if (who) who.position.set(her.x, her.y + air.h, her.z);
+  if (vivi) vivi.update(dt);
+
+  let label = '';
+  if (inMove) for (const [bt, s] of BEATS) if (moves.time >= bt) label = s;
+  beatEl.textContent = label;
+  fillEl.style.width = (inMove ? moves.time / B.length * 100 : 0) + '%';
+  if (sayT > 0 && (sayT -= dt) <= 0) sayEl.classList.remove('on');
+}
+const shakeOff = new THREE.Vector3();
+let shakeT = 0;
+function draw(dt) {
+  const t = moves.state === 'skybeam' ? moves.time : -1;
+  if (view === 'clip') {
+    const p = clipPose(t);
+    camera.position.copy(p.pos); camera.fov = p.fov; camera.updateProjectionMatrix(); camera.lookAt(p.at);
+  } else if (view === 'free') controls.update();
+  // the ground's jolts and the thunder: the camera's, for this picture only
+  shakeT += dt;
+  const k = Math.min(1, fx.shake + shock.shake * 0.5 + sky.shake * 0.5) * 0.3;
+  shakeOff.set(Math.sin(shakeT * 71) * k, Math.sin(shakeT * 83 + 1) * k * 0.7, Math.sin(shakeT * 67 + 2) * k * 0.5);
+  camera.position.add(shakeOff);
+  camera.updateMatrixWorld();
+  renderer.info.reset();
+  renderer.clear();
+  renderer.render(skyScene, camera);
+  renderer.render(scene, camera);
+  const l = sky.light;
+  if (l.x < 0.999 || l.y < 0.999 || l.z < 0.999 || l.x > 1.001) { dimMat.uniforms.uC.value.copy(l); renderer.render(dimScene, camera); }
+  wash.visible = fx.flash > 0.004; washMat.uniforms.uA.value = fx.flash * 0.4;
+  renderer.render(fxScene, camera);
+  camera.position.sub(shakeOff);
+}
+// no more than 60 pictures a second (as the game: a 120 Hz screen would only warm the phone)
+const clock = new THREE.Clock();
+let manual = false, owed = 0;
+renderer.setAnimationLoop(() => {
+  owed += clock.getDelta();
+  if (manual || owed < 1 / 62) return;
+  const dt = Math.min(owed, 0.05);
+  owed = 0;
+  step(dt * speed); draw(dt * speed);
+});
+// for tests: run it by hand, a fixed step at a time
+window.__scene = {
+  scene, camera, controls, boss, moves, fx, sky, shock, her,
+  manual(on) { manual = on; },
+  run(seconds, fps = 30) { const n = Math.round(seconds * fps); for (let i = 0; i < n; i++) step(1 / fps); draw(1 / fps); },
+  view(v) { setView(v); },
+  ready: () => !!vivi || !!mark,
+  info: () => ({ state: moves.state, t: +moves.time.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
+};
+</script>
+</body>
+</html>

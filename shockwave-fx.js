@@ -11,8 +11,9 @@
                                                               shockwaves' own height. lift: metres its light lies over
                                                               the ground (over the grass's tips)
      scene.add(fx.object)
-     moves.onEvent = e => fx.event(e)          the ultimate's ripples: 'warn' and 'hit' with a ripple (and its shape, kind
-                                               'wave'); 'cancel' (they go at once)
+     moves.onEvent = e => fx.event(e)          a move's ripples (the ultimate's, the sky beam's): 'warn' and 'hit' with a
+                                               ripple (and its shape, kind 'wave'); 'cancel' (they go at once)
+     createShockwaveFx({ look })               its colours, as SHOCK_LOOK names them (the clip's red, as it starts)
      every frame: fx.update(dt, camera)        (the same dt the moves get)
      fx.front(k)                               metres shockwave k's front has run out to now, as the moves have it (from
                                                the ring's rim, once it has set off), or -1 (not running): where it strikes
@@ -223,7 +224,7 @@ export function createShockwaveFx({ heightAt = null, lift = 0.04, look = SHOCK_L
   let jolt = 0;
   function event(e) {
     if (e.type === 'cancel') { for (const w of waves) if (w) { w.done = true; hide(w.slot); } aRPos.needsUpdate = aRInfo.needsUpdate = aWPos.needsUpdate = aWInfo.needsUpdate = true; return; }
-    if (e.move !== 'ultimate' || e.ripple === undefined || !e.shape) return;
+    if (e.ripple === undefined || !e.shape) return;                           // (whichever move sends it: the ultimate's, the sky beam's)
     const k = e.ripple;
     if (e.type === 'warn') {
       waves[k] = { shape: e.shape, warnAt: T, goAt: T + (e.lead || 0.6), slot: k % SLOTS, done: false };
