@@ -18,7 +18,9 @@
 //   - climb. Pushing at a face for a moment she takes hold of it and climbs: the stick towards the rock is up, away from it
 //     down, across it along. The jump button is a leap over the rock, the dash button lets go (she slides down). When her
 //     hands reach the top she vaults over it; a ledge lower than her reach is vaulted straight from the ground. Sliding or
-//     falling down a face, pushing at it takes hold again. No stamina: any face can be climbed.
+//     falling down a face, pushing at it takes hold again. In the air (a jump, a flight), pushed at a face that stands
+//     above her feet she takes hold of it at once, where she is (not while she is upside down in the flip). No stamina: any
+//     face can be climbed.
 //   - swim. Water too deep to wade carries her: she swims where the stick points and treads water when it is let go, wades
 //     out where it shallows, and climbs out up a rock bank. Not over a waterfall, nor up one.
 //   - go over low things: running (or walking, for a moment) at a fence, a bridge's parapet, a barrel, she hops over it, her
@@ -99,6 +101,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let shy = 0;                                // s after a slide that got her nowhere: edges are walls for a moment
   let grabPush = false, faceAhead = false, grabT = 0, grabShy = 0, lipT = 0;      // pushing at a face this frame; for how long; s before she will take hold again
   let onRock = false, climbT = 0, leapT = 0, leapCool = 0, climbRate = 0;      // climbing: her feet have left the ground; for how long; a leap; the clip's rate
+  const reachFrom = new THREE.Vector3();        // taking hold in the air: where she was, from where she is put on the rock (shown easing over)
   let climbW = 0, tilt = 0, nX = 0, nY = 1, nZ = 0, standOff = 0;      // how far she is laid against the rock (0..1), by what angle, the way out of the face, and how far the rock's bulges hold her off it (m)
   const lie = { angle: 0, off: 0 };
   let hurdleT = 0, hopT = 0, hopLift = 0, untucked = false;      // going over a low thing: how long she has walked at it; s into the hop; how high it has her; her legs are coming down
@@ -281,6 +284,19 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const pushedAt = (want, x, z, square = 0.5) => { const at = face.at(x, z); return at.slope > 0.5 && Math.sin(want) * at.ux + Math.cos(want) * at.uz >= square; };
 
   // ---- climbing
+  // In the air: pushed at a face that stands above her feet just ahead, she takes hold of it there: put on the rock where
+  // it is at her height, between her and there (her body is shown easing over, reachFrom)
+  function grabInAir(k, want) {
+    const dx = Math.sin(want), dz = Math.cos(want), r = 0.3 * k, qx = pos.x + dx * r, qz = pos.z + dz * r;
+    if (footing(qx, qz) !== 'cliff' || standAt(qx, qz) <= pos.y + 0.05 * k || !pushedAt(want, qx, qz)) return false;
+    let a = 0, b = r;
+    for (let i = 0; i < 12; i++) { const m = (a + b) / 2; if (standAt(pos.x + dx * m, pos.z + dz * m) < pos.y) a = m; else b = m; }
+    const x = pos.x + dx * a, z = pos.z + dz * a;
+    reachFrom.set(pos.x - x, 0, pos.z - z);
+    pos.x = x; pos.z = z;
+    grab();
+    return true;
+  }
   function grab() {
     mode = 'climb'; onRock = footing(pos.x, pos.z) === 'cliff'; climbT = 0; leapT = 0; climbRate = 0;
     air.end(); speed = 0; vy = 0; landT = -1; dashT = 0; sprint = false; grabT = 0; edgeT = 0; edgeGrace = 0;
@@ -548,6 +564,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (faceAhead && pushing && went < 0.35 * WALK) grabPush = true;
     grabT = grabPush && mode === 'ground' ? grabT + dt : 0;
     if (grabT >= GRAB_WAIT) { grab(); return; }
+    if (mode === 'air' && footing && pushing && grabShy <= 0 && air.upside < 0.3 && grabInAir(k, want)) return;      // in the air, at once
     // her legs go at the pace she really goes: along a cliff's edge or round a trunk she goes slower than she means to
     const paceNow = Math.min(speed, went * 1.1 + 0.05);
     pace = Math.min(paceNow, paceWas);                                        // (a pace held for one frame only does not change her gait)
@@ -649,7 +666,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (climbW < 0.002) { climbW = 0; standOff = 0; }
     const out = (WALL_HH * hh + standOff) * climbW;
     root.position.copy(pos);
-    character.object.position.set(nX * out, nY * out, nZ * out);
+    reachFrom.multiplyScalar(1 - ease(12, dt));
+    character.object.position.set(nX * out + reachFrom.x, nY * out, nZ * out + reachFrom.z);
     character.object.rotation.set(lean + tilt * climbW, heading, roll, 'YXZ');
     air.pose(dt, me);                                              // her body in a flight (and easing out of one), over her clip
     if (character.holdSprings) character.holdSprings(1 + 4 * air.held, 1 - air.upside);      // her hair and skirt held harder in the air
@@ -680,7 +698,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // (y: about how high she stands, where that tells two grounds apart: on a bridge's deck, or on the bed under it. None: the top)
     teleport(x, z, yaw = heading, y) {
       pos.set(x, standOn(x, z, y), z); heading = yaw; cam.setView(yaw - Math.PI);
-      air.end(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; lastSafe.copy(pos);
+      air.end(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; reachFrom.set(0, 0, 0); lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
     setView(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
