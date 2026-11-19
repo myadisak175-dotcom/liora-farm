@@ -11,6 +11,8 @@
   one for each number of jumps it takes to reach its top. Walk and run as in the game (the joystick, dragging to look);
   the jump button again in the air is the next jump; the stick pushed sends her its way, let go she goes straight up.
   One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
+  ?mocap=1: the first jump off the ground and a landing from high are the mocap's (magic-jump.js, mocap; its clips:
+  magic-jump-mocap-anim.js). The 🎞 button switches between the two.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -67,6 +69,7 @@
   <button id="hour">🌙 กลางคืน</button>
   <button id="slow">⏱ ×1</button>
   <button id="demo">▶ เดโม 4 ชั้น</button>
+  <button id="kind">🎞 ท่าเดิม</button>
 </div>
 <div id="stick"><i></i></div>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
@@ -86,6 +89,7 @@ import { createMagicCircles } from './magic-circle-fx.js';
 import { createMagicJump } from './magic-jump.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
+const MOCAP = new URLSearchParams(location.search).has('mocap');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -183,7 +187,7 @@ const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), he
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
 let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0;
-const WALK = 1.5, RUN = 4.2, LAND_RATE = 1.4, LAND_HOLD = 0.14;
+const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
   dom: renderer.domElement, ui: document.getElementById('stick'),
@@ -200,18 +204,21 @@ jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.class
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
 
 (async () => {
-  const [{ VIVI_GLB }, data] = await Promise.all([
+  const [{ VIVI_GLB }, data, extra] = await Promise.all([
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+    MOCAP ? import('./magic-jump-mocap-anim.js') : null,
   ]);
-  hero = await loadCharacter(VIVI_GLB, CHARACTER_ANIM);
+  // with the mocap: its take-off and landings beside the game's own clips
+  const anim = extra ? { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...extra.CHARACTER_ANIM.clips } } : CHARACTER_ANIM;
+  hero = await loadCharacter(VIVI_GLB, anim);
   if (data) {
     springs = createSprings(hero.model, data);
     hero.attachSprings(springs);
   }
   hero.setSize(1.75 / hero.baseHeight);
   root.add(hero.object);
-  air = createMagicJump({ character: hero, circles });
+  air = createMagicJump({ character: hero, circles, mocap: MOCAP });
   hero.play('idle', 0);
   document.getElementById('wait').remove();
   window.magicTrial.ready = true;
@@ -280,7 +287,7 @@ function step(dt) {
     if (demo && air.tier < 4 && air.debug.wind < 0 && air.debug.vy < 0.4 * k && air.debug.t > 0.15) air.press(me, stick);
     if (air.step(dt, me, stick, g) === 'landed') {
       // down: the harder she lands, the more of her pace her legs take up and the longer before she is off again
-      landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = LAND_HOLD + 0.1 * air.impact;
+      landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = air.landing.hold;
       if (demo) { demo = null; speed = 0; }
     }
   }
@@ -288,13 +295,13 @@ function step(dt) {
   if (!air.active) {
     if (landT >= 0) {
       landT += dt;
-      const land = hero.actions.jump_land;
-      if ((speed > 0.25 && landT > landHold) || hero.state !== 'jump_land' || (land && land.time >= land.getClip().duration - 0.02)) landT = -1;
-      else hero.setRate(LAND_RATE);
+      const name = air.landing.clip, land = hero.actions[name];
+      if ((speed > 0.25 && landT > landHold) || hero.state !== name || (land && land.time >= land.getClip().duration - 0.02)) landT = -1;
+      else hero.setRate(air.landing.rate);
     }
     if (landT < 0) {
       const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 * k ? 'walk' : 'run';
-      if (hero.state !== st) hero.play(st, st === 'idle' ? 0.3 : hero.state === 'jump_land' ? 0.28 : 0.2);      // (up out of a landing: a longer blend)
+      if (hero.state !== st) hero.play(st, st === 'idle' ? 0.3 : /land/.test(hero.state) ? 0.28 : 0.2);      // (up out of a landing: a longer blend)
       hero.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (hero.speeds[st] || 1))));
     }
   }
@@ -344,6 +351,9 @@ btn('hour').onclick = () => {
 const SLOWS = [1, 0.5, 0.25];
 btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
 btn('demo').onclick = () => startDemo();
+// the mocap's take-off and landing, or the jump as it is in the game
+btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
+btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.delete('mocap'); else u.searchParams.set('mocap', '1'); location.href = u.href; };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
 // for a test (or the console): step the world by hand, look from a chosen spot

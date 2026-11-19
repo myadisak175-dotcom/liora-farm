@@ -55,6 +55,12 @@ CLIPS = [
     ("swim_idle", "Swim_Idle_Loop", True, 0.0),
 ]
 
+# where a folder of clips comes from (said at the top of the file baked from it)
+SOURCES = {
+    "vrma": "Quaternius' Universal Animation Library 1+2 (CC0)",
+    "mixamo": "Mixamo's moves (Adobe: free to use in this game, not CC0) posed again by tools/make-magic-jump-mocap.py",
+}
+
 # VRM 1.0 humanoid bone (the library's names) -> VRoid bone. VRM 0.x thumbs are one joint further out than VRM 1.0's:
 # VRM 1.0 thumbMetacarpal is VRoid's Thumb1.
 VROID_BONES = {
@@ -232,7 +238,7 @@ def main(argv):
         print(lines[-1][4:])
     head = (f"// {os.path.basename(out_path)}: written by tools/bake-character-anim.py from the shared animation library; do not edit by hand.\n"
             + ("// Every playable character's moves" if clips is CLIPS else "// The moves one page plays")
-            + ": Quaternius' Universal Animation Library 1+2 (CC0), for VRoid bones.\n"
+            + f": {SOURCES.get(os.path.basename(os.path.normpath(lib)), SOURCES['vrma'])}, for VRoid bones.\n"
             "// Hips path and ground speeds are in hips heights: stylized-character.js scales them to each model.\n"
             + "\n".join(lines) + "\n")
     with open(out_path, "w", encoding="utf-8") as f:

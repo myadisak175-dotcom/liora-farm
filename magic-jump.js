@@ -2,7 +2,11 @@
    magic-jump.js  —  Vivi's magic jump: up to four jumps in one flight, each off a magic circle that opens under her feet
    (magic-circle-fx.js). The others fly; she jumps. Her body in the air, and the jump's own rules; nothing else.
 
-     const air = createMagicJump({ character, circles })
+     const air = createMagicJump({ character, circles, mocap })
+                                     mocap: the first jump off the ground and a landing from high are the mocap's (Mixamo's
+                                     Jumping Up and Jumping Down, posed again for her: tools/make-magic-jump-mocap.py),
+                                     if her clips have them (mj_up, mj_land: magic-jump-mocap-anim.js). On trial
+                                     (magic-jump.html?mocap=1); the game does not ask for it yet
      air.takeOff(me)                 the jump button on the ground: the first jump (a small circle on the ground)
      air.drop(me, up)                she left the ground some other way (off an edge, out of a hop: up m/s): falling, three
                                      jumps left
@@ -21,6 +25,8 @@
      air.tier, air.beat              how many jumps this flight; what she is doing now (for a label)
      air.vy                          how fast she is going up (m/s; down: below 0)
      air.impact                      0..1, for a moment after she lands: how hard she came down (a page may slow her by it)
+     air.landing                     the landing she came down into: { clip, rate, hold } (the page plays it on: clip at
+                                     rate, and she may run on out of it after hold s)
 
    me: { pos (her feet, world), vel (her speed over the ground: x, z), heading }, the page's, changed here.
    stick: { x, z, amount }: where the stick points over the ground (unit) and how far it is pushed (0..1).
@@ -55,6 +61,15 @@
    standing pose's own, and the landing clip, whose feet are in the same two places, takes her on from the frame she
    touches. Where the landing shows, only its bent knees are turned (to face ahead): her feet are the clip's, where it
    has them and turned as it has them, so she comes up into her standing pose with no foot moving on the ground.
+   With the mocap (mocap: true): the jump button on the ground plays the mocap's take-off. From standing she crouches
+   (quickly: a little over half as deep as the mocap, 0.07 s down) and pushes up; her feet stay where she stands and
+   she leaves the ground UP_LIFT s after the press, her hips going as fast as the game then lifts her. Running she
+   starts at the push, out of her stride. Up to the top of the first jump her body is the mocap's (in place: the game
+   lifts her); then the poses above take her on, beginning from where the mocap left her (her limbs as they are, going
+   as they were going), at the top, or as soon as she presses again or starts down. A fall from higher than
+   LAND_HIGH m ends in the mocap's landing: down into a deep crouch, both hands to the ground, and up into her standing
+   pose (from higher than LAND_DEEP m all the way down; lower, a little less deep: mj_land_soft). Lower than that,
+   the landing above.
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -87,6 +102,10 @@ const START_RATE = 1.8, START_AT = 0.06;             // the take-off clip, as th
 // touches it, her hips going on down at the pace she fell), at once: not blended in from the clip in the air, whose left
 // foot is up too (the blend lifted her foot off the ground again for a moment as she touched it)
 const LAND_AT = 0.022;
+// the mocap's (tools/make-magic-jump-mocap.py: UP_DOWN + UP_PUSH): when its feet leave the ground; where a running
+// take-off begins (part way up out of the crouch); its landing from higher than LAND_HIGH m (LAND_DEEP: the deepest)
+const UP_LIFT = 0.155, UP_RUN = 0.1, UP_BODY = 0.02, LAND_HIGH = 2.0, LAND_DEEP = 3.3;
+const CARRY = 0.7;                                  // of how fast her limbs were going that the poses take on (all of it: her arms flung up too far)
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const sstep = (a, b, t) => { const x = clamp((t - a) / (b - a), 0, 1); return x * x * (3 - 2 * x); };
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -226,10 +245,18 @@ const MOVES = {
   4: [[0.08, 'kick4', 42, 0.8], [0.21, 'twirl4', 26, 0.85], [0.95, 'bloom4', 15, 0.7]],
 };
 
-export function createMagicJump({ character, circles }) {
+export function createMagicJump({ character, circles, mocap = false }) {
   let ch = character;
+  const hasMocap = () => mocap && !!ch.actions.mj_up && !!ch.actions.mj_land;
+  let crouch = -1;                            // s since the press, crouching on the ground before the mocap's take-off (-1: not)
+  // the mocap's take-off still has her body (her arms, back, head: until just after she leaves the ground, when it would
+  // fling her arms out level) and her legs (until the top of the first jump)
+  let upBody = false, upLegs = false, tookOff = false;     // (tookOff: this flight began with the mocap's take-off)
+  const seen = new Float32Array(DIRS * 3), seenV = new Float32Array(DIRS * 3);      // her limbs as the mocap has them, and how fast they go
+  let seenOk = false;
+  let landing = { clip: 'jump_land', rate: 1.4, hold: 0.14 };
   let active = false, tier = 0, t = 0, wind = -1, nextDir = null, nextAmount = 0, vy = 0, peak = 0, caught = false, fell = 0, turnT = 0;
-  let queued = null;                          // a press made early in the flip: kept until she is most of the way round
+  let queued = null;                          // a press made too early (in the flip, or crouching for the mocap's take-off): kept until it can be taken
   let beat = '';
   let fromGround = false;                     // this flight began with the take-off clip (not by walking off an edge)
   let over = 1e9;                             // m of air under her feet (from the last step), for her legs' reach
@@ -414,7 +441,7 @@ export function createMagicJump({ character, circles }) {
 
   const air = {
     get active() { return active; }, get tier() { return tier; }, get held() { return held; }, get upside() { return upside; }, get beat() { return beat; },
-    get impact() { return impact; }, get vy() { return vy; },
+    get impact() { return impact; }, get vy() { return vy; }, get landing() { return landing; }, get crouching() { return crouch >= 0; },
     // another character in her place: the one leaving gets back what its clip had (a bone its clip holds still would
     // otherwise keep this jump's turn for good), the one coming takes the flight on from here
     setCharacter(next) {
@@ -423,6 +450,21 @@ export function createMagicJump({ character, circles }) {
       ch = next; findBones();
     },
     takeOff(me) {
+      if (hasMocap()) {
+        // the mocap's: crouching on the ground first (from standing; running, out of her stride part way up)
+        active = true; tier = 1; t = 0; wind = -1; caught = false; fell = 0; queued = null; fromGround = true; over = 0;
+        vy = 0; peak = me.pos.y; upBody = upLegs = tookOff = true; seenOk = false;
+        const going = Math.hypot(me.vel.x, me.vel.z) / (M.push * size());
+        crouch = UP_RUN * sstep(0.35, 0.9, going);
+        x.set(ROWS.push1); xv.fill(0); kickLean = 0;
+        ch.play('mj_up', crouch > 0 ? 0.07 : 0.05, false);
+        ch.actions.mj_up.time = crouch;
+        ch.setRate(1);
+        circles.open(v.set(me.pos.x, me.pos.y + 0.02, me.pos.z), 1, { ground: true, size: size() });
+        beat = 'ชั้น 1';
+        return;
+      }
+      crouch = -1; upBody = upLegs = tookOff = false;
       active = true; tier = 1; t = 0; wind = -1; caught = false; fell = 0; queued = null; fromGround = true; over = 1e9;
       vy = speedFor(1); peak = me.pos.y;
       x.set(ROWS.push1); xv.fill(0); kickLean = 0;
@@ -435,12 +477,15 @@ export function createMagicJump({ character, circles }) {
     // walking off a rock's top (or a little hop off it): falling, with the first jump as good as used (three are left)
     drop(me, up = 0) {
       active = true; tier = 1; t = 1; wind = -1; caught = false; fell = 0; queued = null; fromGround = false; over = 1e9;
+      crouch = -1; upBody = upLegs = tookOff = false;
       vy = up; peak = me.pos.y;
       x.set(ROWS.ready); xv.fill(0); kickLean = 0;
       ch.play('jump_air', 0.25, false);
       beat = '';
     },
     press(me, stick) {
+      // still crouching for the mocap's take-off: the press waits until she is off the ground
+      if (active && crouch >= 0) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
       if (!active || tier >= 4 || wind >= 0 || t < M.gap) return false;
       // early in the flip she cannot kick: the press waits until she is most of the way round
       if (tier === 3 && t < M.flip * M.flipKick - M.windup) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
@@ -448,18 +493,27 @@ export function createMagicJump({ character, circles }) {
       wind = M.windup;
       nextAmount = stick.amount;
       nextDir = stick.amount > 0.12 ? [stick.x, stick.z] : null;
-      if (ch.state !== 'jump_air') { ch.play('jump_air', 0.14, false); ch.setRate(1); }
+      if (ch.state !== 'jump_air' && !upLegs) { ch.play('jump_air', 0.14, false); ch.setRate(1); }
       return true;
     },
     end() {
       if (!active) return;
       active = false; tier = 0; wind = -1; vy = 0; queued = null; beat = '';
-      legsOut = 28;
+      legsOut = 28; crouch = -1; upBody = upLegs = false;
     },
     step(dt, me, stick, ground, catchable = true) {
       const k = size();
+      // ---- the mocap's take-off: on the ground, crouching and pushing, until its feet leave it (the stick does nothing yet)
+      if (crouch >= 0) {
+        crouch += dt;
+        me.pos.y = ground; over = 0;
+        if (crouch < UP_LIFT) return null;
+        const extra = crouch - UP_LIFT;
+        crouch = -1; t = 0; vy = speedFor(1); peak = me.pos.y;
+        dt = extra;                                          // (what is left of this frame: off the ground)
+      }
       t += dt;
-      if (queued && t >= M.flip * M.flipKick - M.windup) air.press(me, queued);
+      if (queued && t >= (tier === 3 ? M.flip * M.flipKick - M.windup : M.gap)) air.press(me, queued);
       // ---- the kick: after the wind-up, off the circle that opens under her
       if (wind >= 0) {
         wind -= dt;
@@ -507,7 +561,10 @@ export function createMagicJump({ character, circles }) {
       over = me.pos.y - ground;
       if (vy < 0) fell += dt;
       // ---- her clip under the poses: the take-off's, then the one in the air
-      if (ch.state === 'jump_start') {
+      if (ch.state === 'mj_up') {
+        if (!upLegs) ch.play('jump_air', 0.22, false);            // (the poses have her now: the clip in the air under them)
+        else ch.setRate(1);
+      } else if (ch.state === 'jump_start') {
         const c = ch.actions.jump_start;
         if (c.time >= c.getClip().duration - 0.02 || vy < 1.2 * k) ch.play('jump_air', 0.22, false);
         else ch.setRate(START_RATE);
@@ -519,8 +576,20 @@ export function createMagicJump({ character, circles }) {
         if (vy > 0) return null;                             // rising past a higher step: carried up with it
         impact = clamp(-vy / (9 * k), 0.25, 1);
         active = false; tier = 0; wind = -1; vy = 0; queued = null; beat = caught ? 'วงเวทรับ' : '';
-        ch.play('jump_land', 0, false);
-        if (ch.actions.jump_land) ch.actions.jump_land.time = LAND_AT;
+        upBody = upLegs = false;
+        const high = (peak - ground) / k;
+        if (hasMocap() && high > LAND_HIGH) {
+          // from high: the mocap's landing (all the way down from higher than LAND_DEEP), played through into her
+          // standing pose; she may run on out of it once she is past its bottom
+          const clip = high > LAND_DEEP || !ch.actions.mj_land_soft ? 'mj_land' : 'mj_land_soft';
+          landing = { clip, rate: 1, hold: 0.3 + 0.08 * sstep(LAND_HIGH, LAND_DEEP + 1, high) };
+          ch.play(clip, 0, false);
+          ch.setRate(1);
+        } else {
+          landing = { clip: 'jump_land', rate: 1.4, hold: 0.14 + 0.1 * impact };
+          ch.play('jump_land', 0, false);
+          if (ch.actions.jump_land) ch.actions.jump_land.time = LAND_AT;
+        }
         // her legs are the landing's at once: her hips go down into it as fast as she fell, and legs still held out
         // straight under them would go through the ground
         legsOut = 60;
@@ -536,15 +605,30 @@ export function createMagicJump({ character, circles }) {
       // ---- how much of her is the poses': all of her in the air, her legs at once off the ground (the take-off clip has her
       // body for a moment, not her legs: its knees fly out to her sides), and out again into the landing (her legs first:
       // they are the landing clip's as soon as they touch)
-      const lift = active && tier === 1 && fromGround && wind < 0;
-      const wantW = !active ? 0 : lift ? sstep(0.03, 0.2, t) : 1, wantWl = !active ? 0 : lift ? sstep(0, 0.07, t) : 1;
+      // the mocap's take-off: her arms, back and head are taken on by the poses just after she leaves the ground (UP_BODY
+      // s), her legs at the top of the first jump (its clip near its end), or both as soon as she presses again or
+      // starts down; each from where it is, going as it was going
+      if ((upBody || upLegs) && active && crouch < 0) {
+        const c = ch.actions.mj_up, all = wind >= 0 || vy < 0 || tier > 1 || ch.state !== 'mj_up';
+        if (upBody && (all || t >= UP_BODY)) {
+          upBody = false;
+          for (let i = 0; i < 12; i++) { x[i] = seen[i]; xv[i] = seenV[i] * CARRY; }
+          for (let i = TOES; i < N; i++) { x[i] = i < BACK ? 0.5 : 0; xv[i] = 0; }
+        }
+        if (upLegs && (all || c.time >= c.getClip().duration - 0.1)) {
+          upLegs = false;
+          for (let i = LEGS; i < LEGS + 12; i++) { x[i] = seen[i]; xv[i] = seenV[i] * CARRY; }
+        }
+      }
+      const lift = active && tier === 1 && fromGround && !tookOff && wind < 0;
+      const wantW = !active || upBody ? 0 : lift ? sstep(0.03, 0.2, t) : 1, wantWl = !active || upLegs ? 0 : lift ? sstep(0, 0.07, t) : 1;
       W += (wantW - W) * Math.min(1, dt * (wantW > W ? 16 : 11));
       Wl += (wantWl - Wl) * Math.min(1, dt * (wantWl > Wl ? 40 : legsOut));
       // (through the landing too her knees are hinges: the landing clip turns her left knee in across her)
-      const hinged = active || ch.state === 'jump_land';
+      const hinged = active || ch.state === 'jump_land' || ch.state === 'mj_land' || ch.state === 'mj_land_soft';
       Wh += ((hinged ? 1 : 0) - Wh) * Math.min(1, dt * (hinged ? 30 : 6));
       // ---- her pose: each number carried toward where it is going by a spring (in small steps: the same at any frame rate)
-      if (active) {
+      if (active && !upBody) {
         choosePose();
         const steps = Math.max(1, Math.ceil(dt / 0.012)), h = dt / steps;
         for (let s = 0; s < steps; s++) {
@@ -567,7 +651,7 @@ export function createMagicJump({ character, circles }) {
       if (spinA <= 0 || spinA >= Math.PI * 2 - 1e-3) spinA = 0;
       kickLean = Math.max(0, kickLean - dt * 3.2);
       const going = Math.min(1, Math.hypot(me.vel.x, me.vel.z) / (M.push * k));
-      const wantLean = !active ? 0 : (0.1 * kickLean + 0.03) * going + (vy < 0 ? -0.04 * sstep(2, 9, -vy / k) : 0) + (wind >= 0 ? 0.05 : 0);
+      const wantLean = !active || upLegs ? 0 : (0.1 * kickLean + 0.03) * going + (vy < 0 ? -0.04 * sstep(2, 9, -vy / k) : 0) + (wind >= 0 ? 0.05 : 0);
       { const w = 13, f = 1 + 2 * dt * 0.8 * w, hw = dt * w * w, d = 1 / (f + dt * hw), nl = (f * lean + dt * leanV + dt * hw * wantLean) * d; leanV = (leanV + hw * (wantLean - lean)) * d; lean = nl; }
       held += ((flipA > 0 ? 1 : spinA > 0 ? 0.8 : active ? 0.6 : 0) - held) * Math.min(1, dt * 12);
       upside += ((flipA > 0.5 && flipA < Math.PI * 2 - 0.5 ? 1 : 0) - upside) * Math.min(1, dt * 14);
@@ -618,6 +702,22 @@ export function createMagicJump({ character, circles }) {
         }
       }
       remember(W > 0.001 || Wl > 0.001 || Wh > 0.001);
+      // while the mocap has her: where her limbs point now (in her own frame, her right side's x the other way), and how
+      // fast they are going, for the poses to begin from
+      if (upBody || upLegs) {
+        const ends = [['L', 0, 1], ['R', 6, -1]];
+        for (const [s, at, mirror] of ends) {
+          const [ua, la, hand] = bones[s], [ul, ll, foot] = bones[s + 'leg'];
+          [[ua, la, at], [la, hand, at + 3], [ul, ll, at + 12], [ll, foot, at + 15]].forEach(([p, c, i]) => {
+            p.getWorldPosition(a); c.getWorldPosition(b);
+            want.subVectors(b, a).normalize().applyQuaternion(objQi);
+            const nx = want.x * mirror, ny = want.y, nz = want.z;
+            if (seenOk && dt > 1e-4) { seenV[i] = (nx - seen[i]) / dt; seenV[i + 1] = (ny - seen[i + 1]) / dt; seenV[i + 2] = (nz - seen[i + 2]) / dt; }
+            seen[i] = nx; seen[i + 1] = ny; seen[i + 2] = nz;
+          });
+        }
+        seenOk = true;
+      }
     },
     // for a test: the state of the jump now
     get debug() { return { tier, t, wind, vy, peak, caught, flipA, spinA, W, lean, pose: Array.from(x) }; },

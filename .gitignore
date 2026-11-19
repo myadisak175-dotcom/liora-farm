@@ -1,2 +1,4 @@
 __pycache__/
 node_modules/
+# Mixamo's moves (Adobe's, not CC0): kept out of the repo, only what is baked from them is committed
+assets/animations/mixamo/
