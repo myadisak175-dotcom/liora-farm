@@ -11,6 +11,11 @@ for her and cut to the pace of a fight:
               then "Standing Block End"              her hands lowered
   mc_rise  <- Mixamo "Standing 1H Magic Attack 03"   out of the crouch a roll ends in: her right hand swept up from the ground
   (the roll itself is the game's own clip, the library's Roll, played faster: here only how far it takes her)
+  mc_charge_in, mc_charge, mc_throw  <- the library's OverhandThrow   the held cast: out of the swipe her arm goes on
+                                                     round and back over her shoulder; held there, cocked (the hold: the
+                                                     throw's own wind-up, breathing); let go, the throw
+  mc_dash  <- the library's Sword_Heavy_Combo (its second strike)   the running cast: a leap off her run, turning once
+                                                     round in the air, down into a low cut; she goes forward (its path)
 
 The library's moves are Quaternius' (CC0), in the repo. Mixamo's are first made .vrma by tools/mixamo-to-vrma.mjs into
 assets/animations/mixamo/, which is not in the repo (Adobe's: to use in a game, not to hand on as files): only what this
@@ -84,6 +89,15 @@ M4 = dict(src="Standing_2H_Magic_Attack_05", warp=[(0, 0.74), (0.14, 0.98), (0.4
           enter=0.14, leave=(0.74, 1.10), hit=0.50, again=1.00, lower=(0.70, 0.95), end="Standing_Block_End")
 MR = dict(src="Standing_1H_Magic_Attack_03", warp=[(0, 0.58), (0.15, 0.88), (0.27, 1.10), (0.70, 1.40)],
           enter=0.07, leave=(0.32, 0.70), hit=0.15, again=0.40)
+# the held cast: into the hold out of the swipe's cancel pose; the hold (a loop: the throw's own time back and forth, her
+# hips up and down, m); the throw
+MC_SRC, MC_HOLD = "OverhandThrow", 0.24
+MCI = dict(warp=[(0, 0.10), (0.24, MC_HOLD)], enter=0.14, dur=0.24)
+MCL = dict(period=1.2, breath=0.014, bob=0.008)
+MCT = dict(warp=[(0, MC_HOLD), (0.10, 0.36), (0.16, 0.42), (0.34, 0.60), (0.80, 0.74)], leave=(0.34, 0.80), hit=0.085, again=0.45)
+# the running cast: off the ground from `air`[0] to `air`[1] (her hips up to `high` m higher, half way), `far` hips heights forward
+MD = dict(src="Sword_Heavy_Combo", warp=[(0, 1.05), (0.07, 1.14), (0.44, 1.76), (0.50, 1.81), (0.95, 1.82)],
+          leave=(0.56, 0.95), hit=0.47, again=0.64, air=(0.06, 0.46), far=3.4, high=0.28)
 M4_DEPTH = 0.75          # of the finisher's crouch (the mocap's hips go down to 0.45 of a metre)
 M4_STANCE = {"left": (0.10, 0.30), "right": (-0.22, -0.40)}      # the balls of her feet for the finisher (m; wide, her left ahead)
 M4_HIGH = 0.76           # her hips at their highest in the finisher (the mocap stands up straight; her stance is wider)
@@ -355,18 +369,41 @@ def roll_path():
 
 # ---------------------------------------------------------------- the five moves
 
-def move(m, source, before, after=None):
-    """A move's pose at its own time: the pose before it, into the mocap at the move's pace, and out into her standing
-    pose (or `after`, a function of time, first)."""
+def move(m, source, before=None, after=None):
+    """A move's pose at its own time: the pose before it (if it has one: `enter`), into the mocap at the move's pace, and
+    out into her standing pose (if it ends there: `leave`; `after`, a function of time, first)."""
     warp = mono(m["warp"])
-    a, b = m["leave"]
+    leave = m.get("leave")
 
     def pose(t):
-        p = blend(before, source(warp(t), t), ease(t / m["enter"]))
+        p = source(warp(t), t)
+        if before is not None:
+            p = blend(before, p, ease(t / m["enter"]))
         if after:
             p = after(p, t)
-        return blend(p, IDLE, ease((t - a) / (b - a)))
+        return blend(p, IDLE, ease((t - leave[0]) / (leave[1] - leave[0]))) if leave else p
     return pose
+
+
+def drift_of(clip, s0, s1):
+    """How far to her left a library clip's hips have gone since its time s0 (held from s1 on; the foot's little jumps
+    taken out): taken out of her hips' place, she stays over her root."""
+    ts = np.arange(0.0, float(clip.times[-1]) + 1e-9, 1 / 120)
+    x = np.array([clip.at(min(max(t, s0), s1))[1][0] for t in ts])
+    x = x - clip.at(s0)[1][0]
+    k = np.ones(9) / 9
+    xs = np.convolve(np.concatenate([np.full(4, x[0]), x, np.full(4, x[-1])]), k, mode="valid")
+    return lambda s_: float(np.interp(s_, ts, xs))
+
+
+def leap_path(dur, land, far):
+    """How far along her way a leap has taken her, per frame: off at once, slower and slower, down at `land`."""
+    n = int(round(dur * FPS)) + 1
+    fine = 8
+    v = [ease((i / (FPS * fine)) / 0.05) * max(0.0, 1 - (i / (FPS * fine)) / land) ** 0.6 for i in range(n * fine)]
+    d = np.cumsum(v)
+    d = d / d[-1] * far
+    return [float(d[i * fine]) for i in range(n)]
 
 
 def frames_of(pose, dur):
@@ -379,20 +416,24 @@ def frames_of(pose, dur):
 def build():
     clips, marks, notes = {}, {}, []
 
-    def done(name, m, pose, hand, path=None):
+    def done(name, m, pose, hand=None, path=None, loop=False):
         settle.short = 0.0
-        dur = m["leave"][1]
+        dur = m.get("dur") or m.get("period") or m["leave"][1]
         frames = frames_of(pose, dur)
-        clips[name] = frames
-        marks[name] = {"hit": m["hit"], "dur": dur, "hand": hand}
-        for k in ("cancel", "again"):
+        clips[name] = (frames, loop)
+        marks[name] = {"dur": dur}
+        if hand:
+            marks[name]["hand"] = hand
+        for k in ("hit", "cancel", "again", "air"):
             if k in m:
                 marks[name][k] = m[k]
         if path:
             marks[name]["path"] = path
         low = min(h[1] for _, h in frames)
-        notes.append(f"//   {name:<8} {dur:.2f} s: the cast leaves her {dict(R='right hand', L='left hand', B='hands')[hand]} at {m['hit']:.2f} s"
-                     + (f", the next move from {m['cancel']:.2f} s" if "cancel" in m else f", the first move again from {m['again']:.2f} s")
+        notes.append(f"//   {name:<12} {dur:.2f} s"
+                     + (f": the cast leaves her {dict(R='right hand', L='left hand', B='hands')[hand]} at {m['hit']:.2f} s" if "hit" in m and hand else "")
+                     + (f", the next move from {m['cancel']:.2f} s" if "cancel" in m else f", the first move again from {m['again']:.2f} s" if "again" in m else "")
+                     + (", a loop" if loop else "")
                      + (f"; she goes {path[-1] * HH:.2f} m forward (library)" if path else ""))
         print(f"{name}: {dur:.2f} s, {len(frames)} frames; hips lowest {low:.3f} (standing {mj.IDLE_HIPS[1]:.3f}); "
               f"feet short of where they are put by {settle.short * 1000:.0f} mm at most")
@@ -461,6 +502,43 @@ def build():
     poser = move(MR, lambda s, t: open_hands(look_ahead(sr.at(s)), 0.3 * handsr(t), 0.85 * handsr(t)), crouched)
     done("mc_rise", MR, poser, "R")
 
+    # ---- the held cast: the library's overhand throw. Into its wind-up out of the swipe's cancel pose (her arm goes on
+    # round and back over her shoulder); held there; thrown
+    so = Library(MC_SRC)
+    held = lambda p: open_hands(look_ahead(p), 0.7, 0.25)                     # (her right hand round the lance, her left out ahead)
+    posei = move(MCI, lambda s, t: held(so.at(s)), cut1)
+    done("mc_charge_in", MCI, posei)
+    T = MCL["period"]
+
+    def posel(t):
+        p = so.at(MC_HOLD + MCL["breath"] * math.sin(2 * math.pi * t / T))
+        p.hips[1] += MCL["bob"] * math.sin(2 * math.pi * t / T + 1.0) - MCL["bob"] * math.sin(1.0)
+        return held(p)
+    done("mc_charge", MCL, posel, loop=True)
+    let_go = lambda t: bump(t, 0.03, 0.09, 0.30, 0.45)
+    poset = move(MCT, lambda s, t: open_hands(look_ahead(so.at(s)), 0.7 * (1 - let_go(t)) + 0.4 * let_go(t), 0.25 + 0.65 * let_go(t)))
+    done("mc_throw", MCT, poset, "R")
+
+    # ---- the running cast: the library's heavy combo's second strike, a turn and more to her right, lifted off the
+    # ground as a leap (its feet step round under it: in the air they need not), down into its low cut
+    heavy = mj.Clip(os.path.join(LIB, f"{MD['src']}.vrma"))
+    s0d, s1d = MD["warp"][0][1], MD["warp"][-1][1]
+    sd = Library(MD["src"], drift=drift_of(heavy, s0d, s1d))
+    up, down_ = MD["air"]
+
+    def flown(s, t):
+        p = sd.at(s)
+        u = min(1.0, max(0.0, (t - up) / (down_ - up)))
+        p.hips[1] += MD["high"] * 4 * u * (1 - u)
+        p = look_ahead(p) if t > MD["hit"] - 0.05 else p                      # (turning, her head goes round with her)
+        k = bump(t, 0.03, 0.12, 0.6, 0.8)
+        return open_hands(p, 0.6 * k, 0.8 * k)
+    posed = move(MD, flown)
+    pathd = []
+    for v in leap_path(MD["leave"][1], MD["hit"] + 0.03, MD["far"]):
+        pathd += [0.0, round(v, 4)]
+    done("mc_dash", MD, posed, "R", pathd)
+
     # ---- the roll's way
     path, dur = roll_path()
     r = ROLL["rate"]
@@ -472,7 +550,7 @@ def build():
     return clips, marks, notes
 
 
-def baked(frames):
+def baked(frames, loop=False):
     rot = {b: [] for b in sk.node}
     hips = []
     for L, h in frames:
@@ -485,13 +563,13 @@ def baked(frames):
     clip = {"times": [i / FPS for i in range(len(frames))], "rot": {b: [tuple(q) for q in v] for b, v in rot.items()},
             "hips": hips, "rest_hips": [0.0, HH, 0.0]}
     tracks, hips_flat, n = bake_mod.bake(clip)
-    return {"duration": round((len(frames) - 1) / FPS, 4), "frames": n, "loop": False, "speed": 0.0, "tracks": tracks, "hips": hips_flat}
+    return {"duration": round((len(frames) - 1) / FPS, 4), "frames": n, "loop": loop, "speed": 0.0, "tracks": tracks, "hips": hips_flat}
 
 
 def main():
     clips, marks, notes = build()
     anim = {"fps": FPS, "forwardYaw": 3.1416, "hipsBone": "J_Bip_C_Hips", "hipsUnit": "hipsHeight",
-            "clips": {name: baked(frames) for name, frames in clips.items()}}
+            "clips": {name: baked(frames, loop) for name, (frames, loop) in clips.items()}}
     combo = {"fps": FPS, "clips": {k: v for k, v in marks.items() if k != "roll"}, "roll": marks["roll"]}
     head = ("// magic-combo-anim.js: written by tools/make-magic-combo-anim.py; do not edit by hand.\n"
             "// The moves of her magic combo (magic-combo.js), for VRoid bones: Mixamo's casts (Adobe: free to use in this game, not\n"

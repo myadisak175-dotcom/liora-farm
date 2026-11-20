@@ -11,7 +11,8 @@
   with a rising cast out of it. In a meadow with straw dummies to cast at: they rock when hit and are thrown up by the
   rising cast; nothing hits back. Walk and run as in the game (the joystick, dragging to look).
   One job: try the combo, alone. The game does not have it yet: this page is where it is worked on.
-  Round 1 of 3: the tapped combo and the roll. Still to come: the held cast, the running cast, the cast in the air.
+  Rounds 1 and 2 of 3: the tapped combo and the roll; the held cast (a lance of light) and the running cast (a leap that
+  turns once round). Still to come: the cast in the air.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -43,7 +44,7 @@
     background: rgba(116, 207, 255, .32); border-color: rgba(190, 235, 255, .9); }
   #rollBtn { right: max(118px, calc(env(safe-area-inset-right) + 110px)); bottom: max(14px, calc(env(safe-area-inset-bottom) + 8px)); width: 62px; height: 62px; }
   #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 190px 0 16px; text-align: left; pointer-events: none;
-    font: 500 12px system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; }
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; }
   #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; }
   @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
     #name, #beat { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
@@ -67,7 +68,7 @@
 </script>
 </head>
 <body>
-<div id="name">วีวี่ · คอมโบเวท<small>รอบ 1: คอมโบแตะ 4 จังหวะ + กลิ้งหลบแล้วเสยขึ้น</small></div>
+<div id="name">วีวี่ · คอมโบเวท<small>รอบ 2: + กดค้างชาร์จหอกแสง + วิ่งแล้วโจมตีพุ่งหมุน</small></div>
 <div id="beat"></div>
 <div id="pips"><i></i><i></i><i></i><i></i></div>
 <div id="count"></div>
@@ -79,7 +80,7 @@
 <div id="stick"><i></i></div>
 <button id="rollBtn" class="act" type="button" aria-label="กลิ้งหลบ"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/></svg><br>กลิ้ง</span></button>
 <button id="atkBtn" class="act" type="button" aria-label="โจมตี"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg><br>โจมตี</span></button>
-<div id="hint">แตะโจมตีต่อกัน 4 ครั้ง · กลิ้งแล้วแตะโจมตี = เสยขึ้น</div>
+<div id="hint">แตะโจมตี ×4 = คอมโบ · กดค้าง = ชาร์จหอกแสง<br>วิ่ง + โจมตี = พุ่งหมุน · กลิ้งแล้วโจมตี = เสยขึ้น</div>
 <div id="wait">กำลังโหลดวีวี่…</div>
 <script type="module">
 import * as THREE from 'three';
@@ -229,12 +230,14 @@ const input = createPlayerInput({
   onLook: (y, p) => cam.turn(y, p), onZoom: d => cam.zoom(d),
 });
 function attack() { if (hero && !demo) combo.attack(); }
+function release() { if (hero && !demo) combo.release(); }                // (the attack button let go: a held cast is thrown)
 function dodge() { if (hero && !demo) combo.dodge(); }
-for (const [id, press] of [['atkBtn', attack], ['rollBtn', dodge]]) {
+for (const [id, press, up] of [['atkBtn', attack, release], ['rollBtn', dodge, null]]) {
   const b = document.getElementById(id);
-  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); press(); });
-  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('down'); press(); });
+  for (const ev of ['pointerup', 'pointercancel']) b.addEventListener(ev, () => { b.classList.remove('down'); if (up) up(); });
 }
+addEventListener('keyup', e => { if (e.code === 'Space') release(); });
 
 (async () => {
   const [{ VIVI_GLB }, data] = await Promise.all([
@@ -249,7 +252,7 @@ for (const [id, press] of [['atkBtn', attack], ['rollBtn', dodge]]) {
   hero.setSize(1.75 / hero.baseHeight);
   root.add(hero.object);
   combo = createMagicCombo({ character: hero, marks: MAGIC_COMBO, fx });
-  combo.onLand = kind => { if (kind === 'big') shake = 1; };
+  combo.onLand = kind => { if (kind === 'big' || kind === 'ring') shake = 1; };
   hero.play('idle', 0);
   document.getElementById('wait').remove();
   window.magicTrial.ready = true;
@@ -265,16 +268,22 @@ function collide(p) {
   if (rr > 30) { p.x *= 30 / rr; p.z *= 30 / rr; }
 }
 
-// ---- the demo: the four casts one after another, then a roll and the rising cast out of it
+// ---- the demo: the four casts one after another, a roll and the rising cast out of it, a run and the leap, and the held
+// cast grown full and thrown
 function startDemo() {
   if (!hero || combo.active || demo) return;
-  demo = { phase: 0, wait: 0 };
+  demo = { phase: 0, wait: 0, stick: null };
 }
 function stepDemo(dt) {
-  if (demo.phase === 0) { combo.attack(); if (combo.index === 3) demo.phase = 1; }
-  else if (demo.phase === 1) { if (!combo.active && (demo.wait += dt) > 0.35) { combo.dodge(); demo.phase = 2; } }
-  else if (demo.phase === 2) { if (combo.rising) demo.phase = 3; else combo.attack(); }
-  else if (!combo.active) demo = null;
+  const d = demo, idle = !combo.active;
+  if (d.phase === 0) { combo.attack(); combo.release(); if (combo.index === 3) d.phase = 1; }
+  else if (d.phase === 1) { if (idle && (d.wait += dt) > 0.35) { combo.dodge(); d.phase = 2; d.wait = 0; } }
+  else if (d.phase === 2) { if (combo.rising) d.phase = 3; else { combo.attack(); combo.release(); } }
+  else if (d.phase === 3) { if (idle) { d.phase = 4; d.stick = [0, -1]; } }                    // run on, away from the camera
+  else if (d.phase === 4) { if ((d.wait += dt) > 0.75) { combo.attack(); combo.release(); d.stick = null; d.phase = 5; d.wait = 0; } }
+  else if (d.phase === 5) { if (idle && (d.wait += dt) > 0.3) { combo.attack(); d.phase = 6; } }      // press, and hold
+  else if (d.phase === 6) { if (combo.charge === 3 && (d.wait += dt) > 0.45) { combo.release(); d.phase = 7; } }
+  else if (idle) demo = null;
 }
 
 const tmp = new THREE.Vector3();
@@ -286,7 +295,7 @@ function step(dt) {
   // ---- the stick, as a way over the ground (relative to the camera, as in the game)
   let amount = input.stick(stickV);
   if (window.magicTrial.stick) { stickV.set(...window.magicTrial.stick); amount = Math.min(1, stickV.length()); }      // (a test's hand on the stick)
-  if (demo) { amount = 0; stickV.set(0, 0); stepDemo(dt); }
+  if (demo) { stepDemo(dt); stickV.set(...((demo && demo.stick) || [0, 0])); amount = stickV.length(); }
   const mx = stickV.x, mz = stickV.y;
   const fwx = -Math.sin(cam.yaw), fwz = -Math.cos(cam.yaw), rx = -fwz, rz = fwx;
   let wx = rx * mx - fwx * mz, wz = rz * mx - fwz * mz;
@@ -368,7 +377,7 @@ window.magicTrial = {
   ready: false, held: false, stick: null,
   me, get combo() { return combo; }, get hero() { return hero; }, cam, camera, fx, dummies,
   run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
-  attack() { combo.attack(); }, dodge() { combo.dodge(); }, demo() { startDemo(); },
+  attack() { combo.attack(); }, release() { combo.release(); }, dodge() { combo.dodge(); }, demo() { startDemo(); },
   look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
   night(on) { if (on !== night) btn('hour').onclick(); },
   draw,

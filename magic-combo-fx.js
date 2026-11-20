@@ -12,10 +12,15 @@
      const shot = fx.shot(kind)       something thrown. kind 'orb' | 'big': an orb with a ribbon behind it, shedding a
                                       gold spark now and then; 'wave' | 'rise': the wave of a cut, a curved band of
                                       light seen from behind as a crescent (wave: leaning, as her cut came down; rise:
-                                      standing, off an upward sweep)
-       shot.place(at, dir, far)       every frame: where it is, the way it goes (unit), how far it has come (m)
+                                      standing, off an upward sweep); 'lance': a spear of light, held in her hand
+                                      while it grows and then thrown (the same one: far 0 while she holds it)
+       shot.place(at, dir, far)       every frame: where it is (a lance: its point), the way it goes (unit), how far
+                                      it has come (m)
+       shot.size(level)               a lance: how grown it is (0..3); shot.long: its length now (m)
        shot.end(hit)                  it is over: it landed (the combo then asks for a burst) or ran out (it fades)
      fx.burst(at, size)               where one lands: a flash, a ring going out, gold sparks
+     fx.ring(at, radius)              a ring of light going out over the ground from `at` to `radius` (she lands a leap)
+     fx.motes(at, n, from)            n gold sparks drawn in to `at` from `from` m away (light being gathered)
      fx.update(dt, camera)            every frame
      fx.setNight(on)                  by night its light is let shine more
      fx.dispose()
@@ -23,8 +28,8 @@
    How it is drawn: light laid over the picture with one blend (what a thing covers hides what is behind it, its glow
    only adds), every material marked userData.noGrade (the light of the hour and the curse leave it alone). An orb, a
    glow, a burst: one square turned to the camera, all of it worked out by its shader. A ribbon: a strip through up to
-   20 places, turned to the camera on the way. Sparks: one instanced square, moved by its shader. Few of anything: 8
-   orbs, 4 waves, 6 bursts, 10 ribbons, 64 sparks at most. Phone-safe shaders: no arrays, no loops.
+   20 places, turned to the camera on the way (a lance: the same, pointed at both ends). Sparks: one instanced square, moved by its shader. Few of anything: 8
+   orbs, 4 waves, 3 lances, 3 rings, 6 bursts, 10 ribbons, 64 sparks at most. Phone-safe shaders: no arrays, no loops.
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -39,7 +44,9 @@ const SHOTS = {
   big: { size: 0.95, ribbon: 0.3, shed: 0.7 },
   wave: { wide: 0.95, tall: 0.26, lean: -0.6 },         // half its width, half its height in the middle (m); radians it leans
   rise: { wide: 0.85, tall: 0.2, lean: Math.PI / 2 },
+  lance: { long: [0.75, 1.05, 1.4, 1.8], thick: [0.05, 0.065, 0.085, 0.11], tip: [0.16, 0.2, 0.26, 0.34], ribbon: 0.1 },      // by how grown it is
 };
+const LANCE = 10;                                       // places along a lance
 const RIBBON = 20, SPARKS = 64;
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
 
@@ -189,6 +196,59 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   });
   const bursts = Array.from({ length: 6 }, () => ({ mesh: put(square, burstMat()), t: 1, life: 0.3 }));
 
+  // ---- a lance: a strip from its tail to its point, widest two thirds of the way along, turned to the camera
+  function makeLance() {
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(LANCE * 2 * 3), uv = new Float32Array(LANCE * 2 * 2), idx = [];
+    for (let i = 0; i < LANCE; i++) { uv[i * 4] = uv[i * 4 + 2] = i / (LANCE - 1); uv[i * 4 + 1] = -1; uv[i * 4 + 3] = 1; }
+    for (let i = 0; i < LANCE - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    const mat = material({
+      uniforms: { ...colours, uK: { value: 1 } },
+      side: THREE.DoubleSide,
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: /* glsl */`
+        uniform vec3 uCore, uMain, uDeep;
+        uniform float uK, uShine;
+        varying vec2 vUv;
+        void main() {
+          float across = 1.0 - vUv.y * vUv.y;
+          float heart = smoothstep(0.45, 0.95, across);                     // the white line down its middle
+          float a = pow(across, 0.6) * (0.4 + 0.6 * vUv.x);                 // brighter toward its point
+          vec3 col = mix(mix(uDeep, uMain, across), uCore, heart);
+          gl_FragColor = vec4(col * a * uK * (0.8 + 0.3 * uShine), a * (0.4 + 0.55 * heart) * uK);
+        }`,
+    });
+    return { mesh: put(geo, mat), live: false, k: 0, level: 0, long: 0, grown: 0, tip: null, ribbon: null, head: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1) };
+  }
+  const lances = Array.from({ length: 3 }, makeLance);
+
+  // ---- a ring over the ground: going out from the middle, thinning as it goes
+  const flat = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
+  const ringMat = () => material({
+    uniforms: { ...colours, uT: { value: 0 } },
+    side: THREE.DoubleSide,
+    vertexShader: 'varying vec2 vP; void main() { vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: /* glsl */`
+      uniform vec3 uCore, uMain, uDeep;
+      uniform float uT, uShine;
+      varying vec2 vP;
+      void main() {
+        float r = length(vP);
+        float out_ = 1.0 - pow(1.0 - uT, 2.5);
+        float R = 0.12 + 0.84 * out_;
+        float w = 0.035 + 0.1 * (1.0 - uT);
+        float edge = 1.0 - smoothstep(0.0, w, abs(r - R));
+        float wash = (1.0 - smoothstep(0.0, R, r)) * 0.22 * (1.0 - uT);      // a little light inside it, at first
+        float a = (edge + wash) * (1.0 - uT * uT);
+        vec3 col = mix(uMain, uCore, edge * 0.7) + uDeep * wash;
+        gl_FragColor = vec4(col * a * (0.75 + 0.4 * uShine), a * 0.5);
+      }`,
+  });
+  const rings = Array.from({ length: 3 }, () => ({ mesh: put(flat, ringMat()), t: 1, life: 0.4 }));
+
   // ---- sparks: gold, four-pointed; thrown out, slowing, falling a little, going out (all in the shader)
   const sGeo = new THREE.InstancedBufferGeometry();
   sGeo.index = square.index;
@@ -268,6 +328,23 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     },
     shot(kind) {
       const def = SHOTS[kind] || SHOTS.orb;
+      if (def.long) {
+        const l = lances.find(o => !o.mesh.visible) || lances[0];
+        l.live = true; l.k = 1; l.level = 0; l.grown = 0; l.long = def.long[0]; l.mesh.visible = true;
+        l.tip = orbs.find(v => !v.mesh.visible) || orbs[0];
+        l.tip.live = true; l.tip.k = 1; l.tip.kind = { size: def.tip[0] }; l.tip.mesh.visible = true; l.tip.ribbon = null;
+        l.ribbon = null;
+        return {
+          get long() { return l.long; },
+          size(level) { l.level = Math.max(0, Math.min(3, level)); },
+          place(at, dir, far = 0) {
+            l.head.copy(at); l.dir.copy(dir).normalize();
+            l.tip.mesh.position.copy(at);
+            if (far > 0) { if (!l.ribbon) l.ribbon = takeRibbon(def.ribbon + 0.04 * l.level, 0.1); feed(l.ribbon, at); }
+          },
+          end() { l.live = false; l.tip.live = false; if (l.ribbon) l.ribbon.used = false; },
+        };
+      }
       if (def.wide) {
         const w = waves.find(o => !o.mesh.visible) || waves[0];
         w.live = true; w.k = 1; w.kind = def; w.age = 0; w.mesh.visible = true;
@@ -314,6 +391,20 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       b.mesh.material.uniforms.uSize.value = size;
       scatter(at, Math.round(5 + 5 * Math.min(2, size)), 2.2 + 1.6 * size, 0.07 + 0.05 * Math.min(2, size));
     },
+    ring(at, radius = 2) {
+      const r = rings.find(o => o.t >= 1) || rings[0];
+      r.t = 0; r.life = 0.32 + 0.05 * radius;
+      r.mesh.position.copy(at); r.mesh.scale.setScalar(radius); r.mesh.visible = true;
+      scatter(at, 8, 3.2, 0.09);
+    },
+    motes(at, n = 1, from = 0.6) {
+      for (let i = 0; i < n; i++) {
+        const a = rand() * 6.283, z = rand() * 1.4 - 0.4, r = Math.sqrt(Math.max(0, 1 - Math.min(1, z * z)));
+        tmp.set(at.x + Math.cos(a) * r * from, at.y + z * from, at.z + Math.sin(a) * r * from);
+        // (a spark slows to a third of its first pace's reach: sent three times as fast as the way is long, it ends at `at`)
+        spark(tmp, (at.x - tmp.x) * 3, (at.y - tmp.y) * 3 + 0.5, (at.z - tmp.z) * 3, 0.42, 0.06 + 0.03 * rand());
+      }
+    },
     setNight(on) { colours.uShine.value = on ? 1.35 : 0.8; },
     update(dt, camera) {
       time += dt;
@@ -351,6 +442,36 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         b.mesh.visible = b.t < 1;
         b.mesh.material.uniforms.uT.value = b.t;
       }
+      // rings over the ground
+      for (const r of rings) {
+        if (r.t >= 1) continue;
+        r.t = Math.min(1, r.t + dt / r.life);
+        r.mesh.visible = r.t < 1;
+        r.mesh.material.uniforms.uT.value = r.t;
+      }
+      // lances: each grows toward how grown it should be; its strip is laid from its tail to its point, facing the camera
+      for (const l of lances) {
+        if (!l.mesh.visible) continue;
+        if (!l.live) { l.k -= dt / 0.1; if (l.k <= 0) { l.mesh.visible = false; continue; } }
+        l.grown += (l.level - l.grown) * Math.min(1, dt * 14);
+        const def = SHOTS.lance, i0 = Math.min(2, Math.floor(l.grown)), f = l.grown - i0;
+        const mix = a => a[i0] + (a[i0 + 1] - a[i0]) * f;
+        l.long = mix(def.long);
+        const thick = mix(def.thick) * (0.94 + 0.06 * beat);
+        l.tip.kind.size = mix(def.tip);
+        const pos = l.mesh.geometry.attributes.position;
+        for (let i = 0; i < LANCE; i++) {
+          const u = i / (LANCE - 1);
+          tan.copy(l.head).addScaledVector(l.dir, -l.long * (1 - u));
+          toCam.subVectors(camera.position, tan);
+          side.crossVectors(l.dir, toCam).normalize();
+          const w = thick * Math.sin(Math.PI * Math.pow(u, 1.7));
+          pos.setXYZ(i * 2, tan.x - side.x * w, tan.y - side.y * w, tan.z - side.z * w);
+          pos.setXYZ(i * 2 + 1, tan.x + side.x * w, tan.y + side.y * w, tan.z + side.z * w);
+        }
+        pos.needsUpdate = true;
+        l.mesh.material.uniforms.uK.value = Math.max(0, l.k);
+      }
       // ribbons: every place on one grows older and is dropped; the strip is laid through what is left, facing the camera
       for (const r of ribbons) {
         if (r.key !== null && r.used && !r.seen) r.used = false;          // (a hand's ribbon nobody fed this frame: let go)
@@ -377,8 +498,9 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       }
     },
     dispose() {
-      square.dispose(); waveGeo.dispose(); sGeo.dispose();
+      square.dispose(); waveGeo.dispose(); sGeo.dispose(); flat.dispose();
       for (const r of ribbons) r.mesh.geometry.dispose();
+      for (const l of lances) l.mesh.geometry.dispose();
       for (const m of made) m.dispose();
     },
   };
