@@ -34,8 +34,9 @@ from vrma_pose import mat_of, quat_of, read_clip, ry, slerp_m, unit, write_clip 
 
 SOURCE = "Jump_Double"
 OUT_NAME = "Jump_Spin"
-TURN_FROM, TURN_TO = 0.11, 0.45        # s of the clip: once round, from just after its kick
-ARMS_IN, ARMS_HOLD, ARMS_OPEN = (0.06, 0.16), 0.38, 0.55     # s: drawn in over the first two, held, opened by the last
+# s of the clip: once round, from just after its kick (0.11..0.45 at first: "เร็วไปนิด", a little too quick)
+TURN_FROM, TURN_TO = 0.11, 0.53
+ARMS_IN, ARMS_HOLD, ARMS_OPEN = (0.06, 0.16), 0.46, 0.63     # s: drawn in over the first two, held, opened by the last
 KNEES = 0.65                           # how much of her thighs' spread to the sides is taken away while she turns
 # her arms drawn in, in her chest's own frame (her left side's; her right's x the other way): the upper arm down by her
 # side and a little ahead, the forearm folded across in front of her chest, a little up
@@ -59,7 +60,7 @@ def turn_curve(a, b, n=128):
     return lambda u: float(np.interp(min(1.0, max(0.0, u)) * n, np.arange(n + 1), s))
 
 
-TURN_CURVE = turn_curve(0.7, 1.8)
+TURN_CURVE = turn_curve(0.9, 1.5)        # (0.7, 1.8 at first: its quickest a little gentler now)
 
 
 def shortest(a, b):

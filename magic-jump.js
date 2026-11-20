@@ -428,11 +428,12 @@ const skySide = n => (n % 2 === 0 ? 'R' : 'L');
 // clip, s into it that her legs are straightest (the kick: she is on the circle until then, held, and off it then), the
 // rate it is played at, s into it that the poses take her back if no other jump has come first; side: m/s it sends her
 // out to her left with the stick let go (none now: Step 2 kicked out on the slant once); ahead: m/s on the way she faces
-// (Step 4's flip goes on over); more: m each rises more than the game's jump (held at the press, she does not drift up
-// into the kick)
+// (Step 4's flip goes on over); hold: s after its kick that a press for the next waits (kept until then: the turn is
+// not cut short); more: m each rises more than the game's jump (held at the press, she does not drift up into the kick)
 const FLOW = {
-  2: { clip: 'mjf_2', kick: 0.033, rate: 1.15, end: 0.7 },               // Step 2, once round in the air (not a kick out:
-                                                                         // the user found that one not pretty)
+  2: { clip: 'mjf_2', kick: 0.033, rate: 1.0, end: 0.78, hold: 0.36 },  // Step 2, once round in the air (not a kick out:
+                                                                         // the user found that one not pretty); a press
+                                                                         // waits until she is nearly round (hold s)
   3: { clip: 'mjf_3', kick: 0.1, rate: 1.3, end: 0.8 },                   // Step 3, the hips turned in the air, a spring
   4: { clip: 'mjf_4', kick: 0.067, rate: 1.0, end: 0.62, ahead: 0.7 },   // Step 4, the flip
   land: { clip: 'mjf_land', rate: 1.25, run: 1.6, hold: 0.28, runHold: 0.12 },     // the ninja's landing
@@ -461,6 +462,9 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   let windAll = 1;                            // s the hold before a kick off a circle takes in all (the Air Hike, Air Step, flow)
   // whether this jump turns head over heels: the game's 3rd; the Air Hike's 4th
   const flips = () => (tier === 3 && !stepped) || (tier === 4 && stepped === 'dmc');
+  // s after this jump's kick that a press for the next is kept waiting (not taken, not lost): most of the way round a
+  // flip; the flow's turn nearly round (FLOW[n].hold); otherwise none (M.gap is the least anyway)
+  const pressAfter = () => (flips() ? M.flip * M.flipKick - M.windup : stepped === 'flow' && FLOW[tier] && FLOW[tier].hold) || 0;
   const padVel = new THREE.Vector3();
   let crouch = -1;                            // s since the press, crouching on the ground before the mocap's take-off (-1: not)
   // the mocap's take-off still has her body (her arms, back, head: until just after she leaves the ground, when it would
@@ -742,7 +746,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       if (active && (crouch >= 0 || onPad)) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
       if (!active || tier >= 4 || wind >= 0 || t < M.gap) return false;
       // early in the flip she cannot kick: the press waits until she is most of the way round
-      if (flips() && t < M.flip * M.flipKick - M.windup) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
+      if (t < pressAfter()) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
       queued = null;
       wind = M.windup;
       nextAmount = stick.amount;
@@ -816,7 +820,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         dt = extra;                                          // (what is left of this frame: off the ground)
       }
       t += dt;
-      if (queued && t >= (flips() ? M.flip * M.flipKick - M.windup : M.gap)) air.press(me, queued);
+      if (queued && t >= Math.max(M.gap, pressAfter())) air.press(me, queued);
       // ---- the kick: after the wind-up, off the circle that opens under her
       if (wind >= 0 && pad && (padStyle === 'dmc' || padStyle === 'sky' || padStyle === 'flow')) {
         // ---- the Air Hike, the Air Step: held (her legs, or her stepping leg, driven down onto the circle), then off it
