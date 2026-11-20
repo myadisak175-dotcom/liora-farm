@@ -22,6 +22,14 @@ for her and cut to the pace of a fight:
   mc_plunge, mc_slam  <- the library's Sword_Heavy_Combo (its third strike, a leap and a blow down)   the cast in the
                                                      air: her hand up over her head as she drops (her legs the library's
                                                      jump's), and the blow down as she lands, up into her standing pose
+  mc_air_l, mc_air_r  <- no capture: made here      casting in the air, as Devil May Cry's gunfire in the air: the library's
+                                                     jump's body; one hand thrust out at what she casts at, its palm to
+                                                     it, as the other is drawn back to her side, her shoulders turning
+                                                     with it, and the cast throwing the hand up; each begins as the
+                                                     other ends
+  mc_rain_in, mc_rain, mc_rain_out  <- no capture   the rain: over forward till her head is down, her arms out past it at
+                                                     the ground, casting from each in turn (a loop; the page spins her),
+                                                     and on over, upright again
   mc_dash  <- the library's Sword_Heavy_Combo (its second strike)   the running cast: a leap off her run, turning once
                                                      round in the air, down into a low cut; she goes forward (its path)
 
@@ -68,7 +76,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from vrma_pose import LIB, REPO, quat_of, ry, slerp_m, unit  # noqa: E402
+from vrma_pose import LIB, REPO, quat_of, rx, ry, rz, slerp_m, unit  # noqa: E402
 
 
 def _tool(name, file):
@@ -576,6 +584,95 @@ def build():
     done("mc_plunge", MPL, move(MPL, raised))
     blow = lambda t: bump(t, -1.0, 0.0, 0.3, 0.5)
     done("mc_slam", MSL, move(MSL, lambda s, t: open_hands(look_ahead(s3.at(s)), 0.5 * blow(t), 0.85 * blow(t))), "R")
+
+    # ---- casting in the air (no capture): the library's jump's body; her arms laid here, in the world, so that they
+    # point where she casts however her body is turned
+    def arm_to(L, hips, side, d, f, wrist):
+        """Her arm: its upper arm along d, its forearm along f (the world's), its hand bent back `wrist` degrees."""
+        sgn = 1.0 if side == "left" else -1.0
+        d, f = unit(np.array(d, float)), unit(np.array(f, float))
+        e = unit(f - (f @ d) * d)
+        Ru = np.column_stack([d, np.cross(e, d), e]) if sgn > 0 else np.column_stack([-d, np.cross(d, e), e])
+        L[f"{side}Shoulder"] = np.eye(3)
+        R, _ = mj.fk(L, hips)
+        L[f"{side}UpperArm"] = R[f"{side}Shoulder"].T @ Ru
+        L[f"{side}LowerArm"] = ry(-math.acos(max(-1.0, min(1.0, float(f @ d)))) * sgn)
+        L[f"{side}Hand"] = rz(math.radians(wrist) * sgn)
+
+    ARMS = ("Shoulder", "UpperArm", "LowerArm", "Hand")
+
+    def volley(out_l, out_r, twist, kick_l, kick_r, back):
+        """Casting from each hand in turn: out: an arm 0 drawn back to her side, 1 thrust out at what she casts at, its
+        palm to it; twist: degrees, her right shoulder forward; kick: the arm thrown up by its cast; back: degrees she
+        leans back (her knees come up with it: one drawn up before her, the other trailing)"""
+        L = dict(tucked.L)
+        L["hips"] = rx(math.radians(-back)) @ L["hips"]
+        L.update(leftUpperLeg=ry(math.radians(8)) @ rx(math.radians(-50 - 1.6 * back)), leftLowerLeg=rx(math.radians(96)), leftFoot=rx(math.radians(36)),
+                 rightUpperLeg=rx(math.radians(14 - 1.2 * back)), rightLowerLeg=rx(math.radians(30 + 1.5 * back)), rightFoot=rx(math.radians(42)))
+        for b_, part in (("spine", 0.3), ("chest", 0.4), ("upperChest", 0.3)):
+            L[b_] = L[b_] @ ry(math.radians(twist * part))
+        for b_ in ("neck", "head"):                                           # (her head stays on what she casts at)
+            L[b_] = L[b_] @ ry(math.radians(-twist * 0.5))
+        for side, sgn, out, kick in (("left", 1.0, out_l, kick_l), ("right", -1.0, out_r, kick_r)):
+            near, far = dict(L), dict(L)
+            arm_to(near, tucked.hips, side, (sgn * 0.3, -0.75, -0.55), (sgn * 0.14, 0.02, 1.0), 12.0)
+            d = unit(np.array([sgn * 0.2, -0.2 + 0.2 * kick, 1.0]))
+            arm_to(far, tucked.hips, side, d, d + np.array([-sgn * (0.16 + 0.3 * kick), 0.2 * kick, 0.0]), 58.0 - 20.0 * kick)
+            for part in ARMS:
+                L[side + part] = slerp_m(near[side + part], far[side + part], out)
+        return open_hands(Pose(L, tucked.hips), 0.25 + 0.7 * out_l, 0.25 + 0.7 * out_r)
+
+    MA = dict(dur=0.3, hit=0.05, again=0.11)
+    for name, hand, sign in (("mc_air_l", "L", -1.0), ("mc_air_r", "R", 1.0)):
+        def cast(t, hand=hand, sign=sign):
+            out, draw = ease(t / 0.06), 1 - ease((t - 0.01) / 0.1)            # this hand thrust out; the other drawn back
+            kick = bump(t, 0.045, 0.07, 0.075, 0.13)
+            twist = sign * 14.0 * (2 * ease(t / 0.08) - 1)
+            back = 7.0 + 5.0 * bump(t, 0.04, 0.08, 0.1, 0.22)
+            return volley(out, draw, twist, kick, 0.0, back) if hand == "L" else volley(draw, out, twist, 0.0, kick, back)
+        done(name, MA, cast, hand)
+
+    # ---- the rain: over forward till her head is down (her hips the middle of it), her arms out past her head at the
+    # ground, casting from each in turn (a loop: the page spins her); and on over, upright again
+    RAIN_UP = 1.25
+    LEGS = {"jump": {b_: tucked.L[b_] for b_ in mj.LEG_BONES}, "in": {}, "rain": {}}
+    for side, sgn in (("left", 1.0), ("right", -1.0)):
+        LEGS["in"].update({f"{side}UpperLeg": rx(math.radians(-105)), f"{side}LowerLeg": rx(math.radians(125)), f"{side}Foot": rx(math.radians(30))})
+    LEGS["rain"].update(leftUpperLeg=rx(math.radians(-6)), leftLowerLeg=rx(math.radians(8)), leftFoot=rx(math.radians(48)),
+                        rightUpperLeg=ry(math.radians(-22)) @ rx(math.radians(-62)), rightLowerLeg=rx(math.radians(112)), rightFoot=rx(math.radians(48)))
+    for part in LEGS.values():
+        for b_ in mj.LEG_BONES:
+            part.setdefault(b_, np.eye(3))
+
+    def tumbling(over, tuck, reach, kick_l, kick_r):
+        """over: how far over forward she is (radians); tuck: her legs 0 as they are, 1 pulled in; reach: 0 the jump's
+        body, 1 the rain's (her legs one straight, one bent; her arms out past her head); kick: an arm thrown by its cast"""
+        L = dict(tucked.L)
+        for b_ in mj.LEG_BONES:
+            L[b_] = slerp_m(slerp_m(LEGS["jump"][b_], LEGS["rain"][b_], reach), LEGS["in"][b_], tuck)
+        for b_ in ("spine", "chest", "upperChest", "neck"):
+            L[b_] = slerp_m(tucked.L[b_], np.eye(3), reach)
+        L["head"] = slerp_m(tucked.L["head"], rx(math.radians(-28)), reach)   # (looking where her hands point)
+        turn = rx(over)
+        L["hips"] = turn @ slerp_m(tucked.L["hips"], np.eye(3), reach)
+        hips = np.array([0.0, tucked.hips[1] + (RAIN_UP - tucked.hips[1]) * reach, 0.0])
+        for side, sgn, kick in (("left", 1.0, kick_l), ("right", -1.0, kick_r)):
+            far = dict(L)
+            d = unit(np.array([sgn * (0.5 + 0.1 * kick), 1.0, 0.12 + 0.3 * kick]))
+            arm_to(far, hips, side, turn @ d, turn @ (d + np.array([-sgn * (0.14 + 0.5 * kick), 0.0, 0.1 * kick])), 50.0 - 25.0 * kick)
+            for part in ARMS:
+                L[side + part] = slerp_m(tucked.L[side + part], far[side + part], reach)
+        return open_hands(Pose(L, hips), 0.25 + 0.7 * reach, 0.25 + 0.7 * reach)
+
+    MRL = dict(period=0.18)
+    beat = lambda t: max(0.0, math.cos(2 * math.pi * (t / MRL["period"] - 0.1))) ** 3   # (a kick every period, the same at both ends)
+    raining = lambda t: tumbling(math.pi, 0.0, 1.0, beat(t), beat(t - MRL["period"] / 2))
+    MRI, MRO = dict(dur=0.28), dict(dur=0.28)
+    smooth = lambda u: (lambda w: w * w * (3 - 2 * w))(min(1.0, max(0.0, u)))  # (her turning over: no quicker in its middle than it need be)
+    done("mc_rain_in", MRI, lambda t: blend(tumbling(math.pi * smooth(t / 0.26), bump(t, -0.02, 0.1, 0.13, 0.27), ease((t - 0.06) / 0.2), 0.0, 0.0),
+                                            raining(0.0), ease((t - 0.22) / 0.06)))
+    done("mc_rain", MRL, raining, loop=True)
+    done("mc_rain_out", MRO, lambda t: tumbling(math.pi * (1 + smooth(t / 0.26)), bump(t, 0.0, 0.11, 0.14, 0.27), 1 - ease(t / 0.22), 0.0, 0.0))
 
     # ---- the roll's way
     path, dur = roll_path()

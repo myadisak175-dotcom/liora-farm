@@ -10,8 +10,12 @@
      combo.attack()                  the attack button goes down (remembered for a moment: a little early still counts)
      combo.release()                 the attack button comes up (it lets a held cast go)
      combo.dodge()                   the roll button
-     combo.plunge(me, world)         the attack button in the air (the page's own jump has her: it ends that flight first):
-                                     she drops with her hand up and lands a blow. false: her clips have none (nothing done)
+     combo.airShot(me, world)        the attack button in the air (the page's own jump has her; true: the combo has her
+                                     now, the page ends that flight): a cast in the air, or over a target the rain.
+                                     The button held on becomes the drop (combo.plunge, which a page may also call)
+     combo.takeFall()                true once when a cast in the air is over and she is still up: the page lets its
+                                     jump have her again (air.drop)
+     (world.grounded: she is on the ground: tell it every frame; the casts in one flight are counted from it)
      every frame, before character.update(dt):
        combo.step(dt, me, world)     -> true while she is in one of its moves (the page then leaves her walking alone).
                                      me: { pos, vel, heading }; it turns her to what she casts at and moves her where
@@ -45,9 +49,12 @@
      - On the run (as fast as her run when the button goes down): she leaps the way she runs, turning once round in the
        air, her hands leaving rings of light; what she passes within arm's reach is hit; she comes down in a low cut and
        a ring goes out over the ground, hitting all inside it.
-     - In the air (the page's jump): the attack button ends the flight; she hangs a moment as her hand goes up, light
-       gathering in it, then drops hard, and lands a blow: a ring goes out over the ground, wider than the leap's, and
-       what is in it is thrown up.
+     - In the air (the page's jump), tapped: a cast at her target from one hand thrust out, then the other, each
+       holding her up a moment (eight in one flight; after them she falls as she casts). Over a thing, once in a
+       flight, the rain instead: she goes over forward till her head is down and spins, casting down at all under
+       her for as long as the button is tapped, and on over, upright again. Not pressed again, she falls on.
+     - In the air, held: she hangs a moment as her hand goes up, light gathering in it, then drops hard, and lands a
+       blow: a ring goes out over the ground, wider than the leap's, and what is in it is thrown up.
      - She turns to what she casts at as a move begins: the nearest target, more so one the stick points at.
      - The orbs of the first two find their target (they leave her hand the way it was going, and curve in); the wave of
        the third goes straight and through everything; the fourth is a big orb that bursts on all near where it lands.
@@ -84,7 +91,20 @@ const SHOTS = {
   wave: { speed: 14, radius: 0.85, range: 9, steer: 0, burst: 0.8, through: true, height: 0.95 },
   rise: { speed: 12, radius: 0.4, range: 7, steer: 0, burst: 0.9, through: true, launch: true, height: 0.85 },
   lance: { speed: 36, radius: 0.3, range: 26, steer: 0, burst: 0.8, through: true },
+  bolt: { speed: 26, radius: 0.18, range: 14, steer: 12, burst: 0.5 },
 };
+// casting in the air (as Devil May Cry's gunfire in the air): each cast holds her up a moment. most: casts in one flight
+// that do (after them she casts on, falling); over: s after a cast with none after it, she falls on; hold: the button
+// held so long is the drop; pop: m/s up a cast gives her; pull: m/s² down between; sink: m/s down at most; fall: m/s²
+// down once they are spent.
+// The rain (once in a flight): over a thing (within `near` m of it, her feet `above` of its height up, `room` m of air
+// under her): she goes over forward till her head is down and spins (`spin` rad/s), a cast down every `every` s at
+// each thing within `wide` m in turn, for `lasts` s after the last press (`longest` s in all), sinking `drift` m/s;
+// it is over `floor` m from the ground too; it is `costs` casts of the flight's
+const AIR = { L: 'mc_air_l', R: 'mc_air_r', into: 'mc_rain_in', rain: 'mc_rain', out: 'mc_rain_out',
+  most: 8, over: 0.27, hold: 0.22, pop: 0.75, pull: 7, sink: 1.5, fall: 16, power: 0.6,
+  near: 1.8, above: 0.55, room: 1.5, floor: 1.0, every: 0.09, lasts: 0.6, longest: 1.8, costs: 4, spin: 13, wide: 3.5, drift: 0.4, quick: 1.7 };
+const BOLT = { name: 'ยิงกลางอากาศ' }, RAIN = { name: 'หมุนยิงลง' };
 const REMEMBER = 0.35;        // s a press of the attack button is remembered
 const AIM_FAR = 13;           // m: she turns to a target no further than this
 const AIM_TURN = 20;          // how fast she turns to it (1/s)
@@ -101,7 +121,7 @@ export function createMagicCombo({ character, marks, fx }) {
   // move: { kind: 'hit' | 'roll' | 'charge', def, m, t, fired, target, at: its path so far, press: the press that began it,
   //         level, draw: the lance in her hand, done: what a leap has hit, phase: 'in' | 'hold' }
   let move = null;
-  let wantHit = 0, wantRoll = 0, hits = 0, hitsT = 0, down = false, press = 0, mote = 0;
+  let wantHit = 0, wantRoll = 0, hits = 0, hitsT = 0, down = false, press = 0, mote = 0, airShots = 0, rained = false, fell = false;
   const shots = [];
   const hand = new THREE.Vector3(), handWas = new THREE.Vector3(), handVel = new THREE.Vector3();
   const v = new THREE.Vector3(), aim = new THREE.Vector3(), want = new THREE.Vector3();
@@ -168,6 +188,28 @@ export function createMagicCombo({ character, marks, fx }) {
     wantRoll = 0;
     me.vel.set(0, 0, 0);
   }
+  // the next cast in the air: from her other hand; it holds her up (while the flight has casts left)
+  function airNext(me, world) {
+    move.hand = move.hand === 'L' ? 'R' : 'L';
+    character.play(AIR[move.hand], move.at === undefined ? 0.07 : 0.04, false);
+    move.at = 0; move.fired = false; airShots++;
+    if (airShots <= AIR.most) move.vy = Math.max(move.vy, AIR.pop * size());
+    move.target = pick(me, world, 3.2) || move.target;
+    move.press = press; move.pressAt = move.t; wantHit = 0;
+  }
+  // the rain is over: she goes on over, upright again (quick: with the drop after it)
+  function rainOut(then) {
+    character.play(AIR.out, 0.04, false);
+    if (then) character.setRate(AIR.quick);
+    move.phase = 'out'; move.at = 0; move.then = then; move.rate = then ? AIR.quick : 1;
+  }
+  // a small orb from a hand at a target (with none: the way given)
+  function bolt(from, target, way) {
+    const dir = way.clone();
+    if (target) dir.set(target.pos.x - from.x, target.pos.y + target.height * 0.62 - from.y, target.pos.z - from.z);
+    dir.normalize();
+    shots.push({ kind: SHOTS.bolt, power: AIR.power, name: 'orb', pos: from.clone(), dir, aim: dir.clone(), target, far: 0, done: new Set(), draw: fx.shot('orb') });
+  }
   // a thing is hit: told so, counted, a burst where
   function strike(target, hit, at, burst) {
     target.hit(hit);
@@ -222,12 +264,14 @@ export function createMagicCombo({ character, marks, fx }) {
       if (!move) return '';
       if (move.kind === 'roll') return 'กลิ้งหลบ';
       if (move.kind === 'plunge') return PLUNGE.name;
+      if (move.kind === 'airshot' || move.kind === 'rain') return move.def.name;
       if (move.kind === 'charge') return `ชาร์จ ${'★'.repeat(move.level)}${'☆'.repeat(3 - move.level)}`;
       const i = HITS.indexOf(move.def);
       return `${i >= 0 ? i + 1 + ' · ' : ''}${move.def.name}`;
     },
     get index() { return move && move.kind === 'hit' ? HITS.indexOf(move.def) : -1; },
-    get airborne() { return !!move && move.kind === 'plunge'; },
+    get airborne() { return !!move && (move.kind === 'plunge' || move.kind === 'airshot' || move.kind === 'rain'); },
+    takeFall() { const f = fell; fell = false; return f; },
     get rising() { return !!move && move.kind === 'hit' && move.def === RISE; },
     get charge() { return move && move.kind === 'charge' ? move.level : -1; },
     get aiming() { return !!move && (move.kind === 'charge' || (move.def === THROW && move.t < move.m.hit + 0.18)); },
@@ -235,9 +279,10 @@ export function createMagicCombo({ character, marks, fx }) {
     get held() {
       if (!move) return 0;
       if (move.kind === 'roll') return Math.min(1, Math.max(0, 1 - (move.t - move.m.land) / 0.15));
-      return move.kind === 'plunge' ? 0.9 : move.def === DASH ? 0.6 : move.def === HITS[2] ? 0.5 : 0.15;
+      return move.kind === 'airshot' ? 0.3 : move.kind === 'plunge' || move.kind === 'rain' ? 0.9 : move.def === DASH ? 0.6 : move.def === HITS[2] ? 0.5 : 0.15;
     },
     get upside() {
+      if (move && move.kind === 'rain') return move.phase === 'loop' ? 1 : 0.5;
       if (!move || move.kind !== 'roll') return 0;
       const u = move.t / move.m.land;
       return Math.min(1, Math.max(0, (u - 0.2) / 0.1)) * Math.min(1, Math.max(0, (0.9 - u) / 0.1));
@@ -245,6 +290,24 @@ export function createMagicCombo({ character, marks, fx }) {
     attack() { wantHit = REMEMBER; down = true; press++; },
     release() { down = false; },
     dodge() { wantRoll = 0.25; },
+    airShot(me, world) {
+      if (!has(AIR.L) || !has(AIR.R)) return false;
+      drop();
+      const k = size(), g = (world.ground || (() => -1e5))(me.pos.x, me.pos.z);
+      const under = !rained && airShots < AIR.most && has(AIR.into) && has(AIR.rain) && has(AIR.out) && me.pos.y - g > AIR.room * k
+        && (world.targets || []).some(t => Math.hypot(t.pos.x - me.pos.x, t.pos.z - me.pos.z) < AIR.near * k && me.pos.y - t.pos.y > AIR.above * t.height);
+      me.vel.x *= 0.3; me.vel.z *= 0.3;
+      if (under) {
+        character.play(AIR.into, 0.06, false);
+        move = { kind: 'rain', def: RAIN, phase: 'in', t: 0, at: 0, until: AIR.lasts, next: 0, hand: 'R', i: 0, vy: AIR.pop * k, press, pressAt: 0, rate: 1 };
+        rained = true; airShots += AIR.costs; wantHit = 0;
+      } else {
+        move = { kind: 'airshot', def: BOLT, t: 0, hand: 'R', vy: 0, target: null };
+        airNext(me, world);
+      }
+      wantRoll = 0;
+      return true;
+    },
     plunge(me, world) {
       if (!has(PLUNGE.clip) || !has(SLAM.clip)) return false;
       drop();
@@ -259,6 +322,47 @@ export function createMagicCombo({ character, marks, fx }) {
       if (hitsT > 0) { hitsT -= dt; if (hitsT <= 0) hits = 0; }
       const stick = world.stick || { x: 0, z: 0, amount: 0 };
       if (move) move.t += dt;
+      if (world.grounded) { airShots = 0; rained = false; }
+      // ---- casting in the air: each cast holds her up; the button held is the drop; no more of them, she falls on
+      if (move && (move.kind === 'airshot' || move.kind === 'rain')) {
+        const k = size(), g = (world.ground || (() => -1e5))(me.pos.x, me.pos.z), slow = Math.exp(-3 * dt);
+        const held = down && move.press === press && move.t - move.pressAt > AIR.hold;
+        if (move.kind === 'airshot') {
+          if (held && combo.plunge(me, world)) return true;
+          const spent = airShots > AIR.most;
+          move.at += dt;
+          move.vy = Math.max(-(spent ? AIR.fall : AIR.sink) * k, move.vy - (spent ? AIR.fall : AIR.pull) * k * dt);
+          if (move.target) turnTo(me, Math.atan2(move.target.pos.x - me.pos.x, move.target.pos.z - me.pos.z), 14, dt);
+          if (wantHit > 0 && move.at >= marks.clips[AIR[move.hand]].again) airNext(me, world);
+          else if (move.at >= AIR.over) { move = null; fell = true; return false; }
+        } else {
+          // ---- the rain: over (the spin beginning), casting (as long as she is asked, and has the air), and on over
+          const whole = marks.clips[move.phase === 'out' ? AIR.out : AIR.into].dur / move.rate, u = Math.min(1, move.at / whole);
+          move.at += dt;
+          if (wantHit > 0) { wantHit = 0; move.press = press; move.pressAt = move.t; move.until = Math.min(AIR.longest, move.t + AIR.lasts); }
+          if (move.phase === 'in') {
+            me.heading += AIR.spin * u * u * dt;
+            if (move.at >= whole) { character.play(AIR.rain, 0.03, false); move.phase = 'loop'; }
+          } else if (move.phase === 'loop') {
+            me.heading += AIR.spin * dt;
+            if (held) rainOut('drop');
+            else if (move.t >= move.until || me.pos.y - g < AIR.floor * k) rainOut(null);
+          } else {
+            me.heading += AIR.spin * (1 - u) * (1 - u) * dt;
+            if (move.at >= whole) {
+              if (move.then && combo.plunge(me, world)) return true;
+              move = null; fell = true; return false;
+            }
+          }
+          if (move.phase === 'out') move.vy = Math.max(-AIR.fall * k, move.vy - AIR.fall * 0.6 * k * dt);
+          else move.vy += (-AIR.drift * k - move.vy) * Math.min(1, dt * 6);
+        }
+        me.vel.x *= slow; me.vel.z *= slow;
+        me.pos.x += me.vel.x * dt; me.pos.z += me.vel.z * dt; me.pos.y += move.vy * dt;
+        if (me.pos.y <= g) { me.pos.y = g; move = null; return false; }
+        wantRoll = 0;
+        return true;
+      }
       // ---- dropping in the cast in the air: a breath as her hand goes up, then down hard; on the ground, the blow
       if (move && move.kind === 'plunge') {
         const k = size(), g = (world.ground || (() => me.pos.y))(me.pos.x, me.pos.z), slow = Math.exp(-4 * dt);
@@ -270,11 +374,11 @@ export function createMagicCombo({ character, marks, fx }) {
         wantRoll = 0;
         return true;
       }
-      // ---- the roll: at any time but in a roll's own flight
-      if (wantRoll > 0 && (!move || move.kind !== 'roll' || move.t >= move.m.dur)) roll(me, world);
+      // ---- the roll: at any time but in a roll's own flight (and on the ground: in the air it waits, as her first cast does)
+      if (wantRoll > 0 && world.grounded !== false && (!move || move.kind !== 'roll' || move.t >= move.m.dur)) roll(me, world);
       if (!move) {
         // the attack button: on the run, the leap; else the first cast
-        if (wantHit > 0) {
+        if (wantHit > 0 && world.grounded !== false) {            // (in the air it waits: on the ground in time, it is her first cast)
           if (has(DASH.clip) && Math.hypot(me.vel.x, me.vel.z) > RUN * size()) begin(DASH, me, world, FADE.dash, { done: new Set() });
           else begin(HITS[0], me, world, FADE.first);
         }
@@ -345,6 +449,28 @@ export function createMagicCombo({ character, marks, fx }) {
           mote -= dt;
           if (mote <= 0 && move.level < 3) { mote = 0.11; fx.motes(hand, 1, 0.7 * k); }
           if (move.grew) { move.grew = false; fx.burst(hand, (0.3 + 0.1 * move.level) * k); }
+        }
+      }
+      // ---- casting in the air: a light in each hand; a cast leaves the hand thrust out. The rain: one every so often,
+      // from each hand in turn, at each thing under her in turn (with none: down, round her as she spins)
+      if (move && (move.kind === 'airshot' || move.kind === 'rain')) {
+        const r = handAt('R', new THREE.Vector3()).clone(), l = handAt('L', new THREE.Vector3()).clone();
+        // (the hand a cast has just left flares)
+        const flare = move.kind === 'airshot' && move.fired ? Math.max(0, 1 - (move.at - marks.clips[AIR[move.hand]].hit) / 0.08) : 0;
+        fx.glow('handR', r, (0.2 + (move.hand === 'R' ? 0.2 * flare : 0)) * k); fx.glow('handL', l, (0.2 + (move.hand === 'L' ? 0.2 * flare : 0)) * k);
+        if (move.kind === 'airshot') {
+          if (!move.fired && move.at >= marks.clips[AIR[move.hand]].hit) {
+            move.fired = true;
+            const from = move.hand === 'R' ? r : l;
+            bolt(from, move.target, v.set(Math.sin(me.heading), -0.3, Math.cos(me.heading)));
+          }
+        } else if (move.phase === 'loop') {
+          move.next -= dt;
+          if (move.next <= 0) {
+            move.next += AIR.every; move.hand = move.hand === 'L' ? 'R' : 'L';
+            const under = (world.targets || []).filter(t => Math.hypot(t.pos.x - me.pos.x, t.pos.z - me.pos.z) < AIR.wide * k && t.pos.y < me.pos.y);
+            bolt(move.hand === 'R' ? r : l, under.length ? under[move.i++ % under.length] : null, v.set(Math.sin(me.heading) * 0.35, -1, Math.cos(me.heading) * 0.35));
+          }
         }
       }
       // ---- dropping: the light in her raised hand, growing, and its ribbon behind her
