@@ -24,6 +24,9 @@
   last a front flip; 'stand' (?step=stand), onto a circle she stands on a moment, crouching and pushing off (the camera
   a little behind her going up). ?step=0 is the game's jump. The 🦶 button goes round the Air Step, the Air Hike and
   the game's jump (from her next jump in the air); the 🎨 button has the Air Hike's red too.
+  The camera's feel (camera-feel.js; a trial, not in the game yet; on here unless ?cam=0, the 🎥 button): the player's
+  camera as the game has it, and over it a big game's feel: a little behind her in the air, looking down at where she
+  will land from high, wider a moment at every launch, a dip and a shake at a hard landing. It never turns the view.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -82,6 +85,7 @@
   <button id="demo">▶ เดโม 4 ชั้น</button>
   <button id="kind">🎞 ท่าเดิม</button>
   <button id="step">🦶 เหยียบวง (ใหม่)</button>
+  <button id="feel">🎥 กล้อง AAA</button>
 </div>
 <div id="stick"><i></i></div>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
@@ -99,6 +103,7 @@ import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
 import { createMagicCircles } from './magic-circle-fx.js';
 import { createMagicJump } from './magic-jump.js';
+import { createCameraFeel } from './camera-feel.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
@@ -106,6 +111,8 @@ const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      //
 // Step, one foot at a time), 'dmc' (?step=dmc: Devil May Cry's Air Hike), 'stand' (?step=stand: onto the circle, a crouch,
 // a push; not on the 🦶 button) or false (?step=0: the game's jump)
 const STEP_KINDS = ['flow', 'sky', 'dmc', false];
+// the camera's feel (camera-feel.js, a trial): on here unless ?cam=0; the 🎥 button switches it
+let FEEL = new URLSearchParams(location.search).get('cam') !== '0';
 let STEPPING = { 0: false, stand: 'stand', dmc: 'dmc', sky: 'sky' }[new URLSearchParams(location.search).get('step')] ?? 'flow';
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
@@ -196,6 +203,7 @@ circles.setNight(night);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
 const level = { heightAt: H, crowns: [], cameraTrunks: [] };
 const cam = createFollowCamera({ camera, level });
+const feel = createCameraFeel({ camera });
 cam.setView(-Math.PI, 0.22);
 
 // ---- her: walking and running as in the game (player-moves.js' numbers, at 1.75 m), the magic jump in the air
@@ -203,7 +211,7 @@ const TUNED = 1.412;
 const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), heading: 0 };
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
-let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0, aimS = 0;
+let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0, aimS = 0, vyWas = 0;
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
@@ -306,6 +314,7 @@ function step(dt) {
     if (air.step(dt, me, stick, g) === 'landed') {
       // down: the harder she lands, the more of her pace her legs take up and the longer before she is off again
       landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = air.landing.hold;
+      if (FEEL) feel.land(air.impact, Math.max(0, air.debug.peak - me.pos.y) / k);
       if (demo) { demo = null; speed = 0; }
     }
   }
@@ -342,7 +351,17 @@ function step(dt) {
     aimS += (aimY - aimS) * Math.min(1, dt * (!air.active ? 14 : aimY > aimS ? 3.6 : 7));
     aimY = aimS;
   } else aimS = aimY;
-  cam.update(dt, { pos: me.pos, aimY, height: hero.height, k: hero.height / TUNED, steady: !air.active });
+  // with the camera's feel (camera-feel.js): the view a little behind her in the air, looking down at where she will land
+  // from high, wider a moment at every launch (she went up faster than a moment ago), a dip and a shake at a hard landing
+  const vyNow = air.active ? air.vy : 0;
+  if (FEEL && air.active && vyNow > vyWas + 3 * k) feel.kick(air.tier >= 4 ? 1 : air.tier <= 1 ? 0.25 : 0.55);
+  vyWas = vyNow;
+  if (FEEL) {
+    feel.before();
+    const f = feel.follow(dt, { pos: me.pos, aimY, air: air.active, vy: vyNow / k, over: (me.pos.y - standAt(me.pos.x, me.pos.z, me.pos.y)) / k });
+    cam.update(dt, { pos: f.pos, aimY: f.aimY, height: hero.height, k: hero.height / TUNED, steady: !air.active });
+    feel.after(dt);
+  } else cam.update(dt, { pos: me.pos, aimY, height: hero.height, k: hero.height / TUNED, steady: !air.active });
   // ---- the label and the pips
   beatEl.textContent = air.beat;
   for (const [i, p] of pips.entries()) p.classList.toggle('on', air.active && i < air.tier);
@@ -382,6 +401,18 @@ btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.sea
 // the step, or the jump as it is in the game (from her next jump in the air; kept in the address)
 const stepLabel = () => { btn('step').textContent = { flow: '🦶 ชุด 4 ท่า (ใหม่)', sky: '🦶 Air Step', dmc: '🦶 แบบ DMC', stand: '🦶 ยืนบนวง', false: '🦶 แบบเดิม (ในเกม)' }[STEPPING]; };
 stepLabel();
+// the camera's feel, or the game's camera as it is (kept in the address)
+const feelLabel = () => { btn('feel').textContent = FEEL ? '🎥 กล้อง AAA (ใหม่)' : '🎥 กล้องเดิม (ในเกม)'; };
+feelLabel();
+btn('feel').onclick = () => {
+  FEEL = !FEEL;
+  if (!FEEL) feel.before(); else feel.reset();          // (off: what it put on the camera taken off; on: from where she is)
+  camera.fov = 55; camera.updateProjectionMatrix();
+  const u = new URL(location.href);
+  if (FEEL) u.searchParams.delete('cam'); else u.searchParams.set('cam', '0');
+  history.replaceState(null, '', u.href);
+  feelLabel();
+};
 btn('step').onclick = () => {
   STEPPING = STEP_KINDS[(STEP_KINDS.indexOf(STEPPING) + 1) % STEP_KINDS.length];
   if (air) air.stepMode = STEPPING;
@@ -399,7 +430,7 @@ window.magicTrial = {
   run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
   demo() { startDemo(); },
   press(dirX = 0, dirZ = 0, amount = 0) { stick.x = dirX; stick.z = dirZ; stick.amount = amount; if (air.active) return air.press(me, stick); jumpWanted = 0.15; return true; },
-  look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
+  look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); feel.reset(); },
   night(on) { if (on !== night) btn('hour').onclick(); },
   colour(name) { for (let i = 0; i < 3 && name !== lookName; i++) btn('look').onclick(); },
   draw,
