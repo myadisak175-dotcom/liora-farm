@@ -46,6 +46,8 @@
 //     light, a drop of two metres hard; the circle that catches a long fall is soft): the harder, the slower her landing
 //     plays, the longer before she runs on and the more of her speed she loses; a hard one stops her a moment as her feet
 //     hit (W_STOP s)
+//   - in the air her pace is carried (magic-jump.js, carry): what she takes off with she keeps, a kick sends her on faster
+//     than her run, and with the stick let go she flies on the way she was going
 // Her legs go at the pace she really goes, as ever, so her feet do not slide as she speeds up and slows down.
 //
 // It needs the level to say what the ground is like: level.footing(x, z, y) -> 'ground' | 'cliff' | 'water' | 'wall' | 'out'
@@ -185,7 +187,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // goes part of the way to the stick's, not at once. The camera is the game's own, as it was: the user kept it. step3
   // 'jump': Step 3 is the user's Mixamo "Jump", its time in the air (the legs changing over), in the game since 20 Nov
   // 2026 ("ขึ้นเมนหลักเลยค่ะ"), not the ninja's)
-  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true, step3: 'jump' });
+  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true, step3: 'jump', carry: !!weighs });      // (carry: with her weight, below)
   const me = { pos, vel: new THREE.Vector3(), heading: 0 }, airStick = { x: 0, z: 1, amount: 0 };
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)
@@ -853,7 +855,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     get heading() { return heading; }, get camYaw() { return cam.yaw; }, get camPitch() { return cam.pitch; }, get camDist() { return cam.dist; }, get speed() { return speed; },
     get airborne() { return mode !== 'ground'; }, get mode() { return mode; }, get sprinting() { return sprint; },
     get flight() { return air; },                                  // (for a test, or the console: the magic jump)
-    get weight() { return weight; }, setWeight(on) { weight = !!on; if (!weight) { landW = 0; stopT = 0; gain = 0; } },      // her weight (see above)
+    get weight() { return weight; }, setWeight(on) { weight = !!on; air.carry = weight; if (!weight) { landW = 0; stopT = 0; gain = 0; } },      // her weight (see above), and her pace carried through the air with it (magic-jump.js)
     jump() { jumpWanted = JUMP_BUFFER; },
     dash() { dashWanted = JUMP_BUFFER; },
     // another character takes her place, mid-stride or mid-air: same spot, same heading, same speed

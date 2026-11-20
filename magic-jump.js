@@ -39,6 +39,8 @@
      air.impact                      0..1, for a moment after she lands: how hard she came down (a page may slow her by it)
      air.landing                     the landing she came down into: { clip, rate, hold } (the page plays it on: clip at
                                      rate, and she may run on out of it after hold s)
+     air.carry                       her speed across carried through the air (createMagicJump({ carry: true }), or set it:
+                                     a trial, the game's ⚖️ with her weight): see "Carried" below
 
    me: { pos (her feet, world), vel (her speed over the ground: x, z), heading }, the page's, changed here.
    stick: { x, z, amount }: where the stick points over the ground (unit) and how far it is pushed (0..1).
@@ -55,6 +57,14 @@
    runs, or four jumps would carry her over any gap), and she turns to face it. With the stick let go she goes straight up,
    keeping only a little of the way she was going (KEEP), so she can come down on a ledge's top and not overshoot it.
    Between jumps the stick only steers a little (AIR).
+   Carried (carry: a trial since 20 Nov 2026, in the game under ⚖️ with her weight, player-moves.js. Asked as "Momentum
+   การเคลื่อนที่ไปข้างหน้าระหว่างกระโดดมันช้าๆ ไปไหม": in the air she went no faster than her run, 4.2 m/s, through four
+   jumps 4.4 m up, so it looked like rising more than going; out of a sprint the stick pulled her back down to her run
+   within a second; let go, each kick kept 0.6 of her pace and she bled the rest, nearly stopping in the air). With it,
+   what she takes off with she keeps, fading only slowly (CARRIED.drag) and never below her run with the stick pushed; each
+   kick with the stick pushed sends her at CARRIED.kick times her run, or on as fast as she was going if that is faster;
+   with it let go each kick keeps CARRIED.keep of her pace and nothing else slows her. (What PUSH and KEEP were for, not
+   carrying her over every gap nor past a ledge's top, she gives up some of: the user chose that.)
    A long fall (more than CUSHION m) is caught: a circle opens on the ground under her before she reaches it, and close
    over it she is slowed.
 
@@ -170,6 +180,10 @@ const STEP = { reach: 0.085, drop: 0.07, crouch: 0.11, push: 0.065, lock: 40 };
 // (the game's jump keeps M.keep); and the hold before a kick off a circle (the Air Hike's, the Air Step's, the flow's)
 // slows her up or down quickly (`brake` 1/s) instead of stopping her dead in the air
 const MOM = { turn: 0.55, over: 1.1, keep: 0.6, brake: 30 };
+// carried (carry: true; see "Carried" above): a kick with the stick pushed sends her at `kick` times her run at least;
+// with it let go a kick keeps `keep` of her pace; between kicks her pace fades `drag` of itself a second (with the stick
+// pushed, never below her run)
+const CARRIED = { kick: 1.2, keep: 0.9, drag: 0.15 };
 // the step as Devil May Cry's Air Hike (step: 'dmc'): s her legs are driven down onto the circle, her body held, before
 // she is off it; s the circle stays after (a flash, not a step to stand on); m more each jump rises (held for the stamp,
 // she does not drift up into it as the game's jump does in its wind-up: as high at the top of four as that)
@@ -451,7 +465,7 @@ const FLOW_3B = { clip: 'mjf_3b', kick: 0.1, rate: 1.15, end: 0.48, beat: 'Step 
 const FLOW_CLIPS = Object.fromEntries([FLOW[2], FLOW[3], FLOW_3B, FLOW[4]].map(F => [F.clip, F]));
 const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · หมุนตัว', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
-export function createMagicJump({ character, circles, mocap = false, step = false, momentum = false, step3 = 'ninja' }) {
+export function createMagicJump({ character, circles, mocap = false, step = false, momentum = false, step3 = 'ninja', carry: carried = false }) {
   let ch = character;
   const hasMocap = () => mocap && !!ch.actions.mj_up && !!ch.actions.mj_land;
   // the step's style: false (the game's jump), 'stand' (onto the circle, a crouch, a push), 'dmc' (the Air Hike), 'sky'
@@ -460,7 +474,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   // (the flow only where her clips have its moves: magic-jump-flow-anim.js merged into them)
   const flowOn = () => stepWanted === 'flow' && !!ch.actions.mjf_2 && !!ch.actions.mjf_4;
   let stepWanted = styleOf(step);
-  let mom = !!momentum;
+  let mom = !!momentum, carry = !!carried;
   let step3Wanted = step3;
   // the flow's jump n (Step 3: the ninja's, or the one to try where her clips have it)
   const flowStep = n => (n === 3 && step3Wanted === 'jump' && ch.actions[FLOW_3B.clip] ? FLOW_3B : FLOW[n]);
@@ -550,14 +564,16 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   // the way she came (from). With momentum: the way she came is not thrown away (MOM)
   function kickVel(me, k, scale = 1, from = me.vel) {
     if (nextDir) {
-      const s = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72)) * scale;
+      // (carried: a kick sends her faster than her run, or on as fast as she was going)
+      const s0 = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72)) * scale;
+      const s = carry ? Math.max(s0 * CARRIED.kick, Math.hypot(from.x, from.z)) : s0;
       if (mom) {
         const x = from.x + (nextDir[0] * s - from.x) * MOM.turn, z = from.z + (nextDir[1] * s - from.z) * MOM.turn;
-        const l = Math.hypot(x, z), f = l > s * MOM.over ? s * MOM.over / l : 1;
+        const l = Math.hypot(x, z), f = carry ? s / Math.max(l, 1e-6) : l > s * MOM.over ? s * MOM.over / l : 1;      // (carried: at that pace, the way turned part way)
         me.vel.set(x * f, 0, z * f);
       } else me.vel.set(nextDir[0] * s, 0, nextDir[1] * s);
       turnT = 0.18; kickLean = 1;
-    } else { me.vel.copy(from).multiplyScalar(mom ? MOM.keep : M.keep); kickLean = 0.25; }
+    } else { me.vel.copy(from).multiplyScalar(carry ? CARRIED.keep : mom ? MOM.keep : M.keep); kickLean = 0.25; }
   }
   // (momentum: how far she goes up or down in a hold of w s, going vy m/s as it begins and slowed at MOM.brake)
   const holdDrift = (vy, w) => (mom ? vy * (1 - Math.exp(-MOM.brake * w)) / MOM.brake : 0);
@@ -712,6 +728,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
     get impact() { return impact; }, get vy() { return vy; }, get landing() { return landing; }, get crouching() { return crouch >= 0; },
     get stepMode() { return stepWanted; }, set stepMode(on) { stepWanted = styleOf(on); },
     get momentum() { return mom; }, set momentum(on) { mom = !!on; },
+    get carry() { return carry; }, set carry(on) { carry = !!on; },
     get step3() { return step3Wanted; }, set step3(s) { step3Wanted = s; },      // ('ninja' or 'jump': the flow's Step 3)
     get onCircle() { return onPad || (!!pad && wind >= 0); },      // (the step: coming down onto a circle or standing on it)
     // another character in her place: the one leaving gets back what its clip had (a bone its clip holds still would
@@ -912,11 +929,13 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         const to = Math.atan2(stick.x, stick.z);
         me.heading += wrap(to - me.heading) * Math.min(1, dt * 4);
         if (turnT <= 0) {
-          const s = M.push * k * Math.min(1, stick.amount / 0.72);
+          // (carried: steered the stick's way at the pace she has, fading slowly, never below her run)
+          let s = M.push * k * Math.min(1, stick.amount / 0.72);
+          if (carry) s = Math.max(s, Math.hypot(me.vel.x, me.vel.z) * Math.exp(-CARRIED.drag * dt));
           me.vel.x += (stick.x * s - me.vel.x) * Math.min(1, dt * M.air);
           me.vel.z += (stick.z * s - me.vel.z) * Math.min(1, dt * M.air);
         }
-      } else if (turnT <= 0) me.vel.multiplyScalar(Math.exp(-0.5 * dt));
+      } else if (turnT <= 0) me.vel.multiplyScalar(Math.exp(-(carry ? CARRIED.drag : 0.5) * dt));
       turnT -= dt;
       // ---- up and down: the game's pull (more on the way down), let off at the very top of each jump
       if (wind < 0) {

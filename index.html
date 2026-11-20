@@ -166,14 +166,14 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=21",
+  "./player-moves.js": "./player-moves.js?v=22",
   "./player-vault.js": "./player-vault.js?v=2",
   "./player-climb-top.js": "./player-climb-top.js?v=2",
   "./climb-top-anim.js": "./climb-top-anim.js?v=1",
   "./vault-anim.js": "./vault-anim.js?v=1",
   "./magic-jump-mocap-anim.js": "./magic-jump-mocap-anim.js?v=4",
   "./magic-jump-flow-anim.js": "./magic-jump-flow-anim.js?v=2",
-  "./magic-jump.js": "./magic-jump.js?v=12",
+  "./magic-jump.js": "./magic-jump.js?v=13",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=3",
   "./player-input.js": "./player-input.js?v=1",
   "./player-camera.js": "./player-camera.js?v=3",
@@ -369,8 +369,9 @@ const createPlayer = Q.get('move') === '0' ? createWalker : (await import('./pla
 // in their own light at any hour
 const circles = createMagicCircles({ seed: 2 });
 scene.add(circles.object);
-// ?weight=1: her weight (player-moves.js, a trial): she gathers speed and loses it, turns and lands as something with weight;
-// the ⚖️ button switches it on and off, to compare (?weight=0: the button, off to begin with)
+// ?weight=1: her weight (player-moves.js, a trial): she gathers speed and loses it, turns and lands as something with weight,
+// and her pace is carried through the air (magic-jump.js, carry); the ⚖️ button switches it on and off, to compare
+// (?weight=0: the button, off to begin with)
 const weighs = Q.has('weight');
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0' });
 if (weighs && player.setWeight) {
