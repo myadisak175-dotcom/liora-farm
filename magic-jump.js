@@ -445,10 +445,13 @@ const FLOW = {
   land: { clip: 'mjf_land', rate: 1.25, run: 1.6, hold: 0.28, runHold: 0.12 },     // the ninja's landing
   more: 0.02,
 };
-const FLOW_CLIPS = Object.fromEntries([2, 3, 4].map(n => [FLOW[n].clip, FLOW[n]]));
+// Step 3 to try (step3: 'jump'; magic-jump.html): the user's Mixamo "Jump", its time in the air: the right leg driven
+// down long, the right knee up, then the legs changing over, the arms opening out (tools/make-magic-jump-flow.py)
+const FLOW_3B = { clip: 'mjf_3b', kick: 0.1, rate: 1.15, end: 0.48, beat: 'Step 3 · สลับขากลางอากาศ' };
+const FLOW_CLIPS = Object.fromEntries([FLOW[2], FLOW[3], FLOW_3B, FLOW[4]].map(F => [F.clip, F]));
 const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · หมุนตัว', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
-export function createMagicJump({ character, circles, mocap = false, step = false, momentum = false }) {
+export function createMagicJump({ character, circles, mocap = false, step = false, momentum = false, step3 = 'ninja' }) {
   let ch = character;
   const hasMocap = () => mocap && !!ch.actions.mj_up && !!ch.actions.mj_land;
   // the step's style: false (the game's jump), 'stand' (onto the circle, a crouch, a push), 'dmc' (the Air Hike), 'sky'
@@ -458,6 +461,9 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   const flowOn = () => stepWanted === 'flow' && !!ch.actions.mjf_2 && !!ch.actions.mjf_4;
   let stepWanted = styleOf(step);
   let mom = !!momentum;
+  let step3Wanted = step3;
+  // the flow's jump n (Step 3: the ninja's, or the one to try where her clips have it)
+  const flowStep = n => (n === 3 && step3Wanted === 'jump' && ch.actions[FLOW_3B.clip] ? FLOW_3B : FLOW[n]);
   const stepOn = () => stepWanted;
   // the step: this jump's circle and how high it is (her feet on it), where she came down onto it from; on it, and for
   // how long (s); this jump left one (its moves are STEP_MOVES); her way over the ground as she came down onto it (she
@@ -471,7 +477,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   const flips = () => (tier === 3 && !stepped) || (tier === 4 && stepped === 'dmc');
   // s after this jump's kick that a press for the next is kept waiting (not taken, not lost): most of the way round a
   // flip; the flow's turn nearly round (FLOW[n].hold); otherwise none (M.gap is the least anyway)
-  const pressAfter = () => (flips() ? M.flip * M.flipKick - M.windup : stepped === 'flow' && FLOW[tier] && FLOW[tier].hold) || 0;
+  const pressAfter = () => (flips() ? M.flip * M.flipKick - M.windup : stepped === 'flow' && FLOW[tier] && flowStep(tier).hold) || 0;
   const padVel = new THREE.Vector3();
   let crouch = -1;                            // s since the press, crouching on the ground before the mocap's take-off (-1: not)
   // the mocap's take-off still has her body (her arms, back, head: until just after she leaves the ground, when it would
@@ -706,6 +712,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
     get impact() { return impact; }, get vy() { return vy; }, get landing() { return landing; }, get crouching() { return crouch >= 0; },
     get stepMode() { return stepWanted; }, set stepMode(on) { stepWanted = styleOf(on); },
     get momentum() { return mom; }, set momentum(on) { mom = !!on; },
+    get step3() { return step3Wanted; }, set step3(s) { step3Wanted = s; },      // ('ninja' or 'jump': the flow's Step 3)
     get onCircle() { return onPad || (!!pad && wind >= 0); },      // (the step: coming down onto a circle or standing on it)
     // another character in her place: the one leaving gets back what its clip had (a bone its clip holds still would
     // otherwise keep this jump's turn for good), the one coming takes the flight on from here
@@ -780,7 +787,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       if (flowOn()) {
         // the flow: the next move's clip has her at once, from its start (her gathering for the kick); the circle flashes
         // open under her; she is held until its kick, and off the circle then
-        const k = size(), F = FLOW[tier + 1];
+        const k = size(), F = flowStep(tier + 1);
         windAll = wind = F.kick / F.rate; padStyle = 'flow'; padY = me.pos.y + holdDrift(vy, wind); reachFrom = me.pos.y;
         pad = circles.open(v.set(me.pos.x + me.vel.x * wind, padY - 0.02, me.pos.z + me.vel.z * wind), tier + 1, { ground: false, size: k, step: true, snap: true, after: DMC.after }) || true;
         ch.play(F.clip, 0.07, false);
@@ -854,12 +861,12 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
           kickVel(me, k, sky && tier === 4 ? SKY.dash : 1);
           if (!nextDir) {
             // (the flow, the stick let go: Step 2 out to her left, on the slant; Step 4's flip on over the way she faces)
-            const F = flow ? FLOW[tier] : null;
+            const F = flow ? flowStep(tier) : null;
             if (F && F.side) { me.vel.x += Math.cos(me.heading) * F.side * k; me.vel.z -= Math.sin(me.heading) * F.side * k; }
             if (F && F.ahead) { me.vel.x += Math.sin(me.heading) * F.ahead * k; me.vel.z += Math.cos(me.heading) * F.ahead * k; }
           }
           if (pad !== true) { circles.press(pad); circles.kick(pad); }
-          beat = (flow ? FLOW_BEATS : sky ? SKY_BEATS : DMC_BEATS)[tier];
+          beat = (flow && flowStep(tier).beat) || (flow ? FLOW_BEATS : sky ? SKY_BEATS : DMC_BEATS)[tier];
         }
       } else if (wind >= 0 && pad) {
         // ---- the step: down onto the circle (quicker and quicker), and onto it

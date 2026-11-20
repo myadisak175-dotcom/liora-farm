@@ -20,6 +20,13 @@ tools/ual_to_vrma.py --bind, which takes their T-pose from the skin's bind pose)
                                  ค่ะ ไม่ต้องถีบข้างก็ได้"). Jump_OffWall_R stays in the library
   mjf_3    <- NinjaJump_Double   Step 3: out of a tuck her legs driven down, then the knees drawn up again with her hips
                                  turned (15 degrees) under her: the ninja's double jump
+  mjf_3b   <- Mixamo "Jump"     Step 3, a trial (the user's "Jump_1.fbx": "ลองอันนี้หน่อยเป็น step 3 ตัดเอาท่อนที่ต่อกันสวยๆ", try
+              (Jump_1)           it as Step 3, cut where it joins on prettily): only its time in the air, from the arms
+                                 swung through and the legs nearly long (the crouch before left out) to the right leg
+                                 driven down long (the kick), the right knee up, then the legs changing over, the left
+                                 long and the right knee up, the arms opening out (the landing after left out). Mixamo's
+                                 (Adobe's: free to use in a game, not CC0): made .vrma by tools/mixamo-to-vrma.mjs into
+                                 assets/animations/mixamo/, which is not in the repo; this tool reads it from there
   mjf_4    <- Jog_Into_Flip      Step 4: the front flip off a run: from the push (the jog's strides left out), long and
                                  stretched out ahead, over head first, round, and upright with her legs reaching down
                                  (the run's landing left out: in the game she has further to fall)
@@ -31,7 +38,8 @@ the ground (magic-jump.js), so her hips are held where they stand (the library's
 body turns about them; the landing keeps its own hips, her feet on the ground. KICK is the frame her legs are straightest
 under her: magic-jump.js keeps her on the circle until then (the clip's time into the cut: KICK - FROM frames). Printed.
 
-Usage (from the repo folder; needs numpy):
+Usage (from the repo folder; needs numpy; mjf_3b needs the user's Mixamo "Jump" first, as Jump_1.fbx:
+  node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jump_1.fbx):
   python3 -I tools/make-magic-jump-flow.py
 writes magic-jump-flow-anim.js next to index.html (by tools/bake-character-anim.py).
 """
@@ -45,13 +53,29 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-from vrma_pose import read_clip, write_vrma  # noqa: E402
+import vrma_pose  # noqa: E402
+from vrma_pose import write_vrma  # noqa: E402
+
+MIXAMO = os.path.join(REPO, "assets", "animations", "mixamo")
+
+
+def read_clip(name):
+    """A clip of the library's, or of the Mixamo folder's ("mixamo:Name", not in the repo)."""
+    folder, _, clip = name.rpartition(":")
+    if folder != "mixamo":
+        return vrma_pose.read_clip(name)
+    lib, vrma_pose.LIB = vrma_pose.LIB, MIXAMO
+    try:
+        return vrma_pose.read_clip(clip)
+    finally:
+        vrma_pose.LIB = lib
 
 FPS = 30
 # game name, library clip, FROM, KICK, TO (frames), in place
 CUTS = [
     ("mjf_2", "Jump_Spin", 2, 3, 25, True),
     ("mjf_3", "NinjaJump_Double", 1, 4, 26, True),
+    ("mjf_3b", "mixamo:Jump_1", 16, 19, 31, True),
     ("mjf_4", "Jog_Into_Flip", 4, 6, 24, True),
     ("mjf_land", "NinjaJump_Land", 2, 2, 38, False),
 ]
@@ -85,7 +109,8 @@ def main():
     with open(out, "w", encoding="utf-8") as f:
         f.write("// magic-jump-flow-anim.js: written by tools/make-magic-jump-flow.py (through tools/bake-character-anim.py); do not\n"
                 "// edit by hand. The magic jump's flow (magic-jump.js, step: 'flow'): Quaternius' Universal Animation Library 2\n"
-                "// (CC0), cut and played in place; the moves the user chose (the tool says which).\n"
+                "// (CC0) and one Mixamo move (mjf_3b: Adobe's, free to use in this game, not CC0), cut and played in place; the\n"
+                "// moves the user chose (the tool says which).\n"
                 + rest.split("\n", 1)[1])
     return done
 

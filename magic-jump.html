@@ -90,6 +90,7 @@
   <button id="step">🦶 เหยียบวง (ใหม่)</button>
   <button id="feel">🎥 กล้อง AAA</button>
   <button id="mom">💨 โมเมนตัม</button>
+  <button id="s3">3️⃣ Step 3</button>
 </div>
 <div id="stick"><i></i></div>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
@@ -119,6 +120,8 @@ const STEP_KINDS = ['flow', 'sky', 'dmc', false];
 let FEEL = new URLSearchParams(location.search).get('cam') !== '0';
 // momentum (magic-jump.js, momentum; a trial): on here unless ?mom=0; the 💨 button switches it
 let MOMENTUM = new URLSearchParams(location.search).get('mom') !== '0';
+// the flow's Step 3 (magic-jump.js, step3; a trial): the user's Mixamo "Jump" here unless ?s3=ninja (the game's); the 3️⃣ button
+let STEP3 = new URLSearchParams(location.search).get('s3') === 'ninja' ? 'ninja' : 'jump';
 let STEPPING = { 0: false, stand: 'stand', dmc: 'dmc', sky: 'sky' }[new URLSearchParams(location.search).get('step')] ?? 'flow';
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
@@ -250,7 +253,7 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEven
   }
   hero.setSize(1.75 / hero.baseHeight);
   root.add(hero.object);
-  air = createMagicJump({ character: hero, circles, mocap: MOCAP, step: STEPPING, momentum: MOMENTUM });
+  air = createMagicJump({ character: hero, circles, mocap: MOCAP, step: STEPPING, momentum: MOMENTUM, step3: STEP3 });
   hero.play('idle', 0);
   document.getElementById('wait').remove();
   window.magicTrial.ready = true;
@@ -410,6 +413,17 @@ stepLabel();
 // the camera's feel, or the game's camera as it is (kept in the address)
 const feelLabel = () => { btn('feel').textContent = FEEL ? '🎥 กล้อง AAA (ใหม่)' : '🎥 กล้องเดิม (ในเกม)'; };
 feelLabel();
+// the flow's Step 3: the one to try, or the game's (kept in the address)
+const s3Label = () => { btn('s3').textContent = STEP3 === 'jump' ? '3️⃣ Step 3: ท่าใหม่ (Jump)' : '3️⃣ Step 3: นินจา (ในเกม)'; };
+s3Label();
+btn('s3').onclick = () => {
+  STEP3 = STEP3 === 'jump' ? 'ninja' : 'jump';
+  if (air) air.step3 = STEP3;
+  const u = new URL(location.href);
+  if (STEP3 === 'jump') u.searchParams.delete('s3'); else u.searchParams.set('s3', 'ninja');
+  history.replaceState(null, '', u.href);
+  s3Label();
+};
 // momentum, or the jump's way over the ground as the game has it (kept in the address)
 const momLabel = () => { btn('mom').textContent = MOMENTUM ? '💨 โมเมนตัม (ใหม่)' : '💨 ไม่มีโมเมนตัม (ในเกม)'; };
 momLabel();
