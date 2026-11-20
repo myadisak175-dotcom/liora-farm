@@ -154,8 +154,12 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // ---- the magic jump: her flight, and her body in it. It moves what it is given (her feet's height, her way across
   // in the air, her heading), and reads the stick as a way over the ground
   // (mocap: the first jump off the ground and a landing from high are the Mixamo captures', where her clips have them:
-  // magic-jump-mocap-anim.js, merged into them by index.html)
-  const air = createMagicJump({ character, circles, mocap: true });
+  // magic-jump-mocap-anim.js, merged into them by index.html. step 'flow': the user's set of four, in the game since
+  // 20 Nov 2026 ("เอาเข้าเกมส์จริงเลยค่ะ"): the jump off the ground as it was, then once round in the air, the hips' twist
+  // and a spring, a flip, and the ninja's landing, each off a circle that flashes open under her (magic-jump-flow-anim.js,
+  // merged by index.html; where her clips lack them, the jump as it was). momentum: a kick in the air turns the way she
+  // goes part of the way to the stick's, not at once. The camera is the game's own, as it was: the user kept it)
+  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true });
   const me = { pos, vel: new THREE.Vector3(), heading: 0 }, airStick = { x: 0, z: 1, amount: 0 };
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)
@@ -797,6 +801,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     get character() { return character; },
     get heading() { return heading; }, get camYaw() { return cam.yaw; }, get camPitch() { return cam.pitch; }, get camDist() { return cam.dist; }, get speed() { return speed; },
     get airborne() { return mode !== 'ground'; }, get mode() { return mode; }, get sprinting() { return sprint; },
+    get flight() { return air; },                                  // (for a test, or the console: the magic jump)
     jump() { jumpWanted = JUMP_BUFFER; },
     dash() { dashWanted = JUMP_BUFFER; },
     // another character takes her place, mid-stride or mid-air: same spot, same heading, same speed
