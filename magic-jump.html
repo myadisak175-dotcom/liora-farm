@@ -13,11 +13,13 @@
   One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
   The first jump off the ground and every landing are the mocap's, as in the game (magic-jump.js, mocap; its clips:
   magic-jump-mocap-anim.js); ?mocap=0 (the 🎞 button) is the jump as it was before them.
-  The step (magic-jump.js, step; a trial, not in the game yet), two ways: 'dmc' (here unless asked otherwise), Devil May
-  Cry's Air Hike: her legs driven down onto a circle that flashes open under her, and she is off it at once, knees
-  snatched up; 'stand' (?step=stand), onto a circle she stands on a moment, crouching and pushing off (the camera a little
-  behind her going up). ?step=0 is the game's jump. The 🦶 button goes round the three (from her next jump in the air);
-  the 🎨 button has the Air Hike's red too.
+  The step (magic-jump.js, step; a trial, not in the game yet), three ways: 'sky' (here unless asked otherwise), the
+  user's Air Step: up the air one foot at a time (right, left, right: Air Step 1, Air Step 2, Final Sky Kick), each foot
+  driven down onto a circle that flashes open under it, her arms swinging as a runner's, the last one up or on ahead and
+  into a pose ready to cast; 'dmc' (?step=dmc), Devil May Cry's Air Hike: both feet driven down, knees snatched up, the
+  last a front flip; 'stand' (?step=stand), onto a circle she stands on a moment, crouching and pushing off (the camera
+  a little behind her going up). ?step=0 is the game's jump. The 🦶 button goes round the Air Step, the Air Hike and
+  the game's jump (from her next jump in the air); the 🎨 button has the Air Hike's red too.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -96,10 +98,10 @@ import { createMagicJump } from './magic-jump.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
-// the step (a trial): 'dmc' (Devil May Cry's Air Hike: the default here), 'stand' (?step=stand: onto the circle, a crouch,
-// a push) or false (?step=0: the game's jump)
-const STEP_KINDS = ['dmc', 'stand', false];
-let STEPPING = { 0: false, stand: 'stand' }[new URLSearchParams(location.search).get('step')] ?? 'dmc';
+// the step (a trial): 'sky' (the Air Step, one foot at a time: the default here), 'dmc' (?step=dmc: Devil May Cry's Air
+// Hike), 'stand' (?step=stand: onto the circle, a crouch, a push; not on the 🦶 button) or false (?step=0: the game's jump)
+const STEP_KINDS = ['sky', 'dmc', false];
+let STEPPING = { 0: false, stand: 'stand', dmc: 'dmc' }[new URLSearchParams(location.search).get('step')] ?? 'sky';
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -372,13 +374,13 @@ btn('demo').onclick = () => startDemo();
 btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
 btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.set('mocap', '0'); else u.searchParams.delete('mocap'); location.href = u.href; };
 // the step, or the jump as it is in the game (from her next jump in the air; kept in the address)
-const stepLabel = () => { btn('step').textContent = { dmc: '🦶 แบบ DMC (ใหม่)', stand: '🦶 ยืนบนวง (ลองก่อนหน้า)', false: '🦶 แบบเดิม (ในเกม)' }[STEPPING]; };
+const stepLabel = () => { btn('step').textContent = { sky: '🦶 Air Step (ใหม่)', dmc: '🦶 แบบ DMC', stand: '🦶 ยืนบนวง', false: '🦶 แบบเดิม (ในเกม)' }[STEPPING]; };
 stepLabel();
 btn('step').onclick = () => {
   STEPPING = STEP_KINDS[(STEP_KINDS.indexOf(STEPPING) + 1) % STEP_KINDS.length];
   if (air) air.stepMode = STEPPING;
   const u = new URL(location.href);
-  if (STEPPING === 'dmc') u.searchParams.delete('step'); else u.searchParams.set('step', STEPPING || '0');
+  if (STEPPING === 'sky') u.searchParams.delete('step'); else u.searchParams.set('step', STEPPING || '0');
   history.replaceState(null, '', u.href);
   stepLabel();
 };
