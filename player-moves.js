@@ -33,6 +33,21 @@
 //     feet stay on a slope she walks.
 // Her walk and run are the walker's (a run is 4.2 m/s at 1.75 m; the first trial ran at 5.0 and that was too fast).
 //
+// Her weight (a trial since 20 Nov 2026: createPlayer({ weight: true }), player.setWeight(on); in the game with ?weight=1 and
+// its ⚖️ button, to compare. Asked for as "รู้สึกตัวละครมันเบาๆ ภาพรวม": she felt light. Without it she was most of the way
+// to her pace in a tenth of a second, stopped as fast, turned back at a full run in the same stride, and came down from
+// any height the same). With it:
+//   - on the ground she gathers speed and loses it at so many m/s² (W_ACC0, W_DEC0: her run in 0.4 s from standing, and
+//     stopped from it in a quarter of a second, half a metre on), not most of the way in a tenth of a second
+//   - the faster she goes the slower she turns (W_TURN: from her walk to her sprint); turned back at a run (more than
+//     W_BACK), she brakes first, hardly turning, and turns once she is down to a walk: not round in a stride at full pace
+//   - her body leans with it: forward as she gathers speed, back as she brakes (W_LEAN)
+//   - she comes down as hard as she fell (her speed down as she lands, between W_SOFT0 and W_HARD0: a hop or one jump
+//     light, a drop of two metres hard; the circle that catches a long fall is soft): the harder, the slower her landing
+//     plays, the longer before she runs on and the more of her speed she loses; a hard one stops her a moment as her feet
+//     hit (W_STOP s)
+// Her legs go at the pace she really goes, as ever, so her feet do not slide as she speeds up and slows down.
+//
 // It needs the level to say what the ground is like: level.footing(x, z, y) -> 'ground' | 'cliff' | 'water' | 'wall' | 'out'
 // (the hill village). On a map that cannot say, cliffs and deep water stay walls (level.confine, as in player.js) and there
 // is no climbing or swimming; the rest works the same. standAt, footing and waterDepthAt are asked with her height (y), which
@@ -64,6 +79,14 @@ const FAR0 = 16;                              // a drop taller than this (m; 20 
 const STEP0 = 0.45;                           // the ground falling away under her by more than this (m): she falls, not steps
 const SLIDE0 = 5, SLIDE_FALL0 = 11;           // down a cliff's face: no faster than this over the ground, nor than this downwards (m/s)
 const DASH_T = 0.2, DASH_COOL = 0.8;          // the burst (s), and how soon she can dash again (s)
+// her weight (see above; at Vivi's 1.412 m: x 1.24 at 1.75 m)
+const W_ACC0 = 8.5, W_DEC0 = 12.9;            // m/s² gathering speed, losing it (10.5, 16 at 1.75 m: her run in 0.4 s, stopped from it in 0.26 s)
+const W_TURN = [12, 5];                       // 1/s she turns at, walking .. sprinting (11 at any pace without)
+const W_BACK = 1.9, W_BRAKE = 0.5, W_PIVOT = 2.5;      // turned back more than this (radians) at a run, she brakes (to this of her walk), hardly
+                                              // turning (1/s), until she is down to a walk, and turns then
+const W_LEAN = [0.08, 0.12];                  // radians her body leans at the most: forward gathering speed, back braking
+const W_SOFT0 = 5.25, W_HARD0 = 10.5;         // m/s down as she lands: a light landing, a hard one (6.5, 13 at 1.75 m)
+const W_STOP = [0.03, 0.07];                  // s a landing over half hard stops her, at half and at its hardest
 const CLIMB0 = 1.4;                           // m/s over the rock (1.7 at 1.75 m)
 const GRAB_WAIT = 0.12, GRAB_SHY = 0.5;       // s she pushes at a face before she takes hold; s after letting go before she will again
 const LEAP = 2.5, LEAP_T = 0.3, LEAP_COOL = 0.55;      // a jump on the rock: this many times her climbing pace for LEAP_T s; again after LEAP_COOL s
@@ -82,7 +105,7 @@ const smooth = u => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u
 
 // circles: the magic jump's circles (magic-circle-fx.js), in the scene: the page draws them, the jump says where they open
 const NO_CIRCLES = { open() {} };
-export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES }) {
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   // the level, asked at her height (see above): where her feet are, how deep the water is, where its surface is, and what
   // the ground is like (null: this map cannot say). A steep bank under the water is ground to her: she wades down it
@@ -122,6 +145,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let ctIK = createClimbTopIK(character), ctTail = 0, tiltFrom = 0, ctOff = 0;      // (ctOff: m she is held off a sheer face, her knees and elbows out of its corner)
   let wake = 0;                               // s to the next ring she leaves swimming
   let lean = 0, roll = 0, grade = 0, turned = 0;      // her body's tilt forward / back and into a turn; the slope along her way; how far she turned this frame
+  let weight = !!weighs, gain = 0, landW = 0, stopT = 0;      // her weight (see above): on; m/s² she gathered speed at this frame; how hard she landed (0..1); s her landing is stopped
   let wade = 0, stepSide = 1, wasDepth = 0, wetH = 0, wetAmt = 0, depthHere = 0;      // (water: as in player.js)
   const lastSafe = pos.clone();               // the last ground she stood on: where she is put back if a slide gets her nowhere
   const tmp = new THREE.Vector3(), spot = { x: 0, z: 0 }, stickV = new THREE.Vector2();
@@ -281,12 +305,22 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // down on her feet: from a flight (the harder she came down, the more of her pace her legs take up and the longer before
   // she is off again: a long fall was caught by a circle), or at the foot of a face she slid down
   function touchDown(k, depth, slid) {
+    const down = Math.max(0, -vy);                                            // (m/s: how fast she came down)
     mode = 'ground'; vy = 0;
     const hit = slid ? 0.25 : air.impact;
     if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1 + 0.4 * hit, 0.32, 'splash');
-    landT = 0; speed *= 1 - 0.4 * hit;
+    landT = 0;
+    landW = weight && !slid ? Math.min(1, Math.max(0, (down / k - W_SOFT0) / (W_HARD0 - W_SOFT0))) : 0;
+    speed *= weight && !slid ? 1 - (0.25 + 0.5 * landW) : 1 - 0.4 * hit;
     if (slid) lightLanding(LAND_HOLD + 0.1 * hit);
     else ({ clip: landClip, rate: landRate, hold: landHold } = air.landing);      // (the flight's: the mocap's touch-down)
+    // (with her weight: the harder she came down, the slower her landing plays and the longer before she runs on; a hard
+    // one stops her a moment as her feet hit)
+    stopT = 0;
+    if (landW > 0) {
+      landRate *= 1 - 0.3 * landW; landHold += 0.25 * landW;
+      if (landW > 0.5) stopT = W_STOP[0] + (W_STOP[1] - W_STOP[0]) * (landW - 0.5) / 0.5;
+    }
     character.play(landClip, 0.06, false);
   }
   // a landing not out of a flight (at the foot of a slide, off a vault with the stick let go): the mocap's touch-down where
@@ -568,7 +602,11 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     turned = 0;
     if (pushing) {
       target = running ? (sprint ? SPRINT : RUN) : WALK * Math.max(0.6, amount / 0.72);
-      turned = wrap(want - heading) * Math.min(1, dt * 11);
+      // (with her weight: the faster she goes the slower she turns, and turned back at a run she brakes first)
+      const back = weight && mode === 'ground' && speed > WALK * 1.3 && Math.abs(wrap(want - heading)) > W_BACK;
+      const turnRate = back ? W_PIVOT : weight && mode === 'ground' ? W_TURN[0] + (W_TURN[1] - W_TURN[0]) * Math.min(1, Math.max(0, (speed - WALK) / (SPRINT - WALK))) : 11;
+      if (back) target = Math.min(target, WALK * W_BRAKE);
+      turned = wrap(want - heading) * Math.min(1, dt * turnRate);
       if (mode === 'ground') heading += turned;                               // (sliding, she goes where the rock sends her; in the air, where the jump does)
     }
     // the slope under her, along her way (the rise in a metre): up it she slows a little, down it she goes a little faster
@@ -597,8 +635,17 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     } else wade = 0;
     // the burst holds her at the dash's pace; otherwise water is slow to get going in and quick to stop her. In the air the
     // jump says how fast she goes across, and which way (magic-jump.js)
+    // (with her weight: on the ground she gathers and loses speed at so many m/s², and a landing holds her back until it is
+    // over, the more the harder it was)
+    if (landT < 0) landW = 0;
+    if (weight && landT >= 0 && landT < landHold) target = Math.min(target, RUN * (1 - landW));
+    gain = 0;
     if (dashT > 0) { dashT -= dt; if (mode === 'ground') speed = Math.max(speed, DASH * (1 - 0.5 * drag)); }
-    else speed += (target - speed) * Math.min(1, dt * (mode !== 'ground' ? 1.5 : target > speed ? 7 - 4 * drag : 10 + 5 * drag));
+    else if (weight && mode === 'ground' && dt > 0) {
+      const most = (target > speed ? W_ACC0 * (1 - 0.5 * drag) : W_DEC0 * (1 + 0.5 * drag)) * k * dt, was = speed;
+      speed += Math.max(-most, Math.min(most, target - speed));
+      gain = (speed - was) / dt;
+    } else speed += (target - speed) * Math.min(1, dt * (mode !== 'ground' ? 1.5 : target > speed ? 7 - 4 * drag : 10 + 5 * drag));
     if (mode === 'air') speed = Math.hypot(me.vel.x, me.vel.z);
     // ---- she moves
     const wasRunning = mode === 'ground' && speed > WALK * 1.5;                // (before a face stops her)
@@ -736,6 +783,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const landing = character.actions[landClip];
       if ((pace >= 0.25 && landT > landHold) || character.state !== landClip || (landing && landing.time >= landing.getClip().duration - 0.02)) landT = -1;
       else character.setRate(landRate);
+      if (stopT > 0) { stopT -= dt; character.setRate(0); }                  // (a hard landing: her feet hit, and she is stopped a moment)
     }
     if (mode === 'ground' && landT < 0) {
       if (character.state !== st) character.play(st, st === 'idle' ? 0.3 : /land/.test(character.state) ? 0.28 : 0.2);      // (up out of a landing: a longer blend)
@@ -745,7 +793,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // ---- her body leans: forward up a hill and back down one (walking it, not standing on it), forward in a dash and a
     // sprint, and into her turns. Climbing, she is laid against the rock: tilted to it about her feet, as far out of it as the clip's wall is
     const going = Math.min(1, pace / WALK), walking = mode === 'ground';
-    const wantLean = !walking ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : sprint && pace > RUN ? 0.06 : 0);
+    const wantLean = !walking ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : sprint && pace > RUN ? 0.06 : 0)
+      + (weight && gain > 0 ? W_LEAN[0] * Math.min(1, gain / (W_ACC0 * k)) : weight && gain < 0 ? -W_LEAN[1] * Math.min(1, -gain / (W_DEC0 * k)) : 0);      // (her weight: with how she gathers or loses speed)
     const wantRoll = !walking || dt <= 0 ? 0 : Math.min(0.14, Math.max(-0.14, -turned / dt * 0.03 * Math.min(1, pace / RUN)));
     lean += (wantLean - lean) * ease(8, dt); roll += (wantRoll - roll) * ease(6, dt);
     // The flat she is laid on is taken from the rock under her whole body, from her feet to her hands (player-climb.js),
@@ -804,6 +853,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     get heading() { return heading; }, get camYaw() { return cam.yaw; }, get camPitch() { return cam.pitch; }, get camDist() { return cam.dist; }, get speed() { return speed; },
     get airborne() { return mode !== 'ground'; }, get mode() { return mode; }, get sprinting() { return sprint; },
     get flight() { return air; },                                  // (for a test, or the console: the magic jump)
+    get weight() { return weight; }, setWeight(on) { weight = !!on; if (!weight) { landW = 0; stopT = 0; gain = 0; } },      // her weight (see above)
     jump() { jumpWanted = JUMP_BUFFER; },
     dash() { dashWanted = JUMP_BUFFER; },
     // another character takes her place, mid-stride or mid-air: same spot, same heading, same speed

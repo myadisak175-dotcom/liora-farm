@@ -86,6 +86,11 @@
   body:not(.dev) #worldBtn { top: 240px; }
   body.world #curseBtn { top: 306px; }
   body.world:not(.dev) #curseBtn { top: 282px; }
+  /* ?weight=1: her weight's trial (player-moves.js): its button switches it on and off, to compare */
+  #weightBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 306px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
+    background: rgba(39, 52, 26, .78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
+  #weightBtn.on { background: rgba(176, 108, 34, .9); }
+  body:not(.dev) #weightBtn { top: 282px; }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
@@ -161,7 +166,7 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=20",
+  "./player-moves.js": "./player-moves.js?v=21",
   "./player-vault.js": "./player-vault.js?v=2",
   "./player-climb-top.js": "./player-climb-top.js?v=2",
   "./climb-top-anim.js": "./climb-top-anim.js?v=1",
@@ -364,7 +369,18 @@ const createPlayer = Q.get('move') === '0' ? createWalker : (await import('./pla
 // in their own light at any hour
 const circles = createMagicCircles({ seed: 2 });
 scene.add(circles.object);
-const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles });
+// ?weight=1: her weight (player-moves.js, a trial): she gathers speed and loses it, turns and lands as something with weight;
+// the ⚖️ button switches it on and off, to compare (?weight=0: the button, off to begin with)
+const weighs = Q.has('weight');
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0' });
+if (weighs && player.setWeight) {
+  const btn = document.createElement('button');
+  btn.id = 'weightBtn';
+  const show = () => { btn.textContent = player.weight ? '⚖️ น้ำหนัก: เปิด' : '⚖️ น้ำหนัก: ปิด'; btn.classList.toggle('on', player.weight); };
+  btn.onclick = () => { player.setWeight(!player.weight); show(); };
+  show();
+  document.body.append(btn);
+}
 scene.add(player.object);
 level.addUnderwater(player.object);
 // the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
