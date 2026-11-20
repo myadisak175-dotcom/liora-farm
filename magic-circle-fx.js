@@ -19,9 +19,12 @@
                                      fx.level(c): how high it is now (world), for her feet to go down with it
        fx.kick(c)                    she kicks off it: it springs back, its light shoots down, a wave goes out round it, the
                                      sparks are thrown down; and it stays a while (STEP_AFTER s) before it breaks up, so the
-                                     circles she climbed stand under her like steps
+                                     circles she climbed stand under her like steps.
+                                     { snap: true, after: s } (the Air Hike, magic-jump.js step 'dmc'): it flashes open at
+                                     once, a little too big, and goes `after` s after the kick (a flash, not a step)
      every frame: fx.update(dt, camera)
-     fx.setLook('rose' | 'water')   the clip's rose light, or the cold blue of her water barrier (barrier-fx.js)
+     fx.setLook('rose' | 'water' | 'red')   the clip's rose light, the cold blue of her water barrier (barrier-fx.js), or
+                                     the red of Devil May Cry's Air Hike (a trial: magic-jump.html)
      fx.setNight(on)                by night the light is let shine more (the page dims the land, not this)
      fx.dispose()
 
@@ -44,6 +47,7 @@ const sstep = (a, b, t) => { const x = clamp((t - a) / (b - a), 0, 1); return x 
 export const CIRCLE_LOOKS = {
   rose: { core: '#fff2f5', main: '#ff76a0', deep: '#ea3a6e' },            // the clip's
   water: { core: '#f0fbff', main: '#6fcbff', deep: '#2b86dc' },           // the barrier's cold blue (BARRIER_LOOK.spark)
+  red: { core: '#fff1e6', main: '#ff4a3a', deep: '#c8141e' },             // Devil May Cry's Air Hike: a demon's red (a trial)
 };
 
 // each kind of circle: radius (m, for a 1.75 m caster), how long it lasts (s), sparks, its light's height (m; 0: none)
@@ -337,16 +341,18 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   function stood(s, glow, cover) {
     const t = s.age, R = s.radius;
     const p = s.pressAt >= 0 ? t - s.pressAt : -1, kk = s.kickAt >= 0 ? t - s.kickAt : -1;
-    const open = clamp(t / 0.2, 0, 1);
-    const fade = kk >= 0 ? sstep(STEP_AFTER * 0.45, STEP_AFTER, kk) : sstep(s.life * 0.55, s.life, t);
+    const open = clamp(t / (s.snap ? 0.06 : 0.2), 0, 1);
+    const fade = kk >= 0 ? sstep(s.after * 0.45, s.after, kk) : sstep(s.life * 0.55, s.life, t);
     let give = 0;
     if (kk >= 0) give = 1.4 * Math.exp(-kk * 14) * Math.cos(kk * 26);
     else if (p >= 0) give = sstep(0, 0.07, p);
     s.g.position.y = s.y - STEP_DIP * R * give;
-    const grow = (0.35 + 0.65 * (1 - Math.pow(1 - open, 3))) * (1 + 0.08 * Math.sin(Math.min(1, t / 0.32) * Math.PI)) * (1 + 0.12 * fade) * (1 + 0.05 * Math.max(0, give));
+    // (snap: there at once, a little too big, settling; a flash of white as it comes)
+    const grow = (s.snap ? 1 + 0.22 * Math.pow(1 - clamp(t / 0.12, 0, 1), 2) : (0.35 + 0.65 * (1 - Math.pow(1 - open, 3))) * (1 + 0.08 * Math.sin(Math.min(1, t / 0.32) * Math.PI)))
+      * (1 + 0.12 * fade) * (1 + 0.05 * Math.max(0, give));
     s.disc.scale.setScalar(R * grow);
     const u = s.disc.material.uniforms;
-    let flash = 1 + 0.6 * (1 - sstep(0, 0.18, t));
+    let flash = 1 + (s.snap ? 1.4 : 0.6) * (1 - sstep(0, 0.18, t));
     if (p >= 0) flash += 0.8 * (1 - sstep(0, 0.16, p)) + (kk < 0 ? 0.3 : 0);
     if (kk >= 0) flash += 1.6 * (1 - sstep(0, 0.25, kk));
     u.uOpen.value = open; u.uFade.value = fade; u.uAge.value = t; u.uGlow.value = glow * flash; u.uCover.value = cover;
@@ -380,7 +386,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
 
   const fx = {
     object,
-    open(at, tier, { ground = true, size = 1, step = false } = {}) {
+    open(at, tier, { ground = true, size = 1, step = false, snap = false, after = STEP_AFTER } = {}) {
       // the oldest slot (one still showing only if all are)
       let s = slots.find(o => !o.g.visible);
       if (!s) s = slots.reduce((m, o) => (o.used < m.used ? o : m));
@@ -401,7 +407,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       s.pillar.material.uniforms.uSeed.value = rand() * 10;
       s.gem.visible = tier !== 1;
       // stood on: it waits for her kick (its life is set then; this one only if she never kicks), its light only then
-      s.step = step; s.pressAt = s.kickAt = s.waveAt = -1; s.wave.visible = false;
+      s.step = step; s.snap = snap; s.after = after; s.pressAt = s.kickAt = s.waveAt = -1; s.wave.visible = false;
       s.at.copy(at); s.y = s.g.position.y;
       if (step) { s.life = 2; s.pillar.visible = false; }
       burst(s, at, step ? STEP_OPEN_SPARKS : 1);
@@ -419,7 +425,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       if (!s || !s.step || !s.g.visible || s.kickAt >= 0) return;
       if (s.pressAt < 0) s.pressAt = s.age;
       s.kickAt = s.age;
-      s.life = s.age + STEP_AFTER;
+      s.life = s.age + s.after;
       s.waveAt = s.age; s.waveBig = true;
       s.pillar.visible = true;
       burst(s, s.at, STEP_KICK_SPARKS, true);

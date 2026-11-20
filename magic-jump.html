@@ -13,9 +13,11 @@
   One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
   The first jump off the ground and every landing are the mocap's, as in the game (magic-jump.js, mocap; its clips:
   magic-jump-mocap-anim.js); ?mocap=0 (the 🎞 button) is the jump as it was before them.
-  The step (magic-jump.js, step; a trial, not in the game yet): every jump in the air off a circle she comes down onto and
-  stands on for a moment (crouching on it, pushing off it), and the camera a little behind her going up, so each floor shows.
-  On here unless ?step=0; the 🦶 button switches it (from her next jump in the air), to try it against the game's jump.
+  The step (magic-jump.js, step; a trial, not in the game yet), two ways: 'dmc' (here unless asked otherwise), Devil May
+  Cry's Air Hike: her legs driven down onto a circle that flashes open under her, and she is off it at once, knees
+  snatched up; 'stand' (?step=stand), onto a circle she stands on a moment, crouching and pushing off (the camera a little
+  behind her going up). ?step=0 is the game's jump. The 🦶 button goes round the three (from her next jump in the air);
+  the 🎨 button has the Air Hike's red too.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -94,7 +96,10 @@ import { createMagicJump } from './magic-jump.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
-let STEPPING = new URLSearchParams(location.search).get('step') !== '0';      // the step (a trial; ?step=0: the game's jump)
+// the step (a trial): 'dmc' (Devil May Cry's Air Hike: the default here), 'stand' (?step=stand: onto the circle, a crouch,
+// a push) or false (?step=0: the game's jump)
+const STEP_KINDS = ['dmc', 'stand', false];
+let STEPPING = { 0: false, stand: 'stand' }[new URLSearchParams(location.search).get('step')] ?? 'dmc';
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -325,7 +330,7 @@ function step(dt) {
   // comes up after her (not at once: she is seen to rise in the picture, a floor at a time, and it catches up while she
   // stands on the next circle) and goes down with her a little quicker
   let aimY = air.active ? airBase + Math.max(0, me.pos.y - airBase) * 0.72 : me.pos.y;
-  if (air.stepMode) {
+  if (air.stepMode === 'stand') {
     aimS += (aimY - aimS) * Math.min(1, dt * (!air.active ? 14 : aimY > aimS ? 3.6 : 7));
     aimY = aimS;
   } else aimS = aimY;
@@ -346,12 +351,13 @@ function draw() {
 // ---- the buttons
 const btn = id => document.getElementById(id);
 let lookName = 'rose';
-const LIT = { rose: '#ff76a0', water: '#6fcbff' };
+const LIT = { rose: '#ff76a0', water: '#6fcbff', red: '#ff4a3a' };
+const LOOKS = { rose: '🎨 สีชมพู', water: '🎨 สีฟ้า (น้ำ)', red: '🎨 สีแดง (DMC)' };
 document.documentElement.style.setProperty('--lit', LIT.rose);
 btn('look').onclick = () => {
-  lookName = lookName === 'rose' ? 'water' : 'rose';
+  lookName = { rose: 'water', water: 'red', red: 'rose' }[lookName];
   circles.setLook(lookName);
-  btn('look').textContent = lookName === 'rose' ? '🎨 สีชมพู' : '🎨 สีฟ้า (น้ำ)';
+  btn('look').textContent = LOOKS[lookName];
   document.documentElement.style.setProperty('--lit', LIT[lookName]);
 };
 btn('hour').onclick = () => {
@@ -366,13 +372,13 @@ btn('demo').onclick = () => startDemo();
 btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
 btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.set('mocap', '0'); else u.searchParams.delete('mocap'); location.href = u.href; };
 // the step, or the jump as it is in the game (from her next jump in the air; kept in the address)
-const stepLabel = () => { btn('step').textContent = STEPPING ? '🦶 เหยียบวง (ใหม่)' : '🦶 แบบเดิม (ในเกม)'; };
+const stepLabel = () => { btn('step').textContent = { dmc: '🦶 แบบ DMC (ใหม่)', stand: '🦶 ยืนบนวง (ลองก่อนหน้า)', false: '🦶 แบบเดิม (ในเกม)' }[STEPPING]; };
 stepLabel();
 btn('step').onclick = () => {
-  STEPPING = !STEPPING;
+  STEPPING = STEP_KINDS[(STEP_KINDS.indexOf(STEPPING) + 1) % STEP_KINDS.length];
   if (air) air.stepMode = STEPPING;
   const u = new URL(location.href);
-  if (STEPPING) u.searchParams.delete('step'); else u.searchParams.set('step', '0');
+  if (STEPPING === 'dmc') u.searchParams.delete('step'); else u.searchParams.set('step', STEPPING || '0');
   history.replaceState(null, '', u.href);
   stepLabel();
 };
@@ -387,7 +393,7 @@ window.magicTrial = {
   press(dirX = 0, dirZ = 0, amount = 0) { stick.x = dirX; stick.z = dirZ; stick.amount = amount; if (air.active) return air.press(me, stick); jumpWanted = 0.15; return true; },
   look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
   night(on) { if (on !== night) btn('hour').onclick(); },
-  colour(name) { if (name !== lookName) btn('look').onclick(); },
+  colour(name) { for (let i = 0; i < 3 && name !== lookName; i++) btn('look').onclick(); },
   draw,
 };
 
