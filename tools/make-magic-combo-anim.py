@@ -19,6 +19,9 @@ for her and cut to the pace of a fight:
                                                      back foot turning on its toes and drawn on after her. (Made first
                                                      from the library's OverhandThrow, then from Mixamo's Baseball
                                                      Pitching: its wind-up was not pretty.)
+  mc_plunge, mc_slam  <- the library's Sword_Heavy_Combo (its third strike, a leap and a blow down)   the cast in the
+                                                     air: her hand up over her head as she drops (her legs the library's
+                                                     jump's), and the blow down as she lands, up into her standing pose
   mc_dash  <- the library's Sword_Heavy_Combo (its second strike)   the running cast: a leap off her run, turning once
                                                      round in the air, down into a low cut; she goes forward (its path)
 
@@ -111,6 +114,9 @@ MC_DRAG = dict(back=-0.16, turn=55.0, tip=0.8, front=25.0)       # her back foot
 # the running cast: off the ground from `air`[0] to `air`[1] (her hips up to `high` m higher, half way), `far` hips heights forward
 MD = dict(src="Sword_Heavy_Combo", warp=[(0, 1.05), (0.07, 1.14), (0.44, 1.76), (0.50, 1.81), (0.95, 1.82)],
           leave=(0.56, 0.95), hit=0.47, again=0.64, air=(0.06, 0.46), far=3.4, high=0.28)
+# the cast in the air: her hand going up (held at its end while she drops), and the blow down as she lands
+MPL = dict(warp=[(0, 2.36), (0.16, 2.50)], dur=0.16)
+MSL = dict(warp=[(0, 2.50), (0.09, 2.70), (0.30, 2.95), (0.75, 3.05)], leave=(0.34, 0.75), hit=0.08, again=0.5)
 M4_DEPTH = 0.75          # of the finisher's crouch (the mocap's hips go down to 0.45 of a metre)
 M4_STANCE = {"left": (0.10, 0.30), "right": (-0.22, -0.40)}      # the balls of her feet for the finisher (m; wide, her left ahead)
 M4_HIGH = 0.76           # her hips at their highest in the finisher (the mocap stands up straight; her stance is wider)
@@ -555,6 +561,21 @@ def build():
     for v in leap_path(MD["leave"][1], MD["hit"] + 0.03, MD["far"]):
         pathd += [0.0, round(v, 4)]
     done("mc_dash", MD, posed, "R", pathd)
+
+    # ---- the cast in the air: the heavy combo's third strike. Dropping: its hand going up over her head, her legs the
+    # library's jump's (its own are still pushing off the ground). Landing: its blow down, and up into her standing pose
+    s3 = Library(MD["src"], drift=drift_of(heavy, MPL["warp"][0][1], MSL["warp"][-1][1]))
+    tucked = Library("Jump_Loop").at(0.0)
+
+    def raised(s, t):
+        p = s3.at(s)
+        for b in mj.LEG_BONES:
+            p.L[b] = tucked.L[b]
+        k = ease(t / 0.1)
+        return open_hands(p, 0.5 * k, 0.85 * k)
+    done("mc_plunge", MPL, move(MPL, raised))
+    blow = lambda t: bump(t, -1.0, 0.0, 0.3, 0.5)
+    done("mc_slam", MSL, move(MSL, lambda s, t: open_hands(look_ahead(s3.at(s)), 0.5 * blow(t), 0.85 * blow(t))), "R")
 
     # ---- the roll's way
     path, dur = roll_path()
