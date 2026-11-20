@@ -73,6 +73,7 @@ const WALL_HH = 0.44, SPAN_HH = 1.80;         // the climbing clip's wall, in fr
 const HURDLE_WAIT = 0.1;                      // s she walks at a low thing before she goes over it (running: at once)
 const NOWHERE = { from: 0, to: 0 };            // (a thing right at her: how far ahead the vault's run-up looks)
 const VAULT_TAIL = 0.16;                       // s her hand and feet are let go of by the vault's IK once she is down (not in a frame)
+const CT_MOST_OFF = 0.12;                     // m (at Vivi's size) a sheer face's corner holds her off it at most, going over its top
 const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -117,8 +118,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const vault0 = new THREE.Vector3(), vault1 = new THREE.Vector3();
   // over a cliff's top: Mixamo's Climbing To Top fitted to it (player-climb-top.js): the plan, where she is in it, where she
   // was shown as it began (eased away), her lean to the rock then, her hands and feet put on the rock, and a moment after
-  const ctPlan = { ok: false }, ctAt = { x: 0, y: 0, z: 0, tilt: 0 }, shown = new THREE.Vector3();
-  let ctIK = createClimbTopIK(character), ctTail = 0, tiltFrom = 0;
+  const ctPlan = { ok: false }, ctAt = { x: 0, y: 0, z: 0, tilt: 0 }, shown = new THREE.Vector3(), away = new THREE.Vector3();
+  let ctIK = createClimbTopIK(character), ctTail = 0, tiltFrom = 0, ctOff = 0;      // (ctOff: m she is held off a sheer face, her knees and elbows out of its corner)
   let wake = 0;                               // s to the next ring she leaves swimming
   let lean = 0, roll = 0, grade = 0, turned = 0;      // her body's tilt forward / back and into a turn; the slope along her way; how far she turned this frame
   let wade = 0, stepSide = 1, wasDepth = 0, wetH = 0, wetAmt = 0, depthHere = 0;      // (water: as in player.js)
@@ -309,7 +310,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // ---- climbing
   // In the air: pushed at a face that stands above her feet just ahead, she takes hold of it there: put on the rock where
   // it is at her height, between her and there (her body is shown easing over, reachFrom)
-  function grabInAir(k, want) {
+  function grabInAir(k, want, dt) {
     const dx = Math.sin(want), dz = Math.cos(want), r = 0.3 * k, qx = pos.x + dx * r, qz = pos.z + dz * r;
     if (footing(qx, qz) !== 'cliff' || standAt(qx, qz) <= pos.y + 0.05 * k || !pushedAt(want, qx, qz)) return false;
     let a = 0, b = r;
@@ -317,12 +318,15 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     const x = pos.x + dx * a, z = pos.z + dz * a;
     reachFrom.set(pos.x - x, 0, pos.z - z);
     pos.x = x; pos.z = z;
-    grab();
+    grab(k, dt);
     return true;
   }
-  function grab() {
+  // she takes hold of the rock. Pushing at it (k given) with its top already in her reach (a ledge taken from the ground,
+  // a face caught near its top from the air), she goes straight over it, without a frame of her climbing between
+  function grab(k = 0, dt = 0) {
     mode = 'climb'; onRock = footing(pos.x, pos.z) === 'cliff'; climbT = 0; leapT = 0; climbRate = 0;
     air.end(); speed = 0; vy = 0; landT = -1; dashT = 0; sprint = false; grabT = 0; edgeT = 0; edgeGrace = 0;
+    if (k && character.actions[CLIMB_TOP_CLIP] && face.top(pos.x, pos.z, REACH0 * k, spot) >= 0) { startVault(k, dt); return; }
     character.play('climb', 0.18);
   }
   function startVault(k, dt) {
@@ -357,7 +361,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     planClimbTop({ root: tmp, dx: ux, dz: uz, edge: spot, hh, standAt, footing, mirror }, ctPlan);
     pos.copy(tmp);
     heading = Math.atan2(ux, uz);
-    mode = 'vault'; vaultT = ctPlan.c0; speed = 0; climbW = 0; standOff = 0; reachFrom.set(0, 0, 0); ctTail = 0;
+    mode = 'vault'; vaultT = ctPlan.c0; speed = 0; climbW = 0; standOff = 0; reachFrom.set(0, 0, 0); ctTail = 0; ctOff = 0;
     character.play(ctPlan.clip, 0.15, false);
     character.actions[ctPlan.clip].time = ctPlan.c0;
     character.setRate(1);
@@ -477,6 +481,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       went = 0;
       // off: the stick held, on into her run once both feet are down on the top; let go, once she stands
       if ((pushing && vaultT >= ctPlan.down) || vaultT >= ctPlan.end) {
+        pos.x -= ctPlan.dx * ctOff; pos.z -= ctPlan.dz * ctOff; ctOff = 0;     // (where she was held off the face: hers now)
         pos.y = standAt(pos.x, pos.z);
         mode = 'ground'; speed = pushing ? WALK0 * k : 0; landT = -1; ctTail = ctIK.TAIL;
         went = paceWas = pace = speed;                                        // (on into her stride, not through her standing pose)
@@ -513,7 +518,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (speed > 0.02) {
       tmp.set(pos.x + Math.sin(heading) * speed * dt, 0, pos.z + Math.cos(heading) * speed * dt);
       solids(tmp, k);
-      if (footing(tmp.x, tmp.z) === 'cliff' && pushing && grabShy <= 0 && pushedAt(want, tmp.x, tmp.z, 0.25)) { pos.x = tmp.x; pos.z = tmp.z; grab(); return; }      // out of the water, up a rock bank
+      if (footing(tmp.x, tmp.z) === 'cliff' && pushing && grabShy <= 0 && pushedAt(want, tmp.x, tmp.z, 0.25)) { pos.x = tmp.x; pos.z = tmp.z; grab(k, dt); return; }      // out of the water, up a rock bank
       let lip = false;
       if (!maySwim(tmp.x, tmp.z, here, k)) {
         // a lip the water goes over, with ground or water below to land on: pushing at it for a moment, over she goes
@@ -590,11 +595,12 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     else speed += (target - speed) * Math.min(1, dt * (mode !== 'ground' ? 1.5 : target > speed ? 7 - 4 * drag : 10 + 5 * drag));
     if (mode === 'air') speed = Math.hypot(me.vel.x, me.vel.z);
     // ---- she moves
+    const wasRunning = mode === 'ground' && speed > WALK * 1.5;                // (before a face stops her)
     grabPush = false; faceAhead = false;
     if (mode === 'slide') {
       // down a cliff's face: the way it falls, her feet on the rock, until there is ground or water under her. She gathers
       // speed downwards as in a fall held back by the rock. Pushing at the rock, she takes hold of it
-      if (pushing && grabShy <= 0 && pushedAt(want, pos.x, pos.z)) { grab(); return; }
+      if (pushing && grabShy <= 0 && pushedAt(want, pos.x, pos.z)) { grab(k, dt); return; }
       const at = face.at(pos.x, pos.z), gl = at.slope;
       let moved = 0, over = 0;
       slideT += dt;
@@ -640,11 +646,13 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       hurdleT += dt;
       if ((runAt || hurdleT >= HURDLE_WAIT) && jumpWanted <= 0 && startHurdle(k)) return;      // (the jump button: the magic jump, below)
     } else hurdleT = 0;
+    // running square at a ledge (a face whose top is in her reach): over it at once, not stood a moment at its foot
+    if (grabPush && wasRunning && grabShy <= 0 && character.actions[CLIMB_TOP_CLIP] && face.top(pos.x, pos.z, REACH0 * k, spot) >= 0) { grab(k, dt); return; }
     // pushing at a face (or stopped by one, at whatever angle): after a moment she takes hold of it
     if (faceAhead && pushing && went < 0.35 * WALK) grabPush = true;
     grabT = grabPush && mode === 'ground' ? grabT + dt : 0;
-    if (grabT >= GRAB_WAIT) { grab(); return; }
-    if (mode === 'air' && footing && pushing && grabShy <= 0 && air.upside < 0.3 && grabInAir(k, want)) return;      // in the air, at once
+    if (grabT >= GRAB_WAIT) { grab(k, dt); return; }
+    if (mode === 'air' && footing && pushing && grabShy <= 0 && air.upside < 0.3 && grabInAir(k, want, dt)) return;      // in the air, at once
     // her legs go at the pace she really goes: along a cliff's edge or round a trunk she goes slower than she means to
     const paceNow = Math.min(speed, went * 1.1 + 0.05);
     pace = Math.min(paceNow, paceWas);                                        // (a pace held for one frame only does not change her gait)
@@ -673,7 +681,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         // on a cliff's face (coming down on it, or jumping up at it): pushing at it she takes hold, or else she slides on
         // down. (Rising past ground she may stand on, a rock's top: carried up with it)
         pos.y = ground;
-        if (footing && footing(pos.x, pos.z) === 'cliff') { air.end(); if (pushing && grabShy <= 0 && pushedAt(want, pos.x, pos.z)) grab(); else startSlide(k); }
+        if (footing && footing(pos.x, pos.z) === 'cliff') { air.end(); if (pushing && grabShy <= 0 && pushedAt(want, pos.x, pos.z)) grab(k, dt); else startSlide(k); }
         else if (down === 'landed') touchDown(k, depth, false);
       } else if (footing && peakY - pos.y > (FAR0 + 6) * k) rescue(true);      // (it does not happen: the edges of such drops are walls)
     } else if (mode === 'slide') {
@@ -754,7 +762,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       // over a cliff's top: her root is where the clip's way has it; where she was shown as it began eases away, and her
       // lean to the rock goes as she comes up over the top
       shown.multiplyScalar(1 - ease(14, dt));
-      character.object.position.copy(shown);
+      character.object.position.copy(shown).addScaledVector(away.set(-ctPlan.dx, 0, -ctPlan.dz), ctOff);
       character.object.rotation.set(tiltFrom * ctAt.tilt, heading, 0, 'YXZ');
     } else {
       character.object.position.set(nX * out + reachFrom.x, nY * out, nZ * out + reachFrom.z);
@@ -766,7 +774,13 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if ((mode === 'vault' && ctPlan.ok) || ctTail > 0) {
       if (mode !== 'vault') { ctTail = Math.max(0, ctTail - dt); vaultT += dt; }
       root.updateMatrixWorld(true);
-      ctIK.apply(ctPlan, vaultT, mode === 'vault' ? 1 : ctTail / ctIK.TAIL);
+      // held off a sheer face by as much as her knees or elbows are in it (out at once, back onto it gently; her hands and
+      // feet stay where they hold: the IK)
+      const inside = ctIK.apply(ctPlan, vaultT, mode === 'vault' ? 1 : ctTail / ctIK.TAIL);
+      if (mode === 'vault') {
+        const want = Math.min(CT_MOST_OFF * k, ctOff + inside);
+        ctOff += (want - ctOff) * ease(want > ctOff ? 30 : 4, dt);
+      }
     }
     // vaulting a low thing: her hand and foot on its top and her feet over it (player-vault.js); let go of gently once she is down
     if (mode === 'hurdle' || ikTail > 0) {

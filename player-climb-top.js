@@ -21,7 +21,8 @@
 //      mirror: her left hand goes to the edge (it was the one up as she climbed), the clip's mirror
 //   climbTopAt(plan, c, out) -> out: c s into the clip: out.x, out.y, out.z (her root), out.tilt (0..1: how much of her
 //      lean to the rock she still has: none by the time she stands on the top)
-//   const ik = createClimbTopIK(character); every frame after her pose and place are set: ik.apply(plan, c, fade)
+//   const ik = createClimbTopIK(character); every frame after her pose and place are set: ik.apply(plan, c, fade) -> how
+//      far (m) her knees, elbows or hips are in the rock's face (a sheer one: its corner), for her to be held off it by
 
 import * as THREE from 'three';
 import { CLIMB_TOP } from './climb-top-anim.js';
@@ -110,6 +111,7 @@ export function createClimbTopIK(character) {
     : [bone(`J_Bip_${s}_UpperLeg`), bone(`J_Bip_${s}_LowerLeg`), bone(`J_Bip_${s}_Foot`), bone(`J_Bip_${s}_ToeBase`)];
   const arms = { right: chain('R', 'arm'), left: chain('L', 'arm') }, legs = { right: chain('R', 'leg'), left: chain('L', 'leg') };
   const ok = [...Object.values(arms), ...Object.values(legs)].every(c => c.every(Boolean));
+  const middles = [arms.right[1], arms.left[1], legs.right[1], legs.left[1], bone('J_Bip_C_Hips')].filter(Boolean);
   const held = new Map();        // where a hold was taken: name -> THREE.Vector3
   let plan = null, lastC = -1;
   // the land's way out (unit normal) at x, z; and how far p is inside it, along that (m; < 0: outside)
@@ -121,7 +123,7 @@ export function createClimbTopIK(character) {
   const depth = (standAt, q) => (standAt(q.x, q.z) - q.y) * normalAt(standAt, q.x, q.z).y;
   return {
     apply(p, c, fade = 1) {
-      if (!ok || !p) return;
+      if (!ok || !p) return 0;
       fade *= smooth((c - p.c0) / START);      // (as she begins, from where she was: her climbing, her run at a ledge)
       if (p !== plan || c < lastC) { plan = p; held.clear(); }
       lastC = c;
@@ -185,6 +187,16 @@ export function createClimbTopIK(character) {
           }
         }
       }
+      // ---- her knees, elbows and hips in the rock's face (below its top: a knee on the top is where it should be): how
+      // far, out of it her way back from the rock
+      let inside = 0;
+      for (const j of middles) {
+        j.getWorldPosition(_p);
+        if (_p.y > p.top - 0.08 * hh || standAt(_p.x, _p.z) <= _p.y) continue;
+        const t = faceAlong(standAt, _p.x, _p.z, _p.y, p.dx, p.dz, 0.3);
+        if (t !== null) inside = Math.max(inside, -t);
+      }
+      return inside * fade;
     },
     TAIL,
   };
