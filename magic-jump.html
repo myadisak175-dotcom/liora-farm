@@ -13,6 +13,9 @@
   One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
   The first jump off the ground and every landing are the mocap's, as in the game (magic-jump.js, mocap; its clips:
   magic-jump-mocap-anim.js); ?mocap=0 (the 🎞 button) is the jump as it was before them.
+  The step (magic-jump.js, step; a trial, not in the game yet): every jump in the air off a circle she comes down onto and
+  stands on for a moment (crouching on it, pushing off it), and the camera a little behind her going up, so each floor shows.
+  On here unless ?step=0; the 🦶 button switches it (from her next jump in the air), to try it against the game's jump.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -70,6 +73,7 @@
   <button id="slow">⏱ ×1</button>
   <button id="demo">▶ เดโม 4 ชั้น</button>
   <button id="kind">🎞 ท่าเดิม</button>
+  <button id="step">🦶 เหยียบวง (ใหม่)</button>
 </div>
 <div id="stick"><i></i></div>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
@@ -90,6 +94,7 @@ import { createMagicJump } from './magic-jump.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
+let STEPPING = new URLSearchParams(location.search).get('step') !== '0';      // the step (a trial; ?step=0: the game's jump)
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -186,7 +191,7 @@ const TUNED = 1.412;
 const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), heading: 0 };
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
-let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0;
+let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0, aimS = 0;
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
@@ -218,7 +223,7 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEven
   }
   hero.setSize(1.75 / hero.baseHeight);
   root.add(hero.object);
-  air = createMagicJump({ character: hero, circles, mocap: MOCAP });
+  air = createMagicJump({ character: hero, circles, mocap: MOCAP, step: STEPPING });
   hero.play('idle', 0);
   document.getElementById('wait').remove();
   window.magicTrial.ready = true;
@@ -316,8 +321,14 @@ function step(dt) {
   hero.updateSprings(dt);
   grass.userData.setWalker(me.pos, 0.55);
   circles.update(dt, camera);
-  // ---- the camera: on the ground it follows her feet; in the air it rises with her, most of the way
-  const aimY = air.active ? airBase + Math.max(0, me.pos.y - airBase) * 0.72 : me.pos.y;
+  // ---- the camera: on the ground it follows her feet; in the air it rises with her, most of the way. With the step it
+  // comes up after her (not at once: she is seen to rise in the picture, a floor at a time, and it catches up while she
+  // stands on the next circle) and goes down with her a little quicker
+  let aimY = air.active ? airBase + Math.max(0, me.pos.y - airBase) * 0.72 : me.pos.y;
+  if (air.stepMode) {
+    aimS += (aimY - aimS) * Math.min(1, dt * (!air.active ? 14 : aimY > aimS ? 3.6 : 7));
+    aimY = aimS;
+  } else aimS = aimY;
   cam.update(dt, { pos: me.pos, aimY, height: hero.height, k: hero.height / TUNED, steady: !air.active });
   // ---- the label and the pips
   beatEl.textContent = air.beat;
@@ -354,6 +365,17 @@ btn('demo').onclick = () => startDemo();
 // the mocap's take-off and landing, or the jump as it is in the game
 btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
 btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.set('mocap', '0'); else u.searchParams.delete('mocap'); location.href = u.href; };
+// the step, or the jump as it is in the game (from her next jump in the air; kept in the address)
+const stepLabel = () => { btn('step').textContent = STEPPING ? '🦶 เหยียบวง (ใหม่)' : '🦶 แบบเดิม (ในเกม)'; };
+stepLabel();
+btn('step').onclick = () => {
+  STEPPING = !STEPPING;
+  if (air) air.stepMode = STEPPING;
+  const u = new URL(location.href);
+  if (STEPPING) u.searchParams.delete('step'); else u.searchParams.set('step', '0');
+  history.replaceState(null, '', u.href);
+  stepLabel();
+};
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
 // for a test (or the console): step the world by hand, look from a chosen spot

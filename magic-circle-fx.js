@@ -11,7 +11,15 @@
                                      the one before (1: rings; 2: + marks round a band, the cross, the crystal; 3: + two
                                      squares turning, light off it; 4: + a star and points round its rim, the most sparks).
                                      tier 'land': the circle that catches a long fall. ground: on the ground (its light goes
-                                     up) or in the air (she pushes off it: its light goes down, it breaks up sooner)
+                                     up) or in the air (she pushes off it: its light goes down, it breaks up sooner).
+                                     -> the circle (for step's press and kick, below)
+     fx.open(at, tier, { ground: false, step: true })   a circle she lands on and stands on for a moment before she
+                                     kicks off it (magic-jump.js, step): it opens and waits, a few sparks only; then
+       fx.press(c)                   her feet on it: it gives under her weight (down a little, brighter, a ripple out);
+                                     fx.level(c): how high it is now (world), for her feet to go down with it
+       fx.kick(c)                    she kicks off it: it springs back, its light shoots down, a wave goes out round it, the
+                                     sparks are thrown down; and it stays a while (STEP_AFTER s) before it breaks up, so the
+                                     circles she climbed stand under her like steps
      every frame: fx.update(dt, camera)
      fx.setLook('rose' | 'water')   the clip's rose light, or the cold blue of her water barrier (barrier-fx.js)
      fx.setNight(on)                by night the light is let shine more (the page dims the land, not this)
@@ -24,6 +32,7 @@
        standing on it (up off the ground, down under her in the air). The crystal: a small stretched octahedron. 3 draws
        each, 8 circles at most
      - sparks: one cloud of points shared by every circle
+     - a circle stood on (step) has a wave too: one flat square, a ring of light that goes out from under her feet
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -46,6 +55,10 @@ const KINDS = {
   land: { radius: 0.9, life: 1.0, sparks: 30, pillar: 1.5, petals: 1 },
 };
 const SLOTS = 8;
+// a circle stood on (step): how far it gives under her (of its radius), how long it stays after her kick (s), its light's
+// height (m) whatever its tier (the kick's light shoots down off every one of them), the sparks when it opens (of its
+// tier's) and at the kick (of its tier's)
+const STEP_DIP = 0.07, STEP_AFTER = 1.25, STEP_PILLAR = 0.75, STEP_OPEN_SPARKS = 0.3, STEP_KICK_SPARKS = 1.2;
 // one blend for all of it: what the shader gives is already multiplied by its own cover; a line's cover (alpha) hides what
 // is under it, glow comes with no cover and only adds
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
@@ -191,6 +204,20 @@ const GEM_F = /* glsl */`
     gl_FragColor = vec4(col * uK, 0.55 * uK);
   }`;
 
+/* ---------------------------------------------------------------- a stood-on circle's wave: a ring of light going out */
+const WAVE_F = /* glsl */`
+  uniform vec3 uMain, uCore, uDeep;
+  uniform float uK, uSharp, uDay;
+  varying vec2 vP;                                    // in the square's half widths: the ring at 0.86
+  void main() {
+    float r = length(vP);
+    float ring = exp(-abs(r - 0.86) * uSharp);
+    float trail = smoothstep(0.3, 0.86, r) * (1.0 - step(0.86, r)) * 0.22;     // a faint sheet behind the ring
+    float f = (ring + trail) * (1.0 - smoothstep(0.93, 1.0, r)) * uK;
+    vec3 col = mix(uDeep, mix(uMain, uCore, ring * 0.7), clamp(ring * 1.5, 0.0, 1.0)) * f;
+    gl_FragColor = vec4(col, min(1.0, f) * uDay * 0.5);
+  }`;
+
 /* ---------------------------------------------------------------- sparks */
 const SPARK_V = /* glsl */`
   attribute float aLife, aSize;
@@ -230,6 +257,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   pillarGeo.translate(0, 0.5, 0);
   const gemGeo = new THREE.OctahedronGeometry(0.075, 0);
   gemGeo.scale(1, 1.9, 1);
+  const waveGeo = new THREE.PlaneGeometry(2, 2);
   const slots = [];
   for (let i = 0; i < SLOTS; i++) {
     const disc = new THREE.Mesh(flat, new THREE.ShaderMaterial({
@@ -249,11 +277,19 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       vertexShader: GEM_V, fragmentShader: GEM_F, transparent: true, depthWrite: false, ...BLEND,
     }));
     gem.renderOrder = 22;
+    const wave = new THREE.Mesh(waveGeo, new THREE.ShaderMaterial({
+      uniforms: { ...colours, uK: { value: 0 }, uSharp: { value: 20 } },
+      vertexShader: DISC_V, fragmentShader: WAVE_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...BLEND,
+    }));
+    wave.rotation.x = -Math.PI / 2;
+    wave.renderOrder = 20;
+    wave.visible = false;
     const g = new THREE.Group();
-    g.add(disc, pillar, gem);
+    g.add(disc, pillar, gem, wave);
     g.visible = false;
     object.add(g);
-    slots.push({ g, disc, pillar, gem, age: 0, life: 1, kind: KINDS[1], tier: 1, ground: true, radius: 1, used: 0 });
+    slots.push({ g, disc, pillar, gem, wave, age: 0, life: 1, kind: KINDS[1], tier: 1, ground: true, radius: 1, used: 0,
+      step: false, at: new THREE.Vector3(), y: 0, pressAt: -1, kickAt: -1, waveAt: -1, waveBig: false });
   }
   let used = 0;
 
@@ -276,14 +312,17 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   let rnd = (seed * 9301 + 49297) % 233280;
   const rand = () => { rnd = (rnd * 9301 + 49297) % 233280; return rnd / 233280; };
 
-  function burst(s, at) {
-    const k = s.kind, R = s.radius;
-    for (let i = 0; i < k.sparks; i++) {
+  // sparks off a circle: `many` times its kind's. kick: thrown down hard (a stood-on circle kicked off); a stood-on circle
+  // opening or pressed (step, not kick): only out round its rim, hardly up or down
+  function burst(s, at, many = 1, kick = false) {
+    const k = s.kind, R = s.radius, n = Math.round(k.sparks * many);
+    for (let i = 0; i < n; i++) {
       const j = sNext; sNext = (sNext + 1) % SPARKS;
       const a = rand() * Math.PI * 2, rr = R * (0.55 + rand() * 0.5);
       sPos[j * 3] = at.x + Math.cos(a) * rr; sPos[j * 3 + 1] = at.y + 0.03; sPos[j * 3 + 2] = at.z + Math.sin(a) * rr;
       // out from the rim and round it, up off the ground (down under her in the air: thrown off by her kick)
-      const out = 0.6 + rand() * 1.4, round = (rand() - 0.5) * 1.6, up = (s.ground ? 1.2 + rand() * 2.2 : -(0.4 + rand() * 1.4)) * (s.ground ? 1 : 1);
+      const out = (kick ? 0.9 + rand() * 1.8 : 0.6 + rand() * 1.4), round = (rand() - 0.5) * 1.6;
+      const up = kick ? -(1.4 + rand() * 2.6) : s.step ? (rand() - 0.5) * 0.6 : s.ground ? 1.2 + rand() * 2.2 : -(0.4 + rand() * 1.4);
       sVel[j * 3] = Math.cos(a) * out - Math.sin(a) * round; sVel[j * 3 + 1] = up; sVel[j * 3 + 2] = Math.sin(a) * out + Math.cos(a) * round;
       sLen[j] = 0.45 + rand() * 0.6; sLife[j] = 1;
       sSize[j] = (0.05 + rand() * 0.07) * (s.tier === 4 || s.tier === 'land' ? 1.3 : 1);
@@ -291,9 +330,57 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     sGeo.attributes.aSize.needsUpdate = true;
   }
 
+  // a circle she stands on (open's step), each frame: it opens and waits; her weight comes on it (press) and it gives, down
+  // a little and a little wider, brighter while she stands; her kick drives it down harder for an instant and it springs
+  // back up past where it was and settles; its light shoots down, a wave goes out round it, the crystal under it drops away;
+  // a while after (STEP_AFTER) it breaks up as the others do
+  function stood(s, glow, cover) {
+    const t = s.age, R = s.radius;
+    const p = s.pressAt >= 0 ? t - s.pressAt : -1, kk = s.kickAt >= 0 ? t - s.kickAt : -1;
+    const open = clamp(t / 0.2, 0, 1);
+    const fade = kk >= 0 ? sstep(STEP_AFTER * 0.45, STEP_AFTER, kk) : sstep(s.life * 0.55, s.life, t);
+    let give = 0;
+    if (kk >= 0) give = 1.4 * Math.exp(-kk * 14) * Math.cos(kk * 26);
+    else if (p >= 0) give = sstep(0, 0.07, p);
+    s.g.position.y = s.y - STEP_DIP * R * give;
+    const grow = (0.35 + 0.65 * (1 - Math.pow(1 - open, 3))) * (1 + 0.08 * Math.sin(Math.min(1, t / 0.32) * Math.PI)) * (1 + 0.12 * fade) * (1 + 0.05 * Math.max(0, give));
+    s.disc.scale.setScalar(R * grow);
+    const u = s.disc.material.uniforms;
+    let flash = 1 + 0.6 * (1 - sstep(0, 0.18, t));
+    if (p >= 0) flash += 0.8 * (1 - sstep(0, 0.16, p)) + (kk < 0 ? 0.3 : 0);
+    if (kk >= 0) flash += 1.6 * (1 - sstep(0, 0.25, kk));
+    u.uOpen.value = open; u.uFade.value = fade; u.uAge.value = t; u.uGlow.value = glow * flash; u.uCover.value = cover;
+    // its light, down off it from the kick
+    if (kk >= 0) {
+      const H = Math.max(s.kind.pillar, STEP_PILLAR) * (R / s.kind.radius), up = 1 - Math.pow(1 - clamp(kk / 0.16, 0, 1), 2);
+      s.pillar.scale.set(R * grow, -H * (0.25 + 0.75 * up), R * grow);
+      s.pillar.material.uniforms.uK.value = (1 - sstep(0.12, 0.7, kk)) * glow * 1.3;
+    }
+    // the crystal: hangs under it (her feet are on it), and drops away at the kick
+    if (s.gem.visible) {
+      const g = sstep(0.04, 0.2, t) * (1 - fade) * (kk >= 0 ? 1 - sstep(0.15, 0.55, kk) : 1);
+      s.gem.position.set(0, -(0.06 + 0.1 * sstep(0, 0.4, t)) - (kk >= 0 ? 2.5 * kk * kk : 0), 0);
+      s.gem.rotation.y = t * 5;
+      s.gem.scale.setScalar(Math.max(0.001, g) * (R / 0.7));
+      s.gem.material.uniforms.uK.value = g * glow * 1.2;
+    }
+    // the wave: a small quick ripple as she lands on it, a wide one at the kick
+    if (s.waveAt >= 0) {
+      const w = t - s.waveAt, dur = s.waveBig ? 0.42 : 0.2, f = w / dur;
+      if (f >= 1) { s.wave.visible = false; s.waveAt = -1; }
+      else {
+        const e = 1 - Math.pow(1 - f, 3);
+        s.wave.visible = true;
+        s.wave.scale.setScalar(R * (s.waveBig ? 1 + 1.5 * e : 0.85 + 0.35 * e) / 0.86);
+        s.wave.material.uniforms.uK.value = (s.waveBig ? 1.2 : 0.7) * Math.pow(1 - f, 1.5) * glow;
+        s.wave.material.uniforms.uSharp.value = s.waveBig ? 14 + 20 * f : 26;
+      }
+    }
+  }
+
   const fx = {
     object,
-    open(at, tier, { ground = true, size = 1 } = {}) {
+    open(at, tier, { ground = true, size = 1, step = false } = {}) {
       // the oldest slot (one still showing only if all are)
       let s = slots.find(o => !o.g.visible);
       if (!s) s = slots.reduce((m, o) => (o.used < m.used ? o : m));
@@ -313,7 +400,29 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       s.pillar.visible = s.kind.pillar > 0;
       s.pillar.material.uniforms.uSeed.value = rand() * 10;
       s.gem.visible = tier !== 1;
-      burst(s, at);
+      // stood on: it waits for her kick (its life is set then; this one only if she never kicks), its light only then
+      s.step = step; s.pressAt = s.kickAt = s.waveAt = -1; s.wave.visible = false;
+      s.at.copy(at); s.y = s.g.position.y;
+      if (step) { s.life = 2; s.pillar.visible = false; }
+      burst(s, at, step ? STEP_OPEN_SPARKS : 1);
+      return s;
+    },
+    // a stood-on circle: her feet on it, then her kick off it (open's step)
+    press(s) {
+      if (!s || !s.step || !s.g.visible || s.pressAt >= 0) return;
+      s.pressAt = s.age;
+      s.waveAt = s.age; s.waveBig = false;
+    },
+    // how high a stood-on circle is now (world): it gives under her, and her feet go down with it
+    level(s) { return s && s.g ? s.g.position.y : 0; },
+    kick(s) {
+      if (!s || !s.step || !s.g.visible || s.kickAt >= 0) return;
+      if (s.pressAt < 0) s.pressAt = s.age;
+      s.kickAt = s.age;
+      s.life = s.age + STEP_AFTER;
+      s.waveAt = s.age; s.waveBig = true;
+      s.pillar.visible = true;
+      burst(s, s.at, STEP_KICK_SPARKS, true);
     },
     setLook(name) {
       look = CIRCLE_LOOKS[name] || CIRCLE_LOOKS.rose;
@@ -328,6 +437,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
         s.age += dt;
         const t = s.age, L = s.life, R = s.radius;
         if (t > L) { s.g.visible = false; continue; }
+        if (s.step) { stood(s, glow, cover); continue; }
         const open = clamp(t / 0.2, 0, 1);
         const fade = sstep(L * 0.55, L, t);
         // it opens out past its size and settles; going, it swells a little as it breaks up
@@ -366,8 +476,8 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       sMat.uniforms.uScale.value = (camera.isPerspectiveCamera ? innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) : 300) * (night ? 1.1 : 1);
     },
     dispose() {
-      flat.dispose(); pillarGeo.dispose(); gemGeo.dispose(); sGeo.dispose();
-      for (const s of slots) { s.disc.material.dispose(); s.pillar.material.dispose(); s.gem.material.dispose(); }
+      flat.dispose(); pillarGeo.dispose(); gemGeo.dispose(); waveGeo.dispose(); sGeo.dispose();
+      for (const s of slots) { s.disc.material.dispose(); s.pillar.material.dispose(); s.gem.material.dispose(); s.wave.material.dispose(); }
       sMat.dispose();
     },
   };
