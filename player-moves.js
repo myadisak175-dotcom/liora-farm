@@ -158,8 +158,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // 20 Nov 2026 ("เอาเข้าเกมส์จริงเลยค่ะ"): the jump off the ground as it was, then once round in the air, the hips' twist
   // and a spring, a flip, and the ninja's landing, each off a circle that flashes open under her (magic-jump-flow-anim.js,
   // merged by index.html; where her clips lack them, the jump as it was). momentum: a kick in the air turns the way she
-  // goes part of the way to the stick's, not at once. The camera is the game's own, as it was: the user kept it)
-  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true });
+  // goes part of the way to the stick's, not at once. The camera is the game's own, as it was: the user kept it. step3
+  // 'jump': Step 3 is the user's Mixamo "Jump", its time in the air (the legs changing over), in the game since 20 Nov
+  // 2026 ("ขึ้นเมนหลักเลยค่ะ"), not the ninja's)
+  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true, step3: 'jump' });
   const me = { pos, vel: new THREE.Vector3(), heading: 0 }, airStick = { x: 0, z: 1, amount: 0 };
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)
