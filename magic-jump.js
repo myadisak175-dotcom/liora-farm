@@ -67,7 +67,8 @@
    kick with the stick pushed sends her at CARRIED.kick times her run, or on as fast as she was going if that is faster;
    with it let go each kick keeps CARRIED.keep of her pace and nothing else slows her. (What PUSH and KEEP were for, not
    carrying her over every gap nor past a ledge's top, she gives up some of: the user chose that.)
-   Building (build: a trial since 21 Nov 2026, magic-jump.html. Asked as "ตอนกระโดด 4 ชั้นมันไม่มี momentum อะ": through
+   Building (build: in the game since 21 Nov 2026, player-moves.js: "อันนี้ดี เอาขึ้นเมนหลักเลยค่ะ", after a trial on
+   magic-jump.html. Asked as "ตอนกระโดด 4 ชั้นมันไม่มี momentum อะ": through
    four jumps out of a run she went at one pace, her run in the game (4.2 m/s at 1.75 m; 1.2 times it carried), 9 m on
    for 4.3 m up). As carried (her pace kept between kicks, a kick with the stick let go keeping CARRIED.keep), and each
    kick with the stick pushed sends her BUILD.gain times as fast as she was going (her run at least), up to BUILD.top

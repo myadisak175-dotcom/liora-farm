@@ -47,7 +47,8 @@
 //     plays, the longer before she runs on and the more of her speed she loses; a hard one stops her a moment as her feet
 //     hit (W_STOP s)
 //   - in the air her pace is carried (magic-jump.js, carry): what she takes off with she keeps, a kick sends her on faster
-//     than her run, and with the stick let go she flies on the way she was going
+//     than her run, and with the stick let go she flies on the way she was going. (Since 21 Nov 2026 it is so with her
+//     weight or without: the magic jump's pace builds with each kick, which carries it too: magic-jump.js build)
 // Her legs go at the pace she really goes, as ever, so her feet do not slide as she speeds up and slows down.
 //
 // It needs the level to say what the ground is like: level.footing(x, z, y) -> 'ground' | 'cliff' | 'water' | 'wall' | 'out'
@@ -187,7 +188,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // goes part of the way to the stick's, not at once. The camera is the game's own, as it was: the user kept it. step3
   // 'jump': Step 3 is the user's Mixamo "Jump", its time in the air (the legs changing over), in the game since 20 Nov
   // 2026 ("ขึ้นเมนหลักเลยค่ะ"), not the ninja's)
-  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true, step3: 'jump', carry: !!weighs });      // (carry: with her weight, below)
+  // build: her pace builds with each kick, carried between them (magic-jump.js, "Building": 4.2, 5.0, 6.0, 7.2 m/s at 1.75 m
+  // out of a run), in the game since 21 Nov 2026 ("อันนี้ดี เอาขึ้นเมนหลักเลยค่ะ"), with her weight or not: carried
+  // whatever player.setWeight says (it carries her pace by itself: carry, below, only ever asked for more of the same)
+  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true, step3: 'jump', carry: !!weighs, build: true });      // (carry: with her weight, below)
   const me = { pos, vel: new THREE.Vector3(), heading: 0 }, airStick = { x: 0, z: 1, amount: 0 };
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)

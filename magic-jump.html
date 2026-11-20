@@ -31,7 +31,8 @@
   part of the way to the stick's (not at once), keeps more of her pace with the stick let go, and the hold before a
   kick off a circle slows her instead of stopping her dead. With her pace carried too (magic-jump.js, carry: the game's
   ⚖️ trial; ?mom=carry): what she takes off with she keeps. Building (magic-jump.js, build; a trial, here unless ?mom=
-  carry, ?mom=game, which is the game's momentum alone, or ?mom=0): carried, and each kick faster, up to 1.8 times her run.
+  carry, ?mom=game, which is the game's momentum alone, as it was before, or ?mom=0): carried, and each kick faster, up
+  to 1.8 times her run; in the game since 21 Nov 2026.
   (A dash in the air, the พุ่ง button, was tried here on 20-21 Nov 2026, flat out as Mixamo's "Flying", and taken out:
   "ไม่เอาท่าพุ่งนอนกระโดดละ ไม่สวย".)
 -->
@@ -432,7 +433,7 @@ btn('s3').onclick = () => {
   s3Label();
 };
 // momentum, or the jump's way over the ground as the game has it (kept in the address)
-const momLabel = () => { btn('mom').textContent = { build: '💨 แรงส่งสะสม (ใหม่)', carry: '💨 ⚖️ พาไปต่อ', game: '💨 โมเมนตัม (ในเกม)', off: '💨 ไม่มีโมเมนตัม' }[MOMENTUM]; };
+const momLabel = () => { btn('mom').textContent = { build: '💨 แรงส่งสะสม (ในเกม)', carry: '💨 ⚖️ พาไปต่อ', game: '💨 โมเมนตัม (เกมเดิม)', off: '💨 ไม่มีโมเมนตัม' }[MOMENTUM]; };
 momLabel();
 btn('mom').onclick = () => {
   MOMENTUM = MOMS[(MOMS.indexOf(MOMENTUM) + 1) % MOMS.length];
