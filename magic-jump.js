@@ -23,8 +23,9 @@
                                      ground) and up, turning round to face away from it (the mocap's, mj_wall); three
                                      jumps left. false: her clips have no mj_wall (nothing done)
      air.press(me, stick)            the jump button in the air: the next one, if she has one left (false: none)
-     air.dash(me, stick)             the dash button in the air (a trial: magic-jump.html): she kicks off a circle under her
-                                     feet and dives off flat out the way the stick points (the way she faces, let go);
+     air.dash(me, stick)             the dash button in the air (a trial: magic-jump.html): laid flat, she kicks off a circle
+                                     stood behind her feet and shoots off flat out the way the stick points (the way she
+                                     faces, let go);
                                      once for each jump. false: not now (none left, or on the ground, or her clips have no
                                      mjf_dash). See "The dash" below. air.dashing: she is in one
      air.end()                       the flight is over some other way (she took hold of a rock, swims, was put back): no
@@ -142,15 +143,18 @@
    as hinges) until the next press, or FLOW[n].end, when the poses take her on into her fall
 
    The dash (air.dash; a trial since 20 Nov 2026, magic-jump.html). Asked for with the user's Mixamo moves: "Flying" as
-   a dash while jumping ("ทำเป็นท่าพุ่งตอนกระโดดได้ไหม"), then "Jump Over" as the kick off before it and "Falling To
-   Landing 2" as its landing ("Jump เป็นท่าพุ่งถีบกำแพงก่อนท่าบิน แล้วก็แลนดิ้งสวยๆ ตามที่ส่งไป"). Its clips, in
-   magic-jump-flow-anim.js (tools/make-magic-jump-flow.py, tools/make-magic-jump-mocap.py): mjf_dash (Jump Over's dive
-   off its feet, gathered, pushing, stretched out ahead, then its arms swept out round her sides and back into Flying's:
-   flat out, her arms back along her sides), mjf_fall2 and mjf_land2 (the landing's time in the air, then on the ground).
-   The dash button in a flight: the clip has all of her at once (as the flow's: upBody, upLegs), from her gathered, and
-   a circle flashes open slanted under her feet (magic-circle-fx.js, facing: where her feet will be as she pushes,
-   facing between up her legs and the way she goes); she is held DASH.kick s (slowing quickly), pushes off it (its
-   light, its sparks, the crystal go off the way it faces away from), and dives off at the game's dash's pace (DASH.speed,
+   a dash while jumping ("ทำเป็นท่าพุ่งตอนกระโดดได้ไหม"), "Falling To Landing 2" as its landing ("แลนดิ้งสวยๆ ตามที่
+   ส่งไป"), and as the kick off before the flying ("ท่าพุ่งถีบกำแพง"), the game's own Step 1 laid flat ("เอาท่ากระโดด
+   สเตปแรกมาใส่ ... กลับให้เป็นแนวนอน กลายเป็นท่าถีบพุ่งตัวหลังจากกระโดด"; Jump Over's dive off its feet before that). Its
+   clips, in magic-jump-flow-anim.js (tools/make-magic-jump-flow.py, tools/make-magic-jump-mocap.py): mjf_dash (mj_up's
+   crouch and push, her whole body tipped forward from 60 to 90 degrees as she crouches, her head lifted to look ahead:
+   her legs folded behind her and then pushed out straight back, her arms swung through ahead of her; then swept out
+   round her sides and back into Flying's: flat out, her arms back along her sides), mjf_fall2 and mjf_land2 (the
+   landing's time in the air, then on the ground). The dash button in a flight: the clip has all of her at once (as the
+   flow's: upBody, upLegs), and a circle flashes open stood upright behind her, where her feet will be as she pushes
+   (magic-circle-fx.js, facing: the way she goes); she is held DASH.kick s (slowing quickly), her feet go out onto it and
+   push off it (its light, its sparks, the crystal go off back, away from her), and she shoots off at the game's dash's
+   pace (DASH.speed,
    as the พุ่ง button on the ground: 9.9 m/s at 1.75 m), rising a little (DASH.lift) and nothing pulling her down for
    DASH.hold s, then slows over DASH.ease s to her run (carried: to her pace through the air) as she falls again: 3.7 m
    on. Then the landing's time in the air has her (mjf_fall2: her arms out wide, a knee up, both legs reaching down as
@@ -485,12 +489,12 @@ const FLOW = {
 // down long, the right knee up, then the legs changing over, the arms opening out (tools/make-magic-jump-flow.py)
 const FLOW_3B = { clip: 'mjf_3b', kick: 0.1, rate: 1.15, end: 0.48, beat: 'Step 3 · สลับขากลางอากาศ' };
 // the dash in the air (air.dash; see "The dash" above): its clip, played at rate (all of her until end s into it, if her
-// clips have no fall2); s into it (as played) that she pushes off the circle; m/s (at 1.75 m: the game's dash on the
-// ground); s at that pace after the push, rising (m/s up at the push, less and less), then s slowing to her run; the
-// circle (its tier's look, and its size of that tier's; where her feet are at the push, m ahead of and up from where she
-// stands, at 1.75 m; the way it faces, ahead and up; s it stays after her push)
-const DASH = { clip: 'mjf_dash', rate: 1.4, end: 0.75, kick: 0.095, speed: 9.9, hold: 0.26, lift: 1.6, ease: 0.16,
-  tier: 3, size: 0.8, foot: [-0.26, 0.03], face: [0.78, 0.63], after: 0.35 };
+// clips have no fall2); s into it (as played) that she pushes off the circle (her legs all but straight); m/s (at 1.75
+// m: the game's dash on the ground); s at that pace after the push, rising (m/s up at the push, less and less), then s
+// slowing to her run; the circle (its tier's look, and its size of that tier's; where her feet are at the push, m ahead
+// of and up from where she stands, at 1.75 m, measured; the way it faces, ahead and up; s it stays after her push)
+const DASH = { clip: 'mjf_dash', rate: 1.25, end: 0.66, kick: 0.12, speed: 9.9, hold: 0.26, lift: 1.6, ease: 0.16,
+  tier: 3, size: 0.7, foot: [-1.0, 0.85], face: [1, 0], after: 0.35 };
 // the landing out of a dash: its time in the air (s into it that it waits at until the ground is near enough for the
 // rest of it), and on the ground (played at rate, or run when she comes down with the stick pushed, which she may run on
 // out of after hold s, or runHold)
