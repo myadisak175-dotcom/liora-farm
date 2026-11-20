@@ -10,9 +10,8 @@ tools/ual_to_vrma.py --bind, which takes their T-pose from the skin's bind pose)
    Step 4: กระโดดพลิกตัวอย่างสง่างาม     a graceful flip, to end the set
    ไม่มีการโจมตี เน้นความพลิ้วไหว การเคลื่อนไหว และความสวยงามของท่ากระโดด"   (no attacks: flowing, moving, beautiful)
 
-  mjf_1    <- Jump_Double        Step 1: the double jump: her legs driven straight down, then both knees snatched up,
-                                 and let down again. Off the ground it follows the game's own take-off (the mocap's
-                                 crouch and push: magic-jump.js), from its kick
+  (Step 1 is the game's own jump off the ground, as it is: the user found it prettier than the library's double jump,
+  Jump_Double, which followed the take-off at first, from its kick: its legs driven down, both knees snatched up)
   mjf_2    <- Jump_Spin          Step 2: the double jump turned once round in the air, her arms drawn in for the turn
                                  and opened out as it ends (made from Jump_Double by tools/make-jump-spin-anim.py). The
                                  user's own Step 2 was a twist and a kick out on the slant, Jump_OffWall_R (a jump off a
@@ -51,7 +50,6 @@ from vrma_pose import read_clip, write_vrma  # noqa: E402
 FPS = 30
 # game name, library clip, FROM, KICK, TO (frames), in place
 CUTS = [
-    ("mjf_1", "Jump_Double", 2, 3, 25, True),
     ("mjf_2", "Jump_Spin", 2, 3, 25, True),
     ("mjf_3", "NinjaJump_Double", 1, 4, 26, True),
     ("mjf_4", "Jog_Into_Flip", 4, 6, 24, True),

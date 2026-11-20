@@ -118,7 +118,8 @@
    right foot: the feet go on taking turns.)
    The flow (step: 'flow'), the user's set of four, each a move of its own from Quaternius' library (the user chose the
    clips; tools/make-magic-jump-flow.py cuts them, in place, into magic-jump-flow-anim.js, which the page merges into her
-   clips): Step 1 kicked straight up (the take-off as the game's, then mjf_1 from its kick), Step 2 once round in the air,
+   clips): Step 1 the game's own jump off the ground (the take-off and the poses after it, as they are: the user found
+   them prettier than the library's double jump, mjf_1, which followed the take-off for a while), Step 2 once round in the air,
    her arms drawn in and opened out (mjf_2: made from the double jump; the user's kick on the slant was not pretty),
    Step 3 her hips turned in the air and a spring
    (mjf_3), Step 4 a flip (mjf_4; on over the way she faces: FLOW[4].ahead), and the ninja's landing (mjf_land). A press
@@ -420,15 +421,16 @@ const SKY_MOVES = {
 const SKY_BEATS = ['', 'ชั้น 1', 'Air Step 1 · เท้าขวา', 'Air Step 2 · เท้าซ้าย', 'Final Sky Kick'];
 // the foot jump n of the Air Step is off: right, left, right
 const skySide = n => (n % 2 === 0 ? 'R' : 'L');
-// the flow (step: 'flow'): the user's own set of four, each its own move from Quaternius' library (the user chose the
-// clips: tools/make-magic-jump-flow.py cuts them and plays them in place, magic-jump-flow-anim.js). For each jump: its
+// the flow (step: 'flow'): the user's own set of four, each its own move: Step 1 the game's own jump off the ground (the
+// user's choice: the take-off, as it is, was prettier than the library's double jump after it), Steps 2-4 from
+// Quaternius' library (tools/make-magic-jump-flow.py cuts them and plays them in place, magic-jump-flow-anim.js). For
+// each jump in the air: its
 // clip, s into it that her legs are straightest (the kick: she is on the circle until then, held, and off it then), the
 // rate it is played at, s into it that the poses take her back if no other jump has come first; side: m/s it sends her
 // out to her left with the stick let go (none now: Step 2 kicked out on the slant once); ahead: m/s on the way she faces
 // (Step 4's flip goes on over); more: m each rises more than the game's jump (held at the press, she does not drift up
 // into the kick)
 const FLOW = {
-  1: { clip: 'mjf_1', kick: 0.033, rate: 1.1, end: 0.7 },                // Step 1, kicked straight up (after the take-off)
   2: { clip: 'mjf_2', kick: 0.033, rate: 1.15, end: 0.7 },               // Step 2, once round in the air (not a kick out:
                                                                          // the user found that one not pretty)
   3: { clip: 'mjf_3', kick: 0.1, rate: 1.3, end: 0.8 },                   // Step 3, the hips turned in the air, a spring
@@ -436,7 +438,7 @@ const FLOW = {
   land: { clip: 'mjf_land', rate: 1.25, run: 1.6, hold: 0.28, runHold: 0.12 },     // the ninja's landing
   more: 0.02,
 };
-const FLOW_CLIPS = Object.fromEntries([1, 2, 3, 4].map(n => [FLOW[n].clip, FLOW[n]]));
+const FLOW_CLIPS = Object.fromEntries([2, 3, 4].map(n => [FLOW[n].clip, FLOW[n]]));
 const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · หมุนตัว', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
 export function createMagicJump({ character, circles, mocap = false, step = false }) {
@@ -446,7 +448,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   // (the Air Step: one foot at a time) or 'flow' (the user's four moves from the library)
   const styleOf = s => (s === 'dmc' || s === 'sky' || s === 'flow' ? s : s ? 'stand' : false);
   // (the flow only where her clips have its moves: magic-jump-flow-anim.js merged into them)
-  const flowOn = () => stepWanted === 'flow' && !!ch.actions.mjf_1 && !!ch.actions.mjf_4;
+  const flowOn = () => stepWanted === 'flow' && !!ch.actions.mjf_2 && !!ch.actions.mjf_4;
   let stepWanted = styleOf(step);
   const stepOn = () => stepWanted;
   // the step: this jump's circle and how high it is (her feet on it), where she came down onto it from; on it, and for
@@ -697,7 +699,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         ch.actions.mj_up.time = crouch;
         ch.setRate(1);
         circles.open(v.set(me.pos.x, me.pos.y + 0.02, me.pos.z), 1, { ground: true, size: size() });
-        beat = 'ชั้น 1';
+        beat = flowOn() ? FLOW_BEATS[1] : 'ชั้น 1';
         return;
       }
       crouch = -1; upBody = upLegs = tookOff = false; wall = null; pad = null; onPad = stepped = false;
@@ -708,7 +710,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       if (ch.actions.jump_start) ch.actions.jump_start.time = START_AT;
       ch.setRate(START_RATE);
       circles.open(v.set(me.pos.x, me.pos.y + 0.02, me.pos.z), 1, { ground: true, size: size() });
-      beat = 'ชั้น 1';
+      beat = flowOn() ? FLOW_BEATS[1] : 'ชั้น 1';
     },
     // walking off a rock's top (or a little hop off it): falling, with the first jump as good as used (three are left)
     drop(me, up = 0, used = 1, soft = false) {
@@ -811,15 +813,6 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         if (crouch < UP_LIFT) return null;
         const extra = crouch - UP_LIFT;
         crouch = -1; t = 0; vy = speedFor(1); peak = me.pos.y;
-        if (flowOn()) {
-          // the flow's Step 1: the take-off's push, and off the ground the double jump's kick and tuck (its clip from its kick)
-          const F = FLOW[1];
-          ch.play(F.clip, 0.07, false);
-          ch.actions[F.clip].time = F.kick;
-          ch.setRate(F.rate);
-          upClip = F.clip; upBody = upLegs = true; seenOk = false; stepped = 'flow'; legsOut = 60;
-          beat = FLOW_BEATS[1];
-        }
         dt = extra;                                          // (what is left of this frame: off the ground)
       }
       t += dt;
