@@ -164,6 +164,12 @@ const UP_LIFT = 0.155, UP_RUN = 0.1, UP_BODY = 0.02;
 // the step (step: true; "The step" above): s from the press to her feet on the circle; m she comes down onto it (at
 // 1.75 m); s on it crouching (her weight taken) and pushing off it; how quickly her body is moved to keep her feet on it
 const STEP = { reach: 0.085, drop: 0.07, crouch: 0.11, push: 0.065, lock: 40 };
+// momentum (momentum: true; a trial, magic-jump.html): a kick in the air no longer throws away the way she was going.
+// With the stick pushed her new way is `turn` of the way from her old one to the stick's (the rest she turns on to
+// between kicks, as before), no faster than `over` times the stick's pace; with it let go she keeps `keep` of her pace
+// (the game's jump keeps M.keep); and the hold before a kick off a circle (the Air Hike's, the Air Step's, the flow's)
+// slows her up or down quickly (`brake` 1/s) instead of stopping her dead in the air
+const MOM = { turn: 0.55, over: 1.1, keep: 0.6, brake: 30 };
 // the step as Devil May Cry's Air Hike (step: 'dmc'): s her legs are driven down onto the circle, her body held, before
 // she is off it; s the circle stays after (a flash, not a step to stand on); m more each jump rises (held for the stamp,
 // she does not drift up into it as the game's jump does in its wind-up: as high at the top of four as that)
@@ -442,7 +448,7 @@ const FLOW = {
 const FLOW_CLIPS = Object.fromEntries([2, 3, 4].map(n => [FLOW[n].clip, FLOW[n]]));
 const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · หมุนตัว', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
-export function createMagicJump({ character, circles, mocap = false, step = false }) {
+export function createMagicJump({ character, circles, mocap = false, step = false, momentum = false }) {
   let ch = character;
   const hasMocap = () => mocap && !!ch.actions.mj_up && !!ch.actions.mj_land;
   // the step's style: false (the game's jump), 'stand' (onto the circle, a crouch, a push), 'dmc' (the Air Hike), 'sky'
@@ -451,6 +457,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   // (the flow only where her clips have its moves: magic-jump-flow-anim.js merged into them)
   const flowOn = () => stepWanted === 'flow' && !!ch.actions.mjf_2 && !!ch.actions.mjf_4;
   let stepWanted = styleOf(step);
+  let mom = !!momentum;
   const stepOn = () => stepWanted;
   // the step: this jump's circle and how high it is (her feet on it), where she came down onto it from; on it, and for
   // how long (s); this jump left one (its moves are STEP_MOVES); her way over the ground as she came down onto it (she
@@ -533,6 +540,22 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   const asTheClipHas = () => { for (const m of kept) { if (m.bone.quaternion.equals(m.out)) m.bone.quaternion.copy(m.base); else m.base.copy(m.bone.quaternion); } };
   const remember = on => { for (const m of kept) { if (on) m.out.copy(m.bone.quaternion); else m.out.x = NaN; } };
   const size = () => (ch.height || REF) / REF;
+  // her way over the ground off a kick: the stick's, as fast as it is pushed (times scale), or with it let go a little of
+  // the way she came (from). With momentum: the way she came is not thrown away (MOM)
+  function kickVel(me, k, scale = 1, from = me.vel) {
+    if (nextDir) {
+      const s = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72)) * scale;
+      if (mom) {
+        const x = from.x + (nextDir[0] * s - from.x) * MOM.turn, z = from.z + (nextDir[1] * s - from.z) * MOM.turn;
+        const l = Math.hypot(x, z), f = l > s * MOM.over ? s * MOM.over / l : 1;
+        me.vel.set(x * f, 0, z * f);
+      } else me.vel.set(nextDir[0] * s, 0, nextDir[1] * s);
+      turnT = 0.18; kickLean = 1;
+    } else { me.vel.copy(from).multiplyScalar(mom ? MOM.keep : M.keep); kickLean = 0.25; }
+  }
+  // (momentum: how far she goes up or down in a hold of w s, going vy m/s as it begins and slowed at MOM.brake)
+  const holdDrift = (vy, w) => (mom ? vy * (1 - Math.exp(-MOM.brake * w)) / MOM.brake : 0);
+
   // how fast jump n must leave to top out its height (and `more` m at 1.75 m) higher, the hold at its top counted in
   function speedFor(n, more = 0) {
     const k = size(), g = M.grav * k, V = M.hangV[n - 1] * k, c = M.hang[n - 1], s = (1 - c) / V;
@@ -682,6 +705,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
     get active() { return active; }, get tier() { return tier; }, get held() { return held; }, get upside() { return upside; }, get beat() { return beat; },
     get impact() { return impact; }, get vy() { return vy; }, get landing() { return landing; }, get crouching() { return crouch >= 0; },
     get stepMode() { return stepWanted; }, set stepMode(on) { stepWanted = styleOf(on); },
+    get momentum() { return mom; }, set momentum(on) { mom = !!on; },
     get onCircle() { return onPad || (!!pad && wind >= 0); },      // (the step: coming down onto a circle or standing on it)
     // another character in her place: the one leaving gets back what its clip had (a bone its clip holds still would
     // otherwise keep this jump's turn for good), the one coming takes the flight on from here
@@ -757,7 +781,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         // the flow: the next move's clip has her at once, from its start (her gathering for the kick); the circle flashes
         // open under her; she is held until its kick, and off the circle then
         const k = size(), F = FLOW[tier + 1];
-        windAll = wind = F.kick / F.rate; padStyle = 'flow'; padY = me.pos.y; reachFrom = me.pos.y;
+        windAll = wind = F.kick / F.rate; padStyle = 'flow'; padY = me.pos.y + holdDrift(vy, wind); reachFrom = me.pos.y;
         pad = circles.open(v.set(me.pos.x + me.vel.x * wind, padY - 0.02, me.pos.z + me.vel.z * wind), tier + 1, { ground: false, size: k, step: true, snap: true, after: DMC.after }) || true;
         ch.play(F.clip, 0.07, false);
         ch.actions[F.clip].time = 0;
@@ -767,14 +791,14 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         // the Air Step: the circle flashes open under the foot she steps with (out to its side), where her sole will be
         // when that leg is straight; she is held while it is driven down onto it, and then she is off it
         const k = size(), side = skySide(tier + 1), out = (side === 'R' ? -1 : 1) * SKY.side * k;
-        windAll = wind = SKY.drive; padStyle = 'sky'; padSide = side; padY = me.pos.y; reachFrom = me.pos.y;
+        windAll = wind = SKY.drive; padStyle = 'sky'; padSide = side; padY = me.pos.y + holdDrift(vy, wind); reachFrom = me.pos.y;
         const lx = Math.cos(me.heading), lz = -Math.sin(me.heading);          // (her left, over the ground)
         pad = circles.open(v.set(me.pos.x + me.vel.x * SKY.drive + lx * out, padY - 0.02, me.pos.z + me.vel.z * SKY.drive + lz * out), tier + 1, { ground: false, size: k, step: true, snap: true, after: SKY.after }) || true;
       } else if (stepOn() === 'dmc') {
         // the Air Hike: the circle flashes open at once where her soles will be when her legs are straight (her feet's
         // place as she stands: here), she is held while her legs are driven down onto it, and then she is off it
         const k = size();
-        windAll = wind = DMC.stomp; padStyle = 'dmc'; padY = me.pos.y; reachFrom = me.pos.y;
+        windAll = wind = DMC.stomp; padStyle = 'dmc'; padY = me.pos.y + holdDrift(vy, wind); reachFrom = me.pos.y;
         pad = circles.open(v.set(me.pos.x + me.vel.x * DMC.stomp, padY - 0.02, me.pos.z + me.vel.z * DMC.stomp), tier + 1, { ground: false, size: k, step: true, snap: true, after: DMC.after }) || true;
       } else if (stepOn()) {
         // the step: the circle opens where her feet will be when she has come down onto it
@@ -803,11 +827,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         onPad = false; t = 0; fell = 0; peak = me.pos.y;
         vy = speedFor(tier, STEP.drop);
         // off it: the way the stick was pushed at the press, or straight up with a little of how she came
-        if (nextDir) {
-          const s = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72));
-          me.vel.set(nextDir[0] * s, 0, nextDir[1] * s);
-          turnT = 0.18; kickLean = 1;
-        } else { me.vel.copy(padVel).multiplyScalar(M.keep); kickLean = 0.25; }
+        kickVel(me, k, 1, padVel);
         if (pad !== true) circles.kick(pad);
         dt = extra;
       }
@@ -827,16 +847,12 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         // at once. The Air Step's last (Final Sky Kick): with the stick pushed, on ahead faster (SKY.dash)
         const sky = padStyle === 'sky', flow = padStyle === 'flow';
         wind -= dt;
-        vy = 0;
+        if (mom) { vy *= Math.exp(-MOM.brake * dt); me.pos.y += vy * dt; } else vy = 0;
         if (wind < 0) {
           tier++; t = 0; fell = 0; stepped = padStyle; bodyIn = 16; legsIn = 40;
           vy = speedFor(tier, sky ? SKY.more : flow ? FLOW.more : DMC.more); peak = me.pos.y;
-          if (nextDir) {
-            const s = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72)) * (sky && tier === 4 ? SKY.dash : 1);
-            me.vel.set(nextDir[0] * s, 0, nextDir[1] * s);
-            turnT = 0.18; kickLean = 1;
-          } else {
-            me.vel.multiplyScalar(M.keep); kickLean = 0.25;
+          kickVel(me, k, sky && tier === 4 ? SKY.dash : 1);
+          if (!nextDir) {
             // (the flow, the stick let go: Step 2 out to her left, on the slant; Step 4's flip on over the way she faces)
             const F = flow ? FLOW[tier] : null;
             if (F && F.side) { me.vel.x += Math.cos(me.heading) * F.side * k; me.vel.z -= Math.sin(me.heading) * F.side * k; }
@@ -866,11 +882,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         if (wind < 0) {
           tier++; t = 0; fell = 0; bodyIn = 16; legsIn = 40;
           vy = speedFor(tier);
-          if (nextDir) {
-            const s = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72));
-            me.vel.set(nextDir[0] * s, 0, nextDir[1] * s);
-            turnT = 0.18; kickLean = 1;
-          } else { me.vel.multiplyScalar(M.keep); kickLean = 0.25; }
+          kickVel(me, k);
           circles.open(v.set(me.pos.x, me.pos.y - 0.02, me.pos.z), tier, { ground: false, size: k });
           stepped = false;
           beat = BEATS[tier];
