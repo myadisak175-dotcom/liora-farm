@@ -136,8 +136,8 @@ function turnBone(bone, from, to) {
 }
 
 // upper -> lower -> end: end's tip (a joint under end, the palm or the toes) brought to target by w (0..1), end keeping
-// its turn in the world; bent the way it already bends
-function reach(upper, lower, end, tip, target, w) {
+// its turn in the world; bent the way it already bends (also her hands and feet on a cliff's top: player-climb-top.js)
+export function reach(upper, lower, end, tip, target, w) {
   if (w <= 0) return;
   upper.getWorldPosition(_a); lower.getWorldPosition(_b); end.getWorldPosition(_c);
   tip.getWorldPosition(_p);
