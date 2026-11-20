@@ -12,7 +12,7 @@ vrma/index.json  รายชื่อท่า: name, file, source (UAL1/UAL2),
 
 ตัวแปลงอยู่ใน repo ที่ `tools/ual_to_vrma.py` (ใช้ซ้ำได้ถ้าซื้อรุ่น Pro/Source มาเพิ่ม ต้องมี numpy)
 
-ท่าจาก Mixamo (Adobe) ไม่ใช่ CC0 ใช้ในเกมได้แต่แจกเป็นไฟล์ไม่ได้ จึงแปลงด้วย `tools/mixamo-to-vrma.mjs` ไปไว้ที่ `mixamo/` ซึ่งไม่ขึ้น repo (อยู่ใน `.gitignore`) เกมเก็บเฉพาะท่าที่ bake แล้ว (`magic-jump-mocap-anim.js`)
+ท่าจาก Mixamo (Adobe) ไม่ใช่ CC0 ใช้ในเกมได้แต่แจกเป็นไฟล์ไม่ได้ จึงแปลงด้วย `tools/mixamo-to-vrma.mjs` ไปไว้ที่ `mixamo/` ซึ่งไม่ขึ้น repo (อยู่ใน `.gitignore`) เกมเก็บเฉพาะท่าที่ bake แล้ว (`magic-jump-mocap-anim.js`, `vault-anim.js`, และของหน้าทดลองคอมโบเวท `magic-combo-anim.js` ซึ่งทำด้วย `tools/make-magic-combo-anim.py`)
 
 ## ใช้ในเกมนี้
 
