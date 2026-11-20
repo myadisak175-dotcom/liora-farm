@@ -7,14 +7,6 @@ for her:
                                       crouch, and up into her standing pose
   MJ_Wall <- Mixamo "Jump From Wall"  climbing, the jump button with the stick pulled away from the rock: she kicks off
                                       it backwards and turns round in the air to face away from it
-  MJ_Fall2, MJ_Land2 <- Mixamo "Falling To Landing" (its 2nd, the user's Falling_To_Landing_2.fbx)  the landing out of
-                                      the dash in the air (magic-jump.js, air.dash: "แลนดิ้งสวยๆ ตามที่ส่งไป"): MJ_Fall2
-                                      its time in the air (arms out wide, a knee up, then both legs reaching down), in
-                                      place, which she falls in out of the dash; MJ_Land2 from its feet on the ground:
-                                      down into a deep crouch, her shoulders turned far to her left and back, and up into
-                                      her standing pose. Baked with the flow's clips (tools/make-magic-jump-flow.py:
-                                      mjf_fall2, mjf_land2), as only these two are made when asked for alone:
-                                      python3 tools/make-magic-jump-mocap.py land2
 
 They are first made .vrma by tools/mixamo-to-vrma.mjs (the vault's too: three-vrm's Mixamo retarget onto the library's
 skeleton), into assets/animations/mixamo/, which is not in the repo: Mixamo's moves are Adobe's, free to use in the
@@ -37,10 +29,6 @@ turns, the way its weight goes. What is posed again, every frame:
     turned to face ahead and stood upright from behind (UP_UPRIGHT), and its arms, out level as it lands, lowered
     (LAND_ARMS). (Made before from Jumping Down: a deep crouch with both hands on the ground, then only its crouch;
     then from Jumping Down 3: no crouch at all. The user chose this one for every landing.)
-  - MJ_Land2 is made as MJ_Land is (LAND2_*: its feet where she stands, turned to face ahead, up into her standing
-    pose), its arms as the mocap has them (the user chose it for its look). MJ_Fall2 is turned the same, in place, her
-    hips where they are as her feet touch (its first frame), and her legs go over to how they are on the ground in its
-    last LAND2_LEGS s, so the one goes on into the other.
   - MJ_Wall begins as its hands are about to leave the rock (WALL_FROM) and is played WALL_RATE times as fast. It is in
     place: the game kicks her away from the rock and up (magic-jump.js), and turns her round, the way she faces going
     from the rock to away from it as wall_turn() goes (the same curve as magic-jump.js' WALL_TURN): here her hips are
@@ -85,10 +73,6 @@ LAND_TOUCH = 0.28        # the mocap's time when its feet are on the ground (Fal
 LAND_TURN = 30.0         # degrees it is turned to her left (it lands turned 12 to 43 degrees to its right)
 LAND_ARMS = 40.0         # degrees its arms, out level as it lands, are lowered
 LAND_SETTLE = 0.15       # s from the mocap's end into her standing pose
-LAND2_TOUCH = 0.27       # Falling To Landing 2: its time when its feet are on the ground (1.07 s in all)
-LAND2_TURN = 30.0        # degrees it is turned to her left (it lands turned 16 to 43 degrees to its right, as the 1st)
-LAND2_SETTLE = 0.15      # s from its end into her standing pose
-LAND2_LEGS = 0.1         # s before its feet touch that its legs go over to how they will be on the ground
 WALL_FROM = 0.35         # the mocap's time to begin at: its hands are about to leave the rock (Jump From Wall: 1.27 s)
 WALL_RATE = 1.6          # how much faster than the mocap it is played (the game's pull is harder than the world's)
 WALL_TURN = (0.42, 1.27)  # the mocap's times her turn round (180 degrees, to her right) begins and ends (wall_turn)
@@ -452,61 +436,6 @@ def make_land():
     return frames
 
 
-def make_land2():
-    """MJ_Fall2 (in the air, in place) and MJ_Land2 (from its feet on the ground), from Falling To Landing 2 (at 30 frames
-    a second, as the game plays them: they are baked as they are)."""
-    F2 = 30
-    src = Clip(os.path.join(MOCAP, "Falling_To_Landing_2.vrma"))
-    s_end = float(src.times[-1])
-    Le, h_end = src.at(s_end)
-    scale = IDLE_HIPS[1] / h_end[1]                           # (it ends standing: its hips then are hers)
-    Re, _ = fk(turned_ahead(Le, h_end, LAND2_TURN), h_end)
-    flat0 = [pitch_of(Re[f"{s}Foot"], s) for s in ("left", "right")]    # its feet, flat (as it stands at its end)
-    n_src = int(round((s_end - LAND2_TOUCH) * F2))
-    n = n_src + int(round(LAND2_SETTLE * F2)) + 1
-    frames, hips_y, short, last = [], [], 0.0, None
-    for i in range(n):
-        tau = i / F2
-        if i <= n_src:
-            L, h = src.at(LAND2_TOUCH + tau)
-            L = turned_ahead(L, h, LAND2_TURN)
-            rel = ry(math.radians(LAND2_TURN)) @ ((h - h_end) * scale)
-            rel[[0, 2]] *= 0.5
-            hp = IDLE_HIPS + rel
-            R, _ = fk(L, hp)
-            tip = [max(0.0, pitch_of(R[f"{s_}Foot"], s_) - f) for s_, f in zip(("left", "right"), flat0)]
-            last = (L, hp, tip)
-        else:
-            u = ease((tau - (s_end - LAND2_TOUCH)) / LAND2_SETTLE)
-            Le_, he, te = last
-            L = {b: slerp_m(Le_[b], IDLE_L[b], u) for b in sk.node}
-            hp = he + (IDLE_HIPS - he) * u
-            tip = [t * (1 - u) for t in te]
-        R, P = fk(L, hp)
-        short = max(short, stand_still_feet(R, P, tip))
-        frames.append((locals_from(R), hp))
-        hips_y.append(hp[1])
-    out, times = write("MJ_Land2", frames, F2)
-    print(f"{out}: {times[-1]:.3f} s; hips from {hips_y[0]:.3f} to {hips_y[-1]:.3f} (standing {IDLE_HIPS[1]:.3f}), lowest "
-          f"{min(hips_y):.3f}; feet short of the ground by {short * 1000:.0f} mm at most")
-    # in the air: the same turn, in place (her hips where they are on the landing's first frame), her legs going over
-    # to the landing's first frame's in the last LAND2_LEGS s
-    L1, hp1 = frames[0]
-    fall = []
-    m = int(round(LAND2_TOUCH * F2))
-    for i in range(m + 1):
-        tau = i / F2
-        L, h = src.at(tau)
-        L = turned_ahead(L, h, LAND2_TURN)
-        w = ease((tau - (LAND2_TOUCH - LAND2_LEGS)) / LAND2_LEGS)
-        for b in LEG_BONES:
-            L[b] = slerp_m(L[b], L1[b], w)
-        fall.append((L, hp1))
-    out, times = write("MJ_Fall2", fall, F2)
-    print(f"{out}: {times[-1]:.3f} s, in place (hips {hp1[1]:.3f})")
-    return fall, frames
-
-
 def wall_turn(c):
     """How far round she has turned (0..1 of 180 degrees, to her right) at the mocap's time c (magic-jump.js: WALL_TURN)."""
     a, b = WALL_TURN
@@ -538,16 +467,9 @@ def make_wall():
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["land2"]:
-        if not os.path.exists(os.path.join(MOCAP, "Falling_To_Landing_2.vrma")):
-            raise SystemExit(f"no Falling_To_Landing_2.vrma in {MOCAP}: make it first with tools/mixamo-to-vrma.mjs")
-        make_land2()
-        raise SystemExit(0)
     for f in ("Jumping_Up", "Falling_To_Landing", "Jump_From_Wall"):
         if not os.path.exists(os.path.join(MOCAP, f"{f}.vrma")):
             raise SystemExit(f"no {f}.vrma in {MOCAP}: make it first with tools/mixamo-to-vrma.mjs (see above)")
     make_up()
     make_land()
     make_wall()
-    if os.path.exists(os.path.join(MOCAP, "Falling_To_Landing_2.vrma")):
-        make_land2()

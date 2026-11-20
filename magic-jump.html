@@ -31,10 +31,8 @@
   part of the way to the stick's (not at once), keeps more of her pace with the stick let go, and the hold before a
   kick off a circle slows her instead of stopping her dead. With her pace carried too (magic-jump.js, carry: the game's
   ⚖️ trial; here unless ?mom=game, which is the game's momentum without it): what she takes off with she keeps.
-  The dash in the air (magic-jump.js, air.dash; a trial, not in the game yet: the พุ่ง button, Shift): in a flight, the
-  game's Step 1 laid flat, a push off a circle stood behind her feet like a wall, into flying flat out the way the stick
-  points (the user's Mixamo "Flying"), and its own landing (their "Falling To Landing 2"); one for each jump. The ▶ เดโม + พุ่ง
-  button: the four jumps with a dash after each.
+  (A dash in the air, the พุ่ง button, was tried here on 20-21 Nov 2026, flat out as Mixamo's "Flying", and taken out:
+  "ไม่เอาท่าพุ่งนอนกระโดดละ ไม่สวย".)
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -58,14 +56,8 @@
     color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
     -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
   #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
-  #jumpBtn.down, #dashBtn.down { background: rgba(255, 255, 255, .5); }
-  /* the dash: beside the jump, a little smaller (as the game's) */
-  #dashBtn { position: fixed; right: calc(max(24px, calc(env(safe-area-inset-right) + 14px)) + 80px); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
-    z-index: 4; width: 58px; height: 58px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
-    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
-    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
-  #dashBtn svg { width: 20px; height: 20px; margin-bottom: -6px; }
-  #hint { position: fixed; left: 0; right: 0; bottom: calc(92px + env(safe-area-inset-bottom)); padding: 0 16px; text-align: center; pointer-events: none;
+  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 104px; text-align: center; pointer-events: none;
     font: 500 12px system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; }
   #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; }
   @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
@@ -97,7 +89,6 @@
   <button id="hour">🌙 กลางคืน</button>
   <button id="slow">⏱ ×1</button>
   <button id="demo">▶ เดโม 4 ชั้น</button>
-  <button id="demoDash">▶ เดโม + พุ่ง</button>
   <button id="kind">🎞 ท่าเดิม</button>
   <button id="step">🦶 เหยียบวง (ใหม่)</button>
   <button id="feel">🎥 กล้อง AAA</button>
@@ -105,9 +96,8 @@
   <button id="s3">3️⃣ Step 3</button>
 </div>
 <div id="stick"><i></i></div>
-<button id="dashBtn" type="button" aria-label="พุ่ง"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span></button>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
-<div id="hint">กดกระโดดซ้ำกลางอากาศได้อีก 3 ครั้ง · ดันจอย = ไปทางนั้น · ปล่อยจอย = ขึ้นตรงๆ<br>กลางอากาศกด พุ่ง = พุ่งไปทางจอย (กระโดดละ 1 ครั้ง)</div>
+<div id="hint">กดกระโดดซ้ำกลางอากาศได้อีก 3 ครั้ง · ดันจอย = พุ่งไปทางนั้น · ปล่อยจอย = ขึ้นตรงๆ</div>
 <div id="wait">กำลังโหลดวีวี่…</div>
 <script type="module">
 import * as THREE from 'three';
@@ -119,8 +109,8 @@ import { createSprings } from './character-springs.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
-import { createMagicCircles } from './magic-circle-fx.js?v=dash3';      // (?v: a phone's cache gets the new one)
-import { createMagicJump } from './magic-jump.js?v=dash3';
+import { createMagicCircles } from './magic-circle-fx.js?v=4';      // (?v: a phone's cache gets this one)
+import { createMagicJump } from './magic-jump.js?v=4';
 import { createCameraFeel } from './camera-feel.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
@@ -240,7 +230,7 @@ const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
   dom: renderer.domElement, ui: document.getElementById('stick'),
-  onJump: () => press(), onDash: () => dashPress(),
+  onJump: () => press(),
   onLook: (y, p) => cam.turn(y, p), onZoom: d => cam.zoom(d),
 });
 function press() {
@@ -248,26 +238,16 @@ function press() {
   if (air.active) air.press(me, stick);
   else jumpWanted = 0.15;
 }
-// the dash button: in the air, a dash (on the ground: nothing here; the game has its own dash there)
-function dashPress() {
-  if (!hero || demo) return false;
-  if (!air.active || !air.dash(me, stick)) return false;
-  if (FEEL) feel.kick(0.55);                     // (the camera's feel: wider a moment, as at a launch)
-  return true;
-}
 const jumpBtn = document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); press(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
-const dashBtn = document.getElementById('dashBtn');
-dashBtn.addEventListener('pointerdown', e => { e.preventDefault(); dashBtn.classList.add('down'); dashPress(); });
-for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dashBtn.addEventListener(ev, () => dashBtn.classList.remove('down'));
 
 (async () => {
   const [{ VIVI_GLB }, data, extra, flow] = await Promise.all([
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
     MOCAP ? import('./magic-jump-mocap-anim.js') : null,
-    import('./magic-jump-flow-anim.js?v=dash3'),
+    import('./magic-jump-flow-anim.js?v=4'),
   ]);
   // with the mocap: its take-off and landings beside the game's own clips; and the flow's four moves and its landing
   const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...(extra ? extra.CHARACTER_ANIM.clips : {}), ...flow.CHARACTER_ANIM.clips } };
@@ -295,11 +275,10 @@ function collide(p) {
   if (rr > 30) { p.x *= 30 / rr; p.z *= 30 / rr; }
 }
 
-// ---- the demo: the four jumps one after another, each at the top of the one before, going a little forward (withDash:
-// a dash after each jump, at its top, and the next jump as she starts down out of the dash)
-function startDemo(withDash = false) {
+// ---- the demo: the four jumps one after another, each at the top of the one before, going a little forward
+function startDemo() {
   if (!hero || air.active) return;
-  demo = { at: 0, dash: withDash };
+  demo = { at: 0 };
   air.takeOff(me); airBase = me.pos.y; landT = -1;
 }
 
@@ -345,10 +324,7 @@ function step(dt) {
   if (air.active) {
     const g = standAt(me.pos.x, me.pos.z, me.pos.y);
     // the demo presses at the top of each jump
-    if (demo && air.debug.wind < 0 && air.debug.vy < 0.4 * k && air.debug.t > 0.15 && !air.dashing) {
-      if (demo.dash && air.debug.dashes > 0) { if (air.dash(me, stick) && FEEL) feel.kick(0.55); }
-      else if (air.tier < 4) air.press(me, stick);
-    }
+    if (demo && air.tier < 4 && air.debug.wind < 0 && air.debug.vy < 0.4 * k && air.debug.t > 0.15) air.press(me, stick);
     if (air.step(dt, me, stick, g) === 'landed') {
       // down: the harder she lands, the more of her pace her legs take up and the longer before she is off again
       landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = air.landing.hold;
@@ -433,7 +409,6 @@ btn('hour').onclick = () => {
 const SLOWS = [1, 0.5, 0.25];
 btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
 btn('demo').onclick = () => startDemo();
-btn('demoDash').onclick = () => startDemo(true);
 // the mocap's take-off and landing, or the jump as it is in the game
 btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
 btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.set('mocap', '0'); else u.searchParams.delete('mocap'); location.href = u.href; };
@@ -489,8 +464,7 @@ window.magicTrial = {
   ready: false, held: false, stick: null,
   me, get air() { return air; }, get hero() { return hero; }, cam, camera, circles, ROCKS,
   run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
-  demo(withDash = false) { startDemo(withDash); },
-  dash(dirX = 0, dirZ = 0, amount = 0) { stick.x = dirX; stick.z = dirZ; stick.amount = amount; return air.active && air.dash(me, stick); },
+  demo() { startDemo(); },
   press(dirX = 0, dirZ = 0, amount = 0) { stick.x = dirX; stick.z = dirZ; stick.amount = amount; if (air.active) return air.press(me, stick); jumpWanted = 0.15; return true; },
   look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); feel.reset(); },
   night(on) { if (on !== night) btn('hour').onclick(); },
