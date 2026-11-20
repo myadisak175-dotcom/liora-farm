@@ -36,6 +36,12 @@
        each, 8 circles at most
      - sparks: one cloud of points shared by every circle
      - a circle stood on (step) has a wave too: one flat square, a ring of light that goes out from under her feet
+     - safe on a phone's GPU (thin black lines like hairs were seen on the user's phone, 20 Nov 2026, not on a desktop's):
+       a line's edge is softened by how fast its distance changes on the screen (fwidth), which a GPU can only tell where
+       every pixel round it takes the same way through the shader, so no line is drawn inside an if that goes one way
+       for one pixel and the other for the next, or after such a return (each is drawn always and masked; an if on what
+       the whole circle shares, its tier, is safe); nothing can be NaN (a power of a negative number, the angle of the very
+       middle, a smoothstep with its edges the wrong way round), and what is drawn is kept between 0 and 1
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -77,6 +83,8 @@ const DISC_F = /* glsl */`
   uniform vec3 uCore, uMain, uDeep;
   uniform float uTier, uOpen, uFade, uAge, uSeed, uPetals, uGlow, uCover, uDay;
   varying vec2 vP;                                    // in radii: the outer ring at 1
+  // (called only where every pixel round takes the same way: fwidth anywhere else is undefined, and a phone's GPU may
+  // draw it as black hairs)
   float line(float d, float w) { float f = fwidth(d) * 1.2 + 0.002; return 1.0 - smoothstep(w * 0.5, w * 0.5 + f, abs(d)); }
   vec2 rot(vec2 p, float a) { float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
   float hash(float n) { return fract(sin(n * 78.233 + uSeed * 9.1) * 43758.5453); }
@@ -85,19 +93,19 @@ const DISC_F = /* glsl */`
     float s = fract((a + PI) / TAU + from);
     return step(s, clamp((uOpen - at) * 2.6, 0.0, 1.0));
   }
-  // the marks round a band (r0..r1): n cells, each a little glyph of strokes picked by a hash
+  // the marks round a band (r0..r1): n cells, each a little glyph of strokes picked by a hash (every stroke drawn, and
+  // the hash keeps or hides it: see line)
   float runes(vec2 p, float r, float a, float r0, float r1, float n) {
     float v = (r - r0) / (r1 - r0);
-    if (v < 0.0 || v > 1.0) return 0.0;
     float s = (a / TAU + 0.5) * n, id = floor(s), u = fract(s);
     float h = hash(id), h2 = hash(id + 17.0);
     vec2 q = vec2((u - 0.5) * r * TAU / n / (r1 - r0), v - 0.5);          // in the band's height
     float w = 0.13, g = line(q.x, w) * step(abs(q.y), 0.3);                // a stem
-    if (h > 0.45) g = max(g, line(q.y - 0.2, w) * step(abs(q.x), 0.24));  // a bar over it
-    if (h2 > 0.5) g = max(g, line(length(q - vec2(0.0, -0.14)) - 0.12, w));   // a ring at its foot
-    if (h < 0.3) g = max(g, line(q.y + q.x * 1.3, w) * step(abs(q.x), 0.2));  // a slash
-    if (h2 < 0.2) g = max(g, line(q.y + 0.24, w) * step(abs(q.x), 0.24));    // a bar under it
-    return g;
+    g = max(g, line(q.y - 0.2, w) * step(abs(q.x), 0.24) * step(0.45, h));                // a bar over it
+    g = max(g, line(length(q - vec2(0.0, -0.14)) - 0.12, w) * step(0.5, h2));             // a ring at its foot
+    g = max(g, line(q.y + q.x * 1.3, w) * step(abs(q.x), 0.2) * (1.0 - step(0.3, h)));   // a slash
+    g = max(g, line(q.y + 0.24, w) * step(abs(q.x), 0.24) * (1.0 - step(0.2, h2)));      // a bar under it
+    return g * step(0.0, v) * step(v, 1.0);
   }
   float sq(vec2 p, float s) { vec2 q = abs(p); return max(q.x, q.y) - s; }
   float tri(vec2 p, float r) {                        // an equilateral triangle (iq's)
@@ -109,7 +117,7 @@ const DISC_F = /* glsl */`
   }
   void main() {
     vec2 p = vP;
-    float r = length(p), a = atan(p.y, p.x);
+    float r = length(p), a = atan(p.y, abs(p.x) < 1e-6 ? 1e-6 : p.x);      // (no angle at the very middle)
     float t = uAge;
     float spinA = t * 0.9, spinB = -t * 1.4;          // the outer band and the inner figures turn opposite ways
     float L = 0.0;                                    // lines (0..1)
@@ -153,7 +161,7 @@ const DISC_F = /* glsl */`
       L = max(L, line(abs(q.x) + abs(q.y) * 1.5 - 0.1, 0.02));
     }
     // glow: round the rim, over the whole face a little, strongest in the middle
-    float G = exp(-abs(r - 1.0) * 16.0) * 0.55 + exp(-abs(r - 0.64) * 22.0) * 0.25 + smoothstep(1.05, 0.2, r) * 0.16 + exp(-r * 7.0) * 0.6;
+    float G = exp(-abs(r - 1.0) * 16.0) * 0.55 + exp(-abs(r - 0.64) * 22.0) * 0.25 + (1.0 - smoothstep(0.2, 1.05, r)) * 0.16 + exp(-r * 7.0) * 0.6;
     if (uPetals > 0.5) G += exp(-abs(r - 1.12) * 10.0) * 0.18;
     G *= uGlow * smoothstep(0.0, 0.25, uOpen) * step(r, 1.4);
     // going: breaks into bits (the bits by angle and ring), the outer ones first
@@ -166,7 +174,7 @@ const DISC_F = /* glsl */`
     float A = clamp(L, 0.0, 1.0);
     vec3 col = lineCol * A + uDeep * G;
     // by day the glow covers a little of what is under it too: light added to green grass would only turn it yellow
-    gl_FragColor = vec4(col, A * uCover + min(1.0, G) * uDay * 0.6);
+    gl_FragColor = clamp(vec4(col, A * uCover + min(1.0, G) * uDay * 0.6), 0.0, 1.0);
   }`;
 
 /* ---------------------------------------------------------------- its light: an open tube of streaks */
@@ -185,9 +193,10 @@ const PILLAR_F = /* glsl */`
     float len = 0.45 + 0.55 * hash(id + 7.0);         // each streak its own length
     float y = vUv.y / len;
     float along = (1.0 - smoothstep(0.0, 1.0, y)) * smoothstep(0.0, 0.06, vUv.y);
-    float sheen = pow(1.0 - vUv.y, 2.5) * 0.22;       // a faint wall of light low down
+    float sheen = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.5) * 0.22;       // a faint wall of light low down (vUv a hair past its end at the
+                                                      // tube's rim, on a phone's GPU: a power of a negative number is NaN, black)
     vec3 col = mix(uMain, uCore, streak * along * 0.5) * streak * along + uDeep * sheen;
-    gl_FragColor = vec4(col * uK, min(1.0, (streak * along + sheen) * uK) * uDay * 0.6);
+    gl_FragColor = clamp(vec4(col * uK, min(1.0, (streak * along + sheen) * uK) * uDay * 0.6), 0.0, 1.0);
   }`;
 
 /* ---------------------------------------------------------------- the crystal standing in the middle */
@@ -205,7 +214,7 @@ const GEM_F = /* glsl */`
   void main() {
     float f = abs(dot(normalize(vN), normalize(vV)));
     vec3 col = mix(uCore, uMain, smoothstep(0.35, 0.9, f));
-    gl_FragColor = vec4(col * uK, 0.55 * uK);
+    gl_FragColor = clamp(vec4(col * uK, 0.55 * uK), 0.0, 1.0);
   }`;
 
 /* ---------------------------------------------------------------- a stood-on circle's wave: a ring of light going out */
@@ -219,7 +228,7 @@ const WAVE_F = /* glsl */`
     float trail = smoothstep(0.3, 0.86, r) * (1.0 - step(0.86, r)) * 0.22;     // a faint sheet behind the ring
     float f = (ring + trail) * (1.0 - smoothstep(0.93, 1.0, r)) * uK;
     vec3 col = mix(uDeep, mix(uMain, uCore, ring * 0.7), clamp(ring * 1.5, 0.0, 1.0)) * f;
-    gl_FragColor = vec4(col, min(1.0, f) * uDay * 0.5);
+    gl_FragColor = clamp(vec4(col, min(1.0, f) * uDay * 0.5), 0.0, 1.0);
   }`;
 
 /* ---------------------------------------------------------------- sparks */
@@ -241,12 +250,12 @@ const SPARK_F = /* glsl */`
     if (vLife <= 0.0) discard;
     vec2 q = gl_PointCoord - 0.5;
     float d = length(q);
-    float dot_ = smoothstep(0.5, 0.0, d);
+    float dot_ = 1.0 - smoothstep(0.0, 0.5, d);
     float glint = (1.0 - smoothstep(0.0, 0.07, abs(q.x))) * (1.0 - smoothstep(0.0, 0.5, abs(q.y))) + (1.0 - smoothstep(0.0, 0.07, abs(q.y))) * (1.0 - smoothstep(0.0, 0.5, abs(q.x)));
     float k = dot_ * dot_ + glint * 0.5;
     vec3 col = mix(uMain, uCore, dot_ * dot_);
     float f = k * smoothstep(0.0, 0.25, vLife);
-    gl_FragColor = vec4(col * f, min(1.0, f) * uDay * 0.6);
+    gl_FragColor = clamp(vec4(col * f, min(1.0, f) * uDay * 0.6), 0.0, 1.0);
   }`;
 
 export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
