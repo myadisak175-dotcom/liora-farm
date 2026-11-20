@@ -23,6 +23,10 @@
                                      ground) and up, turning round to face away from it (the mocap's, mj_wall); three
                                      jumps left. false: her clips have no mj_wall (nothing done)
      air.press(me, stick)            the jump button in the air: the next one, if she has one left (false: none)
+     air.dash(me, stick)             the dash button in the air (a trial: magic-jump.html): she shoots off flat out the way
+                                     the stick points (the way she faces, let go) off a circle stood upright behind her
+                                     feet; once for each jump. false: not now (none left, or on the ground, or her clips
+                                     have no mjf_dash). See "The dash" below. air.dashing: she is in one
      air.end()                       the flight is over some other way (she took hold of a rock, swims, was put back): no
                                      landing; her body eases out of it into whatever plays next
      every frame she is in the air (air.active), after she has been moved across the ground:
@@ -136,6 +140,17 @@
    in the air starts the next move's clip at once; the circle flashes open under her; she is held until its kick
    (FLOW[n].kick) and off the circle then. The clip has all of her (upBody, upLegs: no poses over it, her knees not laid
    as hinges) until the next press, or FLOW[n].end, when the poses take her on into her fall
+
+   The dash (air.dash; a trial since 20 Nov 2026, magic-jump.html: the user's Mixamo "Flying", "ทำเป็นท่าพุ่งตอนกระโดด
+   ได้ไหม", make it a dash while jumping; its clip mjf_dash in magic-jump-flow-anim.js, tools/make-magic-jump-flow.py).
+   The dash button in a flight: a circle flashes open upright behind her (magic-circle-fx.js, facing), she kicks off it
+   (its light shoots back, its sparks are thrown back) and shoots off flat out, head first, at the game's dash's pace
+   (DASH.speed, as the พุ่ง button on the ground: 9.9 m/s at 1.75 m), held level (nothing pulls her down) for DASH.hold
+   s, then slows over DASH.ease s to her run (carried: to her pace through the air) as she falls again: 3.3 m on. Its
+   clip has all of her (as the flow's: upBody, upLegs) until DASH.end, when the poses take her into her fall and her
+   body comes upright. The way: the stick's, or the way she faces with it let go; she turns to it at once and the stick
+   does not steer her through it. One dash for each jump (her next jump gives her another); a jump pressed in the dash
+   waits until its burst is over (DASH.hold), and then goes at once
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -462,7 +477,11 @@ const FLOW = {
 // Step 3 to try (step3: 'jump'; magic-jump.html): the user's Mixamo "Jump", its time in the air: the right leg driven
 // down long, the right knee up, then the legs changing over, the arms opening out (tools/make-magic-jump-flow.py)
 const FLOW_3B = { clip: 'mjf_3b', kick: 0.1, rate: 1.15, end: 0.48, beat: 'Step 3 · สลับขากลางอากาศ' };
-const FLOW_CLIPS = Object.fromEntries([FLOW[2], FLOW[3], FLOW_3B, FLOW[4]].map(F => [F.clip, F]));
+// the dash in the air (air.dash; see "The dash" above): its clip (played at rate, all of her until end s into it); m/s
+// (at 1.75 m: the game's dash on the ground); s held level at that pace, then s slowing to her run; the circle behind her
+// (its tier's look, and its size of that tier's; m behind her hips; s it stays after her kick)
+const DASH = { clip: 'mjf_dash', rate: 1, end: 0.4, speed: 9.9, hold: 0.22, ease: 0.16, tier: 3, size: 0.8, back: 1.05, after: 0.35 };
+const FLOW_CLIPS = Object.fromEntries([FLOW[2], FLOW[3], FLOW_3B, FLOW[4], DASH].map(F => [F.clip, F]));
 const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · หมุนตัว', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
 export function createMagicJump({ character, circles, mocap = false, step = false, momentum = false, step3 = 'ninja', carry: carried = false }) {
@@ -502,6 +521,9 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   const seen = new Float32Array(DIRS * 3), seenV = new Float32Array(DIRS * 3);      // her limbs as the mocap has them, and how fast they go
   let seenOk = false;
   let landing = { clip: 'jump_land', rate: 1.4, hold: 0.14 };
+  // the dash: { t: s since it began, x, z: its way (unit), out: m/s she slows to } while she is in one; how many she has
+  // left (one for each jump)
+  let dash = null, dashes = 0;
   let active = false, tier = 0, t = 0, wind = -1, nextDir = null, nextAmount = 0, vy = 0, peak = 0, caught = false, fell = 0, turnT = 0;
   let queued = null;                          // a press made too early (in the flip, or crouching for the mocap's take-off): kept until it can be taken
   let beat = '';
@@ -742,7 +764,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       if (hasMocap()) {
         // the mocap's: crouching on the ground first (from standing; running, out of her stride part way up)
         active = true; tier = 1; t = 0; wind = -1; bodyIn = 16; legsIn = 40; caught = false; fell = 0; queued = null; fromGround = true; over = 0;
-        vy = 0; peak = me.pos.y; upBody = upLegs = tookOff = true; seenOk = false; upClip = 'mj_up'; wall = null;
+        vy = 0; peak = me.pos.y; upBody = upLegs = tookOff = true; seenOk = false; upClip = 'mj_up'; wall = null; dash = null; dashes = 1;
         pad = null; onPad = stepped = false;
         const going = Math.hypot(me.vel.x, me.vel.z) / (M.push * size());
         crouch = UP_RUN * sstep(0.35, 0.9, going);
@@ -754,7 +776,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         beat = flowOn() ? FLOW_BEATS[1] : 'ชั้น 1';
         return;
       }
-      crouch = -1; upBody = upLegs = tookOff = false; wall = null; pad = null; onPad = stepped = false;
+      crouch = -1; upBody = upLegs = tookOff = false; wall = null; pad = null; onPad = stepped = false; dash = null; dashes = 1;
       active = true; tier = 1; t = 0; wind = -1; bodyIn = 16; legsIn = 40; caught = false; fell = 0; queued = null; fromGround = true; over = 1e9;
       vy = speedFor(1); peak = me.pos.y;
       x.set(ROWS.push1); xv.fill(0); kickLean = 0;
@@ -768,7 +790,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
     drop(me, up = 0, used = 1, soft = false) {
       bodyIn = soft ? 9 : 16; legsIn = soft ? 9 : 40;
       active = true; tier = Math.max(1, used); t = 1; wind = -1; caught = false; fell = 0; queued = null; fromGround = false; over = 1e9;
-      crouch = -1; upBody = upLegs = tookOff = false; wall = null; pad = null; onPad = stepped = false;
+      crouch = -1; upBody = upLegs = tookOff = false; wall = null; pad = null; onPad = stepped = false; dash = null; dashes = 1;
       vy = up; peak = me.pos.y;
       x.set(ROWS.ready); xv.fill(0); kickLean = 0;
       ch.play('jump_air', 0.25, false);
@@ -778,7 +800,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       if (!mocap || !ch.actions.mj_wall) return false;
       const k = size();
       active = true; tier = 1; t = 0; wind = -1; bodyIn = 16; legsIn = 40; caught = false; fell = 0; queued = null; fromGround = false; over = 1e9;
-      crouch = -1; vy = WALL_UP * k; peak = me.pos.y; pad = null; onPad = stepped = false;
+      crouch = -1; vy = WALL_UP * k; peak = me.pos.y; pad = null; onPad = stepped = false; dash = null; dashes = 1;
       me.vel.set(ax * WALL_OUT * k, 0, az * WALL_OUT * k);
       upBody = upLegs = tookOff = true; seenOk = false; upClip = 'mj_wall';
       wall = { from: me.heading, t: 0 };
@@ -793,13 +815,16 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       // still crouching for the mocap's take-off: the press waits until she is off the ground
       if (active && (crouch >= 0 || onPad)) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
       if (!active || tier >= 4 || wind >= 0 || t < M.gap) return false;
+      // in a dash's burst: the press waits until it is over (then it goes at once, the dash cut short at her run)
+      if (dash && dash.t < DASH.hold) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
+      if (dash) { me.vel.set(dash.x * dash.out, 0, dash.z * dash.out); dash = null; }
       // early in the flip she cannot kick: the press waits until she is most of the way round
       if (t < pressAfter()) { queued = { x: stick.x, z: stick.z, amount: stick.amount }; return true; }
       queued = null;
       wind = M.windup;
       nextAmount = stick.amount;
       nextDir = stick.amount > 0.12 ? [stick.x, stick.z] : null;
-      if (ch.state !== 'jump_air' && !upLegs) { ch.play('jump_air', 0.14, false); ch.setRate(1); }
+      if (ch.state !== 'jump_air' && (!upLegs || ch.state === DASH.clip)) { ch.play('jump_air', 0.14, false); ch.setRate(1); }      // (out of a dash: the poses take her on)
       pad = null;
       if (flowOn()) {
         // the flow: the next move's clip has her at once, from its start (her gathering for the kick); the circle flashes
@@ -833,10 +858,35 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       }
       return true;
     },
+    dash(me, stick) {
+      if (!active || crouch >= 0 || onPad || wind >= 0 || dash || dashes <= 0 || !ch.actions[DASH.clip]) return false;
+      const k = size(), on = stick.amount > 0.12, run = M.push * k, was = Math.hypot(me.vel.x, me.vel.z);
+      const dx = on ? stick.x : Math.sin(me.heading), dz = on ? stick.z : Math.cos(me.heading);
+      dashes--;
+      // (out of it: her run; carried, her pace through the air, as fast as she was going if that is faster)
+      dash = { t: 0, x: dx, z: dz, out: carry ? Math.max(run * CARRIED.kick, Math.min(was, DASH.speed * k)) : run };
+      me.heading = Math.atan2(dx, dz);
+      me.vel.set(dx * DASH.speed * k, 0, dz * DASH.speed * k);
+      vy = 0; turnT = 0; nextDir = null; queued = null; wall = null; kickLean = 0;
+      t = Math.max(t, M.flip, M.spin);                    // (a flip or a turn she was in is finished, the short way)
+      // its clip has all of her (as the flow's), from its start
+      ch.play(DASH.clip, 0.08, false);
+      ch.actions[DASH.clip].time = 0;
+      ch.setRate(DASH.rate);
+      upBody = upLegs = tookOff = true; seenOk = false; upClip = DASH.clip; legsOut = 60;
+      // the circle: upright behind her, where her feet will be (her hips' height, DASH.back m back), and kicked off at once
+      bones.hips.getWorldPosition(a);
+      const c = circles.open(v.set(me.pos.x - dx * DASH.back * k, a.y, me.pos.z - dz * DASH.back * k), DASH.tier,
+        { ground: false, size: k * DASH.size, step: true, snap: true, after: DASH.after, facing: b.set(dx, 0, dz) });
+      if (c) { circles.press(c); circles.kick(c); }
+      beat = 'พุ่ง';
+      return true;
+    },
+    get dashing() { return !!dash; },
     end() {
       if (!active) return;
       active = false; tier = 0; wind = -1; vy = 0; queued = null; beat = '';
-      legsOut = 28; bodyIn = 16; legsIn = 40; crouch = -1; upBody = upLegs = false; wall = null; pad = null; onPad = stepped = false; standOff = 0;
+      legsOut = 28; bodyIn = 16; legsIn = 40; crouch = -1; upBody = upLegs = false; wall = null; pad = null; onPad = stepped = false; standOff = 0; dash = null;
     },
     step(dt, me, stick, ground, catchable = true) {
       const k = size();
@@ -864,6 +914,16 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         dt = extra;                                          // (what is left of this frame: off the ground)
       }
       t += dt;
+      // ---- a dash: at the dash's pace, held level, then slowing to her run as she falls again
+      let level = false;
+      if (dash) {
+        dash.t += dt;
+        const s = DASH.speed * k + (dash.out - DASH.speed * k) * sstep(DASH.hold, DASH.hold + DASH.ease, dash.t);
+        me.vel.set(dash.x * s, 0, dash.z * s);
+        me.heading = Math.atan2(dash.x, dash.z);
+        level = dash.t < DASH.hold;
+        if (dash.t >= DASH.hold + DASH.ease) dash = null;
+      }
       if (queued && t >= Math.max(M.gap, pressAfter())) air.press(me, queued);
       // ---- the kick: after the wind-up, off the circle that opens under her
       if (wind >= 0 && pad && (padStyle === 'dmc' || padStyle === 'sky' || padStyle === 'flow')) {
@@ -873,7 +933,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         wind -= dt;
         if (mom) { vy *= Math.exp(-MOM.brake * dt); me.pos.y += vy * dt; } else vy = 0;
         if (wind < 0) {
-          tier++; t = 0; fell = 0; stepped = padStyle; bodyIn = 16; legsIn = 40;
+          tier++; t = 0; fell = 0; stepped = padStyle; bodyIn = 16; legsIn = 40; dashes = 1;
           vy = speedFor(tier, sky ? SKY.more : flow ? FLOW.more : DMC.more); peak = me.pos.y;
           kickVel(me, k, sky && tier === 4 ? SKY.dash : 1);
           if (!nextDir) {
@@ -892,7 +952,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         me.pos.y = reachFrom + (padY - reachFrom) * u * u;
         vy = dt > 1e-6 ? (me.pos.y - was) / dt : vy;
         if (wind < 0) {
-          tier++; t = 0; fell = 0; stepped = 'stand'; bodyIn = 16; legsIn = 40;
+          tier++; t = 0; fell = 0; stepped = 'stand'; bodyIn = 16; legsIn = 40; dashes = 1;
           me.pos.y = padY; vy = 0;
           onPad = true; padT = 0;
           padVel.copy(me.vel); me.vel.set(0, 0, 0);
@@ -904,7 +964,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         wind -= dt;
         vy = Math.max(vy, -0.15 * k);
         if (wind < 0) {
-          tier++; t = 0; fell = 0; bodyIn = 16; legsIn = 40;
+          tier++; t = 0; fell = 0; bodyIn = 16; legsIn = 40; dashes = 1;
           vy = speedFor(tier);
           kickVel(me, k);
           circles.open(v.set(me.pos.x, me.pos.y - 0.02, me.pos.z), tier, { ground: false, size: k });
@@ -914,7 +974,8 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       }
       // ---- steering: at a kick she turns at once to where it sends her (even if the stick has been let go since the press);
       // between kicks the stick only nudges her
-      if (wall) {
+      if (dash) { /* (a dash: its way, above) */ }
+      else if (wall) {
         // kicking off a rock: round to face away from it, as the clip turns her (the stick moves her, it does not turn her)
         wall.t += dt;
         me.heading = wall.from - Math.PI * WALL_TURN(wall.t);
@@ -937,8 +998,9 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         }
       } else if (turnT <= 0) me.vel.multiplyScalar(Math.exp(-(carry ? CARRIED.drag : 0.5) * dt));
       turnT -= dt;
-      // ---- up and down: the game's pull (more on the way down), let off at the very top of each jump
-      if (wind < 0) {
+      // ---- up and down: the game's pull (more on the way down), let off at the very top of each jump (a dash's burst: held level)
+      if (level && wind < 0) vy = 0;
+      else if (wind < 0) {
         const n = Math.max(1, tier) - 1, near = Math.abs(vy) / (M.hangV[n] * k);
         const g = M.grav * k * (vy < 0 ? M.fallGrav : 1) * (near < 1 ? THREE.MathUtils.lerp(M.hang[n], 1, near) : 1);
         const was = vy;
@@ -972,24 +1034,25 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         me.pos.y = ground; over = 0;
         if (vy > 0) return null;                             // rising past a higher step: carried up with it
         impact = clamp(-vy / (9 * k), 0.25, 1);
-        const style = stepped;
+        const style = stepped, fade = dash ? 0.12 : 0;      // (out of a dash, flat out: blended into the landing)
+        dash = null;
         active = false; tier = 0; wind = -1; vy = 0; queued = null; bodyIn = 16; legsIn = 40; beat = caught ? 'วงเวทรับ' : '';
         upBody = upLegs = false; wall = null; pad = null; onPad = stepped = false;
         if (style === 'flow' && ch.actions[FLOW.land.clip]) {
           // the flow's: the ninja's landing (the library's), from where its feet are down; running on out of it sooner
           const L = FLOW.land, run = stick.amount > 0.12;
           landing = { clip: L.clip, rate: run ? L.run : L.rate, hold: run ? L.runHold : L.hold };
-          ch.play(L.clip, 0, false);
+          ch.play(L.clip, fade, false);
           ch.setRate(landing.rate);
         } else if (hasMocap()) {
           // the mocap's: down into its crouch and up into her standing pose. Coming down with the stick pushed, a little
           // quicker, and she runs on out of it before its bottom
           landing = stick.amount > 0.12 ? { clip: 'mj_land', rate: 1.3, hold: 0.12 } : { clip: 'mj_land', rate: 1, hold: 0.3 };
-          ch.play('mj_land', 0, false);
+          ch.play('mj_land', fade, false);
           ch.setRate(landing.rate);
         } else {
           landing = { clip: 'jump_land', rate: 1.4, hold: 0.14 + 0.1 * impact };
-          ch.play('jump_land', 0, false);
+          ch.play('jump_land', fade, false);
           if (ch.actions.jump_land) ch.actions.jump_land.time = LAND_AT;
         }
         // her legs are the landing's at once: her hips go down into it as fast as she fell, and legs still held out
@@ -1160,7 +1223,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       }
     },
     // for a test: the state of the jump now
-    get debug() { return { tier, t, wind, vy, peak, caught, flipA, spinA, W, Wl, lean, crouch, onPad, padT, stepped, padStyle, padSide, padY, standOff, soleA, soleT, pose: Array.from(x) }; },
+    get debug() { return { tier, t, wind, vy, peak, caught, dash: dash && dash.t, dashes, flipA, spinA, W, Wl, lean, crouch, onPad, padT, stepped, padStyle, padSide, padY, standOff, soleA, soleT, pose: Array.from(x) }; },
   };
   return air;
 }

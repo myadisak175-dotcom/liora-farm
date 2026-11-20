@@ -22,6 +22,9 @@
                                      circles she climbed stand under her like steps.
                                      { snap: true, after: s } (the Air Hike, magic-jump.js step 'dmc'): it flashes open at
                                      once, a little too big, and goes `after` s after the kick (a flash, not a step)
+                                     { facing: v } (the dash in the air, magic-jump.js air.dash): stood upright, facing v
+                                     (unit, over the ground: the way she goes off it); what goes "down" off a circle in the
+                                     air (its light, the kick's sparks, the crystal dropping away) goes back, away from her
      every frame: fx.update(dt, camera)
      fx.setLook('rose' | 'water' | 'red')   the clip's rose light, the cold blue of her water barrier (barrier-fx.js), or
                                      the red of Devil May Cry's Air Hike (a trial: magic-jump.html)
@@ -68,6 +71,8 @@ const SLOTS = 8;
 // a circle stood on (step): how far it gives under her (of its radius), how long it stays after her kick (s), its light's
 // height (m) whatever its tier (the kick's light shoots down off every one of them), the sparks when it opens (of its
 // tier's) and at the kick (of its tier's)
+// one stood upright (facing): its light that long, of a stood-on one's (it shoots back at the camera behind her)
+const FACING_LIGHT = 0.55;
 const STEP_DIP = 0.07, STEP_AFTER = 1.25, STEP_PILLAR = 0.75, STEP_OPEN_SPARKS = 0.3, STEP_KICK_SPARKS = 1.2;
 // one blend for all of it: what the shader gives is already multiplied by its own cover; a line's cover (alpha) hides what
 // is under it, glow comes with no cover and only adds
@@ -302,9 +307,12 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     g.visible = false;
     object.add(g);
     slots.push({ g, disc, pillar, gem, wave, age: 0, life: 1, kind: KINDS[1], tier: 1, ground: true, radius: 1, used: 0,
-      step: false, at: new THREE.Vector3(), y: 0, pressAt: -1, kickAt: -1, waveAt: -1, waveBig: false });
+      step: false, at: new THREE.Vector3(), pressAt: -1, kickAt: -1, waveAt: -1, waveBig: false,
+      // its up (the way it faces: up, or `facing`), and two ways across it; where it stood when it opened
+      up: new THREE.Vector3(0, 1, 0), across: new THREE.Vector3(1, 0, 0), along: new THREE.Vector3(0, 0, 1), base: new THREE.Vector3() });
   }
   let used = 0;
+  const UP = new THREE.Vector3(0, 1, 0), spun = new THREE.Quaternion();
 
   // ---- sparks
   const SPARKS = 420;
@@ -329,14 +337,16 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   // opening or pressed (step, not kick): only out round its rim, hardly up or down
   function burst(s, at, many = 1, kick = false) {
     const k = s.kind, R = s.radius, n = Math.round(k.sparks * many);
+    const U = s.up, A = s.across, B = s.along;      // (a circle lying flat: up, x and z)
     for (let i = 0; i < n; i++) {
       const j = sNext; sNext = (sNext + 1) % SPARKS;
-      const a = rand() * Math.PI * 2, rr = R * (0.55 + rand() * 0.5);
-      sPos[j * 3] = at.x + Math.cos(a) * rr; sPos[j * 3 + 1] = at.y + 0.03; sPos[j * 3 + 2] = at.z + Math.sin(a) * rr;
+      const a = rand() * Math.PI * 2, rr = R * (0.55 + rand() * 0.5), ca = Math.cos(a) * rr, sa = Math.sin(a) * rr;
+      sPos[j * 3] = at.x + A.x * ca + B.x * sa + U.x * 0.03; sPos[j * 3 + 1] = at.y + A.y * ca + B.y * sa + U.y * 0.03; sPos[j * 3 + 2] = at.z + A.z * ca + B.z * sa + U.z * 0.03;
       // out from the rim and round it, up off the ground (down under her in the air: thrown off by her kick)
       const out = (kick ? 0.9 + rand() * 1.8 : 0.6 + rand() * 1.4), round = (rand() - 0.5) * 1.6;
       const up = kick ? -(1.4 + rand() * 2.6) : s.step ? (rand() - 0.5) * 0.6 : s.ground ? 1.2 + rand() * 2.2 : -(0.4 + rand() * 1.4);
-      sVel[j * 3] = Math.cos(a) * out - Math.sin(a) * round; sVel[j * 3 + 1] = up; sVel[j * 3 + 2] = Math.sin(a) * out + Math.cos(a) * round;
+      const p = Math.cos(a) * out - Math.sin(a) * round, r = Math.sin(a) * out + Math.cos(a) * round;
+      sVel[j * 3] = A.x * p + B.x * r + U.x * up; sVel[j * 3 + 1] = A.y * p + B.y * r + U.y * up; sVel[j * 3 + 2] = A.z * p + B.z * r + U.z * up;
       sLen[j] = 0.45 + rand() * 0.6; sLife[j] = 1;
       sSize[j] = (0.05 + rand() * 0.07) * (s.tier === 4 || s.tier === 'land' ? 1.3 : 1);
     }
@@ -355,7 +365,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     let give = 0;
     if (kk >= 0) give = 1.4 * Math.exp(-kk * 14) * Math.cos(kk * 26);
     else if (p >= 0) give = sstep(0, 0.07, p);
-    s.g.position.y = s.y - STEP_DIP * R * give;
+    s.g.position.copy(s.base).addScaledVector(s.up, -STEP_DIP * R * give);      // (down: the way it faces away from)
     // (snap: there at once, a little too big, settling; a flash of white as it comes)
     const grow = (s.snap ? 1 + 0.22 * Math.pow(1 - clamp(t / 0.12, 0, 1), 2) : (0.35 + 0.65 * (1 - Math.pow(1 - open, 3))) * (1 + 0.08 * Math.sin(Math.min(1, t / 0.32) * Math.PI)))
       * (1 + 0.12 * fade) * (1 + 0.05 * Math.max(0, give));
@@ -367,7 +377,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     u.uOpen.value = open; u.uFade.value = fade; u.uAge.value = t; u.uGlow.value = glow * flash; u.uCover.value = cover;
     // its light, down off it from the kick
     if (kk >= 0) {
-      const H = Math.max(s.kind.pillar, STEP_PILLAR) * (R / s.kind.radius), up = 1 - Math.pow(1 - clamp(kk / 0.16, 0, 1), 2);
+      const H = Math.max(s.kind.pillar, STEP_PILLAR) * (R / s.kind.radius) * (s.up.y ? 1 : FACING_LIGHT), up = 1 - Math.pow(1 - clamp(kk / 0.16, 0, 1), 2);
       s.pillar.scale.set(R * grow, -H * (0.25 + 0.75 * up), R * grow);
       s.pillar.material.uniforms.uK.value = (1 - sstep(0.12, 0.7, kk)) * glow * 1.3;
     }
@@ -395,7 +405,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
 
   const fx = {
     object,
-    open(at, tier, { ground = true, size = 1, step = false, snap = false, after = STEP_AFTER } = {}) {
+    open(at, tier, { ground = true, size = 1, step = false, snap = false, after = STEP_AFTER, facing = null } = {}) {
       // the oldest slot (one still showing only if all are)
       let s = slots.find(o => !o.g.visible);
       if (!s) s = slots.reduce((m, o) => (o.used < m.used ? o : m));
@@ -406,7 +416,14 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       s.radius = s.kind.radius * size;
       s.g.position.copy(at);
       if (ground) s.g.position.y += lift;
-      s.g.rotation.y = rand() * Math.PI * 2;
+      s.g.rotation.set(0, rand() * Math.PI * 2, 0);
+      if (facing) {
+        // stood upright facing `facing`: its up turned to it (and turned round it as it was round its up)
+        s.up.set(facing.x, 0, facing.z).normalize();
+        s.across.set(0, 1, 0); s.along.crossVectors(s.up, s.across);
+        s.g.quaternion.premultiply(spun.setFromUnitVectors(UP, s.up));
+      } else { s.up.set(0, 1, 0); s.across.set(1, 0, 0); s.along.set(0, 0, 1); }
+      s.base.copy(s.g.position);
       s.g.visible = true;
       const u = s.disc.material.uniforms;
       u.uTier.value = tier === 'land' ? 4 : tier;
@@ -417,7 +434,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       s.gem.visible = tier !== 1;
       // stood on: it waits for her kick (its life is set then; this one only if she never kicks), its light only then
       s.step = step; s.snap = snap; s.after = after; s.pressAt = s.kickAt = s.waveAt = -1; s.wave.visible = false;
-      s.at.copy(at); s.y = s.g.position.y;
+      s.at.copy(at);
       if (step) { s.life = 2; s.pillar.visible = false; }
       burst(s, at, step ? STEP_OPEN_SPARKS : 1);
       return s;
@@ -435,7 +452,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       if (s.pressAt < 0) s.pressAt = s.age;
       s.kickAt = s.age;
       s.life = s.age + s.after;
-      s.waveAt = s.age; s.waveBig = true;
+      s.waveAt = s.age; s.waveBig = !!s.up.y;      // (one stood upright: a small ripple, not the wide wave: it is in the camera's face)
       s.pillar.visible = true;
       burst(s, s.at, STEP_KICK_SPARKS, true);
     },
