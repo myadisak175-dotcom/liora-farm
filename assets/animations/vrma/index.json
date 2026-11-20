@@ -251,6 +251,22 @@
       "loop": true
     },
     {
+      "name": "Jog_Into_Flip",
+      "file": "Jog_Into_Flip.vrma",
+      "source": "UAL2",
+      "duration": 1.167,
+      "frames": 36,
+      "loop": false
+    },
+    {
+      "name": "Jump_Double",
+      "file": "Jump_Double.vrma",
+      "source": "UAL2",
+      "duration": 0.833,
+      "frames": 26,
+      "loop": false
+    },
+    {
       "name": "Jump_Land",
       "file": "Jump_Land.vrma",
       "source": "UAL1",
@@ -265,6 +281,14 @@
       "duration": 2.5,
       "frames": 76,
       "loop": true
+    },
+    {
+      "name": "Jump_OffWall_R",
+      "file": "Jump_OffWall_R.vrma",
+      "source": "UAL2",
+      "duration": 0.733,
+      "frames": 23,
+      "loop": false
     },
     {
       "name": "Jump_Start",
@@ -296,6 +320,14 @@
       "source": "UAL2",
       "duration": 0.6,
       "frames": 19,
+      "loop": false
+    },
+    {
+      "name": "NinjaJump_Double",
+      "file": "NinjaJump_Double.vrma",
+      "source": "UAL2",
+      "duration": 0.867,
+      "frames": 27,
       "loop": false
     },
     {

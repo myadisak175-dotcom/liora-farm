@@ -1,12 +1,12 @@
 # คลังท่า UAL → VRMA
 
-84 ท่าจาก Quaternius Universal Animation Library 1 + 2 (รุ่น Standard) แปลงเป็น `.vrma` และอีก 3 ท่าที่ทำขึ้นเอง: `Climb_Loop` (ท่าปีนผนังวนลูป สร้างด้วย `tools/make-climb-anim.py` เพราะคลังไม่มีท่านี้), `Hop` (ท่ากระโดดข้ามรั้ว จาก `NinjaJump_Start` ด้วย `tools/make-hop-anim.py`) และ `Barrier_Cast` (ท่าร่ายบาเรียน้ำ ต่อจาก `Spell_Simple_Enter` ด้วย `tools/make-barrier-anim.py`)
+84 ท่าจาก Quaternius Universal Animation Library 1 + 2 (รุ่น Standard) แปลงเป็น `.vrma` อีก 4 ท่าจาก Universal Animation Library 2 ที่ผู้ใช้ส่งมา (`Jump_Double`, `Jump_OffWall_R`, `NinjaJump_Double`, `Jog_Into_Flip`: ผ่านหุ่น UAL ของ KinemIQ ส่งออกด้วย Verge3D แปลงด้วย `tools/ual_to_vrma.py --bind` ซึ่งเอาท่า T-pose จาก bind pose ของ skin เพราะท่าพักของไฟล์เหล่านี้เป็นเฟรมหนึ่งของท่า; CC0 เหมือนกัน) และอีก 3 ท่าที่ทำขึ้นเอง: `Climb_Loop` (ท่าปีนผนังวนลูป สร้างด้วย `tools/make-climb-anim.py` เพราะคลังไม่มีท่านี้), `Hop` (ท่ากระโดดข้ามรั้ว จาก `NinjaJump_Start` ด้วย `tools/make-hop-anim.py`) และ `Barrier_Cast` (ท่าร่ายบาเรียน้ำ ต่อจาก `Spell_Simple_Enter` ด้วย `tools/make-barrier-anim.py`)
 ใช้กับโมเดล VRM ตัวไหนก็ได้ (ทดสอบแล้วกับ VRoid ชุด CC0) — ลิขสิทธิ์ CC0 ตาม `LICENSE.txt`
 
 ## โครงสร้าง
 
 ```
-vrma/            ไฟล์ .vrma (ไฟล์ละ 1 ท่า, 30 fps, ไม่มี root motion): 84 จากคลัง + 3 ที่ทำเอง
+vrma/            ไฟล์ .vrma (ไฟล์ละ 1 ท่า, 30 fps, ไม่มี root motion): 84 จากคลัง + 4 ที่ผู้ใช้ส่งมา + 3 ที่ทำเอง
 vrma/index.json  รายชื่อท่า: name, file, source (UAL1/UAL2), duration, frames, loop
 ```
 

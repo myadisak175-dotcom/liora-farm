@@ -9,6 +9,14 @@ Usage:
   python3 -I ual_to_vrma.py OUT_DIR TAG=path/to/UAL.glb [TAG=path/to/UAL2.glb ...]
 
 Writes OUT_DIR/<ClipName>.vrma and OUT_DIR/index.json.
+
+  --bind     (before the files it is for) the T-pose is the skin's bind pose, not the nodes' rest pose: for a clip
+             exported on a character by another tool (e.g. KinemIQ's UAL mannequin, through Verge3D), whose nodes rest
+             in a frame of the clip
+  --add      add the clips to OUT_DIR/index.json (the library's), not write a new one with only these
+  TAG=path=Name   the clip is written as Name (one clip in the file)
+
+  e.g. python3 -I tools/ual_to_vrma.py assets/animations/vrma --add --bind UAL2=Jump_-_double.glb=Jump_Double
 """
 import json
 import os
@@ -77,6 +85,24 @@ def qrot(q, v):
 
 def qnormalize(q):
     return q / np.linalg.norm(q, axis=-1, keepdims=True)
+
+
+def quat_of_matrix(m):
+    """A rotation matrix (3x3) as a quaternion (x, y, z, w)."""
+    t = np.trace(m)
+    if t > 0:
+        s = np.sqrt(t + 1.0) * 2
+        q = [(m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s, 0.25 * s]
+    elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
+        s = np.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2]) * 2
+        q = [0.25 * s, (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s, (m[2, 1] - m[1, 2]) / s]
+    elif m[1, 1] > m[2, 2]:
+        s = np.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2]) * 2
+        q = [(m[0, 1] + m[1, 0]) / s, 0.25 * s, (m[1, 2] + m[2, 1]) / s, (m[0, 2] - m[2, 0]) / s]
+    else:
+        s = np.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1]) * 2
+        q = [(m[0, 2] + m[2, 0]) / s, (m[1, 2] + m[2, 1]) / s, 0.25 * s, (m[1, 0] - m[0, 1]) / s]
+    return qnormalize(np.array(q, dtype=np.float64))
 
 
 def slerp(q0, q1, t):
@@ -156,7 +182,8 @@ def write_glb(path, js, binary):
 # ---------------------------------------------------------------- source rig
 
 class SourceRig:
-    def __init__(self, path):
+    def __init__(self, path, bind=False):
+        self.bind = bind
         self.js, self.bin = read_glb(path)
         nodes = self.js["nodes"]
         self.names = [n.get("name", f"node{i}") for i, n in enumerate(nodes)]
@@ -197,7 +224,25 @@ class SourceRig:
         return wr, wp
 
     def rest_world(self):
-        return self.world(self.rest_t[:, None], self.rest_r[:, None], self.rest_s[:, None])
+        wr, wp = self.world(self.rest_t[:, None], self.rest_r[:, None], self.rest_s[:, None])
+        if not self.bind:
+            return wr, wp
+        # --bind: each joint's world turn and place in the skin's bind pose (its inverse bind matrix, inverted; in the
+        # skinned mesh's world), where the nodes' rest is only a frame of the clip
+        wr, wp = wr.copy(), wp.copy()
+        for node_i, node in enumerate(self.js["nodes"]):
+            if "skin" not in node:
+                continue
+            skin = self.js["skins"][node["skin"]]
+            mesh_r, mesh_p = wr[node_i][0], wp[node_i][0]
+            ibm = read_accessor(self.js, self.bin, skin["inverseBindMatrices"]).reshape(-1, 4, 4)
+            for j, m in zip(skin["joints"], ibm):
+                w = np.linalg.inv(m.T)                     # (glTF matrices are column-major)
+                r3 = w[:3, :3] / np.linalg.norm(w[:3, :3], axis=0)
+                wr[j][0] = qnormalize(qmul(mesh_r, quat_of_matrix(r3)))
+                wp[j][0] = mesh_p + qrot(mesh_r, w[:3, 3])
+            break
+        return wr, wp
 
     def sample_clip(self, anim, times):
         n_nodes, n_frames = len(self.names), len(times)
@@ -335,11 +380,22 @@ def main(argv):
     out_dir = argv[1]
     os.makedirs(out_dir, exist_ok=True)
     index, seen = [], {}
+    bind = add = False
     for spec in argv[2:]:
+        if spec == "--bind":
+            bind = True
+            continue
+        if spec == "--add":
+            add = True
+            continue
         tag, path = spec.split("=", 1)
-        rig = SourceRig(path)
-        for anim in rig.js.get("animations", []):
-            name = anim.get("name", "clip")
+        path, _, rename = path.partition("=")
+        rig = SourceRig(path, bind)
+        anims = rig.js.get("animations", [])
+        if rename and len(anims) != 1:
+            raise ValueError(f"{path}: a new name is for a file of one clip ({len(anims)} here)")
+        for anim in anims:
+            name = rename or anim.get("name", "clip")
             if name in SKIP_CLIPS:
                 continue
             if name in seen:
@@ -356,9 +412,17 @@ def main(argv):
                 "frames": frames,
                 "loop": "Loop" in name,
             })
+    head = {"fps": FPS, "license": "CC0-1.0 (Quaternius)"}
+    index_path = os.path.join(out_dir, "index.json")
+    if add and os.path.exists(index_path):                 # --add: into the library's own list
+        with open(index_path, encoding="utf-8") as f:
+            have = json.load(f)
+        head = {k: v for k, v in have.items() if k != "clips"}
+        new = {c["name"] for c in index}
+        index = [c for c in have["clips"] if c["name"] not in new] + index
     index.sort(key=lambda c: c["name"])
-    with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as f:
-        json.dump({"fps": FPS, "license": "CC0-1.0 (Quaternius)", "clips": index}, f, indent=2)
+    with open(index_path, "w", encoding="utf-8") as f:
+        json.dump({**head, "clips": index}, f, indent=2)
     print(f"wrote {len(index)} clips to {out_dir}")
     return 0
 

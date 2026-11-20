@@ -8,10 +8,12 @@
                                      if her clips have them (mj_up, mj_land, mj_wall: magic-jump-mocap-anim.js). The
                                      game asks for it (player-moves.js); magic-jump.html?mocap=0 is the jump before it
                                      step (a trial: magic-jump.html, not the game yet): every jump in the air off a circle
-                                     under her feet, one of three ways: 'sky' (the Air Step: one foot at a time, right,
-                                     left, right, the last into a pose ready to cast), 'dmc' (Devil May Cry's Air Hike: both
-                                     feet stamped down, off at once) or 'stand' (true: onto it, a crouch, a push). See "The
-                                     step" below. air.stepMode: which (taken up at her next jump in the air; false: none)
+                                     under her feet, one of four ways: 'flow' (the user's four moves from the library; her
+                                     clips must have them: magic-jump-flow-anim.js), 'sky' (the Air Step: one foot at a
+                                     time, right, left, right, the last into a pose ready to cast), 'dmc' (Devil May Cry's
+                                     Air Hike: both feet stamped down, off at once) or 'stand' (true: onto it, a crouch, a
+                                     push). See "The step" below. air.stepMode: which (taken up at her next jump in the
+                                     air; false: none)
      air.takeOff(me)                 the jump button on the ground: the first jump (a small circle on the ground)
      air.drop(me, up, used, soft)    she left the ground some other way (off an edge, out of a hop: up m/s): falling, three
                                      jumps left (used: how many she has used, if not one: air.tier as it was, when
@@ -114,6 +116,14 @@
        pushed (SKY.dash); then her right hand reaching ahead, her left at her chest, ready to cast (skyCast)
    (The user's plan had a 4th air step; four jumps in all were kept, so its last, Final Sky Kick, is the 3rd, on her
    right foot: the feet go on taking turns.)
+   The flow (step: 'flow'), the user's set of four, each a move of its own from Quaternius' library (the user chose the
+   clips; tools/make-magic-jump-flow.py cuts them, in place, into magic-jump-flow-anim.js, which the page merges into her
+   clips): Step 1 kicked straight up (the take-off as the game's, then mjf_1 from its kick), Step 2 a twist and a kick on
+   the slant (mjf_2; out to her left with the stick let go: FLOW[2].side), Step 3 her hips turned in the air and a spring
+   (mjf_3), Step 4 a flip (mjf_4; on over the way she faces: FLOW[4].ahead), and the ninja's landing (mjf_land). A press
+   in the air starts the next move's clip at once; the circle flashes open under her; she is held until its kick
+   (FLOW[n].kick) and off the circle then. The clip has all of her (upBody, upLegs: no poses over it, her knees not laid
+   as hinges) until the next press, or FLOW[n].end, when the poses take her on into her fall
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -409,13 +419,31 @@ const SKY_MOVES = {
 const SKY_BEATS = ['', 'ชั้น 1', 'Air Step 1 · เท้าขวา', 'Air Step 2 · เท้าซ้าย', 'Final Sky Kick'];
 // the foot jump n of the Air Step is off: right, left, right
 const skySide = n => (n % 2 === 0 ? 'R' : 'L');
+// the flow (step: 'flow'): the user's own set of four, each its own move from Quaternius' library (the user chose the
+// clips: tools/make-magic-jump-flow.py cuts them and plays them in place, magic-jump-flow-anim.js). For each jump: its
+// clip, s into it that her legs are straightest (the kick: she is on the circle until then, held, and off it then), the
+// rate it is played at, s into it that the poses take her back if no other jump has come first; side: m/s it sends her
+// out to her left with the stick let go (Step 2 kicks out on the slant); ahead: m/s on the way she faces (Step 4's flip
+// goes on over); more: m each rises more than the game's jump (held at the press, she does not drift up into the kick)
+const FLOW = {
+  1: { clip: 'mjf_1', kick: 0.033, rate: 1.1, end: 0.7 },                // Step 1, kicked straight up (after the take-off)
+  2: { clip: 'mjf_2', kick: 0.133, rate: 1.3, end: 0.6, side: 1.5 },     // Step 2, a twist and a kick on the slant
+  3: { clip: 'mjf_3', kick: 0.1, rate: 1.3, end: 0.8 },                   // Step 3, the hips turned in the air, a spring
+  4: { clip: 'mjf_4', kick: 0.067, rate: 1.0, end: 0.62, ahead: 0.7 },   // Step 4, the flip
+  land: { clip: 'mjf_land', rate: 1.25, run: 1.6, hold: 0.28, runHold: 0.12 },     // the ninja's landing
+  more: 0.02,
+};
+const FLOW_CLIPS = Object.fromEntries([1, 2, 3, 4].map(n => [FLOW[n].clip, FLOW[n]]));
+const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · บิดตัวถีบเฉียง', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
 export function createMagicJump({ character, circles, mocap = false, step = false }) {
   let ch = character;
   const hasMocap = () => mocap && !!ch.actions.mj_up && !!ch.actions.mj_land;
-  // the step's style: false (the game's jump), 'stand' (onto the circle, a crouch, a push), 'dmc' (the Air Hike) or
-  // 'sky' (the Air Step: one foot at a time)
-  const styleOf = s => (s === 'dmc' || s === 'sky' ? s : s ? 'stand' : false);
+  // the step's style: false (the game's jump), 'stand' (onto the circle, a crouch, a push), 'dmc' (the Air Hike), 'sky'
+  // (the Air Step: one foot at a time) or 'flow' (the user's four moves from the library)
+  const styleOf = s => (s === 'dmc' || s === 'sky' || s === 'flow' ? s : s ? 'stand' : false);
+  // (the flow only where her clips have its moves: magic-jump-flow-anim.js merged into them)
+  const flowOn = () => stepWanted === 'flow' && !!ch.actions.mjf_1 && !!ch.actions.mjf_4;
   let stepWanted = styleOf(step);
   const stepOn = () => stepWanted;
   // the step: this jump's circle and how high it is (her feet on it), where she came down onto it from; on it, and for
@@ -425,6 +453,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   let pad = null, padY = 0, reachFrom = 0, onPad = false, padT = 0, stepped = false, standOff = 0, soleA = -1, soleT = -1;
   let padStyle = 'stand';                     // the style of the circle she is coming down onto (stepped: of the one she left)
   let padSide = 'R';                          // (the Air Step: the foot she steps onto it with)
+  let windAll = 1;                            // s the hold before a kick off a circle takes in all (the Air Hike, Air Step, flow)
   // whether this jump turns head over heels: the game's 3rd; the Air Hike's 4th
   const flips = () => (tier === 3 && !stepped) || (tier === 4 && stepped === 'dmc');
   const padVel = new THREE.Vector3();
@@ -614,7 +643,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
     else {
       // (a move is let go of once she is well on her way down, but never the flip before she is round)
       const dropping = vy < -5.5 * k && !(flips() && t < M.flip);
-      if (!dropping) for (const m of (stepped === 'sky' ? SKY_MOVES : stepped === 'dmc' ? DMC_MOVES : stepped ? STEP_MOVES : MOVES)[tier] || []) if (t < m[0]) { name = m[1]; pace = m[2]; settle = m[3]; break; }
+      if (!dropping) for (const m of (stepped === 'flow' ? {} : stepped === 'sky' ? SKY_MOVES : stepped === 'dmc' ? DMC_MOVES : stepped ? STEP_MOVES : MOVES)[tier] || []) if (t < m[0]) { name = m[1]; pace = m[2]; settle = m[3]; break; }
       // (the Air Step: between steps she waits on the knee of the foot she steps with next)
       if (name === 'ready' && tier < 4 && (stepped === 'sky' || (tier === 1 && stepWanted === 'sky'))) { name = skySide(tier + 1) === 'R' ? 'skyWaitR' : 'skyWaitL'; pace = 18; settle = 0.85; }
     }
@@ -715,18 +744,28 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       nextDir = stick.amount > 0.12 ? [stick.x, stick.z] : null;
       if (ch.state !== 'jump_air' && !upLegs) { ch.play('jump_air', 0.14, false); ch.setRate(1); }
       pad = null;
-      if (stepOn() === 'sky') {
+      if (flowOn()) {
+        // the flow: the next move's clip has her at once, from its start (her gathering for the kick); the circle flashes
+        // open under her; she is held until its kick, and off the circle then
+        const k = size(), F = FLOW[tier + 1];
+        windAll = wind = F.kick / F.rate; padStyle = 'flow'; padY = me.pos.y; reachFrom = me.pos.y;
+        pad = circles.open(v.set(me.pos.x + me.vel.x * wind, padY - 0.02, me.pos.z + me.vel.z * wind), tier + 1, { ground: false, size: k, step: true, snap: true, after: DMC.after }) || true;
+        ch.play(F.clip, 0.07, false);
+        ch.actions[F.clip].time = 0;
+        ch.setRate(F.rate);
+        upBody = upLegs = tookOff = true; seenOk = false; upClip = F.clip; legsOut = 60;
+      } else if (stepOn() === 'sky') {
         // the Air Step: the circle flashes open under the foot she steps with (out to its side), where her sole will be
         // when that leg is straight; she is held while it is driven down onto it, and then she is off it
         const k = size(), side = skySide(tier + 1), out = (side === 'R' ? -1 : 1) * SKY.side * k;
-        wind = SKY.drive; padStyle = 'sky'; padSide = side; padY = me.pos.y; reachFrom = me.pos.y;
+        windAll = wind = SKY.drive; padStyle = 'sky'; padSide = side; padY = me.pos.y; reachFrom = me.pos.y;
         const lx = Math.cos(me.heading), lz = -Math.sin(me.heading);          // (her left, over the ground)
         pad = circles.open(v.set(me.pos.x + me.vel.x * SKY.drive + lx * out, padY - 0.02, me.pos.z + me.vel.z * SKY.drive + lz * out), tier + 1, { ground: false, size: k, step: true, snap: true, after: SKY.after }) || true;
       } else if (stepOn() === 'dmc') {
         // the Air Hike: the circle flashes open at once where her soles will be when her legs are straight (her feet's
         // place as she stands: here), she is held while her legs are driven down onto it, and then she is off it
         const k = size();
-        wind = DMC.stomp; padStyle = 'dmc'; padY = me.pos.y; reachFrom = me.pos.y;
+        windAll = wind = DMC.stomp; padStyle = 'dmc'; padY = me.pos.y; reachFrom = me.pos.y;
         pad = circles.open(v.set(me.pos.x + me.vel.x * DMC.stomp, padY - 0.02, me.pos.z + me.vel.z * DMC.stomp), tier + 1, { ground: false, size: k, step: true, snap: true, after: DMC.after }) || true;
       } else if (stepOn()) {
         // the step: the circle opens where her feet will be when she has come down onto it
@@ -769,27 +808,42 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         if (crouch < UP_LIFT) return null;
         const extra = crouch - UP_LIFT;
         crouch = -1; t = 0; vy = speedFor(1); peak = me.pos.y;
+        if (flowOn()) {
+          // the flow's Step 1: the take-off's push, and off the ground the double jump's kick and tuck (its clip from its kick)
+          const F = FLOW[1];
+          ch.play(F.clip, 0.07, false);
+          ch.actions[F.clip].time = F.kick;
+          ch.setRate(F.rate);
+          upClip = F.clip; upBody = upLegs = true; seenOk = false; stepped = 'flow'; legsOut = 60;
+          beat = FLOW_BEATS[1];
+        }
         dt = extra;                                          // (what is left of this frame: off the ground)
       }
       t += dt;
       if (queued && t >= (flips() ? M.flip * M.flipKick - M.windup : M.gap)) air.press(me, queued);
       // ---- the kick: after the wind-up, off the circle that opens under her
-      if (wind >= 0 && pad && (padStyle === 'dmc' || padStyle === 'sky')) {
+      if (wind >= 0 && pad && (padStyle === 'dmc' || padStyle === 'sky' || padStyle === 'flow')) {
         // ---- the Air Hike, the Air Step: held (her legs, or her stepping leg, driven down onto the circle), then off it
         // at once. The Air Step's last (Final Sky Kick): with the stick pushed, on ahead faster (SKY.dash)
-        const sky = padStyle === 'sky';
+        const sky = padStyle === 'sky', flow = padStyle === 'flow';
         wind -= dt;
         vy = 0;
         if (wind < 0) {
           tier++; t = 0; fell = 0; stepped = padStyle; bodyIn = 16; legsIn = 40;
-          vy = speedFor(tier, sky ? SKY.more : DMC.more); peak = me.pos.y;
+          vy = speedFor(tier, sky ? SKY.more : flow ? FLOW.more : DMC.more); peak = me.pos.y;
           if (nextDir) {
             const s = M.push * k * Math.max(0.6, Math.min(1, nextAmount / 0.72)) * (sky && tier === 4 ? SKY.dash : 1);
             me.vel.set(nextDir[0] * s, 0, nextDir[1] * s);
             turnT = 0.18; kickLean = 1;
-          } else { me.vel.multiplyScalar(M.keep); kickLean = 0.25; }
+          } else {
+            me.vel.multiplyScalar(M.keep); kickLean = 0.25;
+            // (the flow, the stick let go: Step 2 out to her left, on the slant; Step 4's flip on over the way she faces)
+            const F = flow ? FLOW[tier] : null;
+            if (F && F.side) { me.vel.x += Math.cos(me.heading) * F.side * k; me.vel.z -= Math.sin(me.heading) * F.side * k; }
+            if (F && F.ahead) { me.vel.x += Math.sin(me.heading) * F.ahead * k; me.vel.z += Math.cos(me.heading) * F.ahead * k; }
+          }
           if (pad !== true) { circles.press(pad); circles.kick(pad); }
-          beat = (sky ? SKY_BEATS : DMC_BEATS)[tier];
+          beat = (flow ? FLOW_BEATS : sky ? SKY_BEATS : DMC_BEATS)[tier];
         }
       } else if (wind >= 0 && pad) {
         // ---- the step: down onto the circle (quicker and quicker), and onto it
@@ -870,6 +924,9 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         const c = ch.actions.jump_start;
         if (c.time >= c.getClip().duration - 0.02 || vy < 1.2 * k) ch.play('jump_air', 0.22, false);
         else ch.setRate(START_RATE);
+      } else if (FLOW_CLIPS[ch.state]) {
+        if (!upLegs && !upBody) ch.play('jump_air', 0.25, false);     // (the poses have her: the clip in the air under them)
+        else ch.setRate(FLOW_CLIPS[ch.state].rate);
       } else if (ch.state === 'jump_air') ch.setRate(1);
       if (vy < 0 && t > 0.25) beat = fell > 0.4 ? 'ลง' : beat;
       // ---- down
@@ -877,9 +934,16 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         me.pos.y = ground; over = 0;
         if (vy > 0) return null;                             // rising past a higher step: carried up with it
         impact = clamp(-vy / (9 * k), 0.25, 1);
+        const style = stepped;
         active = false; tier = 0; wind = -1; vy = 0; queued = null; bodyIn = 16; legsIn = 40; beat = caught ? 'วงเวทรับ' : '';
         upBody = upLegs = false; wall = null; pad = null; onPad = stepped = false;
-        if (hasMocap()) {
+        if (style === 'flow' && ch.actions[FLOW.land.clip]) {
+          // the flow's: the ninja's landing (the library's), from where its feet are down; running on out of it sooner
+          const L = FLOW.land, run = stick.amount > 0.12;
+          landing = { clip: L.clip, rate: run ? L.run : L.rate, hold: run ? L.runHold : L.hold };
+          ch.play(L.clip, 0, false);
+          ch.setRate(landing.rate);
+        } else if (hasMocap()) {
           // the mocap's: down into its crouch and up into her standing pose. Coming down with the stick pushed, a little
           // quicker, and she runs on out of it before its bottom
           landing = stick.amount > 0.12 ? { clip: 'mj_land', rate: 1.3, hold: 0.12 } : { clip: 'mj_land', rate: 1, hold: 0.3 };
@@ -911,24 +975,28 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       if ((upBody || upLegs) && active && crouch < 0) {
         // (off a rock she is still turning as she starts down: only her next press, or the clip's end, gives her over)
         // (the step: the 2nd and 3rd are the 1st's, up to their tops; the 4th's turn takes her legs just after she leaves)
-        const c = ch.actions[upClip], all = wind >= 0 || (vy < 0 && upClip === 'mj_up') || tier > 1 || ch.state !== upClip;
-        if (upBody && (all || (upClip === 'mj_up' && t >= UP_BODY) || (upClip === 'mj_wall' && c.time >= c.getClip().duration - 0.1))) {
+        // (the flow: its clip has all of her until its end, or another has come; a press only starts the next move's clip)
+        const c = ch.actions[upClip], fc = FLOW_CLIPS[upClip];
+        const all = fc ? ch.state !== upClip || c.time >= fc.end : wind >= 0 || (vy < 0 && upClip === 'mj_up') || tier > 1 || ch.state !== upClip;
+        if (upBody && (all || (!fc && upClip === 'mj_up' && t >= UP_BODY) || (upClip === 'mj_wall' && c.time >= c.getClip().duration - 0.1))) {
           upBody = false;
           for (let i = 0; i < 12; i++) { x[i] = seen[i]; xv[i] = seenV[i] * CARRY; }
           for (let i = TOES; i < N; i++) { x[i] = i < BACK ? 0.5 : 0; xv[i] = 0; }
         }
-        if (upLegs && (all || c.time >= c.getClip().duration - 0.1)) {
+        if (upLegs && (all || (!fc && c.time >= c.getClip().duration - 0.1))) {
           upLegs = false;
           for (let i = LEGS; i < LEGS + 12; i++) { x[i] = seen[i]; xv[i] = seenV[i] * CARRY; }
         }
       }
       const lift = active && tier === 1 && fromGround && !tookOff && wind < 0;
       const wantW = !active || upBody ? 0 : lift ? sstep(0.03, 0.2, t) : 1, wantWl = !active || upLegs ? 0 : lift ? sstep(0, 0.07, t) : 1;
-      W += (wantW - W) * Math.min(1, dt * (wantW > W ? bodyIn : 11));
+      W += (wantW - W) * Math.min(1, dt * (wantW > W ? bodyIn : FLOW_CLIPS[upClip] ? 30 : 11));      // (the flow's clips: at once)
       Wl += (wantWl - Wl) * Math.min(1, dt * (wantWl > Wl ? legsIn : legsOut));
       // (through the landing too her knees are hinges: the landing clip turns her left knee in across her)
-      const hinged = active || ch.state === 'jump_land' || ch.state === 'mj_land';
-      Wh += ((hinged ? 1 : 0) - Wh) * Math.min(1, dt * (hinged ? 30 : 6));
+      // (not over the flow's clips: their knees turned out, and her hips under them, are the moves)
+      const flowing = !!FLOW_CLIPS[ch.state];
+      const hinged = (active && !flowing) || ch.state === 'jump_land' || ch.state === 'mj_land';
+      Wh += ((hinged ? 1 : 0) - Wh) * Math.min(1, dt * (hinged ? 30 : flowing ? 24 : 6));
       // ---- her pose: each number carried toward where it is going by a spring (in small steps: the same at any frame rate)
       if (active && !upBody) {
         choosePose();
@@ -956,8 +1024,11 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
       const wantLean = !active || upLegs ? 0 : (0.1 * kickLean + 0.03) * going + (vy < 0 ? -0.04 * sstep(2, 9, -vy / k) : 0) + (wind >= 0 ? 0.05 : 0)
         + (stepped === 'sky' ? SKY.lean[tier] * (0.4 + 0.6 * going) : 0);         // (the Air Step: leaning into it, the more the faster she goes)
       { const w = 13, f = 1 + 2 * dt * 0.8 * w, hw = dt * w * w, d = 1 / (f + dt * hw), nl = (f * lean + dt * leanV + dt * hw * wantLean) * d; leanV = (leanV + hw * (wantLean - lean)) * d; lean = nl; }
-      held += ((flipA > 0 ? 1 : spinA > 0 ? 0.8 : active ? 0.6 : 0) - held) * Math.min(1, dt * 12);
-      upside += ((flipA > 0.5 && flipA < Math.PI * 2 - 0.5 ? 1 : 0) - upside) * Math.min(1, dt * 14);
+      // (a clip that turns her over, the flow's flip: how far over, from her hips)
+      let over_ = 0;
+      if (active && FLOW_CLIPS[ch.state]) { bones.hips.getWorldQuaternion(q); over_ = sstep(0.45, -0.2, a.set(0, 1, 0).applyQuaternion(q).y); }
+      held += ((flipA > 0 || over_ > 0.1 ? 1 : spinA > 0 ? 0.8 : active ? 0.6 : 0) - held) * Math.min(1, dt * 12);
+      upside += (Math.max(flipA > 0.5 && flipA < Math.PI * 2 - 0.5 ? 1 : 0, over_) - upside) * Math.min(1, dt * 14);
       if (flipA > 0 || spinA > 0 || Math.abs(lean) > 1e-4) {
         obj.updateMatrixWorld(true);
         bones.hips.getWorldPosition(a);
@@ -1016,8 +1087,8 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
           want = (pad !== true && circles.level ? circles.level(pad) + 0.02 : padY) - low;      // (the circle gives under her)
           // (the Air Hike: her soles met with it as her legs come down, a little either way; coming down onto it: only so
           // as not to go through it)
-          if (padStyle === 'dmc' && !onPad) want = clamp(want, -0.1 * k, 0.1 * k) * sstep(0.3, 1, 1 - wind / DMC.stomp);
-          else if (padStyle === 'sky' && !onPad) want = clamp(want, -0.12 * k, 0.1 * k) * sstep(0.3, 1, 1 - wind / SKY.drive);
+          if ((padStyle === 'dmc' || padStyle === 'flow') && !onPad) want = clamp(want, -0.1 * k, 0.1 * k) * sstep(0.3, 1, 1 - wind / windAll);
+          else if (padStyle === 'sky' && !onPad) want = clamp(want, -0.12 * k, 0.1 * k) * sstep(0.3, 1, 1 - wind / windAll);
           else if (!onPad) want = Math.min(0, want) * sstep(0.6, 1, 1 - wind / STEP.reach);
         }
         const was = standOff;

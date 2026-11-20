@@ -13,7 +13,11 @@
   One job: try the jump, alone. The game has it too (player-moves.js): this page is where it is worked on.
   The first jump off the ground and every landing are the mocap's, as in the game (magic-jump.js, mocap; its clips:
   magic-jump-mocap-anim.js); ?mocap=0 (the 🎞 button) is the jump as it was before them.
-  The step (magic-jump.js, step; a trial, not in the game yet), three ways: 'sky' (here unless asked otherwise), the
+  The flow (magic-jump.js, step 'flow'; here unless asked otherwise; a trial, not in the game yet): the user's own set of
+  four, each its own move from Quaternius' library (magic-jump-flow-anim.js, tools/make-magic-jump-flow.py): Step 1
+  kicked straight up, Step 2 a twist and a kick on the slant, Step 3 the hips turned in the air and a spring, Step 4 a
+  flip; the ninja's landing. The 🦶 button goes round the flow, the Air Step, the Air Hike and the game's jump.
+  The step (magic-jump.js, step; a trial, not in the game yet), three ways: 'sky' (?step=sky), the
   user's Air Step: up the air one foot at a time (right, left, right: Air Step 1, Air Step 2, Final Sky Kick), each foot
   driven down onto a circle that flashes open under it, her arms swinging as a runner's, the last one up or on ahead and
   into a pose ready to cast; 'dmc' (?step=dmc), Devil May Cry's Air Hike: both feet driven down, knees snatched up, the
@@ -98,10 +102,11 @@ import { createMagicJump } from './magic-jump.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
-// the step (a trial): 'sky' (the Air Step, one foot at a time: the default here), 'dmc' (?step=dmc: Devil May Cry's Air
-// Hike), 'stand' (?step=stand: onto the circle, a crouch, a push; not on the 🦶 button) or false (?step=0: the game's jump)
-const STEP_KINDS = ['sky', 'dmc', false];
-let STEPPING = { 0: false, stand: 'stand', dmc: 'dmc' }[new URLSearchParams(location.search).get('step')] ?? 'sky';
+// the step (a trial): 'flow' (the user's four moves from Quaternius' library: the default here), 'sky' (?step=sky: the Air
+// Step, one foot at a time), 'dmc' (?step=dmc: Devil May Cry's Air Hike), 'stand' (?step=stand: onto the circle, a crouch,
+// a push; not on the 🦶 button) or false (?step=0: the game's jump)
+const STEP_KINDS = ['flow', 'sky', 'dmc', false];
+let STEPPING = { 0: false, stand: 'stand', dmc: 'dmc', sky: 'sky' }[new URLSearchParams(location.search).get('step')] ?? 'flow';
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
 renderer.setSize(innerWidth, innerHeight);
@@ -216,13 +221,14 @@ jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.class
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
 
 (async () => {
-  const [{ VIVI_GLB }, data, extra] = await Promise.all([
+  const [{ VIVI_GLB }, data, extra, flow] = await Promise.all([
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
     MOCAP ? import('./magic-jump-mocap-anim.js') : null,
+    import('./magic-jump-flow-anim.js'),
   ]);
-  // with the mocap: its take-off and landings beside the game's own clips
-  const anim = extra ? { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...extra.CHARACTER_ANIM.clips } } : CHARACTER_ANIM;
+  // with the mocap: its take-off and landings beside the game's own clips; and the flow's four moves and its landing
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...(extra ? extra.CHARACTER_ANIM.clips : {}), ...flow.CHARACTER_ANIM.clips } };
   hero = await loadCharacter(VIVI_GLB, anim);
   if (data) {
     springs = createSprings(hero.model, data);
@@ -374,13 +380,13 @@ btn('demo').onclick = () => startDemo();
 btn('kind').textContent = MOCAP ? '🎞 ท่า mocap' : '🎞 ท่าเดิม';
 btn('kind').onclick = () => { const u = new URL(location.href); if (MOCAP) u.searchParams.set('mocap', '0'); else u.searchParams.delete('mocap'); location.href = u.href; };
 // the step, or the jump as it is in the game (from her next jump in the air; kept in the address)
-const stepLabel = () => { btn('step').textContent = { sky: '🦶 Air Step (ใหม่)', dmc: '🦶 แบบ DMC', stand: '🦶 ยืนบนวง', false: '🦶 แบบเดิม (ในเกม)' }[STEPPING]; };
+const stepLabel = () => { btn('step').textContent = { flow: '🦶 ชุด 4 ท่า (ใหม่)', sky: '🦶 Air Step', dmc: '🦶 แบบ DMC', stand: '🦶 ยืนบนวง', false: '🦶 แบบเดิม (ในเกม)' }[STEPPING]; };
 stepLabel();
 btn('step').onclick = () => {
   STEPPING = STEP_KINDS[(STEP_KINDS.indexOf(STEPPING) + 1) % STEP_KINDS.length];
   if (air) air.stepMode = STEPPING;
   const u = new URL(location.href);
-  if (STEPPING === 'sky') u.searchParams.delete('step'); else u.searchParams.set('step', STEPPING || '0');
+  if (STEPPING === 'flow') u.searchParams.delete('step'); else u.searchParams.set('step', STEPPING || '0');
   history.replaceState(null, '', u.href);
   stepLabel();
 };
