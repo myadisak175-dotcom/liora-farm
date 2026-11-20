@@ -13,10 +13,12 @@ tools/ual_to_vrma.py --bind, which takes their T-pose from the skin's bind pose)
   mjf_1    <- Jump_Double        Step 1: the double jump: her legs driven straight down, then both knees snatched up,
                                  and let down again. Off the ground it follows the game's own take-off (the mocap's
                                  crouch and push: magic-jump.js), from its kick
-  mjf_2    <- Jump_OffWall_R     Step 2: a jump off a wall on her right: from where she is gathered, turned 30 degrees
-                                 to her right, she twists back round and kicks out long, on the slant (it goes to her
-                                 left), her right knee coming up after. (Its first frames, flat out against the wall,
-                                 are left out)
+  mjf_2    <- Jump_Spin          Step 2: the double jump turned once round in the air, her arms drawn in for the turn
+                                 and opened out as it ends (made from Jump_Double by tools/make-jump-spin-anim.py). The
+                                 user's own Step 2 was a twist and a kick out on the slant, Jump_OffWall_R (a jump off a
+                                 wall on her right, from where she is gathered); tried, and the user found the kick out
+                                 to the side not pretty and asked for another move, not a kick ("ท่าถีบข้างไม่สวย หาท่าใหม่
+                                 ค่ะ ไม่ต้องถีบข้างก็ได้"). Jump_OffWall_R stays in the library
   mjf_3    <- NinjaJump_Double   Step 3: out of a tuck her legs driven down, then the knees drawn up again with her hips
                                  turned (15 degrees) under her: the ninja's double jump
   mjf_4    <- Jog_Into_Flip      Step 4: the front flip off a run: from the push (the jog's strides left out), long and
@@ -50,7 +52,7 @@ FPS = 30
 # game name, library clip, FROM, KICK, TO (frames), in place
 CUTS = [
     ("mjf_1", "Jump_Double", 2, 3, 25, True),
-    ("mjf_2", "Jump_OffWall_R", 3, 7, 22, True),
+    ("mjf_2", "Jump_Spin", 2, 3, 25, True),
     ("mjf_3", "NinjaJump_Double", 1, 4, 26, True),
     ("mjf_4", "Jog_Into_Flip", 4, 6, 24, True),
     ("mjf_land", "NinjaJump_Land", 2, 2, 38, False),

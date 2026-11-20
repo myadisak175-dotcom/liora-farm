@@ -118,8 +118,9 @@
    right foot: the feet go on taking turns.)
    The flow (step: 'flow'), the user's set of four, each a move of its own from Quaternius' library (the user chose the
    clips; tools/make-magic-jump-flow.py cuts them, in place, into magic-jump-flow-anim.js, which the page merges into her
-   clips): Step 1 kicked straight up (the take-off as the game's, then mjf_1 from its kick), Step 2 a twist and a kick on
-   the slant (mjf_2; out to her left with the stick let go: FLOW[2].side), Step 3 her hips turned in the air and a spring
+   clips): Step 1 kicked straight up (the take-off as the game's, then mjf_1 from its kick), Step 2 once round in the air,
+   her arms drawn in and opened out (mjf_2: made from the double jump; the user's kick on the slant was not pretty),
+   Step 3 her hips turned in the air and a spring
    (mjf_3), Step 4 a flip (mjf_4; on over the way she faces: FLOW[4].ahead), and the ninja's landing (mjf_land). A press
    in the air starts the next move's clip at once; the circle flashes open under her; she is held until its kick
    (FLOW[n].kick) and off the circle then. The clip has all of her (upBody, upLegs: no poses over it, her knees not laid
@@ -423,18 +424,20 @@ const skySide = n => (n % 2 === 0 ? 'R' : 'L');
 // clips: tools/make-magic-jump-flow.py cuts them and plays them in place, magic-jump-flow-anim.js). For each jump: its
 // clip, s into it that her legs are straightest (the kick: she is on the circle until then, held, and off it then), the
 // rate it is played at, s into it that the poses take her back if no other jump has come first; side: m/s it sends her
-// out to her left with the stick let go (Step 2 kicks out on the slant); ahead: m/s on the way she faces (Step 4's flip
-// goes on over); more: m each rises more than the game's jump (held at the press, she does not drift up into the kick)
+// out to her left with the stick let go (none now: Step 2 kicked out on the slant once); ahead: m/s on the way she faces
+// (Step 4's flip goes on over); more: m each rises more than the game's jump (held at the press, she does not drift up
+// into the kick)
 const FLOW = {
   1: { clip: 'mjf_1', kick: 0.033, rate: 1.1, end: 0.7 },                // Step 1, kicked straight up (after the take-off)
-  2: { clip: 'mjf_2', kick: 0.133, rate: 1.3, end: 0.6, side: 1.5 },     // Step 2, a twist and a kick on the slant
+  2: { clip: 'mjf_2', kick: 0.033, rate: 1.15, end: 0.7 },               // Step 2, once round in the air (not a kick out:
+                                                                         // the user found that one not pretty)
   3: { clip: 'mjf_3', kick: 0.1, rate: 1.3, end: 0.8 },                   // Step 3, the hips turned in the air, a spring
   4: { clip: 'mjf_4', kick: 0.067, rate: 1.0, end: 0.62, ahead: 0.7 },   // Step 4, the flip
   land: { clip: 'mjf_land', rate: 1.25, run: 1.6, hold: 0.28, runHold: 0.12 },     // the ninja's landing
   more: 0.02,
 };
 const FLOW_CLIPS = Object.fromEntries([1, 2, 3, 4].map(n => [FLOW[n].clip, FLOW[n]]));
-const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · บิดตัวถีบเฉียง', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
+const FLOW_BEATS = ['', 'Step 1 · ถีบขึ้นตรง', 'Step 2 · หมุนตัว', 'Step 3 · บิดสะโพกดีดตัว', 'Step 4 · พลิกตัว'];
 
 export function createMagicJump({ character, circles, mocap = false, step = false }) {
   let ch = character;

@@ -291,6 +291,14 @@
       "loop": false
     },
     {
+      "name": "Jump_Spin",
+      "file": "Jump_Spin.vrma",
+      "source": "liora-farm",
+      "duration": 0.8333,
+      "frames": 26,
+      "loop": false
+    },
+    {
       "name": "Jump_Start",
       "file": "Jump_Start.vrma",
       "source": "UAL1",
