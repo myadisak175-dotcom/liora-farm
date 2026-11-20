@@ -105,6 +105,36 @@ function convert(fbxFile, outDir, tpl) {
   root.updateMatrixWorld(true);
   const restInv = {}, w = new THREE.Quaternion(), p = new THREE.Vector3();
   for (const [bone, m] of Object.entries(MAP)) restInv[bone] = byName[m].getWorldQuaternion(new THREE.Quaternion()).invert();
+  // A file not made by Mixamo itself (one for a Mixamo skeleton from elsewhere, e.g. RapaMotion's) may rest with its arms
+  // down, not in T-pose: then every turn above would be off by as much (her arms out level when the move has them down).
+  // It is stood in T-pose first: each bone swung, parents first, to point where the library's T-pose has it, its own
+  // twist about its length kept. A file already in T-pose (Mixamo's) is left as it is.
+  const armDir = byName.LeftHand.getWorldPosition(new THREE.Vector3()).sub(byName.LeftArm.getWorldPosition(new THREE.Vector3())).normalize();
+  if (armDir.x < 0.97) {
+    const CHILD = { hips: 'spine', spine: 'chest', chest: 'upperChest', upperChest: 'neck', neck: 'head' };
+    for (const sd of ['left', 'right']) {
+      Object.assign(CHILD, { [sd + 'Shoulder']: sd + 'UpperArm', [sd + 'UpperArm']: sd + 'LowerArm', [sd + 'LowerArm']: sd + 'Hand',
+        [sd + 'Hand']: sd + 'MiddleProximal', [sd + 'UpperLeg']: sd + 'LowerLeg', [sd + 'LowerLeg']: sd + 'Foot', [sd + 'Foot']: sd + 'Toes',
+        [sd + 'ThumbMetacarpal']: sd + 'ThumbProximal', [sd + 'ThumbProximal']: sd + 'ThumbDistal' });
+      for (const f of ['Index', 'Middle', 'Ring', 'Little'])
+        Object.assign(CHILD, { [sd + f + 'Proximal']: sd + f + 'Intermediate', [sd + f + 'Intermediate']: sd + f + 'Distal' });
+    }
+    const order = [], seen = new Set();
+    const visit = b => { if (seen.has(b)) return; if (parent[b]) visit(parent[b]); seen.add(b); order.push(b); };
+    Object.keys(MAP).forEach(visit);
+    const S = {}, at = m => byName[m].getWorldPosition(new THREE.Vector3());
+    for (const b of order) {
+      const Sp = parent[b] && S[parent[b]] ? S[parent[b]].clone() : new THREE.Quaternion();
+      const c = CHILD[b];
+      if (c && MAP[c] && byName[MAP[c]] && nodes[human[c].node].translation) {
+        const now = at(MAP[c]).sub(at(MAP[b])).applyQuaternion(Sp).normalize();
+        const want = new THREE.Vector3(...nodes[human[c].node].translation).normalize();
+        S[b] = new THREE.Quaternion().setFromUnitVectors(now, want).multiply(Sp);
+      } else S[b] = Sp;
+      restInv[b] = S[b].clone().multiply(byName[MAP[b]].getWorldQuaternion(new THREE.Quaternion())).invert();
+    }
+    console.log(`${path.basename(fbxFile)}: rests with its arms ${(Math.acos(Math.min(1, armDir.x)) * 180 / Math.PI).toFixed(0)} degrees from T-pose: stood in T-pose first`);
+  }
   const mixHips = byName.Hips.getWorldPosition(new THREE.Vector3()).y;
   const scale = libHips / mixHips;
   // every frame
