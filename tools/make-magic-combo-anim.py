@@ -11,9 +11,13 @@ for her and cut to the pace of a fight:
               then "Standing Block End"              her hands lowered
   mc_rise  <- Mixamo "Standing 1H Magic Attack 03"   out of the crouch a roll ends in: her right hand swept up from the ground
   (the roll itself is the game's own clip, the library's Roll, played faster: here only how far it takes her)
-  mc_charge_in, mc_charge, mc_throw  <- the library's OverhandThrow   the held cast: out of the swipe her arm goes on
-                                                     round and back over her shoulder; held there, cocked (the hold: the
-                                                     throw's own wind-up, breathing); let go, the throw
+  mc_charge_in, mc_charge, mc_throw  <- Mixamo "Baseball Pitching"   the held cast: out of the swipe her arm goes on
+                                                     round and up behind her head, her left foot stepping out ahead;
+                                                     held there, cocked (the hold: the pitch's own wind-up, breathing);
+                                                     let go, the throw. Both feet stay on the ground (asked for: "ไม่เอา
+                                                     ยกขา"): the pitch's leg kick is left out (the move begins after it)
+                                                     and its back leg, which flies up behind as it throws, stays down
+                                                     on its toes. (First made from the library's OverhandThrow.)
   mc_dash  <- the library's Sword_Heavy_Combo (its second strike)   the running cast: a leap off her run, turning once
                                                      round in the air, down into a low cut; she goes forward (its path)
 
@@ -46,7 +50,7 @@ numpy):
 
   npm install --no-save three@0.170.0                (once)
   node tools/mixamo-to-vrma.mjs assets/animations/mixamo Standing_1H_Magic_Attack_02.fbx Standing_1H_Magic_Attack_03.fbx \\
-       Standing_2H_Magic_Attack_05.fbx Standing_Block_End.fbx
+       Standing_2H_Magic_Attack_05.fbx Standing_Block_End.fbx Baseball_Pitching.fbx
   python3 tools/make-magic-combo-anim.py
 """
 import importlib.util
@@ -91,10 +95,14 @@ MR = dict(src="Standing_1H_Magic_Attack_03", warp=[(0, 0.58), (0.15, 0.88), (0.2
           enter=0.07, leave=(0.32, 0.70), hit=0.15, again=0.40)
 # the held cast: into the hold out of the swipe's cancel pose; the hold (a loop: the throw's own time back and forth, her
 # hips up and down, m); the throw
-MC_SRC, MC_HOLD = "OverhandThrow", 0.24
-MCI = dict(warp=[(0, 0.10), (0.24, MC_HOLD)], enter=0.14, dur=0.24)
-MCL = dict(period=1.2, breath=0.014, bob=0.008)
-MCT = dict(warp=[(0, MC_HOLD), (0.10, 0.36), (0.16, 0.42), (0.34, 0.60), (0.80, 0.74)], leave=(0.34, 0.80), hit=0.085, again=0.45)
+MC_SRC, MC_HOLD = "Baseball_Pitching", 1.385          # (the pitch: its stride down at 1.4 s, the ball gone at 1.56 s)
+MCI = dict(warp=[(0, 1.18), (0.26, MC_HOLD)], enter=0.14, dur=0.26)
+MCL = dict(period=1.2, breath=0.015, bob=0.008)
+MCT = dict(warp=[(0, MC_HOLD), (0.10, 1.56), (0.17, 1.68), (0.36, 1.95), (0.80, 2.05)], leave=(0.36, 0.80), hit=0.095, again=0.45)
+MC_STANCE = {"left": (0.08, 0.50), "right": (-0.14, -0.30)}      # the balls of her feet holding the lance (m): a long stride, side on
+MC_FEET = {"left": 0.0, "right": -70.0}                 # degrees they point: her left at what she throws at, her right across
+MC_HIGH = 0.74           # her hips at their highest (the pitch comes up onto one leg as it throws; she keeps both down)
+MC_DRAG = dict(back=-0.14, turn=40.0, tip=0.75)         # her back foot through the throw: m back (it is drawn on after her), degrees turned after her hips, radians onto its toes
 # the running cast: off the ground from `air`[0] to `air`[1] (her hips up to `high` m higher, half way), `far` hips heights forward
 MD = dict(src="Sword_Heavy_Combo", warp=[(0, 1.05), (0.07, 1.14), (0.44, 1.76), (0.50, 1.81), (0.95, 1.82)],
           leave=(0.56, 0.95), hit=0.47, again=0.64, air=(0.06, 0.46), far=3.4, high=0.28)
@@ -275,7 +283,7 @@ def mono(points):
 class Stance:
     """A move made standing on the spot, laid on her feet. base: the balls of her feet (default: as she stands); turn:
     degrees each foot is turned from the mocap's; height: her hips' height from the mocap's; feet: a function that
-    puts her feet itself (side, the mocap's hips' yaw) -> (ball, turn)."""
+    puts her feet itself (side, the mocap's hips' yaw, the mocap's time) -> (ball, turn)."""
 
     def __init__(self, name, ref=0.0, base=None, turn=(0.0, 0.0), height=None, sway=1.0, feet=None, folder=mj.MOCAP):
         path = os.path.join(folder, f"{name}.vrma")
@@ -298,7 +306,7 @@ class Stance:
         feet = {}
         for i, side in enumerate(SIDES):
             if self.feet:
-                toe, Rf = self.feet(side, yaw_of(R["hips"] @ np.array([0.0, 0.0, 1.0])))
+                toe, Rf = self.feet(side, yaw_of(R["hips"] @ np.array([0.0, 0.0, 1.0])), s)
             else:
                 # the ball of her foot goes over the ground as the mocap's does from where it stood (it turns on the spot)
                 d = P[f"{side}Toes"] - self.toe0[side]
@@ -450,7 +458,7 @@ def build():
     f1 = feet_of(cut1)
     yaw1 = {s: foot_yaw(s, f1[s][1]) for s in SIDES}
 
-    def feet2(side, hips_yaw):
+    def feet2(side, hips_yaw, at=None):
         u = ease((M2_TURN[0] - hips_yaw) / (M2_TURN[0] - M2_TURN[1]))
         return f1[side][0] * np.array([1.0, 0.0, 1.0]) + np.array([0.0, GROUND, 0.0]), \
             foot_turned(side, yaw1[side] + (M2_FEET[side] - yaw1[side]) * u, 0.3 * u if side == "right" else 0.0)
@@ -483,7 +491,7 @@ def build():
     s4 = Stance(M4["src"], base=M4_STANCE, turn=(35.0, 5.0), height=crouch, sway=1.1)
     hold = s4.at(2.45)
     f4 = feet_of(hold)
-    s4e = Stance(M4["end"], base=M4_STANCE, feet=lambda side, hips_yaw: (f4[side][0], f4[side][1]))
+    s4e = Stance(M4["end"], base=M4_STANCE, feet=lambda side, hips_yaw, at: (f4[side][0], f4[side][1]))
     la, lb = M4["lower"]
 
     def lowered(p, t):
@@ -502,9 +510,15 @@ def build():
     poser = move(MR, lambda s, t: open_hands(look_ahead(sr.at(s)), 0.3 * handsr(t), 0.85 * handsr(t)), crouched)
     done("mc_rise", MR, poser, "R")
 
-    # ---- the held cast: the library's overhand throw. Into its wind-up out of the swipe's cancel pose (her arm goes on
-    # round and back over her shoulder); held there; thrown
-    so = Library(MC_SRC)
+    # ---- the held cast: Mixamo's pitch, both feet kept down. Into its wind-up out of the swipe's cancel pose (her arm
+    # goes on round and up behind her head, her left foot stepping out); held there; thrown, her back foot dragging
+    def feetc(side, hips_yaw, at):
+        toe = np.array([MC_STANCE[side][0], GROUND, MC_STANCE[side][1]])
+        if side == "left":
+            return toe, foot_turned(side, MC_FEET[side])
+        u = ease((at - 1.40) / 0.35)
+        return toe - np.array([0.0, 0.0, MC_DRAG["back"] * u]), foot_turned(side, MC_FEET[side] + MC_DRAG["turn"] * u, MC_DRAG["tip"] * u)
+    so = Stance(MC_SRC, ref=1.40, base=MC_STANCE, feet=feetc, height=lambda y: min(y, MC_HIGH))
     held = lambda p: open_hands(look_ahead(p), 0.7, 0.25)                     # (her right hand round the lance, her left out ahead)
     posei = move(MCI, lambda s, t: held(so.at(s)), cut1)
     done("mc_charge_in", MCI, posei)
