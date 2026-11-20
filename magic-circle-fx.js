@@ -22,9 +22,9 @@
                                      circles she climbed stand under her like steps.
                                      { snap: true, after: s } (the Air Hike, magic-jump.js step 'dmc'): it flashes open at
                                      once, a little too big, and goes `after` s after the kick (a flash, not a step)
-                                     { facing: v } (the dash in the air, magic-jump.js air.dash): stood upright, facing v
-                                     (unit, over the ground: the way she goes off it); what goes "down" off a circle in the
-                                     air (its light, the kick's sparks, the crystal dropping away) goes back, away from her
+                                     { facing: v } (the dash in the air, magic-jump.js air.dash): turned to face v (a way,
+                                     world: up a slant she pushes off); what goes "down" off a circle in the air (its light,
+                                     the kick's sparks, the crystal dropping away) goes off the way it faces away from
      every frame: fx.update(dt, camera)
      fx.setLook('rose' | 'water' | 'red')   the clip's rose light, the cold blue of her water barrier (barrier-fx.js), or
                                      the red of Devil May Cry's Air Hike (a trial: magic-jump.html)
@@ -71,7 +71,7 @@ const SLOTS = 8;
 // a circle stood on (step): how far it gives under her (of its radius), how long it stays after her kick (s), its light's
 // height (m) whatever its tier (the kick's light shoots down off every one of them), the sparks when it opens (of its
 // tier's) and at the kick (of its tier's)
-// one stood upright (facing): its light that long, of a stood-on one's (it shoots back at the camera behind her)
+// one turned to face a way (facing): its light that long, of a stood-on one's (it shoots back at the camera behind her)
 const FACING_LIGHT = 0.55;
 const STEP_DIP = 0.07, STEP_AFTER = 1.25, STEP_PILLAR = 0.75, STEP_OPEN_SPARKS = 0.3, STEP_KICK_SPARKS = 1.2;
 // one blend for all of it: what the shader gives is already multiplied by its own cover; a line's cover (alpha) hides what
@@ -309,7 +309,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     slots.push({ g, disc, pillar, gem, wave, age: 0, life: 1, kind: KINDS[1], tier: 1, ground: true, radius: 1, used: 0,
       step: false, at: new THREE.Vector3(), pressAt: -1, kickAt: -1, waveAt: -1, waveBig: false,
       // its up (the way it faces: up, or `facing`), and two ways across it; where it stood when it opened
-      up: new THREE.Vector3(0, 1, 0), across: new THREE.Vector3(1, 0, 0), along: new THREE.Vector3(0, 0, 1), base: new THREE.Vector3() });
+      up: new THREE.Vector3(0, 1, 0), across: new THREE.Vector3(1, 0, 0), along: new THREE.Vector3(0, 0, 1), base: new THREE.Vector3(), faced: false });
   }
   let used = 0;
   const UP = new THREE.Vector3(0, 1, 0), spun = new THREE.Quaternion();
@@ -377,7 +377,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     u.uOpen.value = open; u.uFade.value = fade; u.uAge.value = t; u.uGlow.value = glow * flash; u.uCover.value = cover;
     // its light, down off it from the kick
     if (kk >= 0) {
-      const H = Math.max(s.kind.pillar, STEP_PILLAR) * (R / s.kind.radius) * (s.up.y ? 1 : FACING_LIGHT), up = 1 - Math.pow(1 - clamp(kk / 0.16, 0, 1), 2);
+      const H = Math.max(s.kind.pillar, STEP_PILLAR) * (R / s.kind.radius) * (s.faced ? FACING_LIGHT : 1), up = 1 - Math.pow(1 - clamp(kk / 0.16, 0, 1), 2);
       s.pillar.scale.set(R * grow, -H * (0.25 + 0.75 * up), R * grow);
       s.pillar.material.uniforms.uK.value = (1 - sstep(0.12, 0.7, kk)) * glow * 1.3;
     }
@@ -417,10 +417,13 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       s.g.position.copy(at);
       if (ground) s.g.position.y += lift;
       s.g.rotation.set(0, rand() * Math.PI * 2, 0);
+      s.faced = !!facing;
       if (facing) {
-        // stood upright facing `facing`: its up turned to it (and turned round it as it was round its up)
-        s.up.set(facing.x, 0, facing.z).normalize();
-        s.across.set(0, 1, 0); s.along.crossVectors(s.up, s.across);
+        // turned to face `facing`: its up turned to it (and turned round it as it was round its up); across it: level
+        s.up.copy(facing).normalize();
+        s.across.crossVectors(UP, s.up);
+        if (s.across.lengthSq() < 1e-6) s.across.set(1, 0, 0); else s.across.normalize();
+        s.along.crossVectors(s.up, s.across);
         s.g.quaternion.premultiply(spun.setFromUnitVectors(UP, s.up));
       } else { s.up.set(0, 1, 0); s.across.set(1, 0, 0); s.along.set(0, 0, 1); }
       s.base.copy(s.g.position);
@@ -452,7 +455,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
       if (s.pressAt < 0) s.pressAt = s.age;
       s.kickAt = s.age;
       s.life = s.age + s.after;
-      s.waveAt = s.age; s.waveBig = !!s.up.y;      // (one stood upright: a small ripple, not the wide wave: it is in the camera's face)
+      s.waveAt = s.age; s.waveBig = !s.faced;      // (one turned to face a way: a small ripple, not the wide wave: it is in the camera's face)
       s.pillar.visible = true;
       burst(s, s.at, STEP_KICK_SPARKS, true);
     },

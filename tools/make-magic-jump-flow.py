@@ -32,18 +32,26 @@ tools/ual_to_vrma.py --bind, which takes their T-pose from the skin's bind pose)
                                  (the run's landing left out: in the game she has further to fall)
   mjf_land <- NinjaJump_Land     the landing out of them (the library's own, which the user's "Jump - ninja landing" is):
                                  from where her feet are down, a crouch and up into standing
-  mjf_dash <- Mixamo "Flying"   the dash in the air (magic-jump.js, air.dash; a trial: the user's "Flying.fbx", "ทำเป็นท่า
-              (Flying)           พุ่งตอนกระโดดได้ไหม", make it a dash while jumping): flying flat out, head first, her arms
-                                 back along her sides, her legs long behind her and her shins a little up; its first 0.6 s
-                                 (the clip is that pose held, swaying a little). Mixamo's, as mjf_3b
+  mjf_dash <- Mixamo "Jump      the dash in the air (magic-jump.js, air.dash; a trial), joined from two of the user's
+              Over" + "Flying"   Mixamo moves (JOINS): "Jump Over"'s dive off its feet ("Jump เป็นท่าพุ่งถีบกำแพงก่อนท่า
+                                 บิน", the kick off before the flying), from gathered (its run before left out), pushing
+                                 (KICK: her legs long under her), stretched out ahead, flat; then its arms swept out round
+                                 her sides (through her T-pose: not through her body) into "Flying"'s ("ทำเป็นท่าพุ่งตอน
+                                 กระโดดได้ไหม"): flat out, head first, her arms back along her sides, her legs long behind
+                                 her (Flying is that pose held, swaying a little; Jump Over's roll after the dive left out)
+  mjf_fall2 <- MJ_Fall2,        the landing out of the dash, from the user's Mixamo "Falling To Landing" (its 2nd: "แลนดิ้ง
+  mjf_land2 <- MJ_Land2          สวยๆ ตามที่ส่งไป"), posed again by tools/make-magic-jump-mocap.py (land2): its time in the
+                                 air (arms out wide, a knee up, then both legs reaching down), in place, and on the ground
+                                 (a deep crouch, her shoulders turned far round and back, and up into her standing pose)
 
 Each is cut (FROM..TO frames, at 30 a second) and, but for the landing, played in place: the game moves her up and over
 the ground (magic-jump.js), so her hips are held where they stand (the library's hips, one hips height up) and only her
 body turns about them; the landing keeps its own hips, her feet on the ground. KICK is the frame her legs are straightest
 under her: magic-jump.js keeps her on the circle until then (the clip's time into the cut: KICK - FROM frames). Printed.
 
-Usage (from the repo folder; needs numpy; mjf_3b and mjf_dash need the user's Mixamo "Jump" and "Flying" first, as
-Jump_1.fbx and Flying.fbx: node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jump_1.fbx Flying.fbx):
+Usage (from the repo folder; needs numpy; mjf_3b, mjf_dash, mjf_fall2 and mjf_land2 need the user's Mixamo moves
+first: node tools/mixamo-to-vrma.mjs assets/animations/mixamo Jump_1.fbx Flying.fbx Jump_Over.fbx
+Falling_To_Landing_2.fbx, then python3 tools/make-magic-jump-mocap.py land2):
   python3 -I tools/make-magic-jump-flow.py
 writes magic-jump-flow-anim.js next to index.html (by tools/bake-character-anim.py).
 """
@@ -82,8 +90,63 @@ CUTS = [
     ("mjf_3b", "mixamo:Jump_1", 16, 19, 31, True),
     ("mjf_4", "Jog_Into_Flip", 4, 6, 24, True),
     ("mjf_land", "NinjaJump_Land", 2, 2, 38, False),
-    ("mjf_dash", "mixamo:Flying", 0, 0, 18, True),
+    ("mjf_fall2", "mixamo:MJ_Fall2", 0, 0, 8, False),
+    ("mjf_land2", "mixamo:MJ_Land2", 0, 0, 28, False),
 ]
+# moves joined from more than one clip: game name, its parts (clip, FROM, TO frames), how many of each later part's first
+# frames it is blended in over (from the part before's last), KICK (a frame of the whole); in place
+JOINS = [
+    ("mjf_dash", [("mixamo:Jump_Over", 12, 24), ("mixamo:Flying", 0, 12)], 6, 4),
+]
+# (blended through her T-pose: an arm going from ahead of her to back at her side goes round out to her side, not
+# through her body)
+ARMS = ("leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm")
+
+
+def qslerp(a, b, t):
+    """The shorter way from quaternion a to b, t of the way ([x, y, z, w])."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    d = float(np.dot(a, b))
+    if d < 0:
+        b, d = -b, -d
+    if d > 0.9995:
+        q = a + (b - a) * t
+        return q / np.linalg.norm(q)
+    th = np.arccos(min(1.0, d))
+    return (np.sin((1 - t) * th) * a + np.sin(t * th) * b) / np.sin(th)
+
+
+def joined(parts, blend):
+    """The parts one after another, each blended in from the last frame of the one before (ARMS through T-pose)."""
+    sk, rot = None, None
+    ident = np.array([0.0, 0.0, 0.0, 1.0])
+    for clip, a, b in parts:
+        sk_, _, r, _ = read_clip(clip)
+        sk = sk or sk_
+        r = {bone: np.array(v, float)[a:b + 1] for bone, v in r.items()}
+        if rot is None:
+            rot = r
+            continue
+        n = b + 1 - a
+        for bone in set(rot) | set(r):
+            new = r.get(bone, np.tile(ident, (n, 1))).copy()
+            old = rot.get(bone)
+            last = old[-1] if old is not None else ident
+            for i in range(min(blend, n)):
+                w = (i + 1) / (blend + 1)
+                w = w * w * (3 - 2 * w)
+                if bone in ARMS:
+                    new[i] = qslerp(ident, new[i], 2 * w - 1) if w > 0.5 else qslerp(last, ident, 2 * w)
+                else:
+                    new[i] = qslerp(last, new[i], w)
+            for i in range(1, n):                              # (each frame the same way round as the one before)
+                if np.dot(new[i], new[i - 1]) < 0:
+                    new[i] = -new[i]
+            if old is not None and np.dot(new[0], old[-1]) < 0:
+                new = -new
+            rot[bone] = np.concatenate([old if old is not None else np.tile(ident, (len(next(iter(rot.values()))), 1)), new])
+    n = len(next(iter(rot.values())))
+    return sk, np.arange(n) / FPS, rot
 
 
 def main():
@@ -106,6 +169,13 @@ def main():
             pairs.append(f"{game}:{game}")
             print(f"{game:<9} <- {clip:<17} frames {a}..{b} ({t[-1]:.3f} s), kick {(kick - a) / FPS:.3f} s in"
                   + (", in place" if in_place else ""))
+        for game, parts, blend, kick in JOINS:
+            sk, t, r = joined(parts, blend)
+            h = np.tile(sk.offset["hips"], (len(t), 1))
+            write_vrma(os.path.join(lib, f"{game}.vrma"), sk, t, r, h, game, "tools/make-magic-jump-flow.py")
+            pairs.append(f"{game}:{game}")
+            print(f"{game:<9} <- " + " + ".join(f"{c} {a}..{b}" for c, a, b in parts)
+                  + f" ({t[-1]:.3f} s, blended over {blend} frames), kick {kick / FPS:.3f} s in, in place")
         out = os.path.join(REPO, "magic-jump-flow-anim.js")
         done = bake.main(["bake", lib, out] + pairs)
     with open(out, encoding="utf-8") as f:
@@ -114,8 +184,8 @@ def main():
     with open(out, "w", encoding="utf-8") as f:
         f.write("// magic-jump-flow-anim.js: written by tools/make-magic-jump-flow.py (through tools/bake-character-anim.py); do not\n"
                 "// edit by hand. The magic jump's flow (magic-jump.js, step: 'flow'): Quaternius' Universal Animation Library 2\n"
-                "// (CC0) and two Mixamo moves (mjf_3b, mjf_dash: Adobe's, free to use in this game, not CC0), cut and played in\n"
-                "// place; the moves the user chose (the tool says which).\n"
+                "// (CC0) and the user's Mixamo moves (mjf_3b, mjf_dash, mjf_fall2, mjf_land2: Adobe's, free to use in this game,\n"
+                "// not CC0), cut and played in place; the moves the user chose (the tool says which).\n"
                 + rest.split("\n", 1)[1])
     return done
 

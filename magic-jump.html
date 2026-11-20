@@ -31,9 +31,10 @@
   part of the way to the stick's (not at once), keeps more of her pace with the stick let go, and the hold before a
   kick off a circle slows her instead of stopping her dead. With her pace carried too (magic-jump.js, carry: the game's
   ⚖️ trial; here unless ?mom=game, which is the game's momentum without it): what she takes off with she keeps.
-  The dash in the air (magic-jump.js, air.dash; a trial, not in the game yet: the พุ่ง button, Shift): in a flight, off
-  a circle stood upright behind her, flat out the way the stick points (the user's Mixamo "Flying"); one for each jump.
-  The ▶ เดโม + พุ่ง button: the four jumps with a dash after each.
+  The dash in the air (magic-jump.js, air.dash; a trial, not in the game yet: the พุ่ง button, Shift): in a flight, a
+  push off a circle slanted under her feet and a dive into flying flat out the way the stick points (the user's Mixamo
+  "Jump Over" and "Flying"), and its own landing (their "Falling To Landing 2"); one for each jump. The ▶ เดโม + พุ่ง
+  button: the four jumps with a dash after each.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -118,8 +119,8 @@ import { createSprings } from './character-springs.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
-import { createMagicCircles } from './magic-circle-fx.js?v=dash1';      // (?v: a phone's cache gets the new one)
-import { createMagicJump } from './magic-jump.js?v=dash1';
+import { createMagicCircles } from './magic-circle-fx.js?v=dash2';      // (?v: a phone's cache gets the new one)
+import { createMagicJump } from './magic-jump.js?v=dash2';
 import { createCameraFeel } from './camera-feel.js';
 
 const phone = matchMedia('(pointer: coarse)').matches;
@@ -266,7 +267,7 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dashBtn.addEven
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
     MOCAP ? import('./magic-jump-mocap-anim.js') : null,
-    import('./magic-jump-flow-anim.js?v=dash1'),
+    import('./magic-jump-flow-anim.js?v=dash2'),
   ]);
   // with the mocap: its take-off and landings beside the game's own clips; and the flow's four moves and its landing
   const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...(extra ? extra.CHARACTER_ANIM.clips : {}), ...flow.CHARACTER_ANIM.clips } };
