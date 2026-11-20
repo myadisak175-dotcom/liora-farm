@@ -210,7 +210,7 @@ let night = false;
 fx.setNight(night);
 
 // ---- the camera: the game's (player-camera.js), behind her
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);      // (55: FOV, below)
 const level = { heightAt: H, crowns: [], cameraTrunks: [] };
 const cam = createFollowCamera({ camera, level });
 cam.setView(-Math.PI, 0.2);
@@ -220,14 +220,19 @@ const TUNED = 1.412;
 const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), heading: 0 };
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, combo = null, springs = null;
-let speed = 0, slow = 1, demo = null, shake = 0, clock = 0;
+let speed = 0, slow = 1, demo = null, shake = 0, clock = 0, aimK = 0, aimWas = null;
+// the held cast's camera: in over her right shoulder and along the lance. dist, pitch: where it goes (m at 1.75 m, radians);
+// side: how far to her right (m at most; of the picture's half width at her, so on an upright phone she stays in it);
+// fov: how much narrower the picture (degrees, more the more the lance has grown)
+const AIM_CAM = { dist: 3.3, pitch: 0.1, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
+const FOV = 55;
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const world = { stick, targets: dummies, ground: H };
 const input = createPlayerInput({
   dom: renderer.domElement, ui: document.getElementById('stick'),
   onJump: () => attack(), onDash: () => dodge(),               // (a keyboard: Space casts, Shift rolls)
-  onLook: (y, p) => cam.turn(y, p), onZoom: d => cam.zoom(d),
+  onLook: (y, p) => { if (!combo || !combo.aiming) cam.turn(y, p); }, onZoom: d => { if (!combo || !combo.aiming) cam.zoom(d); },      // (aiming, the camera is the lance's)
 });
 function attack() { if (hero && !demo) combo.attack(); }
 function release() { if (hero && !demo) combo.release(); }                // (the attack button let go: a held cast is thrown)
@@ -332,7 +337,26 @@ function step(dt) {
   hero.updateSprings(dt);
   grass.userData.setWalker(me.pos, 0.55);
   stepDummies(dt);
+  // ---- the camera. Holding the lance, it comes in behind her the way she aims, low, over her right shoulder (she is to
+  // the left of the picture, the lance and what she aims at in its middle); thrown, it goes back to where it was
+  const aiming = combo.aiming, ease = Math.min(1, dt * (aiming ? AIM_CAM.in : AIM_CAM.out));
+  aimK += ((aiming ? 1 : 0) - aimK) * ease;
+  if (aiming) {
+    if (!aimWas) aimWas = { pitch: cam.pitch, dist: cam.dist };
+    const behind = me.heading + Math.PI;
+    cam.turn(Math.atan2(Math.sin(behind - cam.yaw), Math.cos(behind - cam.yaw)) * ease, (AIM_CAM.pitch - cam.pitch) * ease);
+    cam.zoom((AIM_CAM.dist - cam.dist) * ease);
+  } else if (aimWas) {
+    cam.turn(0, (aimWas.pitch - cam.pitch) * ease); cam.zoom((aimWas.dist - cam.dist) * ease);
+    if (aimK < 0.02) { cam.turn(0, aimWas.pitch - cam.pitch); cam.zoom(aimWas.dist - cam.dist); aimWas = null; aimK = 0; }
+  }
   cam.update(dt, { pos: me.pos, aimY: me.pos.y, height: hero.height, k: hero.height / TUNED, steady: true });
+  if (aimK > 0 || camera.fov !== FOV) {
+    camera.fov = FOV - AIM_CAM.fov * aimK * (0.55 + 0.15 * Math.max(0, combo.charge));
+    camera.updateProjectionMatrix();
+    const half = camera.position.distanceTo(me.pos) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;      // half the picture's width, at her
+    camera.position.addScaledVector(tmp.set(1, 0, 0).applyQuaternion(camera.quaternion), Math.min(AIM_CAM.side * k, AIM_CAM.across * half) * aimK);
+  }
   // the finisher landing shakes the picture a little, briefly
   if (shake > 0) {
     shake = Math.max(0, shake - dt / 0.22);
