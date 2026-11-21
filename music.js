@@ -13,8 +13,8 @@
 // their length, and when they fit ('day', 'night', or 'any'). A piece is played when one fits the hour; at dusk the next
 // one is a night one. One playing is let finish, whatever the hour does meanwhile.
 //
-// AS QUIET AS THE AIR, OR UNDER IT (LEVEL): the air about her is the place, the music its mood. By a waterfall or rushing
-// water it goes further down (DROWN), as everything else does there.
+// A LITTLE OVER THE AIR (LEVEL): the air about her is the place, the music its mood. (Under the air at first, it was too
+// quiet.) By a waterfall or rushing water it goes down (DROWN), as everything else does there.
 //
 // A PIECE IS STREAMED, not decoded whole: three minutes of music decoded is some 80 MB, more than a phone should hold for
 // it. It plays from an <audio> element through the AudioContext (its loudness is the context's to set). A phone may not
@@ -22,7 +22,7 @@
 // which lets it play later.
 
 const FILES = new URL('./assets/audio/', import.meta.url);
-const LEVEL = 0.5;                 // the music's loudness, at volume 1 (the pieces are levelled to the air's loops, then this)
+const LEVEL = 1.0;                 // the music's loudness, at volume 1 (the pieces are levelled to the air's loops, then this). 0.5 at first: too quiet ("เพลงเบาไป")
 const DROWN = 0.6;                 // how much of it a waterfall at its loudest takes away
 const FIRST = 20;                  // s after the first touch before the first piece
 const GAP = [150, 300];            // s of only the air between one piece and the next (somewhere between)
