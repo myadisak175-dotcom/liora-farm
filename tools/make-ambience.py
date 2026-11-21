@@ -44,6 +44,8 @@ LAYERS = {      # layer: (its loops, has a place?)
     'dry':    (['dry-1'], False),                   # the cursed land's hollow wind
     'crows':  (['crows-1'], False),                 # crows and dry wood creaking, far off (the cursed land)
     'brook':  (['brook-1'], True),                  # a brook over stones
+    'river':  (['river-1', 'river-2', 'river-3', 'river-4'], True),      # the river away from the falls: slow, lapping along its bank
+    'rapids': (['rapids-1', 'rapids-2', 'rapids-3', 'rapids-4'], True),  # ... near a fall: rushing, heavy
     'fall':   (['fall-1', 'fall-2'], True),         # a waterfall into its pool
     'leaves': (['leaves-1'], True),                 # wind in a tree's crown
     'abyss':  (['abyss-1', 'abyss-2'], True),       # the wind out of the pit

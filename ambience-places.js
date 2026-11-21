@@ -20,8 +20,9 @@
 // is far from its top. Where there are many of a kind (falls one under another, a wood's crowns) they are one layer: as
 // loud as all of them together (never more than one beside her), and from where the loudest of them are.
 //   brook    the nearest of the brooks and streams
-//   river    the nearest stretch of the river: heavier, its water running along the bank ("ริมแม่น้ำ หนัก เสียงน้ำไหลตามตลิ่ง"),
-//            heard further than a brook
+//   river    the nearest stretch of the river, heard further than a brook, as its water runs along the bank ("ริมแม่น้ำ
+//            หนัก เสียงน้ำไหลตามตลิ่ง"): where that stretch is near a fall, rushing and heavy (rapids); away from the falls,
+//            slow (river: "เสียงน้ำไหลช้าๆ เวลาห่างจากน้ำตก แต่ยังอยู่ริมแม่น้ำ"), the one going over into the other
 //   fall     every fall near enough: a tall one is heard further and louder than a low step of one. Near one the rest of
 //            the air (the wind, the birds, the night, the leaves) is less heard, as it would be: it is drowned, and the fall
 //            stands out clearly ("ตอนใกล้น้ำตก อยากได้ยินเสียงน้ำตกชัดๆ")
@@ -39,6 +40,7 @@ import { createAmbience } from './ambience.js';
 // from near (m: at its loudest) out to far (gone)
 const BROOK = { near: 1.5, far: 20 };
 const RIVER = { near: 2, far: 35 };
+const RAPIDS = { near: 12, far: 45 };                                   // m from a fall, of the river's stretch she hears: all rushing nearer, all slow further
 const DROWNED = 0.6;                                                    // how much of the rest of the air a fall at its loudest takes away
 const FALL = { near: 4, far: [30, 80], loud: [0.6, 1], tall: 18 };      // a low step of a fall .. a tall one (so many m and more): how far it is heard, how loud beside it
 const LEAVES = { near: 2.5, far: 14, over: 4 };                         // (over: a crown this much higher or lower than her head is as near as one level with it)
@@ -136,8 +138,14 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
       if (b.d < BROOK.far) { const t = along(b.d, BROOK.near, BROOK.far); air.set('brook', (1 - t) * (1 - t), { pan: side(b.dx, b.dz, b.d0, b.d), far: t }); }
       else air.set('brook', 0);
       const r = nearestWater(x, y, z, Math.max(RIVER.far, FROGS.far), true, riverAt);
-      if (r.d < RIVER.far) { const t = along(r.d, RIVER.near, RIVER.far); air.set('river', (1 - t) * (1 - t), { pan: side(r.dx, r.dz, r.d0, r.d), far: t }); }
-      else air.set('river', 0);
+      if (r.d < RIVER.far) {
+        const t = along(r.d, RIVER.near, RIVER.far), loud = (1 - t) * (1 - t), where = { pan: side(r.dx, r.dz, r.d0, r.d), far: t };
+        let fd = Infinity;                                                // how far that stretch is from the nearest fall
+        for (const f of falls) fd = Math.min(fd, Math.hypot(f.x - (x + r.dx), f.z - (z + r.dz)));
+        const rush = 1 - along(fd, RAPIDS.near, RAPIDS.far);
+        air.set('rapids', loud * Math.sqrt(rush), where);                 // (equal power: no dip between the two, no swell)
+        air.set('river', loud * Math.sqrt(1 - rush), where);
+      } else { air.set('river', 0); air.set('rapids', 0); }
       const w = r.d < b.d ? r : b;
       if (w.d < FROGS.far && dark > 0.01) { const t = along(w.d, FROGS.near, FROGS.far); air.set('frogs', dark * dark * (1 - t) * (1 - t) * (1 - FROGS.drowned * fall), { pan: side(w.dx, w.dz, w.d0, w.d), far: t }); }
       else air.set('frogs', 0);

@@ -28,7 +28,7 @@ const FILES = new URL('./assets/audio/', import.meta.url);
 // each layer's loudness against the others, at 1 (the loops are all as loud as each other as written)
 const LAYERS = {
   wind: 0.6, birds: 0.55, night: 0.55, dry: 0.65, crows: 0.6,      // the air all round
-  brook: 1.2, river: 1.6, fall: 3.2, leaves: 1.0, abyss: 1.6, frogs: 1.0,      // things with a place (at their loudest: beside them).
+  brook: 1.2, river: 1.3, rapids: 1.8, fall: 3.2, leaves: 1.0, abyss: 1.6, frogs: 1.0,      // things with a place (at their loudest: beside them).
                                                                    // (fall: 2.0 at first, not heard clearly enough: "ตอนใกล้น้ำตก อยากได้ยินเสียงน้ำตกชัดๆ")
   brush: 0.8,                                                      // the grass she goes through, parted (at a run: ambience-places.js); about the wind's loudness
 };
