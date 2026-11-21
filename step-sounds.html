@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Loria Farm — ทดลองเสียง</title>
+<!--
+  step-sounds.html: a trial page for the game's sound: her steps heard (step-sounds.js; in the game) and the
+  air about her (ambience.js; not in the game yet).
+  The game's own player (player-moves.js: walk, run, dash and sprint, the magic jump, the vault) on a small flat test
+  ground, with each kind of ground side by side and a fence to go over, so every step's sound can be heard in a minute:
+    the middle and all round: grass       ahead on her left: earth (a way)    ahead on her right: stone
+    behind on her left: sand              behind on her right: boards         ahead, past them: a fence
+  The brook and the pond are water to wade in (the pond deep enough in its middle to swim), so her steps in water, a splash
+  and her strokes are heard too.
+  and out on the grass round them, things heard from where they are, louder as she comes to them, to her left or right as
+  the camera sees them, duller from far off:
+    along her left: a brook      ahead on her right: a waterfall      on her right: a tree (its leaves)
+    behind her: the pit's mouth (its wind)      behind on her right: a pond (frogs, by night)
+  The air all round goes by the time (the button: day, wind and birds; night, crickets; the cursed land, a dry wind and
+  crows, with no water and no leaves).
+  Nothing of the game's world is loaded: one character, her clips, the sounds. No query strings and nothing remembered,
+  so the same page runs where those are not to be had.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cde6f2; overscroll-behavior: none;
+    font-family: system-ui, -apple-system, "Noto Sans Thai", "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
+  html, body { height: 100dvh; }
+  canvas { display: block; touch-action: none; }
+  #tint { position: fixed; inset: 0; pointer-events: none; mix-blend-mode: multiply; background: #fff; transition: background 1s; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .18); border: 2px solid rgba(255, 255, 255, .5); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(255, 255, 255, .7); }
+  #jumpBtn, #dashBtn { position: fixed; right: 24px; bottom: 16px; width: 68px; height: 68px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6);
+    background: rgba(255, 255, 255, .25); color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none;
+    -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #dashBtn { right: 100px; width: 56px; height: 56px; }
+  #jumpBtn.down, #dashBtn.down { background: rgba(255, 255, 255, .5); }
+  #info { position: fixed; left: 10px; top: 10px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; max-width: calc(100vw - 20px); }
+  #info span, #info button { background: rgba(39, 52, 26, .78); color: #fff; font: 600 13px system-ui, "Noto Sans Thai", sans-serif; padding: 8px 12px; border-radius: 999px; border: 0; }
+  #info button { touch-action: manipulation; min-width: 40px; }
+  #info #mood { background: rgba(94, 62, 130, .88); }
+  #tap { position: fixed; left: 0; right: 0; top: 38%; display: flex; justify-content: center; pointer-events: none; }
+  #tap span { background: rgba(94, 62, 130, .9); color: #fff; font-size: 15px; padding: 12px 20px; border-radius: 999px; }
+  #tap[hidden] { display: none; }
+  #credit { position: fixed; left: 10px; bottom: 8px; max-width: 52vw; font-size: 10px; line-height: 1.35; color: rgba(255, 255, 255, .8); text-shadow: 0 1px 2px rgba(20, 30, 15, .7); pointer-events: none; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #cde6f2; color: #27341a; font-size: 15px; text-align: center; padding: 20px; white-space: pre-wrap; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="tint"></div>
+<div id="stick"><i></i></div>
+<button id="jumpBtn" type="button" aria-label="กระโดด">กระโดด</button>
+<button id="dashBtn" type="button" aria-label="พุ่ง">พุ่ง</button>
+<div id="info"><button id="mood" type="button" aria-label="เปลี่ยนเวลา">☀️ กลางวัน</button><span id="ground">พื้น: หญ้า</span><button id="quieter" type="button" aria-label="เบาลง">🔉 −</button><span id="volume">เสียง 100%</span><button id="louder" type="button" aria-label="ดังขึ้น">🔊 +</button></div>
+<div id="tap"><span>แตะจอหนึ่งครั้งเพื่อเปิดเสียง</span></div>
+<div id="credit">เสียงเท้า เสียงกระโดด และเสียงบรรยากาศ: สร้างด้วย ElevenLabs (elevenlabs.io)</div>
+<div id="loading">กำลังโหลด…</div>
+<script type="module">
+import * as THREE from 'three';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
+import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
+import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
+import { createPlayer } from './player-moves.js';
+import { createMagicCircles } from './magic-circle-fx.js';
+import { createStepSounds } from './step-sounds.js';
+import { createAmbience } from './ambience.js';
+
+const loading = document.getElementById('loading');
+try {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#cde6f2');
+  scene.fog = new THREE.Fog('#cde6f2', 42, 100);
+  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+  const fit = () => {
+    camera.aspect = innerWidth / innerHeight; camera.fov = camera.aspect < 1 ? 70 : 55; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  };
+  addEventListener('resize', fit); fit();
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  // ---- the ground: grass, and four squares of the other kinds round the middle (IN .. OUT metres out, each way)
+  const IN = 3, OUT = 15;
+  const KINDS = {
+    grass: { name: 'หญ้า', colour: '#86b556' },
+    earth: { name: 'ทางดิน', colour: '#b3915f', at: [1, 1] },        // ahead on her left as she starts (she faces +z, so +x is to her left)
+    stone: { name: 'หิน', colour: '#a3a8ad', at: [-1, 1] },
+    wood:  { name: 'ไม้กระดาน', colour: '#94683c', at: [-1, -1] },
+    sand:  { name: 'ทราย', colour: '#dccb97', at: [1, -1] },
+    water: { name: 'น้ำ', colour: '#6fb7d6' },
+  };
+  // ---- things heard from where they are (the air about her), out on the grass round the squares
+  const BROOK = { x: 24, half: 1.4, z0: -36, z1: 36 }, FALL = { x: -27, z: 27 }, TREE = { x: -25, z: -3 }, PIT = { x: 0, z: -33, r: 8 }, POND = { x: -25, z: -27, r: 4 };
+  const surfaceAt = (x, z) => {
+    if ((Math.abs(x - BROOK.x) < BROOK.half && z > BROOK.z0 && z < BROOK.z1) || Math.hypot(x - POND.x, z - POND.z) < POND.r) return 'water';
+    if (Math.hypot(x, z) < IN || Math.abs(x) > OUT || Math.abs(z) > OUT || Math.abs(x) < 0.25 || Math.abs(z) < 0.25) return 'grass';      // (the middle, all round, and a strip between the squares)
+    for (const k in KINDS) { const at = KINDS[k].at; if (at && Math.sign(x) === at[0] && Math.sign(z) === at[1]) return k; }
+    return 'grass';
+  };
+  // ---- the water is real: the ground goes down under it, so its surface stays where it is drawn (y 0), and she wades in
+  // it, and in the pond's middle she swims (deeper than 0.85 m: player-moves.js). The brook is 0.3 m deep, its banks
+  // sloping in over 0.4 m; the pond is 1.6 m deep in its middle, shelving up to nothing at its edge
+  const waterAt = (x, z) => {
+    const s = (a, b, v) => { const u = Math.min(1, Math.max(0, (v - a) / (b - a))); return u * u * (3 - 2 * u); };
+    const brook = z > BROOK.z0 && z < BROOK.z1 ? 0.3 * s(BROOK.half, BROOK.half - 0.4, Math.abs(x - BROOK.x)) : 0;
+    const pond = 1.6 * s(POND.r, POND.r * 0.35, Math.hypot(x - POND.x, z - POND.z));
+    return Math.max(brook, pond);
+  };
+  // a picture of a ground: its colour, a little of what it is made of, drawn once
+  function picture(kind, size = 512) {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const g = c.getContext('2d'); let s = 7 + kind.length;
+    const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    g.fillStyle = KINDS[kind].colour; g.fillRect(0, 0, size, size);
+    if (kind === 'wood') { g.strokeStyle = 'rgba(60, 36, 16, .55)'; g.lineWidth = 3; for (let y = 0; y <= size; y += size / 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(size, y); g.stroke(); } }
+    else if (kind === 'stone') { g.strokeStyle = 'rgba(70, 76, 84, .5)'; g.lineWidth = 3; for (let i = 0; i <= 4; i++) { const y = i * size / 4; g.beginPath(); g.moveTo(0, y); g.lineTo(size, y); g.stroke(); for (let x = (i % 2) * size / 8; x <= size; x += size / 4) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + size / 4); g.stroke(); } } }
+    else for (let i = 0; i < 900; i++) { g.fillStyle = r() < 0.5 ? 'rgba(255, 255, 255, .10)' : 'rgba(40, 30, 10, .10)'; const d = 1 + r() * (kind === 'grass' ? 5 : 3); g.fillRect(r() * size, r() * size, d, kind === 'grass' ? d * 2.5 : d); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+    return t;
+  }
+  const flat = (w, d, map, y) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map })); m.rotation.x = -Math.PI / 2; m.position.y = y; return m; };
+  const plain = (geometry, colour, x, y, z) => { const m = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: colour })); m.position.set(x, y, z); scene.add(m); return m; };
+  const disc = (r, colour, x, y, z) => { const m = plain(new THREE.CircleGeometry(r, 48), colour, x, y, z); m.rotation.x = -Math.PI / 2; return m; };
+  const grassMap = picture('grass'); grassMap.repeat.set(40, 40);
+  scene.add(flat(240, 240, grassMap, 0));
+  // a name standing over a thing, read from anywhere
+  function sign(text, x, y, z, w = 4.2) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(39, 52, 26, .82)'; g.beginPath(); if (g.roundRect) g.roundRect(4, 4, 504, 120, 60); else g.rect(4, 4, 504, 120); g.fill();
+    let px = 62;
+    do { g.font = `600 ${px}px system-ui, "Noto Sans Thai", sans-serif`; px -= 2; } while (g.measureText(text).width > 450 && px > 22);      // (a long name: smaller letters)
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 68);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, fog: false }));
+    s.scale.set(w, w / 4, 1); s.position.set(x, y, z);
+    scene.add(s);
+  }
+  for (const k in KINDS) {
+    const at = KINDS[k].at;
+    if (!at) continue;
+    const side = OUT - 0.02, map = picture(k); map.repeat.set(3, 3);
+    // (a square, less the middle's round of grass: laid a hair over the grass, the middle's disc a hair over it)
+    const m = flat(side, side, map, 0.01); m.position.x = at[0] * side / 2; m.position.z = at[1] * side / 2; scene.add(m);
+    sign(KINDS[k].name, at[0] * 8, 2.6, at[1] * 8);
+  }
+  const middle = new THREE.Mesh(new THREE.CircleGeometry(IN, 48), new THREE.MeshBasicMaterial({ map: picture('grass') }));
+  middle.rotation.x = -Math.PI / 2; middle.position.y = 0.02; scene.add(middle);
+  for (const [x, z, w, d] of [[0, 0, 0.5, 2 * OUT], [0, 0, 2 * OUT, 0.5]]) { const m = flat(w, d, grassMap, 0.015); m.position.set(x, 0.015, z); scene.add(m); }      // (grass between the squares)
+
+  // ---- a fence ahead on the grass, to go over (its colliders with a top: player-hurdle.js)
+  const colliders = [], FENCE = { z: 20, half: 6, top: 1.0 };
+  for (let x = -FENCE.half; x <= FENCE.half + 1e-6; x += 2) plain(new THREE.BoxGeometry(0.14, FENCE.top + 0.06, 0.14), '#7d5630', x, (FENCE.top + 0.06) / 2, FENCE.z);
+  for (const y of [0.5, 0.92]) plain(new THREE.BoxGeometry(2 * FENCE.half, 0.1, 0.07), '#8f6a40', 0, y, FENCE.z);
+  for (let x = -FENCE.half; x <= FENCE.half + 1e-6; x += 0.35) colliders.push([x, FENCE.z, 0.17, undefined, undefined, FENCE.top]);
+  sign('รั้ว: วิ่งเข้าหาเพื่อข้าม', 0, 2.9, FENCE.z, 6.4);
+
+  // ---- the things heard, drawn as plainly as the grounds are
+  // the brook: a strip of water along her left
+  { const m = plain(new THREE.PlaneGeometry(2 * BROOK.half, BROOK.z1 - BROOK.z0), KINDS.water.colour, BROOK.x, 0.012, (BROOK.z0 + BROOK.z1) / 2); m.rotation.x = -Math.PI / 2; }
+  sign('ลำธาร: ลุยน้ำ', BROOK.x, 2.6, 4);
+  // the waterfall: a rock face, a sheet of water down it, its pool
+  plain(new THREE.BoxGeometry(11, 9, 3), '#8d9399', FALL.x, 4.5, FALL.z + 3.2);
+  plain(new THREE.BoxGeometry(3.4, 8.6, 0.4), '#dff1f8', FALL.x, 4.3, FALL.z + 1.6);
+  disc(4.2, KINDS.water.colour, FALL.x, 0.012, FALL.z - 1.2);
+  for (let x = -5; x <= 5; x += 2.5) colliders.push([FALL.x + x, FALL.z + 3.2, 1.7]);
+  sign('น้ำตก', FALL.x, 10.4, FALL.z + 2);
+  // the tree: its leaves are what is heard
+  plain(new THREE.CylinderGeometry(0.3, 0.42, 3.4, 10), '#7a5a3a', TREE.x, 1.7, TREE.z);
+  for (const [x, y, z, r, c] of [[0, 5.2, 0, 2.7, '#5f9a4a'], [1.6, 4.4, 0.6, 1.9, '#6aa653'], [-1.5, 4.5, -0.7, 2.0, '#558f43'], [0.2, 6.6, -0.3, 1.8, '#73ae5b']]) plain(new THREE.IcosahedronGeometry(r, 1), c, TREE.x + x, y, TREE.z + z);
+  colliders.push([TREE.x, TREE.z, 0.5]);
+  sign('ต้นไม้: เสียงใบไม้', TREE.x, 9.2, TREE.z, 5);
+  // the pit's mouth: its wind comes up out of it (walled: she does not walk on air)
+  disc(PIT.r, '#1b222c', PIT.x, 0.012, PIT.z);
+  { const m = plain(new THREE.RingGeometry(PIT.r, PIT.r + 1.1, 48), '#757a80', PIT.x, 0.014, PIT.z); m.rotation.x = -Math.PI / 2; }
+  colliders.push([PIT.x, PIT.z, PIT.r - 0.4]);
+  sign('ปากเหว: ลมจากเหว', PIT.x, 3.2, PIT.z, 5);
+  // the pond: frogs, by night
+  disc(POND.r, KINDS.water.colour, POND.x, 0.012, POND.z);
+  sign('บ่อน้ำ: ลุยลงไปว่ายน้ำ · กบร้องตอนกลางคืน', POND.x, 2.6, POND.z, 7.6);
+
+  const level = {
+    spawn: { x: 0, z: 0, yaw: 0 }, heightAt: (x, z) => -waterAt(x, z), waterDepthAt: (x, z) => waterAt(x, z), footing: () => 'ground', surfaceAt,
+    colliders, cameraTrunks: [], crowns: [], radius: 60,
+  };
+
+  // ---- her: Vivi at the game's height, with the game's clips (as index.html puts them together)
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips } };
+  // (her model from vivi-data.js, as the other trial pages have it: the same file as assets/characters/vivi.glb, in a script)
+  const [{ VIVI_GLB: model }, springs] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+  // (her pictures are read as <img>, not fetched: GLTFLoader fetches them where there is createImageBitmap, and a page that may
+  // not fetch a blob: would leave her white. So it is put away while she is made)
+  const bitmap = window.createImageBitmap;
+  window.createImageBitmap = undefined;
+  let hero;
+  try { hero = await loadCharacter(model, anim); } finally { window.createImageBitmap = bitmap; }
+  if (springs) hero.attachSprings(createSprings(hero.model, springs));
+  hero.setSize(1.75 / hero.baseHeight);
+
+  const sounds = createStepSounds({ level, volume: 1 });
+  const air = createAmbience({ context: () => sounds.context, volume: 1 });
+  const circles = createMagicCircles({ seed: 2 });
+  scene.add(circles.object);
+  const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds });
+  scene.add(player.object);
+
+  // ---- her buttons: pressed, not clicked (as the game's)
+  for (const [id, act] of [['jumpBtn', () => player.jump()], ['dashBtn', () => player.dash()]]) {
+    const b = document.getElementById(id);
+    b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); act(); });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+  }
+  // ---- how loud (her steps and the air together)
+  const volumeEl = document.getElementById('volume');
+  const louder = by => { sounds.volume = Math.round((sounds.volume + by) * 10) / 10; air.volume = sounds.volume; volumeEl.textContent = `เสียง ${Math.round(sounds.volume * 100)}%`; };
+  document.getElementById('quieter').onclick = () => louder(-0.2);
+  document.getElementById('louder').onclick = () => louder(0.2);
+
+  // ---- the time: what the air all round is, and whether there is water and leaf to hear
+  const TIMES = [
+    { id: 'day', label: '☀️ กลางวัน', sky: '#cde6f2', tint: '#ffffff', air: { wind: 1, birds: 1 } },
+    { id: 'night', label: '🌙 กลางคืน', sky: '#24345c', tint: '#7384c4', air: { night: 1, wind: 0.35 } },
+    { id: 'curse', label: '🥀 ต้องสาป', sky: '#a99e8c', tint: '#c7b196', air: { dry: 1, crows: 1 } },
+  ];
+  const ALL_ROUND = ['wind', 'birds', 'night', 'dry', 'crows'];
+  const moodEl = document.getElementById('mood'), tintEl = document.getElementById('tint');
+  let time = 0;
+  const setTime = i => {
+    time = (i + TIMES.length) % TIMES.length;
+    const t = TIMES[time];
+    moodEl.textContent = t.label; tintEl.style.background = t.tint;
+    scene.background.set(t.sky); scene.fog.color.set(t.sky);
+  };
+  moodEl.onclick = () => setTime(time + 1);
+
+  // a thing with a place: as loud as it is near (from `near` metres, where it is at its loudest, to `far`, where it is gone),
+  // to the left or right as the camera sees it (in the middle when she stands at it), duller the further off
+  const right = new THREE.Vector3();
+  function placed(layer, px, pz, sx, sz, near, far, loud = 1, size = 0) {
+    const dx = sx - px, dz = sz - pz, d0 = Math.hypot(dx, dz), d = Math.max(0, d0 - size), t = clamp((d - near) / (far - near), 0, 1);
+    right.setFromMatrixColumn(camera.matrixWorld, 0);
+    const pan = d0 > 0.01 ? (dx * right.x + dz * right.z) / d0 * 0.85 * clamp(d / 4, 0, 1) : 0;
+    air.set(layer, loud * (1 - t) * (1 - t), { pan, far: t });
+  }
+
+  const groundEl = document.getElementById('ground'), tapEl = document.getElementById('tap'), clock = new THREE.Clock();
+  let shown = '', awake = false;
+  const frame = (dt = Math.min(clock.getDelta(), 0.05)) => {
+    player.update(dt);
+    circles.update(dt, camera);
+    const px = player.position.x, pz = player.position.z;
+    const on = player.mode === 'ground' ? surfaceAt(px, pz) : shown;
+    if (on && on !== shown) { shown = on; groundEl.textContent = `พื้น: ${KINDS[on].name}`; }
+    if (!awake) { const s = sounds.stats; if (s.ready) { awake = true; tapEl.hidden = true; } else if (s.failed) { awake = true; tapEl.firstElementChild.textContent = `เปิดเสียงไม่ได้: ${s.failed}`; } }
+    // the air about her
+    const t = TIMES[time], wet = t.id === 'curse' ? 0 : 1;
+    for (const k of ALL_ROUND) air.set(k, t.air[k] || 0);
+    placed('brook', px, pz, BROOK.x, clamp(pz, BROOK.z0, BROOK.z1), 1.5, 20, wet);
+    placed('fall', px, pz, FALL.x, FALL.z, 4, 44, wet);
+    placed('leaves', px, pz, TREE.x, TREE.z, 2.5, 14, wet);
+    placed('abyss', px, pz, PIT.x, PIT.z, 0.5, 24, 1, PIT.r);
+    placed('frogs', px, pz, POND.x, POND.z, 1, 24, t.id === 'night' ? 1 : 0, POND.r);
+    air.update(dt);
+    renderer.render(scene, camera);
+  };
+  renderer.setAnimationLoop(() => frame());
+  loading.remove();
+  window.__trial = { player, sounds, air, level, hero, frame, renderer, camera, KINDS, setTime, places: { BROOK, FALL, TREE, PIT, POND } };      // (for a test, or the console)
+} catch (err) {
+  console.error(err);
+  loading.textContent = `โหลดไม่สำเร็จ\n${err && err.message || err}`;
+}
+</script>
+</body>
+</html>

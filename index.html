@@ -113,7 +113,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=59",
+  "./hill-village-level.js": "./hill-village-level.js?v=60",
   "./west-fringe.js": "./west-fringe.js?v=6",
   "./plant-boss.js": "./plant-boss.js?v=3",
   "./plant-boss-moves.js": "./plant-boss-moves.js?v=2",
@@ -166,20 +166,21 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=23",
+  "./player-moves.js": "./player-moves.js?v=24",
   "./player-vault.js": "./player-vault.js?v=2",
   "./player-climb-top.js": "./player-climb-top.js?v=2",
   "./climb-top-anim.js": "./climb-top-anim.js?v=1",
   "./vault-anim.js": "./vault-anim.js?v=1",
   "./magic-jump-mocap-anim.js": "./magic-jump-mocap-anim.js?v=4",
   "./magic-jump-flow-anim.js": "./magic-jump-flow-anim.js?v=2",
-  "./magic-jump.js": "./magic-jump.js?v=14",
+  "./magic-jump.js": "./magic-jump.js?v=15",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=3",
   "./player-input.js": "./player-input.js?v=1",
   "./player-camera.js": "./player-camera.js?v=3",
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=3",
-  "./player-footsteps.js": "./player-footsteps.js?v=2",
+  "./player-footsteps.js": "./player-footsteps.js?v=3",
+  "./step-sounds.js": "./step-sounds.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -234,7 +235,7 @@
 <button id="skyBtn">ปรับฟ้า</button>
 <div id="tuner" class="tuner"></div>
 <div id="skyTuner" class="tuner"></div>
-<div id="credit">v24 · Anime Water · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT)</div>
+<div id="credit">v24 · Anime Water · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT) · เสียง: ElevenLabs (elevenlabs.io)</div>
 <div id="hint"><span id="hintText">แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง</span></div>
 <div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span><small>กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0)</small></div>
 <script type="module">
@@ -373,7 +374,14 @@ scene.add(circles.object);
 // and her pace is carried through the air (magic-jump.js, carry); the ⚖️ button switches it on and off, to compare
 // (?weight=0: the button, off to begin with)
 const weighs = Q.has('weight');
-const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0' });
+// ---- 🔊 her steps heard (in the game since 22 Nov 2026; a trial behind ?sound=1 until then): what her feet are on, as they
+// come down, at whatever pace she goes; her jumps, a landing, the water; her hand and foot on a thing she vaults
+// (step-sounds.js plays them; the player says when: player-moves.js, player-footsteps.js).
+// ?sound=0: without it, and nothing of it is loaded. ?sound=0.5 .. 2: quieter, louder. (Only the player with the moves:
+// not with ?move=0)
+const soundVol = Q.get('move') === '0' ? 0 : Q.has('sound') ? +Q.get('sound') : 1;
+const sounds = soundVol > 0 ? (await import('./step-sounds.js')).createStepSounds({ level, volume: soundVol }) : null;
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds });
 if (weighs && player.setWeight) {
   const btn = document.createElement('button');
   btn.id = 'weightBtn';
@@ -711,7 +719,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, sounds, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

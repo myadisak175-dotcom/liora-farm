@@ -380,7 +380,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const SPAN = 2.7, SPRING = -1.0, CROWN = 1.75, deckY = u => by + BD.stoneBridgeDeck(u, { length: bL });
     const arch = u => Math.abs(u) < SPAN ? by + SPRING + CROWN * Math.sqrt(1 - (u / SPAN) * (u / SPAN)) : -Infinity;
     // (halfW: the way between its parapets, 1.13 m either side; wide: under it, the whole of its width is over her)
-    decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.1, wide: 1.45, y: deckY, arch });
+    decks.push({ x: br.x, z: br.z, yaw: br.yaw, len: bL, halfW: 1.1, wide: 1.45, y: deckY, arch, of: 'stone' });
     for (let u = -bL / 2; u <= bL / 2; u += 1) for (const v of [-0.8, 0.8]) bare.push([br.x + u * bc + v * bs, br.z - u * bs + v * bc, 1.3]);
     // its parapets (and no stepping off its side): only for her up on it, not for her down under its arch
     // (each with its top, the coping's, 0.74 m over the deck: she may vault it, and fall into the river: player-hurdle.js)
@@ -402,7 +402,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     planks.position.set(pl.x, pby, pl.z); planks.rotation.y = pl.yaw; planks.name = 'plankBridge';
     group.add(planks);
     const plankY = u => pby + 0.41 + 0.7 * (1 - Math.pow(2 * u / pL, 2));
-    decks.push({ x: pl.x, z: pl.z, yaw: pl.yaw, len: pL, halfW: 0.95, wide: 1.05, y: plankY, arch: u => plankY(u) - 0.3 });      // (under its boards, where they are high enough over the bed, she may pass)
+    decks.push({ x: pl.x, z: pl.z, yaw: pl.yaw, len: pL, halfW: 0.95, wide: 1.05, y: plankY, arch: u => plankY(u) - 0.3, of: 'wood' });      // (under its boards, where they are high enough over the bed, she may pass)
     for (let u = -pL / 2; u <= pL / 2; u += 1) bare.push([pl.x + u * pc, pl.z - u * ps, 1.5]);
     casters.push([pl.x, pl.z, 0.4, Math.min(3.6, pL * 0.36), 0.65]);
   }
@@ -953,8 +953,18 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     },
     drop(holder) { group.remove(holder); holder.traverse(m => { if (m.geometry) m.geometry.dispose(); }); },
   };
+  // what is under her feet (her steps heard: step-sounds.js), asked with her height as standAt is: a bridge's deck ('stone',
+  // 'wood'), 'water', and on the land what it is painted as: a bank's 'sand', 'earth' (a way, a field, dry or bare land),
+  // bare 'stone' where it is steep, else 'grass'
+  const surfaceAt = (x, z, y) => {
+    const d = deckAt(x, z, y);
+    if (d) return d.of;
+    if (waterDepthAt(x, z, y) > 0.04) return 'water';
+    const [earth, sand] = paint(x, z);
+    return sand > 0.5 ? 'sand' : earth > 0.5 ? (slope(x, z) > 0.75 ? 'stone' : 'earth') : 'grass';
+  };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, surfaceAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
     homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },

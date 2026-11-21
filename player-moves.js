@@ -101,6 +101,7 @@ const NOWHERE = { from: 0, to: 0 };            // (a thing right at her: how far
 const VAULT_TAIL = 0.16;                       // s her hand and feet are let go of by the vault's IK once she is down (not in a frame)
 const CT_MOST_OFF = 0.12;                     // m (at Vivi's size) a sheer face's corner holds her off it at most, going over its top
 const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
+const STROKE_AT = 0.1;                        // s into her swim clip (Swim_Fwd_Loop, 1.33 s): her arms sweep out together from here (heard: a stroke)
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -108,7 +109,11 @@ const smooth = u => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u
 
 // circles: the magic jump's circles (magic-circle-fx.js), in the scene: the page draws them, the jump says where they open
 const NO_CIRCLES = { open() {} };
-export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false }) {
+// sounds: her steps heard (step-sounds.js), or none: the page plays them, she says when and where a foot comes down, a
+// magic circle opens under her, she jumps (each jump of a flight), she lands, she dashes, her hand and foot are put on a
+// thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep), she swims a stroke, the circle
+// opens under a long fall
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   // the level, asked at her height (see above): where her feet are, how deep the water is, where its surface is, and what
   // the ground is like (null: this map cannot say). A steep bank under the water is ground to her: she wades down it
@@ -129,6 +134,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let landT = -1, landHold = LAND_HOLD, jumpWanted = 0;
   let landClip = 'jump_land', landRate = LAND_RATE;       // the landing she is in: its clip, how fast it plays
   let dashWanted = 0, dashT = 0, dashCool = 0, sprint = false, easedOff = 0;
+  let lifting = false, circled = false, caught = false;      // (heard: a jump's feet still to leave the ground; a circle open under her last frame; the circle that catches a long fall, open)
   let edgeT = 0, edgeGrace = 0;               // how long she has pushed at a tall cliff's brink
   let shy = 0;                                // s after a slide that got her nowhere: edges are walls for a moment
   let grabPush = false, faceAhead = false, grabT = 0, grabShy = 0, lipT = 0;      // pushing at a face this frame; for how long; s before she will take hold again
@@ -147,6 +153,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const ctPlan = { ok: false }, ctAt = { x: 0, y: 0, z: 0, tilt: 0 }, shown = new THREE.Vector3(), away = new THREE.Vector3();
   let ctIK = createClimbTopIK(character), ctTail = 0, tiltFrom = 0, ctOff = 0;      // (ctOff: m she is held off a sheer face, her knees and elbows out of its corner)
   let wake = 0;                               // s to the next ring she leaves swimming
+  let strokeWas = -1;                         // (heard: where her swim clip was last frame)
   let lean = 0, roll = 0, grade = 0, turned = 0;      // her body's tilt forward / back and into a turn; the slope along her way; how far she turned this frame
   let weight = !!weighs, gain = 0, landW = 0, stopT = 0;      // her weight (see above): on; m/s² she gathered speed at this frame; how hard she landed (0..1); s her landing is stopped
   let wade = 0, stepSide = 1, wasDepth = 0, wetH = 0, wetAmt = 0, depthHere = 0;      // (water: as in player.js)
@@ -176,7 +183,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     onJump: () => { jumpWanted = JUMP_BUFFER; }, onDash: () => { dashWanted = JUMP_BUFFER; },
     onLook: (yaw, pitch) => cam.turn(yaw, pitch), onZoom: d => cam.zoom(d),
   });
-  const steps = createFootsteps(level);
+  const steps = createFootsteps(level, sounds);
   steps.find(character);
   // ---- the magic jump: her flight, and her body in it. It moves what it is given (her feet's height, her way across
   // in the air, her heading), and reads the stick as a way over the ground
@@ -306,6 +313,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     speed = Math.max(Math.min(speed, SPRINT0 * k * 1.15), out);              // (a dash off an edge is a long leap, not a flight)
     me.heading = heading; me.vel.set(Math.sin(heading) * speed, 0, Math.cos(heading) * speed);
     if (jump) air.takeOff(me); else air.drop(me, up);
+    lifting = jump;
     vy = air.vy;
   }
   // down on her feet: from a flight (the harder she came down, the more of her pace her legs take up and the longer before
@@ -315,6 +323,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     mode = 'ground'; vy = 0;
     const hit = slid ? 0.25 : air.impact;
     if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1 + 0.4 * hit, 0.32, 'splash');
+    const height = slid ? 0 : Math.max(0, peakY - pos.y) / k;             // (heard: m she came down from, at her height)
+    if (sounds && depth > 0.04) sounds.splash(pos.x, pos.z, pos.y, { size: 1 + 0.4 * hit, height });      // (into the water: a splash)
+    if (sounds) sounds.land(pos.x, pos.z, pos.y, { hit, depth, height });  // both feet down: heard as hard as she came down, and as far
     landT = 0;
     landW = weight && !slid ? Math.min(1, Math.max(0, (down / k - W_SOFT0) / (W_HARD0 - W_SOFT0))) : 0;
     speed *= weight && !slid ? 1 - (0.25 + 0.5 * landW) : 1 - 0.4 * hit;
@@ -484,12 +495,13 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     return true;
   }
   function hurdleStep(dt, k, pushing) {
-    const was = vaultAt(plan, overC, path).along;
+    const was = vaultAt(plan, overC, path).along, c0 = overC;
     overC += dt * path.rate;
     vaultAt(plan, overC, path);
     went = (path.along - was) / Math.max(dt, 1e-4);
     pos.set(crossing.x + crossing.dx * path.along, path.y, crossing.z + crossing.dz * path.along);
     hopLift = Math.max(0, path.y - crossing.y);
+    if (sounds) for (const part of ['hand', 'foot']) if (c0 < VAULT_TIMES[part].at && overC >= VAULT_TIMES[part].at) sounds.vault(pos.x, pos.z, pos.y, part);      // her hand, then her foot, come down on its top
     const clip = character.actions[VAULT_CLIP];
     clip.time = Math.min(overC, clip.getClip().duration);
     // over a parapet with the river below: off the top, she falls (a flight: magic-jump.js)
@@ -504,6 +516,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     mode = 'ground'; vy = 0;
     const depth = depthAt(pos.x, pos.z);
     if (depth > 0.06 && level.ripple) level.ripple(pos.x, pos.z, 1.0, 0.32, 'splash');
+    if (sounds) sounds.step(pos.x, pos.z, pos.y, { pace: 1, depth });      // (her front foot comes down)
     if (pushing) {
       // going on: the clip's last stride is her run's own (the sprint), so her run takes over at the same moment of its stride
       speed = Math.min(Math.max(went, WALK0 * k), RUN0 * k); landT = -1; pace = paceWas = speed;
@@ -542,8 +555,11 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
 
   // ---- swimming
   function swimIn(k, splash) {
+    const height = Math.max(0, peakY - pos.y) / k;                           // (heard: m she came down from)
     air.end(); mode = 'swim'; vy = 0; speed = Math.min(speed, SWIM0 * k); landT = -1; dashT = 0; sprint = false; wake = 0.2;
     if (splash && level.ripple) level.ripple(pos.x, pos.z, 1.5, 0.34, 'splash');
+    if (splash && sounds) sounds.splash(pos.x, pos.z, pos.y, { size: 1.5, height, deep: true });      // (heard: she goes in, as far as she came down)
+    strokeWas = -1;
     character.play(speed > 0.5 ? 'swim' : 'swim_idle', 0.3);
   }
   // May she swim (or wade out) from water whose surface is at `here` to (x, z)? Not over a fall or up one, not onto a bank
@@ -598,6 +614,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // ---- dash: a burst the way the stick points, then a sprint while she keeps running
     if (dashWanted > 0 && dashCool === 0 && mode === 'ground' && shallow) {
       dashWanted = 0; dashT = DASH_T; dashCool = DASH_COOL; sprint = true; landT = -1;
+      if (sounds) sounds.dash(pos.x, pos.z, pos.y);
       if (pushing) heading = want;
     }
     easedOff = running ? 0 : easedOff + dt;
@@ -724,15 +741,27 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       // a fence vaulted it, and the presses after were lost: "รั้วด้วย โดด 4 ชั้นไม่ได้")
       jumpWanted = 0;
       leave(0, k, true);
+      if (sounds) sounds.circle(pos.x, pos.z, pos.y, { n: 1 });               // (heard: the circle opening under her; her push as her feet leave the ground, below)
       if (depthHere > 0.04 && level.ripple) level.ripple(pos.x, pos.z, 0.8, 0.3, 'splash');      // pushing off from the water
+      if (depthHere > 0.04 && sounds) sounds.splash(pos.x, pos.z, pos.y, { size: 0.8 });
     } else if (mode === 'air' && jumpWanted > 0 && air.press(me, airStick)) jumpWanted = 0;
     // ---- her height: on the ground, in the air, down a face
     if (mode === 'air') {
       // up and down: the flight's (magic-jump.js). Deep water is met a little under its surface, and no circle catches her
       // over it
-      const floor = deep ? ground + depth - 0.2 * k : ground, was = air.vy;
+      const floor = deep ? ground + depth - 0.2 * k : ground, was = air.vy, jumps = air.tier;
       me.heading = heading;
       const down = air.step(dt, me, airStick, floor, !deep);
+      if (sounds) {
+        // heard: her feet leaving the ground (the take-off's crouch over); a kick off a circle in the air (the flight's next
+        // jump); a circle opening under her in the air (at the press: she is held on it until her kick)
+        if (lifting && !air.crouching) { lifting = false; sounds.leap(pos.x, pos.z, pos.y, { n: 1, depth }); }
+        else if (air.tier > jumps) sounds.leap(pos.x, pos.z, pos.y, { n: air.tier });
+        if (air.onCircle && !circled) sounds.circle(pos.x, pos.z, pos.y, { n: air.tier + 1 });
+        circled = air.onCircle;
+        if (air.caught && !caught) sounds.caught(pos.x, pos.z, pos.y, { height: Math.max(0, peakY - ground) / k });      // (a long fall: the circle opens on the ground under her)
+        caught = air.caught;
+      }
       heading = me.heading; vy = down === 'landed' ? was : air.vy;
       if (pos.y > peakY) peakY = pos.y;
       if (deep && pos.y <= floor) swimIn(k, true);                             // into deep water: she comes up swimming
@@ -777,6 +806,12 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const sw = speed > 0.5 * k ? 'swim' : 'swim_idle';
       if (character.state !== sw) character.play(sw, 0.35);
       character.setRate(sw === 'swim' ? Math.min(1.3, Math.max(0.7, speed / (SWIM0 * k))) : 1);
+      // heard: a stroke, as her arms sweep out (once round the clip; none treading water)
+      if (sounds) {
+        const t = character.state === 'swim' && character.actions.swim ? character.actions.swim.time : -1;
+        if (t >= 0 && strokeWas >= 0 && ((strokeWas < STROKE_AT && t >= STROKE_AT) || (t < strokeWas && t >= STROKE_AT))) sounds.stroke(pos.x, pos.z, pos.y, { pace: Math.min(1, speed / (SWIM0 * k)) });
+        strokeWas = t;
+      }
     } else if (mode === 'air') {
       /* (the flight plays her clips: magic-jump.js) */
     } else if (mode === 'slide') {
@@ -919,7 +954,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         character.water.level.value = depth > 0.02 ? level.heightAt(pos.x, pos.z) + depth : -1e5;
         character.water.wet.value.set((mode === 'swim' ? pos.y - k : pos.y) + wetH, wetAmt);
       }
-      steps.update(dt, { root, pos, speed, walk: WALK, run: RUN, still: mode !== 'ground' || landT >= 0 });
+      steps.update(dt, { root, pos, speed, walk: WALK, run: RUN, still: mode !== 'ground' || landT >= 0, size: k });
       // ---- the camera: the walker's, standing on her feet's height (in a flight, the ground she left and most of the way
       // up: four jumps go 4.4 m up; over a low thing, the ground and a little of how far the vault raises her; swimming, a little under the
       // surface, so it looks at her head)

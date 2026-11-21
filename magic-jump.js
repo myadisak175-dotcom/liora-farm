@@ -740,6 +740,7 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
   const air = {
     get active() { return active; }, get tier() { return tier; }, get held() { return held; }, get upside() { return upside; }, get beat() { return beat; },
     get impact() { return impact; }, get vy() { return vy; }, get landing() { return landing; }, get crouching() { return crouch >= 0; },
+    get caught() { return caught; },      // (a long fall: the circle on the ground has opened under her)
     get stepMode() { return stepWanted; }, set stepMode(on) { stepWanted = styleOf(on); },
     get momentum() { return mom; }, set momentum(on) { mom = !!on; },
     get carry() { return carry; }, set carry(on) { carryAsked = !!on; carry = carryAsked || build; },
