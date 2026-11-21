@@ -89,6 +89,9 @@ const MASTER = 1.0;            // the whole of it, at volume 1 (over that, the l
 const WALK_GAIN = 0.55;        // a walk's step against a run's (1)
 const FEET = 0.6;              // her steps on land (in grass, on earth, stone, boards, sand) against the rest of what she makes:
                                // 40% down, to sit with the music ("ลด 40 เปอร์เซ็นต์ กำลังดี ให้บาลานเสียงเพลง"). Not in water
+const FLIGHT = 0.6;            // ... and her jumps and landings, as much ("เสียงลงพื้น เสียงกระโดด ก็ลดให้เท่ากัน"): the circle's
+                               // sparkle, her push, the air, her dress, the thud, the thump from high, her other foot, the settling, the
+                               // circle that catches a long fall. (Not her dash, her vault, nor the water)
 const SPRINT_GAIN = 1.2;       // a sprint's or a dash's
 const RUN_FROM = 0.5;          // her pace (0: a walk's, 1: a run's) from which a step in grass is one of the run's
 const VARY_GAIN = 0.16, VARY_RATE = 0.05;      // each step this much softer at most, this much higher or lower at most
@@ -235,7 +238,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (note < 0 || n <= circles) note = pick('glint');
       circles = n;
       const up = LADDER[Math.min(LADDER.length - 1, Math.max(0, n - 1))];
-      play('glint', ctx.currentTime, n <= 1 ? GLINT_GROUND : GLINT, Math.pow(2, up / 12), note);
+      play('glint', ctx.currentTime, (n <= 1 ? GLINT_GROUND : GLINT) * FLIGHT, Math.pow(2, up / 12), note);
     },
 
     leap(x, z, y, { n = 1, depth = 0 } = {}) {
@@ -246,13 +249,13 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (n <= 1) {
         // her feet leave the ground: her push off it (a step, harder and lower: none off the water), and the air taking her up
         const ground = groundAt(x, z, y, depth);
-        if (ground) play(footfall(ground), now, PUSH * ground.gain, pitch(ground) * PUSH_RATE);
-        wind = play('gust', now, GUST, about(1));
+        if (ground) play(footfall(ground), now, PUSH * ground.gain * FLIGHT, pitch(ground) * PUSH_RATE);
+        wind = play('gust', now, GUST * FLIGHT, about(1));
         lastAt = now;
       } else {
         // off a circle in the air: her dress, as she kicks
         const cloth = KICK[n] || 'swish';
-        play(cloth, now, CLOTH[cloth] * vary(), about(1));
+        play(cloth, now, CLOTH[cloth] * FLIGHT * vary(), about(1));
       }
     },
 
@@ -267,10 +270,10 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       // her weight, lower the harder she comes down (from high, the thump: weightier the farther she came down); her other
       // foot after it; her dress settling
       const high = has('thump') ? Math.min(1, Math.max(0, (height - HIGH_FROM) / (HIGH_FULL - HIGH_FROM))) : 0;
-      play('land', now, LAND * (0.45 + 0.55 * hard) * (1 - 0.7 * high), about(1.04 - 0.1 * hard));
-      if (high > 0) play('thump', now, THUMP * (0.35 + 0.65 * high) * vary(), about(1.02 - 0.06 * high));
-      play(footfall(ground), now + OTHER_FOOT, ground.gain * (0.45 + 0.4 * Math.max(hard, high)), pitch(ground) * 0.94);
-      play('settle', now + SETTLE_AFTER, CLOTH.settle * (0.6 + 0.4 * Math.max(hard, high)) * vary(), about(1));
+      play('land', now, LAND * FLIGHT * (0.45 + 0.55 * hard) * (1 - 0.7 * high), about(1.04 - 0.1 * hard));
+      if (high > 0) play('thump', now, THUMP * FLIGHT * (0.35 + 0.65 * high) * vary(), about(1.02 - 0.06 * high));
+      play(footfall(ground), now + OTHER_FOOT, ground.gain * FLIGHT * (0.45 + 0.4 * Math.max(hard, high)), pitch(ground) * 0.94);
+      play('settle', now + SETTLE_AFTER, CLOTH.settle * FLIGHT * (0.6 + 0.4 * Math.max(hard, high)) * vary(), about(1));
     },
 
     splash(x, z, y, { size = 1, height = 0, deep = false } = {}) {
@@ -296,7 +299,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       stats.catches++;
       if (!ready()) return;
       // the circle opens on the ground under her: its sparkle, low (a take of its own: no flight's climb goes on from here)
-      play('glint', ctx.currentTime, CAUGHT, Math.pow(2, CAUGHT_NOTE / 12));
+      play('glint', ctx.currentTime, CAUGHT * FLIGHT, Math.pow(2, CAUGHT_NOTE / 12));
     },
 
     stroke(x, z, y, { pace = 1 } = {}) {
