@@ -288,6 +288,7 @@ try {
     air.set('brush', throughGrass(player.speed, player.mode === 'ground' && surfaceAt(px, pz) === 'grass'));      // (the grass she goes through, as in the game)
     air.update(dt);
     music.update(dt, { daylight: t.id === 'day' ? 1 : 0, drowned: fall });      // (the cursed land: no piece fits it yet, so none begins)
+    air.under = music.under * (1 - fall);      // (while a piece plays the air is let down; not by the waterfall, where the music is)
     renderer.render(scene, camera);
   };
   renderer.setAnimationLoop(() => frame());

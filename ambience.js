@@ -10,6 +10,7 @@
 //                                                 (far off: duller, the way water far away is only its rumble)
 //     air.update(dt);
 //   air.volume = 0.8      air.stats (for a test, or the console)
+//   air.under = 0.5       let all of it down so much (0..1), smoothly: while music plays (music.js says how much)
 //
 // THE LAYERS (LAYERS, below: how loud each is against the others) are what tools/make-ambience.py wrote into
 // assets/audio/ambience.json: each a loop or two of 20 s, all levelled to one loudness there. The page decides what is
@@ -41,7 +42,7 @@ const N = 64, FADE_IN = new Float32Array(N), FADE_OUT = new Float32Array(N);
 for (let i = 0; i < N; i++) { FADE_IN[i] = Math.sin(0.5 * Math.PI * i / (N - 1)); FADE_OUT[i] = Math.cos(0.5 * Math.PI * i / (N - 1)); }
 
 export function createAmbience({ context, volume = 1 } = {}) {
-  let ctx = null, bus = null, meta = null, asked = false, failed = null, vol = Math.min(2, Math.max(0, volume));
+  let ctx = null, bus = null, meta = null, asked = false, failed = null, vol = Math.min(2, Math.max(0, volume)), under = 0, busSet = -1;
   const layers = {};
   const layer = name => layers[name] || (layers[name] = {
     name, want: 0, pan: 0, far: 0, loops: [], loading: false, gain: null, panner: null, filter: null, input: null,
@@ -99,7 +100,9 @@ export function createAmbience({ context, volume = 1 } = {}) {
       return { state: ctx ? ctx.state : 'asleep', ready: !!meta, failed: failed ? String(failed) : null, layers: out };
     },
     get volume() { return vol; },
-    set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (bus) bus.gain.value = MASTER * vol; },
+    set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); },
+    get under() { return under; },
+    set under(v) { under = Math.min(1, Math.max(0, +v || 0)); },
 
     set(name, level, { pan = 0, far = 0 } = {}) {
       const L = layer(name);
@@ -109,7 +112,8 @@ export function createAmbience({ context, volume = 1 } = {}) {
     update(dt) {
       if (!ctx) { ctx = context ? context() : null; if (!ctx) return; }
       if (ctx.state !== 'running') return;
-      if (!bus) { bus = ctx.createGain(); bus.gain.value = MASTER * vol; bus.connect(ctx.destination); }
+      if (!bus) { bus = ctx.createGain(); bus.gain.value = MASTER * vol * (1 - under); busSet = bus.gain.value; bus.connect(ctx.destination); }
+      { const want = MASTER * vol * (1 - under); if (Math.abs(want - busSet) > 0.004) { bus.gain.setTargetAtTime(want, ctx.currentTime, 0.4); busSet = want; } }
       if (!meta) {
         if (!asked) {
           asked = true;

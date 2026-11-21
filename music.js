@@ -6,6 +6,7 @@
 //   const music = createMusic({ context: () => sounds.context, volume });      // the AudioContext her steps woke
 //   every frame: music.update(dt, { daylight, drowned });      // daylight 1 by day .. 0 at night; drowned 0..1: how much
 //                                                              // of what is heard a waterfall or rushing water takes up
+//   air.under = music.under * (1 - drowned)      // every frame: the air about her let down while a piece plays (UNDER)
 //   music.on = false        (off: what is playing fades away, and nothing more is played until it is on again)
 //   music.volume = 0.8      music.stats (for a test, or the console)
 //
@@ -14,7 +15,9 @@
 // one is a night one. One playing is let finish, whatever the hour does meanwhile.
 //
 // A LITTLE OVER THE AIR (LEVEL): the air about her is the place, the music its mood. (Under the air at first, it was too
-// quiet.) By a waterfall or rushing water it goes down (DROWN), as everything else does there.
+// quiet.) And while a piece plays the air is let down (UNDER, as the piece fades in and out: the page sets air.under), or
+// its wind covers the music ("เสียงบรรยากาศดังไป กลบเพลงหมด"); between the pieces it is as loud as ever. By a waterfall or
+// rushing water it is the music that goes down (DROWN), and the air not (the page: air.under times what is not drowned).
 //
 // A PIECE IS STREAMED, not decoded whole: three minutes of music decoded is some 80 MB, more than a phone should hold for
 // it. It plays from an <audio> element through the AudioContext (its loudness is the context's to set). A phone may not
@@ -29,10 +32,12 @@ const GAP = [150, 300];            // s of only the air between one piece and th
 const FADE_IN = 4, FADE_OUT = 6;   // s: a piece comes in, and goes, this gently (the pieces begin at once and some end abruptly)
 const OFF_FADE = 1.5;              // s: switched off, it goes this fast
 const EASE = 0.5;                  // s: its loudness follows what is asked (drowned, volume) with this time constant
+const UNDER = 0.5;                 // how much the air about her is let down while a piece plays (0.5: 6 dB)
 
 export function createMusic({ context, volume = 1, first = FIRST } = {}) {
   let ctx = null, meta = null, asked = false, failed = null, vol = Math.min(2, Math.max(0, volume)), on = true;
   let el = null, src = null, gain = null, fade = null, playing = null, wait = first, last = -1, played = 0, unlocked = false;
+  let heard = 0;                   // 0..1: how much a piece is heard now (as it fades in and out), for under
 
   // the first touch: the <audio> element is let play later (and made now, so it is the one that was let)
   function unlock() {
@@ -85,10 +90,11 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
   }
 
   return {
-    get stats() { return { state: ctx ? ctx.state : 'asleep', ready: !!meta, failed: failed ? String(failed) : null, on, playing: playing ? meta.tracks[playing.i].file : null, wait: +Math.max(0, wait).toFixed(1), played, unlocked }; },
+    get stats() { return { state: ctx ? ctx.state : 'asleep', ready: !!meta, failed: failed ? String(failed) : null, on, heard: +heard.toFixed(2), playing: playing ? meta.tracks[playing.i].file : null, wait: +Math.max(0, wait).toFixed(1), played, unlocked }; },
     get volume() { return vol; },
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); },
     get on() { return on; },
+    get under() { return UNDER * heard; },
     set on(v) {
       on = !!v;
       if (!on && playing && ctx) fadeOut(OFF_FADE);
@@ -109,6 +115,7 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
         return;
       }
       if (!src) wire();
+      heard += ((playing && !playing.fading ? 1 : 0) - heard) * Math.min(1, dt / (playing && !playing.fading ? FADE_IN / 2 : FADE_OUT / 3));
       gain.gain.setTargetAtTime(LEVEL * vol * (1 - DROWN * Math.min(1, Math.max(0, drowned))), ctx.currentTime, EASE);
       const now = ctx.currentTime;
       if (playing) {

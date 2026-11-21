@@ -70,7 +70,7 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
   }).filter(w => w.points.length > 1);
   const falls = heard.falls || [], pit = heard.pit || null;
 
-  let rx = 1, rz = 0;                                                     // the camera's right, on the ground
+  let rx = 1, rz = 0, drowned = 0;                                        // the camera's right, on the ground; (see the getter)
   const brookAt = { d: Infinity, dx: 0, dz: 0, d0: 0 }, riverAt = { d: Infinity, dx: 0, dz: 0, d0: 0 };
   // a place dx, dz from her (d0 on the ground, d in all): which side it is heard on
   const side = (dx, dz, d0, d) => d0 > 0.01 ? (dx * rx + dz * rz) / d0 * SIDE * clamp(d / SIDE_FROM, 0, 1) : 0;
@@ -109,6 +109,9 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
     get stats() { return air.stats; },
     get volume() { return air.volume; },
     set volume(v) { air.volume = v; },
+    get under() { return air.under; },
+    set under(v) { air.under = v; },      // (music.js: while a piece plays)
+    get drowned() { return drowned; },     // how much of what is heard a fall or rushing water takes up, 0..1 (music.js goes down by it)
 
     update(dt, at, { daylight = 1, speed = 0, mode = 'ground' } = {}) {
       const x = at.x, y = at.y, z = at.z, day = clamp(daylight, 0, 1), dark = 1 - day;
@@ -124,6 +127,7 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
         if (t < 1) add(mix(FALL.loud, tall) * (1 - t) * (1 - t), side(dx, dz, d0, d), t);
       }
       const fall = put('fall'), heard = 1 - DROWNED * fall;
+      drowned = fall;
 
       // ---- the air all round
       const wind = cursed ? 0 : NIGHT_WIND + (1 - NIGHT_WIND) * day;
@@ -144,6 +148,7 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
         for (const f of falls) fd = Math.min(fd, Math.hypot(f.x - (x + r.dx), f.z - (z + r.dz)));
         const rush = 1 - along(fd, RAPIDS.near, RAPIDS.far);
         air.set('rapids', loud * Math.sqrt(rush), where);                 // (equal power: no dip between the two, no swell)
+        drowned = Math.max(drowned, loud * Math.sqrt(rush));
         air.set('river', loud * Math.sqrt(1 - rush), where);
       } else { air.set('river', 0); air.set('rapids', 0); }
       const w = r.d < b.d ? r : b;
