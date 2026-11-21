@@ -1,6 +1,7 @@
 // ambience.js
-// The air about her (a trial, beside her steps: step-sounds.html): wind in the grass, birds, a brook, a waterfall, the
-// night. Loops that never seem to end, each as loud as the page says it is from where she stands. Not in the game yet.
+// The air about her: wind in the grass, birds, a brook, a waterfall, the night. Loops that never seem to end, each as
+// loud as it is said to be from where she stands. In the game ambience-places.js says so, from the land and the hour;
+// on the trial page (step-sounds.html), the page itself.
 //
 //   const air = createAmbience({ context: () => sounds.context });      // the AudioContext her steps woke (none before the first touch)
 //   every frame:

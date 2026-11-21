@@ -13,7 +13,7 @@
 //     sounds.dash(x, z, y)                               a dash begins
 //     sounds.splash(x, z, y, { size, height, deep })     the water splashes where she is (size: 0.8 jumping out of it, 1 to 1.4
 //                                                        landing in it, 1.5 going in deep; height: m she came down from)
-//     sounds.stroke(x, z, y, { pace })                   a swimming stroke (pace: 0..1 of her swimming speed)
+//     sounds.stroke(x, z, y, { pace })                   a swimming stroke (pace: 0..1 of her swimming speed; 0: treading water)
 //     sounds.vault(x, z, y, part)                        her 'hand', then her 'foot', put on a low thing's top
 //   sounds.volume = 0.6      sounds.stats (for a test, or the console)      sounds.context (the AudioContext, once there is one)
 //
@@ -31,7 +31,9 @@
 //   - IN THE WATER ("เสียงน้ำค่ะ"): a step is a wade (louder and lower the deeper the water, to WADE_DEEP), at a run a
 //     shorter splash (wetrun: a wade is 0.6 s, too long for a run's steps, "เสียงวิ่งในน้ำก็ยังไม่ค่อยดี"); where she lands
 //     in it, jumps out of it or goes in deep, a splash (as big as the one that is seen: player-moves.js says where); and
-//     swimming, a stroke as her arms sweep out. A landing in it is its splash, not the thud
+//     swimming, a stroke as her arms sweep out, and treading water a soft one now and then. A stroke was no louder than
+//     a run's step at first, and went unheard ("ใส่เสียงตอนว่ายน้ำด้วย"): now as loud as a splash, over the brook she is
+//     in. Where she begins to swim from standing in it, a small splash. A landing in it is its splash, not the thud
 //   - HER JUMPS in layers, so they are not flat ("ต้องเบลนไม่ให้เสียงแบน"): each layer a sound of its own, in a range of its
 //     own (her weight low, cloth and grass in the middle, the magic high), and not all at once but one after another:
 //       the button on the ground: the circle opens under her, a sparkle (glint; softer: her push is what is heard)
@@ -112,7 +114,7 @@ const WADE_DEEP = 0.5;                         // m: a wade this deep and deeper
 const SPLASH = 1.0;                            // a splash of size 1.5 (going in deep); smaller ones softer and higher
 const PLUNGE = 1.0, PLUNGE_FROM = 2.6, PLUNGE_FULL = 8;      // into deep water from higher than so many m: a plunge, louder up to PLUNGE_FULL
 const PLOP = 0.9;                              // ... from lower: a plop (at PLUNGE_FROM; from no height at all, half of it)
-const STROKE = 0.8;                            // a stroke at her full swimming speed
+const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming speed; and of that, treading water (slower: in between)
 const TOUCH = { hand: 0.4, foot: 0.7 };        // her vault: her hand and her foot on the thing's top
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 
@@ -298,7 +300,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     stroke(x, z, y, { pace = 1 } = {}) {
       stats.strokes++;
       if (!ready()) return;
-      play('stroke', ctx.currentTime, STROKE * (0.55 + 0.45 * Math.min(1, Math.max(0, pace))) * vary(), about(1));
+      play('stroke', ctx.currentTime, STROKE * (TREAD + (1 - TREAD) * Math.min(1, Math.max(0, pace))) * vary(), about(pace > 0 ? 1 : 0.92));      // (treading water: a little lower too)
     },
 
     dash(x, z, y) {

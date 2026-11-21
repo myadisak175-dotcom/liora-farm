@@ -1,0 +1,142 @@
+// ambience-places.js
+// The air about her, in the game: what of it is heard from where she stands. ambience.js plays the layers; this file says
+// how loud each is now: the air all round by the hour (or the curse), and the land's places as she comes to them.
+//
+//   const air = createAmbiencePlaces({ context: () => sounds.context, volume, level, camera });
+//   every frame: air.update(dt, player.position, { daylight });      // daylight: 1 by day .. 0 at night (time-of-day.js)
+//   air.volume = 0.8      air.stats (for a test, or the console: what each layer is asked for, and whether it plays)
+//
+// THE LAND SAYS WHERE (level.heard and level.crowns: hill-village-level.js): the water's ways, every fall, the pit's shaft,
+// the trees' crowns. A map that says none of it has the air all round and nothing else.
+//
+// THE AIR ALL ROUND goes by the daylight: wind in the grass (less of it by night), birds by day, crickets by night; at dusk
+// the birds have stopped before the crickets are many. Under the curse (level.heard.cursed): a dry wind, and crows, fewer
+// by night; no bird, no cricket.
+//
+// A PLACE IS HEARD AS A PLACE, as on the trial page: louder as she comes to it (from where it is at its loudest out to
+// where it is gone, falling off as the square of the way there), to her left or right as the camera sees it (in the
+// middle when she stands at it), duller from far off. How far she is from it counts height too: a brook at a cliff's foot
+// is far from its top. Where there are many of a kind (falls one under another, a wood's crowns) they are one layer: as
+// loud as all of them together (never more than one beside her), and from where the loudest of them are.
+//   brook    the nearest water's way
+//   fall     every fall near enough: a tall one is heard further and louder than a low step of one
+//   leaves   the crowns near her, as the wind is (less by night); none under the curse (its trees are bare)
+//   abyss    the pit's shaft: the wind out of it
+//   frogs    by the water at night; fewer where a fall drowns them
+
+import { createAmbience } from './ambience.js';
+
+// from near (m: at its loudest) out to far (gone)
+const BROOK = { near: 1.5, far: 20 };
+const FALL = { near: 4, far: [30, 80], loud: [0.6, 1], tall: 18 };      // a low step of a fall .. a tall one (so many m and more): how far it is heard, how loud beside it
+const LEAVES = { near: 2.5, far: 14, over: 4 };                         // (over: a crown this much higher or lower than her head is as near as one level with it)
+const PIT = { near: 0.5, far: 45 };
+const FROGS = { near: 1, far: 24, drowned: 0.8 };                       // (drowned: how much of them a fall at its loudest takes away)
+const NIGHT_WIND = 0.35;                                                // the wind by night, of the day's
+const CURSE_CROWS = 0.3;                                                // the crows by night, of the day's
+const SIDE = 0.85, SIDE_FROM = 4;                                       // how far to one side a place can be heard; within so many m of it, less and less to a side
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const mix = ([a, b], k) => a + (b - a) * k;
+
+export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}) {
+  const air = createAmbience({ context, volume });
+  const heard = (level && level.heard) || {};
+  const cursed = !!heard.cursed;
+  // each way of the water with the box it lies in, so a way far from her is not gone along point by point
+  const ways = (heard.ways || []).filter(w => w.length > 1).map(points => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const [x, z] of points) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    return { points, x0, x1, z0, z1 };
+  });
+  const falls = heard.falls || [], pit = heard.pit || null;
+
+  let rx = 1, rz = 0;                                                     // the camera's right, on the ground
+  // a place dx, dz from her (d0 on the ground, d in all): which side it is heard on
+  const side = (dx, dz, d0, d) => d0 > 0.01 ? (dx * rx + dz * rz) / d0 * SIDE * clamp(d / SIDE_FROM, 0, 1) : 0;
+  // ... how far along the way from near to far it is (0: at its loudest, 1: gone)
+  const along = (d, near, far) => clamp((d - near) / (far - near), 0, 1);
+
+  // the nearest point of the water's ways: how far (from its edge, in all), and where
+  const water = { d: Infinity, dx: 0, dz: 0, d0: 0 };
+  function nearestWater(x, y, z, reach) {
+    water.d = Infinity;
+    for (const w of ways) {
+      if (x < w.x0 - reach || x > w.x1 + reach || z < w.z0 - reach || z > w.z1 + reach) continue;
+      const P = w.points;
+      for (let i = 0; i < P.length - 1; i++) {
+        const a = P[i], b = P[i + 1], ex = b[0] - a[0], ez = b[1] - a[1], len = ex * ex + ez * ez;
+        const t = len > 1e-9 ? clamp(((x - a[0]) * ex + (z - a[1]) * ez) / len, 0, 1) : 0;
+        const dx = a[0] + ex * t - x, dz = a[1] + ez * t - z, d0 = Math.hypot(dx, dz);
+        const d = Math.hypot(Math.max(0, d0 - (a[3] + (b[3] - a[3]) * t) / 2), y - (a[2] + (b[2] - a[2]) * t));
+        if (d < water.d) { water.d = d; water.dx = dx; water.dz = dz; water.d0 = d0; }
+      }
+    }
+    return water;
+  }
+
+  // many of a kind as one layer: each one's loudness squared is its weight
+  const many = { sum: 0, pan: 0, far: 0 };
+  const begin = () => { many.sum = 0; many.pan = 0; many.far = 0; };
+  const add = (loud, pan, t) => { const w = loud * loud; many.sum += w; many.pan += w * pan; many.far += w * t; };
+  const put = (name, scale = 1) => {
+    if (many.sum > 1e-8) air.set(name, Math.min(1, Math.sqrt(many.sum)) * scale, { pan: many.pan / many.sum, far: many.far / many.sum });
+    else air.set(name, 0);
+    return Math.min(1, Math.sqrt(many.sum));
+  };
+
+  return {
+    get stats() { return air.stats; },
+    get volume() { return air.volume; },
+    set volume(v) { air.volume = v; },
+
+    update(dt, at, { daylight = 1 } = {}) {
+      const x = at.x, y = at.y, z = at.z, day = clamp(daylight, 0, 1), dark = 1 - day;
+      if (camera) { const e = camera.matrixWorld.elements, l = Math.hypot(e[0], e[2]); if (l > 1e-6) { rx = e[0] / l; rz = e[2] / l; } }
+
+      // ---- the air all round
+      const wind = cursed ? 0 : NIGHT_WIND + (1 - NIGHT_WIND) * day;
+      air.set('wind', wind);
+      air.set('birds', cursed ? 0 : day * day);
+      air.set('night', cursed ? 0 : dark * dark);
+      air.set('dry', cursed ? 1 : 0);
+      air.set('crows', cursed ? CURSE_CROWS + (1 - CURSE_CROWS) * day : 0);
+
+      // ---- the falls
+      begin();
+      for (const f of falls) {
+        const tall = clamp((f.top - f.bottom) / FALL.tall, 0, 1), far = mix(FALL.far, tall);
+        const dx = f.x - x, dz = f.z - z, d0 = Math.hypot(dx, dz);
+        if (d0 > far + f.width) continue;
+        const d = Math.hypot(Math.max(0, d0 - f.width / 2), y > f.top ? y - f.top : y < f.bottom ? f.bottom - y : 0), t = along(d, FALL.near, far);
+        if (t < 1) add(mix(FALL.loud, tall) * (1 - t) * (1 - t), side(dx, dz, d0, d), t);
+      }
+      const fall = put('fall');
+
+      // ---- the water's ways: the brook, and by night its frogs
+      const w = nearestWater(x, y, z, Math.max(BROOK.far, FROGS.far));
+      if (w.d < BROOK.far) { const t = along(w.d, BROOK.near, BROOK.far); air.set('brook', (1 - t) * (1 - t), { pan: side(w.dx, w.dz, w.d0, w.d), far: t }); }
+      else air.set('brook', 0);
+      if (w.d < FROGS.far && dark > 0.01) { const t = along(w.d, FROGS.near, FROGS.far); air.set('frogs', dark * dark * (1 - t) * (1 - t) * (1 - FROGS.drowned * fall), { pan: side(w.dx, w.dz, w.d0, w.d), far: t }); }
+      else air.set('frogs', 0);
+
+      // ---- the trees' crowns
+      begin();
+      const crowns = cursed ? null : level && level.crowns;
+      if (crowns) for (const c of crowns) {
+        const dx = c[0] - x, dz = c[2] - z, reach = LEAVES.far + c[3];
+        if (dx > reach || dx < -reach || dz > reach || dz < -reach) continue;
+        const d0 = Math.hypot(dx, dz), d = Math.hypot(Math.max(0, d0 - c[3]), Math.max(0, Math.abs(c[1] - (y + 1.5)) - c[3] - LEAVES.over)), t = along(d, LEAVES.near, LEAVES.far);
+        if (t < 1) add((1 - t) * (1 - t), side(dx, dz, d0, d), t);
+      }
+      put('leaves', wind);
+
+      // ---- the pit
+      if (pit) {
+        const dx = pit.x - x, dz = pit.z - z, d0 = Math.hypot(dx, dz), d = Math.max(0, d0 - pit.r), t = along(d, PIT.near, PIT.far);
+        air.set('abyss', (1 - t) * (1 - t), { pan: side(dx, dz, d0, d), far: t });
+      }
+      air.update(dt);
+    },
+  };
+}

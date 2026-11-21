@@ -102,6 +102,7 @@ const VAULT_TAIL = 0.16;                       // s her hand and feet are let go
 const CT_MOST_OFF = 0.12;                     // m (at Vivi's size) a sheer face's corner holds her off it at most, going over its top
 const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
 const STROKE_AT = 0.1;                        // s into her swim clip (Swim_Fwd_Loop, 1.33 s): her arms sweep out together from here (heard: a stroke)
+const TREAD_AT = [0.4, 2.07];                 // s into her treading clip (Swim_Idle_Loop, 3.33 s; her arms go gently all the way round it): a soft stroke, twice round it
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -111,7 +112,7 @@ const smooth = u => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u
 const NO_CIRCLES = { open() {} };
 // sounds: her steps heard (step-sounds.js), or none: the page plays them, she says when and where a foot comes down, a
 // magic circle opens under her, she jumps (each jump of a flight), she lands, she dashes, her hand and foot are put on a
-// thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep), she swims a stroke, the circle
+// thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep, begins to swim), she swims a stroke, the circle
 // opens under a long fall
 export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
@@ -153,7 +154,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const ctPlan = { ok: false }, ctAt = { x: 0, y: 0, z: 0, tilt: 0 }, shown = new THREE.Vector3(), away = new THREE.Vector3();
   let ctIK = createClimbTopIK(character), ctTail = 0, tiltFrom = 0, ctOff = 0;      // (ctOff: m she is held off a sheer face, her knees and elbows out of its corner)
   let wake = 0;                               // s to the next ring she leaves swimming
-  let strokeWas = -1;                         // (heard: where her swim clip was last frame)
+  let strokeWas = -1, treadWas = -1;          // (heard: where her swim clip was last frame, and her treading clip)
   let lean = 0, roll = 0, grade = 0, turned = 0;      // her body's tilt forward / back and into a turn; the slope along her way; how far she turned this frame
   let weight = !!weighs, gain = 0, landW = 0, stopT = 0;      // her weight (see above): on; m/s² she gathered speed at this frame; how hard she landed (0..1); s her landing is stopped
   let wade = 0, stepSide = 1, wasDepth = 0, wetH = 0, wetAmt = 0, depthHere = 0;      // (water: as in player.js)
@@ -559,7 +560,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     air.end(); mode = 'swim'; vy = 0; speed = Math.min(speed, SWIM0 * k); landT = -1; dashT = 0; sprint = false; wake = 0.2;
     if (splash && level.ripple) level.ripple(pos.x, pos.z, 1.5, 0.34, 'splash');
     if (splash && sounds) sounds.splash(pos.x, pos.z, pos.y, { size: 1.5, height, deep: true });      // (heard: she goes in, as far as she came down)
-    strokeWas = -1;
+    else if (sounds) sounds.splash(pos.x, pos.z, pos.y, { size: 0.5 });      // (... or from standing in it, off a rock's face: she pushes off, a small splash)
+    strokeWas = treadWas = -1;
     character.play(speed > 0.5 ? 'swim' : 'swim_idle', 0.3);
   }
   // May she swim (or wade out) from water whose surface is at `here` to (x, z)? Not over a fall or up one, not onto a bank
@@ -806,11 +808,14 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const sw = speed > 0.5 * k ? 'swim' : 'swim_idle';
       if (character.state !== sw) character.play(sw, 0.35);
       character.setRate(sw === 'swim' ? Math.min(1.3, Math.max(0.7, speed / (SWIM0 * k))) : 1);
-      // heard: a stroke, as her arms sweep out (once round the clip; none treading water)
+      // heard: a stroke, as her arms sweep out (once round the clip); treading water, a soft one twice round that clip
       if (sounds) {
         const t = character.state === 'swim' && character.actions.swim ? character.actions.swim.time : -1;
         if (t >= 0 && strokeWas >= 0 && ((strokeWas < STROKE_AT && t >= STROKE_AT) || (t < strokeWas && t >= STROKE_AT))) sounds.stroke(pos.x, pos.z, pos.y, { pace: Math.min(1, speed / (SWIM0 * k)) });
         strokeWas = t;
+        const u = character.state === 'swim_idle' && character.actions.swim_idle ? character.actions.swim_idle.time : -1;
+        if (u >= 0 && treadWas >= 0) for (const at of TREAD_AT) if ((treadWas < at && u >= at) || (u < treadWas && u >= at)) sounds.stroke(pos.x, pos.z, pos.y, { pace: 0 });
+        treadWas = u;
       }
     } else if (mode === 'air') {
       /* (the flight plays her clips: magic-jump.js) */

@@ -113,7 +113,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=60",
+  "./hill-village-level.js": "./hill-village-level.js?v=61",
   "./west-fringe.js": "./west-fringe.js?v=6",
   "./plant-boss.js": "./plant-boss.js?v=3",
   "./plant-boss-moves.js": "./plant-boss-moves.js?v=2",
@@ -166,7 +166,7 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=24",
+  "./player-moves.js": "./player-moves.js?v=25",
   "./player-vault.js": "./player-vault.js?v=2",
   "./player-climb-top.js": "./player-climb-top.js?v=2",
   "./climb-top-anim.js": "./climb-top-anim.js?v=1",
@@ -180,7 +180,9 @@
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=3",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
-  "./step-sounds.js": "./step-sounds.js?v=1",
+  "./step-sounds.js": "./step-sounds.js?v=2",
+  "./ambience.js": "./ambience.js?v=1",
+  "./ambience-places.js": "./ambience-places.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -381,6 +383,11 @@ const weighs = Q.has('weight');
 // not with ?move=0)
 const soundVol = Q.get('move') === '0' ? 0 : Q.has('sound') ? +Q.get('sound') : 1;
 const sounds = soundVol > 0 ? (await import('./step-sounds.js')).createStepSounds({ level, volume: soundVol }) : null;
+// ---- 🍃 the air about her (in the game since 22 Nov 2026; on step-sounds.html before): wind, birds, the night, and the
+// land's places as she comes to them: the water's ways, the falls, the trees' crowns, the pit (ambience-places.js says how
+// loud each is from where she stands and at this hour; ambience.js plays them, on the AudioContext her steps woke).
+// ?air=0: her steps without it. With ?sound=0 nothing of it is loaded; no loop is fetched until it is heard
+const air = sounds && Q.get('air') !== '0' ? (await import('./ambience-places.js')).createAmbiencePlaces({ context: () => sounds.context, volume: soundVol, level, camera }) : null;
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds });
 if (weighs && player.setWeight) {
   const btn = document.createElement('button');
@@ -689,6 +696,7 @@ const frame = (dt = clock.getDelta()) => {
   if (shadows) shadows.update();
   if (curse) curse.update(renderer);
   if (weather) weather.update(player.position);
+  if (air) air.update(dt, player.position, { daylight: tod ? tod.daylight : 1 });      // (what is heard from where she stands, at this hour)
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
   if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(dt);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
@@ -719,7 +727,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, sounds, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, sounds, air, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

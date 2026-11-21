@@ -971,6 +971,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     map: url(cursed ? M.mapCursed : M.map), mapOverlay,
     horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
+    // what of the land is heard (ambience-places.js; the trees' crowns it has above): the water's ways (each a line of
+    // [x, z, level, width]), every fall, and the pit's shaft, out of which the wind comes (its middle, and how wide it is under
+    // its last shelf). Under the curse no water runs: none of it is heard
+    heard: { cursed, ways: cursed ? [] : P.brooks, falls: cursed ? [] : P.falls.map(f => ({ x: f.x, z: f.z, top: f.top, bottom: f.bottom, width: f.width })),
+      pit: P.pit ? { x: P.pit.x, z: P.pit.z, r: P.pit.brink - Math.max(...P.pit.shelves.map(sh => sh.u1)) } : null },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     tapWater(origin, dir) {
       for (let t = 1; t < 70; t += 0.25) {
