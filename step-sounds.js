@@ -87,6 +87,8 @@ const GROUND = {
 };
 const MASTER = 1.0;            // the whole of it, at volume 1 (over that, the limiter holds the loudest takes down)
 const WALK_GAIN = 0.55;        // a walk's step against a run's (1)
+const FEET = 0.6;              // her steps on land (in grass, on earth, stone, boards, sand) against the rest of what she makes:
+                               // 40% down, to sit with the music ("ลด 40 เปอร์เซ็นต์ กำลังดี ให้บาลานเสียงเพลง"). Not in water
 const SPRINT_GAIN = 1.2;       // a sprint's or a dash's
 const RUN_FROM = 0.5;          // her pace (0: a walk's, 1: a run's) from which a step in grass is one of the run's
 const VARY_GAIN = 0.16, VARY_RATE = 0.05;      // each step this much softer at most, this much higher or lower at most
@@ -223,7 +225,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       const deep = ground.water ? Math.min(1, depth / WADE_DEEP) : 0;
       const running = pace >= RUN_FROM;      // (a run's own takes, where there are any: else the walk's, louder)
       const set = ground.water ? (running && has('wetrun') ? 'wetrun' : 'wade') : !ground.grass ? 'tread' : running && has('run') ? 'run' : 'step';
-      play(set, when, ground.gain * loud * vary() * (1 + 0.5 * deep), pitch(ground) * (1 - 0.12 * deep));
+      play(set, when, ground.gain * loud * vary() * (1 + 0.5 * deep) * (ground.water ? 1 : FEET), pitch(ground) * (1 - 0.12 * deep));
     },
 
     circle(x, z, y, { n = 1 } = {}) {
