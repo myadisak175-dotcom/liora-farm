@@ -17,13 +17,13 @@
 //     sounds.vault(x, z, y, part)                        her 'hand', then her 'foot', put on a low thing's top
 //   sounds.volume = 0.6      sounds.stats (for a test, or the console)      sounds.context (the AudioContext, once there is one)
 //
-// WHAT IS HEARD. The sounds the user chose on 21 Nov 2026, all made with ElevenLabs ("ชุดเก่าไม่เอาแล้ว": the first set, from
+// WHAT IS HEARD. The sounds the user chose on 21 and 22 Nov 2026, all made with ElevenLabs ("ชุดเก่าไม่เอาแล้ว": the first set, from
 // Kenney's and Fantozzi's packs, is not wanted any more). Cut into takes (the tool, below):
-//   - a step in grass, at a walk, is one of the four takes of a walk on grass blended into one set ("เอานี้ไปเบลนให้เข้ากันเลย
-//     ค่ะ": take these and blend them so they go together): a brush of grass as her foot comes down (step: softened and
-//     turned down in the tool since "เสียงเดินดังมาก ชัดไป ไม่เบลนกับเสียงอื่นๆ เลย", it was far brighter than the rest). At a run
-//     each step is one of the run's own (run): four takes of a run on grass, asked for after the first run's steps were
-//     found to sound like running on earth ("วิ่งบนหญ้าเสียงเหมือนวิ่งบนดินเลย"); only their steps with grass in them are used
+//   - a step in grass, at a walk, is one of four takes of a walk in soft grass blended into one set: a soft airy swish
+//     of grass as her foot comes down (step). Asked for when the walk before it, a crisp brush of grass, and her steps
+//     in all were found too solid and too strong ("เสียงเท้ามันแน่น มันแรงไป") and a walk in grass was wanted soft and
+//     light, like grass in the wind ("อยากได้เสียงแบบหญ้านุ่ม เบาๆ เหมือนเสียงหญ้าปลิว"). At a run each step is one of the
+//     run's own (run), four takes made with the walk's: only grass is kept of them, no heel's thump (the tool)
 //   - what her foot is on is the level's to say (level.surfaceAt(x, z, y): the hill village; a map that cannot say is grass
 //     all over). The walk and the run are of grass only: earth, sand, stone and boards have no sound of their own, so
 //     there a step is a low footfall with no grass in it (tread: from the walk sent first), a little lower or higher and
@@ -115,7 +115,7 @@ const SPLASH = 1.0;                            // a splash of size 1.5 (going in
 const PLUNGE = 1.0, PLUNGE_FROM = 2.6, PLUNGE_FULL = 8;      // into deep water from higher than so many m: a plunge, louder up to PLUNGE_FULL
 const PLOP = 0.9;                              // ... from lower: a plop (at PLUNGE_FROM; from no height at all, half of it)
 const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming speed; and of that, treading water (slower: in between)
-const TOUCH = { hand: 0.4, foot: 0.7 };        // her vault: her hand and her foot on the thing's top
+const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 
 export function createStepSounds({ level, volume = 1 } = {}) {

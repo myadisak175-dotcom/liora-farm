@@ -5,21 +5,25 @@
 #
 #   python3 tools/make-step-sounds.py  SOURCE_DIR
 #
-#   SOURCE_DIR   the recordings the user chose on 21 Nov 2026, all made with ElevenLabs' Sound Effects v3, under these
+#   SOURCE_DIR   the recordings the user chose on 21 and 22 Nov 2026, all made with ElevenLabs' Sound Effects v3, under these
 #                names (as they came some had Thai names, lost on the way here, and the rest were all content_N.mp3:
 #                which is which was told by what is in them):
-#                  walk-*.mp3 (walk-1 .. walk-4)   8 s each: four takes of a slow walk on grass, a crisp brush of grass at
-#                              each step and silence between ("เอานี้ไปเบลนให้เข้ากันเลยค่ะ": take these and blend them so
-#                              they go together). Asked for with: "Light footsteps walking slowly on soft short grass,
-#                              gentle crisp grass crunch on each step, clear silence between steps, close-mic, clean
-#                              quiet background" (prompt influence 0.5)
+#                  walk-*.mp3 (walk-1 .. walk-4)   8 s each: four takes of a slow walk in soft grass, asked for when
+#                              the first four (a crisp brush of grass at each step) were found too solid and heavy, and
+#                              a walk in grass was wanted soft and light, like grass in the wind ("อยากได้เสียงแบบหญ้านุ่ม
+#                              เบาๆ เหมือนเสียงหญ้าปลิว", 22 Nov 2026): "Soft light footsteps walking slowly through tall
+#                              soft grass, gentle airy swish of grass blades brushing past the legs like grass in a
+#                              breeze, no heel thud, no crunch, quiet pauses between steps" (prompt influence 0.5). Each
+#                              step a short airy swish, 0.1 to 0.45 s, and more of a rustle between them than asked
 #                  tread.mp3   10 s: the walk on grass sent first (it came as walkeongrass.mp3): low footfalls, quiet
 #                              and hissy. No longer her walk in grass; its footfalls are her steps where there is none
-#                  run-*.mp3   a run on grass: takes like the walk's, asked for after the first run (3 s of quick steps in
-#                              one unbroken rustle) was found to sound like running on earth ("วิ่งบนหญ้าเสียงเหมือนวิ่งบน
-#                              ดินเลย"): "Light quick footsteps running on soft short grass, short crisp grass crunch on
-#                              each step, clear silence between steps, close-mic, clean quiet background". Until they are
-#                              there the set is empty, and step-sounds.js runs her on the walk's steps
+#                  run-*.mp3   6 s each: four takes of a run in soft grass, asked for with the walk's: "Light quick
+#                              footsteps running through tall soft grass, soft airy swishes of grass blades brushing past
+#                              the legs, no heel thud, no thump, no crunch, short silence between steps". They came with a
+#                              low thump under each step all the same (two fifths of them under 300 Hz): all under 400 Hz
+#                              is cut (EACH_HIGHPASS), and what is left is grass. (The run before them, crisp grass with a
+#                              heel's thump in a third of its steps, and the walk before this one are not used now.)
+#                              Until they are there the set is empty, and step-sounds.js runs her on the walk's steps
 #                  land.mp3     2 s: a brush of grass, then one soft thud
 #                  gust.mp3     5 s: one gust of wind, rising and dying away
 #                  swish-*.mp3, flutter-*.mp3, settle-*.mp3   about 1 to 1.5 s each, up to four takes of each,
@@ -46,24 +50,26 @@
 #
 # WHAT IS IN IT (SETS, below). A set is a few takes of one sound, so no two steps running are the same take:
 #   step    a foot coming down in grass, at a walk: the four takes' steps, blended into one set. Every sound of the four
-#           is found (it stands clear of the hiss, with silence either side) and those that go together are kept (EACH,
-#           below): well over the hiss, neither a scrap nor two sounds run into one, not too slow to rise, and of about
-#           the others' brightness. All are then as loud as one another to the ear.
-#           As they came they were much brighter than everything else she is heard by (two thirds of them over 2 kHz, a
-#           third over 6 kHz; the run a fifth over 2 kHz, her dress a twentieth) and stood out of it ("เสียงเดินดังมาก
-#           ชัดไป ไม่เบลนกับเสียงอื่นๆ เลย": the walk is very loud, too sharp, it does not blend with the other sounds at
-#           all). So they are softened (the 6th thing in the set's line: a low-pass, its Hz and its poles), which brings
-#           them to about the run's brightness, and are 6 dB under the run's steps (half as loud as they were)
+#           is found (it stands clear of the hiss, with quieter either side) and those that go together are kept (EACH,
+#           below, and the set's own rule: a soft swish is shorter and brighter than the crisp brush the rule was first
+#           made for): well over the hiss, neither a scrap nor two sounds run into one, not too slow to rise, of about
+#           the others' brightness, and no heel's thump in it. All are then as loud as one another to the ear.
+#           Grass brushing is bright (three quarters of it over 2 kHz). The first walk's was heard over everything ("เสียง
+#           เดินดังมาก ชัดไป ไม่เบลนกับเสียงอื่นๆ เลย": the walk is very loud, too sharp, it does not blend with the other
+#           sounds at all), so a walk's steps are softened (the 6th thing in the set's line: a low-pass, its Hz and its
+#           poles) and are levelled 6 dB under where they were first
 #   tread   a foot coming down where there is no grass (earth, sand, stone, boards), and her hand and foot on a thing she
 #           vaults: the first walk's footfalls, each by itself. Only the ones that stand well over that recording's hiss
 #           to the ear (10 dB and more: twelve of some twenty-five sounds; its first three footfalls are clean but nearly
-#           all low thump, and brought up to the others' loudness would be half hiss)
+#           all low thump, and brought up to the others' loudness would be half hiss). On a way it was the loudest
+#           thing she made and the heaviest ("เสียงเท้ามันแน่น มันแรงไป": her steps too solid, too strong): 9 dB down
+#           now, and softer (a low-pass at 2.5 kHz, not 4)
 #   run     a foot coming down in grass at a run: every step of the run's four takes that fits, as for the walk, by a
-#           rule of its own (the last thing in its line): a run's steps are shorter (0.08 to 0.3 s), and only those
-#           with grass in them are kept (two fifths and more over 2 kHz): the takes have low thumps among them, a
-#           foot on earth, which is what the first run was faulted for. Their loud middles, where the steps run
-#           into one another, are left out as too long. Softened as the walk's are, and at the walk's level: a run
-#           is louder than a walk by what step-sounds.js makes of her pace, not by its takes
+#           rule of its own (the last thing in its line): a run's steps are shorter (0.06 to 0.3 s), and only grass is
+#           kept, no thump (under 400 Hz cut, and at most a quarter of what is left under 300 Hz). Their loud middles,
+#           where the steps run into one another, are left out as too long. Softened as the walk's are, and 2 dB under
+#           the walk's level (each comes in more sharply): a run is louder than a walk by what step-sounds.js makes of her
+#           pace, not by its takes
 #   land    her weight coming down: the thud (one take; the brush of grass before it is left out, a landing is heard as
 #           her feet touch)
 #   gust    the air taking her up as she leaves the ground: the gust from a quarter of a second before its top (as it
@@ -141,6 +147,7 @@ EACH = {                  # which sounds of a recording 'each' keeps
     'length': (0.2, 0.5),        # s: shorter is a scrap, longer is two sounds or a drag
     'rise': 0.12,                # s to come within 6 dB of its top, at most
     'bright': (50, 80),          # % of it over 2 kHz: about the others' brightness
+    'low': 30,                   # % of it under 300 Hz, at most: more is a heel's thump, not grass ("เสียงเท้ามันแน่น มันแรงไป")
     'lead': EACH_LEAD,           # s: it begins this long before its sound is there, at most
 }
 CEILING = -1.0            # dB: no take's peak over this
@@ -149,13 +156,14 @@ BITRATE = '96k'
 
 SOURCES = {'tread': 'tread.mp3', 'land': 'land.mp3', 'gust': 'gust.mp3'}
 EACHES = ('walk', 'run')      # recordings of an 'each' set: NAME-1.mp3, NAME-2.mp3 ... whichever are there
+EACH_HIGHPASS = {'run': 400}  # Hz: what these lose under them, not HIGHPASS (the run's takes came with a low thump under each step)
 TAKES = ('swish', 'flutter', 'settle', 'glint', 'wade', 'wetrun', 'splash', 'stroke', 'plunge', 'plop', 'thump')
 TAKE_LOWS = {'thump': 120, 'plunge': 160, 'plop': 160}      # Hz: what these keep under TAKE_HIGHPASS: a phone gives none of it, headphones its weight      # recordings of a 'take' set: NAME-1.mp3, NAME-2.mp3 ... whichever are there
 SETS = {      # name: (recordings, 'each' | 'hit' | 'piece' | 'burst' | 'take', its level by ear (dB), fades in and out (s), where: a hit's moment, a piece's from and to, a take's most (s)
               #        and, if it is softened, the low-pass: (Hz, poles); and, of an 'each', what its rule says otherwise than EACH)
-    'step':  (('walk',), 'each', -32.0, (0.015, 0.08), None, (2000, 1)),
-    'run':   (('run',),  'each', -32.0, (0.01, 0.06),  None, (2000, 1), {'length': (0.08, 0.3), 'clear': 14, 'bright': (40, 80), 'join': 0.04, 'lead': 0.03}),
-    'tread': (('tread',), 'hit',   -26.0, (0.001, 0.03), [4.12, 4.44, 4.72, 5.32, 5.66, 5.94, 6.26, 6.56, 7.18, 8.18, 8.54, 8.97], (4000, 2)),      # (softened: its hiss, brought up with it, was a third of it)
+    'step':  (('walk',), 'each', -32.0, (0.015, 0.08), None, (2000, 1), {'length': (0.1, 0.5), 'bright': (60, 90), 'clear': 14, 'rise': 0.14}),      # (a soft swish over a rustle of grass: only some 15 to 25 dB over that)
+    'run':   (('run',),  'each', -34.0, (0.01, 0.06),  None, (2000, 1), {'length': (0.06, 0.3), 'clear': 14, 'bright': (55, 90), 'join': 0.03, 'lead': 0.03, 'low': 25}),
+    'tread': (('tread',), 'hit',   -35.0, (0.004, 0.03), [4.12, 4.44, 4.72, 5.32, 5.66, 5.94, 6.26, 6.56, 7.18, 8.18, 8.54, 8.97], (2500, 2)),      # (softened: its hiss, brought up with it, was a third of it. It was -26 and 4 kHz: on a way it was heavier than all else, "เสียงเท้ามันแน่น มันแรงไป")
     'land':  (('land',),  'hit',   -23.0, (0.001, 0.04), [1.16]),
     'gust':  (('gust',),  'piece', -30.0, (0.12, 0.45),  [(1.6, 2.45)]),
     'swish':   (('swish',),   'take', -26.0, (0.005, 0.12), 0.7),
@@ -233,7 +241,7 @@ def faded(y, fade_in, fade_out):
     return y
 
 
-def sounds(x, hiss, EACH):
+def sounds(x, hiss, EACH, soft=None):
     """every sound of a recording, by the set's rule (EACH, and what the set says otherwise): (from, to, why it is left out or None), samples"""
     slow, quick = level(x, 0.02), level(x, 0.003)
     up = slow > np.percentile(slow, 20) * amp(EACH['out'])
@@ -251,7 +259,10 @@ def sounds(x, hiss, EACH):
         clear = db(loudest(a_weighted(y))) - hiss
         rise = int(np.argmax(q >= q.max() * amp(ATTACK))) / SR
         S = np.abs(np.fft.rfft(y)) ** 2
-        bright = 100 * S[np.fft.rfftfreq(len(y), 1 / SR) >= 2000].sum() / S.sum()
+        f = np.fft.rfftfreq(len(y), 1 / SR)
+        bright = 100 * S[f >= 2000].sum() / S.sum()
+        heard = S * (1 / (1 + (f / soft[0]) ** (2 * soft[1])) if soft else 1)      # (as it will be heard: softened by the set's low-pass, which leaves the low the more of it)
+        thump = 100 * heard[f < 300].sum() / heard.sum()
         # two sounds run into one: after its top it falls 8 dB and comes up 6 again
         e = slow[a:b][::int(0.02 * SR)]
         top = int(np.argmax(e)); low, again = e[top], False
@@ -264,7 +275,8 @@ def sounds(x, hiss, EACH):
                'only %+.0f dB over the hiss' % clear if clear < EACH['clear'] else
                'slow to rise (%.0f ms)' % (1000 * rise) if rise > EACH['rise'] else
                'duller than the others (%.0f%% over 2 kHz)' % bright if bright < EACH['bright'][0] else
-               'brighter than the others (%.0f%% over 2 kHz)' % bright if bright > EACH['bright'][1] else None)
+               'brighter than the others (%.0f%% over 2 kHz)' % bright if bright > EACH['bright'][1] else
+               'a thump (%.0f%% under 300 Hz)' % thump if thump > EACH['low'] else None)
         out.append((a, b, why))
     return out
 
@@ -291,7 +303,7 @@ def main():
         found[name] = []
         for path in sorted(glob.glob(os.path.join(sys.argv[1], name + '-*.mp3'))):
             key = os.path.basename(path)[:-4]
-            heard[key] = read(path, True)
+            heard[key] = read(path, EACH_HIGHPASS.get(name, True))
             hiss[key] = db(np.percentile(level(a_weighted(heard[key]), 0.1), 20))
             found[name].append(key)
         if not found[name]: print('(no %s-*.mp3: its set is left empty)' % name)
@@ -322,7 +334,7 @@ def main():
         x = heard[source]
         if kind == 'each':
             rule = {**EACH, **(soft[1] if len(soft) > 1 else {})}
-            those = sounds(x, hiss[source], rule)
+            those = sounds(x, hiss[source], rule, soft[0] if soft else None)
             left += ['%s %.2f s: %s' % (source, a / SR, why) for a, b, why in those if why]
             where = [(a / SR, b / SR) for a, b, why in those if not why]
         if kind == 'take':
