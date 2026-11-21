@@ -3,7 +3,8 @@
 // how loud each is now: the air all round by the hour (or the curse), and the land's places as she comes to them.
 //
 //   const air = createAmbiencePlaces({ context: () => sounds.context, volume, level, camera });
-//   every frame: air.update(dt, player.position, { daylight });      // daylight: 1 by day .. 0 at night (time-of-day.js)
+//   every frame: air.update(dt, player.position, { daylight, speed, mode });      // daylight: 1 by day .. 0 at night (time-of-day.js);
+//                                                                                  // her speed (m/s) and mode (player-moves.js)
 //   air.volume = 0.8      air.stats (for a test, or the console: what each layer is asked for, and whether it plays)
 //
 // THE LAND SAYS WHERE (level.heard and level.crowns: hill-village-level.js): the water's ways, every fall, the pit's shaft,
@@ -18,16 +19,27 @@
 // middle when she stands at it), duller from far off. How far she is from it counts height too: a brook at a cliff's foot
 // is far from its top. Where there are many of a kind (falls one under another, a wood's crowns) they are one layer: as
 // loud as all of them together (never more than one beside her), and from where the loudest of them are.
-//   brook    the nearest water's way
-//   fall     every fall near enough: a tall one is heard further and louder than a low step of one
+//   brook    the nearest of the brooks and streams
+//   river    the nearest stretch of the river: heavier, its water running along the bank ("ริมแม่น้ำ หนัก เสียงน้ำไหลตามตลิ่ง"),
+//            heard further than a brook
+//   fall     every fall near enough: a tall one is heard further and louder than a low step of one. Near one the rest of
+//            the air (the wind, the birds, the night, the leaves) is less heard, as it would be: it is drowned, and the fall
+//            stands out clearly ("ตอนใกล้น้ำตก อยากได้ยินเสียงน้ำตกชัดๆ")
 //   leaves   the crowns near her, as the wind is (less by night); none under the curse (its trees are bare)
 //   abyss    the pit's shaft: the wind out of it
 //   frogs    by the water at night; fewer where a fall drowns them
+//
+// THE GRASS SHE GOES THROUGH (brush): wherever she is on her feet in grass and moving, the blades parted round her legs, a
+// soft rustle ("เสียงใบหญ้าตอนโดนแหวก เบาๆ"), louder the faster she goes (throughGrass, below: the trial page asks it too).
+// It is no step: it is there all the while she moves and fades as she stops, under her steps, which say where her feet
+// come down. Under the curse as well (its grass is dry, not gone).
 
 import { createAmbience } from './ambience.js';
 
 // from near (m: at its loudest) out to far (gone)
 const BROOK = { near: 1.5, far: 20 };
+const RIVER = { near: 2, far: 35 };
+const DROWNED = 0.6;                                                    // how much of the rest of the air a fall at its loudest takes away
 const FALL = { near: 4, far: [30, 80], loud: [0.6, 1], tall: 18 };      // a low step of a fall .. a tall one (so many m and more): how far it is heard, how loud beside it
 const LEAVES = { near: 2.5, far: 14, over: 4 };                         // (over: a crown this much higher or lower than her head is as near as one level with it)
 const PIT = { near: 0.5, far: 45 };
@@ -35,6 +47,11 @@ const FROGS = { near: 1, far: 24, drowned: 0.8 };                       // (drow
 const NIGHT_WIND = 0.35;                                                // the wind by night, of the day's
 const CURSE_CROWS = 0.3;                                                // the crows by night, of the day's
 const SIDE = 0.85, SIDE_FROM = 4;                                       // how far to one side a place can be heard; within so many m of it, less and less to a side
+const BRUSH_FULL = 4.2;                                                 // m/s: her run (at 1.75 m): the grass she goes through at its loudest
+
+// how loud the grass she goes through is: 0 standing (or not on grass) .. 1 at her run and faster. A walk (1.5 m/s) is
+// some three fifths of a run: the rustle grows quickly as she sets off, then more slowly
+export const throughGrass = (speed, inGrass) => inGrass ? Math.sqrt(Math.min(1, Math.max(0, speed) / BRUSH_FULL)) : 0;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const mix = ([a, b], k) => a + (b - a) * k;
@@ -44,24 +61,25 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
   const heard = (level && level.heard) || {};
   const cursed = !!heard.cursed;
   // each way of the water with the box it lies in, so a way far from her is not gone along point by point
-  const ways = (heard.ways || []).filter(w => w.length > 1).map(points => {
+  const ways = (heard.ways || []).map((points, k) => {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const [x, z] of points) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
-    return { points, x0, x1, z0, z1 };
-  });
+    return { points, x0, x1, z0, z1, river: !!(heard.rivers && heard.rivers[k]) };
+  }).filter(w => w.points.length > 1);
   const falls = heard.falls || [], pit = heard.pit || null;
 
   let rx = 1, rz = 0;                                                     // the camera's right, on the ground
+  const brookAt = { d: Infinity, dx: 0, dz: 0, d0: 0 }, riverAt = { d: Infinity, dx: 0, dz: 0, d0: 0 };
   // a place dx, dz from her (d0 on the ground, d in all): which side it is heard on
   const side = (dx, dz, d0, d) => d0 > 0.01 ? (dx * rx + dz * rz) / d0 * SIDE * clamp(d / SIDE_FROM, 0, 1) : 0;
   // ... how far along the way from near to far it is (0: at its loudest, 1: gone)
   const along = (d, near, far) => clamp((d - near) / (far - near), 0, 1);
 
-  // the nearest point of the water's ways: how far (from its edge, in all), and where
-  const water = { d: Infinity, dx: 0, dz: 0, d0: 0 };
-  function nearestWater(x, y, z, reach) {
+  // the nearest point of the water's ways (the river's, or the rest's): how far (from its edge, in all), and where
+  function nearestWater(x, y, z, reach, river, water) {
     water.d = Infinity;
     for (const w of ways) {
+      if (w.river !== river) continue;
       if (x < w.x0 - reach || x > w.x1 + reach || z < w.z0 - reach || z > w.z1 + reach) continue;
       const P = w.points;
       for (let i = 0; i < P.length - 1; i++) {
@@ -90,19 +108,11 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
     get volume() { return air.volume; },
     set volume(v) { air.volume = v; },
 
-    update(dt, at, { daylight = 1 } = {}) {
+    update(dt, at, { daylight = 1, speed = 0, mode = 'ground' } = {}) {
       const x = at.x, y = at.y, z = at.z, day = clamp(daylight, 0, 1), dark = 1 - day;
       if (camera) { const e = camera.matrixWorld.elements, l = Math.hypot(e[0], e[2]); if (l > 1e-6) { rx = e[0] / l; rz = e[2] / l; } }
 
-      // ---- the air all round
-      const wind = cursed ? 0 : NIGHT_WIND + (1 - NIGHT_WIND) * day;
-      air.set('wind', wind);
-      air.set('birds', cursed ? 0 : day * day);
-      air.set('night', cursed ? 0 : dark * dark);
-      air.set('dry', cursed ? 1 : 0);
-      air.set('crows', cursed ? CURSE_CROWS + (1 - CURSE_CROWS) * day : 0);
-
-      // ---- the falls
+      // ---- the falls (first: near one, the rest of the air is drowned by it)
       begin();
       for (const f of falls) {
         const tall = clamp((f.top - f.bottom) / FALL.tall, 0, 1), far = mix(FALL.far, tall);
@@ -111,12 +121,24 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
         const d = Math.hypot(Math.max(0, d0 - f.width / 2), y > f.top ? y - f.top : y < f.bottom ? f.bottom - y : 0), t = along(d, FALL.near, far);
         if (t < 1) add(mix(FALL.loud, tall) * (1 - t) * (1 - t), side(dx, dz, d0, d), t);
       }
-      const fall = put('fall');
+      const fall = put('fall'), heard = 1 - DROWNED * fall;
 
-      // ---- the water's ways: the brook, and by night its frogs
-      const w = nearestWater(x, y, z, Math.max(BROOK.far, FROGS.far));
-      if (w.d < BROOK.far) { const t = along(w.d, BROOK.near, BROOK.far); air.set('brook', (1 - t) * (1 - t), { pan: side(w.dx, w.dz, w.d0, w.d), far: t }); }
+      // ---- the air all round
+      const wind = cursed ? 0 : NIGHT_WIND + (1 - NIGHT_WIND) * day;
+      air.set('wind', wind * heard);
+      air.set('birds', cursed ? 0 : day * day * heard);
+      air.set('night', cursed ? 0 : dark * dark * heard);
+      air.set('dry', cursed ? 1 : 0);
+      air.set('crows', cursed ? CURSE_CROWS + (1 - CURSE_CROWS) * day : 0);
+
+      // ---- the water's ways: the brooks, the river, and by night the frogs by either
+      const b = nearestWater(x, y, z, Math.max(BROOK.far, FROGS.far), false, brookAt);
+      if (b.d < BROOK.far) { const t = along(b.d, BROOK.near, BROOK.far); air.set('brook', (1 - t) * (1 - t), { pan: side(b.dx, b.dz, b.d0, b.d), far: t }); }
       else air.set('brook', 0);
+      const r = nearestWater(x, y, z, Math.max(RIVER.far, FROGS.far), true, riverAt);
+      if (r.d < RIVER.far) { const t = along(r.d, RIVER.near, RIVER.far); air.set('river', (1 - t) * (1 - t), { pan: side(r.dx, r.dz, r.d0, r.d), far: t }); }
+      else air.set('river', 0);
+      const w = r.d < b.d ? r : b;
       if (w.d < FROGS.far && dark > 0.01) { const t = along(w.d, FROGS.near, FROGS.far); air.set('frogs', dark * dark * (1 - t) * (1 - t) * (1 - FROGS.drowned * fall), { pan: side(w.dx, w.dz, w.d0, w.d), far: t }); }
       else air.set('frogs', 0);
 
@@ -129,7 +151,10 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
         const d0 = Math.hypot(dx, dz), d = Math.hypot(Math.max(0, d0 - c[3]), Math.max(0, Math.abs(c[1] - (y + 1.5)) - c[3] - LEAVES.over)), t = along(d, LEAVES.near, LEAVES.far);
         if (t < 1) add((1 - t) * (1 - t), side(dx, dz, d0, d), t);
       }
-      put('leaves', wind);
+      put('leaves', wind * heard);
+
+      // ---- the grass she goes through
+      air.set('brush', throughGrass(speed, mode === 'ground' && !!level && !!level.surfaceAt && level.surfaceAt(x, z, y) === 'grass'));
 
       // ---- the pit
       if (pit) {

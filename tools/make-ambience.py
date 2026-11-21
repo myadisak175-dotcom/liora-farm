@@ -6,7 +6,7 @@
 #   python3 tools/make-ambience.py  SOURCE_DIR
 #
 #   SOURCE_DIR  the loops as they were made, one .mp3 each, named for what they are: wind-1.mp3, wind-2.mp3, birds-1.mp3 ...
-#               (the names in LAYERS, below). Each is 20 s, made to loop without a seam (ElevenLabs' sound effects, v3, with
+#               (the names in LAYERS, below). Each is 20 s (the grass she goes through, 15), made to loop without a seam (ElevenLabs' sound effects, v3, with
 #               "loop" on: see the README for the words each was asked for with). They are not kept in the repository.
 # (needs ffmpeg with libmp3lame, and numpy.)
 #
@@ -19,6 +19,10 @@
 #      over PLAIN dB. Only its loudness is changed: nothing is cut or filtered, so its end still meets its start.
 #   2. A layer that has a place (a brook, a fall, a tree: PLACED) is made mono: ambience.js puts it left or right by where
 #      it is. The rest (the air all round) stay stereo.
+#   2b. A layer in STEADY has its swells smoothed: the grass she goes through came with a swish of its own every 0.75 s or
+#      so (15 dB from its quietest to its loudest), a pace of its own, which would beat against her steps at any pace but
+#      that one. Its level over each 50 ms is brought most of the way (STEADY[layer]) to its level over 1.5 s round it, by
+#      no more than STEADY_MOST dB, all of it worked out round the loop so that its end still meets its start.
 #   3. Made small: MP3, STEREO_RATE for the stereo ones, MONO_RATE for the mono ones.
 # How loud each layer then plays, and when, is ambience.js's and the page's to say.
 
@@ -30,6 +34,8 @@ LEVEL = -30.0             # dB, A-weighted: every loop's loudness where it is lo
 PLAIN = -20.0             # dB: no loop's plain (unweighted) level where it is loud over this
 CEILING = -2.0            # dB: no loop's peak over this
 STEREO_RATE, MONO_RATE = '96k', '64k'
+STEADY = {'brush': 0.75}  # how much of a layer's swells is smoothed away (see 2b)
+STEADY_MOST = 9.0         # dB: no more than this up or down
 
 LAYERS = {      # layer: (its loops, has a place?)
     'wind':   (['wind-1', 'wind-2'], False),        # a breeze in the meadow's grass
@@ -42,6 +48,7 @@ LAYERS = {      # layer: (its loops, has a place?)
     'leaves': (['leaves-1'], True),                 # wind in a tree's crown
     'abyss':  (['abyss-1', 'abyss-2'], True),       # the wind out of the pit
     'frogs':  (['frogs-1', 'frogs-2'], True),       # frogs by a pond at dusk
+    'brush':  (['brush-1', 'brush-2', 'brush-3', 'brush-4'], True),      # grass parted as she goes through it (hers: in the middle, so mono). 15 s each
 }
 
 db = lambda v: 20 * np.log10(max(float(v), 1e-12))
@@ -59,6 +66,22 @@ def a_weighted(x):
     f2 = f * f
     a = (12194.0 ** 2 * f2 * f2) / ((f2 + 20.6 ** 2) * np.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194.0 ** 2) + 1e-30)
     return np.fft.irfft(np.fft.rfft(x) * a * amp(2.0), len(x))
+
+
+def steady(x, much):
+    """x (samples x channels, a loop) with its swells smoothed: its level over 50 ms brought much of the way to its level over
+    1.5 s round it, by STEADY_MOST dB at most; worked out round the loop, so its end still meets its start"""
+    hop = int(0.05 * SR); n = len(x) // hop
+    m = x.mean(axis=1)[:n * hop].reshape(n, hop)
+    now = 10 * np.log10(np.mean(m * m, axis=1) + 1e-20)                              # dB, each 50 ms
+    k = int(1.5 / 0.05) | 1
+    wide = np.concatenate([now[-k:], now, now[:k]])                                   # (round the loop)
+    around = np.convolve(wide, np.ones(k) / k, mode='same')[k:k + n]
+    g = np.clip(much * (around - now), -STEADY_MOST, STEADY_MOST)
+    g = np.convolve(np.concatenate([g[-3:], g, g[:3]]), np.ones(3) / 3, mode='same')[3:3 + n]      # (no step from one 50 ms to the next)
+    at = (np.arange(n) + 0.5) * hop
+    gs = np.interp(np.arange(len(x)), np.concatenate([[at[-1] - len(x)], at, [at[0] + len(x)]]), np.concatenate([[g[-1]], g, [g[0]]]))
+    return x * amp(gs)[:, None]
 
 
 def where_loud(x, secs=0.4, q=95):
@@ -84,6 +107,7 @@ def main():
             path = os.path.join(src, name + '.mp3')
             if not os.path.isfile(path): sys.exit('not found: ' + path)
             x = read(path)
+            if layer in STEADY: x = steady(x, STEADY[layer])
             mono = x.mean(axis=1)
             was = where_loud(a_weighted(mono))
             g = amp(LEVEL) / was
