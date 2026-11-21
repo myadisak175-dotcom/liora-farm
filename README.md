@@ -323,6 +323,16 @@ Asked for after her steps: "ขาดบรรยากาศอะไรอี�
 - **Not heard as it was made**, only measured: which loop is which was told by the order they were sent in and by where each one's energy lies. The abyss's wind is nearly all under 1 kHz (one loop two thirds under 200 Hz): little of it will come out of a phone's speaker.
 - **Still to come** (asked about, not made): sounds now and then that are not loops (a single bird far off, a fish, a gust, a hawk over the pit); a windmill; dawn's birds, noon's cicadas, an owl; rain. And no music: the ElevenLabs connector this was made through makes none.
 
+### Music (a trial: on `step-sounds.html` only)
+
+Asked about: "ทำเพลงด้วยดีไหม ดนตรีเบาๆ อะ" (soft music too?). Not all the while: a piece now and then (`music.js`), and between, some minutes of only the air about her, so that the music does not cover the air nor grow old. As quiet as the air or under it, and further down by a waterfall or rushing water (`DROWN`).
+
+- **The pieces**: `assets/audio/music.json` lists them with their length and when they fit (`day`, `night` or `any`); a piece is played when one fits the hour, and one that is playing is let finish. Between one and the next, 150 to 300 s of only the air (`GAP`); the first 20 s after the first touch (`FIRST`; on the trial page 3 s). Each comes in over 4 s and goes over 6 s (`FADE_IN`, `FADE_OUT`), by its own playing time, so a pause to load more does not cut it short. `music.on = false` fades it away in 1.5 s and plays nothing more until it is on again; on again, the next piece begins in a moment.
+- **Streamed, not decoded whole** (three minutes decoded is some 80 MB): from an `<audio>` element through the AudioContext her steps woke. A phone may let an `<audio>` element play only in answer to a touch, so at the first touch it plays one silent moment, which lets it play later.
+- **Levelled** by `tools/make-music.py SOURCE_DIR` as the air's loops are (-30 dB, A-weighted, where it is loud), then played at half that (`LEVEL` 0.5): measured on the trial page by day, the music alone some 2 dB under the air alone.
+- **The one piece there is**: "Wandering Grassy Hills" (3 min 36 s, by day), made by the user with Suno (suno.com) from the words given for an exploring theme ("Wide open fantasy exploration theme, gentle harp arpeggios, soft ocarina and woodwind melody, warm string pads ..."). Its file says it was made with Suno, not ElevenLabs. **Suno's terms**: a song made on Suno's free plan is Suno's, for non-commercial use only, with credit to Suno, and subscribing later does not change that; one made while on Pro or Premier may be used commercially. The trial page names it (its credit line). Not in the game until that is settled.
+- **On the trial page**: 🎵 switches it on and off; the volume buttons move it with the rest; by night and in the cursed land no piece begins (there is none for them yet).
+
 ### The plant boss (a trial: `?boss=1`)
 
 With `?boss=1` the hill village has the three-headed plant boss standing in the west fringe's sag field (`boss-trial.js`), to see how it looks in the game; she starts some 13 m before it, facing it, and the map has a pin for it (🌿 บอสต้นไม้, view `wf-boss`). Without it nothing of the trial is loaded and the game is as it was.
