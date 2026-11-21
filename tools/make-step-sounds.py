@@ -57,7 +57,8 @@
 #           Grass brushing is bright (three quarters of it over 2 kHz). The first walk's was heard over everything ("เสียง
 #           เดินดังมาก ชัดไป ไม่เบลนกับเสียงอื่นๆ เลย": the walk is very loud, too sharp, it does not blend with the other
 #           sounds at all), so a walk's steps are softened (the 6th thing in the set's line: a low-pass, its Hz and its
-#           poles) and are levelled 6 dB under where they were first
+#           poles) and are levelled 8 dB under where they were first (cut under 500 Hz, they came out 2 dB louder at
+#           the speakers than before, the grass in them standing out: the 2 dB are taken back)
 #   tread   a foot coming down where there is no grass (earth, sand, stone, boards), and her hand and foot on a thing she
 #           vaults: the first walk's footfalls, each by itself. Only the ones that stand well over that recording's hiss
 #           to the ear (10 dB and more: twelve of some twenty-five sounds; its first three footfalls are clean but nearly
@@ -67,8 +68,8 @@
 #   run     a foot coming down in grass at a run: every step of the run's four takes that fits, as for the walk, by a
 #           rule of its own (the last thing in its line): a run's steps are shorter (0.06 to 0.3 s), and only grass is
 #           kept, no thump (under 400 Hz cut, and at most a quarter of what is left under 300 Hz). Their loud middles,
-#           where the steps run into one another, are left out as too long. Softened as the walk's are, and 2 dB under
-#           the walk's level (each comes in more sharply): a run is louder than a walk by what step-sounds.js makes of her
+#           where the steps run into one another, are left out as too long. Softened as the walk's are, and at the
+#           walk's level: a run is louder than a walk by what step-sounds.js makes of her
 #           pace, not by its takes
 #   land    her weight coming down: the thud (one take; the brush of grass before it is left out, a landing is heard as
 #           her feet touch)
@@ -156,12 +157,16 @@ BITRATE = '96k'
 
 SOURCES = {'tread': 'tread.mp3', 'land': 'land.mp3', 'gust': 'gust.mp3'}
 EACHES = ('walk', 'run')      # recordings of an 'each' set: NAME-1.mp3, NAME-2.mp3 ... whichever are there
-EACH_HIGHPASS = {'run': 400}  # Hz: what these lose under them, not HIGHPASS (the run's takes came with a low thump under each step)
+EACH_HIGHPASS = {'walk': (500, 4), 'run': (500, 4)}      # (Hz, poles): what these lose under them, not HIGHPASS. A step's
+                              # thump on a phone is its body, 200 to 800 Hz ("ลดเสียงตุบๆ ของฝีเท้าลงได้ไหม มันหนักไป ทั้งหญ้าทั้ง
+                              # ดิน"): steeply cut, it leaves the grass. (The run's was 400 Hz, two poles, at first: it came with a
+                              # low thump under each step)
+SOURCE_HIGHPASS = {'tread': (350, 4)}      # ... and of these recordings (the low footfall: three fifths of it was under 400 Hz)
 TAKES = ('swish', 'flutter', 'settle', 'glint', 'wade', 'wetrun', 'splash', 'stroke', 'plunge', 'plop', 'thump')
 TAKE_LOWS = {'thump': 120, 'plunge': 160, 'plop': 160}      # Hz: what these keep under TAKE_HIGHPASS: a phone gives none of it, headphones its weight      # recordings of a 'take' set: NAME-1.mp3, NAME-2.mp3 ... whichever are there
 SETS = {      # name: (recordings, 'each' | 'hit' | 'piece' | 'burst' | 'take', its level by ear (dB), fades in and out (s), where: a hit's moment, a piece's from and to, a take's most (s)
               #        and, if it is softened, the low-pass: (Hz, poles); and, of an 'each', what its rule says otherwise than EACH)
-    'step':  (('walk',), 'each', -32.0, (0.015, 0.08), None, (2000, 1), {'length': (0.1, 0.5), 'bright': (60, 90), 'clear': 14, 'rise': 0.14}),      # (a soft swish over a rustle of grass: only some 15 to 25 dB over that)
+    'step':  (('walk',), 'each', -34.0, (0.015, 0.08), None, (2000, 1), {'length': (0.1, 0.5), 'bright': (60, 95), 'clear': 14, 'rise': 0.14}),      # (a soft swish over a rustle of grass: only some 15 to 25 dB over that)
     'run':   (('run',),  'each', -34.0, (0.01, 0.06),  None, (2000, 1), {'length': (0.06, 0.3), 'clear': 14, 'bright': (55, 90), 'join': 0.03, 'lead': 0.03, 'low': 25}),
     'tread': (('tread',), 'hit',   -35.0, (0.004, 0.03), [4.12, 4.44, 4.72, 5.32, 5.66, 5.94, 6.26, 6.56, 7.18, 8.18, 8.54, 8.97], (2500, 2)),      # (softened: its hiss, brought up with it, was a third of it. It was -26 and 4 kHz: on a way it was heavier than all else, "เสียงเท้ามันแน่น มันแรงไป")
     'land':  (('land',),  'hit',   -23.0, (0.001, 0.04), [1.16]),
@@ -184,8 +189,11 @@ amp = lambda d: 10 ** (d / 20)
 
 
 def read(path, highpass):
+    """the recording as floats, less what lies under highpass: True (HIGHPASS), Hz (two poles), or (Hz, poles: 2 or 4)"""
     cmd = ['ffmpeg', '-v', 'error', '-i', path]
-    if highpass: cmd += ['-af', 'highpass=f=%d:poles=2' % (HIGHPASS if highpass is True else highpass)]
+    if highpass:
+        hz, poles = (HIGHPASS, 2) if highpass is True else highpass if isinstance(highpass, tuple) else (highpass, 2)
+        cmd += ['-af', ','.join(['highpass=f=%d:poles=2' % hz] * (poles // 2))]
     cmd += ['-f', 'f32le', '-ac', '1', '-ar', str(SR), '-']
     return np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, dtype=np.float32).astype(np.float64)
 
@@ -296,7 +304,7 @@ def main():
     for name, fn in SOURCES.items():
         path = os.path.join(sys.argv[1], fn)
         if not os.path.isfile(path): sys.exit('not found: %s' % path)
-        heard[name] = read(path, True)
+        heard[name] = read(path, SOURCE_HIGHPASS.get(name, True))
         hiss[name] = db(np.percentile(level(a_weighted(heard[name]), 0.1), 20))      # (the recording's own hiss, by ear)
     found = {}
     for name in EACHES:
