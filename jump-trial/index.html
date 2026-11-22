@@ -10,14 +10,14 @@
   clip the user sent (22 Nov 2026: a girl jumping off magic circles; "มีเสียง effect กับ vfx วงเวทย์ตอนกระโดด น่าเอามาปรับ
   ใช้กับของเรา ทั้งเสียงและ vfx"; asked which circles: all of them, each to the jump it suits; whose colours: the clip's, a
   colour to each jump; which sounds: where she leaves the ground and where she is thrown highest; where: a page apart
-  first). Off the ground: the blue of water, a dome of water that swells and breaks, rays of light. In the air: violet,
+  first. Then, having heard it: the clip's sound for every jump, cut to ours, "ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"). Off the ground: the blue of water, a dome of water that swells and breaks, rays of light. In the air: violet,
   then pink, marks standing round the rim, rays as she kicks off. The last: gold, with a dome and the most rays.
   The game and magic-jump.html are as they were. This folder holds the page and its own copies of the two modules that
-  change (magic-circle-fx.js: the look; step-sounds.js: the two sounds, reading the game's audio folder one up);
-  everything else is the game's, loaded from one folder up. The two sounds are in assets/audio/ already (jump-1.mp3,
-  launch-1.mp3: the game does not ask for them yet).
+  change (magic-circle-fx.js: the look; step-sounds.js: the sounds, reading the game's audio folder one up);
+  everything else is the game's, loaded from one folder up. The four sounds are in assets/audio/ already (jump-1.mp3,
+  air-1.mp3, air-2.mp3, launch-1.mp3: the game does not ask for them yet).
   Liked: the two modules go to the root in place of the game's (and their names in index.html's import map are made
-  new), with the README's account of it, and this folder goes. Not liked: this folder and the two sounds go.
+  new), with the README's account of it, and this folder goes. Not liked: this folder and the four sounds go.
   Below, the page as magic-jump.html has it (with her jumps heard, as in the game).
 
   magic-jump.html  —  Vivi's magic jump, to try: up to four jumps in one flight, each off a magic circle that opens under
@@ -125,10 +125,10 @@ import { createSprings } from '../character-springs.js';
 import { CHARACTER_ANIM } from '../character-anim.js';
 import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
-import { createMagicCircles } from './magic-circle-fx.js?v=1';      // (?v: a phone's cache gets this one)
+import { createMagicCircles } from './magic-circle-fx.js?v=2';      // (?v: a phone's cache gets this one)
 import { createMagicJump } from '../magic-jump.js?v=5';
 import { createCameraFeel } from '../camera-feel.js';
-import { createStepSounds } from './step-sounds.js?v=1';
+import { createStepSounds } from './step-sounds.js?v=2';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
