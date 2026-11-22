@@ -95,6 +95,14 @@
 // the AudioContext is made at the first touch or key, and the file decoded then. An MP3 comes back from a decoder a
 // little late, by how much depends on the browser: the file begins with a click at a known moment, found here once (shift).
 //
+// THE SPACE ("มันแบนมาก": it is very flat, 22 Nov 2026). Every sound was played dry and in the middle: heard as laid on the
+// screen, not in her world. So there is one room for all of it, an airy one made here (no file: an impulse of noise dying
+// away over a second, darker as it dies, a little different in each ear), and each sound puts some of itself into it
+// (SPACE: her magic and her casts the most, her steps a breath of it, nothing under ROOM_LOW so it is not muddy). Her steps
+// are a little to the left and the right by turns (her left foot, her right), her casts to one side and the other as she
+// swings, the whooshes and the circles a little either way at random. Her magic and her casts are louder than they were
+// against her steps (CIRCLE, CAST), so they stand out. A browser with no stereo panner: in the middle, the rest as it is.
+//
 // Nothing here was heard as it was made: only measured. To tune by ear: the numbers below.
 
 const FILES = new URL('./assets/audio/', import.meta.url);
@@ -124,8 +132,9 @@ const WET = 0.04;              // m: water deeper than this over the ground is w
 // her jumps
 const PUSH = 1.6, PUSH_RATE = 0.88;            // her push off the ground: a step, this loud, this much lower
 const GUST = 0.7;                              // the air taking her up off the ground
-const CIRCLE = 0.6, CIRCLE_GROUND = 0.4;       // a circle under her foot, the sound she chose for it: in the air; on the ground (her push is
-                                               // what is heard there). Levelled as the sparkle was, and as loud
+const CIRCLE = 0.85, CIRCLE_GROUND = 0.55;     // a circle under her foot, the sound she chose for it: in the air; on the ground (her push is
+                                               // what is heard there). Levelled as the sparkle was; 3 dB over it here (it was 0.6, 0.4),
+                                               // so her magic stands out of her steps
 const GLINT = 0.6, GLINT_GROUND = 0.4;         // a circle opening under her, its sparkle (only when there is no circle file): in the air (as loud as it was when it was heard
                                                // over the droplet, and asked back); on the ground (her push is what is heard)
 const LADDER = [-2, -1, 0, 1, 2];              // semitones from the take as it is: the 1st, 2nd, 3rd, 4th (5th) circle of a flight
@@ -152,7 +161,7 @@ const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['cast
 const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
 const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
 // her combo's casts (above): how loud (the take is levelled 2 dB over her dress's swish) and how high, the 1st .. 4th
-const CAST = 0.8;
+const CAST = 1.0;                              // (it was 0.8: 2 dB up, to stand out of her steps)
 const CAST_RATE = { 1: 1.0, 2: 1.07, 3: 0.94, 4: 0.86 }, CAST_GAIN = { 1: 1.0, 2: 0.95, 3: 1.05, 4: 1.3 };
 const RUSH_FILE = 'ambience/wind-1.mp3';       // the wind past her: the air about her's own wind (a 20 s loop)
 const RUSH = 2.2;                              // how loud at full speed (with FLIGHT: some 3 dB under her dress's swish; at a magic
@@ -165,9 +174,22 @@ const RUSH_LOW = 350, RUSH_HIGH = 1750;        // Hz: its low-pass, slow .. fast
 const RUSH_RATE = [0.9, 1.15];                 // played lower slow, higher fast
 const RUSH_IN = 0.08, RUSH_OUT = 0.25;         // s: it rises, it dies away (time constants: the latter as she lands)
 const RUSH_REST = 3;                           // s: silent this long, it is stopped (begun again, wherever in the loop, when she flies)
+// the space (above)
+const ROOM_LENGTH = 1.4, ROOM_DECAY = 1.1, ROOM_PRE = 0.018;      // s: the room's impulse; to die away 60 dB; before it begins
+const ROOM_LOW = 250;                          // Hz: under this nothing goes into it (else muddy)
+const ROOM = 1.0;                              // all of the room, against what goes into it
+const SPACE = {                                // how much of each sound goes into the room (any other: SPACE_REST)
+  circle: 0.45, glint: 0.45, cast: 0.35,       // her magic, her casts: the most
+  whoosh: 0.15, swish: 0.1, flutter: 0.1, gust: 0.1, settle: 0.08, land: 0.08, thump: 0.08,
+  splash: 0.12, plunge: 0.12, plop: 0.12, stroke: 0.1, wade: 0.08, wetrun: 0.08,
+};
+const SPACE_REST = 0.05;                       // her steps and the rest: a breath of it, so they are in the same place
+const STEP_PAN = 0.12;                         // her steps: her left foot this much to the left, her right to the right (-1 .. 1)
+const CAST_PAN = { 1: 0.2, 2: -0.2, 3: 0, 4: 0 };      // her casts: the swing to one side, the swing back to the other; the turn, the finisher in the middle
+const WHOOSH_PAN = 0.2, CIRCLE_PAN = 0.1;      // at most, either way, at random
 
 export function createStepSounds({ level, volume = 1 } = {}) {
-  let ctx = null, out = null, buffer = null, bytes = null, meta = null, shift = 0, failed = null;
+  let ctx = null, out = null, room = null, foot = 1, buffer = null, bytes = null, meta = null, shift = 0, failed = null;
   let lastAt = -1, wind = null, note = -1, circles = 0, vol = Math.min(2, Math.max(0, volume));
   const alone = {}, aloneBytes = {}, aloneAttack = {};      // her sounds of their own (ALONE): their buffers once decoded (and each one's attack: s
                                                             // to where it first reaches half its loudest), their bytes until then
@@ -220,6 +242,23 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     return Math.max(0, e.findIndex(v => v >= top * 0.5)) * n / buf.sampleRate;
   }
 
+  // the room's impulse: noise dying away ROOM_DECAY s to 60 dB under, its own in each ear (so it is wide), open at first and
+  // darker as it dies (a one-pole low-pass closing from nearly open to some 2 kHz: the air takes the highs first)
+  function roomImpulse(ac) {
+    const sr = ac.sampleRate, n = Math.round(ROOM_LENGTH * sr), pre = Math.round(ROOM_PRE * sr);
+    const buf = ac.createBuffer(2, n, sr);
+    for (let c = 0; c < 2; c++) {
+      const x = buf.getChannelData(c);
+      let y = 0;
+      for (let i = pre; i < n; i++) {
+        const t = (i - pre) / sr, a = 0.25 + 0.72 * Math.exp(-t / 0.4);
+        y += a * (Math.random() * 2 - 1 - y);
+        x[i] = y * Math.pow(10, -3 * t / ROOM_DECAY) * Math.min(1, t / 0.01);
+      }
+    }
+    return buf;
+  }
+
   // ---- the first touch: only then may a page make sound
   function wake() {
     if (!ctx) {
@@ -232,6 +271,14 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       limiter.threshold.value = -6; limiter.knee.value = 6; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.1;
       out = ctx.createGain(); out.gain.value = MASTER * vol;
       out.connect(limiter).connect(ctx.destination);
+      // the room: one for all of it, into which each sound puts some of itself (SPACE)
+      try {
+        const into = ctx.createGain(), low = ctx.createBiquadFilter(), verb = ctx.createConvolver(), back = ctx.createGain();
+        low.type = 'highpass'; low.frequency.value = ROOM_LOW; low.Q.value = 0.6;
+        verb.buffer = roomImpulse(ctx); back.gain.value = ROOM;
+        into.connect(low).connect(verb).connect(back).connect(out);
+        room = into;
+      } catch (err) { room = null; console.warn('[step sounds] no room', err); }
       decode();
     }
     if (ctx.state !== 'running') ctx.resume().catch(() => {});      // (a browser that puts it to sleep again, a call, another app: woken at the next touch)
@@ -249,14 +296,13 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     return (last[set] = i);
   }
   // ---- one take of a set, so that it is heard at `when` (the context's clock): begun its attack before that, if there is still time
-  function play(set, when, gain, rate = 1, i = pick(set)) {
+  // (pan: -1 left .. 1 right)
+  function play(set, when, gain, rate = 1, i = pick(set), pan = 0) {
     if (i < 0) { stats.dropped++; return null; }
     const [from, length, attack = 0] = meta.sets[set][i];
-    const src = ctx.createBufferSource(), g = ctx.createGain();
+    const src = ctx.createBufferSource();
     src.buffer = buffer; src.playbackRate.value = rate;
-    g.gain.value = gain;
-    src.connect(g).connect(out);
-    src.onended = () => { src.disconnect(); g.disconnect(); };
+    const g = voice(src, gain, set, pan);
     const begin = when - attack / rate, now = ctx.currentTime;
     if (begin < now - 0.005 && when > now) stats.late++;
     src.start(Math.max(now, begin), from + shift, length);
@@ -271,17 +317,30 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     if (takes.length > 1 && i === last[name]) i = (i + 1) % takes.length;
     return (last[name] = i);
   }
-  function playAlone(name, gain, rate = 1, i = pickAlone(name), when = 0) {
+  function playAlone(name, gain, rate = 1, i = pickAlone(name), when = 0, pan = 0) {
     const takes = alone[name];
     if (!takes || !takes[i]) return null;
-    const src = ctx.createBufferSource(), g = ctx.createGain();
-    src.buffer = takes[i]; src.playbackRate.value = rate; g.gain.value = gain;
-    src.connect(g).connect(out);
-    src.onended = () => { src.disconnect(); g.disconnect(); };
+    const src = ctx.createBufferSource();
+    src.buffer = takes[i]; src.playbackRate.value = rate;
+    const g = voice(src, gain, name, pan);
     src.start(Math.max(ctx.currentTime, when));
     stats.played++;
     return { src, g };
   }
+  // a sound's way out: so loud, a little to one side (pan), and some of it into the room (as much as SPACE says for its name)
+  function voice(src, gain, name, pan) {
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    let side = null, send = null;
+    if (pan && ctx.createStereoPanner) { side = ctx.createStereoPanner(); side.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(side).connect(out); }
+    else g.connect(out);
+    const space = name in SPACE ? SPACE[name] : SPACE_REST;
+    if (room && space > 0) { send = ctx.createGain(); send.gain.value = space; g.connect(send).connect(room); }
+    src.onended = () => { src.disconnect(); g.disconnect(); if (side) side.disconnect(); if (send) send.disconnect(); };
+    return g;
+  }
+  const either = most => most * (Math.random() * 2 - 1);      // a little to one side or the other, at random
   // the gust that is in the air now dies away over so long
   function hush(secs) {
     if (!wind) return;
@@ -300,7 +359,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
   const lag = () => Math.min(0.15, ctx.outputLatency || ctx.baseLatency || 0);
 
   return {
-    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, circle: alone.circle ? alone.circle.length : 0, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
+    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, circle: alone.circle ? alone.circle.length : 0, room: !!room, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
     get volume() { return vol; },
     get context() { return ctx; },      // (the AudioContext, once the first touch has made it: the air about her plays on it too, ambience.js)
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (out) out.gain.value = MASTER * vol; },
@@ -317,7 +376,8 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       const deep = ground.water ? Math.min(1, depth / WADE_DEEP) : 0;
       const running = pace >= RUN_FROM;      // (a run's own takes, where there are any: else the walk's, louder)
       const set = ground.water ? (running && has('wetrun') ? 'wetrun' : 'wade') : !ground.grass ? 'tread' : running && has('run') ? 'run' : 'step';
-      play(set, when, ground.gain * loud * vary() * (1 + 0.5 * deep) * (ground.water ? 1 : FEET), pitch(ground) * (1 - 0.12 * deep));
+      foot = -foot;      // (her left foot and her right by turns)
+      play(set, when, ground.gain * loud * vary() * (1 + 0.5 * deep) * (ground.water ? 1 : FEET), pitch(ground) * (1 - 0.12 * deep), undefined, foot * STEP_PAN);
     },
 
     circle(x, z, y, { n = 1 } = {}) {
@@ -329,8 +389,8 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (note < 0 || n <= circles) note = own ? pickAlone('circle') : pick('glint');
       circles = n;
       const up = LADDER[Math.min(LADDER.length - 1, Math.max(0, n - 1))];
-      if (own) playAlone('circle', (n <= 1 ? CIRCLE_GROUND : CIRCLE) * FLIGHT * vary(), Math.pow(2, up / 12), note);
-      else play('glint', ctx.currentTime, (n <= 1 ? GLINT_GROUND : GLINT) * FLIGHT, Math.pow(2, up / 12), note);
+      if (own) playAlone('circle', (n <= 1 ? CIRCLE_GROUND : CIRCLE) * FLIGHT * vary(), Math.pow(2, up / 12), note, 0, either(CIRCLE_PAN));
+      else play('glint', ctx.currentTime, (n <= 1 ? GLINT_GROUND : GLINT) * FLIGHT, Math.pow(2, up / 12), note, either(CIRCLE_PAN));
     },
 
     leap(x, z, y, { n = 1, depth = 0 } = {}) {
@@ -338,7 +398,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       const now = ctx.currentTime;
       hush(GUST_OVER);
-      if (playAlone('whoosh', WHOOSH * FLIGHT * vary(), about(WHOOSH_RATE[n] || 1))) stats.whooshes++;      // (every jump: softly, with the rest)
+      if (playAlone('whoosh', WHOOSH * FLIGHT * vary(), about(WHOOSH_RATE[n] || 1), undefined, 0, either(WHOOSH_PAN))) stats.whooshes++;      // (every jump: softly, with the rest)
       if (n <= 1) {
         // her feet leave the ground: her push off it (a step, harder and lower: none off the water), and the air taking her up
         const ground = groundAt(x, z, y, depth);
@@ -416,7 +476,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       const i = pickAlone('cast');
       if (i < 0) return;
       const rate = about(CAST_RATE[n] || 1), attack = aloneAttack.cast[i] / rate;
-      playAlone('cast', CAST * (CAST_GAIN[n] || 1) * vary(), rate, i, ctx.currentTime + hit - attack - lag());
+      playAlone('cast', CAST * (CAST_GAIN[n] || 1) * vary(), rate, i, ctx.currentTime + hit - attack - lag(), CAST_PAN[n] || 0);
     },
 
     // every frame: the wind past her, as fast as she goes through the air (0: she is on the ground, it dies away)
