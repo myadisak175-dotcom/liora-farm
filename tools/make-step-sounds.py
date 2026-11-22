@@ -55,6 +55,16 @@
 #                              round low blow, its body 200 to 500 Hz with a note in it about 280 to 390 Hz, its top 0.16 s
 #                              in; the first, Professional_stylize_1, is in the history). Kept with its body (HIGHPASS 60 Hz,
 #                              not a take's 350) and the swing that rises into it (lead 0.15 s)
+#                  swipe-*.mp3, turn-*.mp3, finish-*.mp3   the water combo's four casts, on its trial page only
+#                              (combo-water-trial/): the sound of the clip the user sent with them, from its fourth second
+#                              on ("เอาเสียงตั้งแต่วินาทีที่สี่เป็นต้นไป มาปรับใช้กับสกิลโจมตีคอมโบปรกติ", then "ขึ้นแยกไว้",
+#                              22 Nov 2026; gemini_generated_video_756f9de6.mp4, a girl's four water casts). From 4 s it is
+#                              two sounds: a swing that swells into a splashing blow (4.15 to 5.75 s, its top at 4.78) and
+#                              the finisher's (5.8 to 8.6 s: a tick, a rising charge, then a big low burst at 6.5 s with a
+#                              long tail). swipe-1 and turn-1 are both the first (ffmpeg -ss 4.0 -to 5.78 of the clip, mono):
+#                              swipe with the swing's last 0.18 s, for the two swipes, turn with nearly all of it, for the
+#                              turn; finish-1 is the second (-ss 5.78 -to 9.3), from its charge. Kept with their bodies (cut
+#                              under 50 Hz, not a take's 350)
 #                  circle-*.mp3   a magic circle under her foot as she jumps off it: the sound the user chose for it last
 #                              ("เสียงตอนเหยียบวงแหวนเวทเอาอันนี้ละดีสุด", 22 Nov 2026), A_short_powerful_ma_4 (3 s: a
 #                              powerful low burst, there at once, four fifths of it under 200 Hz, loud for 0.3 s and then a
@@ -208,6 +218,12 @@ ALONE = {
     'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
     'circle': (-27.0, (0.003, 0.45), 1.0, 45, 0.02),      # (a magic circle under her foot: four fifths of it under 200 Hz, so as the thump is: louder by ear and it would clip)
     'cast':   (-24.0, (0.005, 0.3), 1.1, 60, 0.15),      # (her combo's casts: over her dress, as an attack should be)
+    # the water combo's trial (combo-water-trial/; the game does not ask for these yet): the two swipes (the swing's last
+    # 0.18 s into the blow: their casts leave her hand 0.18 s in), the turn (nearly all its swing: its cast is 0.44 s in),
+    # the finisher (its charge, the big low burst and its tail; its body mostly under 200 Hz, so levelled as the circle is)
+    'swipe':  (-24.0, (0.005, 0.3), 1.1, 50, 0.18),
+    'turn':   (-24.0, (0.005, 0.35), 1.45, 50, 0.42),
+    'finish': (-23.0, (0.005, 0.6), 2.3, 50, 0.5),
 }
 
 db = lambda v: 20 * np.log10(max(float(v), 1e-12))
