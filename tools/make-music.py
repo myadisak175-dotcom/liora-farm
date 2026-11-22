@@ -24,7 +24,7 @@ CEILING = -1.0            # dB: no peak over this
 RATE = '112k'
 
 TRACKS = {      # name: (when it fits: 'day', 'night' or 'any'; where it is from)
-    'wandering-grassy-hills': ('day', 'made by the user with Suno (suno.com), 21 Nov 2026, as "Wandering Grassy Hills"'),
+    'wandering-grassy-hills': ('any', 'made by the user with Suno (suno.com), 21 Nov 2026, as "Wandering Grassy Hills"'),
 }
 
 db = lambda v: 20 * np.log10(max(float(v), 1e-12))

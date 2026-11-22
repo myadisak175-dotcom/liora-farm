@@ -1,6 +1,6 @@
 // music.js
-// Music, now and then: a piece plays, fades out, and for some minutes after it there is only the air about her (wind,
-// water, birds) until the next. Never all the while: heard all the while it would cover the air, and grow old.
+// Music, over and over: a piece plays, fades out, and for 15 s after it there is only the air about her (wind, water,
+// birds); then the next ("อยากให้เพลงหยุดสัก 15 วิ แล้วเล่นต่อเรื่อยๆ"). Some minutes of the air between them at first.
 // ("ทำเพลงด้วยดีไหม ดนตรีเบาๆ อะ": soft music. On step-sounds.html first, then in the game: "ขึ้นเมนเลยค่ะ เอาเพลงด้วยนะคะ".)
 //
 //   const music = createMusic({ context: () => sounds.context, volume });      // the AudioContext her steps woke
@@ -34,7 +34,8 @@ const LEVEL = 1.6;                 // the music's loudness, at volume 1 (the pie
 const DROWN = 0.3;                 // how much of it a waterfall at its loudest takes away (0.6 at first: with a fall in hearing it was all but gone)
 const FIRST = 1;                   // s after the first touch before the first piece: at once ("ทำให้เพลงเล่นอัตโนมัติเลยนะคะ"; 20 s at
                                    // first, and it seemed not to play by itself). Before a touch no browser lets a page be heard
-const GAP = [150, 300];            // s of only the air between one piece and the next (somewhere between)
+const GAP = 15;                    // s of only the air between one piece and the next ("หยุดสัก 15 วิ แล้วเล่นต่อเรื่อยๆ"; 150 to 300 s at
+                                   // first, and the music seemed to stop and not come back)
 const FADE_IN = 4, FADE_OUT = 6;   // s: a piece comes in, and goes, this gently (the pieces begin at once and some end abruptly)
 const OFF_FADE = 1.5;              // s: switched off, it goes this fast
 const EASE = 0.5;                  // s: its loudness follows what is asked (drowned, volume) with this time constant
@@ -88,7 +89,7 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
     if (!playing) return;
     playing = null;
     try { el.pause(); } catch (err) { /* (already) */ }
-    wait = GAP[0] + Math.random() * (GAP[1] - GAP[0]);
+    wait = GAP;
   }
   function fadeOut(secs) {
     const now = ctx.currentTime;
