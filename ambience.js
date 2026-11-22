@@ -34,7 +34,8 @@ const FILES = new URL('./assets/audio/', import.meta.url);
 // each layer's loudness against the others, at 1 (the loops are all as loud as each other as written)
 const LAYERS = {
   wind: 0.6, birds: 0.55, night: 0.55, dry: 0.65, crows: 0.6,      // the air all round
-  brook: 1.5, river: 1.3, rapids: 1.8, fall: 3.2, leaves: 1.0, abyss: 1.6, frogs: 1.0,      // things with a place (at their loudest: beside them).
+  brook: 1.5, river: 1.3, rapids: 1.8, fall: 3.2, leaves: 0.5, abyss: 1.6, frogs: 1.0,      // things with a place (at their loudest: beside them).
+                                                                   // (leaves: 1.0 at first: among trees, half the land, a hiss louder than the wind, "เสียงซ่าๆ ในเกมมันดัง")
                                                                    // (fall: 2.0 at first, not heard clearly enough: "ตอนใกล้น้ำตก อยากได้ยินเสียงน้ำตกชัดๆ")
   windmill: 1.0, wheel: 1.4,                                       // the windmill's sails and the water wheel (beside them)
   creak: 1.6, wheelcreak: 2.2,                                     // ... their wood, once each time a sail or a few paddles go by (hit):

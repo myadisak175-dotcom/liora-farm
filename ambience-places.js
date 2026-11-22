@@ -47,7 +47,9 @@ const BROOK = { near: 1.5, far: 26 };                                    // (far
 const RIVER = { near: 2, far: 35 };
 const RAPIDS = { near: 12, far: 45 };                                   // m from a fall, of the river's stretch she hears: all rushing nearer, all slow further
 const DROWNED = 0.6;                                                    // how much of the rest of the air a fall at its loudest takes away
-const FALL = { near: 4, far: [30, 80], loud: [0.6, 1], tall: 18 };      // a low step of a fall .. a tall one (so many m and more): how far it is heard, how loud beside it
+const FALL = { near: 4, far: [22, 55], loud: [0.6, 1], tall: 18 };      // a low step of a fall .. a tall one (so many m and more): how far it is heard, how loud beside it
+                                                                        // (far: [30, 80] at first, and a fall was louder than the wind on two fifths of the land, its rush
+                                                                        // everywhere: "เสียงซ่าๆ ในเกมมันดัง". Beside one it is as loud as it was)
 const LEAVES = { near: 2.5, far: 14, over: 4 };                         // (over: a crown this much higher or lower than her head is as near as one level with it)
 const PIT = { near: 0.5, far: 45 };
 const WINDMILL = { near: 3, far: 45 };                                  // (from the sails' reach)

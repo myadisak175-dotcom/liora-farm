@@ -19,6 +19,8 @@
 // quiet.) And while a piece plays the air is let down (UNDER, as the piece fades in and out: the page sets air.under), or
 // its wind covers the music ("เสียงบรรยากาศดังไป กลบเพลงหมด"); between the pieces it is as loud as ever. By a waterfall or
 // rushing water it is the music that goes down (DROWN), and the air not (the page: air.under times what is not drowned).
+// In the game it was still under the air at three places in four ("เสียงซ่าๆ ในเกมมันดัง แล้วก็ดนตรีเบาไป": counted over
+// the whole land, README): LEVEL, DROWN and UNDER are as they are since then.
 //
 // A PIECE IS STREAMED, not decoded whole: three minutes of music decoded is some 80 MB, more than a phone should hold for
 // it. It plays from an <audio> element through the AudioContext (its loudness is the context's to set). A phone may not
@@ -26,15 +28,17 @@
 // which lets it play later.
 
 const FILES = new URL('./assets/audio/', import.meta.url);
-const LEVEL = 1.0;                 // the music's loudness, at volume 1 (the pieces are levelled to the air's loops, then this). 0.5 at first: too quiet ("เพลงเบาไป")
-const DROWN = 0.6;                 // how much of it a waterfall at its loudest takes away
+const LEVEL = 1.6;                 // the music's loudness, at volume 1 (the pieces are levelled to the air's loops, then this). 0.5 at first: too
+                                   // quiet ("เพลงเบาไป"); then 1.0, and in the game still "ดนตรีเบาไป": a piece is levelled where it is loud, and
+                                   // is 4.4 dB under that most of the while, where a loop of wind or water is as loud all the while
+const DROWN = 0.3;                 // how much of it a waterfall at its loudest takes away (0.6 at first: with a fall in hearing it was all but gone)
 const FIRST = 1;                   // s after the first touch before the first piece: at once ("ทำให้เพลงเล่นอัตโนมัติเลยนะคะ"; 20 s at
                                    // first, and it seemed not to play by itself). Before a touch no browser lets a page be heard
 const GAP = [150, 300];            // s of only the air between one piece and the next (somewhere between)
 const FADE_IN = 4, FADE_OUT = 6;   // s: a piece comes in, and goes, this gently (the pieces begin at once and some end abruptly)
 const OFF_FADE = 1.5;              // s: switched off, it goes this fast
 const EASE = 0.5;                  // s: its loudness follows what is asked (drowned, volume) with this time constant
-const UNDER = 0.5;                 // how much the air about her is let down while a piece plays (0.5: 6 dB)
+const UNDER = 0.6;                 // how much the air about her is let down while a piece plays (0.6: 8 dB; 0.5 at first)
 
 export function createMusic({ context, volume = 1, first = FIRST } = {}) {
   let ctx = null, meta = null, asked = false, failed = null, vol = Math.min(2, Math.max(0, volume)), on = true;
