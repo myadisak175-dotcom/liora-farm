@@ -65,6 +65,8 @@ numpy):
        Standing_2H_Magic_Attack_05.fbx Standing_Block_End.fbx \\
        "HumanF@ThrowSpear01_R.fbx" "HumanF@ThrowSpear01_R - Hold.fbx"      (Kevin Iglesias' Human Throwing Animations FREE)
   python3 tools/make-magic-combo-anim.py
+  (it then writes the game's share too, magic-combo-game-anim.js; from magic-combo-anim.js alone, without the Mixamo
+   files: python3 tools/make-magic-combo-anim.py --game)
 """
 import importlib.util
 import json
@@ -719,7 +721,43 @@ def main():
         fh.write(head + "export const CHARACTER_ANIM = " + json.dumps(anim, separators=(",", ":")) + ";\n"
                  + "export const MAGIC_COMBO = " + json.dumps(combo, separators=(",", ":")) + ";\n")
     print(f"wrote {path} ({os.path.getsize(path) // 1024} KB)")
+    write_game()
+
+
+# ---- the game's share (magic-combo-game-anim.js): the moves on the ground only (the casts in the air are not in the game
+# yet: "ท่าโจมตีกลางอากาศยังไม่ต้อง"), every number to three places, not four (a quaternion's part to 0.0005: under a tenth
+# of a degree). 794 KB is 525 KB so (173 and 95 KB as a server sends them, gzipped). Not fewer frames: at 30 a second,
+# not 60, a fast cut's arm missed its arc by up to 28 degrees between two frames. Made from magic-combo-anim.js as it is,
+# so `--game` makes it again without the Mixamo files
+GAME_CLIPS = ("mc_1", "mc_2", "mc_3", "mc_4", "mc_rise", "mc_charge_in", "mc_charge", "mc_throw", "mc_dash")
+
+
+def write_game():
+    import re
+    src = os.path.join(REPO, "magic-combo-anim.js")
+    with open(src, encoding="utf-8") as fh:
+        text = fh.read()
+    anim = json.loads(re.search(r"export const CHARACTER_ANIM = (\{.*?\});\n", text, re.S).group(1))
+    combo = json.loads(re.search(r"export const MAGIC_COMBO = (\{.*?\});\n", text, re.S).group(1))
+    anim["clips"] = {k: anim["clips"][k] for k in GAME_CLIPS}
+    for c in anim["clips"].values():            # (the keys only: a clip's length and the rest as they were)
+        c["tracks"] = {b: [round(x, 3) + 0.0 for x in v] for b, v in c["tracks"].items()}
+        c["hips"] = [round(x, 3) + 0.0 for x in c["hips"]]
+    combo["clips"] = {k: v for k, v in combo["clips"].items() if k in GAME_CLIPS}
+    head = ("// magic-combo-game-anim.js: written by tools/make-magic-combo-anim.py (--game); do not edit by hand.\n"
+            "// The game's share of magic-combo-anim.js (the trial page's): her moves on the ground only, every number to three\n"
+            "// places. Mixamo's casts (Adobe: free to use in this game, not CC0) and the library's swipe back and turn\n"
+            "// (Quaternius, CC0), posed again for her; Kevin Iglesias' spear throw (to use in a game). Hips path in hips heights.\n"
+            "//   " + ", ".join(GAME_CLIPS) + "\n")
+    path = os.path.join(REPO, "magic-combo-game-anim.js")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(head + "export const CHARACTER_ANIM = " + json.dumps(anim, separators=(",", ":")) + ";\n"
+                 + "export const MAGIC_COMBO = " + json.dumps(combo, separators=(",", ":")) + ";\n")
+    print(f"wrote {path} ({os.path.getsize(path) // 1024} KB)")
 
 
 if __name__ == "__main__":
-    main()
+    if "--game" in sys.argv:
+        write_game()
+    else:
+        main()

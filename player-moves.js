@@ -6,6 +6,8 @@
 //
 //   const player = createPlayer({ character, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 //   every frame: player.update(dt)          player.jump(), player.dash(): the buttons (Space, Shift on a keyboard)
+//   with spells: { comboFx, barrierFx, renderer } (player-spells.js): player.attack(), player.release(), player.roll(),
+//   player.barrier(): the attack button down and up, the roll button, the barrier button (J, K, B on a keyboard)
 //
 // The point of the moves: she gets about the land without going round. What she can do that the walker cannot:
 //   - jump: the magic jump (magic-jump.js). The jump button is the first jump, off a magic circle that opens on the ground;
@@ -29,6 +31,12 @@
 //     hurdle.js finds it; player-vault.js fits the vault, a motion capture, to it). The stick let go as she lands, she comes
 //     down into a landing and stops; over a bridge's parapet she falls into the river. The jump button by one is the magic jump, not the vault.
 //   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running.
+//   - cast (since 22 Nov 2026; player-spells.js says what and when): the magic combo's moves on the ground (four casts, the
+//     lance held and thrown, the leap off a run, the roll and the rising cast out of it) and the water barrier. While one
+//     has her (mode 'cast') her clips are its and it moves her where a move takes her (a turn, the roll, the leap); here
+//     she is kept out of things and on ground she may stand on: at a cliff's brink or deep water she stops, she does not
+//     go over. On the ground only (not in the air, on a face, swimming or deep in the water); the casts in the air are
+//     not in the game yet.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
 // Her walk and run are the walker's (a run is 4.2 m/s at 1.75 m; the first trial ran at 5.0 and that was too fast).
@@ -68,6 +76,7 @@ import { findHurdle } from './player-hurdle.js';
 import { VAULT_CLIP, VAULT_TIMES, vaultLead, planVault, vaultAt, createVaultIK } from './player-vault.js';
 import { createMagicJump } from './magic-jump.js';
 import { CLIMB_TOP_CLIP, CLIMB_TOP_MIRROR, planClimbTop, climbTopAt, createClimbTopIK } from './player-climb-top.js';
+import { createPlayerSpells } from './player-spells.js';
 
 const TUNED_HEIGHT = 1.412;                   // Vivi as modelled: the numbers below are for her at this height (x 1.24 at 1.75 m)
 const WALK0 = 1.2, RUN0 = 3.39, SPRINT0 = 4.7, DASH0 = 8.0;      // m/s (at 1.75 m: 1.5, 4.2, 5.8, 9.9; the walker runs at 4.1)
@@ -114,7 +123,8 @@ const NO_CIRCLES = { open() {} };
 // magic circle opens under her, she jumps (each jump of a flight), she lands, she dashes, her hand and foot are put on a
 // thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep, begins to swim), she swims a stroke, the circle
 // opens under a long fall
-export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null }) {
+// spells: what her spells draw with (player-spells.js): { comboFx, barrierFx, renderer }, or none (no spells)
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   // the level, asked at her height (see above): where her feet are, how deep the water is, where its surface is, and what
   // the ground is like (null: this map cannot say). A steep bank under the water is ground to her: she wades down it
@@ -129,6 +139,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   pos.y = standOn(pos.x, pos.z);
   let heading = level.spawn.yaw;              // where she faces (0 = +Z)
   // 'ground' | 'air' (a jump, a hop, a fall) | 'slide' (down a cliff's face) | 'climb' | 'vault' (over a top) | 'hurdle' (over a low thing) | 'swim'
+  // | 'cast' (a spell has her: player-spells.js)
   let mode = 'ground';
   let speed = 0, went = 0, paceWas = 0, pace = 0;      // how fast she means to go, how fast she really went (last frame), the pace before, the pace her legs go at
   let vy = 0, peakY = pos.y, airBase = pos.y, slideV = 0, slideT = 0, stuckT = 0;
@@ -179,10 +190,16 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
 
   const cam = createFollowCamera({ camera, level });
   cam.setView(level.spawn.yaw - Math.PI);     // the camera starts behind her
+  // her spells (player-spells.js): what she casts and when; here, where she may go while one has her
+  const spells = spellKit ? createPlayerSpells({ character, ...spellKit, camera, cam }) : null;
+  const castStick = { x: 0, z: 1, amount: 0 };
+  const groundAt = (x, z) => Math.max(standAt(x, z), surfaceAt(x, z));      // (what she casts meets the ground, or the water's surface)
   const input = createPlayerInput({
     dom, ui, onTap,
     onJump: () => { jumpWanted = JUMP_BUFFER; }, onDash: () => { dashWanted = JUMP_BUFFER; },
-    onLook: (yaw, pitch) => cam.turn(yaw, pitch), onZoom: d => cam.zoom(d),
+    onLook: (yaw, pitch) => { if (!spells || !spells.aiming) cam.turn(yaw, pitch); }, onZoom: d => { if (!spells || !spells.aiming) cam.zoom(d); },      // (holding the lance, the camera is the lance's)
+    onAttack: spells ? () => spells.attack() : null, onAttackUp: spells ? () => spells.release() : null,
+    onRoll: spells ? () => spells.roll() : null, onBarrier: spells ? () => spells.barrier() : null,
   });
   const steps = createFootsteps(level, sounds);
   steps.find(character);
@@ -608,6 +625,29 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     if (wake <= 0 && level.ripple) { level.ripple(pos.x, pos.z, went > 0.5 ? 0.8 : 0.45, went > 0.5 ? 0.34 : 0.42, went > 0.5 ? 'step' : 'plain'); wake = went > 0.5 ? 0.3 + Math.random() * 0.1 : 1.1 + Math.random() * 0.7; }
   }
 
+  // ---- in a spell (player-spells.js: a move of the combo, the barrier): it turned her and moved her (from x0, z0) where a
+  // move takes her: a turn, the roll, the leap off a run. Here she is kept out of things and on ground she may stand on:
+  // not over a cliff's brink nor into deep water (she stops at it, or goes along it)
+  const mayCast = (x, z, k) => footing(x, z) === 'ground' && depthAt(x, z) < 0.32 * k;
+  function castStep(dt, k, x0, z0) {
+    tmp.set(pos.x, 0, pos.z);
+    pos.x = x0; pos.z = z0;
+    solids(tmp, k);
+    if (!footing) { if (level.confine) level.confine(tmp, pos); }
+    else if (!mayCast(tmp.x, tmp.z, k)) {
+      if (mayCast(tmp.x, pos.z, k)) tmp.z = pos.z; else if (mayCast(pos.x, tmp.z, k)) tmp.x = pos.x; else tmp.set(pos.x, 0, pos.z);
+    }
+    went = dt > 0 ? Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt : 0;
+    pos.x = tmp.x; pos.z = tmp.z;
+    heading = me.heading;
+    speed = 0; pace = 0; paceWas = 0; turned = 0; grade = 0; landT = -1; dashT = 0; sprint = false;
+    edgeT = 0; edgeGrace = 0; grabT = 0; hurdleT = 0;
+    const ground = standAt(pos.x, pos.z), dy = ground - pos.y;
+    if (dy < -(STEP0 * k + went * dt * 1.2)) { spells.stop(); mode = 'ground'; leave(0, k, false); return; }      // the ground fell away under her (a rock's top's end)
+    pos.y = Math.abs(dy) <= went * dt * 1.5 + 0.004 ? ground : pos.y + dy * Math.min(1, dt * 18);
+    lastSafe.copy(pos);
+  }
+
   // ---- on her feet, in the air, down a face: walking, running, dashing, jumping, falling, sliding
   function walkStep(dt, k, amount, pushing, running, want) {
     const WALK = WALK0 * k, RUN = RUN0 * k, SPRINT = SPRINT0 * k, DASH = DASH0 * k, DEEP = DEEP0 * k, grav = GRAV0 * k;
@@ -889,7 +929,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       root.updateMatrixWorld(true);
       vaultIK.apply(plan, overC, crossing, crossing.dx, crossing.dz, mode === 'hurdle' ? 1 : ikTail / VAULT_TAIL);
     }
-    if (character.holdSprings) character.holdSprings(1 + 4 * air.held, 1 - air.upside);      // her hair and skirt held harder in the air
+    if (spells) spells.after(dt, me);                              // a spell's light at her hand, what she cast in flight
+    const held = Math.max(air.held, spells ? spells.held : 0), upside = Math.max(air.upside, spells ? spells.upside : 0);
+    if (character.holdSprings) character.holdSprings(1 + 4 * held, 1 - upside);      // her hair and skirt held harder in the air (and in a roll, a turn, the barrier)
     if (character.updateSprings) character.updateSprings(dt);      // hair and cloth follow where she now is
   }
 
@@ -897,11 +939,17 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     object: root, position: pos, blob: shadow, lookDir: cam.lookDir,
     get character() { return character; },
     get heading() { return heading; }, get camYaw() { return cam.yaw; }, get camPitch() { return cam.pitch; }, get camDist() { return cam.dist; }, get speed() { return speed; },
-    get airborne() { return mode !== 'ground'; }, get mode() { return mode; }, get sprinting() { return sprint; },
+    get airborne() { return mode !== 'ground' && mode !== 'cast'; }, get mode() { return mode; }, get sprinting() { return sprint; },
     get flight() { return air; },                                  // (for a test, or the console: the magic jump)
     get weight() { return weight; }, setWeight(on) { weight = !!on; air.carry = weight; if (!weight) { landW = 0; stopT = 0; gain = 0; } },      // her weight (see above), and her pace carried through the air with it (magic-jump.js)
     jump() { jumpWanted = JUMP_BUFFER; },
     dash() { dashWanted = JUMP_BUFFER; },
+    // her spells (player-spells.js; none without createPlayer({ spells })): the attack button down and up, the roll, the barrier
+    get spells() { return spells; },
+    attack() { if (spells) spells.attack(); },
+    release() { if (spells) spells.release(); },
+    roll() { if (spells) spells.roll(); },
+    barrier() { if (spells) spells.barrier(); },
     // another character takes her place, mid-stride or mid-air: same spot, same heading, same speed
     setCharacter(next) {
       if (next === character) return;
@@ -914,6 +962,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       vaultIK = createVaultIK(character);
       ctIK = createClimbTopIK(character); ctTail = 0;
       landT = -1;
+      if (spells) spells.setCharacter(character);
+      if (mode === 'cast') mode = 'ground';
       if (mode === 'vault') { if (ctPlan.ok) pos.set(ctPlan.x1, ctPlan.y1, ctPlan.z1); else pos.copy(vault1); mode = 'ground'; }
       if (mode === 'hurdle') { character.play(VAULT_CLIP, 0); character.setRate(0); character.actions[VAULT_CLIP].time = overC; }
       else character.play(mode === 'ground' ? 'idle' : mode === 'climb' ? 'climb' : mode === 'swim' ? 'swim_idle' : 'jump_air', 0);
@@ -922,7 +972,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // (y: about how high she stands, where that tells two grounds apart: on a bridge's deck, or on the bed under it. None: the top)
     teleport(x, z, yaw = heading, y) {
       pos.set(x, standOn(x, z, y), z); heading = yaw; cam.setView(yaw - Math.PI);
-      air.end(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; ikTail = 0; ctTail = 0; reachFrom.set(0, 0, 0); shown.set(0, 0, 0); lastSafe.copy(pos);
+      air.end(); if (spells) spells.stop(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; ikTail = 0; ctTail = 0; reachFrom.set(0, 0, 0); shown.set(0, 0, 0); lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
     setView(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
@@ -936,8 +986,21 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       depthHere = depthAt(pos.x, pos.z);
       jumpWanted = Math.max(0, jumpWanted - dt); dashWanted = Math.max(0, dashWanted - dt); dashCool = Math.max(0, dashCool - dt);
       shy = Math.max(0, shy - dt); grabShy = Math.max(0, grabShy - dt);
+      // ---- a spell (player-spells.js): on the ground (or wading no deeper than her knees) one may begin, or has her
+      if (spells) {
+        const can = (mode === 'ground' || mode === 'cast') && depthHere < 0.32 * k;
+        if (!can && spells.active) spells.stop();
+        me.heading = heading;
+        if (mode === 'ground') me.vel.set(Math.sin(heading) * speed, 0, Math.cos(heading) * speed);      // (on the run: the leap)
+        castStick.amount = pushing ? Math.min(1, amount) : 0; castStick.x = Math.sin(want); castStick.z = Math.cos(want);
+        const x0 = pos.x, z0 = pos.z;
+        if (spells.step(dt, me, { grounded: can, stick: castStick, ground: groundAt })) mode = 'cast';
+        else if (mode === 'cast') { mode = 'ground'; heading = me.heading; }
+        if (mode === 'cast') castStep(dt, k, x0, z0);
+      }
       // ---- she moves, as what she is doing has it
-      if (mode === 'climb') climbStep(dt, k, amount, pushing, want);
+      if (mode === 'cast') { /* (castStep, above) */ }
+      else if (mode === 'climb') climbStep(dt, k, amount, pushing, want);
       else if (mode === 'vault') vaultStep(dt, k, pushing);
       else if (mode === 'hurdle') hurdleStep(dt, k, pushing);
       else if (mode === 'swim') swimStep(dt, k, pushing, running, want);
@@ -950,7 +1013,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       else { wetAmt = Math.max(0, wetAmt - dt / 15); if (wetAmt === 0) wetH = 0; }
       pose(dt, k, WALK, RUN);
       // the blob stays on the ground under her, smaller the higher she is; none on a face or in the water
-      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : mode === 'hurdle' ? hopLift : 0, onFeet = mode === 'ground' || mode === 'air' || mode === 'slide' || mode === 'hurdle';
+      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : mode === 'hurdle' ? hopLift : 0, onFeet = mode === 'ground' || mode === 'cast' || mode === 'air' || mode === 'slide' || mode === 'hurdle';
       shadow.position.y = 0.06 - lift;
       shadow.scale.setScalar(onFeet ? k * (1 - 0.35 * Math.min(1, lift / (1.2 * k))) : 1e-4);
       // tell her materials where the water's surface is (far below when she is on land) and how high she is wet
@@ -967,6 +1030,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         : mode === 'hurdle' ? pos.y - 0.6 * hopLift
         : mode === 'swim' ? pos.y - character.height * 0.82 + 0.55 * k : pos.y;
       cam.update(dt, { pos, aimY, height: character.height, k, steady: mode !== 'air' });
+      if (spells) spells.look(dt, me, character.height / 1.75);      // (holding the lance: over her shoulder; a jolt; the spells' light drawn from here)
     },
   };
   return player;

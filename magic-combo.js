@@ -35,6 +35,8 @@
      combo.held, combo.upside        0..1: how hard her hair and skirt should be held now (the roll, the turns), and how
                                      far she is upside down (for character.holdSprings, as magic-jump.js')
      combo.stop()                    she is taken out of it some other way (falls, is thrown)
+     combo.setCharacter(next)        another character takes her place (the game's picker): what she was doing is over,
+                                     what is in flight flies on
      combo.onLand = (kind, at) => …  something landed (a page may shake its camera)
 
    The rules:
@@ -114,7 +116,8 @@ const FADE = { first: 0.09, next: 0.06, roll: 0.06, rise: 0.07, charge: 0.05, da
 
 export function createMagicCombo({ character, marks, fx }) {
   const bone = n => character.model.getObjectByName(n);
-  const hands = { R: bone('J_Bip_R_Middle1') || bone('J_Bip_R_Hand'), L: bone('J_Bip_L_Middle1') || bone('J_Bip_L_Hand') };
+  const handsOf = () => ({ R: bone('J_Bip_R_Middle1') || bone('J_Bip_R_Hand'), L: bone('J_Bip_L_Middle1') || bone('J_Bip_L_Hand') });
+  let hands = handsOf();
   const size = () => character.height / 1.75;
   const hh = () => (character.hipsHeight || 1) * (character.size || 1);      // a hips height of hers, in the world (m)
   const has = name => !!character.actions[name] && !!marks.clips[name];
@@ -317,6 +320,7 @@ export function createMagicCombo({ character, marks, fx }) {
       return true;
     },
     stop() { drop(); move = null; wantHit = wantRoll = 0; },
+    setCharacter(next) { combo.stop(); character = next; hands = handsOf(); handKnown = false; },
     step(dt, me, world) {
       wantHit = Math.max(0, wantHit - dt); wantRoll = Math.max(0, wantRoll - dt);
       if (hitsT > 0) { hitsT -= dt; if (hitsT <= 0) hits = 0; }

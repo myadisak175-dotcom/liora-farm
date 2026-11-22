@@ -5,8 +5,11 @@
 //   left side of the screen  : floating joystick (push far = run)        keyboard: WASD / arrows, C = walk
 //   right side of the screen : drag to look around                       mouse: drag, wheel = nearer / further
 //   jump, dash buttons (index.html) call player.jump(), player.dash()    keyboard: Space, Shift
+//   attack, roll, barrier buttons (index.html): player.attack() .. release(), player.roll(), player.barrier()
+//                                                                        keyboard: J (held: held), K, B
 //
-//   const input = createPlayerInput({ dom: renderer.domElement, ui: document.getElementById('stick'), onTap, onJump, onDash, onLook, onZoom });
+//   const input = createPlayerInput({ dom: renderer.domElement, ui: document.getElementById('stick'), onTap, onJump, onDash, onLook, onZoom,
+//                                     onAttack, onAttackUp, onRoll, onBarrier });
 //   input.stick(out)   every frame: fills out (a Vector2: x to the right, y towards the player, -1..1) and returns how far it is pushed, 0..1
 //   input.looking      a finger (or the mouse) is turning the camera right now
 //
@@ -16,7 +19,8 @@ import * as THREE from 'three';
 
 const STICK_R = 56;                           // the joystick's reach on the screen (px)
 
-export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null, onDash = null, onLook = null, onZoom = null }) {
+export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null, onDash = null, onLook = null, onZoom = null,
+  onAttack = null, onAttackUp = null, onRoll = null, onBarrier = null }) {
   const move = new THREE.Vector2();           // the joystick, -1..1
   const keys = new Set();
   let stickId = null, lookId = null, tapT = 0;
@@ -64,8 +68,11 @@ export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null,
     if (e.repeat) return;
     if (e.code === 'Space' && onJump) onJump();
     if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && onDash) onDash();
+    if (e.code === 'KeyJ' && onAttack) onAttack();
+    if (e.code === 'KeyK' && onRoll) onRoll();
+    if (e.code === 'KeyB' && onBarrier) onBarrier();
   });
-  addEventListener('keyup', e => keys.delete(e.code));
+  addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'KeyJ' && onAttackUp) onAttackUp(); });
   addEventListener('blur', () => keys.clear());
 
   return {
