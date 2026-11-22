@@ -19,6 +19,9 @@
 //     sounds.vault(x, z, y, part)                        her 'hand', then her 'foot', put on a low thing's top
 //     sounds.cast(n, hit)                                the n-th of her combo's four casts begins; hit: s from now that it
 //                                                        leaves her hand (player-spells.js): its sound is timed to it
+//     sounds.lance(what, hit)                            her held cast (magic-combo.js' combo.onLance). 'open': she takes the
+//                                                        lance and its circle opens; 'throw': it is let go (hit: s from now
+//                                                        that it leaves her hand); 'drop': it is given up
 //     sounds.rush(speed, flying)                         every frame: how fast she goes through the air (m/s, at 1.75 m),
 //                                                        and whether she is in the air at all: the wind past her as she flies
 //   sounds.volume = 0.6      sounds.stats (for a test, or the console)      sounds.context (the AudioContext, once there is one)
@@ -73,9 +76,16 @@
 //     is later), the finisher the second from its charge (finish: the charge as her hands gather, the burst as they
 //     thrust out). Each begun so that its blow comes as the cast leaves her hand (its attack, found as it is decoded:
 //     where it first reaches half its loudest); the swipes a little higher than it was, the second higher still
-//     (CAST_RATE, CAST_GAIN). Not the lance, the leap, the roll or the rising cast: those as they were (silent). Files
+//     (CAST_RATE, CAST_GAIN). Not the leap, the roll or the rising cast: those as they were (silent). Files
 //     of their own beside the pack (ALONE: cast, turn, finish; without turn or finish, cast for them, as before). The
 //     sounds before: Fantasy_action_RPG_w_3, and Professional_stylize_1 before it (the history)
+//   - HER HELD CAST, THE LANCE (22 Nov 2026): the sound of the clip its look was asked after, where the circle is there
+//     and where the lance goes, not its end ("ตอนวงเวท กับตอนพุ่ง… ช่วงท้ายๆ ไม่เอา"). As she takes the lance and its circle
+//     opens: the clip's first two seconds, a soft shimmer that swells twice (gate). As she lets it go: the clip's blast, a
+//     deep boom that dies away over two seconds (throw), begun so that its blow comes as the lance leaves her hand; the
+//     shimmer, if it is still going, dies away under it (LANCE_OVER s), and at once if she gives the lance up (a roll).
+//     Held longer than two seconds, the shimmer has ended: she holds it in silence until it is let go. Files of their own
+//     (ALONE: gate, throw), as loud against each other as the clip has them
 //   - a dash: her dress swishes as she bursts away
 //   - her vault: a footfall for her hand (light, higher) and one for her foot on the thing's top, and her dress swishing
 //     over it after her hand
@@ -86,6 +96,12 @@
 //     here for a while; then two sounds the user sent, one after the other, and then the one she liked best ("เสียงตอนเหยียบ
 //     วงแหวนเวทเอาอันนี้ละดีสุด"): a powerful low burst, there at once, 1 s of it (circle: a file of its own, ALONE). Every
 //     circle of a flight, the caught fall's too. The sparkle (glint) is still in the pack: with no circle file, it is heard
+//     Then a second clip, of a girl jumping off magic circles, whose sound was wanted with its look (22 Nov 2026): its
+//     own sound for every jump of a flight, cut to ours ("ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"): see JUMP_OFF,
+//     below. The circle's own sound is the caught fall's still, and a flight's where the clip's files are not there.
+//     And with the clip's sound a jump is that alone ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา"; asked what
+//     goes: the whoosh, her dress as she kicks, the gust, her push off the ground: the layers above; her landing stays,
+//     and the wind past her as she flies: "เก็บเสียงลมไว้ทุกตอน")
 // No take twice running (but the sparkle, above), each a little louder or softer and a little higher or lower than the
 // last, louder the faster she goes. A set with no takes is not heard, and nothing else changes.
 //
@@ -143,6 +159,17 @@ const CIRCLE = 0.85, CIRCLE_GROUND = 0.55;     // a circle under her foot, the s
                                                // (Its take is low, levelled as the thump is: by ear 4 dB over the sparkle's, 9 dB under a cast)
 const GLINT = 0.6, GLINT_GROUND = 0.4;         // a circle opening under her, its sparkle (only when there is no circle file): in the air (as loud as it was when it was heard
                                                // over the droplet, and asked back); on the ground (her push is what is heard)
+// the magic jump after a second clip (22 Nov 2026: "มีเสียง effect กับ vfx วงเวทย์ตอนกระโดด น่าเอามาปรับใช้กับของเรา"; asked
+// which of its sounds: where she leaves the ground and where she is thrown highest, the circles in the air between
+// keeping their own, since the clip's there ring like a bell; then, the two heard beside the circle's own: the clip's
+// for every jump, "ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"). In place of the circle's own sound, then: off the ground,
+// the clip's burst as the dome of water breaks (jump: its thud as the circle opens, the burst a tenth of a second
+// after, as her feet leave the ground and the dome breaks); off the circles in the air, the clip's bursts there, one to
+// each (air: the 2nd jump's take, the 3rd's; each there within a tenth of a second, as she kicks); the last circle of
+// a flight (the LAST-th jump), the clip's biggest (launch). How loud each, against the circle's own in the air (CIRCLE):
+// the four as loud against each other as the clip has them (launch the loudest; the first 2.6 dB under it, the two
+// in the air 2.9 and 4 dB)
+const JUMP_OFF = 0.93, AIR = [0.9, 0.8], LAUNCH = 1.0, LAST = 4;
 const LADDER = [-2, -1, 0, 1, 2];              // semitones from the take as it is: the 1st, 2nd, 3rd, 4th (5th) circle of a flight
 const KICK = { 2: 'swish', 3: 'swish', 4: 'flutter' };      // her dress as she kicks off the n-th circle (the flow's Step 2, her
                                                // turn; Step 3, her legs changing over; Step 4, her flip: magic-jump.js)
@@ -163,13 +190,17 @@ const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming 
 const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 // her jumps' whoosh, and the wind past her as she flies (above)
-const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['swipe-1.mp3'], turn: ['turn-1.mp3'], finish: ['finish-1.mp3'] };      // (the trial's: the swipes' own, swipe-1, in place of the game's cast-1)      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
+const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['swipe-1.mp3'], turn: ['turn-1.mp3'], finish: ['finish-1.mp3'], gate: ['gate-1.mp3'], throw: ['throw-1.mp3'], jump: ['jump-1.mp3'], air: ['air-1.mp3', 'air-2.mp3'], launch: ['launch-1.mp3'] };      // (the trial's: the swipes' own, swipe-1, in place of the game's cast-1)      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
 const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
 const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
 // her combo's casts (above): how loud (the take is levelled 2 dB over her dress's swish) and how high, the 1st .. 4th
 const CAST = 1.0;                              // (it was 0.8: 2 dB up, to stand out of her steps)
 const CAST_RATE = { 1: 1.05, 2: 1.12, 3: 1.0, 4: 1.0 }, CAST_GAIN = { 1: 0.95, 2: 0.9, 3: 1.05, 4: 1.2 };
 const CAST_FILE = { 1: 'cast', 2: 'cast', 3: 'turn', 4: 'finish' };      // which of her sounds is each cast's (above)
+// her held cast (above): its circle's shimmer and its blast, how loud (the takes are levelled as the clip has them: the
+// blast some 4 dB over a cast by ear, the shimmer 3 dB under one); the shimmer dies away so fast under the blast, and
+// when the lance is given up (s)
+const LANCE_GATE = 1.0, LANCE_THROW = 1.0, LANCE_OVER = 0.18, LANCE_DROP = 0.12;
 const RUSH_FILE = 'ambience/wind-1.mp3';       // the wind past her: the air about her's own wind (a 20 s loop)
 const RUSH = 2.2;                              // how loud at full speed (with FLIGHT: some 3 dB under her dress's swish; at a magic
                                                // jump's pace, 7.5 m/s, 7 dB under it; at its slowest nothing)
@@ -187,6 +218,8 @@ const ROOM_LOW = 250;                          // Hz: under this nothing goes in
 const ROOM = 1.0;                              // all of the room, against what goes into it
 const SPACE = {                                // how much of each sound goes into the room (any other: SPACE_REST)
   circle: 0.45, glint: 0.45, cast: 0.35, turn: 0.35, finish: 0.35,      // her magic, her casts: the most
+  jump: 0.4, air: 0.4, launch: 0.4,            // (the jump's bursts after the second clip: off the ground, in the air, its last)
+  gate: 0.4, throw: 0.3,                       // (the lance's circle and its blast: the clip's own sound has a room in it already)
   whoosh: 0.15, swish: 0.1, flutter: 0.1, gust: 0.1, settle: 0.08, land: 0.08, thump: 0.08,
   splash: 0.12, plunge: 0.12, plop: 0.12, stroke: 0.1, wade: 0.08, wetrun: 0.08,
 };
@@ -197,11 +230,11 @@ const WHOOSH_PAN = 0.2, CIRCLE_PAN = 0.1;      // at most, either way, at random
 
 export function createStepSounds({ level, volume = 1 } = {}) {
   let ctx = null, out = null, room = null, foot = 1, buffer = null, bytes = null, meta = null, shift = 0, failed = null;
-  let lastAt = -1, wind = null, note = -1, circles = 0, vol = Math.min(2, Math.max(0, volume));
+  let lastAt = -1, wind = null, note = -1, circles = 0, shimmer = null, blast = null, vol = Math.min(2, Math.max(0, volume));      // (shimmer: the lance's circle's sound, while it is heard; blast: its blast, and when its blow comes)
   const alone = {}, aloneBytes = {}, aloneAttack = {};      // her sounds of their own (ALONE): their buffers once decoded (and each one's attack: s
                                                             // to where it first reaches half its loudest), their bytes until then
   let rushBuf = null, rushBytes = null, rush = null;      // the wind past her: its buffer; what is playing of it
-  const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, whooshes: 0, casts: 0, rush: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
+  const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, whooshes: 0, casts: 0, lances: 0, rush: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
 
   // ---- the file: fetched at once (no touch needed for that), decoded when there is an AudioContext to decode it
   const fresh = { cache: 'no-cache' };      // (the file and where its takes lie change together: never one from the browser's cache and one new)
@@ -355,6 +388,14 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     wind = null;
     try { g.gain.setValueAtTime(g.gain.value, now); g.gain.linearRampToValueAtTime(0, now + secs); src.stop(now + secs + 0.02); } catch (err) { /* (it had ended by itself) */ }
   }
+  // a sound that is playing dies away over so long, from `from` (the context's clock) on
+  function fade(voice, secs, from = 0) {
+    if (!voice) return;
+    const { src, g } = voice, at = Math.max(ctx.currentTime, from);
+    try { g.gain.setValueAtTime(g.gain.value, at); g.gain.linearRampToValueAtTime(0, at + secs); src.stop(at + secs + 0.02); } catch (err) { /* (it had ended by itself) */ }
+  }
+  // the lance's circle's shimmer dies away
+  function still(secs, from = 0) { fade(shimmer, secs, from); shimmer = null; }
   const ready = () => !!(ctx && buffer && ctx.state === 'running');
   const has = set => !!(meta.sets[set] && meta.sets[set].length);
   const groundAt = (x, z, y, depth) => { const g = GROUND[depth > WET ? 'water' : level && level.surfaceAt ? level.surfaceAt(x, z, y) : 'grass']; return g === undefined ? GROUND.grass : g; };      // (a ground not in the table: grass)
@@ -392,6 +433,12 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       // one take of her circle's sound (the sparkle, with none) for every circle of a flight, a little higher each time; a
       // new flight may have another take
+      // (the second clip's, for every jump: off the ground its burst, in the air a take to each circle, the last circle of
+      // a flight its biggest; without their files, as before)
+      if (n <= 1 && playAlone('jump', JUMP_OFF * FLIGHT * vary(), about(1), undefined, 0, either(CIRCLE_PAN))) { note = -1; circles = n; return; }
+      if (n >= LAST && playAlone('launch', LAUNCH * FLIGHT * vary(), about(1), undefined, 0, either(CIRCLE_PAN))) { circles = n; return; }
+      const take = Math.min(n - 2, AIR.length - 1);
+      if (playAlone('air', AIR[take] * FLIGHT * vary(), about(1), take, 0, either(CIRCLE_PAN))) { circles = n; return; }
       const own = !!(alone.circle && alone.circle.length);
       if (note < 0 || n <= circles) note = own ? pickAlone('circle') : pick('glint');
       circles = n;
@@ -405,6 +452,9 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       const now = ctx.currentTime;
       hush(GUST_OVER);
+      // with the second clip's sound for the jump (circle, above), that is all of a jump: none of its layers over it
+      // ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา"); without the clip's files, the layers as before
+      if (alone.jump && alone.jump.length) { if (n <= 1) lastAt = now; return; }
       if (playAlone('whoosh', WHOOSH * FLIGHT * vary(), about(WHOOSH_RATE[n] || 1), undefined, 0, either(WHOOSH_PAN))) stats.whooshes++;      // (every jump: softly, with the rest)
       if (n <= 1) {
         // her feet leave the ground: her push off it (a step, harder and lower: none off the water), and the air taking her up
@@ -485,6 +535,28 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (i < 0) return;
       const rate = about(CAST_RATE[n] || 1), attack = aloneAttack[own][i] / rate;
       playAlone(own, CAST * (CAST_GAIN[n] || 1) * vary(), rate, i, ctx.currentTime + hit - attack - lag(), CAST_PAN[n] || 0);
+    },
+
+    // her held cast, the lance. 'open': its circle opens before her: the shimmer. 'throw': it is let go: the blast, begun
+    // so that its blow comes `hit` s from now, as the lance leaves her hand (too soon for that: at once), and the shimmer
+    // dies away under it. 'drop': it is given up: the shimmer dies away (and the blast, if she rolled out of the throw in
+    // the tenth of a second before the lance left her hand: nothing was thrown)
+    lance(what, hit = 0) {
+      if (what === 'open') stats.lances++;
+      if (!ready()) return;
+      if (what === 'open') {
+        still(LANCE_DROP);
+        shimmer = playAlone('gate', LANCE_GATE * vary(), 1);
+      } else if (what === 'throw') {
+        const i = pickAlone('throw'), now = ctx.currentTime;
+        const when = i < 0 ? now : Math.max(now, now + hit - aloneAttack.throw[i] - lag());
+        blast = i < 0 ? null : { voice: playAlone('throw', LANCE_THROW * vary(), 1, i, when), blow: now + hit };
+        still(LANCE_OVER, when);
+      } else {
+        still(LANCE_DROP);
+        if (blast && ctx.currentTime < blast.blow) fade(blast.voice, LANCE_DROP);
+        blast = null;
+      }
     },
 
     // every frame: the wind past her, as fast as she goes through the air (0: she is on the ground, it dies away)

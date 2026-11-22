@@ -2,7 +2,8 @@
 """
 tools/make-water-casts.py  —  the pictures of her four water casts (the normal combo's, on its trial page for now:
 combo-water-trial/water-jet.webp, water-sweep.webp, water-orbit.webp, water-vortex.webp), of the bolt of water they
-throw and of the splash where it lands (water-bolt.webp, water-hit.webp), and water-casts.js, which says what is in
+throw and of the splash where it lands (water-bolt.webp, water-hit.webp), of a band of the same water for her waves
+and rings (water-blade.webp), and water-casts.js, which says what is in
 them: all made from the clip the casts were asked after (22 Nov 2026: ten seconds made with Gemini, a girl's four
 water casts before the plant boss, 1280 x 720, 24 pictures a second; the clip itself is not kept here).
 
@@ -24,11 +25,13 @@ What it does, in turn:
      first cast (the jet): its bolt of water, which is a picture of its own now and flies where the game throws it
      (it is followed through the clip's frames: BOLT). The bolt: everything but itself; each of its frames made as
      big as the others (in the clip it shrinks as it flies away). The splash: everything but itself, and the orb
-     the clip leaves in its middle.
+     the clip leaves in its middle. The sweep again: her legs, which show through it as it passes before them (LEGS).
   4. BIG: each frame a cast keeps, cut to the cast's box, made 4 times as big by Real-ESRGAN's anime-video model
      (realesr-animevideov3.pth, BSD-3, from github.com/xinntao/Real-ESRGAN's releases; run here without PyTorch: its
      weights read out of the .pth, the net rebuilt for onnxruntime), and brought down by 3: 4/3 of the clip's size.
-  5. MENDED: the jet's and the sweep's water drawn on across the clip's girl (where she is before it, or shows through it).
+  5. MENDED: the jet's water drawn on across the clip's girl (where she is before it, or shows through it).
+     And THE BLADE (water-blade.webp): the sweep's crescent, in three of its frames, laid out straight (BLADE): a strip
+     of the clip's water for the game to lay along a wave (the turn's, the rising cast's) and round a ring on the ground.
   6. PACKED: a frame is mostly air, so it is kept as tiles (squares of 14 pixels with water in them, each with a rim of
      one pixel from its neighbours), and a map for every frame says where each square's tile is. A pixel is two numbers:
      how light the water is (red, 32 steps from 0.30 to 1) and how much of it there is (green, 64 steps); the game
@@ -69,13 +72,14 @@ MASKS = {
 # whole, and the cast is drawn again where she was, from itself:
 #   her head and hands (oval: x, y, rx, ry in the clip's pixels; the cast's middle is in it): 'small' is the cast
 #       itself made smaller about its middle, again and again inward (a burst's rays run on in to their point, a
-#       whirl winds on in), turned and sized so that it meets the water round the oval as well as it can (the middle
-#       is looked for near `middle`); 'soft' is the glow round the oval run in across it (a cast that is only
-#       beginning, or nearly gone, has no such shape to make small)
+#       whirl winds on in, a dome has domes in it), turned and sized so that it meets the water round the oval as well
+#       as it can (the middle is looked for near `middle`); 'soft' is the glow round the oval run in across it (a
+#       cast nearly gone has no such shape to make small); 'clear' is nothing
 #   her body below (found by her colours, in the frames `pose` and the frame itself, within `wide` of the oval's
 #       middle): 'across' is what is across the middle from it (a burst is alike all round), 'along' is the water at
 #       either side of her drawn on along the rounds about the middle (a whirl's bands; to `far` from the middle:
-#       feathered from, to), 'none' is nothing
+#       feathered from, to; each side's water turned over into her place, so that it stays as crisp as it is there:
+#       run in evenly it was smoother than the whirl round it, "เก็บงานที่ไม่เนียนทั้งหมด"), 'none' is nothing
 #   keep: what is plainly water stays where she is (the orbit's rounds pass before her legs; and late in a cast, when
 #       her arms come down, all of her width is looked at and only the drops stay)
 # how: (first frame, last frame, her body, her head and hands, keep)
@@ -83,9 +87,18 @@ HER = {
     'orbit':  dict(oval=(636, 351, 66, 60), middle=(625, 335), pose=range(107, 125, 2), wide=95, far=(280, 300),
                    how=((103, 103, 'none', 'soft', False), (105, 123, 'across', 'small', True))),
     'vortex': dict(oval=(629, 360, 70, 56), middle=(635, 350), pose=range(154, 182, 2), wide=100, far=(150, 185),
-                   how=((152, 156, 'none', 'soft', False), (158, 160, 'across', 'small', False), (162, 172, 'along', 'small', False),
-                        (174, 176, 'none', 'small', True), (178, 180, 'none', 'soft', True))),
+                   how=((152, 152, 'none', 'clear', False), (154, 156, 'along', 'small', False), (158, 160, 'across', 'small', False),
+                        (162, 172, 'along', 'small', False), (174, 176, 'none', 'small', True), (178, 180, 'none', 'soft', True))),
 }
+# The sweep passes before her legs (the clip's frames 62 to 70) and they show through it: paler where the water is
+# thin, a notch where it is thick. Her legs stand still meanwhile, so where they are is read off the frames before and
+# after (pose), below y, within `wide` of x; there the water is drawn across evenly from its two sides, along the
+# band's own slope (the one, of `slopes`, for which the two sides are most alike); most: a gap wider than this is
+# left alone (the clip's pixels)
+LEGS = dict(first=62, last=70, pose=(54, 55, 56, 57, 58, 59, 60, 72, 73, 74, 75, 76), x=645, wide=110, y=455, most=70, slopes=np.linspace(-0.6, 0.6, 25))
+# The blade: the sweep's crescent in these frames, laid out straight, its head at the left, its outer edge up. long,
+# across: a strip's size (pixels: 37 squares by 8)
+BLADE = dict(frames=[50, 56, 58], long=518, across=112)
 # ... and as those two begin, their flash lights her legs, which the key takes for water: in those frames (first, last)
 # nothing below this height of the clip is the cast's (y, feather)
 FLOOR = {'orbit': (97, 107, 472, 14), 'vortex': (152, 156, 455, 14)}
@@ -112,6 +125,7 @@ SPRITES = {
     'bolt': dict(frames=list(range(25, 30)), box=(210, 210), at=(70, 70), ref=120.0),
     'hit':  dict(frames=list(range(32, 43)), box=(336, 336), at=(168, 168), ref=125.0, middle=(598, 240), keep=(160, 22), orb=(38, 40, 12),
                  tail=(36, 64, 11, 190, 14, 8)),
+    'blade': dict(frames=BLADE['frames'], box=(BLADE['long'], BLADE['across']), at=(0, 0), ref=float(BLADE['long'])),
 }
 
 # ---------------------------------------------------------------- 1. the clip's frames
@@ -374,16 +388,111 @@ def small(c, k, deg):
     """the 2x3 matrix that takes a point to the one k times as far from c, turned deg about it"""
     t = np.deg2rad(deg); co, si = k * np.cos(t), k * np.sin(t)
     return np.float32([[co, -si, c[0] - co * c[0] + si * c[1]], [si, co, c[1] - si * c[0] - co * c[1]]])
+def drawn_on(img, bad, round_=False):
+    """img[t, j]: for every j, each run of t that `bad` marks is drawn in from the water at its two ends, each end's
+    turned over into it (so that it stays as crisp as it is there) and the two mixed across the run's middle;
+    round_: t goes round (its last is next to its first)"""
+    n = img.shape[0]
+    for j in range(img.shape[1]):
+        b = bad[:, j]
+        if not b.any() or (~b).sum() < n * 0.2: continue
+        k0 = int(np.argmax(~b)) if round_ else 0
+        b = np.roll(b, -k0); col = np.roll(img[:, j], -k0, axis=0)
+        e = np.diff(np.concatenate([[0], b.astype(np.int8), [0]]))
+        for a, z in zip(np.nonzero(e == 1)[0], np.nonzero(e == -1)[0]):          # the run: a .. z - 1
+            i = np.arange(z - a)
+            lt = a - 1 - i; rt = z + (z - a - 1 - i)
+            if round_: lt %= n; rt %= n
+            okl = (lt >= 0) & ~b[np.clip(lt, 0, n - 1)]; okr = (rt < n) & ~b[np.clip(rt, 0, n - 1)]
+            L = np.where(okl[:, None], col[np.clip(lt, 0, n - 1)], col[a - 1] if a > 0 else 0)
+            R = np.where(okr[:, None], col[np.clip(rt, 0, n - 1)], col[z] if z < n else (col[0] if round_ else 0))
+            if a == 0 and not round_: w = np.ones((z - a, 1), np.float32)
+            elif z == n and not round_: w = np.zeros((z - a, 1), np.float32)
+            else: w = smooth(0.3, 0.7, (i + 0.5) / (z - a))[:, None].astype(np.float32)
+            col[a:z] = L * (1 - w) + R * w
+        img[:, j] = np.roll(col, k0, axis=0)
+    return img
 def along(pm, cover, c, far=300, steps=1080):
     """pm with what `cover` covers drawn on along the rounds about c, from the water at either side of it"""
     pol = cv2.warpPolar(pm, (far, steps), c, far, cv2.WARP_POLAR_LINEAR | cv2.INTER_LINEAR)      # rows: the way round; columns: how far out
     cov = cv2.warpPolar(cover, (far, steps), c, far, cv2.WARP_POLAR_LINEAR | cv2.INTER_LINEAR)
-    t = np.arange(steps, dtype=np.float32)
-    for j in range(far):
-        ok = cov[:, j] < 0.03
-        if ok.all() or ok.sum() < steps * 0.2: continue
-        for ch in range(4): pol[~ok, j, ch] = np.interp(t[~ok], t[ok], pol[ok, j, ch], period=steps)
+    pol = drawn_on(pol, cov >= 0.03, True)
     return cv2.warpPolar(pol, (1280, 720), c, far, cv2.WARP_POLAR_LINEAR | cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP)
+LEGS_AT = {}
+def legs(fi, im):
+    """the sweep's keyed frame with her legs out of the water that passes before them (LEGS)"""
+    if not LEGS['first'] <= fi <= LEGS['last']: return im
+    if 'm' not in LEGS_AT:
+        m = np.zeros((720, 1280), np.uint8)
+        for f in LEGS['pose']: m |= body(load(f).astype(np.float32) / 255)
+        m[(np.abs(XX - LEGS['x']) > LEGS['wide']) | (YY < LEGS['y'])] = 0
+        LEGS_AT['m'] = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)))
+    bad = LEGS_AT['m']
+    pm = im.copy(); pm[..., :3] *= pm[..., 3:]
+    def slid(a, sl, back=False):
+        M = np.float32([[1, 0, 0], [-sl, 1, sl * LEGS['x']]])
+        return cv2.warpAffine(a, M, (1280, 720), flags=cv2.INTER_LINEAR | (cv2.WARP_INVERSE_MAP if back else 0))
+    def runs(b, y):
+        e = np.diff(np.concatenate([[0], b[y].astype(np.int8), [0]]))
+        return [(a, z) for a, z in zip(np.nonzero(e == 1)[0], np.nonzero(e == -1)[0]) if z - a <= LEGS['most'] and a >= 5 and z <= 1275]
+    best = None
+    for sl in LEGS['slopes']:
+        p = slid(pm, sl); b = slid(bad, sl) > 0
+        err, n = 0.0, 0
+        for y in np.nonzero(b.any(axis=1))[0][::3]:
+            for a, z in runs(b, y):
+                l, r = np.median(p[y, a - 5:a], axis=0), np.median(p[y, z:z + 5], axis=0)
+                if max(l[3], r[3]) < 0.2: continue
+                err += float(np.abs(l - r).sum()); n += 1
+        if n and (best is None or err / n < best[0]): best = (err / n, sl)
+    sl = best[1] if best else 0.0
+    p = slid(pm, sl); b = slid(bad, sl) > 0
+    for y in np.nonzero(b.any(axis=1))[0]:
+        for a, z in runs(b, y):
+            l, r = np.median(p[y, a - 5:a], axis=0), np.median(p[y, z:z + 5], axis=0)
+            w = ((np.arange(z - a) + 0.5) / (z - a))[:, None]
+            p[y, a:z] = l * (1 - w) + r * w
+    S = cv2.GaussianBlur(bad.astype(np.float32), (0, 0), 1.5)[..., None]
+    out = pm * (1 - S) + slid(p, sl, True) * S
+    a = np.clip(out[..., 3:], 0, 1)
+    out[..., :3] = np.where(a > 1e-3, out[..., :3] / np.maximum(a, 1e-3), 0); out[..., 3:] = a
+    return np.clip(out, 0, 1)
+def straight(fi):
+    """the sweep's crescent in its big frame fi, laid out straight (BLADE): BGRA, uint8"""
+    L, Hh = BLADE['long'], BLADE['across'] // 2
+    im = cv2.imread('%s/hi/sweep_%03d.png' % (WORK, fi), cv2.IMREAD_UNCHANGED).astype(np.float32) / 255
+    a = im[..., 3]
+    n, lab, stats, cen = cv2.connectedComponentsWithStats((a > 0.35).astype(np.uint8), connectivity=8)
+    ys, xs = np.nonzero(lab == 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    (cx, cy), _, _ = cv2.fitEllipse(np.ascontiguousarray(np.stack([xs, ys], 1)[::7].astype(np.float32).reshape(-1, 1, 2)))
+    # about the middle of the round it is part of: for each way round, how far out the crescent's middle is
+    N = 720; th = np.arctan2(ys - cy, xs - cx); r = np.hypot(xs - cx, ys - cy); w = a[ys, xs]
+    b = ((th + np.pi) / (2 * np.pi) * N).astype(int) % N
+    sw = np.bincount(b, w, N); sr = np.bincount(b, w * r, N)
+    k = np.ones(15) / 15
+    wrap = lambda v: np.convolve(np.concatenate([v[-7:], v, v[:7]]), k, 'valid')
+    rr = wrap(sr) / np.maximum(wrap(sw), 1e-6)
+    idx = np.nonzero(sw > 3)[0]                                             # (the longest run of ways round that have it)
+    gaps = np.diff(np.concatenate([idx, [idx[0] + N]])); g = np.argmax(gaps)
+    order = (idx[(g + 1) % len(idx)] + np.arange(N - gaps[g] + 1)) % N
+    t = (order + 0.5) / N * 2 * np.pi - np.pi
+    soft = lambda v: cv2.GaussianBlur(v.reshape(1, -1), (0, 0), 6, borderType=cv2.BORDER_REPLICATE)[0]
+    px, py = soft(cx + rr[order] * np.cos(t)), soft(cy + rr[order] * np.sin(t))
+    # (on a little past both its ends, the way it leaves by)
+    more = 26; step = np.hypot(np.diff(px), np.diff(py)).mean()
+    d0 = np.array([px[0] - px[6], py[0] - py[6]]); d0 /= np.linalg.norm(d0); d1 = np.array([px[-1] - px[-7], py[-1] - py[-7]]); d1 /= np.linalg.norm(d1)
+    px = np.concatenate([px[0] + d0[0] * step * np.arange(more, 0, -1), px, px[-1] + d1[0] * step * np.arange(1, more + 1)])
+    py = np.concatenate([py[0] + d0[1] * step * np.arange(more, 0, -1), py, py[-1] + d1[1] * step * np.arange(1, more + 1)])
+    far = np.concatenate([[0], np.cumsum(np.hypot(np.diff(px), np.diff(py)))])
+    u = np.linspace(0, far[-1], L); X = np.interp(u, far, px); Y = np.interp(u, far, py)
+    tx, ty = np.gradient(X), np.gradient(Y); nrm = np.hypot(tx, ty); nx, ny = -ty / nrm, tx / nrm
+    if np.mean(nx * (X - cx) + ny * (Y - cy)) < 0: nx, ny = -nx, -ny           # (out: away from the middle)
+    d = np.linspace(Hh, -Hh, 2 * Hh)[:, None] * far[-1] / L                     # rows: from its outer edge to its inner, as big as along it
+    pm = im.copy(); pm[..., :3] *= pm[..., 3:]
+    out = cv2.remap(pm, (X[None] + nx[None] * d).astype(np.float32), (Y[None] + ny[None] * d).astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    al = out[..., 3:]
+    out[..., :3] = np.where(al > 1e-3, out[..., :3] / np.maximum(al, 1e-3), 0)
+    return (np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8)
 def run_in(pm, known):
     """pm (premultiplied) run in from where it is known across where it is not, the nearest water counting most"""
     out = np.zeros_like(pm); got = np.zeros(known.shape, np.float32)
@@ -413,6 +522,7 @@ def redrawn(name, fi, im):
         a = np.clip(out[..., 3:], 0, 1)
         out[..., :3] = np.where(a > 1e-3, out[..., :3] / np.maximum(a, 1e-3), 0); out[..., 3:] = a
         return np.clip(out, 0, 1)
+    if mid == 'clear': return done(clear)
     if mid == 'soft':
         return done(clear + run_in(clear, 1 - smooth(0.02, 0.4, both)) * E[..., None])
     # ---- the middle, the size and the turn: those for which the ring of water just outside the oval is most like
@@ -457,7 +567,10 @@ def own(name, fi):
             if f0 <= fi <= f1: a *= smooth(r - soft, r, np.hypot(XX - x, YY - y))
         if name == 'jet' and fi in TRACK: a *= 1 - round_bolt(fi, BOLT['wider'])
         if name in FLOOR and FLOOR[name][0] <= fi <= FLOOR[name][1]: a *= 1 - smooth(FLOOR[name][2] - FLOOR[name][3], FLOOR[name][2], YY)
-        if name in HER: im = redrawn(name, fi, im)
+        if name == 'sweep': im = legs(fi, im)
+        if name in HER:
+            im = redrawn(name, fi, im)
+            if name in FLOOR and FLOOR[name][0] <= fi <= FLOOR[name][1]: im[..., 3] *= 1 - smooth(FLOOR[name][2] - FLOOR[name][3], FLOOR[name][2], YY)      # (what was drawn in stops there too)
     elif name == 'bolt':
         a *= round_bolt(fi)
     elif name == 'hit':
@@ -515,6 +628,7 @@ for name, sh in SHEETS.items():
     else:
         w, h = sh['box']
         for fi in todo:
+            if name == 'blade': cv2.imwrite('%s/hi/%s_%03d.png' % (WORK, name, fi), straight(fi)); continue
             if name == 'bolt': x, y, s = TRACK[fi][0], TRACK[fi][1], (TRACK[BOLT['like']][2] / TRACK[fi][2]) ** 0.5
             else: x, y, s = sh['middle'][0], sh['middle'][1], 1.0
             cv2.imwrite('%s/hi/%s_%03d.png' % (WORK, name, fi), make_big(placed(own(name, fi), x, y, s, w, h, sh['at'])))
@@ -528,7 +642,7 @@ DARK = 0.30                                 # the lightness kept: from this (0) 
 STOPS = [0.44 + 0.08 * k for k in range(8)]
 LUMA = np.array([0.114, 0.587, 0.299], np.float32)          # (of a BGR picture)
 HEAD = """// combo-water-trial/water-casts.js: what is in the water casts' pictures (water-jet.webp, water-sweep.webp,
-// water-orbit.webp, water-vortex.webp; water-bolt.webp, water-hit.webp), for magic-combo-fx.js. MADE by
+// water-orbit.webp, water-vortex.webp; water-bolt.webp, water-hit.webp, water-blade.webp), for magic-combo-fx.js. MADE by
 // tools/make-water-casts.py: not written by hand.
 //   size: the picture's (pixels); grid: the squares of a frame, across and down (a square: 14 pixels; its tile in the
 //         picture: 16, with its rim)
@@ -537,6 +651,8 @@ HEAD = """// combo-water-trial/water-casts.js: what is in the water casts' pictu
 //   frames: for each, [its map's place in the picture (x, y), the squares with water in them (x0, y0, x1, y1)]
 //   ramp: the water's colour at lightness 0.44, 0.52 ... 1.0 (a pixel's red is its lightness, from 0.30 to 1; its
 //         green how much water)
+// blade: three frames of the sweep's crescent laid out straight (its head at the left, its outer edge up), for a band
+// of water along a wave or round a ring: only its size, grid, frames and ramp are used.
 // bolt (what a cast throws) and hit (the splash where it lands) are the same, reckoned from their own point (the
 // bolt's head, the splash's middle) in their own measure: 1 is the bolt's length, how far the splash reaches (the game
 // makes that as many metres as it wants). The bolt's picture flies the way BOLT_WAY says (radians, from its right,
@@ -551,7 +667,7 @@ for name, c in SHEETS.items():
     gw, gh = W // T, H // T
     # ---- the water drawn on across the clip's girl (girl, mend: above)
     for fi, im in zip(info['frames'], frames):
-        if name not in CASTS or name in HER: break                          # (the bolt and the splash are clear of her; the orbit and the vortex have her out already)
+        if name != 'jet': break                                             # (the sweep, the orbit and the vortex have her out already; the rest are clear of her)
         her = girl(load(fi).astype(np.float32) / 255)
         her = cv2.resize(cut(her.astype(np.uint8), *info['box']), (W, H), interpolation=cv2.INTER_LINEAR) > 0
         mend(im, her)

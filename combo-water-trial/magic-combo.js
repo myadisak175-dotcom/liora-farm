@@ -2,7 +2,7 @@
 /* ==========================================================================
    magic-combo.js  —  Vivi's magic combo: the attack button pressed again and again is four casts, each a different move
    that goes straight into the next (a swipe, the swipe back, a whole turn into a cut, and both hands thrust out); held
-   down, a lance of light that grows in her hand until it is let go; pressed on the run, a leap that turns once round
+   down, a lance of ice and water that grows in her hand until it is let go; pressed on the run, a leap that turns once round
    and comes down in a ring of light; and a roll that gets her out of the way, with a rising cast out of it. The moves'
    own rules and what they throw; nothing else. Her moves: magic-combo-anim.js (tools/make-magic-combo-anim.py), the
    roll the game's own clip. What is thrown is drawn by magic-combo-fx.js.
@@ -31,7 +31,8 @@
      combo.beat                      what she is doing now (for a label); combo.index: which of the four casts (0..3, -1:
                                      none of them); combo.rising: the rising cast; combo.charge: how grown the held
                                      cast is (0..3; -1: she is not holding one); combo.aiming: she holds the lance or
-                                     is throwing it (a page may bring its camera in over her shoulder)
+                                     is throwing it (a page may bring its camera in over her shoulder); combo.target:
+                                     the thing she holds it at, or none (the camera looks at it)
      combo.hits                      how many casts have landed one after another (0 again 2.5 s after the last)
      combo.held, combo.upside        0..1: how hard her hair and skirt should be held now (the roll, the turns), and how
                                      far she is upside down (for character.holdSprings, as magic-jump.js')
@@ -41,6 +42,9 @@
      combo.onLand = (kind, at) => …  something landed (a page may shake its camera)
      combo.onBegin = (index, hit) => …   a move begins (index: which of the four casts, 0..3; -1: another move);
                                      hit: s from now that its cast leaves her hand (a page may time a sound to it)
+     combo.onLance = (what, hit) => …   the held cast, for its sounds. 'open': she takes the lance and the circle
+                                     opens before her; 'throw': she lets it go (hit: s from now that it leaves her
+                                     hand and goes through the circle); 'drop': it is given up (a roll, a fall)
 
    The rules:
      - Tapped: a cast leaves her hand at its move's `hit`; from its `cancel` on the next press is the next move (pressed
@@ -48,13 +52,14 @@
        after the cancel moment walks her out of it sooner. After the fourth it is the first again, once the fourth is
        nearly over (its `again`: the finisher leaves her open for half a second); after a pause, the first.
      - Held: the first cast is the same (the press casts at once); the button still down at its cancel moment, her arm
-       goes on round into the hold and a lance of light is in her hand, growing at 0.35, 0.8 and 1.4 s (a ring of light
-       at her hand each time). Let go, it is thrown: straight, fast, through everything in its way, harder the more it
+       goes on round into the hold and a lance of ice and water is in her hand, growing at 0.35, 0.8 and 1.4 s (a ring of
+       light at her hand each time). Let go, it is thrown: straight, fast, through everything in its way, harder the more it
        has grown; full grown, it bursts on all near each thing it goes through. Holding, she turns slowly to her target.
        A magic circle stands in the air before her while she holds it (the gate: on the line the lance will take, just
        past where her hand lets it go, facing the way she aims; more of it drawn and bigger each time the lance grows),
        and the lance is thrown through its middle ("ถ้าปาหอกเวท ขอเอฟเฟกต์คล้ายๆ มีวงแหวนเวท": asked which, the circle
-       there while she charges and the lance through it).
+       there while she charges and the lance through it). How all of it looks is the clip's it was asked after later
+       the same day (magic-combo-fx.js: THE LANCE).
      - On the run (as fast as her run when the button goes down): she leaps the way she runs, turning once round in the
        air, her hands leaving rings of light; what she passes within arm's reach is hit; she comes down in a low cut and
        a ring goes out over the ground, hitting all inside it.
@@ -70,11 +75,16 @@
      - The roll goes the way the stick points (the way she faces, let go). The attack button during it, or just as her
        feet are under her again, is the rising cast: a standing wave along the ground that throws what it hits up.
      - The roll cuts any move short (what was not yet cast is lost).
-     - How it is drawn: her four tapped casts as the clip of water casts the user sent (22 Nov 2026), fx.look('water')
-       and fx.cast(n, …) as each leaves her hand (needles, a crescent, rings round her, the finisher's whirl); what
-       they throw is the clip's bolt of water, straight at its target, and where it lands the clip's splash (the
-       turn's wave is not seen: what it hits splashes); all the rest as before, fx.look('sky'). What is thrown keeps
-       its look to its burst (shot.draw.look).
+     - How it is drawn: as the clip of water casts the user sent (22 Nov 2026), fx.look('water'): her four tapped
+       casts with fx.cast(n, …) as each leaves her hand (needles, a crescent, rings round her, the finisher's whirl);
+       what they throw is the clip's bolt of water, straight at its target, and where it lands the clip's splash;
+       the turn's wave is a band of the clip's water. And the other moves the same ("ท่าเสยก็ต้องทำให้เข้ากัน แล้วก็เก็บงาน
+       ที่ไม่เนียนทั้งหมด"): the rising cast a crescent coming up before her (fx.cast(4, …)) and its wave a standing band
+       of water; the leap the sweep's crescent round her as she turns (fx.cast(1, …)), and where she lands a ring of
+       water over the ground; the casts in the air the bolt, with the needles at the hand that throws; the blow out
+       of the air the ring and a splash. No light at her hand and no ribbon in any of them. Only the held cast, the
+       lance, has its own look (fx.look('sky') while she holds and throws it: its light at her hand is the game's).
+       What is thrown keeps its look to its burst (shot.draw.look).
    Lengths are for a 1.75 m character and go with her size.
    ========================================================================== */
 import * as THREE from 'three';
@@ -97,8 +107,9 @@ const SLAM = { clip: 'mc_slam', shot: null, glow: 0.5, name: 'กระแทก
 const CHARGE = { into: 'mc_charge_in', hold: 'mc_charge', grows: [0.35, 0.8, 1.4], power: [2, 3, 5, 8], turn: 2.6, burst: 1.6, tilt: 0.7, grip: 0.6 };
 // the gate, the magic circle the lance is thrown through. hand: where her hand lets the lance go, in her own frame (m at
 // 1.75 m: ahead of her, up, to her left; measured off the throw); ahead: how far past that, on the lance's line, the
-// circle stands; radius: of its outer ring, by how grown the lance is
-const GATE = { hand: [0.68, 1.47, -0.05], ahead: 0.4, radius: [0.26, 0.3, 0.35, 0.4] };
+// circle stands; radius: of its outer ring, by how grown the lance is (the clip's circle is a third of its lance's
+// length across: bigger than the first circle here was, 0.26 to 0.4)
+const GATE = { hand: [0.68, 1.47, -0.05], ahead: 0.4, radius: [0.32, 0.38, 0.45, 0.52] };
 const RUN = 3.2;              // m/s: as fast as this when the button goes down, the running cast
 // what is thrown: its pace (m/s), how near a target it lands (m, added to the target's own), how far it goes, how fast it
 // turns to its target (1/s; 0: straight), the burst where it lands; through: it goes on through what it hits; blast: all
@@ -182,12 +193,14 @@ export function createMagicCombo({ character, marks, fx }) {
     return aim;
   }
   function drop() {
-    if (move && move.draw && !move.fired) move.draw.end(false);          // (a lance she still held goes out)
+    const held = !!(move && move.draw && !move.fired);
+    if (held) move.draw.end(false);                                      // (a lance she still held goes out)
     if (move && move.gate) { move.gate.end(); move.gate = null; }        // (and the circle before her)
+    if (held && combo.onLance) combo.onLance('drop', 0);
   }
-  // how what she casts is drawn: her four tapped casts as the clip of water casts the user sent ('water'), the rest
-  // as they always were ('sky'); with an fx that has no looks, as it is
-  const lookFor = def => { if (fx.look) fx.look(HITS.includes(def) ? 'water' : 'sky'); };
+  // how what she casts is drawn: as the clip of water casts the user sent ('water'), all but the lance, which has its
+  // own look ('sky' leaves the light at her hand as the game has it); with an fx that has no looks, as it is
+  const lookFor = def => { if (fx.look) fx.look(def === THROW ? 'sky' : 'water'); };
   function begin(def, me, world, fade, more = null) {
     drop();
     lookFor(def);
@@ -204,6 +217,7 @@ export function createMagicCombo({ character, marks, fx }) {
     move = { kind: 'charge', def: THROW, m: marks.clips[CHARGE.into], t: 0, phase: 'in', level: 0, fired: false, target: pick(me, world), draw: fx.shot('lance'),
       gate: fx.gate ? fx.gate() : null };
     wantHit = 0; mote = 0;
+    if (combo.onLance) combo.onLance('open', 0);
   }
   function roll(me, world) {
     drop();
@@ -232,17 +246,18 @@ export function createMagicCombo({ character, marks, fx }) {
     move.phase = 'out'; move.at = 0; move.then = then; move.rate = then ? AIR.quick : 1;
   }
   // a small orb from a hand at a target (with none: the way given)
-  function bolt(from, target, way) {
+  function bolt(from, target, way, needles = false) {
     const dir = way.clone();
     if (target) dir.set(target.pos.x - from.x, target.pos.y + target.height * 0.62 - from.y, target.pos.z - from.z);
     dir.normalize();
     shots.push({ kind: SHOTS.bolt, power: AIR.power, name: 'orb', pos: from.clone(), dir, aim: dir.clone(), target, far: 0, done: new Set(), draw: fx.shot('orb') });
+    if (needles && fx.cast) fx.cast(0, { hand: from.clone(), dir: dir.clone(), feet: from, size: size() * 0.55 });      // (the first cast's, smaller)
   }
   // a thing is hit: told so, counted, a burst where
   function strike(target, hit, at, burst, look) {
     target.hit(hit);
     hits++; hitsT = COUNT;
-    if (burst) fx.burst(at, burst, look);
+    if (burst) fx.burst(at, burst, hit.kind === 'lance', look);          // (the lance's: its own sparkles, not gold)
   }
   function fire(me) {
     const { def, target } = move, k = size();
@@ -265,7 +280,7 @@ export function createMagicCombo({ character, marks, fx }) {
         // through the middle of the circle: along the circle's own line, from where on it its point is (not past the circle)
         dir.copy(gateDir);
         from.copy(gateAt).addScaledVector(dir, Math.min(0, v.copy(from).sub(gateAt).dot(dir)));
-        move.gate.fire(me.pos); move.gate = null;
+        move.gate.fire(); move.gate = null;
       }
     } else if (kind.steer && handKnown && handVel.lengthSq() > 4 && !HITS.includes(def)) {
       // an orb leaves her hand the way her hand was going, and curves in. (Not the four water casts' bolt: it is long,
@@ -277,7 +292,7 @@ export function createMagicCombo({ character, marks, fx }) {
     move.fired = true;
     // her four tapped casts: drawn as in the clip of water casts (needles; a crescent the way her hand went; rings round
     // her; the finisher's whirl and shell)
-    const n = HITS.indexOf(def);
+    const n = def === RISE ? 4 : HITS.indexOf(def);                      // (the rising cast: the crescent coming up before her)
     if (n >= 0 && fx.cast) fx.cast(n, { hand: hand.clone(), dir: aim.clone(), feet: me.pos, heading: me.heading, size: k, swing: handKnown ? handVel : null });
   }
   function land(shot, target, world, at) {
@@ -297,7 +312,7 @@ export function createMagicCombo({ character, marks, fx }) {
   }
 
   const combo = {
-    onLand: null, onBegin: null,
+    onLand: null, onBegin: null, onLance: null,
     get active() { return !!move; },
     get hits() { return hits; },
     get beat() {
@@ -315,6 +330,7 @@ export function createMagicCombo({ character, marks, fx }) {
     get rising() { return !!move && move.kind === 'hit' && move.def === RISE; },
     get charge() { return move && move.kind === 'charge' ? move.level : -1; },
     get aiming() { return !!move && (move.kind === 'charge' || (move.def === THROW && move.t < move.m.hit + 0.18)); },
+    get target() { return move && (move.kind === 'charge' || move.def === THROW) ? move.target || null : null; },
     // how hard her hair and skirt should be held (0..1), and how far she is upside down (they should not hang by their weight then)
     get held() {
       if (!move) return 0;
@@ -454,6 +470,7 @@ export function createMagicCombo({ character, marks, fx }) {
           move.draw = null; move.gate = null;
           begin(THROW, me, world, FADE.charge, { level: g, draw, gate });
           move.target = target || move.target;
+          if (combo.onLance) combo.onLance('throw', move.m.hit || 0);
         }
         return true;
       }
@@ -499,8 +516,8 @@ export function createMagicCombo({ character, marks, fx }) {
         fx.glow('hand', hand, (0.12 + 0.04 * move.level) * k);
         if (move.kind === 'charge') {
           mote -= dt;
-          if (mote <= 0 && move.level < 3) { mote = 0.11; fx.motes(hand, 1, 0.7 * k); }
-          if (move.grew) { move.grew = false; fx.burst(hand, (0.3 + 0.1 * move.level) * k); }
+          if (mote <= 0 && move.level < 3) { mote = 0.11; fx.motes(hand, 1, 0.7 * k, true); }
+          if (move.grew) { move.grew = false; fx.burst(hand, (0.3 + 0.1 * move.level) * k, true); }
         }
       }
       // ---- casting in the air: a light in each hand; a cast leaves the hand thrust out. The rain: one every so often,
@@ -514,7 +531,7 @@ export function createMagicCombo({ character, marks, fx }) {
           if (!move.fired && move.at >= marks.clips[AIR[move.hand]].hit) {
             move.fired = true;
             const from = move.hand === 'R' ? r : l;
-            bolt(from, move.target, v.set(Math.sin(me.heading), -0.3, Math.cos(me.heading)));
+            bolt(from, move.target, v.set(Math.sin(me.heading), -0.3, Math.cos(me.heading)), true);
           }
         } else if (move.phase === 'loop') {
           move.next -= dt;
@@ -542,6 +559,10 @@ export function createMagicCombo({ character, marks, fx }) {
           // the air), a ring over the ground
           const [up, dn] = m.air || [1, 0];
           if (!def.reach && !move.fired) fx.glow('hand', hand, def.glow * k);
+          if (def.reach && move.t > up && !move.swept && fx.cast) {
+            move.swept = true;                                           // (once, as she leaves the ground)
+            fx.cast(1, { hand: hand.clone(), dir: new THREE.Vector3(Math.sin(me.heading), 0, Math.cos(me.heading)), feet: me.pos, heading: me.heading, size: k * 0.8 });
+          }
           if (def.reach && move.t > up && move.t < dn + 0.06) {
             hands.R.getWorldPosition(v); fx.trail('swingR', v);
             hands.L.getWorldPosition(want); fx.trail('swingL', want);
@@ -608,7 +629,7 @@ export function createMagicCombo({ character, marks, fx }) {
           }
           if (!over && (s.far > kd.range * k || (!kd.height && s.pos.y < ground(s.pos.x, s.pos.z) + 0.05))) {
             over = true;
-            if (s.far <= kd.range * k) { fx.burst(s.pos, kd.burst * 0.6 * k, s.draw.look); s.draw.end(true); } else s.draw.end(false);
+            if (s.far <= kd.range * k) { fx.burst(s.pos, kd.burst * 0.6 * k, s.name === 'lance', s.draw.look); s.draw.end(true); } else s.draw.end(false);
           }
         }
         if (over) shots.splice(j, 1);
