@@ -504,6 +504,8 @@ export function createMagicCombo({ character, marks, fx }) {
           gateDir.copy(aimFrom(me, gateAt, move.target, false));
           gateAt.addScaledVector(gateDir, GATE.ahead * k);
           move.gate.size(move.level);
+          // (its three layers come together as the lance grows: one circle by the time it is full grown, or as it is thrown)
+          if (move.gate.close) move.gate.close(move.kind === 'charge' ? move.t / CHARGE.grows[CHARGE.grows.length - 1] : 1);
           move.gate.place(gateAt, gateDir, GATE.radius[move.level] * k);
         }
         handAt('R', hand);

@@ -26,7 +26,7 @@ Touch: left side to move, right side to rotate the camera; tap water to make rip
 - **How a new piece is made from a clip**: `tools/make-water-casts.py` (the water lifted off the clip's picture; the clip's girl taken out and the water drawn again where she stood; made crisp with Real-ESRGAN's anime model; packed).
 - **For a weak phone held upright** (the user's): few squares at once, pictures no bigger than they must be, nothing that needs a pass over the whole screen.
 
-Kept as they are, by the user's own choice: the lance's magic circle and its spear (a picture the user sent), the jump's circles. The lance's rings of water (the hoops round its line, the wave round its circle, its wake, where it lands) are the blade and the splash since 23 Nov 2026 ("สกิลปาหอก ทำวงคลื่นให้เป็นแนวๆ เดียวกัน"), on the trial page.
+Kept as they are, by the user's own choice: the lance's magic circle (line work; three layers that turn against each other and come together as the lance grows, since 23 Nov 2026 on the trial page) and its spear (a picture the user sent), the jump's circles. The lance's rings of water (the hoops round its line, the wave round its circle, its wake, where it lands) are the blade and the splash since 23 Nov 2026 ("สกิลปาหอก ทำวงคลื่นให้เป็นแนวๆ เดียวกัน"), on the trial page.
 
 ## The shaders' noise
 

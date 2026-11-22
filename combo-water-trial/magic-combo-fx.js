@@ -23,7 +23,10 @@
      const gate = fx.gate()           the magic circle a lance is thrown through: standing in the air, facing the way
                                       she aims
        gate.place(at, dir, radius)    every frame: its middle, the way it faces (unit), its outer ring's radius (m)
-       gate.size(level)               how grown (0..3): each time more of it is drawn, and it beats once
+       gate.size(level)               how grown (0..3): it beats once each time (and its seals come when full grown)
+       gate.close(k)                  how far its three layers have come together (0: apart, one before another on
+                                      the lance's line, turning against each other; 1: one circle): GATE. Not told,
+                                      it goes by how grown it is
        gate.fire()                    the lance goes through it: it flares, and all that is let go with the lance
                                       (THE LANCE, below); and it breaks up
        gate.end()                     nothing is thrown after all: it breaks up
@@ -73,7 +76,8 @@
        laid round a ring (WATER_BLADE.hoop); the wake: the blade laid along each ribbon, crescents winding round its
        way, the ribbons broader for it (WATER_BLADE.wake); where it lands, and each time it grows in her hand: the
        clip's splash, with the lance's own sparkles. The circle, the spear, the beam, the slivers and the sparkles
-       are as they were
+       are as they were. And the circle is three layers that turn against each other and come together as the lance
+       grows ("ทำวงเวทสามชั้นให้มันหมุนทวนกันแล้วค่อยๆ ประกบเข้ากันได้ไหม", the same night): GATE
      - sparkles: beads of light shed along its way, which drift and twinkle on a second after it has gone
    The clip's glow is laid over its whole picture (bloom), which a phone would pay for every frame; here each thing
    carries its own glow in its shader, so it is not as soft as the clip's.
@@ -198,7 +202,18 @@ const LAUNCH = { beam: { places: 14, long: 9, wide: 0.1, life: 0.42 }, hoop: { a
 // the gate: its square reaches so many radii (its flare's rays and its comet stand out past its rim); it opens in `open`
 // s, beats `beat` s as it grows, and after the lance has gone through flares and is gone in `fire` s (nothing thrown:
 // in `end` s); dust: s between the sparkles that drift off it while it stands
-const GATE = { reach: 1.7, open: 0.3, beat: 0.22, fire: 0.5, end: 0.2, dust: 0.06 };
+const GATE = { reach: 1.7, open: 0.3, beat: 0.22, fire: 0.5, end: 0.2, dust: 0.06,
+  // THREE LAYERS ("ทำวงเวทสามชั้นให้มันหมุนทวนกันแล้วค่อยๆ ประกบเข้ากันได้ไหม", 23 Nov 2026): the circle is three, one before
+  // another on the lance's line, each turning against the next, which come together as the lance grows and are one
+  // circle by the time it is full grown (let go sooner, they shut as it goes through). The outer one (its rim, the
+  // band of marks, the seals, the comet) stands where the circle stood; the middle one (the ring with the diamond and
+  // the square in it) and the inner one (the circle with the small star, the ring the lance goes through) stand
+  // ahead of it.
+  //   gap: how far apart they begin (of the circle's radius, from one to the next); spans: how much of the outer
+  //   one's square the middle and the inner one need; apart: how much faster they turn while they are apart (they
+  //   slow to their own pace as they meet); shut, snap: how fast they follow where they should be (1/s: as it
+  //   grows; as it is let go)
+  gap: 2.4, spans: [0.47, 0.31], apart: 2.4, shut: 9, snap: 26 };
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
 
 const FACING = /* glsl */`
@@ -650,15 +665,18 @@ export function createMagicComboFx({ seed = 7 } = {}) {
 
   // ---- the gate: a magic circle standing in the air, which a lance is thrown through, as the clip's. One square; all
   // of it is drawn by its shader from where on it a pixel is (in radii: its outer ring at 1)
-  const gateMat = () => material({
-    uniforms: { ...water, uOpen: { value: 0 }, uLevel: { value: 0 }, uBeat: { value: 0 }, uFlash: { value: 0 }, uWave: { value: 0 }, uFade: { value: 0 }, uAge: { value: 0 } },
+  // (part: 0 the whole circle on one square, as the game has it; 1, 2, 3: its outer, middle and inner layer. span: how
+  // much of the whole circle's square this one's square is. uSpin: the clock its marks and figures turn by)
+  const gateMat = (part = 0, span = 1) => material({
+    uniforms: { ...water, uOpen: { value: 0 }, uLevel: { value: 0 }, uBeat: { value: 0 }, uFlash: { value: 0 }, uWave: { value: 0 }, uFade: { value: 0 }, uAge: { value: 0 },
+      uPart: { value: part }, uSpan: { value: span }, uSpin: { value: 0 } },
     side: THREE.DoubleSide,
-    vertexShader: `varying vec2 vP; void main() { vP = position.xy * ${GATE.reach.toFixed(2)}; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    vertexShader: `uniform float uSpan; varying vec2 vP; void main() { vP = position.xy * ${GATE.reach.toFixed(2)} * uSpan; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */`
       #define PI 3.14159265
       #define TAU 6.2831853
       uniform vec3 uCore, uMain, uDeep;
-      uniform float uOpen, uLevel, uBeat, uFlash, uWave, uFade, uAge, uShine;
+      uniform float uOpen, uLevel, uBeat, uFlash, uWave, uFade, uAge, uShine, uPart, uSpin;
       varying vec2 vP;
       // a line's edge is softened by how fast its distance changes on the screen (see magic-circle-fx.js: every line is
       // drawn for every pixel and then masked, never inside an if that differs from one pixel to the next)
@@ -692,36 +710,42 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       void main() {
         vec2 p = vP;
         float r = length(p), a = atan(p.y, abs(p.x) < 1e-6 ? 1e-6 : p.x);  // (no angle at the very middle)
-        float t = uAge, spinA = t * 0.9, spinB = -t * 1.3;                 // the band of marks and the figures inside turn opposite ways
+        float t = uAge, spinA = uSpin * 0.9, spinB = -uSpin * 1.3;         // the band of marks and the figures inside turn opposite ways
+        // which layer this is (all of them at once: uPart 0): P1 its rim and marks, P2 the ring with the diamond and
+        // the square, P3 the circle with the star and the ring in the middle. In layers, the figures are there from
+        // the first (they are what is seen to turn); on one square they come as the lance grows, as they did
+        float whole = 1.0 - step(0.5, uPart), lay = 1.0 - whole;
+        float P1 = max(whole, 1.0 - step(0.5, abs(uPart - 1.0))), P2 = max(whole, 1.0 - step(0.5, abs(uPart - 2.0))), P3 = max(whole, 1.0 - step(0.5, abs(uPart - 3.0)));
         float L = 0.0;
         // its rim, thick, and a thin ring just inside it; the band of marks, a ring inside that; a small ring in the
         // middle (the lance goes through it)
-        L = max(L, line(r - 1.0, 0.042) * drawn(a, 0.0, 0.0));
-        L = max(L, line(r - 0.935, 0.016) * drawn(a, 0.06, 0.5));
-        L = max(L, line(r - 0.73, 0.022) * drawn(a, 0.16, 0.25));
-        L = max(L, line(r - 0.17, 0.02) * drawn(a, 0.3, 0.6));
-        L = max(L, runes(r, a + spinA, 0.765, 0.905, 26.0) * step(0.3, uOpen));
+        L = max(L, line(r - 1.0, 0.042) * drawn(a, 0.0, 0.0) * P1);
+        L = max(L, line(r - 0.935, 0.016) * drawn(a, 0.06, 0.5) * P1);
+        L = max(L, line(r - 0.73, 0.022) * drawn(a, 0.16, 0.25) * P2);
+        L = max(L, line(r - 0.17, 0.02) * drawn(a, 0.3, 0.6) * P3);
+        L = max(L, runes(r, a + spinA, 0.765, 0.905, 26.0) * step(0.3, uOpen) * P1);
         // grown once: a diamond in the inner ring and a square across it, turning (how near a pixel is to either: fig)
         vec2 q = rot(p, spinB * 0.5);
         float fig = min(abs(sq(rot(q, PI * 0.25), 0.516)), abs(sq(q, 0.47)));
-        float one = step(0.5, uLevel), two = step(1.5, uLevel), three = step(2.5, uLevel);
-        L = max(L, line(fig, 0.022) * one);
+        float came = lay * smoothstep(0.15, 0.55, uOpen);
+        float one = max(step(0.5, uLevel), came), two = max(step(1.5, uLevel), came), three = step(2.5, uLevel);
+        L = max(L, line(fig, 0.022) * one * P2);
         // twice: the circle in the square, and a small star (two squares) turning the other way round the middle
         vec2 q2 = rot(p, -spinB * 1.1);
-        L = max(L, line(r - 0.47, 0.016) * two);
-        L = max(L, line(min(abs(sq(q2, 0.235)), abs(sq(rot(q2, PI * 0.25), 0.235))), 0.016) * two);
+        L = max(L, line(r - 0.47, 0.016) * two * P3);
+        L = max(L, line(min(abs(sq(q2, 0.235)), abs(sq(rot(q2, PI * 0.25), 0.235))), 0.016) * two * P3);
         // full grown: two small seals standing on its rim, going round with the marks
-        L = max(L, max(seal(p, 2.5 - spinA), seal(p, 3.75 - spinA)) * three);
+        L = max(L, max(seal(p, 2.5 - spinA), seal(p, 3.75 - spinA)) * three * P1);
         // a comet of light running round outside its rim: as it opens, each time it grows, and all the while once full grown
         float tail = clamp((fract((a - t * 3.4) / TAU + 0.5) - 0.68) / 0.32, 0.0, 1.0);
-        float comet = line(r - 1.1, 0.012 + 0.06 * tail) * tail * tail * max(max(1.0 - uOpen, uBeat), three * 0.75);
+        float comet = line(r - 1.1, 0.012 + 0.06 * tail) * tail * tail * max(max(1.0 - uOpen, uBeat), three * 0.75) * P1;
         // the lance has gone through: a wave going out round the rim, and its middle flares into a four-pointed star
         float out_ = 1.0 - pow(clamp(1.0 - uWave, 0.0, 1.0), 3.0);
-        float W = line(r - (1.0 + 0.5 * out_), 0.03 + 0.05 * (1.0 - uWave)) * (1.0 - uWave) * (1.0 - uWave) * step(0.0005, uWave);
-        float star = (exp(-abs(p.y) * 42.0) * exp(-abs(p.x) * 1.7) + exp(-abs(p.x) * 42.0) * exp(-abs(p.y) * 2.6) + exp(-r * 6.0)) * uFlash;
+        float W = line(r - (1.0 + 0.5 * out_), 0.03 + 0.05 * (1.0 - uWave)) * (1.0 - uWave) * (1.0 - uWave) * step(0.0005, uWave) * P1;
+        float star = (exp(-abs(p.y) * 42.0) * exp(-abs(p.x) * 1.7) + exp(-abs(p.x) * 42.0) * exp(-abs(p.y) * 2.6) + exp(-r * 6.0)) * uFlash * P1;
         // glow: round the rim and the inner ring, along the figure, over its whole face (a wash of blue), in its middle
-        float G = exp(-abs(r - 0.97) * 9.0) * 0.6 + exp(-abs(r - 0.73) * 16.0) * 0.25 + exp(-fig * 16.0) * 0.3 * one
-          + (1.0 - smoothstep(0.1, 0.98, r)) * 0.22 + exp(-r * 5.0) * 0.35;
+        float G = exp(-abs(r - 0.97) * 9.0) * 0.6 * P1 + (exp(-abs(r - 0.73) * 16.0) * 0.25 + exp(-fig * 16.0) * 0.3 * one) * P2
+          + (1.0 - smoothstep(0.1, 0.98, r)) * 0.22 * P1 + exp(-r * 5.0) * 0.35 * P3;
         G *= smoothstep(0.0, 0.25, uOpen) * (1.0 - smoothstep(1.3, 1.6, r)) * (1.0 + 0.5 * uBeat + 0.6 * uFlash);
         // going: it breaks into bits (by angle and by ring), from the middle out
         float bit = hash(floor((a / TAU + 0.5) * 40.0) + floor(r * 14.0) * 41.0);
@@ -735,7 +759,14 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         gl_FragColor = clamp(vec4(col * (0.75 + 0.35 * uShine), A * 0.85 + min(1.0, G) * 0.4 + min(1.0, star) * 0.5), 0.0, 1.0);
       }`,
   });
-  const gates = Array.from({ length: 2 }, () => ({ mesh: put(square, gateMat()), live: false, open: 0, level: 0, beat: 0, fired: -1, fade: 1, age: 0, radius: 0, want: 0, fresh: true, dust: 0, dir: new THREE.Vector3(0, 0, 1) }));
+  const gates = Array.from({ length: 2 }, () => {
+    const mats = [gateMat(1, 1), gateMat(2, GATE.spans[0]), gateMat(3, GATE.spans[1])];
+    const mesh = put(square, mats[0]);
+    // (the middle and the inner layer go with the outer one: ahead of it on its own line, their squares smaller)
+    const ahead = GATE.spans.map((span, i) => { const m = new THREE.Mesh(square, mats[i + 1]); m.frustumCulled = false; m.scale.set(span, span, 1); mesh.add(m); return m; });
+    return { mesh, mats, ahead, live: false, open: 0, level: 0, beat: 0, fired: -1, fade: 1, age: 0, radius: 0, want: 0, fresh: true, dust: 0, dir: new THREE.Vector3(0, 0, 1),
+      shut: 0, toShut: 0, told: false, spin: 0 };       // how far its layers have come together (0..1), how far they should have; whether the combo says; their turning's clock
+  });
 
   // ---- a ring over the ground: going out from the middle, thinning as it goes
   const flat = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
@@ -1261,6 +1292,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     gate() {
       const g = gates.find(o => !o.mesh.visible) || gates[0];
       g.live = true; g.open = 0; g.level = 0; g.beat = 0; g.fired = -1; g.fade = 0; g.age = rand() * 10; g.fresh = true; g.dust = 0;
+      g.shut = 0; g.toShut = 0; g.told = false; g.spin = g.age;
       return {
         place(at, dir, radius) {
           g.mesh.position.copy(at);
@@ -1275,7 +1307,10 @@ export function createMagicComboFx({ seed = 7 } = {}) {
           const to = Math.max(0, Math.min(3, level));
           if (to > g.level) g.beat = 1;
           g.level = to;
+          if (!g.told) g.toShut = to / 3;                                 // (nobody says how far along it is: by how grown)
         },
+        // how far its three layers have come together (0: as far apart as they begin; 1: one circle)
+        close(k) { g.told = true; g.toShut = clamp(k, 0, 1); },
         fire() {
           if (g.fired >= 0 || !g.mesh.visible) return;
           g.fired = 0; g.live = false;
@@ -1435,8 +1470,18 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         }
         const opened = 0.5 + 0.5 * (1 - Math.pow(1 - g.open, 3));
         g.mesh.scale.setScalar(Math.max(1e-4, g.radius * GATE.reach * opened * (1 + 0.14 * g.beat * g.beat) * grow));
-        const u = g.mesh.material.uniforms;
-        u.uOpen.value = g.open; u.uLevel.value = g.level; u.uBeat.value = g.beat; u.uFlash.value = flash; u.uWave.value = 0; u.uFade.value = g.fade;      // (its wave is a hoop of the clip's water now: fire()) u.uAge.value = g.age;
+        // its three layers: apart at first, one before another on the lance's line, turning fast against each other;
+        // together as the lance grows (the combo says how far along: close()), and at once as it is let go or given up
+        const going = g.fired >= 0 || !g.live;
+        g.shut += ((going ? 1 : g.toShut) - g.shut) * Math.min(1, dt * (going ? GATE.snap : GATE.shut));
+        g.spin += dt * (1 + GATE.apart * (1 - g.shut));
+        const gap = GATE.gap * g.radius * (1 - g.shut) * opened / g.mesh.scale.x;       // (in the outer one's own measure)
+        g.ahead.forEach((m, i) => { m.position.z = gap * (i + 1); });
+        for (const mat of g.mats) {
+          const u = mat.uniforms;
+          u.uOpen.value = g.open; u.uLevel.value = g.level; u.uBeat.value = g.beat; u.uFlash.value = flash; u.uFade.value = g.fade; u.uAge.value = g.age; u.uSpin.value = g.spin;
+          u.uWave.value = 0;                                              // (its wave is a hoop of the clip's water now: fire())
+        }
       }
       // hoops of water
       for (const h of hoops) {
