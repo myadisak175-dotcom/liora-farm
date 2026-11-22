@@ -1,12 +1,14 @@
 /* ==========================================================================
    west-fringe.js  —  the west fringe joined onto the hill village's land
 
-     const west = await joinWestFringe({ raw, plan, url });      // as the level reads its land, before it makes anything from it
+     const west = await joinWestFringe({ raw, plan, url, alive });      // as the level reads its land, before it makes anything from it
      west.raw            the land's numbers with the fringe's columns added on the west (plan.land says how wide it is now)
      west.dryAt(x, z)    0..1: how much a spot is the bed of the fringe's dry water (bare and sandy: no grass grows in it; the
                          brook's bed runs on over the seam into the village's own brook)
      west.beds           the same beds as a picture for the land's paint: { map, rect, levels } (stylized-terrain.js, beds)
      west.deadAt(x, z)   0..1: how dead the land is there (the curse's picture, as it is set here)
+     west.water          null, or with alive: which of the plan's stretches are the fringe's standing water and its outflow
+                         ({ still, outflows }: west-fringe-water.js, for land-water.js)
 
    One job: make the two lands one as they are read. The fringe (assets/heightmaps/west-fringe.bin + .json, written by
    tools/make-west-fringe-heightmap.py) is the neglected countryside west of the village: the old road, a lost hamlet, a dry
@@ -24,14 +26,22 @@
    (stylized-nature's setDryness) takes the leaves off every tree west of the seam and thins those just east of it
    (anime-tree.js), and turns the meadow there to dry earth with dry grass in patches (stylized-grassfield.js, the land's
    paint, and the woods past the land's edge: map-rim.js).
+
+   ALIVE (?green=1, a trial: the level asks for it): the fringe as it will be when it is healed. The same land and the same
+   plants, but nothing here is dead: the dryness picture is not set (the trees keep their leaves, the meadow is green, and
+   so are the woods past the land's edge), no bed is dry (dryAt 0 everywhere, the beds' picture empty), and the dry water
+   is water again: west-fringe-water.js says it in the plan's own words, and the level lays it as it lays every water.
+   Its places are named for what they are then (a view's fourth: its name, which teleport-menu.js shows in place of its own).
    ========================================================================== */
 import * as THREE from 'three';
 import { setDryness } from './stylized-nature.js';
+import { fringeWaterBack } from './west-fringe-water.js';
 
 export const WEST_FRINGE = { land: './assets/heightmaps/west-fringe.bin', plan: './assets/heightmaps/west-fringe.json' };
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const ALIVE_NAMES = { 'wf-fall': '💦 น้ำตกชายขอบ', 'wf-pond': '🏞 บึงชายขอบ', 'wf-hill': '🌳 ยอดเนินป่า', 'wf-hamlet': '🏡 หมู่บ้านเก่า' };      // (alive: no fall is dry, no wood dead)
 
-export async function joinWestFringe({ raw, plan: P, url }) {
+export async function joinWestFringe({ raw, plan: P, url, alive = false }) {
   const fresh = { cache: 'no-cache' };
   const [w16, F] = await Promise.all([fetch(url(WEST_FRINGE.land), fresh).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)), fetch(url(WEST_FRINGE.plan), fresh).then(r => r.json())]);
   const L = P.land, W = F.land, cell = L.cell, seam = F.joins.seam_x;
@@ -64,6 +74,15 @@ export async function joinWestFringe({ raw, plan: P, url }) {
   for (const w of F.ways) P.paths.push({ id: 'wf_' + w.id, half: w.half, points: w.points.filter(q => q[0] > W.x0 + 0.5) });
   P.inflows = (P.inflows || []).filter(f => !gone(f.rows[0][0], f.rows[0][1]));
   for (const [k, v] of Object.entries(F.go)) P.views[k] = v;
+
+  // ---- alive: the water back in its beds (the plan given the fringe's stretches and falls, the last reach's bed taken down
+  // to the village brook's height: west-fringe-water.js), nothing dead, no bed dry
+  if (alive) {
+    const water = fringeWaterBack({ raw: out, land: L, plan: P, dry: F.dry_water, seam });
+    for (const [k, name] of Object.entries(ALIVE_NAMES)) if (P.views[k]) P.views[k] = [...P.views[k].slice(0, 3), name];
+    const map = new THREE.DataTexture(new Uint8Array(4), 1, 1); map.needsUpdate = true;      // (the beds' picture: no bed anywhere)
+    return { raw: out, dryAt: () => 0, beds: { map, rect: [0, 0, 1, 1], levels: [0, 1] }, deadAt: () => 0, plan: F, water };
+  }
 
   // ---- the land's dryness (the curse's picture: stylized-nature's setDryness): dead west of the seam, dying in the
   // village's last metres beside it, alive from there east. The trees die by it (anime-tree.js), and the grass and the
@@ -139,5 +158,5 @@ export async function joinWestFringe({ raw, plan: P, url }) {
   }
   const map = new THREE.DataTexture(px, gw, gh); map.magFilter = map.minFilter = THREE.LinearFilter; map.needsUpdate = true;
   const bedsPaint = { map, rect: [box[0] - G / 2, box[2] - G / 2, 1 / (gw * G), 1 / (gh * G)], levels: [lo, hi - lo] };
-  return { raw: out, dryAt, beds: bedsPaint, deadAt, plan: F };
+  return { raw: out, dryAt, beds: bedsPaint, deadAt, plan: F, water: null };
 }

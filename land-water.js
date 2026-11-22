@@ -23,7 +23,7 @@
 //                 was said to be). A level prints it; a map is not right until it is clean
 //
 //   const lookup = waterLookup(stretches, { x0, z0, x1, z1 });        // lookup.at(x, z): the water there ({ d: metres past its edge, level }) or null
-//   const water = createLandWater({ stretches, heightAt, lookup, material, foamTexture, cells, expect, deep, deepFall, split, lower });
+//   const water = createLandWater({ stretches, heightAt, lookup, material, foamTexture, cells, expect, deep, deepFall, split, lower, still, outflows });
 //   scene.add(water.group);      every frame: water.update(renderer, frustum, cameraPosition)
 //   water.surfaces (to hide while the water's own pictures are taken), water.small (the spray, billows and mist at the falls' feet:
 //   left out of the mirror picture too), water.stretches (level, sphere, near(point)), water.report
@@ -35,6 +35,13 @@
 //   by walking out from the line: each is the ground under its level joined to its line (on a half-metre grid), and one
 //   step on onto the banks, whose ground hides the sheet's edge, so each pool takes its hollow's own shape
 //   lipLanes(rows, heightAt), lipRuns(lanes, level, parted): how the lip is found, for a level that chooses how low to stand
+//   A RUN: a stretch whose rows say different levels (a stream coming down a slope, a pond's outflow going down to its
+//   first level reach). Its sheet lies at each row's own height and slopes between them; its shore is found against the
+//   level beside each spot; what goes over its lip, and how high its fall hangs, is its last row's level. A stretch whose
+//   rows all say one level (every one, before the west fringe's water came back) is laid exactly as before.
+//   outflows: the stretches that begin where another water at their own height ends (a pond's outflow, a pond at the end of
+//   the stream that feeds it): their sheet does not lie on behind their first row as a stretch's under a fall does, but
+//   for JOIN metres, a centimetre lower: under the other water's end, so no sliver of the bed shows between the two
 //
 // (Before this each level laid a strip or a sheet from the line alone, ended it on a straight line, and stood a ready-made
 // fall at a spot given in numbers: where a cliff's edge was not square to the stream the sheet hung out over it, the fall
@@ -46,6 +53,7 @@ import { createWaterfall } from './stylized-waterfall.js';
 const PAST = 0.6;             // ground this far under a stretch's deepest bed is past an edge: no water there
 const LANE = 0.4;             // metres between the lanes a lip is looked for in
 const UP = 8, DOWN = 5;       // each lane is walked from UP metres above the stretch's end to DOWN below it
+const JOIN = 0.8, UNDER = 0.012;      // an outflow's sheet runs on this far behind its first row, this much lower (under the water it comes out of)
 
 // for every half metre of the land: how far the nearest water's edge is, and how high that water stands
 export function waterLookup(stretches, { x0, z0, x1, z1 }, step = 0.5) {
@@ -71,15 +79,15 @@ export function waterLookup(stretches, { x0, z0, x1, z1 }, step = 0.5) {
 // stands at that sill (sill: its height, or null). Worked out from the land and the stretch's own bed: the same however
 // low the water stands (past: how low the ground must be to count as gone over an edge)
 export function lipLanes(rows, H) {
-  const n = rows.length, lv = rows[0][2];
+  const n = rows.length, lvEnd = rows[n - 1][2];                           // (a run's rows stand at their own levels: its end's is what goes over)
   const tanAt = i => { const a = rows[Math.max(0, i - 1)], b = rows[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
   // how deep its bed is (nine rows in ten are no deeper), and so how low the ground must be to count as past an edge. The rows
   // at its end that already lie out over the drop are not its bed: a short stretch (one step of a cascade, five to ten rows)
   // has one or two of them in its deepest tenth, and its lip was then looked for metres down the cliff's face, so its water
   // stood out over the drop a metre or more above the rock
-  const dep = rows.map(r => lv - H(r[0], r[1])), med = dep.slice().sort((a, b) => a - b)[Math.floor(n / 2)];
+  const dep = rows.map(r => r[2] - H(r[0], r[1])), med = dep.slice().sort((a, b) => a - b)[Math.floor(n / 2)];
   let held = n; while (held > 1 && dep[held - 1] > med + PAST) held--;
-  const depths = dep.slice(0, held).sort((a, b) => a - b), bed = Math.max(0.3, depths[Math.floor(depths.length * 0.9)]), past = lv - bed - PAST;
+  const depths = dep.slice(0, held).sort((a, b) => a - b), bed = Math.max(0.3, depths[Math.floor(depths.length * 0.9)]), past = lvEnd - bed - PAST;
   const B = rows[n - 1], tB = tanAt(n - 1), nB = [-tB[1], tB[0]], lanes = [];
   for (let u = -(B[3] + 0.5); u <= B[3] + 0.5 + 1e-6; u += LANE) {
     let lim = Infinity;
@@ -136,7 +144,7 @@ export function fallFoot({ O, out }, top, bottom) {
   return { forward, foot: [O[0] + out[0] * (forward + 0.35), O[1] + out[1] * (forward + 0.35)] };
 }
 
-export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null, split = [], lower = [], still = [] }) {
+export function createLandWater({ stretches, heightAt: H, lookup, material, foamTexture = null, cells = null, expect = null, deep = [], deepFall = null, split = [], lower = [], still = [], outflows = [] }) {
   const group = new THREE.Group(); group.name = 'landWater';
   const surfaces = [], falls = [], info = [], owned = [], small = [];
   const report = { falls: [], hanging: 0, open: 0, short: 0, where: [], noLip: [], ok: true };      // (where: which stretches the open and short edges are on)
@@ -147,12 +155,15 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
     for (let i = 1; i < n; i++) F.push(F[i - 1] + Math.hypot(rows[i][0] - rows[i - 1][0], rows[i][1] - rows[i - 1][1]));
     for (let i = 0; i < n; i++) { const a = rows[Math.max(0, i - 1)], b = rows[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; tan.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]); }
     const A = rows[0], B = rows[n - 1], tA = tan[0], tB = tan[n - 1], nB = [-tB[1], tB[0]];
+    // a run (its rows at different levels): lv is its head's level, lvEnd its end's, lvAt the level beside a spot of its line
+    const low = lower[k] || 0, run = rows.some(r => r[2] !== A[2]), lvEnd = B[2] - low;
+    const lvAt = (q, t) => run ? rows[q][2] + (rows[Math.min(n - 1, q + 1)][2] - rows[q][2]) * t - low : lv;
 
     // ---- the lip: lane by lane across its end, how far down the lane the ground holds (lim), and whether water reaches it there;
     // the runs of lanes it goes over by (lips), each run's line eased (the ground is a grid of half metres)
     // (past: how low the ground must be to count as gone over a side edge: as deep as its bed was, at the level it was planned at)
-    const { lanes, past } = lipLanes(rows, H), parted = split.includes(k), lips = lipRuns(lanes, lv, parted), lines = lips.map(r => lipLine(rows, lanes, r));
-    const pools = still.includes(k);                                       // drawn down: what is left of it lies in pools
+    const { lanes, past } = lipLanes(rows, H), parted = split.includes(k), lips = lipRuns(lanes, lvEnd, parted), lines = lips.map(r => lipLine(rows, lanes, r));
+    const pools = still.includes(k), joined = outflows.includes(k);        // drawn down: what is left of it lies in pools; joined: it begins at another water's end
     {
       const lim = lanes.map(l => l.lim);
       for (const { a, b } of lips) for (let i = a; i <= b; i++) lanes[i].lim = (lim[Math.max(a, i - 1)] + lim[i] * 2 + lim[Math.min(b, i + 1)]) / 4;
@@ -181,9 +192,11 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
       const atEnd = bk >= n - 12 && al > -UP && Math.abs(la) <= B[3] + 0.5 + LANE, lim = atEnd ? limitAt(la) : Infinity;
       let inside = best <= hw && before >= 0 && al <= lim;
       // behind its first row (under the fall that feeds it) the water lies on as far as the cliff's foot
-      if (!inside && before < 0 && before > -3.5 && Math.abs((x - A[0]) * -tA[1] + (z - A[1]) * tA[0]) <= A[3] + 0.5 && H(x, z) < lv - 0.03) inside = true;
+      // (an outflow: the water behind its first row is another's own sheet. It runs on under that one's end only)
+      let lvP = lvAt(bk, bt);                                               // how high the water stands beside this point
+      if (!inside && before < 0 && before > (joined ? -JOIN : -3.5) && Math.abs((x - A[0]) * -tA[1] + (z - A[1]) * tA[0]) <= A[3] + 0.5 && H(x, z) < lv - 0.03) { inside = true; if (joined) lvP -= UNDER; }
       // pools: no drawing in here: which points are water is worked out for the whole grid at once, below (inside: may lie here)
-      if (pools) { pts[j * gx + i] = { x, z, inside, line: best <= cs * 0.75, g: H(x, z), snap: 0, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 }; continue; }
+      if (pools) { pts[j * gx + i] = { x, z, lv: lvP, inside, line: best <= cs * 0.75, g: H(x, z), snap: 0, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 }; continue; }
       if (!inside && !(before < 0 && H(x, z) >= lv - 0.03)) {               // not water: drawn in to the water's outline (unless it lies inside the cliff behind the fall, where it is never seen)
         if (al > lim) { x = B[0] + nB[0] * la + tB[0] * lim; z = B[1] + nB[1] * la + tB[1] * lim; snap = 1; }      // past the edge: back onto the edge, in its own lane
         else if (before < 0) {                                              // short of its first row: onto the line across that row, no wider than the water is there
@@ -200,10 +213,10 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
         let stop = -1;
         for (let r = 0.15; r <= reach + 1e-6; r += 0.15) {
           const g = H(qx + dx * r, qz + dz * r);
-          if (g >= lv - 0.02) {
+          if (g >= lvP - 0.02) {
             // a rock standing in a parted lip is not the shore: if there is water again past it, on the way to this point,
             // the sheet goes on round it (the rock itself stands up through the sheet)
-            if (parted && atEnd) { let r2 = r + 0.15; while (r2 <= reach + 1e-6 && H(qx + dx * r2, qz + dz * r2) >= lv - 0.05) r2 += 0.15; if (r2 <= reach + 1e-6) { r = r2; continue; } }
+            if (parted && atEnd) { let r2 = r + 0.15; while (r2 <= reach + 1e-6 && H(qx + dx * r2, qz + dz * r2) >= lvP - 0.05) r2 += 0.15; if (r2 <= reach + 1e-6) { r = r2; continue; } }
             stop = r + 0.12; snap = 3; break;                                // the shore (and a hand's breadth into the bank, where its edge is hidden)
           }
           if (g < past) { stop = r - 0.05; snap = 2; break; }                // a side edge over air
@@ -211,12 +224,12 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
         if (stop < 0 && best > hw) { stop = hw; snap = 4; }                 // no shore within its width: it stops where the stretch was said to
         if (stop >= 0 && stop < best) { x = qx + dx * stop; z = qz + dz * stop; inside = false; } else snap = 0;
       }
-      pts[j * gx + i] = { x, z, inside, snap, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 };
+      pts[j * gx + i] = { x, z, lv: lvP, inside, snap, F: F[bk] + (F[bk + 1] - F[bk]) * bt, lat: (x - qx) * -tz + (z - qz) * tx, tx, tz, at: -1 };
     }
     if (pools) {
       // the water is where the ground lies under it, joined to the stretch's line; the sheet runs one step on past that,
       // onto the banks, where the ground hides its edge: each pool's shore is its hollow's own, not a line of the grid
-      const N = gx * gz, wet = c => pts[c].inside && pts[c].g < lv - 0.02, mask = new Uint8Array(N), stack = [];
+      const N = gx * gz, wet = c => pts[c].inside && pts[c].g < pts[c].lv - 0.02, mask = new Uint8Array(N), stack = [];
       const around = (c, f) => { const i = c % gx, j = (c - i) / gx; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if ((di || dj) && ii >= 0 && jj >= 0 && ii < gx && jj < gz) f(jj * gx + ii); } };
       for (let c = 0; c < N; c++) if (pts[c].line && wet(c)) { mask[c] = 1; stack.push(c); }
       while (stack.length) around(stack.pop(), e => { if (!mask[e] && wet(e)) { mask[e] = 1; stack.push(e); } });
@@ -224,13 +237,13 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
         const p = pts[c]; p.inside = !!mask[c];
         // a step on that is no bank (the ground still under the water there, where it may not lie: drought.js lowers it
         // until there are next to none): drawn back nearly to the pool, its edge cut short there
-        if (!mask[c] && p.g < lv - 0.02) { let q = null; around(c, e => { if (mask[e] && !q) q = pts[e]; }); if (q) { p.x = q.x + (p.x - q.x) * 0.3; p.z = q.z + (p.z - q.z) * 0.3; p.snap = 2; } }
+        if (!mask[c] && p.g < p.lv - 0.02) { let q = null; around(c, e => { if (mask[e] && !q) q = pts[e]; }); if (q) { p.x = q.x + (p.x - q.x) * 0.3; p.z = q.z + (p.z - q.z) * 0.3; p.snap = 2; } }
       }
     }
     const pos = [], flow = [], dir = [], idx = [], was = [report.open, report.short];
     const use = p => {
       if (p.at < 0) {
-        p.at = pos.length / 3; pos.push(p.x, lv, p.z); flow.push(p.F, p.lat, 1); dir.push(p.tx, p.tz);
+        p.at = pos.length / 3; pos.push(p.x, p.lv, p.z); flow.push(p.F, p.lat, 1); dir.push(p.tx, p.tz);
         if (p.snap === 2) report.open += cs;
         else if (p.snap === 4) report.short += cs;
         else if (p.snap === 0 && H(p.x, p.z) < past - 0.6) report.hanging++;      // (the check: a point of the sheet with nothing under it)
@@ -247,40 +260,40 @@ export function createLandWater({ stretches, heightAt: H, lookup, material, foam
     g.setIndex(idx);
     const m = new THREE.Mesh(g, material); m.renderOrder = 1; m.name = 'water';
     group.add(m); surfaces.push(m); owned.push(g);
-    const box = new THREE.Box3(); for (const q of rows) box.expandByPoint(new THREE.Vector3(q[0], lv, q[1]));
-    info.push({ level: lv, sphere: box.getBoundingSphere(new THREE.Sphere()), near: c => { let d = Infinity; for (let i = 0; i < n; i += 2) d = Math.min(d, Math.hypot(c.x - rows[i][0], c.y - lv, c.z - rows[i][1]) - rows[i][3]); return d; } });
+    const box = new THREE.Box3(); for (const q of rows) box.expandByPoint(new THREE.Vector3(q[0], q[2] - low, q[1]));
+    info.push({ level: lv, sphere: box.getBoundingSphere(new THREE.Sphere()), near: c => { let d = Infinity; for (let i = 0; i < n; i += 2) d = Math.min(d, Math.hypot(c.x - rows[i][0], c.y - (rows[i][2] - low), c.z - rows[i][1]) - rows[i][3]); return d; } });
 
     // ---- the fall: hung from the lip, landing on the water below (a parted lip: one from each of its runs, told of as one fall)
     let told = null;
     for (const L of lines) {
       const { O, yaw, local, width } = L, [ox, oz] = L.out;
       if (deep.includes(k)) {                                              // over a pit: the level's own long fall, from the middle of the lip
-        if (deepFall) { const far = deepFall({ x: O[0], z: O[1], top: lv, width, yaw }); group.add(far.group); falls.push({ fall: far, deep: true, ball: new THREE.Sphere(new THREE.Vector3(O[0], lv - 20, O[1]), 26 + width) }); }
-        report.falls.push({ from: k, x: +O[0].toFixed(1), z: +O[1].toFixed(1), top: lv, width: +width.toFixed(1), deep: true });
+        if (deepFall) { const far = deepFall({ x: O[0], z: O[1], top: lvEnd, width, yaw }); group.add(far.group); falls.push({ fall: far, deep: true, ball: new THREE.Sphere(new THREE.Vector3(O[0], lvEnd - 20, O[1]), 26 + width) }); }
+        report.falls.push({ from: k, x: +O[0].toFixed(1), z: +O[1].toFixed(1), top: lvEnd, width: +width.toFixed(1), deep: true });
         continue;
       }
       // the water below: where the fall will land, or a little further out
-      let low = null, guess = stretches[k + 1] ? levelOf(k + 1) : lv - 6;
-      for (let out = 1.0; out <= 9 && low === null; out += 0.5) { const w = lookup.at(O[0] + ox * out, O[1] + oz * out); if (w && w.level < lv - 0.5 && w.d < 0) low = w.level; }
-      const bottom = low === null ? guess : low, { forward, foot } = fallFoot(L, lv, bottom);
+      let low = null, guess = stretches[k + 1] ? levelOf(k + 1) : lvEnd - 6;
+      for (let out = 1.0; out <= 9 && low === null; out += 0.5) { const w = lookup.at(O[0] + ox * out, O[1] + oz * out); if (w && w.level < lvEnd - 0.5 && w.d < 0) low = w.level; }
+      const bottom = low === null ? guess : low, { forward, foot } = fallFoot(L, lvEnd, bottom);
       const under = lookup.at(foot[0], foot[1]), onWater = !!under && Math.abs(under.level - bottom) < 0.05 && H(foot[0], foot[1]) < bottom;
       // how wide the water it lands on is there: the foam at its foot reaches no further than that water's edge
       let lowHalf = width * 1.5, nearRow = Infinity;
       for (const [k2, rows2] of stretches.entries()) if (Math.abs(levelOf(k2) - bottom) < 0.05) for (const q of rows2) { const d = Math.hypot(q[0] - foot[0], q[1] - foot[1]); if (d < nearRow) { nearRow = d; lowHalf = q[3]; } }
-      const fall = createWaterfall({ x: 0, z: 0, lip: local, top: lv, bottom: bottom - 0.21, forward, churn: Math.min(width * 1.5, Math.max(1.4, lowHalf * 0.95)),      // (its sheet of foam lies 0.27 m over the bottom it is given: just on the water)
+      const fall = createWaterfall({ x: 0, z: 0, lip: local, top: lvEnd, bottom: bottom - 0.21, forward, churn: Math.min(width * 1.5, Math.max(1.4, lowHalf * 0.95)),      // (its sheet of foam lies 0.27 m over the bottom it is given: just on the water)
         scale: Math.min(1, Math.max(0.6, width / 9)), foamTexture, cells });
       fall.group.position.set(O[0], 0, O[1]); fall.group.rotation.y = yaw;
       fall.group.userData = { kind: 'waterfall' };
       group.add(fall.group);
       // a low fall (one step of a cascade) raises no mist, and from far off is drawn without its veil; the small things at any
       // fall's foot (spray, flecks, billows, splash cones, bubbles, mist) are too small to see from far off
-      const step = lv - bottom < 5.5, parts = fall.group.children;
+      const step = lvEnd - bottom < 5.5, parts = fall.group.children;
       if (step) for (const o of parts) if (o.isSprite) o.visible = false;
       const spray = parts.filter(o => o.isPoints || o.name === 'waterfallBillows' || o.name === 'waterfallCones' || (o.isSprite && !step));
-      falls.push({ fall, foot, spray, veil: step ? parts[1] : null, ball: new THREE.Sphere(new THREE.Vector3(O[0], (lv + bottom) / 2, O[1]), (lv - bottom) / 2 + width + 3) });
+      falls.push({ fall, foot, spray, veil: step ? parts[1] : null, ball: new THREE.Sphere(new THREE.Vector3(O[0], (lvEnd + bottom) / 2, O[1]), (lvEnd - bottom) / 2 + width + 3) });
       small.push(...spray);
       if (told) { told.strands = (told.strands || 1) + 1; told.width = +(told.width + width).toFixed(1); told.onWater = told.onWater && onWater; }
-      else report.falls.push(told = { from: k, x: +O[0].toFixed(1), z: +O[1].toFixed(1), top: lv, bottom, width: +width.toFixed(1), onWater });
+      else report.falls.push(told = { from: k, x: +O[0].toFixed(1), z: +O[1].toFixed(1), top: lvEnd, bottom, width: +width.toFixed(1), onWater });
     }
   }
   report.open = +report.open.toFixed(1); report.short = +report.short.toFixed(1);

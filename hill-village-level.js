@@ -30,6 +30,9 @@
 // below every lip: no fall runs, only murky pools are left, dark mist rising off them now and then (dark-mist.js). The same
 // land and plan: only how dead it is and how high the water stands.
 //
+// ?green=1 (a trial): the west fringe healed (west-fringe.js, alive; west-fringe-water.js): nothing dead there, and its dry
+// water is water again, said in the plan's own words before anything is made from it. Not under the curse.
+//
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
 import * as THREE from 'three';
@@ -70,6 +73,7 @@ export const HILL_VILLAGE_MAP = {
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
   bare: './assets/heightmaps/hill-village-bare.png',      // where the rain's runnels have worn the grass away, on the land's own grid (the heightmap tool, 7b)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
+  mapGreen: './assets/maps/hill-village-map-green.json',      // (the same with the west fringe healed, ?green=1: its land green, its trees in leaf, its water back)
   mapCursed: './assets/maps/hill-village-map-cursed.json',      // (the same under the curse: the land dead, the water's beds dry; the pools are painted on it as the level loads)
   paths: 'soft',                  // the ways' look (ground-paths.js): smooth painted earth with no line at its edge. ?paths=grit: as before
   cells: 852,                     // the ground's own grid (0.5 m)
@@ -118,7 +122,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, o = j * worn.nx + i, b = worn.v;
     return ((b[o] * (1 - fu) + b[o + 1] * fu) * (1 - fv) + (b[o + worn.nx] * (1 - fu) + b[o + worn.nx + 1] * fu) * fv) / 255;
   };
-  const west = await joinWestFringe({ raw, plan: P, url });                // the west fringe: the land wider to the west, the plan with its ways and places
+  // ?green=1 (a trial): the west fringe as it will be when it is healed: green, in leaf, its water back (west-fringe.js,
+  // alive). The curse's world is the curse's: ?curse=1 has the fringe dead whatever else is asked
+  const green = (q => q.has('green') && !q.has('curse'))(new URLSearchParams(location.search));
+  const west = await joinWestFringe({ raw, plan: P, url, alive: green });  // the west fringe: the land wider to the west, the plan with its ways and places
   raw = west.raw;
   const placeBase = placeables(P), placed = applyPlaceEdits(P, placeKey('hillvillage'));      // the things moved by hand, kept in this browser
   const foliage = applyFoliage(P, foliageKey('hillvillage'));              // and the plants arranged by hand (the foliage editor): while kept here they are the map's, all of them
@@ -231,7 +238,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const brookAt = waterLookup(standing, { x0: X0, z0: Z0, x1: X1, z1: Z1 }).at;
   // how high a spot stands above the water beside it (and a quarter of how far out from the water's edge it is), or 10 with no
   // water near: the land's sand and the ways' wet earth both go by it, so they agree on where the ground is wet
-  const bankAt = (x, z, y = H(x, z)) => { const b = brookAt(x, z); return b ? y - b.level + b.d * 0.25 : 10; };
+  // (A flooded pond, the healed fringe's: west-fringe-water.js. Its line's widths say only where it MAY lie, wider than it
+  // is, so beside it a spot is as near the water as it stands low over it, and no nearer for lying inside those widths)
+  const ponds = west.water ? west.water.ponds : [];
+  const pondAt = (x, z, b) => ponds.some(q => x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1 && Math.abs(b.level - q.level) < 1e-3);
+  const bankAt = (x, z, y = H(x, z)) => { const b = brookAt(x, z); return b ? y - b.level + (ponds.length && pondAt(x, z, b) ? Math.max(0, b.d) : b.d) * 0.25 : 10; };
   // the bridges' decks: where each lies (u along it, v across) and how high its boards are. On one she is over the water, not in it.
   // UNDER A BRIDGE: asked with her height (y), a deck is hers only while she is no more than UNDER below its boards: further
   // down she is on the ground under it (the bed under the stone bridge's arch, where the curse has drawn the river down to
@@ -530,7 +541,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const paint = (x, z) => {
     if (x < landRect[0] - 1 || x > landRect[2] + 1) return [1, 0, 0];      // off the land (the map is a square, wider than it): not the map's to say, the rim paints itself
     let earth = ss(0.7, 1.1, slope(x, z)), mow = 0;                        // the cliffs: bare (no grass grows on them)
-    const b = brookAt(x, z), sand = b ? 1 - ss(0.2, 1.4, b.d) : 0;        // the water's beds and banks: sand, no grass
+    const b = brookAt(x, z);
+    let sand = b ? 1 - ss(0.2, 1.4, b.d) : 0;                              // the water's beds and banks: sand, no grass
+    if (sand && ponds.length && pondAt(x, z, b)) sand *= 1 - ss(0.3, 0.75, H(x, z) - b.level);      // (a flooded pond's beach: only the ground that lies low beside it)
     earth = Math.max(earth, west.dryAt(x, z));                             // the beds the fringe's water has left: bare earth
     earth = Math.max(earth, bareAt(x, z));                                 // the rain's runnels where they run deep and fast: bare earth
     const pp = pathPaint(x, z);
@@ -747,7 +760,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // (from its third shelf each stream goes into the pit's mist: the abyss's long fall, abyss-scene.js)
   const deepFall = f => createAbyssFalls({ falls: [f], centre: [f.x + Math.sin(f.yaw), f.z + Math.cos(f.yaw)], bottom: f.top - 42, optics: null, foamTexture });
   const water = createLandWater({ stretches: P.brooks, heightAt: H, lookup: { at: brookAt }, material: waterMat, foamTexture, cells: animeCells, expect: cursed ? 0 : P.falls.length,
-    deep: P.deep || [], deepFall, split: P.split || [], lower, still: cursed ? P.brooks.map((r, k) => k) : [] });      // (under the curse no fall runs: pools only)
+    deep: P.deep || [], deepFall, split: P.split || [], lower, still: cursed ? P.brooks.map((r, k) => k) : west.water ? west.water.still : [],      // (under the curse no fall runs: pools only; the healed fringe's pond: standing water)
+    outflows: west.water ? west.water.outflows : [] });
   water.group.userData.dispose = water.dispose;
   group.add(water.group);
   // under the curse: the pools the water has left, dark mist rising off the bigger ones now and then (dark-mist.js), and the
@@ -817,7 +831,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   console.info('[hill-village] look', look, '· kit triangles', houses.userData.triangles, '· trees and bushes', plants.length, 'in', groves.length, 'groves · rocks', rocks.userData.instances.length + wet.userData.instances.length);
   group.userData = { kind: 'hill-village', dispose() { group.traverse(o => { if (o !== group && o.userData && o.userData.dispose) o.userData.dispose(); }); kit.dispose(); waterMat.dispose(); sim.dispose(); optics.dispose(); map.dispose(); field.texture.dispose(); } };
   const views = {};
-  for (const [name, [x, z, yaw]] of Object.entries(P.views)) views[name] = { x, z, yaw };
+  for (const [name, [x, z, yaw, label]] of Object.entries(P.views)) views[name] = label ? { x, z, yaw, label } : { x, z, yaw };      // (label: a place named by the land itself, not by the menu: the healed fringe's)
 
   // ------------------------------------------------------------------ moving things by hand (place-editor.js asks; place-edits.js keeps the moves)
   // While the editor is open each thing is an object of its own, built where it stands at its own origin and set where it is
@@ -968,8 +982,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, surfaceAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
     homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
-    name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
-    map: url(cursed ? M.mapCursed : M.map), mapOverlay,
+    name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, green, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
+    map: url(cursed ? M.mapCursed : green ? M.mapGreen : M.map), mapOverlay,
     horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
     optics, sim, ripple, waterLevelAt: (x, z) => { const b = x === undefined ? null : brookAt(x, z); return b ? b.level : WL; },
     // what of the land is heard (ambience-places.js; the trees' crowns it has above): the water's ways (each a line of

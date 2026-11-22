@@ -4,7 +4,8 @@
 # plan of everything on it) and paints the map from it, so the map is always the land as it is: run this after that tool.
 # Writes assets/maps/hill-village-map.webp (north, the game's -z, at the top) and hill-village-map.json (the part of the world
 # the picture covers, for game-map.js to put her and the places on it); and hill-village-map-cursed.webp + .json, the same
-# land as the curse leaves it (?curse=1), painted the same way (see paint, below).
+# land as the curse leaves it (?curse=1), painted the same way (see paint, below); and hill-village-map-green.webp + .json,
+# the same land with the west fringe healed (?green=1: west-fringe-water.js).
 #
 # How it is painted, from the bottom up:
 #   1. the land: meadow green, a little paler the higher it lies, lit from the north-west so every terrace's edge shows;
@@ -15,6 +16,7 @@
 #   6. rocks, bushes and trees (a shadow, a crown, a light on it).
 #
 #   python3 tools/make-hill-village-map.py            (Termux: pip install numpy scipy pillow)
+#   python3 tools/make-hill-village-map.py green      only that one of the three pictures (or: normal, cursed; several may be named)
 #
 # The west fringe (tools/make-west-fringe-heightmap.py) is part of the map: its land is joined on here as the game joins it
 # (west-fringe.js), its ways, dry water and ruins drawn, and the plants that stand on it drawn as the dead trees they are.
@@ -61,11 +63,15 @@ if WEST:                                                              # the two 
 X0, X1, Z0, Z1 = min(q[0] for q in PLAYS) - MARGIN, max(q[1] for q in PLAYS) + MARGIN, min(q[2] for q in PLAYS) - MARGIN, max(q[3] for q in PLAYS) + MARGIN
 W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
 
-# The map is painted twice: as the land is, and as the curse leaves it (?curse=1: drought.js): the land dead, every tree
+# The map is painted three times: as the land is; as the curse leaves it (?curse=1: drought.js): the land dead, every tree
 # a dead one, the water's beds dry and no fall running (the pools that are left are painted on in the game, where the
-# drought works them out). The second is hill-village-map-cursed.webp + .json.
-def paint(CURSED):
-    NAME = 'hill-village-map-cursed' if CURSED else 'hill-village-map'
+# drought works them out), hill-village-map-cursed.webp + .json; and with the west fringe healed (?green=1, a trial:
+# west-fringe-water.js): its land green, its trees in leaf, the gully a stream, the pond full to its sill (the land under
+# the sill, joined to its middle: its shore and its islet are the land's own), the brook running down its two falls into
+# the village's brook, hill-village-map-green.webp + .json.
+def paint(MODE):
+    CURSED, GREEN = MODE == 'cursed', MODE == 'green' and WEST
+    NAME = 'hill-village-map' + ('-' + MODE if MODE else '')
     # ---- 1, 2. the land, painted point by point
     px = X0 + (np.arange(W * SS) + 0.5) / (PPM * SS); pz = Z0 + (np.arange(Hh * SS) + 0.5) / (PPM * SS)
     gi, gj = np.meshgrid((px - L['x0']) / L['cell'], (pz - L['z0']) / L['cell'])
@@ -89,7 +95,7 @@ def paint(CURSED):
         mist = sm(rim - 30, rim - 52, h) * (0.78 + 0.22 * ndi.zoom(rng.random((Hh // 12 + 3, W // 12 + 3)), 12 * SS, order=3)[:Hh * SS, :W * SS])
         img = img * (1 - mist[..., None]) + rgb(COL['mist']) * mist[..., None]
     PX, PZ = np.meshgrid(px, pz)
-    if WEST or CURSED:                                                    # the fringe's land is dead: its grass the colour of straw (under the curse, all of it)
+    if (WEST or CURSED) and not GREEN:                                    # the fringe's land is dead: its grass the colour of straw (under the curse, all of it)
         k = ((1.0 if CURSED else sm(SEAM + 2, SEAM - 10, PX)) * (1 - rock[..., 0]))[..., None] * 0.72
         img = img * (1 - k) + (img @ np.array([0.3, 0.59, 0.11]))[..., None] * np.array([1.14, 1.0, 0.7]) * k
     off = np.minimum.reduce([np.maximum.reduce([q[0] - PX, PX - q[1], q[2] - PZ, PZ - q[3]]) for q in PLAYS])      # metres outside where she can walk
@@ -135,7 +141,22 @@ def paint(CURSED):
     d = ImageDraw.Draw(canvas)
     waters = plan['brooks'] + [[[x, z, i['level'], hw] for x, z, hw in i['rows']] + [plan['brooks'][i['stretch']][0]] for i in plan.get('inflows', [])]      # (a row: x, z, the water's height, half its width; and where each water comes in from the margin)
     beds = [[(x, z, hw * 0.9) for x, z, _, hw in rows] for rows in waters] if CURSED else []
-    if WEST:
+    full = []                                                             # the healed fringe's pond, as pictures to lay on: (its mask grown or shrunk, colour)
+    if GREEN:
+        # the fringe's water back: the gully and the brook as water's ways like the village's (the brook's last reach run on
+        # into the village's brook it meets), the pond as the land under its sill, and foam at the brook's two falls
+        D = FR['dry_water']; pond = D['pond']; gully, brook = [b['points'] for b in D['beds']]
+        gx, gz = gully[-1][:2]; gl = math.hypot(pond['x'] - gx, pond['z'] - gz)      # (and on through the fan it left, into the pond: the channel the game cuts there)
+        waters.append([[x, z, lev, half] for x, z, half, lev in gully if x > X0] + [[gx + (pond['x'] - gx) / gl * 7.5, gz + (pond['z'] - gz) / gl * 7.5, pond['sill'], 0.9]])
+        ex, ez = brook[-1][:2]; gap, rows = min(((math.hypot(r[0][0] - ex, r[0][1] - ez), r) for r in waters[:-1]), key=lambda t: t[0])
+        waters.append([[x, z, lev, half] for x, z, half, lev in brook] + ([list(rows[0])] if gap < 8 else []))
+        ia, ib = int((gully[-1][0] - X0) * K), int((brook[1][0] - X0) * K); ja, jb = int((pond['z'] - pond['rz'] - 6 - Z0) * K), int((pond['z'] + pond['rz'] + 6 - Z0) * K)
+        lab, _ = ndi.label(h[ja:jb, ia:ib] < pond['sill'] - 0.02)
+        basin = lab == lab[int((pond['z'] - Z0) * K) - ja, int((pond['x'] - X0) * K) - ia]
+        for grow, colour in ((0.35, COL['water_edge']), (0.0, COL['water']), (-1.6, COL['water_mid'])):
+            n = int(round(abs(grow) * K)); m = ndi.binary_dilation(basin, iterations=n) if grow > 0 else ndi.binary_erosion(basin, iterations=n) if grow < 0 else basin
+            full.append((Image.fromarray((m * 255).astype(np.uint8)), (ia, ja), colour))
+    elif WEST:
         D = FR['dry_water']; pond = D['pond']
         d.polygon([P(x, z) for x, z in pond['shore']], fill='#b9a57c', outline='#8c7a58')      # (inside its shore: where the water stood)
         for bed in D['beds']:
@@ -147,10 +168,13 @@ def paint(CURSED):
         for bed in beds:
             for a, b in zip(bed, bed[1:]): stroke(d, [a[:2], b[:2]], a[2] + b[2] + 2 * grow, colour)
     if not CURSED:
-        for grow, part, colour in ((0.35, 1.0, COL['water_edge']), (0.0, 1.0, COL['water']), (0.0, 0.45, COL['water_mid'])):
+        falls = plan['falls'] + ([{'x': fx, 'z': fz, 'width': 3.6, 'yaw': (lambda a, b: math.atan2(b[0] - a[0], b[1] - a[1]))(*(lambda k: (brook[k - 1], brook[k + 1]))(min(range(1, len(brook) - 1), key=lambda k: math.hypot(brook[k][0] - fx, brook[k][1] - fz))))}
+                                  for fx, fz in FR['dry_water']['falls']] if GREEN else [])
+        for k, (grow, part, colour) in enumerate(((0.35, 1.0, COL['water_edge']), (0.0, 1.0, COL['water']), (0.0, 0.45, COL['water_mid']))):
             for rows in waters:
                 for a, b in zip(rows, rows[1:]): stroke(d, [a[:2], b[:2]], (a[3] + b[3]) * part + 2 * grow, colour)
-        for f in plan['falls']:
+            if full: mask, at, colour = full[k]; canvas.paste(colour, at, mask); d = ImageDraw.Draw(canvas)
+        for f in falls:
             c, s = math.cos(f['yaw']), math.sin(f['yaw']); half = f['width'] / 2
             stroke(d, [(f['x'] - c * half, f['z'] + s * half), (f['x'] + c * half, f['z'] - s * half)], 0.9, COL['foam'])
             stroke(d, [(f['x'], f['z']), (f['x'] + s * 1.6, f['z'] + c * 1.6)], max(0.8, half * 0.9), COL['foam'])
@@ -194,7 +218,7 @@ def paint(CURSED):
     sh = layer(); ds = ImageDraw.Draw(sh)
     inside = lambda x, z: X0 - 3 < x < X1 + 3 and Z0 - 3 < z < Z1 + 3
     plants = [p for p in plan['plants'] if p[0] in COL['tree'] and inside(p[1], p[2])]
-    dead = plants[:] if CURSED else [p for p in plants if p[1] < SEAM] if WEST else []      # the fringe's trees: dead (west-fringe.js takes their leaves); under the curse every one
+    dead = plants[:] if CURSED else [p for p in plants if p[1] < SEAM] if WEST and not GREEN else []      # the fringe's trees: dead (west-fringe.js takes their leaves); under the curse every one; healed, none
     plants = [p for p in plants if p not in dead]
     for b in plan['buildings']:
         if b['kind'] == 'house':
@@ -248,7 +272,7 @@ def paint(CURSED):
         for q in FR['ruins']:
             a = q['r'] * 0.62; d.line([P(q['x'] - a, q['z'] - a), P(q['x'] + a, q['z'] - a), P(q['x'] + a, q['z'] + a), P(q['x'] - a, q['z'] + a * 0.2)], fill='#8d8270', width=max(1, int(0.45 * K)), joint='curve')
         cx, cy = P(FR['well']['x'], FR['well']['z']); r = 1.2 * K
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K))); d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill='#4a4038')
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K))); d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill=COL['water'] if GREEN else '#4a4038')
     for b in plan['buildings']:
         if b['kind'] == 'tree' and CURSED:                                # the great tree, dead
             r = 2.6 * b.get('scale', 2) * 0.85
@@ -266,4 +290,5 @@ def paint(CURSED):
           f"{len(plan['brooks'])} stretches of water, {len(ways)} ways, {sum(b['kind'] == 'house' for b in plan['buildings'])} houses, {len(plants)} trees and bushes")
 
 
-for CURSED in (False, True): paint(CURSED)
+MODES = {'normal': '', 'cursed': 'cursed', 'green': 'green'}
+for MODE in [MODES[a] for a in sys.argv[1:] if a in MODES] or list(MODES.values()): paint(MODE)
