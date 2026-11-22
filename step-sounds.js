@@ -67,7 +67,11 @@
 //     over it after her hand
 //     The circle's sound was a chime at first, made and never put in: not liked ("ไม่ชอบเสียงวิ้งของเวทอะ"). Wanted
 //     instead: clear, light, short ("เสียงแบบใสๆ เบาๆ สั้นๆ"). A droplet's note with a sparkle over it came next; one of the
-//     two was "like a bird", and it was the droplet ("เอาเสียงประกายกลับมา เอาเสียงหยดน้ำออก"): the sparkle alone now
+//     two was "like a bird", and it was the droplet ("เอาเสียงประกายกลับมา เอาเสียงหยดน้ำออก"): the sparkle alone, until
+//     22 Nov 2026, when a breath of wind was wanted in its place ("อยากได้เอฟเฟกต์เสียงเหยียบเวทเป็นเสียงลมเบาใสๆ"), ready
+//     made ("อยากได้สำเร็จรูปเลย"): a puff of air swirling up off the circle (puff: four takes made by
+//     tools/make-step-sounds.py, noise shaped into a rising band, 0.5 to 4 kHz, no note in it and nothing over 6 kHz).
+//     Every circle of a flight, the caught fall's too. The sparkle (glint) is still in the pack: with no puff, it is heard
 // No take twice running (but the sparkle, above), each a little louder or softer and a little higher or lower than the
 // last, louder the faster she goes. A set with no takes is not heard, and nothing else changes.
 //
@@ -112,7 +116,10 @@ const WET = 0.04;              // m: water deeper than this over the ground is w
 // her jumps
 const PUSH = 1.6, PUSH_RATE = 0.88;            // her push off the ground: a step, this loud, this much lower
 const GUST = 0.7;                              // the air taking her up off the ground
-const GLINT = 0.6, GLINT_GROUND = 0.4;         // a circle opening under her, its sparkle: in the air (as loud as it was when it was heard
+const PUFF = 0.75, PUFF_GROUND = 0.5;          // a circle under her foot, its breath of wind: in the air; on the ground (her push is what
+                                               // is heard there). Its takes are levelled a dB over the sparkle's, and it is softer by
+                                               // nature (no edge): a little over the sparkle's loudness here, so it is heard as well
+const GLINT = 0.6, GLINT_GROUND = 0.4;         // a circle opening under her, its sparkle (only when there is no puff): in the air (as loud as it was when it was heard
                                                // over the droplet, and asked back); on the ground (her push is what is heard)
 const LADDER = [-2, -1, 0, 1, 2];              // semitones from the take as it is: the 1st, 2nd, 3rd, 4th (5th) circle of a flight
 const KICK = { 2: 'swish', 3: 'swish', 4: 'flutter' };      // her dress as she kicks off the n-th circle (the flow's Step 2, her
@@ -134,7 +141,7 @@ const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming 
 const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 // her jumps' whoosh, and the wind past her as she flies (above)
-const ALONE = { whoosh: ['whoosh-1.mp3'] };    // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
+const ALONE = { whoosh: ['whoosh-1.mp3'], puff: ['puff-1.mp3', 'puff-2.mp3', 'puff-3.mp3', 'puff-4.mp3'] };      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
 const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
 const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
 const RUSH_FILE = 'ambience/wind-1.mp3';       // the wind past her: the air about her's own wind (a 20 s loop)
@@ -236,12 +243,16 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     return { src, g };
   }
   // one of a sound of her own (ALONE): the whole file, now
-  function playAlone(name, gain, rate = 1) {
+  function pickAlone(name) {
     const takes = alone[name];
-    if (!takes || !takes.length) return null;
+    if (!takes || !takes.length) return -1;
     let i = Math.floor(Math.random() * takes.length);
     if (takes.length > 1 && i === last[name]) i = (i + 1) % takes.length;
-    last[name] = i;
+    return (last[name] = i);
+  }
+  function playAlone(name, gain, rate = 1, i = pickAlone(name)) {
+    const takes = alone[name];
+    if (!takes || !takes[i]) return null;
     const src = ctx.createBufferSource(), g = ctx.createGain();
     src.buffer = takes[i]; src.playbackRate.value = rate; g.gain.value = gain;
     src.connect(g).connect(out);
@@ -268,7 +279,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
   const lag = () => Math.min(0.15, ctx.outputLatency || ctx.baseLatency || 0);
 
   return {
-    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
+    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, puff: alone.puff ? alone.puff.length : 0, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
     get volume() { return vol; },
     get context() { return ctx; },      // (the AudioContext, once the first touch has made it: the air about her plays on it too, ambience.js)
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (out) out.gain.value = MASTER * vol; },
@@ -291,11 +302,14 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     circle(x, z, y, { n = 1 } = {}) {
       stats.circles++;
       if (!ready()) return;
-      // one take of the sparkle for every circle of a flight, a little higher each time; a new flight may have another take
-      if (note < 0 || n <= circles) note = pick('glint');
+      // one take of the breath of wind (the sparkle, with none) for every circle of a flight, a little higher each time; a
+      // new flight may have another take
+      const puff = !!(alone.puff && alone.puff.length);
+      if (note < 0 || n <= circles) note = puff ? pickAlone('puff') : pick('glint');
       circles = n;
       const up = LADDER[Math.min(LADDER.length - 1, Math.max(0, n - 1))];
-      play('glint', ctx.currentTime, (n <= 1 ? GLINT_GROUND : GLINT) * FLIGHT, Math.pow(2, up / 12), note);
+      if (puff) playAlone('puff', (n <= 1 ? PUFF_GROUND : PUFF) * FLIGHT * vary(), Math.pow(2, up / 12), note);
+      else play('glint', ctx.currentTime, (n <= 1 ? GLINT_GROUND : GLINT) * FLIGHT, Math.pow(2, up / 12), note);
     },
 
     leap(x, z, y, { n = 1, depth = 0 } = {}) {
@@ -356,8 +370,9 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     caught(x, z, y, { height = 0 } = {}) {
       stats.catches++;
       if (!ready()) return;
-      // the circle opens on the ground under her: its sparkle, low (a take of its own: no flight's climb goes on from here)
-      play('glint', ctx.currentTime, CAUGHT * FLIGHT, Math.pow(2, CAUGHT_NOTE / 12));
+      // the circle opens on the ground under her: its breath of wind (or sparkle), low (a take of its own: no flight's climb
+      // goes on from here)
+      if (!playAlone('puff', CAUGHT * (PUFF / GLINT) * FLIGHT, Math.pow(2, CAUGHT_NOTE / 12))) play('glint', ctx.currentTime, CAUGHT * FLIGHT, Math.pow(2, CAUGHT_NOTE / 12));
     },
 
     stroke(x, z, y, { pace = 1 } = {}) {

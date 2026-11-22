@@ -50,6 +50,10 @@
 #                              whoosh (four fifths of it 500 Hz to 1 kHz, nothing over 2 kHz to speak of). Not in the pack:
 #                              each is written beside it, assets/audio/whoosh-N.mp3 (ALONE, below), so it could be put in
 #                              without the recordings above. Alone: python3 tools/make-step-sounds.py --alone SOURCE_DIR
+#                  puff-*.mp3   a magic circle under her foot, as a breath of wind ("อยากได้เอฟเฟกต์เสียงเหยียบเวทเป็นเสียง
+#                              ลมเบาใสๆ", 22 Nov 2026, in place of the sparkle), ready made ("อยากได้สำเร็จรูปเลย"): made here
+#                              when there are none (synth_puff), since ElevenLabs' takes of it could not be fetched from where
+#                              this was made. Recordings of it put in SOURCE_DIR as puff-*.mp3 would be used instead
 # (needs ffmpeg with libmp3lame, and numpy. The recordings are not kept in the repository: only what is made from them.
 #  The set before these, Kenney's Impact Sounds and Fantozzi's Footsteps, is gone from here and from the game.)
 #
@@ -193,7 +197,9 @@ SETS = {      # name: (recordings, 'each' | 'hit' | 'piece' | 'burst' | 'take', 
 # name: (its level by ear (dB), fades in and out (s), its most (s))
 ALONE = {
     'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
+    'puff':   (-30.0, (0.003, 0.1), 0.6),       # (a magic circle under her foot: about the sparkle's loudness, -31, that it takes over from)
 }
+PUFF_TAKES = 4            # the puff, made here when no recording of it is given: so many takes
 
 db = lambda v: 20 * np.log10(max(float(v), 1e-12))
 amp = lambda d: 10 ** (d / 20)
@@ -308,12 +314,39 @@ def take(x, most):
     return (over[0] / SR, over[-1] / SR)
 
 
+def synth_puff(i):
+    """a breath of wind as her foot is put on a magic circle ("ลมเบาใสๆ": light and clear): white noise shaped, frame by
+    frame, into a band about an octave wide whose middle rises (about 0.8 to 2.2 kHz over a third of a second: the air
+    swirling up off the circle), with a fainter band an octave over it (what makes it clear and not dull), and little over
+    5 kHz (a sparkle's 6 kHz and up was what was not liked). In over 30 ms, out over some 0.4 s. There is no note in it:
+    it is all noise, so nothing rings ("วิ้ง"). Each take its own noise, a little lower or higher, quicker or slower"""
+    from scipy.signal import stft, istft
+    rng = np.random.default_rng(100 + i)
+    lo, hi = 700 + 90 * i + 60 * rng.random(), 1900 + 120 * i + 150 * rng.random()      # Hz: where its band begins, where it ends rising
+    rise, decay, length = 0.3 + 0.04 * rng.random(), 0.11 + 0.03 * rng.random(), 0.55
+    n = int(length * SR)
+    f, t, Z = stft(rng.standard_normal(n + 4096), SR, nperseg=1024, noverlap=896)
+    u = np.clip((t - 2048 / SR) / rise, 0, 1); u = u * u * (3 - 2 * u)
+    mid = lo * (hi / lo) ** u                                                            # (each frame's)
+    lf = np.log2(np.maximum(f, 1.0))[:, None]
+    band = np.exp(-0.5 * ((lf - np.log2(mid)[None, :]) / 0.42) ** 2)                     # (about an octave wide)
+    band += 0.35 * np.exp(-0.5 * ((lf - np.log2(2 * mid)[None, :]) / 0.5) ** 2)         # (an octave over it, fainter)
+    band *= 1 / (1 + (f[:, None] / 5000.0) ** 4)                                         # (little over 5 kHz)
+    _, y = istft(Z * band, SR, nperseg=1024, noverlap=896)
+    y = y[2048:2048 + n]
+    tt = np.arange(n) / SR
+    return y * (1 - np.exp(-tt / 0.03)) * np.exp(-np.maximum(0, tt - 0.06) / decay)
+
+
 def write_alone(source_dir):
-    """her sounds kept as files of their own (ALONE): assets/audio/NAME-N.mp3 for each SOURCE_DIR/NAME-N.mp3 there is"""
+    """her sounds kept as files of their own (ALONE): assets/audio/NAME-N.mp3 for each SOURCE_DIR/NAME-N.mp3 there is
+    (the puff, with none: made here)"""
     out_dir = os.path.join('assets', 'audio')
     for name, (want, fades, most) in ALONE.items():
-        for path in sorted(glob.glob(os.path.join(source_dir, name + '-*.mp3'))):
-            x = read(path, TAKE_HIGHPASS)
+        paths = sorted(glob.glob(os.path.join(source_dir, name + '-*.mp3'))) if source_dir else []
+        made = [] if paths or name != 'puff' else [('%s-%d.mp3' % (name, k + 1), synth_puff(k)) for k in range(PUFF_TAKES)]
+        for path, x in [(p, None) for p in paths] + made:
+            if x is None: x = read(path, TAKE_HIGHPASS)
             a, b = take(x, most)
             a, b = int(a * SR), int(b * SR)
             quick = level(x[a:b], 0.003)
@@ -333,8 +366,8 @@ def write_alone(source_dir):
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == '--alone':
-        write_alone(sys.argv[2])
+    if len(sys.argv) in (2, 3) and sys.argv[1] == '--alone':      # (no SOURCE_DIR: only what is made here)
+        write_alone(sys.argv[2] if len(sys.argv) == 3 else None)
         return
     if len(sys.argv) != 2:
         sys.exit('usage: python3 tools/make-step-sounds.py SOURCE_DIR     (walk-*.mp3, run-*.mp3, tread.mp3, land.mp3, gust.mp3, wetrun-*.mp3, swish-*.mp3, flutter-*.mp3, settle-*.mp3, drop-*.mp3, glint-*.mp3, wade-*.mp3, splash-*.mp3, stroke-*.mp3: see the top of this file)')
