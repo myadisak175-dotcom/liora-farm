@@ -45,6 +45,11 @@
 #                                             and airy, no ringing tail": nearly all of it over 6 kHz
 #                                glint-5..8   "Soft airy magical shimmer, light breathy sparkle rising briefly, delicate and
 #                                             clear, very gentle": the same, a little longer and airier
+#                  whoosh-*.mp3   her jumps' whoosh, every jump of a flight ("เอาอันนี้ใส่ตอนกระโดด เบาๆ ผสมของเก่า", 22 Nov
+#                              2026): the user's own find, floraphonic's "Movement Swipe Whoosh 3" (Pixabay), a short mid
+#                              whoosh (four fifths of it 500 Hz to 1 kHz, nothing over 2 kHz to speak of). Not in the pack:
+#                              each is written beside it, assets/audio/whoosh-N.mp3 (ALONE, below), so it could be put in
+#                              without the recordings above. Alone: python3 tools/make-step-sounds.py --alone SOURCE_DIR
 # (needs ffmpeg with libmp3lame, and numpy. The recordings are not kept in the repository: only what is made from them.
 #  The set before these, Kenney's Impact Sounds and Fantozzi's Footsteps, is gone from here and from the game.)
 #
@@ -183,6 +188,12 @@ SETS = {      # name: (recordings, 'each' | 'hit' | 'piece' | 'burst' | 'take', 
     'plop':    (('plop',),    'take', -24.0, (0.003, 0.2),  0.9),
     'thump':   (('thump',),   'take', -27.0, (0.002, 0.15), 0.6),      # (four fifths of it under 300 Hz: louder by ear than this and its low thud would clip)
 }
+# her sounds kept as files of their own, beside the pack (step-sounds.js: ALONE): NAME-1.mp3, NAME-2.mp3 ... whichever
+# are there, each cut to what of it stands over its hiss (at most so long), faded, and levelled as a set of the pack is:
+# name: (its level by ear (dB), fades in and out (s), its most (s))
+ALONE = {
+    'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
+}
 
 db = lambda v: 20 * np.log10(max(float(v), 1e-12))
 amp = lambda d: 10 ** (d / 20)
@@ -297,7 +308,34 @@ def take(x, most):
     return (over[0] / SR, over[-1] / SR)
 
 
+def write_alone(source_dir):
+    """her sounds kept as files of their own (ALONE): assets/audio/NAME-N.mp3 for each SOURCE_DIR/NAME-N.mp3 there is"""
+    out_dir = os.path.join('assets', 'audio')
+    for name, (want, fades, most) in ALONE.items():
+        for path in sorted(glob.glob(os.path.join(source_dir, name + '-*.mp3'))):
+            x = read(path, TAKE_HIGHPASS)
+            a, b = take(x, most)
+            a, b = int(a * SR), int(b * SR)
+            quick = level(x[a:b], 0.003)
+            a = max(0, a + int(np.argmax(quick >= quick.max() * amp(ATTACK))) - int(EACH_LEAD * SR))
+            b = min(b, a + int(most * SR))
+            y = faded(x[a:b], *fades)
+            g = min(amp(want) / loudest(a_weighted(y)), amp(CEILING) / np.abs(y).max())
+            y = y * g
+            mp3 = os.path.join(out_dir, os.path.basename(path))
+            with tempfile.TemporaryDirectory() as tmp:
+                wav = os.path.join(tmp, 'take.wav')
+                with wave.open(wav, 'wb') as w:
+                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+                    w.writeframes((np.clip(y, -1, 1) * 32767).astype('<i2').tobytes())
+                subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', wav, '-ac', '1', '-codec:a', 'libmp3lame', '-b:a', BITRATE, '-map_metadata', '-1', mp3], check=True)
+            print('%-6s %s: %.3f-%.3f s of it, %.0f ms, %+.1f dB, peak %.1f dB, %.0f kB' % (name, os.path.basename(path), a / SR, b / SR, 1000 * len(y) / SR, db(g), db(np.abs(y).max()), os.path.getsize(mp3) / 1000))
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == '--alone':
+        write_alone(sys.argv[2])
+        return
     if len(sys.argv) != 2:
         sys.exit('usage: python3 tools/make-step-sounds.py SOURCE_DIR     (walk-*.mp3, run-*.mp3, tread.mp3, land.mp3, gust.mp3, wetrun-*.mp3, swish-*.mp3, flutter-*.mp3, settle-*.mp3, drop-*.mp3, glint-*.mp3, wade-*.mp3, splash-*.mp3, stroke-*.mp3: see the top of this file)')
     heard, hiss = {}, {}
@@ -400,6 +438,7 @@ def main():
     size = os.path.getsize(mp3)
     print('\nassets/audio/steps.mp3: %.1f s, %d takes, %.0f kB; read back %.1f ms late (the click). Quietest take %.1f dB, loudest silence before a take %.1f dB: ok' % (
         len(track) / SR, len(places), size / 1000, 1000 * shift, worst_in, worst_gap))
+    write_alone(sys.argv[1])
 
 
 if __name__ == '__main__':

@@ -15,6 +15,8 @@
 //                                                        landing in it, 1.5 going in deep; height: m she came down from)
 //     sounds.stroke(x, z, y, { pace })                   a swimming stroke (pace: 0..1 of her swimming speed; 0: treading water)
 //     sounds.vault(x, z, y, part)                        her 'hand', then her 'foot', put on a low thing's top
+//     sounds.rush(speed, flying)                         every frame: how fast she goes through the air (m/s, at 1.75 m),
+//                                                        and whether she is in the air at all: the wind past her as she flies
 //   sounds.volume = 0.6      sounds.stats (for a test, or the console)      sounds.context (the AudioContext, once there is one)
 //
 // WHAT IS HEARD. The sounds the user chose on 21 and 22 Nov 2026, all made with ElevenLabs ("ชุดเก่าไม่เอาแล้ว": the first set, from
@@ -42,6 +44,15 @@
 //       the next jump in the air: the circle opens under her (the sparkle), and as she kicks off it her dress swishes
 //         (swish);
 //         at the 4th, her flip, it flutters (flutter)
+//       EVERY JUMP, off the ground and off each circle: a whoosh, softly, with the rest ("เอาอันนี้ใส่ตอนกระโดด เบาๆ ผสมของ
+//         เก่า", 22 Nov 2026: the user's own find, floraphonic's "Movement Swipe Whoosh 3", a short mid whoosh with nothing
+//         shrill in it). Under her dress's swish; a little lower off the ground, higher at each kick, fuller for the flip.
+//         It is a file of its own beside the pack (ALONE: tools/make-step-sounds.py --alone)
+//       AND THE WIND PAST HER as long as she is in the air ("มีเสียงลมตามด้วยยิ่งดี"; asked which: the wind all the while
+//         she flies, not a short gust after each jump): the air about her's own wind loop (ambience/wind-1.mp3, so nothing
+//         more to fetch), louder, brighter and a little higher the faster she goes (up, down or across: a long fall loudest),
+//         low-passed so it is a rush and never the hiss that was found too loud ("เสียงซ่าๆ ในเกมมันดัง"); dying away as she
+//         lands. Under her own slider (เสียงตัวละคร), and not let down under the music as the air about her is
 //       every circle of a flight is the same take of the sparkle, a little higher each time (LADDER: from a little under the take
 //         as it is to a little over it: a sparkle is no note, and far from where it was made it is another sound). The
 //         next flight may be another take
@@ -122,11 +133,28 @@ const PLOP = 0.9;                              // ... from lower: a plop (at PLU
 const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming speed; and of that, treading water (slower: in between)
 const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
+// her jumps' whoosh, and the wind past her as she flies (above)
+const ALONE = { whoosh: ['whoosh-1.mp3'] };    // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
+const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
+const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
+const RUSH_FILE = 'ambience/wind-1.mp3';       // the wind past her: the air about her's own wind (a 20 s loop)
+const RUSH = 2.2;                              // how loud at full speed (with FLIGHT: some 3 dB under her dress's swish; at a magic
+                                               // jump's pace, 7.5 m/s, 7 dB under it; at its slowest nothing)
+const RUSH_FROM = 1.5, RUSH_FULL = 12;         // m/s (at 1.75 m): it begins to be heard; it is at its loudest (a long fall)
+const RUSH_CURVE = 0.7;                        // its loudness against how far between the two she is (under 1: heard early)
+const RUSH_FLOOR = 0.25;                       // ... and in the air never less than this of the way (at the top of a jump straight up
+                                               // she is all but still, and it went silent there: asked for all the while she flies)
+const RUSH_LOW = 350, RUSH_HIGH = 1750;        // Hz: its low-pass, slow .. fast (unfiltered, half of it was over 2 kHz: a hiss)
+const RUSH_RATE = [0.9, 1.15];                 // played lower slow, higher fast
+const RUSH_IN = 0.08, RUSH_OUT = 0.25;         // s: it rises, it dies away (time constants: the latter as she lands)
+const RUSH_REST = 3;                           // s: silent this long, it is stopped (begun again, wherever in the loop, when she flies)
 
 export function createStepSounds({ level, volume = 1 } = {}) {
   let ctx = null, out = null, buffer = null, bytes = null, meta = null, shift = 0, failed = null;
   let lastAt = -1, wind = null, note = -1, circles = 0, vol = Math.min(2, Math.max(0, volume));
-  const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
+  const alone = {}, aloneBytes = {};      // her sounds of their own (ALONE): their buffers once decoded, their bytes until then
+  let rushBuf = null, rushBytes = null, rush = null;      // the wind past her: its buffer; what is playing of it
+  const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, whooshes: 0, rush: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
 
   // ---- the file: fetched at once (no touch needed for that), decoded when there is an AudioContext to decode it
   const fresh = { cache: 'no-cache' };      // (the file and where its takes lie change together: never one from the browser's cache and one new)
@@ -134,6 +162,13 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     fetch(new URL('steps.json', FILES), fresh).then(r => { if (!r.ok) throw new Error(`steps.json: ${r.status}`); return r.json(); }),
     fetch(new URL('steps.mp3', FILES), fresh).then(r => { if (!r.ok) throw new Error(`steps.mp3: ${r.status}`); return r.arrayBuffer(); }),
   ]).then(([m, b]) => { meta = m; bytes = b; }).catch(err => { failed = err; console.warn('[step sounds]', err); });
+  // her sounds of their own, and the wind (fetched as the air about her fetches it: the same file, from the browser's cache
+  // if it has it). Without them nothing else changes
+  const more = Promise.all([
+    ...Object.entries(ALONE).flatMap(([name, files]) => files.map(f => fetch(new URL(f, FILES), fresh).then(r => (r.ok ? r.arrayBuffer() : null))
+      .then(b => { if (b) (aloneBytes[name] || (aloneBytes[name] = [])).push(b); }).catch(err => console.warn('[step sounds]', f, err)))),
+    fetch(new URL(RUSH_FILE, FILES)).then(r => (r.ok ? r.arrayBuffer() : null)).then(b => { rushBytes = b; }).catch(err => console.warn('[step sounds]', RUSH_FILE, err)),
+  ]);
 
   async function decode() {
     await fetched;
@@ -148,7 +183,14 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       const late = at / buffer.sampleRate - meta.click;
       shift = top > 0.05 && late > -0.01 && late < 0.08 ? late : 0;
     } catch (err) { failed = err; console.warn('[step sounds] the file could not be decoded', err); }
+    await more;
+    for (const [name, list] of Object.entries(aloneBytes)) {
+      delete aloneBytes[name];
+      for (const b of list) try { (alone[name] || (alone[name] = [])).push(await decodeData(b)); } catch (err) { console.warn('[step sounds]', name, err); }
+    }
+    if (rushBytes) { const b = rushBytes; rushBytes = null; try { rushBuf = await decodeData(b); } catch (err) { console.warn('[step sounds] the wind', err); } }
   }
+  const decodeData = data => new Promise((yes, no) => { const p = ctx.decodeAudioData(data, yes, no); if (p && p.then) p.then(yes, no); });
 
   // ---- the first touch: only then may a page make sound
   function wake() {
@@ -193,6 +235,21 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     stats.played++;
     return { src, g };
   }
+  // one of a sound of her own (ALONE): the whole file, now
+  function playAlone(name, gain, rate = 1) {
+    const takes = alone[name];
+    if (!takes || !takes.length) return null;
+    let i = Math.floor(Math.random() * takes.length);
+    if (takes.length > 1 && i === last[name]) i = (i + 1) % takes.length;
+    last[name] = i;
+    const src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = takes[i]; src.playbackRate.value = rate; g.gain.value = gain;
+    src.connect(g).connect(out);
+    src.onended = () => { src.disconnect(); g.disconnect(); };
+    src.start();
+    stats.played++;
+    return { src, g };
+  }
   // the gust that is in the air now dies away over so long
   function hush(secs) {
     if (!wind) return;
@@ -211,7 +268,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
   const lag = () => Math.min(0.15, ctx.outputLatency || ctx.baseLatency || 0);
 
   return {
-    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
+    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
     get volume() { return vol; },
     get context() { return ctx; },      // (the AudioContext, once the first touch has made it: the air about her plays on it too, ambience.js)
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (out) out.gain.value = MASTER * vol; },
@@ -246,6 +303,7 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       const now = ctx.currentTime;
       hush(GUST_OVER);
+      if (playAlone('whoosh', WHOOSH * FLIGHT * vary(), about(WHOOSH_RATE[n] || 1))) stats.whooshes++;      // (every jump: softly, with the rest)
       if (n <= 1) {
         // her feet leave the ground: her push off it (a step, harder and lower: none off the water), and the air taking her up
         const ground = groundAt(x, z, y, depth);
@@ -312,6 +370,36 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       stats.dashes++;
       if (!ready()) return;
       play('swish', ctx.currentTime, DASH_SWISH * vary(), about(1.04));
+    },
+
+    // every frame: the wind past her, as fast as she goes through the air (0: she is on the ground, it dies away)
+    rush(speed = 0, flying = speed > 0) {
+      if (!ready() || !rushBuf) return;
+      const u = flying ? Math.min(1, Math.max(RUSH_FLOOR, (speed - RUSH_FROM) / (RUSH_FULL - RUSH_FROM))) : 0, now = ctx.currentTime;
+      if (!rush) {
+        if (u <= 0) return;
+        const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        src.buffer = rushBuf; src.loop = true;
+        f.type = 'lowpass'; f.Q.value = 0.5; f.frequency.value = RUSH_LOW;
+        g.gain.value = 0;
+        src.connect(f).connect(g).connect(out);
+        src.start(now, Math.random() * rushBuf.duration);
+        rush = { src, f, g, want: 0, u: -1, loudAt: now };
+      }
+      const want = u > 0 ? RUSH * FLIGHT * Math.pow(u, RUSH_CURVE) : 0;
+      if (Math.abs(want - rush.want) > 0.005 || Math.abs(u - rush.u) > 0.01) {      // (not every frame: only as it changes)
+        rush.g.gain.setTargetAtTime(want, now, want > rush.want ? RUSH_IN : RUSH_OUT);
+        rush.f.frequency.setTargetAtTime(RUSH_LOW + (RUSH_HIGH - RUSH_LOW) * u, now, 0.1);
+        rush.src.playbackRate.setTargetAtTime(RUSH_RATE[0] + (RUSH_RATE[1] - RUSH_RATE[0]) * u, now, 0.15);
+        rush.want = want; rush.u = u;
+      }
+      stats.rush = +want.toFixed(3);
+      if (u > 0) rush.loudAt = now;
+      else if (now - rush.loudAt > RUSH_REST) {
+        const { src, f, g } = rush; rush = null;
+        try { src.stop(); } catch (err) { /* (already) */ }
+        src.disconnect(); f.disconnect(); g.disconnect();
+      }
     },
 
     vault(x, z, y, part) {

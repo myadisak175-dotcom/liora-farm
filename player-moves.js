@@ -122,7 +122,7 @@ const NO_CIRCLES = { open() {} };
 // sounds: her steps heard (step-sounds.js), or none: the page plays them, she says when and where a foot comes down, a
 // magic circle opens under her, she jumps (each jump of a flight), she lands, she dashes, her hand and foot are put on a
 // thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep, begins to swim), she swims a stroke, the circle
-// opens under a long fall
+// opens under a long fall, and (every frame) how fast she goes through the air
 // spells: what her spells draw with (player-spells.js): { comboFx, barrierFx, renderer }, or none (no spells)
 export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
@@ -1023,6 +1023,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         character.water.wet.value.set((mode === 'swim' ? pos.y - k : pos.y) + wetH, wetAmt);
       }
       steps.update(dt, { root, pos, speed, walk: WALK, run: RUN, still: mode !== 'ground' || landT >= 0, size: k });
+      // heard: the wind past her as she flies, as fast as she goes through the air (step-sounds.js; at 1.75 m)
+      if (sounds && sounds.rush) sounds.rush(mode === 'air' ? Math.hypot(me.vel.x, me.vel.z, vy) / ((character.height || 1.75) / 1.75) : 0, mode === 'air');
       // ---- the camera: the walker's, standing on her feet's height (in a flight, the ground she left and most of the way
       // up: four jumps go 4.4 m up; over a low thing, the ground and a little of how far the vault raises her; swimming, a little under the
       // surface, so it looks at her head)
