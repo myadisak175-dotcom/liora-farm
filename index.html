@@ -44,6 +44,18 @@
   #atkBtn.down { background: rgba(170, 225, 255, .55); }
   body.spells #dashBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 96px); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 52px; height: 52px; }
   body.spells #jumpBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 92px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 60px); width: 60px; height: 60px; }
+  /* the spear rain (spear-rain.js; ?rain=0: without): while she holds the lance the attack button's finger slid up off it
+     throws the lance into the sky. Its badge comes up over the attack button for as long (low: between it and the buttons
+     down the right edge on a phone on its side); it may be tapped too. --near: how far the finger has come up to it (0..1) */
+  #rainBtn { position: fixed; z-index: 4; right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 83px); width: 78px; height: 32px;
+    border-radius: 16px; border: 2px solid rgba(214, 252, 255, .95); background: rgba(98, 235, 245, .42); color: #fff; font: 600 12px system-ui, sans-serif;
+    text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    display: grid; place-items: center; padding: 0; box-shadow: 0 0 calc(8px + 18px * var(--near, 0)) rgba(98, 235, 245, .9);
+    opacity: 0; pointer-events: none; transform: translateY(18px) scale(.7); transition: opacity .16s, transform .16s; }
+  #rainBtn.on { opacity: 1; pointer-events: auto; transform: translateY(calc(-4px * var(--near, 0))) scale(calc(1 + .15 * var(--near, 0))); }
+  #rainBtn[hidden] { display: none; }
+  #rainBtn svg { width: 14px; height: 9px; margin-right: 3px; vertical-align: 1px; animation: rainNudge .7s ease-in-out infinite; }
+  @keyframes rainNudge { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-2px); } }
   #rollBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 56px; height: 56px; }
   #barrierBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 66px); width: 56px; height: 56px;
     background: rgba(111, 203, 255, .26); }
@@ -200,7 +212,12 @@
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
   "./player-moves.js": "./player-moves.js?v=28",
-  "./player-spells.js": "./player-spells.js?v=4",
+  "./player-spells.js": "./player-spells.js?v=5",
+  "./spear-rain.js": "./spear-rain.js?v=1",
+  "./spear-rain-fx.js": "./spear-rain-fx.js?v=1",
+  "./spear-rain-anim.js": "./spear-rain-anim.js?v=1",
+  "./spear-rain-sounds.js": "./spear-rain-sounds.js?v=1",
+  "./charge-hum.js": "./charge-hum.js?v=1",
   "./magic-combo.js": "./magic-combo.js?v=8",
   "./magic-combo-fx.js": "./magic-combo-fx.js?v=6",
   "./magic-combo-game-anim.js": "./magic-combo-game-anim.js?v=1",
@@ -391,7 +408,11 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
 // clip 'barrier' only; its idle is the library's, as hers is). Not with the old walker (?move=0)
 const spellsOn = Q.get('spell') !== '0' && Q.get('move') !== '0';
 const [COMBO_ANIM, BARRIER_ANIM] = spellsOn ? (await Promise.all([import('./magic-combo-game-anim.js'), import('./barrier-anim.js')])).map(m => m.CHARACTER_ANIM) : [null, null];
-const SPELL_CLIPS = spellsOn ? { ...COMBO_ANIM.clips, barrier: BARRIER_ANIM.clips.barrier } : {};
+// ... and the spear rain's (since 23 Nov 2026; ?rain=0: without, and nothing of it is loaded): the lance hurled up into the
+// sky, mc_sky, made here out of the combo's own lance throw (spear-rain-anim.js)
+const rainOn = spellsOn && Q.get('rain') !== '0';
+const SKY_CLIP = rainOn ? (await import('./spear-rain-anim.js')).skyThrowClip(COMBO_ANIM) : null;
+const SPELL_CLIPS = spellsOn ? { ...COMBO_ANIM.clips, barrier: BARRIER_ANIM.clips.barrier, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}) } : {};
 const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...SPELL_CLIPS } };
 // before her shadow is made, so its picture fits her
 const HERO_HEIGHT = 1.75, HERO_KEY = 'liora.character';
@@ -449,7 +470,19 @@ const soundSettings = sounds ? (await import('./sound-settings.js')).createSound
 // barrier's water is dimmed to the hour by its own setLight
 const spellKit = spellsOn ? await (async () => {
   const [{ createMagicComboFx }, { createBarrierFx }] = await Promise.all([import('./magic-combo-fx.js'), import('./barrier-fx.js')]);
-  return { comboFx: createMagicComboFx(), barrierFx: createBarrierFx({ lift: 0.12, seed: 1 }), renderer };      // (lift: the water on the ground stands in the grass, its tips through it)
+  const kit = { comboFx: createMagicComboFx(), barrierFx: createBarrierFx({ lift: 0.12, seed: 1 }), renderer };      // (lift: the water on the ground stands in the grass, its tips through it)
+  // the spear rain (spear-rain.js: the move; spear-rain-fx.js: the lance going up, the seal, the spears;
+  // spear-rain-sounds.js: its sound) and the hum
+  // of the lance's circle while it is held (charge-hum.js; ?hum=0: without): heard on the AudioContext her steps woke
+  if (rainOn) {
+    const [{ createSpearRain }, { createSpearRainFx }, { createSpearRainSounds }, { createChargeHum }] = await Promise.all([import('./spear-rain.js'), import('./spear-rain-fx.js'), import('./spear-rain-sounds.js'), import('./charge-hum.js')]);
+    kit.spearRain = createSpearRain; kit.rainFx = createSpearRainFx();
+    if (sounds) {
+      kit.rainSounds = createSpearRainSounds({ context: () => sounds.context, volume: sounds.volume });
+      if (Q.get('hum') !== '0') kit.hum = createChargeHum({ context: () => sounds.context, volume: sounds.volume });
+    }
+  }
+  return kit;
 })() : null;
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds, spells: spellKit });
 if (weighs && player.setWeight) {
@@ -492,8 +525,30 @@ if (spellKit && player.attack) {
   make('barrierBtn', 'บาเรีย', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 18 0"/><path d="M1.5 19h21"/><path d="M12 7.5c1.5 1.9 2.3 3.1 2.3 4.2a2.3 2.3 0 0 1-4.6 0c0-1.1.8-2.3 2.3-4.2z"/></svg>', () => player.barrier());
   make('rollBtn', 'กลิ้ง', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/></svg>', () => player.roll());
   make('atkBtn', 'โจมตี', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg>', () => player.attack(), () => player.release());
+  // the spear rain (ฝนหอก): while the attack button is down its finger may slide up off it; past FLICK px the lance she
+  // holds is thrown into the sky (remembered a moment, so a quick press and slide throws it up as soon as she has it). The
+  // badge over the button shows where to slide to while she holds the lance; another finger on it does the same. R on a
+  // keyboard, with J held
+  if (spellKit.rainFx) {
+    const FLICK = 52, atk = document.getElementById('atkBtn'), badge = document.createElement('button');
+    badge.id = 'rainBtn'; badge.type = 'button'; badge.setAttribute('aria-label', 'ฝนหอก');
+    badge.innerHTML = '<span><svg viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l10-8 10 8"/></svg>ฝนหอก</span>';
+    const near = v => badge.style.setProperty('--near', Math.max(0, Math.min(1, v)).toFixed(2));
+    let finger = null, from = 0, gone = false;
+    atk.addEventListener('pointerdown', e => { finger = e.pointerId; from = e.clientY; gone = false; near(0); });
+    atk.addEventListener('pointermove', e => {
+      if (e.pointerId !== finger || gone) return;
+      const up = from - e.clientY;
+      near(up / FLICK);
+      if (up >= FLICK) { gone = true; player.spells.skyward(); }
+    });
+    for (const ev of ['pointerup', 'pointercancel']) atk.addEventListener(ev, e => { if (e.pointerId === finger) { finger = null; near(0); } });
+    badge.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); player.spells.skyward(); });
+    addEventListener('keydown', e => { if (e.code === 'KeyR' && !e.repeat && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || document.body).tagName)) player.spells.skyward(); });
+    document.body.append(badge); spellBtns.push(badge);
+  }
 }
-const barrierBtn = document.getElementById('barrierBtn');
+const barrierBtn = document.getElementById('barrierBtn'), rainBtn = document.getElementById('rainBtn');
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: hero, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
@@ -629,6 +684,7 @@ if (Q.has('curse')) {
 }
 // her spells' light and water (above): into the scene now that its materials have been given the clouds' shade and the curse
 if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrierFx.object);
+if (spellKit && spellKit.rainFx) scene.add(spellKit.rainFx.object);      // (the spear rain's, in the lance's own light)
 
 // ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
 // it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
@@ -756,12 +812,14 @@ const frame = (dt = clock.getDelta()) => {
     // dimmed to the hour (as on its trial page: by night it keeps more of its light than the land does) and lit by the sun
     const day = tod ? tod.daylight : 1;
     spellKit.comboFx.setNight(day < 0.3);
+    if (spellKit.rainFx) spellKit.rainFx.setNight(day < 0.3);
     if (spellKit.barrierFx.busy || player.spells.barrierT >= 0) {
       spellKit.barrierFx.setLight(0.5 + 0.5 * day, 0.58 + 0.42 * day, 0.8 + 0.2 * day);
       const cast = level.sunCast;
       spellKit.barrierFx.setSun(cast ? cast.dir : (sky.userData.sun || NOON));
     }
     if (barrierBtn) barrierBtn.classList.toggle('wait', player.spells.barrierT >= 0);      // (not again until its water has gone)
+    if (rainBtn) rainBtn.classList.toggle('on', player.spells.skyReady);                   // (she holds the lance: it may be thrown up)
   }
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
   for (const b of spellBtns) if (b.hidden !== editing()) b.hidden = editing();

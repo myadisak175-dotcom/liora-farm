@@ -1,7 +1,7 @@
 /* ==========================================================================
    spear-rain.js  —  the held cast thrown up into the sky: the spear rain (ฝนหอก). The move itself: when it begins,
    what her body does, where it rains and what a landing spear does to what stands there. All that is seen of it is
-   spear-rain-fx.js. A trial's for now (spear-rain.html): the game does not have it.
+   spear-rain-fx.js. In the game since 23 Nov 2026 (player-spells.js holds it there); worked on in spear-rain.html.
 
    Asked for on 23 Nov 2026: "ตั้งใจจะทำเป็นโจมตีแบบกดค้างแล้วเลื่อนขึ้นบน (เป็นปุ่มพิเศษ) แล้วมันก็จะปาหอกขึ้นฟ้าเป็น aoe ส่วน
    ปาหอกธรรมดาเป็นทะลวง ใช้หอกอันเดิมได้นะ". So: the attack button held is the lance, as ever (magic-combo.js: let go, it
