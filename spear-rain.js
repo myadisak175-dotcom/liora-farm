@@ -46,10 +46,11 @@ import * as THREE from 'three';
 // far into the twirl it comes upright; tilt: how far up the lance pointed as she held it (magic-combo.js' CHARGE.tilt);
 // grip: her hand holds it so far behind its point, of its length (CHARGE.grip); long: its length by how grown it is
 // (m at 1.75 m: magic-combo-fx.js' SHOTS.lance.long); far: a target further than this (m), it rains before her instead;
-// ahead: with none, so far before her (m); power: a spear's blow by how grown the lance was; great: the great spear's;
+// ahead: with none, so far before her (m, by how grown the lance was: a full rain is wide); clear: no spear lands nearer
+// her than this (m); power: a spear's blow by how grown the lance was; great: the great spear's;
 // fade: s her clip is blended in; remember: s a flick is remembered; count: s the count of spears landed stays up
 export const SKY = { clip: 'mc_rise', let: 0.3, again: 0.46, free: 0.12, turns: 1.2, up: 0.5, tilt: 0.7, grip: 0.6, long: [0.75, 1.05, 1.4, 1.8],
-  far: 12, ahead: 4.6, power: [0.6, 0.8, 1, 1.3], great: [3, 4, 5, 7], fade: 0.06, remember: 1.2, count: 1.6, name: 'ฝนหอก' };
+  far: 12, ahead: [4.6, 4.6, 4.6, 6.2], clear: 0.9, power: [0.6, 0.8, 1, 1.3], great: [3, 4, 5, 7], fade: 0.06, remember: 1.2, count: 1.6, name: 'ฝนหอก' };
 
 export function createSpearRain({ character, combo, marks, rain }) {
   const bone = n => character.model.getObjectByName(n);
@@ -123,9 +124,10 @@ export function createSpearRain({ character, combo, marks, rain }) {
       // let go: over what she aimed at (not too far off), or a little way before her
       const t = move.target, near = t && Math.hypot(t.pos.x - me.pos.x, t.pos.z - me.pos.z) < SKY.far * k;
       if (near) want.set(t.pos.x, 0, t.pos.z);
-      else want.set(me.pos.x + Math.sin(me.heading) * SKY.ahead * k, 0, me.pos.z + Math.cos(me.heading) * SKY.ahead * k);
+      else want.set(me.pos.x + Math.sin(me.heading) * SKY.ahead[move.level] * k, 0, me.pos.z + Math.cos(me.heading) * SKY.ahead[move.level] * k);
       level = move.level;
-      const info = rain.launch({ from: v.copy(at).addScaledVector(aim, long * SKY.grip), centre: want, ground: world.ground || (() => me.pos.y), k, level, heading: me.heading, long });
+      const info = rain.launch({ from: v.copy(at).addScaledVector(aim, long * SKY.grip), centre: want, ground: world.ground || (() => me.pos.y), k, level, heading: me.heading, long,
+        keep: { x: me.pos.x, z: me.pos.z, r: SKY.clear * k } });      // (a wide rain over something near her comes down round her, not on her)
       move.fired = true;
       if (sky.onLaunch) sky.onLaunch(info);
     },

@@ -12,7 +12,10 @@
      great   the great spear: a rise, the blow, its end dying away; its moment: it lands
    Each is set to begin so that its moment comes when it is due, less what the phone takes to play it (as
    step-sounds.js does for a cast's blow); told too late for that, it begins at once, from so far into itself.
-   A small rain is shorter than the piece is: `fall` dies away a little after the last spear has landed.
+   A small rain is shorter than the piece is: `fall` dies away a little after the last spear has landed. A full
+   rain is longer (2.4 s of landings; the piece has one second of them): its splashes are begun again under
+   themselves every AGAIN s for as long as it rains, each from where its landings begin, a little higher or lower
+   than the last so that it is not heard as the same thing twice.
 
      const heard = createSpearRainSounds({ context: () => sounds.context })      the AudioContext her steps woke
                                      (step-sounds.js; none before the first touch: until then nothing is heard)
@@ -40,6 +43,9 @@ const MASTER = 1.0;           // the whole of it, at volume 1
 const AFTER = 0.18;           // s after a small rain's last spear that `fall` begins to die away ...
 const DYING = 0.45;           // ... and how long it takes
 const STOP = 0.12;            // s what is heard takes to die away when it is stopped
+// a long rain: `fall` again every so many s (of its own landings: what it has of them, less what goes over into the
+// next), while so much of the rain is still to come; each comes in over IN s, and is so much higher or lower
+const AGAIN = 0.6, LEFT = 0.45, IN = 0.22, TUNE = [1, 0.94, 1.06, 0.97, 1.03];
 
 export function createSpearRainSounds({ context = null, volume = 1 } = {}) {
   let ctx = null, out = null, vol = volume, failed = null;
@@ -70,6 +76,11 @@ export function createSpearRainSounds({ context = null, volume = 1 } = {}) {
     }
     return ctx.state === 'running';
   }
+  // read the files as soon as the sound is awake (a finger come up, a key), not as the first of them is wanted: reading
+  // takes a quarter of a second, and the first one would begin so much late
+  const warm = () => setTimeout(() => { ready(); if (ctx) for (const e of WAKES) removeEventListener(e, warm, true); }, 0);
+  const WAKES = ['pointerup', 'touchend', 'click', 'keydown'];
+  for (const e of WAKES) addEventListener(e, warm, true);
   const lag = () => Math.min(0.15, ctx.outputLatency || ctx.baseLatency || 0);
   // do it once the sound is awake and the pieces are decoded, and say how late that is (s). A first touch still down
   // has not woken the sound yet (a browser wakes it as a finger comes up), so it is looked for a while longer; what is
@@ -83,20 +94,22 @@ export function createSpearRainSounds({ context = null, volume = 1 } = {}) {
     go(tries);
   }
   // a piece, its moment `due` s from now; until: it dies away from so long after now (s; none: it plays out)
-  function play(name, due, until = null) {
+  // from: begun so far into itself, at `due` (not its moment then: where it is cut into), coming in over IN s; rate: how
+  // fast it is played
+  function play(name, due, until = null, from = null, rate = 1) {
     const p = PIECES[name], buf = bufs[name];
     if (!buf) return null;
     const now = ctx.currentTime;
-    let start = now + due - p.top - lag(), skip = 0;
-    if (start < now) { skip = now - start; start = now; if (skip > 0.2) stats.late++; }      // (told too late: from so far into itself)
+    let start = from === null ? now + due - p.top - lag() : now + due - lag(), skip = from || 0, soft = from !== null ? IN : 0;
+    if (start < now) { skip += (now - start) * rate; start = now; if (skip - (from || 0) > 0.2) stats.late++; soft = Math.max(soft, 0.03); }      // (told too late: from so far into itself)
     if (skip >= buf.duration - 0.05 || (until !== null && until < 0.05)) return null;      // (nothing of it left to hear)
     const src = ctx.createBufferSource(), g = ctx.createGain();
-    src.buffer = buf;
+    src.buffer = buf; src.playbackRate.value = rate;
     g.gain.value = p.gain;
-    if (skip > 0) { g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(p.gain, now + 0.03); }      // (no click where it is cut into)
+    if (soft > 0) { g.gain.setValueAtTime(0, start); g.gain.linearRampToValueAtTime(p.gain, start + soft); }      // (no click where it is cut into)
     src.connect(g).connect(out);
     src.start(start, skip);
-    if (until !== null && now + until < start - skip + buf.duration) {
+    if (until !== null && now + until < start + (buf.duration - skip) / rate) {
       const t = Math.max(now + 0.03, now + until);
       g.gain.setValueAtTime(p.gain, t); g.gain.linearRampToValueAtTime(0, t + DYING);
       src.stop(t + DYING + 0.02);
@@ -123,7 +136,9 @@ export function createSpearRainSounds({ context = null, volume = 1 } = {}) {
       const k = 1 / Math.max(0.05, pace);
       once(gone => {
         play('seal', open * k - gone);
-        play('fall', first * k - gone, last * k + AFTER - gone);
+        const over = last * k + AFTER - gone;
+        play('fall', first * k - gone, over);
+        for (let i = 1; first + i * AGAIN < last - LEFT; i++) play('fall', (first + i * AGAIN) * k - gone, over, PIECES.fall.top, TUNE[i % TUNE.length]);
         play('great', great * k - gone);
       }, 35);
     },

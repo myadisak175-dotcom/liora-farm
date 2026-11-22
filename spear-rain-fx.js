@@ -18,7 +18,7 @@
      - last a great spear comes down the middle: a star of white needles, a tall   -> the same, greater; a star, a
        crown, a ring going out in the air, the ground under it awash                  hoop of water in the air
    The clip takes ten seconds; a move in a fight cannot, so from her hand to the great spear's landing is about three
-   and a half (SPEAR_RAIN).
+   seconds (SPEAR_RAIN); a lance full grown, whose rain is three times as many and as long, five.
 
    ITS WATER IS THE BASIC COMBO'S (the README: "The look of her magic", the same night: "หลังจากนี้ใช้ style ของสกิลคอมโบ
    พื้นฐานเป็น ref"). Nothing of water is drawn by a shader here; it is the clip's own painted water, the basic combo's
@@ -39,10 +39,12 @@
                                             it points (unit), its length (m), how much of it is there (0..1)
      rain.twirl(at, dir, half)              every frame she twirls it: a place on it (m), the way it points (unit),
                                             half the band's width (m)
-     rain.launch({ from, centre, ground, k, level, heading, long })
+     rain.launch({ from, centre, ground, k, level, heading, long, keep })
                                             it leaves her hand at `from` for the sky over `centre` (the middle of where
                                             it will rain; its y is found from ground(x, z)); k: her size (1 at 1.75 m);
-                                            level: how grown the lance was (0..3: more spears, wider); heading: the way
+                                            level: how grown the lance was (0..3: more spears, wider; 3, full grown:
+                                            another rain, see SPEAR_RAIN); keep { x, z, r }: no spear lands nearer
+                                            that place than r m (her own); heading: the way
                                             she faces; long: the lance's length in her hand (m). Returns { portal,
                                             radius, lands: [Vector3], end, when }: the seal's middle, how wide it
                                             rains (m), where the spears will land, how long all of it takes (s), and
@@ -81,15 +83,23 @@ export const LANCE_LOOK = { core: '#f6fffe', main: '#62ebf5', deep: '#1f86d8' };
 export const WATER_LOOK = { core: '#effffe', main: '#5fe6e8', deep: '#169fb0' };
 // when (s from the moment it leaves her hand) and how big (m at 1.75 m; by how grown the lance was, 0..3)
 //   rise: s up to the seal; open: s the seal takes to open; form: the first and the last spear take shape, each in
-//   `pop` s; fall: the first is let go, the next `every` s after; drop: s a spear takes down
+//   `pop` s; fall: the first is let go, the next `every` s after (by how grown); drop: s a spear takes down
 //   great: the great spear takes shape `after` s after the last has landed, in `form` s, and is `drop` s coming down
 //   close: s the seal takes to break up once the great spear is down; end: s after that all of it is gone
 //   high: the seal stands so far over the highest ground it rains on; seal: its radius; radius: how wide it rains;
 //   spears: how many
+// A LANCE FULL GROWN IS ANOTHER RAIN ("ถ้าชาจเต็ม ขอใหญ่ ศรเยอะๆ ฝนนานขึ้น", 23 Nov 2026): 66 spears where it had 18,
+// over nearly twice the ground, a quarter more of them a second, and it goes on three times as long (2.3 s of rain
+// where the others have a third to two thirds of a second); the seal a third wider again and higher, the great spear
+// greater (`grand`). So many do not all hang under the seal first: those let go in the rain's first `first` s take shape as
+// the seal opens, as a small rain's all do; each one after that takes shape `hang` s (and up to `linger` more) before
+// it is let go, so the sky goes on making spears for as long as it rains
 export const SPEAR_RAIN = {
-  rise: 0.46, open: 0.5, form: [0.8, 1.32], pop: 0.18, fall: 1.52, every: 0.045, drop: 0.22,
+  rise: 0.46, open: 0.5, form: [0.8, 1.32], pop: 0.18, fall: 1.52, every: [0.045, 0.045, 0.045, 0.036], drop: 0.22,
+  first: 1.0, hang: 0.5, linger: 0.25,
   great: { after: 0.26, form: 0.36, drop: 0.2 }, close: 0.6, end: 1.35,
-  high: 6.6, seal: [3.4, 3.8, 4.2, 4.6], radius: [2.6, 3.0, 3.4, 3.8], spears: [8, 11, 14, 18],
+  high: [6.6, 6.6, 6.6, 7.6], seal: [3.4, 3.8, 4.2, 6.0], radius: [2.6, 3.0, 3.4, 5.2], spears: [8, 11, 14, 66],
+  grand: [1, 1, 1, 1.3],        // the great spear, and the star it lands in, so many times as big
 };
 const T = SPEAR_RAIN;
 const SPEAR = new URL('./assets/textures/lance-spear.webp', import.meta.url).href;      // her lance's picture: its tail at the left, its point at the right
@@ -108,7 +118,7 @@ const HIT = { life: 0.4, more: 0.1, fade: 0.3, up: 0.3 };
 // its radius; rise: its outer edge stands so much higher, of its radius; spin: rad/s; from: of its radius it begins at)
 const CROWN = { round: 3, inner: 0.56, rise: 0.17, spin: 2.6, from: 0.22, life: 0.36, more: 0.06 };
 const BOLT = { n: 5, places: 13, life: 0.17 };
-const MOST = { spears: 24, splashes: 28, rounds: 26, bits: 256, flares: 32 };
+const MOST = { spears: 44, splashes: 40, rounds: 32, bits: 320, flares: 32 };      // (spears: a full rain has some 30 in the air at once, a streak behind each that falls)
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
 
 const NOISE = /* glsl */`
@@ -678,7 +688,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
 
   // ---- the cast that is going (one at a time)
   const cast = { t: -1, k: 1, level: 0, R: 1, sealR: 1, from: new THREE.Vector3(), mid: new THREE.Vector3(), portal: new THREE.Vector3(), centre: new THREE.Vector3(),
-    right: new THREE.Vector3(1, 0, 0), long: 1, heading: 0, strikes: [], great: null, all: [], last: 0, close: 0, end: 0, bolt: 0, dust: 0, glow: 0, flash: 0, shed: 0 };
+    right: new THREE.Vector3(1, 0, 0), long: 1, heading: 0, strikes: [], great: null, all: [], last: 0, close: 0, end: 0, bolt: 0, dust: 0, glow: 0, flash: 0, shed: 0, ground: null };
   const held = { on: false, tip: new THREE.Vector3(), dir: new THREE.Vector3(), long: 1, there: 1 };
   // where on its way up the lance is, `u` of the way (0 her hand .. 1 the seal): a bend, up first and then over
   function wayAt(u, out) {
@@ -747,18 +757,23 @@ export function createSpearRainFx({ seed = 11 } = {}) {
     if (s.great) {
       // (a splash is at its best no bigger than the combo's own, so: a ring of them round where it lands,
       // and three one over another up the spear, a column of water)
-      for (let i = 0; i < 3; i++) splash(v.set(at.x, at.y + i * 1.05 * k, at.z), (1.5 - 0.15 * i) * k, 0.4);
+      const grand = s.size > 1.05;      // (a full rain's: a storey higher, and a second ring of splashes round the first)
+      for (let i = 0; i < (grand ? 4 : 3); i++) splash(v.set(at.x, at.y + i * 1.05 * k, at.z), (1.5 - 0.15 * i) * k, 0.4);
       for (let i = 0; i < 5; i++) {
         const a = i * TAU / 5 + rand(), far = (1.5 + 0.5 * rand()) * k;
         v.set(at.x + Math.cos(a) * far, at.y, at.z + Math.sin(a) * far); splash(v, (1.25 + 0.25 * rand()) * k);
+      }
+      if (grand) for (let i = 0; i < 9; i++) {
+        const a = i * TAU / 9 + rand(), far = (3.1 + 0.7 * rand()) * k;
+        v.set(at.x + Math.cos(a) * far, cast.ground ? cast.ground(at.x + Math.cos(a) * far, at.z + Math.sin(a) * far) : at.y, at.z + Math.sin(a) * far); splash(v, (1.2 + 0.3 * rand()) * k);
       }
       round(v.copy(at).addScaledVector(s.up, 0.1 * k), s.up, cast.R * 1.2, { life: 0.62, rise: 0.24 });
       round(v.copy(at).addScaledVector(s.up, 0.1 * k), s.up, cast.R * 0.6, { life: 0.42, rise: 0.5, spin: -3.4 });
       round(v.copy(at).addScaledVector(UP, 1.15 * k), UP, cast.R * 1.35, { life: 0.5, inner: 0.72, rise: 0.05, from: 0.18, spin: 3.2, times: 4 });
       v.copy(at).y += 0.9 * k;
-      flare(v, 6 * k, 0.36, 1);
+      flare(v, 6 * k * (grand ? 1.12 : 1), 0.36, 1);      // (its star hardly bigger: it would hide her)
       v.copy(at).y += 0.3 * k;
-      scatter(v, 30, 5.6 * k, 0.085 * k, 0); scatter(v, 10, 3.4 * k, 0.11 * k, 2); scatter(v, 10, 4.2 * k, 0.12 * k, 1);
+      scatter(v, grand ? 44 : 30, 5.6 * k * (grand ? 1.2 : 1), 0.085 * k, 0); scatter(v, 10, 3.4 * k, 0.11 * k, 2); scatter(v, grand ? 16 : 10, 4.2 * k, 0.12 * k, 1);
     } else {
       splash(at, Math.min(1.5 * k, (1.25 + 0.25 * rand()) * z));
       round(v.copy(at).addScaledVector(s.up, 0.1 * k), s.up, 1.25 * z, { rise: 0.3 });
@@ -783,10 +798,10 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       // (beads of water thrown off its end now and then)
       if (rand() < 0.35) bit(v.copy(at).addScaledVector(dir, half), dir.x * 1.6 + (rand() - 0.5), 0.6 + rand(), dir.z * 1.6 + (rand() - 0.5), 0.45 + 0.3 * rand(), 0.07 * (0.6 + rand()), rand() < 0.5 ? 2 : 0);
     },
-    launch({ from, centre, ground, k = 1, level = 0, heading = 0, long = 0 }) {
+    launch({ from, centre, ground, k = 1, level = 0, heading = 0, long = 0, keep = null }) {
       const c = cast, g = clamp(Math.round(level), 0, 3), n = T.spears[g];
       c.t = 0; c.k = k; c.level = g; c.R = T.radius[g] * k; c.sealR = T.seal[g] * k; c.heading = heading; c.long = (long || (1.1 + 0.25 * g) * k) * 1.25;
-      c.from.copy(from);
+      c.from.copy(from); c.ground = ground;
       c.centre.set(centre.x, ground(centre.x, centre.z), centre.z);
       c.right.set(Math.cos(heading), 0, -Math.sin(heading));
       // where each will land (spread evenly, none in the middle: the great spear's), the slope there, and where it hangs
@@ -798,15 +813,23 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       for (let i = n - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
       for (let i = 0; i < n; i++) {
         const a = turn0 + i * 2.39996 + (rand() - 0.5) * 0.4, far = c.R * Math.sqrt(0.17 + 0.83 * (i + 0.5) / n) * (0.94 + 0.12 * rand());
-        const x = c.centre.x + Math.cos(a) * far, z = c.centre.z + Math.sin(a) * far, y = ground(x, z);
+        let x = c.centre.x + Math.cos(a) * far, z = c.centre.z + Math.sin(a) * far;
+        if (keep) {      // (none on her own head: one that would land there lands beside her)
+          const dx = x - keep.x, dz = z - keep.z, d = Math.hypot(dx, dz);
+          if (d < keep.r) { const b = d > 1e-3 ? Math.atan2(dz, dx) : a; x = keep.x + Math.cos(b) * keep.r; z = keep.z + Math.sin(b) * keep.r; }
+        }
+        const y = ground(x, z);
         top = Math.max(top, y);
         c.strikes.push({ index: i, great: false, done: false, popped: false, size: 0.85 + 0.35 * rand(), a, far, land: new THREE.Vector3(x, y, z), up: upOf(x, z, new THREE.Vector3()),
-          hang: new THREE.Vector3(), dir: new THREE.Vector3(), form: 0, go: T.fall + order[i] * T.every, hit: 0 });
+          hang: new THREE.Vector3(), dir: new THREE.Vector3(), form: 0, go: T.fall + order[i] * T.every[g], hit: 0 });
       }
-      c.portal.set(c.centre.x, top + T.high * k, c.centre.z);
+      c.portal.set(c.centre.x, top + T.high[g] * k, c.centre.z);
       // (they take shape one after another round the seal)
       const about = c.strikes.slice().sort((p, q) => ((p.a - turn0) % TAU + TAU) % TAU - ((q.a - turn0) % TAU + TAU) % TAU);
-      about.forEach((s, i) => { s.form = T.form[0] + (T.form[1] - T.form[0]) * i / Math.max(1, n - 1); });
+      const early = about.filter(s => s.go < T.fall + T.first);
+      early.forEach((s, i) => { s.form = T.form[0] + (T.form[1] - T.form[0]) * i / Math.max(1, early.length - 1); });
+      // (a long rain's later ones: each a little before it is let go)
+      for (const s of about) if (s.go >= T.fall + T.first) s.form = s.go - T.hang - T.linger * rand();
       for (const s of c.strikes) {
         const in_ = s.far / c.R * c.sealR * 0.78;
         s.long = (2.0 + 0.5 * rand()) * s.size * k;
@@ -814,10 +837,10 @@ export function createSpearRainFx({ seed = 11 } = {}) {
         s.dir.subVectors(s.land, s.hang).normalize();
         s.hit = s.go + T.drop;
       }
-      c.last = T.fall + (n - 1) * T.every + T.drop;
+      c.last = T.fall + (n - 1) * T.every[g] + T.drop;
       const gf = c.last + T.great.after;
-      c.great = { index: n, great: true, done: false, popped: false, size: 1, long: 3.7 * k, land: c.centre.clone(), up: upOf(c.centre.x, c.centre.z, new THREE.Vector3()),
-        hang: new THREE.Vector3(c.portal.x, c.portal.y - 3.2 * k, c.portal.z), dir: new THREE.Vector3(0, -1, 0), form: gf, go: gf + T.great.form, hit: gf + T.great.form + T.great.drop };
+      c.great = { index: n, great: true, done: false, popped: false, size: T.grand[g], long: 3.7 * k * T.grand[g], land: c.centre.clone(), up: upOf(c.centre.x, c.centre.z, new THREE.Vector3()),
+        hang: new THREE.Vector3(c.portal.x, c.portal.y - 3.2 * k * T.grand[g], c.portal.z), dir: new THREE.Vector3(0, -1, 0), form: gf, go: gf + T.great.form, hit: gf + T.great.form + T.great.drop };
       c.all = [...c.strikes, c.great];
       c.close = c.great.hit + 0.12; c.end = c.great.hit + T.end;
       // its way up: from her hand, up first, then over to the seal's middle

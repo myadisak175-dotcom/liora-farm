@@ -254,7 +254,7 @@ const aimTo = new THREE.Vector3(), aimAt = new THREE.Vector3(), aimLook = new TH
 // as the spears come down it comes down with them; the great spear down, it is the player's again. look: how far it
 // turns to the seal at most (of the way); back: m it stands back; under: it looks at a place so far under the seal (m)
 const SKY_CAM = { look: 0.72, back: 1.5, under: 1.6, in: 3.4, out: 2.2 };
-let skyK = 0;
+let skyK = 0, rainLast = 0;      // (rainLast: s into the rain that its last spear lands)
 const skyFrom = new THREE.Quaternion(), skyTo = new THREE.Quaternion(), skyFocus = new THREE.Vector3();
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
@@ -316,7 +316,7 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) rollBtn.addEven
   // as it leaves her hand all the rest, each piece set to its moment. The great spear's landing shakes the picture
   sky = createSpearRain({ character: hero, combo, marks: MAGIC_COMBO, rain });
   sky.onThrow = lead => { heard.begin(lead / slow); document.getElementById('hint').style.opacity = 0; };      // (the first one thrown up: the hint has done its work)
-  sky.onLaunch = info => heard.rain(info.when, slow);
+  sky.onLaunch = info => { heard.rain(info.when, slow); rainLast = info.when.last; };
   sky.onCancel = () => heard.stop();
   sky.onLand = kind => { if (kind === 'great') shake = 1.5; };
   hero.play('idle', 0);
@@ -423,7 +423,7 @@ function step(dt) {
   }
   // ---- the rain's camera: up to the seal as the lance goes up and it opens, down again with the spears
   const T = SPEAR_RAIN, rt = rain.time;
-  const skyWant = rt < 0 ? (sky.active ? 0.3 : 0) : rt < T.fall ? 1 : Math.max(0, 0.42 * (1 - Math.max(0, rt - T.fall - 0.9) / 0.8));
+  const skyWant = rt < 0 ? (sky.active ? 0.3 : 0) : rt < T.fall ? 1 : Math.max(0, 0.42 * (1 - Math.max(0, rt - Math.max(T.fall + 0.9, rainLast - 0.7)) / 0.8));      // (a full rain goes on: the picture stays a little up for as long)
   skyK += (skyWant - skyK) * Math.min(1, dt * (skyWant > skyK ? SKY_CAM.in : SKY_CAM.out));
   if (skyK > 0.002 && Q.get('skycam') !== '0') {
     if (rain.busy) skyFocus.copy(rain.portal).y -= SKY_CAM.under * k;

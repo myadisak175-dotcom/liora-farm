@@ -53,6 +53,11 @@ export function createChargeHum({ context = null, volume = 1 } = {}) {
     }
     return ctx.state === 'running' && !!buf;
   }
+  // read the files as soon as the sound is awake (a finger come up, a key), not as the first of them is wanted: reading
+  // takes a quarter of a second, and the first one would begin so much late
+  const warm = () => setTimeout(() => { ready(); if (ctx) for (const e of WAKES) removeEventListener(e, warm, true); }, 0);
+  const WAKES = ['pointerup', 'touchend', 'click', 'keydown'];
+  for (const e of WAKES) addEventListener(e, warm, true);
   // it begins: `late` s after the circle opened (0: it is told as it opens)
   function begin(late) {
     const now = ctx.currentTime, src = ctx.createBufferSource(), g = ctx.createGain();
