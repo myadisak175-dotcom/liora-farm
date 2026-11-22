@@ -5,7 +5,8 @@
 
    The pieces (assets/audio/rain-*.mp3, cut from the clip by tools/make-spear-rain-sounds.py: what is in each, and
    why it is cut where it is, is told there):
-     twirl   the whoosh as she twirls the lance; its moment: the lance leaves her hand
+     twirl   the whoosh as she winds up and throws (in the clip the girl twirls her spear to it; she hurls hers now:
+             spear-rain-anim.js); its moment: the lance leaves her hand
      seal    the lance's rise into the deep roar of the seal opening, then its thin ringing; its moment: the seal opens
      fall    the hiss of the spears coming down and their landing, splashes one over another; its moment: the first
              spear lands

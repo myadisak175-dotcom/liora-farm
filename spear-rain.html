@@ -13,7 +13,8 @@
   straight and goes through everything, as ever; the finger slid up off the button while it is held (onto the button
   that comes up over it, ฝนหอก: the special one), it is thrown up instead, a seal opens in the sky and spears rain
   down on what she was aiming at (spear-rain.js is the move, spear-rain-fx.js draws it; what it is to look like, the
-  clip that was sent, is told there). On a keyboard: J held, and R.
+  clip that was sent, is told there). She hurls it up overhand (spear-rain-anim.js: the game's own lance throw turned up at
+  the sky). On a keyboard: J held, and R.
   The rest is the game's combo as it is (magic-combo.js: the basic combo's water, the look her magic goes by, and the
   lance with its circle in three layers): the four casts tapped, the roll, walking and running, the lance's camera;
   straw dummies to cast at, as on magic-combo.html.
@@ -115,6 +116,7 @@ import { createSpearRain } from './spear-rain.js';
 import { createSpearRainFx, SPEAR_RAIN } from './spear-rain-fx.js';
 import { createSpearRainSounds } from './spear-rain-sounds.js';
 import { createChargeHum } from './charge-hum.js';
+import { withSkyThrow } from './spear-rain-anim.js';
 
 const Q = new URLSearchParams(location.search);
 const phone = matchMedia('(pointer: coarse)').matches;
@@ -301,7 +303,7 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) rollBtn.addEven
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
   ]);
-  hero = await loadCharacter(VIVI_GLB, { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...COMBO_ANIM.clips } });
+  hero = await loadCharacter(VIVI_GLB, withSkyThrow({ ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...COMBO_ANIM.clips } }));      // (and the lance hurled up: mc_sky, made of the game's own throw)
   if (data) {
     springs = createSprings(hero.model, data);
     hero.attachSprings(springs);
