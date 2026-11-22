@@ -220,7 +220,7 @@ try {
 
   const sounds = createStepSounds({ level, volume: 1 });
   const air = createAmbience({ context: () => sounds.context, volume: 1 });
-  const music = createMusic({ context: () => sounds.context, volume: 1, first: 3 });      // (here the first piece 3 s after the first touch, not 20)
+  const music = createMusic({ context: () => sounds.context, volume: 1 });      // (the first piece at the first touch, as in the game)
   const circles = createMagicCircles({ seed: 2 });
   scene.add(circles.object);
   const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds });

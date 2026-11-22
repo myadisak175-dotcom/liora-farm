@@ -28,7 +28,8 @@
 const FILES = new URL('./assets/audio/', import.meta.url);
 const LEVEL = 1.0;                 // the music's loudness, at volume 1 (the pieces are levelled to the air's loops, then this). 0.5 at first: too quiet ("เพลงเบาไป")
 const DROWN = 0.6;                 // how much of it a waterfall at its loudest takes away
-const FIRST = 20;                  // s after the first touch before the first piece
+const FIRST = 1;                   // s after the first touch before the first piece: at once ("ทำให้เพลงเล่นอัตโนมัติเลยนะคะ"; 20 s at
+                                   // first, and it seemed not to play by itself). Before a touch no browser lets a page be heard
 const GAP = [150, 300];            // s of only the air between one piece and the next (somewhere between)
 const FADE_IN = 4, FADE_OUT = 6;   // s: a piece comes in, and goes, this gently (the pieces begin at once and some end abruptly)
 const OFF_FADE = 1.5;              // s: switched off, it goes this fast
