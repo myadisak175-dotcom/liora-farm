@@ -10,7 +10,11 @@
   clip the user sent (22 Nov 2026: a girl jumping off magic circles; "มีเสียง effect กับ vfx วงเวทย์ตอนกระโดด น่าเอามาปรับ
   ใช้กับของเรา ทั้งเสียงและ vfx"; asked which circles: all of them, each to the jump it suits; whose colours: the clip's, a
   colour to each jump; which sounds: where she leaves the ground and where she is thrown highest; where: a page apart
-  first. Then, having heard it: the clip's sound for every jump, cut to ours, "ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"). Off the ground: the blue of water, a dome of water that swells and breaks, rays of light. In the air: violet,
+  first. Then, having heard it: the clip's sound for every jump, cut to ours, "ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน").
+  Then, tried again: a jump is the clip's sound alone, none of the game's layers over it, and her landing is heard here
+  as in the game ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา", "เสียงแลนด์ลงพื้นหาย"); and the dome of the first
+  and the last jump made again after the clip's frames ("ไม่เห็นเหมือน ref เลย"): clear glass with a bright edge, a white
+  flash and needles of light in it, water thrown out over the ground under it, long rays of gold at the last. Off the ground: the blue of water, a dome of water that swells and breaks, rays of light. In the air: violet,
   then pink, marks standing round the rim, rays as she kicks off. The last: gold, with a dome and the most rays.
   The game and magic-jump.html are as they were. This folder holds the page and its own copies of the two modules that
   change (magic-circle-fx.js: the look; step-sounds.js: the sounds, reading the game's audio folder one up);
@@ -125,10 +129,10 @@ import { createSprings } from '../character-springs.js';
 import { CHARACTER_ANIM } from '../character-anim.js';
 import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
-import { createMagicCircles } from './magic-circle-fx.js?v=2';      // (?v: a phone's cache gets this one)
+import { createMagicCircles } from './magic-circle-fx.js?v=3';      // (?v: a phone's cache gets this one)
 import { createMagicJump } from '../magic-jump.js?v=5';
 import { createCameraFeel } from '../camera-feel.js';
-import { createStepSounds } from './step-sounds.js?v=2';
+import { createStepSounds } from './step-sounds.js?v=3';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
@@ -245,8 +249,8 @@ const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
 let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0, aimS = 0, vyWas = 0;
 // her jumps heard, as in the game (step-sounds.js; since the second clip's circles and sounds were to be tried here, 22 Nov
-// 2026): the circle under her as it opens, her push and the whoosh of each jump. lifting: her take-off's crouch is not
-// over yet; circled: she stands on a circle in the air
+// 2026): the circle under her as it opens (with the clip's sound, all there is of a jump), and her landing. lifting: her
+// take-off's crouch is not over yet; circled: she stands on a circle in the air
 const sounds = createStepSounds();
 let lifting = false, circled = false;
 const WALK = 1.5, RUN = 4.2;
@@ -362,6 +366,7 @@ function step(dt) {
       // down: the harder she lands, the more of her pace her legs take up and the longer before she is off again
       landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = air.landing.hold;
       if (FEEL) feel.land(air.impact, Math.max(0, air.debug.peak - me.pos.y) / k);
+      sounds.land(me.pos.x, me.pos.z, me.pos.y, { hit: air.impact, height: Math.max(0, air.debug.peak - me.pos.y) / k });      // (heard: both feet down, as in the game)
       if (demo) { demo = null; speed = 0; }
     }
   }

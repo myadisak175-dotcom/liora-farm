@@ -91,7 +91,9 @@
 //     circle of a flight, the caught fall's too. The sparkle (glint) is still in the pack: with no circle file, it is heard
 //     Then a second clip, of a girl jumping off magic circles, whose sound was wanted with its look (22 Nov 2026): its
 //     own sound for every jump of a flight, cut to ours ("ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"): see JUMP_OFF,
-//     below. The circle's own sound is the caught fall's still, and a flight's where the clip's files are not there
+//     below. The circle's own sound is the caught fall's still, and a flight's where the clip's files are not there.
+//     And with the clip's sound a jump is that alone ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา"; asked what
+//     goes: the whoosh, her dress as she kicks, the gust, her push off the ground: the layers above; her landing stays)
 // No take twice running (but the sparkle, above), each a little louder or softer and a little higher or lower than the
 // last, louder the faster she goes. A set with no takes is not heard, and nothing else changes.
 //
@@ -441,6 +443,9 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       const now = ctx.currentTime;
       hush(GUST_OVER);
+      // with the second clip's sound for the jump (circle, above), that is all of a jump: none of its layers over it
+      // ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา"); without the clip's files, the layers as before
+      if (alone.jump && alone.jump.length) { if (n <= 1) lastAt = now; return; }
       if (playAlone('whoosh', WHOOSH * FLIGHT * vary(), about(WHOOSH_RATE[n] || 1), undefined, 0, either(WHOOSH_PAN))) stats.whooshes++;      // (every jump: softly, with the rest)
       if (n <= 1) {
         // her feet leave the ground: her push off it (a step, harder and lower: none off the water), and the air taking her up
