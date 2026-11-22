@@ -14,10 +14,9 @@
   that comes up over it, ฝนหอก: the special one), it is thrown up instead, a seal opens in the sky and spears rain
   down on what she was aiming at (spear-rain.js is the move, spear-rain-fx.js draws it; what it is to look like, the
   clip that was sent, is told there). On a keyboard: J held, and R.
-  The rest is the water combo's trial's (combo-water-trial/: the basic combo's water, the look her magic goes by from
-  now on, and the lance as it is being made there): the four casts tapped, the roll, walking and running, the lance's
-  camera; straw dummies to cast at. With ?combo=game it is the game's own combo instead (the sky-blue one), to see the
-  rain beside that.
+  The rest is the game's combo as it is (magic-combo.js: the basic combo's water, the look her magic goes by, and the
+  lance with its circle in three layers): the four casts tapped, the roll, walking and running, the lance's camera;
+  straw dummies to cast at, as on magic-combo.html.
   Its sounds are the combo's own for now: the lance's blast as it leaves her hand, a splash where the first spears and
   the great spear land. Sounds of its own are still to come.
 -->
@@ -106,15 +105,14 @@ import { createSprings } from './character-springs.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
+import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from './magic-combo-game-anim.js?v=1';      // (her moves on the ground, as the game has them; ?v: as the game names them)
+import { createMagicCombo } from './magic-combo.js?v=7';
+import { createMagicComboFx } from './magic-combo-fx.js?v=5';
+import { createStepSounds } from './step-sounds.js?v=15';
 import { createSpearRain } from './spear-rain.js';
 import { createSpearRainFx, SPEAR_RAIN } from './spear-rain-fx.js';
 
 const Q = new URLSearchParams(location.search);
-// which combo the rain is tried beside: the water combo's trial's (the look to go by), or with ?combo=game the game's own
-const GAME = Q.get('combo') === 'game', AT = GAME ? './' : './combo-water-trial/';
-const [{ createMagicCombo }, { createMagicComboFx }, { createStepSounds }, { CHARACTER_ANIM: COMBO_ANIM, MAGIC_COMBO }] = await Promise.all([
-  import(AT + 'magic-combo.js'), import(AT + 'magic-combo-fx.js'), import(AT + 'step-sounds.js'), import(GAME ? './magic-combo-game-anim.js' : './magic-combo-anim.js'),
-]);
 const phone = matchMedia('(pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));

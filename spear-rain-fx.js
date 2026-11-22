@@ -21,9 +21,9 @@
    and a half (SPEAR_RAIN).
 
    ITS WATER IS THE BASIC COMBO'S (the README: "The look of her magic", the same night: "หลังจากนี้ใช้ style ของสกิลคอมโบ
-   พื้นฐานเป็น ref"). Nothing of water is drawn by a shader here; it is the clip's own painted water, the pictures the
-   water combo's trial keeps (combo-water-trial/water-*.webp, what is in them: its water-casts.js; read as its
-   magic-combo-fx.js reads them, TILED there):
+   พื้นฐานเป็น ref"). Nothing of water is drawn by a shader here; it is the clip's own painted water, the basic combo's
+   pictures (assets/water-casts/water-*.webp, what is in them: water-casts.js there; read as magic-combo-fx.js reads
+   them, TILED there):
      - where a spear lands: the splash (`hit`), a square turned to the camera, part of it in the ground so that it
        stands up out of it; under it a crown of water thrown outward over the ground (`blade` laid round a ring), as
        a leap's
@@ -32,7 +32,6 @@
    The lance family keeps its own light, as the lance in her hand does (LANCE_LOOK): the seal's line work, the spears
    (the picture the user sent), the streaks, the four-pointed star in the seal's middle, the needles, the lightning.
    Drops are round beads of the water's aqua (WATER_LOOK). No soft light anywhere else.
-   WHEN THE WATER COMBO IS TAKEN INTO THE GAME its pictures will move: the import below and WATER_AT then follow them.
 
      const rain = createSpearRainFx()
      scene.add(rain.object)                 (with the combo's light: after a page's dimming by night)
@@ -65,9 +64,10 @@
    itself); drops, sparkles and flares instanced squares. A dozen draws at most.
    ========================================================================== */
 import * as THREE from 'three';
-import { WATER_SHEETS } from './combo-water-trial/water-casts.js';
+import { WATER_SHEETS } from './assets/water-casts/water-casts.js?v=6';      // (?v: as magic-combo-fx.js names it, so that it is fetched once)
 
-const WATER_AT = './combo-water-trial/';                // where the basic combo's water pictures are kept (water-<name>.webp)
+const WATER_AT = './assets/water-casts/';               // where the basic combo's water pictures are kept (water-<name>.webp)
+const WATER_V = '?v=6';                                 // (and as magic-combo-fx.js asks for them)
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -118,8 +118,8 @@ const NOISE = /* glsl */`
   }`;
 // the water at a place in a frame of one of the combo's pictures (counted in squares; map: where that frame's map is in
 // the picture): the map says which tile, the tile how light the water is there (red) and how much of it there is
-// (green), its colour the picture's own ramp at that lightness. Premultiplied. (combo-water-trial/magic-combo-fx.js'
-// TILED, with the frame told for each thing drawn instead of once for all)
+// (green), its colour the picture's own ramp at that lightness. Premultiplied. (magic-combo-fx.js' TILED, with the
+// frame told for each thing drawn instead of once for all)
 const TILED = /* glsl */`
   uniform sampler2D uAtlas;
   uniform vec2 uTexel, uGrid;
@@ -251,7 +251,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
   const loader = new THREE.TextureLoader();
   function tiled(name) {
     const sheet = WATER_SHEETS[name];
-    const atlas = loader.load(new URL(`${WATER_AT}water-${name}.webp`, import.meta.url).href, undefined, undefined, err => console.warn('[spear rain] the water picture', name, err));
+    const atlas = loader.load(new URL(`${WATER_AT}water-${name}.webp${WATER_V}`, import.meta.url).href, undefined, undefined, err => console.warn('[spear rain] the water picture', name, err));
     atlas.format = THREE.RGFormat; atlas.colorSpace = THREE.NoColorSpace;
     atlas.minFilter = atlas.magFilter = THREE.LinearFilter;
     atlas.generateMipmaps = false; atlas.flipY = false; atlas.premultiplyAlpha = false;

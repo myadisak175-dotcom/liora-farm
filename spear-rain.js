@@ -8,9 +8,9 @@
    is thrown straight and goes through everything); held and flicked up, the lance she holds is thrown into the sky
    instead, and comes down as a rain of spears on what she was aiming at.
 
-   It stands beside the combo and changes nothing in it (two copies of the combo are being worked on, the game's and
-   the water combo's trial's; this goes with either): it watches for the lance in her hand (combo.charge), takes it
-   out of the combo's hand (combo.stop: the circle before her breaks up) and is a move of its own from there.
+   It stands beside the combo and changes nothing in it (the combo was being worked on by another hand the same
+   night): it watches for the lance in her hand (combo.charge), takes it out of the combo's hand (combo.stop: the
+   circle before her breaks up) and is a move of its own from there.
 
      const sky = createSpearRain({ character, combo, marks: MAGIC_COMBO, rain })      rain: createSpearRainFx()
      sky.flick()                     the attack button, held, is flicked up (remembered a moment: flicked before the
