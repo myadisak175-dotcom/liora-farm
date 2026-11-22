@@ -43,13 +43,16 @@ LAYERS = {      # layer: (its loops, has a place?)
     'night':  (['night-1', 'night-2'], False),      # crickets
     'dry':    (['dry-1'], False),                   # the cursed land's hollow wind
     'crows':  (['crows-1'], False),                 # crows and dry wood creaking, far off (the cursed land)
-    'brook':  (['brook-1'], True),                  # a brook over stones
+    'brook':  (['stream-1', 'stream-2', 'stream-3', 'stream-4'], True),  # a stream over pebbles along its bank (a brook's babbling
+                                                    # over stones, one loop, at first: "อยากได้เสียง water stream เวลาเดินริมน้ำ")
     'river':  (['river-1', 'river-2', 'river-3', 'river-4'], True),      # the river away from the falls: slow, lapping along its bank
     'rapids': (['rapids-1', 'rapids-2', 'rapids-3', 'rapids-4'], True),  # ... near a fall: rushing, heavy
     'fall':   (['fall-1', 'fall-2'], True),         # a waterfall into its pool
     'leaves': (['leaves-1'], True),                 # wind in a tree's crown
     'abyss':  (['abyss-1', 'abyss-2'], True),       # the wind out of the pit
     'frogs':  (['frogs-1', 'frogs-2'], True),       # frogs by a pond at dusk
+    'windmill': (['windmill-1', 'windmill-2', 'windmill-3'], True),      # the windmill's sails going round: its wood creaking, the sails passing
+    'wheel':  (['wheel-1', 'wheel-2', 'wheel-3', 'wheel-4'], True),      # the water wheel: water pouring off its paddles, its axle
     'brush':  (['brush-1', 'brush-2', 'brush-3', 'brush-4'], True),      # grass parted as she goes through it (hers: in the middle, so mono). 15 s each
 }
 

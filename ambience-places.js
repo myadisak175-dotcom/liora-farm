@@ -19,7 +19,7 @@
 // middle when she stands at it), duller from far off. How far she is from it counts height too: a brook at a cliff's foot
 // is far from its top. Where there are many of a kind (falls one under another, a wood's crowns) they are one layer: as
 // loud as all of them together (never more than one beside her), and from where the loudest of them are.
-//   brook    the nearest of the brooks and streams
+//   brook    the nearest of the brooks and streams: a stream over pebbles along its bank, heard as she walks along it
 //   river    the nearest stretch of the river, heard further than a brook, as its water runs along the bank ("ริมแม่น้ำ
 //            หนัก เสียงน้ำไหลตามตลิ่ง"): where that stretch is near a fall, rushing and heavy (rapids); away from the falls,
 //            slow (river: "เสียงน้ำไหลช้าๆ เวลาห่างจากน้ำตก แต่ยังอยู่ริมแม่น้ำ"), the one going over into the other
@@ -29,6 +29,8 @@
 //   leaves   the crowns near her, as the wind is (less by night); none under the curse (its trees are bare)
 //   abyss    the pit's shaft: the wind out of it
 //   frogs    by the water at night; fewer where a fall drowns them
+//   windmill the windmill's sails, creaking round, from their hub (high up: under them she is some metres from it)
+//   wheel    the water wheel at the mill, its paddles pouring; not under the curse (the stream does not run)
 //
 // THE GRASS SHE GOES THROUGH (brush): wherever she is on her feet in grass and moving, the blades parted round her legs, a
 // soft rustle ("เสียงใบหญ้าตอนโดนแหวก เบาๆ"), louder the faster she goes (throughGrass, below: the trial page asks it too).
@@ -38,13 +40,15 @@
 import { createAmbience } from './ambience.js';
 
 // from near (m: at its loudest) out to far (gone)
-const BROOK = { near: 1.5, far: 20 };
+const BROOK = { near: 1.5, far: 26 };                                    // (far: 20 at first; a stream is to be heard walking along it, "เวลาเดินริมน้ำ")
 const RIVER = { near: 2, far: 35 };
 const RAPIDS = { near: 12, far: 45 };                                   // m from a fall, of the river's stretch she hears: all rushing nearer, all slow further
 const DROWNED = 0.6;                                                    // how much of the rest of the air a fall at its loudest takes away
 const FALL = { near: 4, far: [30, 80], loud: [0.6, 1], tall: 18 };      // a low step of a fall .. a tall one (so many m and more): how far it is heard, how loud beside it
 const LEAVES = { near: 2.5, far: 14, over: 4 };                         // (over: a crown this much higher or lower than her head is as near as one level with it)
 const PIT = { near: 0.5, far: 45 };
+const WINDMILL = { near: 3, far: 45 };                                  // (from the sails' reach)
+const WHEEL = { near: 1.5, far: 25 };                                   // (from the wheel's rim)
 const FROGS = { near: 1, far: 24, drowned: 0.8 };                       // (drowned: how much of them a fall at its loudest takes away)
 const NIGHT_WIND = 0.35;                                                // the wind by night, of the day's
 const CURSE_CROWS = 0.3;                                                // the crows by night, of the day's
@@ -68,7 +72,7 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
     for (const [x, z] of points) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     return { points, x0, x1, z0, z1, river: !!(heard.rivers && heard.rivers[k]) };
   }).filter(w => w.points.length > 1);
-  const falls = heard.falls || [], pit = heard.pit || null;
+  const falls = heard.falls || [], pit = heard.pit || null, turning = [['windmill', heard.windmill, WINDMILL], ['wheel', heard.wheel, WHEEL]];
 
   let rx = 1, rz = 0, drowned = 0;                                        // the camera's right, on the ground; (see the getter)
   const brookAt = { d: Infinity, dx: 0, dz: 0, d0: 0 }, riverAt = { d: Infinity, dx: 0, dz: 0, d0: 0 };
@@ -168,6 +172,14 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
 
       // ---- the grass she goes through
       air.set('brush', throughGrass(speed, mode === 'ground' && !!level && !!level.surfaceAt && level.surfaceAt(x, z, y) === 'grass'));
+
+      // ---- the windmill and the water wheel: how far from what turns (its reach counted, up and down too)
+      for (const [name, m, range] of turning) {
+        if (!m) { air.set(name, 0); continue; }
+        const dx = m.x - x, dz = m.z - z, d0 = Math.hypot(dx, dz), d = Math.hypot(Math.max(0, d0 - m.r), Math.max(0, Math.abs(m.y - (y + 1.5)) - m.r));
+        const t = along(d, range.near, range.far);
+        air.set(name, (1 - t) * (1 - t), { pan: side(dx, dz, d0, d), far: t });
+      }
 
       // ---- the pit
       if (pit) {

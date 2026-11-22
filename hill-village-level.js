@@ -976,7 +976,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     // the pit's shaft, out of which the wind comes (its middle, and how wide it is under its last shelf). Under the curse no
     // water runs: none of it is heard
     heard: { cursed, ways: cursed ? [] : P.brooks, rivers: cursed ? [] : P.brooks.map((w, k) => /river/.test((P.waters && P.waters[k] && P.waters[k].id) || '')), falls: cursed ? [] : P.falls.map(f => ({ x: f.x, z: f.z, top: f.top, bottom: f.bottom, width: f.width })),
-      pit: P.pit ? { x: P.pit.x, z: P.pit.z, r: P.pit.brink - Math.max(...P.pit.shelves.map(sh => sh.u1)) } : null },
+      pit: P.pit ? { x: P.pit.x, z: P.pit.z, r: P.pit.brink - Math.max(...P.pit.shelves.map(sh => sh.u1)) } : null,
+      // the windmill's sails (their hub, and how far they reach) and the water wheel (its axle, and its radius): both turn, and
+      // are heard. Under the curse the wheel all but stands, out of a stream that does not run: not heard
+      windmill: mill ? { x: mill.object.position.x, y: mill.object.position.y, z: mill.object.position.z, r: P.buildings.find(b => b.kind === 'sails').span / 2 } : null,
+      wheel: cursed ? null : { x: P.wheel.x, y: P.wheel.level + 1.35, z: P.wheel.z, r: 2.0 } },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     tapWater(origin, dir) {
       for (let t = 1; t < 70; t += 0.25) {
