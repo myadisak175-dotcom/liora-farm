@@ -112,10 +112,25 @@ export const WATER_LOOK = { core: '#effffe', main: '#5fe6e8', deep: '#169fb0' };
 // were a quarter of the clip's size, 256 pixels across a cast five metres wide, and two frames were always shown
 // mixed, so they looked out of focus). Now 4/3 of the clip's size (about 260 pixels to a metre: a phone held upright
 // shows about 330), and one frame at a time. How they are made: tools/make-water-casts.py.
+// Which way a picture is drawn, and how fast ("ถ้าคอมโบธรรมดา หนึ่ง สอง สาม เอฟเฟคมันดูพุ่งเบี้ยวๆ ไม่ตรงหน้าตัวละคร
+// แล้วก็มันดูช้าๆ ดูไม่มี momentum เลย", 23 Nov 2026). The clip was filmed from behind the girl, so what is before
+// her in a picture is up it; the game's camera does not come round behind her (player-camera.js), she casts the way
+// she faces, and with her facing across the screen or out of it the picture's water still went up the screen: off
+// to one side of her, or behind her. Now a picture is turned to the way she casts as the camera sees it from above.
+//   flat: how it is turned. The crescent and the rings lie about her, level, and the clip saw them from a little
+//         above: turned as they are they would stand up on their edge. So a picture is first made as tall as it is
+//         from straight above (its height over `flat`), turned, and made as flat again: a ring round her stays a
+//         ring round her, lying level, from every side. 1: turned as it is. None: not turned (the rings of the
+//         third are round her head, as round from every side as the clip saw them; the finisher's shell stands on
+//         the ground). A cast thrown steeply down (out of the air) is turned to the way it goes on the screen itself
+//   quick: its first frames come faster, its last slower (1: all at one pace; 2: it begins twice as fast)
+//   swell: it comes out smaller by so much and is its own size in a moment (SWELL), growing a little on to its end
 const WATER_CASTS = [
-  { asset: 'jet',    duration: 0.37, elevation: 0,    reach: 0,    wrap: 0.08 },
-  { asset: 'sweep',  duration: 0.65, elevation: 1.43, reach: 0,    wrap: 1.05 },
-  { asset: 'orbit',  duration: 0.64, elevation: 1.43, reach: 0.08, wrap: 0.85 },
+  // (the needles: in the clip they fan out to the girl's right, the way her hand had swung; here they fan out the way
+  // she casts, the way the bolt goes: turned a quarter round to the left before anything else)
+  { asset: 'jet',    duration: 0.33, elevation: 0,    reach: 0,    wrap: 0.08, flat: 0.8,  quick: 1.5, swell: 0.3, turn: 1.45 },
+  { asset: 'sweep',  duration: 0.5,  elevation: 1.43, reach: 0,    wrap: 1.05, flat: 0.68, quick: 1.7, swell: 0.22, fade: 0.25 },
+  { asset: 'orbit',  duration: 0.52, elevation: 1.43, reach: 0.08, wrap: 0.85, quick: 1.7, swell: 0.22 },
   { asset: 'vortex', duration: 0.88, elevation: 0.12, reach: 0.64, wrap: 0.05 },
   // the rising cast ("ท่าเสยก็ต้องทำให้เข้ากัน", 22 Nov 2026): the sweep's crescent as it first comes up (its frames 1 to
   // 4: from low on one side of her up over her other shoulder), stood up steeper, smaller, and gone as it ends.
@@ -127,17 +142,26 @@ const WATER_CASTS = [
 // draws (as it does at its own pace); slowed (the page's ½ and ¼), the end of each frame is mixed into the next, over
 // so much of it at most
 const CAST_MIX = { whole: 0.4, most: 0.6 };
+// a cast's swell: s it takes to come to its own size; how much it grows on by its end
+const SWELL = { quick: 0.07, on: 0.06 };
 // What her water casts throw and where that lands: the clip's own too ("ลูกบอลน้ำไม่เอาอันเก่าแล้ว effect ใช้ชุดใหม่ให้หมด",
 // 22 Nov 2026, of the game's own orb, which the casts still threw, and of its burst, its glow at her hand, its ribbons
 // and its drops: all of those are gone from the four casts). The first cast's bolt of water (water-bolt.webp: it is
 // no longer in the jet's picture, it flies where the game throws it, turned the way it goes) and the splash where it
 // lands on the boss (water-hit.webp).
 //   WATER_BOLT: long, big: m long (a cast's; the finisher's); fps: its frames a second, round and round; born: s it
-//               takes to come out of her hand; gone: s it takes to go when it runs out (landing, it is gone at once)
+//               takes to come out of her hand; gone: s it takes to go when it runs out (landing, it is gone at once);
+//               pull: thrown, it is drawn out so much longer along its way, less as it goes (over `ease` s; its
+//               own shape after): a thing that leaves fast (less: of that, for the finisher's; tail: its picture is
+//               about so many times its size long, and it is drawn out no further back than it has come); end: going straight at the camera or away from it, it
+//               is seen from its end: so much of its length is left of it then, at least
 //   WATER_HIT:  reach, most: it reaches so many times the burst asked for (as the splash before it), so many m at
 //               most; life, more: s it lasts, and more for each m it reaches; fade: the last part of that it goes in;
 //               near: m it is drawn before where it is (so that what was hit does not cut it in two)
-const WATER_BOLT = { long: 0.7, big: 1.5, fps: 24, born: 0.05, gone: 0.1 };
+//   NEAR:       close before the camera a bolt or a splash would fill the screen (she casts toward the camera too):
+//               gone nearer than `none` m, whole from `whole` m
+const WATER_BOLT = { long: 0.78, big: 1.5, fps: 24, born: 0.012, gone: 0.08, pull: 0.9, ease: 0.14, less: 0.35, tail: 1.3, end: 0.72 };
+const NEAR = { none: 1.8, whole: 4.2 };
 const WATER_HIT = { reach: 1.3, most: 1.5, life: 0.4, more: 0.1, fade: 0.3, near: 0.45 };
 // The blade (water-blade.webp): the sweep's crescent laid out straight, three frames of it. A band of the clip's own
 // water for what had no picture in it: the turn's wave and the rising cast's (laid along the wave the game throws: a
@@ -151,7 +175,7 @@ const WATER_HIT = { reach: 1.3, most: 1.5, life: 0.4, more: 0.1, fade: 0.3, near
 //         ground too; flat, it was a line in the grass); spin: rad/s it turns; from: of its radius it begins at;
 //         life, more: s it lasts, and more for each m of radius
 const WATER_BLADE = {
-  wave: { wide: 1.25, tall: 0.3, lean: -0.6 }, rise: { wide: 1.05, tall: 0.27, lean: Math.PI / 2 },
+  wave: { wide: 1.45, tall: 0.4, lean: -0.14 }, rise: { wide: 1.05, tall: 0.27, lean: Math.PI / 2 },
   fps: 11, born: 0.05, gone: 0.14,
   ring: { round: 3, inner: 0.56, rise: 0.17, spin: 2.6, from: 0.22, life: 0.36, more: 0.06 },
   // the lance's ("สกิลปาหอก ทำวงคลื่นให้เป็นแนวๆ เดียวกันได้ไหม", 23 Nov 2026: its rings of water were lines of light the shader
@@ -247,6 +271,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     water: { core: rgb(WATER_LOOK.core), main: rgb(WATER_LOOK.main), deep: rgb(WATER_LOOK.deep) },
   };
   let look = 'sky';
+  let eye = null;                                                          // the camera, as of the last update
   const own = () => ({ ...colours, uCore: { value: LOOKS.sky.core.clone() }, uMain: { value: LOOKS.sky.main.clone() }, uDeep: { value: LOOKS.sky.deep.clone() } });
   const paint = (mat, name) => {
     const L = LOOKS[name] || LOOKS.sky, u = mat.uniforms;
@@ -344,7 +369,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       ...tiled(sheet),
       uBox: { value: new THREE.Vector4() }, uOrigin: { value: new THREE.Vector2(sheet.origin[0], sheet.origin[1]) },
       uCell: { value: sheet.cell }, uHalf: { value: sheet.half }, uScale: { value: 1 }, uWrap: { value: 0 }, uMirror: { value: 1 },
-      uSpin: { value: new THREE.Vector2(1, 0) }, uNear: { value: 0 },
+      uSpin: { value: new THREE.Vector2(1, 0) }, uNear: { value: 0 }, uFlat: { value: 1 }, uPull: { value: new THREE.Vector3(1, 0, 0) },
     };
     uniforms.uAtlas.value = atlas;
     const mat = material({
@@ -353,13 +378,18 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       vertexShader: /* glsl */`
         uniform vec4 uBox;                                                 // the squares with water in them: x0, y0, x1, y1
         uniform vec2 uOrigin, uSpin;
-        uniform float uCell, uHalf, uScale, uWrap, uMirror, uNear;
+        uniform vec3 uPull;                                                // a way across the screen, and how much longer along it
+        uniform float uCell, uHalf, uScale, uWrap, uMirror, uNear, uFlat;
         varying vec2 vCell;
         void main() {
           vec2 t = position.xy * 0.5 + 0.5;
           vCell = vec2(mix(uBox.x, uBox.z, t.x), mix(uBox.w, uBox.y, t.y));       // (squares are counted down the frame)
           vec2 m = uOrigin + vec2(vCell.x, -vCell.y) * uCell;              // from where it is put: to the right, up
-          m = vec2(m.x * uSpin.x - m.y * uSpin.y, m.x * uSpin.y + m.y * uSpin.x);      // (turned about that point: a bolt, a splash)
+          // turned about that point (a bolt, a splash; a cast, to the way she casts: as from straight above, see WATER_CASTS)
+          m.y /= uFlat;
+          m = vec2(m.x * uSpin.x - m.y * uSpin.y, m.x * uSpin.y + m.y * uSpin.x);
+          m.y *= uFlat;
+          m += uPull.xy * (dot(m, uPull.xy) * uPull.z);
           vec4 mv = modelViewMatrix * vec4(0., 0., 0., 1.);
           mv.xy += vec2(m.x * uMirror, m.y) * uScale;
           // The lower lip passes in front of Vivi while the high rim goes behind her.
@@ -1005,6 +1035,9 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   for (const h of splashes) h.uniforms.uNear.value = WATER_HIT.near;
 
   const tmp = new THREE.Vector3(), side = new THREE.Vector3(), tan = new THREE.Vector3(), toCam = new THREE.Vector3();
+  // how far before the camera a place is (m; far, with no camera yet), and how much of a thing is drawn there (NEAR)
+  const ahead = at => (eye ? -toCam.copy(at).applyMatrix4(eye.matrixWorldInverse).z : 1e3);
+  const nearK = at => clamp((ahead(at) - NEAR.none) / (NEAR.whole - NEAR.none), 0, 1);
   const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), basis = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
 
   // two ways across `way` (unit), into X and Y: level, and up
@@ -1107,8 +1140,10 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   // the next (dt: s since the last picture). The square is made only as big as the water in what is shown
   function show(cast, dt) {
     const fr = cast.frames, n = fr.length, u = cast.uniforms;
-    const at = Math.min(n - 1, Math.max(0, cast.age / cast.def.duration * (n - 1)));
-    const step = dt * (n - 1) / cast.def.duration;                       // frames a picture of the game moves on by
+    // (quick: 1 - (1 - u)^q, by q times as fast as it begins, slower as it ends)
+    const q = cast.def.quick || 1, u0 = clamp(cast.age / cast.def.duration, 0, 1);
+    const at = (n - 1) * (q === 1 ? u0 : 1 - Math.pow(1 - u0, q));
+    const step = dt * (n - 1) / cast.def.duration * (q === 1 ? 1 : q * Math.pow(1 - u0, q - 1));      // frames a picture of the game moves on by
     const over = dt > 0 ? CAST_MIX.most * clamp(1 - step / CAST_MIX.whole, 0, 1) : 0;
     let a = Math.round(at), b = a, mix = 0;
     if (over > 0.01) {
@@ -1203,13 +1238,13 @@ export function createMagicComboFx({ seed = 7 } = {}) {
           };
         }
         const b = bolts.find(o => !o.live && !o.mesh.visible) || bolts.reduce((m, o) => (o.age > m.age ? o : m));
-        b.live = true; b.age = 0; b.k = 1; b.mesh.visible = false;
-        b.uniforms.uScale.value = def === SHOTS.big ? WATER_BOLT.big : WATER_BOLT.long;
+        b.live = true; b.age = 0; b.k = 1; b.mesh.visible = false; b.turned = false; b.far = 0; b.big = def === SHOTS.big;
+        b.uniforms.uScale.value = b.big ? WATER_BOLT.big : WATER_BOLT.long;
         b.uniforms.uK.value = 0;
         still(b, 0);
         return {
           look,
-          place(at, dir) { b.mesh.position.copy(at); b.dir.copy(dir); b.mesh.visible = true; },
+          place(at, dir, far = 0) { b.mesh.position.copy(at); b.dir.copy(dir); b.far = far; b.mesh.visible = true; },
           end(hit) { b.live = false; if (hit) b.mesh.visible = false; },
         };
       }
@@ -1261,6 +1296,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       if (lk === 'water' || sea) {
         // her water casts, and the lance's (its ring of light was the last of the rings not of the clip's water): the
         // clip's splash, turned and mirrored a little differently each time; the lance's with its own sparkles
+        if (ahead(at) < NEAR.none) return;                                 // (right before the camera: nothing)
         if (sea) scatter(at, Math.round(5 + 5 * Math.min(2, size)), 2.2 + 1.6 * size, 0.07 + 0.05 * Math.min(2, size), true);
         const h = splashes.find(o => !o.mesh.visible) || splashes.reduce((m, o) => (o.age > m.age ? o : m));
         const reach = Math.min(size * WATER_HIT.reach, WATER_HIT.most), turn = (rand() - 0.5) * 1.2;
@@ -1301,11 +1337,17 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       const fromHand = n === 0 || n === 3;
       cast.age = 0;
       cast.direction.copy(dir);
+      // (one put where she stands goes with her: she steps on as she casts, the third cast most, and from the side she
+      // was seen walking out of her own rings. feet: where she is, kept, not a copy)
+      cast.feet = fromHand ? null : feet; cast.lift = def.elevation * size; cast.far = def.reach * size;
       mesh.position.copy(fromHand ? hand : feet).addScaledVector(dir, def.reach * size);
       mesh.position.y += def.elevation * size;
-      uniforms.uScale.value = size * (def.scale || 1);
+      cast.size = size * (def.scale || 1);
+      uniforms.uScale.value = cast.size * (1 - (def.swell || 0));
       uniforms.uWrap.value = def.wrap * size;
+      uniforms.uFlat.value = def.flat || 1;
       uniforms.uSpin.value.set(Math.cos(def.turn || 0), Math.sin(def.turn || 0));
+      uniforms.uMirror.value = 1;
       uniforms.uK.value = 1;
       show(cast, 0);
       mesh.visible = true;
@@ -1370,6 +1412,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     setNight(on) { colours.uShine.value = on ? 1.35 : 0.8; },
     update(dt, camera) {
       time += dt;
+      eye = camera;
       if (!fetching && waiting.length) fetchNext();                       // (the water's pictures: should their fetching not have begun)
       sMat.uniforms.uTime.value = time; hMat.uniforms.uTime.value = time;
       const beat = 0.5 + 0.5 * Math.sin(time * 34);
@@ -1410,21 +1453,55 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         cast.age += dt;
         cast.mesh.visible = cast.age < cast.def.duration;
         show(cast, dt);
-        if (cast.def.fade) { const k = clamp((cast.age / cast.def.duration - (1 - cast.def.fade)) / cast.def.fade, 0, 1); cast.uniforms.uK.value = 1 - k * k * (3 - 2 * k); }
-        // Reverse the screen-space sweep when the camera is on the far side of the caster.
-        toCam.subVectors(camera.position, cast.mesh.position);
-        cast.uniforms.uMirror.value = toCam.dot(cast.direction) > 0 ? -1 : 1;
+        const def = cast.def;
+        if (cast.feet) { cast.mesh.position.copy(cast.feet).addScaledVector(cast.direction, cast.far); cast.mesh.position.y += cast.lift; }
+        if (def.fade) { const k = clamp((cast.age / def.duration - (1 - def.fade)) / def.fade, 0, 1); cast.uniforms.uK.value = 1 - k * k * (3 - 2 * k); }
+        if (def.swell) cast.uniforms.uScale.value = cast.size * (1 - def.swell * Math.exp(-cast.age / SWELL.quick) + SWELL.on * cast.age / def.duration);
+        if (def.flat) {
+          // turned to the way she casts, as the camera sees it from above (ahead of the camera: up the picture, as
+          // the clip was filmed; see WATER_CASTS)
+          const e = camera.matrixWorld.elements, d = cast.direction;
+          let fx = -e[8], fz = -e[10], ax, ay;
+          if (fx * fx + fz * fz < 1e-4) { fx = e[4]; fz = e[6]; }          // (looking straight down: its top is ahead)
+          if (d.x * d.x + d.z * d.z > 0.36 * d.lengthSq()) { ax = d.z * fx - d.x * fz; ay = d.x * fx + d.z * fz; cast.uniforms.uFlat.value = def.flat; }
+          else { tmp.copy(d).transformDirection(camera.matrixWorldInverse); ax = tmp.x; ay = tmp.y; cast.uniforms.uFlat.value = 1; }      // (steeply down or up: as it goes on the screen)
+          if (Math.hypot(ax, ay) > 1e-4) {
+            const turn = Math.atan2(-ax, ay) + (def.turn || 0);
+            cast.uniforms.uSpin.value.set(Math.cos(turn), Math.sin(turn));
+          }
+        } else {
+          // (the rings, the finisher, the rising cast: as they are, mirrored when the camera is on the far side of her)
+          toCam.subVectors(camera.position, cast.mesh.position);
+          cast.uniforms.uMirror.value = toCam.dot(cast.direction) > 0 ? -1 : 1;
+        }
       }
-      // the water casts' bolts: turned the way they go as the camera sees it (going straight at it or away, as they
-      // were); out of her hand in a moment; run out, gone in a moment
+      // the water casts' bolts: turned the way they go on the screen; out of her hand at once, drawn out along their
+      // way as they leave; run out, gone in a moment
       for (const b of bolts) {
         if (!b.mesh.visible) { if (!b.live) b.age += dt; continue; }
         b.age += dt;
         if (!b.live) { b.k -= dt / WATER_BOLT.gone; if (b.k <= 0) { b.mesh.visible = false; continue; } }
-        tmp.copy(b.dir).transformDirection(camera.matrixWorldInverse);
-        if (Math.hypot(tmp.x, tmp.y) > 0.06) b.turn = Math.atan2(tmp.y, tmp.x) - BOLT_WAY;
+        // (where it is on the screen and where it will be: going away it goes to where the far ground meets the sky,
+        // not straight up; going nearly straight at the camera or away from it, the way it went before)
+        tmp.copy(b.mesh.position).applyMatrix4(camera.matrixWorldInverse);
+        side.copy(b.mesh.position).addScaledVector(b.dir, 0.5).applyMatrix4(camera.matrixWorldInverse);
+        if (tmp.z < -0.1 && side.z < -0.1) {
+          const dx = side.x / -side.z - tmp.x / -tmp.z, dy = side.y / -side.z - tmp.y / -tmp.z;
+          if (Math.hypot(dx, dy) > 0.004) { b.turn = Math.atan2(dy, dx) - BOLT_WAY; b.turned = true; }
+        }
+        if (!b.turned) {
+          tmp.copy(b.dir).transformDirection(camera.matrixWorldInverse);
+          b.turn = Math.atan2(tmp.y, tmp.x || -1e-6) - BOLT_WAY;
+        }
         b.uniforms.uSpin.value.set(Math.cos(b.turn), Math.sin(b.turn));
-        b.uniforms.uK.value = Math.max(0, b.k) * Math.min(1, b.age / WATER_BOLT.born);
+        // (how much of its length is seen: all of it going across the view, `end` of it going along the view)
+        toCam.subVectors(camera.position, b.mesh.position).normalize();
+        const along = Math.abs(toCam.dot(b.dir)), seen = Math.max(WATER_BOLT.end, Math.sqrt(Math.max(0, 1 - along * along)));
+        // (drawn out no further back than it has come: its tail does not reach behind the hand that threw it; the
+        // finisher's, big and slow, hardly at all)
+        const pull = Math.min(WATER_BOLT.pull * (b.big ? WATER_BOLT.less : 1) * Math.exp(-b.age / WATER_BOLT.ease), b.far / (WATER_BOLT.tail * b.uniforms.uScale.value));
+        b.uniforms.uPull.value.set(Math.cos(b.turn + BOLT_WAY), Math.sin(b.turn + BOLT_WAY), seen * (1 + pull) - 1);
+        b.uniforms.uK.value = Math.max(0, b.k) * Math.min(1, b.age / WATER_BOLT.born) * nearK(b.mesh.position);
         still(b, Math.floor(b.age * WATER_BOLT.fps) % b.sheet.frames.length);
       }
       // ... and their splashes: once through, going at the end
@@ -1434,7 +1511,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         const u = h.age / h.life, n = h.sheet.frames.length;
         if (u >= 1) { h.mesh.visible = false; continue; }
         const k = clamp((u - (1 - WATER_HIT.fade)) / WATER_HIT.fade, 0, 1);
-        h.uniforms.uK.value = 1 - k * k * (3 - 2 * k);
+        h.uniforms.uK.value = (1 - k * k * (3 - 2 * k)) * nearK(h.mesh.position);
         still(h, Math.min(n - 1, Math.floor(u * n)));
       }
       // the blades along the waves: there in a moment, gone in a moment; their frames round and round

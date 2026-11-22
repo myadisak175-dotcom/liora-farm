@@ -69,7 +69,7 @@
      - In the air, held: she hangs a moment as her hand goes up, light gathering in it, then drops hard, and lands a
        blow: a ring goes out over the ground, wider than the leap's, and what is in it is thrown up.
      - She turns to what she casts at as a move begins: the nearest target, more so one the stick points at.
-     - The orbs of the first two find their target (they leave her hand the way it was going, and curve in); the wave of
+     - The orbs of the first two find their target (straight from her hand; with none, see LANE); the wave of
        the third goes straight and through everything; the fourth is a big orb that bursts on all near where it lands.
      - The roll goes the way the stick points (the way she faces, let go). The attack button during it, or just as her
        feet are under her again, is the rising cast: a standing wave along the ground that throws what it hits up.
@@ -77,7 +77,10 @@
      - How it is drawn: as the clip of water casts the user sent (22 Nov 2026), fx.look('water'): her four tapped
        casts with fx.cast(n, …) as each leaves her hand (needles, a crescent, rings round her, the finisher's whirl);
        what they throw is the clip's bolt of water, straight at its target, and where it lands the clip's splash;
-       the turn's wave is a band of the clip's water. And the other moves the same ("ท่าเสยก็ต้องทำให้เข้ากัน แล้วก็เก็บงาน
+       the turn's wave is a band of the clip's water. With nothing to cast at, a bolt comes onto the line straight
+       ahead of her and bursts 8 m out (LANE); what is thrown gathers pace as it goes (SHOTS' rush). (23 Nov 2026,
+       "เอฟเฟคมันดูพุ่งเบี้ยวๆ ไม่ตรงหน้าตัวละคร แล้วก็มันดูช้าๆ ดูไม่มี momentum เลย"; the pictures' side of it: WATER_CASTS in
+       magic-combo-fx.js.) And the other moves the same ("ท่าเสยก็ต้องทำให้เข้ากัน แล้วก็เก็บงาน
        ที่ไม่เนียนทั้งหมด"): the rising cast a crescent coming up before her (fx.cast(4, …)) and its wave a standing band
        of water; the leap the sweep's crescent round her as she turns (fx.cast(1, …)), and where she lands a ring of
        water over the ground; the casts in the air the bolt, with the needles at the hand that throws; the blow out
@@ -113,11 +116,16 @@ const RUN = 3.2;              // m/s: as fast as this when the button goes down,
 // what is thrown: its pace (m/s), how near a target it lands (m, added to the target's own), how far it goes, how fast it
 // turns to its target (1/s; 0: straight), the burst where it lands; through: it goes on through what it hits; blast: all
 // within so far of where it lands are hit too; launch: what it hits is thrown up; height: it keeps so far over the ground
+// rush: it gathers pace as it goes, so much more (m/s) for every metre gone. (Her casts looked slow, with no weight
+// behind them, "มันดูช้าๆ ดูไม่มี momentum เลย", 23 Nov 2026: the game's camera is mostly behind her, and a thing
+// going away from it at one pace slows on the screen until it hardly moves, and then is gone without a mark. So the
+// orbs and the waves leave faster and go faster still, and an orb that meets nothing bursts where it runs out.)
+// pop: the burst of one that runs out having met nothing (a water orb's; cast at nothing at all, its own burst: LANE)
 const SHOTS = {
-  orb: { speed: 18, radius: 0.2, range: 15, steer: 9, burst: 0.75 },
-  big: { speed: 13, radius: 0.45, range: 17, steer: 4, burst: 2.0, blast: 2.4 },
-  wave: { speed: 14, radius: 0.85, range: 9, steer: 0, burst: 0.8, through: true, height: 0.95 },
-  rise: { speed: 12, radius: 0.4, range: 7, steer: 0, burst: 0.9, through: true, launch: true, height: 0.85 },
+  orb: { speed: 24, rush: 2.6, radius: 0.2, range: 13, steer: 9, burst: 0.75, pop: 0.6 },
+  big: { speed: 14, rush: 1.0, radius: 0.45, range: 17, steer: 4, burst: 2.0, blast: 2.4, pop: 1.2 },
+  wave: { speed: 19, rush: 1.6, radius: 0.85, range: 9, steer: 0, burst: 0.8, through: true, height: 0.95 },
+  rise: { speed: 15, rush: 1.2, radius: 0.4, range: 7, steer: 0, burst: 0.9, through: true, launch: true, height: 0.85 },
   lance: { speed: 36, radius: 0.3, range: 26, steer: 0, burst: 0.8, through: true },
   bolt: { speed: 26, radius: 0.18, range: 14, steer: 12, burst: 0.5 },
 };
@@ -135,6 +143,12 @@ const AIR = { L: 'mc_air_l', R: 'mc_air_r', into: 'mc_rain_in', rain: 'mc_rain',
 const BOLT = { name: 'ยิงกลางอากาศ' }, RAIN = { name: 'หมุนยิงลง' };
 const REMEMBER = 0.35;        // s a press of the attack button is remembered
 const AIM_FAR = 13;           // m: she turns to a target no further than this
+// an orb cast at nothing: it leaves her hand, which is out to one side of her, for the line straight ahead of her and
+// goes along that (it went the way she faces from where her hand was, beside that line all the way: "ไม่ตรงหน้า
+// ตัวละคร"). lead: m ahead of where it is that it makes for on the line; low: the line is no lower than this over her feet;
+// far: m it goes before it bursts (near enough to be seen bursting: thrown as far as one cast at a target may go, it
+// was a speck by then)
+const LANE = { lead: 2.6, low: 1.0, far: 8 };
 const AIM_TURN = 20;          // how fast she turns to it (1/s)
 const FREE = 0.16;            // s after a move's cancel moment before the stick walks her out of it
 const COUNT = 2.5;            // s the count of casts landed stays up
@@ -287,7 +301,14 @@ export function createMagicCombo({ character, marks, fx }) {
       // straight at what she casts at)
       dir.addScaledVector(v.copy(handVel).normalize(), 0.55).normalize();
     }
-    shots.push({ kind, power, name: def.shot, pos: from, dir, aim: aim.clone(), target: kind.steer ? target : null, far: 0, done: new Set(), draw: draw || fx.shot(def.shot) });
+    // one of her four casts' orbs with nothing to cast at: to the line straight ahead of her (LANE)
+    let lane = null;
+    if (kind.steer && !target && HITS.includes(def)) {
+      lane = { x: me.pos.x, y: Math.max(from.y, me.pos.y + LANE.low * k), z: me.pos.z, dx: aim.x, dz: aim.z };
+      const along = (from.x - lane.x) * lane.dx + (from.z - lane.z) * lane.dz + LANE.lead * k;
+      dir.set(lane.x + lane.dx * along - from.x, lane.y - from.y, lane.z + lane.dz * along - from.z).normalize();
+    }
+    shots.push({ kind, power, name: def.shot, pos: from, dir, aim: aim.clone(), target: kind.steer ? target : null, lane, far: 0, done: new Set(), draw: draw || fx.shot(def.shot) });
     move.fired = true;
     // her four tapped casts: drawn as in the clip of water casts (needles; a crescent the way her hand went; rings round
     // her; the finisher's whirl and shell)
@@ -608,14 +629,17 @@ export function createMagicCombo({ character, marks, fx }) {
       // ---- what is in flight
       for (let j = shots.length - 1; j >= 0; j--) {
         const s = shots[j], kd = s.kind;
-        let left = kd.speed * k * dt, over = false;
+        let left = (kd.speed + (kd.rush || 0) * s.far / k) * k * dt, over = false;
         while (left > 1e-6 && !over) {
           const stepLen = Math.min(left, 0.2 * k);
           left -= stepLen;
           if (kd.steer) {
             // it turns to its target (to the way it was thrown, with none)
             if (s.target) want.set(s.target.pos.x, s.target.pos.y + s.target.height * 0.62, s.target.pos.z).sub(s.pos).normalize();
-            else want.copy(s.aim);
+            else if (s.lane) {
+              const l = s.lane, along = (s.pos.x - l.x) * l.dx + (s.pos.z - l.z) * l.dz + LANE.lead * k;
+              want.set(l.x + l.dx * along - s.pos.x, l.y - s.pos.y, l.z + l.dz * along - s.pos.z).normalize();
+            } else want.copy(s.aim);
             s.dir.addScaledVector(want.sub(s.dir), Math.min(1, kd.steer * stepLen / (kd.speed * k))).normalize();
           }
           s.pos.addScaledVector(s.dir, stepLen);
@@ -628,9 +652,12 @@ export function createMagicCombo({ character, marks, fx }) {
             land(s, t, world, v);
             if (!kd.through) { over = true; s.draw.place(s.pos, s.dir, s.far); s.draw.end(true); break; }
           }
-          if (!over && (s.far > kd.range * k || (!kd.height && s.pos.y < ground(s.pos.x, s.pos.z) + 0.05))) {
+          const range = (s.lane ? LANE.far : kd.range) * k;
+          if (!over && (s.far > range || (!kd.height && s.pos.y < ground(s.pos.x, s.pos.z) + 0.05))) {
             over = true;
-            if (s.far <= kd.range * k) { fx.burst(s.pos, kd.burst * 0.6 * k, s.name === 'lance', s.draw.look); s.draw.end(true); } else s.draw.end(false);
+            if (s.far <= range) { fx.burst(s.pos, kd.burst * 0.6 * k, s.name === 'lance', s.draw.look); s.draw.end(true); }
+            else if (kd.pop && s.draw.look === 'water') { fx.burst(s.pos, (s.lane ? kd.burst : kd.pop) * k, false, s.draw.look); s.draw.end(true); }      // (run out, a water orb bursts: where it went is seen)
+            else s.draw.end(false);
           }
         }
         if (over) shots.splice(j, 1);
