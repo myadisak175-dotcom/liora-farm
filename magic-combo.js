@@ -74,6 +74,16 @@
      - The roll goes the way the stick points (the way she faces, let go). The attack button during it, or just as her
        feet are under her again, is the rising cast: a standing wave along the ground that throws what it hits up.
      - The roll cuts any move short (what was not yet cast is lost).
+     - How it is drawn: as the clip of water casts the user sent (22 Nov 2026), fx.look('water'): her four tapped
+       casts with fx.cast(n, …) as each leaves her hand (needles, a crescent, rings round her, the finisher's whirl);
+       what they throw is the clip's bolt of water, straight at its target, and where it lands the clip's splash;
+       the turn's wave is a band of the clip's water. And the other moves the same ("ท่าเสยก็ต้องทำให้เข้ากัน แล้วก็เก็บงาน
+       ที่ไม่เนียนทั้งหมด"): the rising cast a crescent coming up before her (fx.cast(4, …)) and its wave a standing band
+       of water; the leap the sweep's crescent round her as she turns (fx.cast(1, …)), and where she lands a ring of
+       water over the ground; the casts in the air the bolt, with the needles at the hand that throws; the blow out
+       of the air the ring and a splash. No light at her hand and no ribbon in any of them. Only the held cast, the
+       lance, has its own look (fx.look('sky') while she holds and throws it: its light at her hand is the game's).
+       What is thrown keeps its look to its burst (shot.draw.look).
    Lengths are for a 1.75 m character and go with her size.
    ========================================================================== */
 import * as THREE from 'three';
@@ -187,8 +197,12 @@ export function createMagicCombo({ character, marks, fx }) {
     if (move && move.gate) { move.gate.end(); move.gate = null; }        // (and the circle before her)
     if (held && combo.onLance) combo.onLance('drop', 0);
   }
+  // how what she casts is drawn: as the clip of water casts the user sent ('water'), all but the lance, which has its
+  // own look ('sky' leaves the light at her hand as the game has it); with an fx that has no looks, as it is
+  const lookFor = def => { if (fx.look) fx.look(def === THROW ? 'sky' : 'water'); };
   function begin(def, me, world, fade, more = null) {
     drop();
+    lookFor(def);
     if (character.state === def.clip) character.play('idle', 0);          // (the same move again: from its beginning)
     character.play(def.clip, fade, false);
     move = { kind: 'hit', def, m: marks.clips[def.clip], t: 0, fired: false, target: pick(me, world, def === DASH ? 0.6 : 1.9), at: [0, 0], press, ...more };
@@ -197,6 +211,7 @@ export function createMagicCombo({ character, marks, fx }) {
     if (combo.onBegin) combo.onBegin(HITS.indexOf(def), move.m.hit || 0);
   }
   function charge(me, world) {
+    lookFor(THROW);
     character.play(CHARGE.into, FADE.charge, false);
     move = { kind: 'charge', def: THROW, m: marks.clips[CHARGE.into], t: 0, phase: 'in', level: 0, fired: false, target: pick(me, world), draw: fx.shot('lance'),
       gate: fx.gate ? fx.gate() : null };
@@ -230,17 +245,18 @@ export function createMagicCombo({ character, marks, fx }) {
     move.phase = 'out'; move.at = 0; move.then = then; move.rate = then ? AIR.quick : 1;
   }
   // a small orb from a hand at a target (with none: the way given)
-  function bolt(from, target, way) {
+  function bolt(from, target, way, needles = false) {
     const dir = way.clone();
     if (target) dir.set(target.pos.x - from.x, target.pos.y + target.height * 0.62 - from.y, target.pos.z - from.z);
     dir.normalize();
     shots.push({ kind: SHOTS.bolt, power: AIR.power, name: 'orb', pos: from.clone(), dir, aim: dir.clone(), target, far: 0, done: new Set(), draw: fx.shot('orb') });
+    if (needles && fx.cast) fx.cast(0, { hand: from.clone(), dir: dir.clone(), feet: from, size: size() * 0.55 });      // (the first cast's, smaller)
   }
   // a thing is hit: told so, counted, a burst where
-  function strike(target, hit, at, burst) {
+  function strike(target, hit, at, burst, look) {
     target.hit(hit);
     hits++; hitsT = COUNT;
-    if (burst) fx.burst(at, burst, hit.kind === 'lance');                // (the lance's: its own sparkles, not gold)
+    if (burst) fx.burst(at, burst, hit.kind === 'lance', look);          // (the lance's: its own sparkles, not gold)
   }
   function fire(me) {
     const { def, target } = move, k = size();
@@ -265,16 +281,22 @@ export function createMagicCombo({ character, marks, fx }) {
         from.copy(gateAt).addScaledVector(dir, Math.min(0, v.copy(from).sub(gateAt).dot(dir)));
         move.gate.fire(); move.gate = null;
       }
-    } else if (kind.steer && handKnown && handVel.lengthSq() > 4) {
-      // an orb leaves her hand the way her hand was going, and curves in
+    } else if (kind.steer && handKnown && handVel.lengthSq() > 4 && !HITS.includes(def)) {
+      // an orb leaves her hand the way her hand was going, and curves in. (Not the four water casts' bolt: it is long,
+      // drawn the way it goes, and going off to one side first it looked thrown askew, "บอลน้ำทิศเบี้ยว": it goes
+      // straight at what she casts at)
       dir.addScaledVector(v.copy(handVel).normalize(), 0.55).normalize();
     }
     shots.push({ kind, power, name: def.shot, pos: from, dir, aim: aim.clone(), target: kind.steer ? target : null, far: 0, done: new Set(), draw: draw || fx.shot(def.shot) });
     move.fired = true;
+    // her four tapped casts: drawn as in the clip of water casts (needles; a crescent the way her hand went; rings round
+    // her; the finisher's whirl and shell)
+    const n = def === RISE ? 4 : HITS.indexOf(def);                      // (the rising cast: the crescent coming up before her)
+    if (n >= 0 && fx.cast) fx.cast(n, { hand: hand.clone(), dir: aim.clone(), feet: me.pos, heading: me.heading, size: k, swing: handKnown ? handVel : null });
   }
   function land(shot, target, world, at) {
     const k = size();
-    strike(target, { power: shot.power, x: shot.dir.x, z: shot.dir.z, launch: !!shot.kind.launch, kind: shot.name }, at, shot.kind.burst * k);
+    strike(target, { power: shot.power, x: shot.dir.x, z: shot.dir.z, launch: !!shot.kind.launch, kind: shot.name }, at, shot.kind.burst * k, shot.draw.look);
     shot.done.add(target);
     if (shot.kind.blast) {
       for (const t of world.targets || []) {
@@ -326,6 +348,7 @@ export function createMagicCombo({ character, marks, fx }) {
     airShot(me, world) {
       if (!has(AIR.L) || !has(AIR.R)) return false;
       drop();
+      lookFor(BOLT);
       const k = size(), g = (world.ground || (() => -1e5))(me.pos.x, me.pos.z);
       const under = !rained && airShots < AIR.most && has(AIR.into) && has(AIR.rain) && has(AIR.out) && me.pos.y - g > AIR.room * k
         && (world.targets || []).some(t => Math.hypot(t.pos.x - me.pos.x, t.pos.z - me.pos.z) < AIR.near * k && me.pos.y - t.pos.y > AIR.above * t.height);
@@ -344,6 +367,7 @@ export function createMagicCombo({ character, marks, fx }) {
     plunge(me, world) {
       if (!has(PLUNGE.clip) || !has(SLAM.clip)) return false;
       drop();
+      lookFor(SLAM);
       character.play(PLUNGE.clip, 0.08, false);
       move = { kind: 'plunge', def: SLAM, m: marks.clips[PLUNGE.clip], t: 0, vy: 1.5 * size(), fired: false, target: pick(me, world) };
       wantHit = wantRoll = 0;
@@ -479,6 +503,8 @@ export function createMagicCombo({ character, marks, fx }) {
           gateDir.copy(aimFrom(me, gateAt, move.target, false));
           gateAt.addScaledVector(gateDir, GATE.ahead * k);
           move.gate.size(move.level);
+          // (its three layers come together as the lance grows: one circle by the time it is full grown, or as it is thrown)
+          if (move.gate.close) move.gate.close(move.kind === 'charge' ? move.t / CHARGE.grows[CHARGE.grows.length - 1] : 1);
           move.gate.place(gateAt, gateDir, GATE.radius[move.level] * k);
         }
         handAt('R', hand);
@@ -506,7 +532,7 @@ export function createMagicCombo({ character, marks, fx }) {
           if (!move.fired && move.at >= marks.clips[AIR[move.hand]].hit) {
             move.fired = true;
             const from = move.hand === 'R' ? r : l;
-            bolt(from, move.target, v.set(Math.sin(me.heading), -0.3, Math.cos(me.heading)));
+            bolt(from, move.target, v.set(Math.sin(me.heading), -0.3, Math.cos(me.heading)), true);
           }
         } else if (move.phase === 'loop') {
           move.next -= dt;
@@ -534,6 +560,10 @@ export function createMagicCombo({ character, marks, fx }) {
           // the air), a ring over the ground
           const [up, dn] = m.air || [1, 0];
           if (!def.reach && !move.fired) fx.glow('hand', hand, def.glow * k);
+          if (def.reach && move.t > up && !move.swept && fx.cast) {
+            move.swept = true;                                           // (once, as she leaves the ground)
+            fx.cast(1, { hand: hand.clone(), dir: new THREE.Vector3(Math.sin(me.heading), 0, Math.cos(me.heading)), feet: me.pos, heading: me.heading, size: k * 0.8 });
+          }
           if (def.reach && move.t > up && move.t < dn + 0.06) {
             hands.R.getWorldPosition(v); fx.trail('swingR', v);
             hands.L.getWorldPosition(want); fx.trail('swingL', want);
@@ -600,7 +630,7 @@ export function createMagicCombo({ character, marks, fx }) {
           }
           if (!over && (s.far > kd.range * k || (!kd.height && s.pos.y < ground(s.pos.x, s.pos.z) + 0.05))) {
             over = true;
-            if (s.far <= kd.range * k) { fx.burst(s.pos, kd.burst * 0.6 * k, s.name === 'lance'); s.draw.end(true); } else s.draw.end(false);
+            if (s.far <= kd.range * k) { fx.burst(s.pos, kd.burst * 0.6 * k, s.name === 'lance', s.draw.look); s.draw.end(true); } else s.draw.end(false);
           }
         }
         if (over) shots.splice(j, 1);

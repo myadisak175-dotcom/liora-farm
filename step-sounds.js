@@ -67,11 +67,18 @@
 //         taking over from the thud). Into deep water nothing catches her, and she is heard going in as a thing
 //         thrown into water is ("เสียงแบบเราโยนของลงน้ำ เวลาคนตกน้ำอะ อยากได้เสียงแบบนั้น"): from higher than PLUNGE_FROM a
 //         heavy one (plunge), from lower a stone's plop (plop: louder the farther she came down)
-//   - HER COMBO'S FOUR CASTS ("เสียงนี้ ท่าคอมโบปกติ", then "คอมโบปกติอันที่สอง", 22 Nov 2026): the second sound the user
-//     sent for it (a swing into a round low blow, its top 0.16 s in), one take for all four, a little different for each (CAST_RATE, CAST_GAIN: the turn's cut lower, the
-//     finisher lower and louder), begun so that its blow comes as the cast leaves her hand (its attack, found as it is
-//     decoded: where it first reaches half its loudest). Not the leap, the roll or the rising cast: those as they were
-//     (silent). A file of its own beside the pack (ALONE: cast)
+//   - HER COMBO'S FOUR CASTS ("เอาเสียงตั้งแต่วินาทีที่สี่เป็นต้นไป มาปรับใช้กับสกิลโจมตีคอมโบปรกติ", 22 Nov 2026): the
+//     sound of the clip of four water casts the user sent, from its fourth second on, which is two sounds: a swing that
+//     swells into a splashing blow, and the finisher's (a tick, a rising charge, a big low burst with a long tail). The
+//     two swipes are the first with only the end of its swing (cast), the turn the same with all of it (turn: its cast
+//     is later), the finisher the second from its charge (finish: the charge as her hands gather, the burst as they
+//     thrust out). Each begun so that its blow comes as the cast leaves her hand (its attack, found as it is decoded:
+//     where it first reaches half its loudest); the swipes a little higher than it was, the second higher still
+//     (CAST_RATE, CAST_GAIN). Not the leap, the roll or the rising cast: those as they were (silent). Files
+//     of their own beside the pack (ALONE: cast, turn, finish; without turn or finish, cast for them, as before). The
+//     sounds before: Fantasy_action_RPG_w_3, and Professional_stylize_1 before it (the history). In the game since 23 Nov
+//     2026, with the water casts themselves ("เอาขึ้นเมนหลักเลยค่ะ", of their trial page): until then the game had
+//     one take for all four, "คอมโบปกติอันที่สอง" (cast-1.mp3)
 //   - HER HELD CAST, THE LANCE (22 Nov 2026): the sound of the clip its look was asked after, where the circle is there
 //     and where the lance goes, not its end ("ตอนวงเวท กับตอนพุ่ง… ช่วงท้ายๆ ไม่เอา"). As she takes the lance and its circle
 //     opens: the clip's first two seconds, a soft shimmer that swells twice (gate). As she lets it go: the clip's blast, a
@@ -183,12 +190,13 @@ const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming 
 const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 // her jumps' whoosh, and the wind past her as she flies (above)
-const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['cast-1.mp3'], gate: ['gate-1.mp3'], throw: ['throw-1.mp3'], jump: ['jump-1.mp3'], air: ['air-1.mp3', 'air-2.mp3'], launch: ['launch-1.mp3'] };      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
+const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['swipe-1.mp3'], turn: ['turn-1.mp3'], finish: ['finish-1.mp3'], gate: ['gate-1.mp3'], throw: ['throw-1.mp3'], jump: ['jump-1.mp3'], air: ['air-1.mp3', 'air-2.mp3'], launch: ['launch-1.mp3'] };      // (cast: the swipes' own, swipe-1; cast-1, the casts' sound before it, is still in the folder, not asked for)      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
 const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
 const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
 // her combo's casts (above): how loud (the take is levelled 2 dB over her dress's swish) and how high, the 1st .. 4th
 const CAST = 1.0;                              // (it was 0.8: 2 dB up, to stand out of her steps)
-const CAST_RATE = { 1: 1.0, 2: 1.07, 3: 0.94, 4: 0.86 }, CAST_GAIN = { 1: 1.0, 2: 0.95, 3: 1.05, 4: 1.3 };
+const CAST_RATE = { 1: 1.05, 2: 1.12, 3: 1.0, 4: 1.0 }, CAST_GAIN = { 1: 0.95, 2: 0.9, 3: 1.05, 4: 1.2 };
+const CAST_FILE = { 1: 'cast', 2: 'cast', 3: 'turn', 4: 'finish' };      // which of her sounds is each cast's (above)
 // her held cast (above): its circle's shimmer and its blast, how loud (the takes are levelled as the clip has them: the
 // blast some 4 dB over a cast by ear, the shimmer 3 dB under one); the shimmer dies away so fast under the blast, and
 // when the lance is given up (s)
@@ -209,7 +217,7 @@ const ROOM_LENGTH = 1.4, ROOM_DECAY = 1.1, ROOM_PRE = 0.018;      // s: the room
 const ROOM_LOW = 250;                          // Hz: under this nothing goes into it (else muddy)
 const ROOM = 1.0;                              // all of the room, against what goes into it
 const SPACE = {                                // how much of each sound goes into the room (any other: SPACE_REST)
-  circle: 0.45, glint: 0.45, cast: 0.35,       // her magic, her casts: the most
+  circle: 0.45, glint: 0.45, cast: 0.35, turn: 0.35, finish: 0.35,      // her magic, her casts: the most
   jump: 0.4, air: 0.4, launch: 0.4,            // (the jump's bursts after the second clip: off the ground, in the air, its last)
   gate: 0.4, throw: 0.3,                       // (the lance's circle and its blast: the clip's own sound has a room in it already)
   whoosh: 0.15, swish: 0.1, flutter: 0.1, gust: 0.1, settle: 0.08, land: 0.08, thump: 0.08,
@@ -522,10 +530,11 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     cast(n = 1, hit = 0) {
       stats.casts++;
       if (!ready()) return;
-      const i = pickAlone('cast');
+      const own = CAST_FILE[n] && alone[CAST_FILE[n]] && alone[CAST_FILE[n]].length ? CAST_FILE[n] : 'cast';
+      const i = pickAlone(own);
       if (i < 0) return;
-      const rate = about(CAST_RATE[n] || 1), attack = aloneAttack.cast[i] / rate;
-      playAlone('cast', CAST * (CAST_GAIN[n] || 1) * vary(), rate, i, ctx.currentTime + hit - attack - lag(), CAST_PAN[n] || 0);
+      const rate = about(CAST_RATE[n] || 1), attack = aloneAttack[own][i] / rate;
+      playAlone(own, CAST * (CAST_GAIN[n] || 1) * vary(), rate, i, ctx.currentTime + hit - attack - lag(), CAST_PAN[n] || 0);
     },
 
     // her held cast, the lance. 'open': its circle opens before her: the shimmer. 'throw': it is let go: the blast, begun

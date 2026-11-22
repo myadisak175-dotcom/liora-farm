@@ -1,4 +1,4 @@
-// combo-water-trial/water-casts.js: what is in the water casts' pictures (water-jet.webp, water-sweep.webp,
+// assets/water-casts/water-casts.js: what is in the water casts' pictures (water-jet.webp, water-sweep.webp,
 // water-orbit.webp, water-vortex.webp; water-bolt.webp, water-hit.webp, water-blade.webp), for magic-combo-fx.js. MADE by
 // tools/make-water-casts.py: not written by hand.
 //   size: the picture's (pixels); grid: the squares of a frame, across and down (a square: 14 pixels; its tile in the
