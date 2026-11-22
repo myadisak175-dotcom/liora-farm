@@ -20,6 +20,14 @@
   sharp, and shown one whole frame at a time (they were a quarter of the clip's size, and always two frames mixed).
   water-jet/-sweep/-orbit/-vortex.webp and water-casts.js, made by tools/make-water-casts.py (which says how);
   drawn by magic-combo-fx.js (WATER_CASTS). 5 MB to fetch in all (they were 0.7), 27 MB held (they were 16).
+  Then all of the four casts the clip's own ("ลูกบอลน้ำไม่เอาอันเก่าแล้ว effect ใช้ชุดใหม่ให้หมด", "บอลน้ำทิศเบี้ยว",
+  "อันไหนใช้ไม่ได้ก็วาดใหม่ ... วาดใหม่บาง sprite", seen on a phone and on the pictures): the game's own orb, its burst, the glow at her hand,
+  the ribbons and the drops are gone from them. What a cast throws is the clip's bolt of water (water-bolt.webp:
+  taken out of the jet's picture, it flies where the game throws it, straight at its target, turned the way it
+  goes); where it lands is the clip's splash (water-hit.webp); the turn's wave is not seen (what it hits splashes).
+  And the clip's girl, who stood before the turn's burst and the finisher's whirl (a hole her shape in them, and where
+  their flash lit her a small pale girl in their middle), is out of them whole, and the casts are drawn again where
+  she was, from themselves: a burst's rays run on in to their point, the whirl winds on in to its eye (the tool's HER).
   The game and magic-combo.html are as they were. This folder holds the page and its own copies of the three modules
   that change (magic-combo-fx.js: the look; magic-combo.js: the look set as a move begins, fx.cast as a cast leaves her
   hand; step-sounds.js: the four casts' own sounds, reading the game's audio folder one up); everything else is the
@@ -120,8 +128,8 @@ import { CHARACTER_ANIM } from '../character-anim.js';
 import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
 import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from '../magic-combo-anim.js';
-import { createMagicCombo } from './magic-combo.js?v=1';
-import { createMagicComboFx } from './magic-combo-fx.js?v=3';
+import { createMagicCombo } from './magic-combo.js?v=2';
+import { createMagicComboFx } from './magic-combo-fx.js?v=4';
 import { createStepSounds } from './step-sounds.js?v=1';
 import { CHARACTER_ANIM as JUMP_ANIM } from '../magic-jump-mocap-anim.js';
 import { createMagicCircles } from '../magic-circle-fx.js';

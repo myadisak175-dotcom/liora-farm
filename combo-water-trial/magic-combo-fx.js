@@ -35,15 +35,17 @@
                                       up from `feet`, where she stands: a place in the world, or none), petals and
                                       stars are thrown out of it; and it breaks up
        gate.end()                     nothing is thrown after all: it breaks up
-     fx.burst(at, size, look)         where one lands: a flash, a ring going out, gold sparks (look 'water': a splash of
-                                      water instead, spiky, and drops of it; look: as fx.look, the one now if not given)
+     fx.burst(at, size, look)         where one lands: a flash, a ring going out, gold sparks (look 'water': the clip's
+                                      splash of water instead, WATER_HIT; look: as fx.look, the one now if not given)
      fx.ring(at, radius)              a ring of light going out over the ground from `at` to `radius` (she lands a leap)
      fx.motes(at, n, from)            n gold sparks drawn in to `at` from `from` m away (light being gathered)
      fx.look(name)                    what is drawn from now on looks so: 'sky' (sky blue with gold, as it always was) or
                                       'water' (her four tapped casts: the clip the user sent of a girl's four water casts,
-                                      "Vfx ทำแบบในวีดีโอได้ยิ่งดี", 22 Nov 2026: aqua water, drops, no gold). Glows, ribbons,
-                                      what is thrown and its burst take the look there is as they are made (a shot keeps
-                                      its own: shot.look). The lance and its circle are always 'sky'
+                                      "Vfx ทำแบบในวีดีโอได้ยิ่งดี", 22 Nov 2026: all of it the clip's own pictures, WATER_CASTS,
+                                      WATER_BOLT, WATER_HIT: no glow at her hand, no ribbon, what is thrown the clip's
+                                      bolt, where it lands the clip's splash; the turn's wave is not seen). What is
+                                      thrown and its burst take the look there is as they are made (a shot keeps its
+                                      own: shot.look). The lance and its circle are always 'sky'
      fx.cast(n, { hand, dir, feet, size })  play the water release at the strike marker. The first cast starts
                                       at the palm, the sweep and turn wrap her body, the vortex opens ahead of her.
      fx.update(dt, camera)            every frame
@@ -58,11 +60,11 @@
    shader. The gate: one square, all of it drawn by its shader (as magic-circle-fx.js draws the jump's circles, and by
    its rules for a phone's GPU: every line always drawn and then masked, nothing that can be NaN, the result kept
    between 0 and 1). Few of anything: 8 orbs, 4 waves, 3 lances (2 bands of wind and a beam each), 8 bands of the
-   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 224 sparks (and drops), 96 petals at most. Each water cast: one square with
-   its frames' picture on it (WATER_CASTS), and drops thrown in the world.
+   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 224 sparks, 96 petals at most. Each water cast: one square with its
+   frames' picture on it (WATER_CASTS); 6 bolts and 6 splashes of water, a square each (WATER_BOLT, WATER_HIT).
    ========================================================================== */
 import * as THREE from 'three';
-import { WATER_SHEETS } from './water-casts.js?v=3';
+import { WATER_SHEETS, BOLT_WAY } from './water-casts.js?v=4';
 
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -90,6 +92,18 @@ const WATER_CASTS = [
 // draws (as it does at its own pace); slowed (the page's ½ and ¼), the end of each frame is mixed into the next, over
 // so much of it at most
 const CAST_MIX = { whole: 0.4, most: 0.6 };
+// What her water casts throw and where that lands: the clip's own too ("ลูกบอลน้ำไม่เอาอันเก่าแล้ว effect ใช้ชุดใหม่ให้หมด",
+// 22 Nov 2026, of the game's own orb, which the casts still threw, and of its burst, its glow at her hand, its ribbons
+// and its drops: all of those are gone from the four casts). The first cast's bolt of water (water-bolt.webp: it is
+// no longer in the jet's picture, it flies where the game throws it, turned the way it goes) and the splash where it
+// lands on the boss (water-hit.webp).
+//   WATER_BOLT: long, big: m long (a cast's; the finisher's); fps: its frames a second, round and round; born: s it
+//               takes to come out of her hand; gone: s it takes to go when it runs out (landing, it is gone at once)
+//   WATER_HIT:  reach, most: it reaches so many times the burst asked for (as the splash before it), so many m at
+//               most; life, more: s it lasts, and more for each m it reaches; fade: the last part of that it goes in;
+//               near: m it is drawn before where it is (so that what was hit does not cut it in two)
+const WATER_BOLT = { long: 0.7, big: 1.5, fps: 24, born: 0.05, gone: 0.1 };
+const WATER_HIT = { reach: 1.3, most: 1.5, life: 0.4, more: 0.1, fade: 0.3, near: 0.45 };
 
 const SHOTS = {
   orb: { size: 0.34, ribbon: 0.13, shed: 1.1 },          // the orb's own radius is about a third of its square's (m)
@@ -649,41 +663,48 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   // One square is drawn, only as big as the frame's water; the picture is read twice for each frame shown (the map
   // exactly, by texelFetch; then the tile).
   const loader = new THREE.TextureLoader();
-  const casts = WATER_CASTS.map(def => {
-    const sheet = WATER_SHEETS[def.asset];
-    const atlas = loader.load(new URL(`./water-${def.asset}.webp?v=3`, import.meta.url).href);
-    atlas.format = THREE.RGFormat; atlas.colorSpace = THREE.NoColorSpace;
-    atlas.minFilter = atlas.magFilter = THREE.LinearFilter;
-    atlas.generateMipmaps = false; atlas.flipY = false; atlas.premultiplyAlpha = false;
+  const atlases = {};
+  function tiles(name) {
+    const sheet = WATER_SHEETS[name];
+    let atlas = atlases[name];
+    if (!atlas) {
+      atlas = atlases[name] = loader.load(new URL(`./water-${name}.webp?v=4`, import.meta.url).href);
+      atlas.format = THREE.RGFormat; atlas.colorSpace = THREE.NoColorSpace;
+      atlas.minFilter = atlas.magFilter = THREE.LinearFilter;
+      atlas.generateMipmaps = false; atlas.flipY = false; atlas.premultiplyAlpha = false;
+    }
     const uniforms = {
       uAtlas: { value: atlas }, uTexel: { value: new THREE.Vector2(1 / sheet.size[0], 1 / sheet.size[1]) },
       uGrid: { value: new THREE.Vector2(sheet.grid[0] - 1, sheet.grid[1] - 1) },
       uMapA: { value: new THREE.Vector2() }, uMapB: { value: new THREE.Vector2() }, uMix: { value: 0 },
       uBox: { value: new THREE.Vector4() }, uOrigin: { value: new THREE.Vector2(sheet.origin[0], sheet.origin[1]) },
       uCell: { value: sheet.cell }, uHalf: { value: sheet.half }, uScale: { value: 1 }, uWrap: { value: 0 }, uMirror: { value: 1 },
+      uSpin: { value: new THREE.Vector2(1, 0) }, uNear: { value: 0 }, uK: { value: 1 },
     };
     sheet.ramp.forEach((c, i) => { uniforms['uR' + i] = { value: new THREE.Vector3(c[0], c[1], c[2]) }; });
     const mat = material({
       uniforms, transparent: true,
+      side: THREE.DoubleSide,                                              // (mirrored, its square is turned over)
       vertexShader: /* glsl */`
         uniform vec4 uBox;                                                 // the squares with water in them: x0, y0, x1, y1
-        uniform vec2 uOrigin;
-        uniform float uCell, uHalf, uScale, uWrap, uMirror;
+        uniform vec2 uOrigin, uSpin;
+        uniform float uCell, uHalf, uScale, uWrap, uMirror, uNear;
         varying vec2 vCell;
         void main() {
           vec2 t = position.xy * 0.5 + 0.5;
           vCell = vec2(mix(uBox.x, uBox.z, t.x), mix(uBox.w, uBox.y, t.y));       // (squares are counted down the frame)
-          vec2 m = uOrigin + vec2(vCell.x, -vCell.y) * uCell;              // m from where the cast is put: to the right, up
+          vec2 m = uOrigin + vec2(vCell.x, -vCell.y) * uCell;              // from where it is put: to the right, up
+          m = vec2(m.x * uSpin.x - m.y * uSpin.y, m.x * uSpin.y + m.y * uSpin.x);      // (turned about that point: a bolt, a splash)
           vec4 mv = modelViewMatrix * vec4(0., 0., 0., 1.);
           mv.xy += vec2(m.x * uMirror, m.y) * uScale;
           // The lower lip passes in front of Vivi while the high rim goes behind her.
-          mv.z -= m.y / uHalf * uWrap;
+          mv.z += uNear - m.y / uHalf * uWrap;
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */`
         uniform sampler2D uAtlas;
         uniform vec2 uTexel, uGrid, uMapA, uMapB;
-        uniform float uMix;
+        uniform float uMix, uK;
         uniform vec3 uR0, uR1, uR2, uR3, uR4, uR5, uR6, uR7;
         varying vec2 vCell;
         // the water's colour at a lightness: the ramp's eight colours, 0.08 apart from 0.44; darker below
@@ -709,11 +730,22 @@ export function createMagicComboFx({ seed = 7 } = {}) {
           vec2 cell = clamp(floor(vCell), vec2(0.0), uGrid), f = clamp(vCell - cell, 0.0, 1.0);
           vec4 c = frame(uMapA, cell, f);
           if (uMix > 0.0) c = mix(c, frame(uMapB, cell, f), uMix);        // (slowed only: the next frame coming in)
-          gl_FragColor = clamp(c, 0.0, 1.0);
+          gl_FragColor = clamp(c, 0.0, 1.0) * uK;
         }`
     });
-    return { def, sheet, atlas, mesh: put(square, mat), uniforms, age: 0, direction: new THREE.Vector3() };
-  });
+    return { sheet, atlas, mesh: put(square, mat), uniforms, age: 0 };
+  }
+  // one frame of a picture shown, whole
+  function still(p, i) {
+    const f = p.sheet.frames[i], u = p.uniforms;
+    u.uMapA.value.set(f[0], f[1]); u.uMapB.value.set(f[0], f[1]); u.uMix.value = 0;
+    u.uBox.value.set(f[2], f[3], f[4], f[5]);
+  }
+  const casts = WATER_CASTS.map(def => ({ ...tiles(def.asset), def, direction: new THREE.Vector3() }));
+  // what the casts throw, and where it lands: a few of each at once
+  const bolts = Array.from({ length: 6 }, () => ({ ...tiles('bolt'), live: false, k: 1, turn: 0, dir: new THREE.Vector3(0, 0, 1) }));
+  const splashes = Array.from({ length: 6 }, () => ({ ...tiles('hit'), life: 0.4 }));
+  for (const h of splashes) h.uniforms.uNear.value = WATER_HIT.near;
 
   const tmp = new THREE.Vector3(), side = new THREE.Vector3(), tan = new THREE.Vector3(), toCam = new THREE.Vector3();
   const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), basis = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
@@ -841,12 +873,14 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   const fx = {
     object,
     glow(key, at, size) {
+      if (look === 'water') return;                                       // (her water casts: the clip's own, nothing of this)
       let g = glows.get(key);
       if (!g) { g = { mesh: put(square, orbMat()), seen: false, k: 0, size: 0 }; glows.set(key, g); }
       g.mesh.position.copy(at); g.seen = true; g.size = size;
       if (g.look !== look) { g.look = look; paint(g.mesh.material, look); }
     },
     trail(key, at) {
+      if (look === 'water') return;
       let r = ribbons.find(o => o.used && o.key === key);
       if (!r) { r = takeRibbon(0.07, 0.16, key); paint(r.mesh.material, look); }
       r.seen = true;
@@ -885,6 +919,21 @@ export function createMagicComboFx({ seed = 7 } = {}) {
             while (far >= l.starAt) { shed(l, l.starAt, false); l.starAt += SHED.star * (1 + rand()); }
           },
           end() { l.live = false; l.tip.live = false; if (l.ribbon) l.ribbon.used = false; },
+        };
+      }
+      if (look === 'water') {
+        // her water casts: the clip's bolt for what is thrown (the finisher's bigger); the turn's wave is not seen at
+        // all (the clip has none: its rings are round her, and what the wave hits splashes)
+        if (def.wide) return { look, place() {}, end() {} };
+        const b = bolts.find(o => !o.live && !o.mesh.visible) || bolts.reduce((m, o) => (o.age > m.age ? o : m));
+        b.live = true; b.age = 0; b.k = 1; b.mesh.visible = false;
+        b.uniforms.uScale.value = def === SHOTS.big ? WATER_BOLT.big : WATER_BOLT.long;
+        b.uniforms.uK.value = 0;
+        still(b, 0);
+        return {
+          look,
+          place(at, dir) { b.mesh.position.copy(at); b.dir.copy(dir); b.mesh.visible = true; },
+          end(hit) { b.live = false; if (hit) b.mesh.visible = false; },
         };
       }
       if (def.wide) {
@@ -932,6 +981,17 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       };
     },
     burst(at, size = 0.7, lk = look) {
+      if (lk === 'water') {
+        // her water casts: the clip's splash, turned and mirrored a little differently each time
+        const h = splashes.find(o => !o.mesh.visible) || splashes.reduce((m, o) => (o.age > m.age ? o : m));
+        const reach = Math.min(size * WATER_HIT.reach, WATER_HIT.most), turn = (rand() - 0.5) * 1.2;
+        h.age = 0; h.life = WATER_HIT.life + WATER_HIT.more * reach;
+        h.mesh.position.copy(at); h.mesh.visible = true;
+        h.uniforms.uScale.value = reach; h.uniforms.uMirror.value = rand() < 0.5 ? -1 : 1; h.uniforms.uK.value = 1;
+        h.uniforms.uSpin.value.set(Math.cos(turn), Math.sin(turn));
+        still(h, 0);
+        return;
+      }
       const b = bursts.find(o => o.t >= 1) || bursts.reduce((m, o) => (o.t > m.t ? o : m)), water = lk === 'water';
       if (water) size = Math.min(size * 1.3, 1.5);                         // (a splash, as big as the clip's; the finisher's no bigger than her)
       b.t = 0; b.life = (0.24 + 0.1 * Math.min(1.5, size)) * (water ? 1.35 : 1);
@@ -964,7 +1024,6 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       uniforms.uWrap.value = def.wrap * size;
       show(cast, 0);
       mesh.visible = true;
-      scatter(mesh.position, [5, 9, 12, 20][n], (1.2 + n * 0.28) * size, 0.08 * size, true);
     },
     gate() {
       const g = gates.find(o => !o.mesh.visible) || gates[0];
@@ -1065,6 +1124,28 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         toCam.subVectors(camera.position, cast.mesh.position);
         cast.uniforms.uMirror.value = toCam.dot(cast.direction) > 0 ? -1 : 1;
       }
+      // the water casts' bolts: turned the way they go as the camera sees it (going straight at it or away, as they
+      // were); out of her hand in a moment; run out, gone in a moment
+      for (const b of bolts) {
+        if (!b.mesh.visible) { if (!b.live) b.age += dt; continue; }
+        b.age += dt;
+        if (!b.live) { b.k -= dt / WATER_BOLT.gone; if (b.k <= 0) { b.mesh.visible = false; continue; } }
+        tmp.copy(b.dir).transformDirection(camera.matrixWorldInverse);
+        if (Math.hypot(tmp.x, tmp.y) > 0.06) b.turn = Math.atan2(tmp.y, tmp.x) - BOLT_WAY;
+        b.uniforms.uSpin.value.set(Math.cos(b.turn), Math.sin(b.turn));
+        b.uniforms.uK.value = Math.max(0, b.k) * Math.min(1, b.age / WATER_BOLT.born);
+        still(b, Math.floor(b.age * WATER_BOLT.fps) % b.sheet.frames.length);
+      }
+      // ... and their splashes: once through, going at the end
+      for (const h of splashes) {
+        if (!h.mesh.visible) { h.age += dt; continue; }
+        h.age += dt;
+        const u = h.age / h.life, n = h.sheet.frames.length;
+        if (u >= 1) { h.mesh.visible = false; continue; }
+        const k = clamp((u - (1 - WATER_HIT.fade)) / WATER_HIT.fade, 0, 1);
+        h.uniforms.uK.value = 1 - k * k * (3 - 2 * k);
+        still(h, Math.min(n - 1, Math.floor(u * n)));
+      }
       // rings over the ground
       for (const r of rings) {
         if (r.t >= 1) continue;
@@ -1146,7 +1227,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     },
     dispose() {
       square.dispose(); waveGeo.dispose(); sGeo.dispose(); pGeo.dispose(); flat.dispose();
-      for (const cast of casts) cast.atlas.dispose();
+      for (const name in atlases) atlases[name].dispose();
       for (const r of ribbons) r.mesh.geometry.dispose();
       for (const l of lances) { l.mesh.geometry.dispose(); l.shaft.mesh.geometry.dispose(); for (const w of l.wind) w.mesh.geometry.dispose(); }
       for (const b of bands) b.mesh.geometry.dispose();

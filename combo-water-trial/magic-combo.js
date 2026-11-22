@@ -71,8 +71,10 @@
        feet are under her again, is the rising cast: a standing wave along the ground that throws what it hits up.
      - The roll cuts any move short (what was not yet cast is lost).
      - How it is drawn: her four tapped casts as the clip of water casts the user sent (22 Nov 2026), fx.look('water')
-       and fx.cast(n, …) as each leaves her hand (needles, a crescent, rings round her, the finisher's whirl); all the
-       rest as before, fx.look('sky'). What is thrown keeps its look to its burst (shot.draw.look).
+       and fx.cast(n, …) as each leaves her hand (needles, a crescent, rings round her, the finisher's whirl); what
+       they throw is the clip's bolt of water, straight at its target, and where it lands the clip's splash (the
+       turn's wave is not seen: what it hits splashes); all the rest as before, fx.look('sky'). What is thrown keeps
+       its look to its burst (shot.draw.look).
    Lengths are for a 1.75 m character and go with her size.
    ========================================================================== */
 import * as THREE from 'three';
@@ -265,8 +267,10 @@ export function createMagicCombo({ character, marks, fx }) {
         from.copy(gateAt).addScaledVector(dir, Math.min(0, v.copy(from).sub(gateAt).dot(dir)));
         move.gate.fire(me.pos); move.gate = null;
       }
-    } else if (kind.steer && handKnown && handVel.lengthSq() > 4) {
-      // an orb leaves her hand the way her hand was going, and curves in
+    } else if (kind.steer && handKnown && handVel.lengthSq() > 4 && !HITS.includes(def)) {
+      // an orb leaves her hand the way her hand was going, and curves in. (Not the four water casts' bolt: it is long,
+      // drawn the way it goes, and going off to one side first it looked thrown askew, "บอลน้ำทิศเบี้ยว": it goes
+      // straight at what she casts at)
       dir.addScaledVector(v.copy(handVel).normalize(), 0.55).normalize();
     }
     shots.push({ kind, power, name: def.shot, pos: from, dir, aim: aim.clone(), target: kind.steer ? target : null, far: 0, done: new Set(), draw: draw || fx.shot(def.shot) });
