@@ -111,9 +111,10 @@ import { createSprings } from './character-springs.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { createPlayerInput } from './player-input.js';
 import { createFollowCamera } from './player-camera.js';
-import { createMagicCircles } from './magic-circle-fx.js?v=4';      // (?v: a phone's cache gets this one)
+import { createMagicCircles } from './magic-circle-fx.js?v=5';      // (?v: a phone's cache gets this one)
 import { createMagicJump } from './magic-jump.js?v=5';
 import { createCameraFeel } from './camera-feel.js';
+import { createStepSounds } from './step-sounds.js?v=14';      // (?v: as the game's import map names it)
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const MOCAP = new URLSearchParams(location.search).get('mocap') !== '0';      // (as the game has it; ?mocap=0: the jump before it)
@@ -229,6 +230,11 @@ const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), he
 const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, air = null, springs = null;
 let speed = 0, landT = -1, landHold = 0, jumpWanted = 0, demo = null, slow = 1, airBase = 0, aimS = 0, vyWas = 0;
+// her jumps heard, as in the game (step-sounds.js; since the second clip's circles and sounds were to be tried here, 22 Nov
+// 2026): the circle under her as it opens (with the clip's sound, all there is of a jump), and her landing. lifting: her
+// take-off's crouch is not over yet; circled: she stands on a circle in the air
+const sounds = createStepSounds();
+let lifting = false, circled = false;
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
 const input = createPlayerInput({
@@ -318,7 +324,10 @@ function step(dt) {
     const g = standAt(me.pos.x, me.pos.z, me.pos.y);
     if (g < me.pos.y - STEP) { air.drop(me); airBase = me.pos.y; landT = -1; }            // walked off a rock's top
     else me.pos.y += (g - me.pos.y) * Math.min(1, dt * 18);
-    if (!air.active && jumpWanted > 0) { jumpWanted = 0; air.takeOff(me); airBase = me.pos.y; landT = -1; }
+    if (!air.active && jumpWanted > 0) {
+      jumpWanted = 0; air.takeOff(me); airBase = me.pos.y; landT = -1;
+      sounds.circle(me.pos.x, me.pos.z, me.pos.y, { n: 1 }); lifting = true; circled = false;      // (heard: the circle opening under her)
+    }
   } else {
     tmp.set(me.pos.x + me.vel.x * dt, 0, me.pos.z + me.vel.z * dt);
     collide(tmp);
@@ -328,10 +337,18 @@ function step(dt) {
     const g = standAt(me.pos.x, me.pos.z, me.pos.y);
     // the demo presses at the top of each jump
     if (demo && air.tier < 4 && air.debug.wind < 0 && air.debug.vy < 0.4 * k && air.debug.t > 0.15) air.press(me, stick);
-    if (air.step(dt, me, stick, g) === 'landed') {
+    const jumps = air.tier, landed = air.step(dt, me, stick, g) === 'landed';
+    // heard, as the game has it (player-moves.js): her feet leaving the ground; a kick off a circle in the air; a circle
+    // opening under her in the air
+    if (lifting && !air.crouching) { lifting = false; sounds.leap(me.pos.x, me.pos.z, me.pos.y, { n: 1 }); }
+    else if (air.tier > jumps) sounds.leap(me.pos.x, me.pos.z, me.pos.y, { n: air.tier });
+    if (air.onCircle && !circled) sounds.circle(me.pos.x, me.pos.z, me.pos.y, { n: air.tier + 1 });
+    circled = air.onCircle;
+    if (landed) {
       // down: the harder she lands, the more of her pace her legs take up and the longer before she is off again
       landT = 0; speed = Math.hypot(me.vel.x, me.vel.z) * (1 - 0.4 * air.impact); landHold = air.landing.hold;
       if (FEEL) feel.land(air.impact, Math.max(0, air.debug.peak - me.pos.y) / k);
+      sounds.land(me.pos.x, me.pos.z, me.pos.y, { hit: air.impact, height: Math.max(0, air.debug.peak - me.pos.y) / k });      // (heard: both feet down, as in the game)
       if (demo) { demo = null; speed = 0; }
     }
   }
@@ -394,12 +411,13 @@ function draw() {
 
 // ---- the buttons
 const btn = id => document.getElementById(id);
-let lookName = 'rose';
-const LIT = { rose: '#ff76a0', water: '#6fcbff', red: '#ff4a3a' };
-const LOOKS = { rose: '🎨 สีชมพู', water: '🎨 สีฟ้า (น้ำ)', red: '🎨 สีแดง (DMC)' };
-document.documentElement.style.setProperty('--lit', LIT.rose);
+let lookName = 'flight';
+const LIT = { flight: '#5fe6f2', rose: '#ff76a0', water: '#6fcbff', red: '#ff4a3a' };
+const LOOKS = { flight: '🎨 ไล่สีตามชั้น', rose: '🎨 สีชมพู', water: '🎨 สีฟ้า (น้ำ)', red: '🎨 สีแดง (DMC)' };
+document.documentElement.style.setProperty('--lit', LIT[lookName]);
+btn('look').textContent = LOOKS[lookName];
 btn('look').onclick = () => {
-  lookName = { rose: 'water', water: 'red', red: 'rose' }[lookName];
+  lookName = { flight: 'rose', rose: 'water', water: 'red', red: 'flight' }[lookName];
   circles.setLook(lookName);
   btn('look').textContent = LOOKS[lookName];
   document.documentElement.style.setProperty('--lit', LIT[lookName]);
@@ -471,7 +489,8 @@ window.magicTrial = {
   press(dirX = 0, dirZ = 0, amount = 0) { stick.x = dirX; stick.z = dirZ; stick.amount = amount; if (air.active) return air.press(me, stick); jumpWanted = 0.15; return true; },
   look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); feel.reset(); },
   night(on) { if (on !== night) btn('hour').onclick(); },
-  colour(name) { for (let i = 0; i < 3 && name !== lookName; i++) btn('look').onclick(); },
+  colour(name) { for (let i = 0; i < 4 && name !== lookName; i++) btn('look').onclick(); },
+  sounds,
   draw,
 };
 

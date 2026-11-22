@@ -89,6 +89,12 @@
 //     here for a while; then two sounds the user sent, one after the other, and then the one she liked best ("เสียงตอนเหยียบ
 //     วงแหวนเวทเอาอันนี้ละดีสุด"): a powerful low burst, there at once, 1 s of it (circle: a file of its own, ALONE). Every
 //     circle of a flight, the caught fall's too. The sparkle (glint) is still in the pack: with no circle file, it is heard
+//     Then a second clip, of a girl jumping off magic circles, whose sound was wanted with its look (22 Nov 2026): its
+//     own sound for every jump of a flight, cut to ours ("ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"): see JUMP_OFF,
+//     below. The circle's own sound is the caught fall's still, and a flight's where the clip's files are not there.
+//     And with the clip's sound a jump is that alone ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา"; asked what
+//     goes: the whoosh, her dress as she kicks, the gust, her push off the ground: the layers above; her landing stays,
+//     and the wind past her as she flies: "เก็บเสียงลมไว้ทุกตอน")
 // No take twice running (but the sparkle, above), each a little louder or softer and a little higher or lower than the
 // last, louder the faster she goes. A set with no takes is not heard, and nothing else changes.
 //
@@ -146,6 +152,17 @@ const CIRCLE = 0.85, CIRCLE_GROUND = 0.55;     // a circle under her foot, the s
                                                // (Its take is low, levelled as the thump is: by ear 4 dB over the sparkle's, 9 dB under a cast)
 const GLINT = 0.6, GLINT_GROUND = 0.4;         // a circle opening under her, its sparkle (only when there is no circle file): in the air (as loud as it was when it was heard
                                                // over the droplet, and asked back); on the ground (her push is what is heard)
+// the magic jump after a second clip (22 Nov 2026: "มีเสียง effect กับ vfx วงเวทย์ตอนกระโดด น่าเอามาปรับใช้กับของเรา"; asked
+// which of its sounds: where she leaves the ground and where she is thrown highest, the circles in the air between
+// keeping their own, since the clip's there ring like a bell; then, the two heard beside the circle's own: the clip's
+// for every jump, "ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"). In place of the circle's own sound, then: off the ground,
+// the clip's burst as the dome of water breaks (jump: its thud as the circle opens, the burst a tenth of a second
+// after, as her feet leave the ground and the dome breaks); off the circles in the air, the clip's bursts there, one to
+// each (air: the 2nd jump's take, the 3rd's; each there within a tenth of a second, as she kicks); the last circle of
+// a flight (the LAST-th jump), the clip's biggest (launch). How loud each, against the circle's own in the air (CIRCLE):
+// the four as loud against each other as the clip has them (launch the loudest; the first 2.6 dB under it, the two
+// in the air 2.9 and 4 dB)
+const JUMP_OFF = 0.93, AIR = [0.9, 0.8], LAUNCH = 1.0, LAST = 4;
 const LADDER = [-2, -1, 0, 1, 2];              // semitones from the take as it is: the 1st, 2nd, 3rd, 4th (5th) circle of a flight
 const KICK = { 2: 'swish', 3: 'swish', 4: 'flutter' };      // her dress as she kicks off the n-th circle (the flow's Step 2, her
                                                // turn; Step 3, her legs changing over; Step 4, her flip: magic-jump.js)
@@ -166,7 +183,7 @@ const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming 
 const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 // her jumps' whoosh, and the wind past her as she flies (above)
-const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['cast-1.mp3'], gate: ['gate-1.mp3'], throw: ['throw-1.mp3'] };      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
+const ALONE = { whoosh: ['whoosh-1.mp3'], circle: ['circle-1.mp3'], cast: ['cast-1.mp3'], gate: ['gate-1.mp3'], throw: ['throw-1.mp3'], jump: ['jump-1.mp3'], air: ['air-1.mp3', 'air-2.mp3'], launch: ['launch-1.mp3'] };      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
 const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
 const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
 // her combo's casts (above): how loud (the take is levelled 2 dB over her dress's swish) and how high, the 1st .. 4th
@@ -193,6 +210,7 @@ const ROOM_LOW = 250;                          // Hz: under this nothing goes in
 const ROOM = 1.0;                              // all of the room, against what goes into it
 const SPACE = {                                // how much of each sound goes into the room (any other: SPACE_REST)
   circle: 0.45, glint: 0.45, cast: 0.35,       // her magic, her casts: the most
+  jump: 0.4, air: 0.4, launch: 0.4,            // (the jump's bursts after the second clip: off the ground, in the air, its last)
   gate: 0.4, throw: 0.3,                       // (the lance's circle and its blast: the clip's own sound has a room in it already)
   whoosh: 0.15, swish: 0.1, flutter: 0.1, gust: 0.1, settle: 0.08, land: 0.08, thump: 0.08,
   splash: 0.12, plunge: 0.12, plop: 0.12, stroke: 0.1, wade: 0.08, wetrun: 0.08,
@@ -407,6 +425,12 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       // one take of her circle's sound (the sparkle, with none) for every circle of a flight, a little higher each time; a
       // new flight may have another take
+      // (the second clip's, for every jump: off the ground its burst, in the air a take to each circle, the last circle of
+      // a flight its biggest; without their files, as before)
+      if (n <= 1 && playAlone('jump', JUMP_OFF * FLIGHT * vary(), about(1), undefined, 0, either(CIRCLE_PAN))) { note = -1; circles = n; return; }
+      if (n >= LAST && playAlone('launch', LAUNCH * FLIGHT * vary(), about(1), undefined, 0, either(CIRCLE_PAN))) { circles = n; return; }
+      const take = Math.min(n - 2, AIR.length - 1);
+      if (playAlone('air', AIR[take] * FLIGHT * vary(), about(1), take, 0, either(CIRCLE_PAN))) { circles = n; return; }
       const own = !!(alone.circle && alone.circle.length);
       if (note < 0 || n <= circles) note = own ? pickAlone('circle') : pick('glint');
       circles = n;
@@ -420,6 +444,9 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       if (!ready()) return;
       const now = ctx.currentTime;
       hush(GUST_OVER);
+      // with the second clip's sound for the jump (circle, above), that is all of a jump: none of its layers over it
+      // ("เอาเฉพาะเสียงวงเวทย์อันใหม่ก็พอ เสียงที่เหลือไม่เอา"); without the clip's files, the layers as before
+      if (alone.jump && alone.jump.length) { if (n <= 1) lastAt = now; return; }
       if (playAlone('whoosh', WHOOSH * FLIGHT * vary(), about(WHOOSH_RATE[n] || 1), undefined, 0, either(WHOOSH_PAN))) stats.whooshes++;      // (every jump: softly, with the rest)
       if (n <= 1) {
         // her feet leave the ground: her push off it (a step, harder and lower: none off the water), and the air taking her up

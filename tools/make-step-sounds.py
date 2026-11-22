@@ -227,6 +227,19 @@ ALONE = {
     'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
     'circle': (-27.0, (0.003, 0.45), 1.0, 45, 0.02),      # (a magic circle under her foot: four fifths of it under 200 Hz, so as the thump is: louder by ear and it would clip)
     'cast':   (-24.0, (0.005, 0.3), 1.1, 60, 0.15),      # (her combo's casts: over her dress, as an attack should be)
+    # the magic jump, after a second clip (its circles and their sounds: "น่าเอามาปรับใช้กับของเรา ทั้งเสียงและ vfx", 22 Nov
+    # 2026; asked which sounds: where she leaves the ground and where she is thrown highest, not the circles in the air,
+    # whose sound in the clip rings like a bell; then, the two heard beside the circle's own: the clip's for every jump,
+    # "ใช้เสียงแบบในคลิปเลยดีกว่า เอามาตัดให้เข้ากัน"). Each ends where the clip's next sound begins. jump: the clip's first
+    # burst (0.3 to 1.19 s: a thud, a tenth of a second on a low boom with a splash over it, as the dome of water breaks,
+    # then its ring: the file begins at the thud, the circle opening, so the burst is there as her feet leave the ground
+    # 0.155 s after); air: its bursts off the circles in the air, one take to each (air-1, 1.8 to 2.72 s: a splash, then
+    # its ring; air-2, 2.72 to 3.58 s: a boom under a bell), each beginning as it is there (she kicks off a circle within
+    # 0.08 s of its opening); launch: its biggest (4.5 to 6.2 s: deeper, with a longer tail). A cut with no quiet in it
+    # is given some at its end (ffmpeg's apad), or its ring would be taken for its hiss and cut
+    'jump':   (-25.0, (0.004, 0.25), 0.8, 45, 0.01),
+    'air':    (-25.0, (0.004, 0.3), 0.9, 45, 0.02),
+    'launch': (-23.0, (0.004, 0.5), 1.5, 40, 0.12),
     'gate':   (-27.0, (0.02, 0.15), 2.2, 45, 2.0),       # (the lance's circle as it is drawn: a soft shimmer, under her casts) ...
     'throw':  (-20.0, (0.008, 0.7), 2.3, 30, 0.12),      # (... and the lance let go, a deep boom over them: the two as loud against each other as the clip has them, each within a decibel of the clip's own level)
     # the water combo's trial (combo-water-trial/; the game does not ask for these yet): the two swipes (the swing's last
