@@ -30,7 +30,8 @@
      combo.beat                      what she is doing now (for a label); combo.index: which of the four casts (0..3, -1:
                                      none of them); combo.rising: the rising cast; combo.charge: how grown the held
                                      cast is (0..3; -1: she is not holding one); combo.aiming: she holds the lance or
-                                     is throwing it (a page may bring its camera in over her shoulder)
+                                     is throwing it (a page may bring its camera in over her shoulder); combo.target:
+                                     the thing she holds it at, or none (the camera looks at it)
      combo.hits                      how many casts have landed one after another (0 again 2.5 s after the last)
      combo.held, combo.upside        0..1: how hard her hair and skirt should be held now (the roll, the turns), and how
                                      far she is upside down (for character.holdSprings, as magic-jump.js')
@@ -306,6 +307,7 @@ export function createMagicCombo({ character, marks, fx }) {
     get rising() { return !!move && move.kind === 'hit' && move.def === RISE; },
     get charge() { return move && move.kind === 'charge' ? move.level : -1; },
     get aiming() { return !!move && (move.kind === 'charge' || (move.def === THROW && move.t < move.m.hit + 0.18)); },
+    get target() { return move && (move.kind === 'charge' || move.def === THROW) ? move.target || null : null; },
     // how hard her hair and skirt should be held (0..1), and how far she is upside down (they should not hang by their weight then)
     get held() {
       if (!move) return 0;

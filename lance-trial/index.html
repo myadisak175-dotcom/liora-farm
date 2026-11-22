@@ -9,12 +9,15 @@
   lance-trial/index.html  —  A TRIAL, to be taken away again: the held cast (the lance) with the look and the sound of a
   clip the user sent (22 Nov 2026: a spear of water shot out of a magic circle, made with Gemini; "ใส่แทนอันเดิม", "แบบใน
   คลิปเลย", and its sound; then, shown a film of it, "ขอหน้าทดลอง": a page to try it on before it goes into the game).
+  Tried here, its camera was not liked ("ไม่ชอบมุมกล้องนี้เลย ไม่เห็นมอน": on an upright phone what she aimed at was out
+  of the picture): the camera now looks at what she aims at (AIM_CAM, below).
   The game and magic-combo.html are as they were. This folder holds the page and its own copies of the three modules
-  that change (magic-combo-fx.js: the look; magic-combo.js: the bigger circle, what it tells the sounds; step-sounds.js:
-  the lance heard, reading the game's audio folder one up); everything else is the game's, loaded from one folder up.
-  The lance's two sounds are in assets/audio/ already (gate-1.mp3, throw-1.mp3: the game does not ask for them yet).
-  Liked: the three modules go to the root in place of the game's, with the README's account of it, and this folder goes.
-  Not liked: this folder and the two sounds go.
+  that change (magic-combo-fx.js: the look; magic-combo.js: the bigger circle, what it tells the sounds and the camera;
+  step-sounds.js: the lance heard, reading the game's audio folder one up); everything else is the game's, loaded from
+  one folder up. The lance's two sounds are in assets/audio/ already (gate-1.mp3, throw-1.mp3: the game does not ask
+  for them yet).
+  Liked: the three modules go to the root in place of the game's, with the README's account of it and the camera in
+  player-spells.js, and this folder goes. Not liked: this folder and the two sounds go.
   Below, the page as magic-combo.html has it (with the casts' and the lance's sounds).
 
   magic-combo.html  —  Vivi's magic combo, to try: the attack button pressed four times is four casts, each a different
@@ -111,12 +114,12 @@ import { CHARACTER_ANIM } from '../character-anim.js';
 import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
 import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from '../magic-combo-anim.js';
-import { createMagicCombo } from './magic-combo.js';
-import { createMagicComboFx } from './magic-combo-fx.js';
+import { createMagicCombo } from './magic-combo.js?v=2';
+import { createMagicComboFx } from './magic-combo-fx.js?v=2';
 import { CHARACTER_ANIM as JUMP_ANIM } from '../magic-jump-mocap-anim.js';
 import { createMagicCircles } from '../magic-circle-fx.js';
 import { createMagicJump } from '../magic-jump.js';
-import { createStepSounds } from './step-sounds.js';
+import { createStepSounds } from './step-sounds.js?v=2';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -247,11 +250,17 @@ const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, combo = null, springs = null, air = null;
 let landT = -1, landHold = 0, jumpWanted = 0, airBase = 0, jumpsUsed = 1;      // the magic jump, as magic-jump.html has it
 let speed = 0, slow = 1, demo = null, shake = 0, clock = 0, aimK = 0, aimWas = null;
-// the held cast's camera: in behind her right shoulder, a little to her right of the way she aims and from above, so that
-// the lance goes off across the picture, up and to the right. dist, pitch, yaw: where it goes (m at 1.75 m, radians);
-// side: how far to her right (m at most; of the picture's half width at her, so on an upright phone she stays in it);
-// fov: how much narrower the picture (degrees, more the more the lance has grown)
-const AIM_CAM = { dist: 3.6, pitch: 0.26, yaw: 0.22, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
+// the held cast's camera: behind her on the line from what she aims at through her, above, a little to her right, and
+// LOOKING AT WHAT SHE AIMS AT, so that it is in the middle of the picture, she low and to the left of it, the lance
+// going off up the picture to it. (It looked at her, from further to her right and turned away from her aim, after a
+// picture: on an upright phone what she aimed at was then out of the picture or at its edge: "ไม่ชอบมุมกล้องนี้เลย ไม่
+// เห็นมอน", 22 Nov 2026.) dist, pitch: where it goes (m at 1.75 m, radians); side: how far to her right (m at most;
+// across: of the picture's half width at her, so on an upright phone she stays in it); far: with nothing to aim at, she
+// aims so far ahead of her (m); look, most: where it looks: on the line from her shoulders to what she aims at, so much
+// of the way, and no further from her than `most` m (so that she is in the picture however far it is); fov: how much
+// narrower the picture (degrees, more the more the lance has grown)
+const AIM_CAM = { dist: 4.8, pitch: 0.38, side: 1.6, across: 0.5, far: 9, look: 0.7, most: 4.6, fov: 6, in: 5, out: 3.5 };
+const aimTo = new THREE.Vector3(), aimAt = new THREE.Vector3(), aimLook = new THREE.Vector3();      // what she aims at; the same, followed softly; where the camera looks
 const FOV = 55;
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
@@ -426,13 +435,18 @@ function step(dt) {
   hero.updateSprings(dt);
   grass.userData.setWalker(me.pos, 0.55);
   stepDummies(dt);
-  // ---- the camera. Holding the lance, it comes in behind her the way she aims, low, over her right shoulder (she is to
-  // the left of the picture, the lance and what she aims at in its middle); thrown, it goes back to where it was
+  // ---- the camera. Holding the lance, it comes in behind her on the line from what she aims at, above, a little to her
+  // right, and looks at what she aims at (she is low and to the left of the picture, what she aims at in its middle);
+  // thrown, it goes back to where it was
   const aiming = combo.aiming, ease = Math.min(1, dt * (aiming ? AIM_CAM.in : AIM_CAM.out));
   aimK += ((aiming ? 1 : 0) - aimK) * ease;
   if (aiming) {
-    if (!aimWas) aimWas = { pitch: cam.pitch, dist: cam.dist };
-    const behind = me.heading + Math.PI + AIM_CAM.yaw;
+    // what she aims at: the middle of the thing she holds the lance at; with none, so far ahead of her the way she faces
+    const t = combo.target;
+    if (t) aimTo.set(t.pos.x, t.pos.y + t.height * 0.62, t.pos.z);
+    else aimTo.set(me.pos.x + Math.sin(me.heading) * AIM_CAM.far * k, me.pos.y + 1.1 * k, me.pos.z + Math.cos(me.heading) * AIM_CAM.far * k);
+    if (!aimWas) { aimWas = { pitch: cam.pitch, dist: cam.dist }; aimAt.copy(aimTo); } else aimAt.lerp(aimTo, Math.min(1, dt * 8));
+    const behind = Math.atan2(me.pos.x - aimAt.x, me.pos.z - aimAt.z);
     cam.turn(Math.atan2(Math.sin(behind - cam.yaw), Math.cos(behind - cam.yaw)) * ease, (AIM_CAM.pitch - cam.pitch) * ease);
     cam.zoom((AIM_CAM.dist - cam.dist) * ease);
   } else if (aimWas) {
@@ -443,8 +457,14 @@ function step(dt) {
   if (aimK > 0 || camera.fov !== FOV) {
     camera.fov = FOV - AIM_CAM.fov * aimK * (0.55 + 0.15 * Math.max(0, combo.charge));
     camera.updateProjectionMatrix();
-    const half = camera.position.distanceTo(me.pos) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;      // half the picture's width, at her
-    camera.position.addScaledVector(tmp.set(1, 0, 0).applyQuaternion(camera.quaternion), Math.min(AIM_CAM.side * k, AIM_CAM.across * half) * aimK);
+    const half = cam.dist * k * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;      // half the picture's width, at her
+    // to her right (the follow camera closes so much of the way to its own place each frame, and carries the rest on:
+    // added by that much each frame, it comes to this far in all, at any pace)
+    camera.position.addScaledVector(tmp.set(1, 0, 0).applyQuaternion(camera.quaternion), Math.min(AIM_CAM.side * k, AIM_CAM.across * half) * aimK * Math.min(1, dt * 14));
+    // ... and from there it looks at what she aims at (not at her, as the follow camera does)
+    aimLook.set(me.pos.x, me.pos.y + hero.height * 0.82, me.pos.z);
+    const away = aimLook.distanceTo(aimAt);
+    camera.lookAt(aimLook.lerp(aimAt, away > 1e-3 ? aimK * Math.min(AIM_CAM.look, AIM_CAM.most * k / away) : 0));
   }
   // the finisher landing shakes the picture a little, briefly
   if (shake > 0) {
