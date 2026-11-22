@@ -15,6 +15,11 @@
   Each begun so that its blow comes as the cast leaves her hand. Files in assets/audio/ (the game does not ask for them).
   Drawn: transparent water flipbooks taken from the reference cast, with world-space projectiles and hit splashes.
   Each atlas is drawn at the cast marker, attached to the palm, the sweep around the body, or the forward thrust.
+  The flipbooks made crisp (the same evening: "คือมันออกมาสวยนะ Vfx สวยมาก ... vfx ดูเบลอๆ", "ถ้าทำให้ texture ชัดสวยจะดีมาก"):
+  the same frames of the clip, in the same place and as big, but cut from the clip at its full size, made bigger and
+  sharp, and shown one whole frame at a time (they were a quarter of the clip's size, and always two frames mixed).
+  water-jet/-sweep/-orbit/-vortex.webp and water-casts.js, made by tools/make-water-casts.py (which says how);
+  drawn by magic-combo-fx.js (WATER_CASTS). 5 MB to fetch in all (they were 0.7), 27 MB held (they were 16).
   The game and magic-combo.html are as they were. This folder holds the page and its own copies of the three modules
   that change (magic-combo-fx.js: the look; magic-combo.js: the look set as a move begins, fx.cast as a cast leaves her
   hand; step-sounds.js: the four casts' own sounds, reading the game's audio folder one up); everything else is the
@@ -116,7 +121,7 @@ import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
 import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from '../magic-combo-anim.js';
 import { createMagicCombo } from './magic-combo.js?v=1';
-import { createMagicComboFx } from './magic-combo-fx.js?v=2';
+import { createMagicComboFx } from './magic-combo-fx.js?v=3';
 import { createStepSounds } from './step-sounds.js?v=1';
 import { CHARACTER_ANIM as JUMP_ANIM } from '../magic-jump-mocap-anim.js';
 import { createMagicCircles } from '../magic-circle-fx.js';

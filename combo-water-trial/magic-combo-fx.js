@@ -58,9 +58,11 @@
    shader. The gate: one square, all of it drawn by its shader (as magic-circle-fx.js draws the jump's circles, and by
    its rules for a phone's GPU: every line always drawn and then masked, nothing that can be NaN, the result kept
    between 0 and 1). Few of anything: 8 orbs, 4 waves, 3 lances (2 bands of wind and a beam each), 8 bands of the
-   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 224 sparks (and drops), 96 petals at most. Each water cast uses one pooled flipbook quad plus world-space spray.
+   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 224 sparks (and drops), 96 petals at most. Each water cast: one square with
+   its frames' picture on it (WATER_CASTS), and drops thrown in the world.
    ========================================================================== */
 import * as THREE from 'three';
+import { WATER_SHEETS } from './water-casts.js?v=3';
 
 const rgb = h => new THREE.Vector3(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -70,13 +72,24 @@ export const COMBO_LOOK = { core: '#f6fdff', main: '#74cfff', deep: '#2f8fe6', g
 // her four tapped casts, as in the clip: aqua water (its colours read off the clip: the body of a crescent about
 // #7de0e1 over dark ground, its bright edge #a8f8f6, its heart #cbfdfd), drops of it in place of gold sparks
 export const WATER_LOOK = { core: '#effffe', main: '#5fe6e8', deep: '#169fb0' };
-// Five columns per atlas. Width and height are world dimensions at the standard 1.75 m stature.
+// The four casts' pictures (water-<asset>.webp; what is in one and where: WATER_SHEETS, water-casts.js). duration: s
+// a cast's frames take; elevation, reach: where it is put (m at 1.75 m: up from her hand or her feet, on the way she
+// casts); wrap: m its top goes behind her and its foot comes before her.
+// The pictures: the clip's own frames, as the first textures were (the same frames, put in the same place, as big),
+// but cut from the clip at its full size and made crisp ("ถ้าทำให้ texture ชัดสวยจะดีมาก", 22 Nov 2026: the first
+// were a quarter of the clip's size, 256 pixels across a cast five metres wide, and two frames were always shown
+// mixed, so they looked out of focus). Now 4/3 of the clip's size (about 260 pixels to a metre: a phone held upright
+// shows about 330), and one frame at a time. How they are made: tools/make-water-casts.py.
 const WATER_CASTS = [
-  { asset: 'jet',    frames: 15, duration: 0.37, width: 2.90, elevation: 0,    reach: 0,    wrap: 0.08 },
-  { asset: 'sweep',  frames: 20, duration: 0.65, width: 5.15, elevation: 1.43, reach: 0,    wrap: 1.05 },
-  { asset: 'orbit',  frames: 18, duration: 0.64, width: 4.55, elevation: 1.43, reach: 0.08, wrap: 0.85 },
-  { asset: 'vortex', frames: 20, duration: 0.88, width: 4.55, elevation: 0.12, reach: 0.64, wrap: 0.05 },
+  { asset: 'jet',    duration: 0.37, elevation: 0,    reach: 0,    wrap: 0.08 },
+  { asset: 'sweep',  duration: 0.65, elevation: 1.43, reach: 0,    wrap: 1.05 },
+  { asset: 'orbit',  duration: 0.64, elevation: 1.43, reach: 0.08, wrap: 0.85 },
+  { asset: 'vortex', duration: 0.88, elevation: 0.12, reach: 0.64, wrap: 0.05 },
 ];
+// a frame is shown whole, one after another, when the game moves on by a good part of a frame at every picture it
+// draws (as it does at its own pace); slowed (the page's ½ and ¼), the end of each frame is mixed into the next, over
+// so much of it at most
+const CAST_MIX = { whole: 0.4, most: 0.6 };
 
 const SHOTS = {
   orb: { size: 0.34, ribbon: 0.13, shed: 1.1 },          // the orb's own radius is about a third of its square's (m)
@@ -628,47 +641,78 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     }
   }
 
-  // The alpha atlases contain only the water. Two adjacent frames blend in premultiplied
-  // colour so small droplets stay clean against the grass and at quarter-speed playback.
+  // ---- the four casts' pictures. A frame is mostly air, so a picture holds it as tiles: squares of 14 pixels, each
+  // with a rim of one pixel from its neighbours (so that it joins them without a seam), and below them a map for every
+  // frame that says where each square's tile is (a square with no water in it points at the first tile, which is
+  // empty). A pixel is two numbers: how light the water is there (red) and how much of it there is (green); its colour
+  // is the cast's own ramp of colours at that lightness (WATER_SHEETS' ramp: eight colours, from lightness 0.44 to 1).
+  // One square is drawn, only as big as the frame's water; the picture is read twice for each frame shown (the map
+  // exactly, by texelFetch; then the tile).
   const loader = new THREE.TextureLoader();
   const casts = WATER_CASTS.map(def => {
-    const atlas = loader.load(new URL(`./water-${def.asset}.webp`, import.meta.url).href);
-    atlas.minFilter = THREE.LinearFilter;
-    atlas.generateMipmaps = false;
+    const sheet = WATER_SHEETS[def.asset];
+    const atlas = loader.load(new URL(`./water-${def.asset}.webp?v=3`, import.meta.url).href);
+    atlas.format = THREE.RGFormat; atlas.colorSpace = THREE.NoColorSpace;
+    atlas.minFilter = atlas.magFilter = THREE.LinearFilter;
+    atlas.generateMipmaps = false; atlas.flipY = false; atlas.premultiplyAlpha = false;
     const uniforms = {
-      uAtlas: { value: atlas }, uRows: { value: Math.ceil(def.frames / 5) },
-      uFrame: { value: 0 }, uLast: { value: def.frames - 1 }, uSize: { value: 1 },
-      uWrap: { value: 0 }, uMirror: { value: 1 }
+      uAtlas: { value: atlas }, uTexel: { value: new THREE.Vector2(1 / sheet.size[0], 1 / sheet.size[1]) },
+      uGrid: { value: new THREE.Vector2(sheet.grid[0] - 1, sheet.grid[1] - 1) },
+      uMapA: { value: new THREE.Vector2() }, uMapB: { value: new THREE.Vector2() }, uMix: { value: 0 },
+      uBox: { value: new THREE.Vector4() }, uOrigin: { value: new THREE.Vector2(sheet.origin[0], sheet.origin[1]) },
+      uCell: { value: sheet.cell }, uHalf: { value: sheet.half }, uScale: { value: 1 }, uWrap: { value: 0 }, uMirror: { value: 1 },
     };
+    sheet.ramp.forEach((c, i) => { uniforms['uR' + i] = { value: new THREE.Vector3(c[0], c[1], c[2]) }; });
     const mat = material({
       uniforms, transparent: true,
       vertexShader: /* glsl */`
-        uniform float uSize, uWrap, uMirror;
-        varying vec2 vUv;
+        uniform vec4 uBox;                                                 // the squares with water in them: x0, y0, x1, y1
+        uniform vec2 uOrigin;
+        uniform float uCell, uHalf, uScale, uWrap, uMirror;
+        varying vec2 vCell;
         void main() {
-          vUv = vec2(0.5 + (uv.x - 0.5) * uMirror, uv.y);
+          vec2 t = position.xy * 0.5 + 0.5;
+          vCell = vec2(mix(uBox.x, uBox.z, t.x), mix(uBox.w, uBox.y, t.y));       // (squares are counted down the frame)
+          vec2 m = uOrigin + vec2(vCell.x, -vCell.y) * uCell;              // m from where the cast is put: to the right, up
           vec4 mv = modelViewMatrix * vec4(0., 0., 0., 1.);
-          mv.xy += position.xy * vec2(uSize, uSize * 0.75) * 0.5;
+          mv.xy += vec2(m.x * uMirror, m.y) * uScale;
           // The lower lip passes in front of Vivi while the high rim goes behind her.
-          mv.z -= position.y * uWrap;
+          mv.z -= m.y / uHalf * uWrap;
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */`
         uniform sampler2D uAtlas;
-        uniform float uRows, uFrame, uLast;
-        varying vec2 vUv;
-        vec4 sampleFrame(float f) {
-          vec2 tile = vec2(mod(f, 5.), uRows - 1. - floor(f / 5.));
-          vec2 inset = vec2(0.5 / 256., 0.5 / 192.);
-          vec4 c = texture2D(uAtlas, (tile + mix(inset, 1. - inset, vUv)) / vec2(5., uRows));
-          return vec4(c.rgb * c.a, c.a);
+        uniform vec2 uTexel, uGrid, uMapA, uMapB;
+        uniform float uMix;
+        uniform vec3 uR0, uR1, uR2, uR3, uR4, uR5, uR6, uR7;
+        varying vec2 vCell;
+        // the water's colour at a lightness: the ramp's eight colours, 0.08 apart from 0.44; darker below
+        vec3 ramp(float l) {
+          float t = (l - 0.44) / 0.08;
+          vec3 c = uR0 * clamp(0.25 + 0.75 * l / 0.44, 0.0, 1.0);
+          c += (uR1 - uR0) * clamp(t, 0.0, 1.0);
+          c += (uR2 - uR1) * clamp(t - 1.0, 0.0, 1.0);
+          c += (uR3 - uR2) * clamp(t - 2.0, 0.0, 1.0);
+          c += (uR4 - uR3) * clamp(t - 3.0, 0.0, 1.0);
+          c += (uR5 - uR4) * clamp(t - 4.0, 0.0, 1.0);
+          c += (uR6 - uR5) * clamp(t - 5.0, 0.0, 1.0);
+          c += (uR7 - uR6) * clamp(t - 6.0, 0.0, 1.0);
+          return c;
+        }
+        // a frame's water here: its map says which tile; premultiplied
+        vec4 frame(vec2 map, vec2 cell, vec2 f) {
+          vec2 slot = floor(texelFetch(uAtlas, ivec2(map + cell), 0).rg * 255.0 + 0.5);
+          vec2 s = texture2D(uAtlas, (slot * 16.0 + 1.0 + f * 14.0) * uTexel).rg;
+          return vec4(ramp(0.3 + 0.7 * s.r) * s.g, s.g);
         }
         void main() {
-          float f = floor(uFrame);
-          gl_FragColor = mix(sampleFrame(f), sampleFrame(min(f + 1., uLast)), fract(uFrame));
+          vec2 cell = clamp(floor(vCell), vec2(0.0), uGrid), f = clamp(vCell - cell, 0.0, 1.0);
+          vec4 c = frame(uMapA, cell, f);
+          if (uMix > 0.0) c = mix(c, frame(uMapB, cell, f), uMix);        // (slowed only: the next frame coming in)
+          gl_FragColor = clamp(c, 0.0, 1.0);
         }`
     });
-    return { def, atlas, mesh: put(square, mat), uniforms, age: 0, direction: new THREE.Vector3() };
+    return { def, sheet, atlas, mesh: put(square, mat), uniforms, age: 0, direction: new THREE.Vector3() };
   });
 
   const tmp = new THREE.Vector3(), side = new THREE.Vector3(), tan = new THREE.Vector3(), toCam = new THREE.Vector3();
@@ -770,6 +814,28 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       w.mesh.visible = true;
       w.mesh.material.uniforms.uK.value = l.windK * Math.min(1, l.far / 1.2);
     }
+  }
+
+  // the frame of a cast that is shown now: one whole frame at the game's own pace; slowed, the end of each is mixed into
+  // the next (dt: s since the last picture). The square is made only as big as the water in what is shown
+  function show(cast, dt) {
+    const fr = cast.sheet.frames, n = fr.length, u = cast.uniforms;
+    const at = Math.min(n - 1, Math.max(0, cast.age / cast.def.duration * (n - 1)));
+    const step = dt * (n - 1) / cast.def.duration;                       // frames a picture of the game moves on by
+    const over = dt > 0 ? CAST_MIX.most * clamp(1 - step / CAST_MIX.whole, 0, 1) : 0;
+    let a = Math.round(at), b = a, mix = 0;
+    if (over > 0.01) {
+      a = Math.floor(at); b = Math.min(n - 1, a + 1);
+      const k = clamp((at - a - (1 - over)) / over, 0, 1);
+      mix = k * k * (3 - 2 * k);
+      if (mix <= 0) b = a;
+    }
+    const A = fr[a], B = fr[b];
+    u.uMapA.value.set(A[0], A[1]); u.uMapB.value.set(B[0], B[1]); u.uMix.value = mix;
+    const none = A[4] <= A[2], noneB = B[4] <= B[2];                       // (a frame with no water in it at all)
+    if (b === a || noneB) u.uBox.value.set(A[2], A[3], A[4], A[5]);
+    else if (none) u.uBox.value.set(B[2], B[3], B[4], B[5]);
+    else u.uBox.value.set(Math.min(A[2], B[2]), Math.min(A[3], B[3]), Math.max(A[4], B[4]), Math.max(A[5], B[5]));
   }
 
   const fx = {
@@ -894,9 +960,9 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       cast.direction.copy(dir);
       mesh.position.copy(fromHand ? hand : feet).addScaledVector(dir, def.reach * size);
       mesh.position.y += def.elevation * size;
-      uniforms.uFrame.value = 0;
-      uniforms.uSize.value = def.width * size;
+      uniforms.uScale.value = size;
       uniforms.uWrap.value = def.wrap * size;
+      show(cast, 0);
       mesh.visible = true;
       scatter(mesh.position, [5, 9, 12, 20][n], (1.2 + n * 0.28) * size, 0.08 * size, true);
     },
@@ -994,7 +1060,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         if (!cast.mesh.visible) continue;
         cast.age += dt;
         cast.mesh.visible = cast.age < cast.def.duration;
-        cast.uniforms.uFrame.value = Math.min(cast.def.frames - 1, cast.age / cast.def.duration * (cast.def.frames - 1));
+        show(cast, dt);
         // Reverse the screen-space sweep when the camera is on the far side of the caster.
         toCam.subVectors(camera.position, cast.mesh.position);
         cast.uniforms.uMirror.value = toCam.dot(cast.direction) > 0 ? -1 : 1;
