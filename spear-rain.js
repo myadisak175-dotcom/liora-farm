@@ -26,6 +26,9 @@
                                      special button)
      sky.hits                        spears landed on something, of the rain that is coming down (0 a while after)
      sky.onThrow = hit => …          she begins it (hit: s from now that the lance leaves her hand), for a sound
+     sky.onLaunch = info => …        the lance has left her hand: what rain.launch returns (info.when: s from now
+                                     that the seal opens, the first spear lands, the last, the great spear)
+     sky.onCancel = () => …          she is out of the move before the lance left her hand (a roll): nothing rains
      sky.onLand = (kind, at) => …    'rain': a spear has landed; 'great': the great spear has
      me, world: as magic-combo.js' (world.targets, world.ground, world.stick)
 
@@ -69,7 +72,7 @@ export function createSpearRain({ character, combo, marks, rain }) {
   };
 
   const sky = {
-    onThrow: null, onLand: null,
+    onThrow: null, onLaunch: null, onCancel: null, onLand: null,
     get active() { return !!move; },
     get fired() { return !!move && move.fired; },
     get ready() { return combo.charge >= 0 && !rain.busy && can(); },
@@ -101,7 +104,7 @@ export function createSpearRain({ character, combo, marks, rain }) {
       }
       move.t += dt;
       // a roll, or anything else the combo has begun: the move is over (the lance not yet thrown is lost)
-      if (combo.active) { move = null; return false; }
+      if (combo.active) { if (!move.fired && sky.onCancel) sky.onCancel(); move = null; return false; }
       const walked = world.stick && world.stick.amount > 0.5 && move.t >= SKY.again + SKY.free;
       if (move.t >= move.m.dur || (move.fired && move.t >= SKY.again && (pressed || walked))) { move = null; return false; }
       return true;
@@ -122,8 +125,9 @@ export function createSpearRain({ character, combo, marks, rain }) {
       if (near) want.set(t.pos.x, 0, t.pos.z);
       else want.set(me.pos.x + Math.sin(me.heading) * SKY.ahead * k, 0, me.pos.z + Math.cos(me.heading) * SKY.ahead * k);
       level = move.level;
-      rain.launch({ from: v.copy(at).addScaledVector(aim, long * SKY.grip), centre: want, ground: world.ground || (() => me.pos.y), k, level, heading: me.heading, long });
+      const info = rain.launch({ from: v.copy(at).addScaledVector(aim, long * SKY.grip), centre: want, ground: world.ground || (() => me.pos.y), k, level, heading: me.heading, long });
       move.fired = true;
+      if (sky.onLaunch) sky.onLaunch(info);
     },
   };
   return sky;

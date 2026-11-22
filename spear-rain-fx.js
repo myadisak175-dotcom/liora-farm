@@ -44,8 +44,10 @@
                                             it will rain; its y is found from ground(x, z)); k: her size (1 at 1.75 m);
                                             level: how grown the lance was (0..3: more spears, wider); heading: the way
                                             she faces; long: the lance's length in her hand (m). Returns { portal,
-                                            radius, lands: [Vector3], end }: the seal's middle, how wide it rains (m),
-                                            where the spears will land, how long all of it takes (s)
+                                            radius, lands: [Vector3], end, when }: the seal's middle, how wide it
+                                            rains (m), where the spears will land, how long all of it takes (s), and
+                                            when (s from now) the seal opens, the first spear lands, the last, the
+                                            great spear: { open, first, last, great }
      rain.onStrike = s => …                 a spear lands: s { at, radius, great, index }
      rain.onBeat = what => …                'open' the seal opens; 'fall' the first spear is let go; 'great' the great
                                             spear is let go (for a page's sounds and camera)
@@ -825,7 +827,8 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       // let go: a splash at her hand, beads thrown off
       splash(from, 0.7 * k, 0);
       scatter(from, 8, 2.6 * k, 0.08 * k, 2); scatter(from, 5, 3 * k, 0.07 * k, 0);
-      return { portal: c.portal, radius: c.R, lands: c.strikes.map(s => s.land), end: c.end };
+      return { portal: c.portal, radius: c.R, lands: c.strikes.map(s => s.land), end: c.end,
+        when: { open: T.rise, first: T.fall + T.drop, last: c.last, great: c.great.hit } };
     },
     stop() {
       cast.t = -1; twirlPts.length = 0; splashes.length = 0; rounds.length = 0; held.on = false;

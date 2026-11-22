@@ -17,8 +17,8 @@
   The rest is the game's combo as it is (magic-combo.js: the basic combo's water, the look her magic goes by, and the
   lance with its circle in three layers): the four casts tapped, the roll, walking and running, the lance's camera;
   straw dummies to cast at, as on magic-combo.html.
-  Its sounds are the combo's own for now: the lance's blast as it leaves her hand, a splash where the first spears and
-  the great spear land. Sounds of its own are still to come.
+  Its sounds are the clip's own (spear-rain-sounds.js: the whoosh of the twirl, the roar of the seal opening, the
+  rain's splashes, the great spear's blow), each set so that its moment is heard as it is seen.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -111,6 +111,7 @@ import { createMagicComboFx } from './magic-combo-fx.js?v=5';
 import { createStepSounds } from './step-sounds.js?v=15';
 import { createSpearRain } from './spear-rain.js';
 import { createSpearRainFx, SPEAR_RAIN } from './spear-rain-fx.js';
+import { createSpearRainSounds } from './spear-rain-sounds.js';
 
 const Q = new URLSearchParams(location.search);
 const phone = matchMedia('(pointer: coarse)').matches;
@@ -216,6 +217,7 @@ const fx = createMagicComboFx();
 const rain = createSpearRainFx();
 fxScene.add(fx.object, rain.object);
 const sounds = createStepSounds();                       // her casts and her lance heard (awake at the first touch)
+const heard = createSpearRainSounds({ context: () => sounds.context });      // the spear rain heard, on the same AudioContext
 const NIGHT = [0.26, 0.31, 0.6];
 const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
   uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
@@ -306,16 +308,13 @@ for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) rollBtn.addEven
   combo.onLand = kind => { if (kind === 'big' || kind === 'ring') shake = 1; };
   combo.onBegin = (i, hit) => { if (i >= 0) sounds.cast(i + 1, hit); };      // (each timed so its blow comes as the cast leaves her hand)
   combo.onLance = (what, hit) => sounds.lance(what, hit);
-  // the lance thrown up: its blast as it leaves her hand all the same; the rain heard, for now, as the combo's splash
-  // where the first of the spears land (not one for every spear) and where the great spear does, which shakes the picture
+  // the lance thrown up, heard as the clip has it (spear-rain-sounds.js): the whoosh of its twirl as she begins, and
+  // as it leaves her hand all the rest, each piece set to its moment. The great spear's landing shakes the picture
   sky = createSpearRain({ character: hero, combo, marks: MAGIC_COMBO, rain });
-  sky.onThrow = hit => { sounds.lance('throw', hit); document.getElementById('hint').style.opacity = 0; };      // (the first one thrown up: the hint has done its work)
-  let heard = 0;
-  rain.onBeat = what => { if (what === 'fall') heard = 0; };
-  sky.onLand = (kind, at) => {
-    if (kind === 'great') { shake = 1.5; sounds.splash(at.x, at.z, at.y, { size: 1.5, height: 2 }); }
-    else if (heard++ % 4 === 0) sounds.splash(at.x, at.z, at.y, { size: 0.8 });
-  };
+  sky.onThrow = lead => { heard.begin(lead / slow); document.getElementById('hint').style.opacity = 0; };      // (the first one thrown up: the hint has done its work)
+  sky.onLaunch = info => heard.rain(info.when, slow);
+  sky.onCancel = () => heard.stop();
+  sky.onLand = kind => { if (kind === 'great') shake = 1.5; };
   hero.play('idle', 0);
   document.getElementById('wait').remove();
   window.spearTrial.ready = true;
@@ -472,7 +471,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 // for a test (or the console): step the world by hand, look from a chosen spot
 window.spearTrial = {
   ready: false, held: false, stick: null,
-  me, get combo() { return combo; }, get sky() { return sky; }, get hero() { return hero; }, cam, camera, renderer, fx, rain, dummies, sounds,
+  me, get combo() { return combo; }, get sky() { return sky; }, get hero() { return hero; }, cam, camera, renderer, fx, rain, dummies, sounds, heard,
   run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
   attack() { if (sky.press()) combo.attack(); }, release() { combo.release(); }, skyward() { sky.flick(); }, dodge() { combo.dodge(); }, demo() { startDemo(); },
   look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
