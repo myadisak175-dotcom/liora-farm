@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d2547">
+<title>วีวี่ — ฝนหอก</title>
+<!--
+  spear-rain.html  —  the held cast thrown up into the sky, to try (23 Nov 2026: "โจมตีแบบกดค้างแล้วเลื่อนขึ้นบน (เป็นปุ่ม
+  พิเศษ) แล้วมันก็จะปาหอกขึ้นฟ้าเป็น aoe ส่วนปาหอกธรรมดาเป็นทะลวง ... ดูเอฟเฟกต์อยากได้แบบ ref", and of the spear rain the
+  game had, sky-spear.js: "ออกมาไม่สวยเลย ไปแก้ให้หน่อยค่ะ แยกเมนไว้นะ"). Kept apart from the game: the game is as it was.
+  One job: try that one move. The attack button held is the lance, as ever (magic-combo.js); let go, it is thrown
+  straight and goes through everything, as ever; the finger slid up off the button while it is held (onto the button
+  that comes up over it, ฝนหอก: the special one), it is thrown up instead, a seal opens in the sky and spears rain
+  down on what she was aiming at (spear-rain.js is the move, spear-rain-fx.js draws it; what it is to look like, the
+  clip that was sent, is told there). She hurls it up overhand (spear-rain-anim.js: the game's own lance throw turned up at
+  the sky). On a keyboard: J held, and R.
+  The rest is the game's combo as it is (magic-combo.js: the basic combo's water, the look her magic goes by, and the
+  lance with its circle in three layers): the four casts tapped, the roll, walking and running, the lance's camera;
+  straw dummies to cast at, as on magic-combo.html.
+  Its sounds are the clip's own (spear-rain-sounds.js: the whoosh of the twirl, the roar of the seal opening, the
+  rain's splashes, the great spear's blow), each set so that its moment is heard as it is seen.
+  And her held cast is heard for as long as it is held (charge-hum.js: a low hum of the lance's circle turning, round and
+  round until she lets go; made from a ringing that was sent for it). Here only: the game's held cast is not given it yet.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #fff; text-shadow: 0 1px 6px #000b; min-height: 18px; }
+  #count { position: fixed; left: 0; right: 0; top: 24%; text-align: center; pointer-events: none; font: 900 34px system-ui; color: #fff;
+    text-shadow: 0 0 14px #2f8fe6, 0 2px 6px #000a; opacity: 0; transition: opacity .25s; letter-spacing: 1px; }
+  #count small { font: 800 15px system-ui; color: #ffd66e; margin-left: 4px; }
+  #count.on { opacity: 1; transition: none; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #2b3a55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  .act { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 700 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  .act.down { background: rgba(255, 255, 255, .5); }
+  .act svg { width: 24px; height: 24px; margin-bottom: -4px; }
+  #atkBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px)); width: 84px; height: 84px;
+    background: rgba(116, 207, 255, .32); border-color: rgba(190, 235, 255, .9); }
+  #rollBtn { right: max(118px, calc(env(safe-area-inset-right) + 110px)); bottom: max(14px, calc(env(safe-area-inset-bottom) + 8px)); width: 62px; height: 62px; }
+  /* the special button: it comes up over the attack button while she holds the lance; the finger slid up onto it (or
+     another finger on it) throws the lance into the sky. --near: how far the finger has come up to it (0..1) */
+  #skyBtn { right: max(30px, calc(env(safe-area-inset-right) + 22px)); bottom: max(118px, calc(env(safe-area-inset-bottom) + 112px)); width: 68px; height: 68px;
+    background: rgba(98, 235, 245, .34); border-color: rgba(214, 252, 255, .95); box-shadow: 0 0 calc(10px + 22px * var(--near, 0)) rgba(98, 235, 245, .9);
+    opacity: 0; pointer-events: none; transform: translateY(26px) scale(.6); transition: opacity .16s, transform .16s; }
+  #skyBtn.on { opacity: 1; pointer-events: auto; transform: translateY(calc(-6px * var(--near, 0))) scale(calc(1 + .22 * var(--near, 0))); }
+  #skyBtn svg { width: 30px; height: 30px; margin-bottom: -3px; }
+  #skyArrow { position: fixed; z-index: 4; right: max(50px, calc(env(safe-area-inset-right) + 42px)); bottom: max(102px, calc(env(safe-area-inset-bottom) + 96px)); width: 28px; height: 14px;
+    pointer-events: none; opacity: 0; transition: opacity .16s; color: #dffcff; filter: drop-shadow(0 1px 3px #0009); animation: nudge .7s ease-in-out infinite; }
+  #skyArrow.on { opacity: .95; }
+  @keyframes nudge { 0%, 100% { transform: translateY(3px); } 50% { transform: translateY(-3px); } }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 190px 0 16px; text-align: left; pointer-events: none;
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; transition: opacity .6s; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; }
+  @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
+    #name, #beat { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+    #hint { top: calc(58px + env(safe-area-inset-top)); bottom: auto; padding: 0 0 0 calc(14px + env(safe-area-inset-left)); max-width: 62%; font-size: 11px; }
+  }
+  @media (max-height: 520px) {                       /* a phone on its side: the title shorter */
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="name">วีวี่ · ฝนหอก<small>กดโจมตีค้าง = ถือหอก · ปล่อย = ปาทะลวง · ปัดนิ้วขึ้น = ปาขึ้นฟ้า ฝนหอกลงเป็นวง</small></div>
+<div id="beat"></div>
+<div id="count"></div>
+<div id="bar">
+  <button id="hour">☀ กลางวัน</button>
+  <button id="slow">⏱ ×1</button>
+  <button id="demo">▶ เดโมฝนหอก</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="rollBtn" class="act" type="button" aria-label="กลิ้งหลบ"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/></svg><br>กลิ้ง</span></button>
+<button id="skyBtn" class="act" type="button" aria-label="ฝนหอก"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="4.6" rx="9.2" ry="2.6"/><path d="M6 8.5v8l-1.6-2.4M6 16.5l1.6-2.4M12 9.5v11l-1.8-2.8M12 20.5l1.8-2.8M18 8.5v8l-1.6-2.4M18 16.5l1.6-2.4"/></svg><br>ฝนหอก</span></button>
+<svg id="skyArrow" viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l10-8 10 8"/></svg>
+<button id="atkBtn" class="act" type="button" aria-label="โจมตี"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg><br>โจมตี</span></button>
+<div id="hint">กดโจมตีค้าง = ถือหอก (ยิ่งค้างนานหอกยิ่งโต)<br>ปล่อยนิ้ว = ปาหอกทะลวง · ปัดนิ้วขึ้นไปที่ปุ่ม ฝนหอก = ปาขึ้นฟ้า<br>คีย์บอร์ด: J ค้าง แล้วกด R</div>
+<div id="wait">กำลังโหลดวีวี่…</div>
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { createPlayerInput } from './player-input.js';
+import { createFollowCamera } from './player-camera.js';
+import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from './magic-combo-game-anim.js?v=1';      // (her moves on the ground, as the game has them; ?v: as the game names them)
+import { createMagicCombo } from './magic-combo.js?v=7';
+import { createMagicComboFx } from './magic-combo-fx.js?v=5';
+import { createStepSounds } from './step-sounds.js?v=15';
+import { createSpearRain } from './spear-rain.js';
+import { createSpearRainFx, SPEAR_RAIN } from './spear-rain-fx.js';
+import { createSpearRainSounds } from './spear-rain-sounds.js';
+import { createChargeHum } from './charge-hum.js';
+import { withSkyThrow } from './spear-rain-anim.js';
+
+const Q = new URLSearchParams(location.search);
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass (as magic-combo.html's)
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+
+// ---- straw dummies to cast at (magic-combo.html's): hit, one rocks on its foot and comes upright again; the great
+// spear throws them up. Here they stand in a huddle before her, for a rain to come down on, and two further off
+const hex = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+const dummyGeo = (() => {
+  const tint = (g, h) => { const c = hex(h), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) a.set(c, i * 3); g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+  const cyl = (rt, rb, h, y, colour, seg = 14) => tint(new THREE.CylinderGeometry(rt, rb, h, seg).translate(0, y, 0), colour);
+  const parts = [
+    cyl(0.3, 0.34, 0.1, 0.05, '#7a5a3c'),                 // its foot
+    cyl(0.065, 0.075, 1.5, 0.75, '#8b6844'),              // its post
+    cyl(0.25, 0.3, 0.72, 0.9, '#e2c477', 16),             // the straw
+    cyl(0.305, 0.315, 0.05, 0.72, '#8a5f3a', 16), cyl(0.27, 0.28, 0.05, 1.1, '#8a5f3a', 16),      // rope round it
+    tint(new THREE.CylinderGeometry(0.045, 0.045, 1.1, 8).rotateZ(Math.PI / 2).translate(0, 1.16, 0), '#8b6844'),      // the cross-piece
+    tint(new THREE.SphereGeometry(0.2, 16, 12).translate(0, 1.56, 0), '#ead08a'),                  // its head
+  ];
+  const g = mergeGeometries(parts);
+  parts.forEach(p => p.dispose());
+  return g;
+})();
+const dummyMat = () => new THREE.ShaderMaterial({
+  uniforms: { uFlash: { value: 0 } },
+  vertexShader: /* glsl */`
+    attribute vec3 color;
+    varying vec3 vC, vN;
+    void main() { vC = color; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform float uFlash;
+    varying vec3 vC, vN;
+    void main() {
+      float d = dot(normalize(vN), normalize(vec3(-0.4, 0.9, 0.5))) * 0.5 + 0.5;       // the game's sun; one edge between light and shade
+      vec3 col = vC * mix(vec3(0.68, 0.68, 0.8), vec3(1.03, 1.01, 0.97), smoothstep(0.43, 0.47, d));
+      gl_FragColor = vec4(mix(col, vec3(0.86, 0.96, 1.0), uFlash), 1.0);
+    }`,
+});
+const SPOTS = [[0, 6.2], [-1.9, 7.3], [1.9, 7.3], [0.4, 9], [-2.6, 5], [2.5, 5.2], [-7.5, 13], [8, 12]];       // (x, z; she starts at 0, 0 facing +z, +x her left)
+const dummies = SPOTS.map(([x, z], i) => {
+  const g = new THREE.Group(), mat = dummyMat();
+  g.add(new THREE.Mesh(dummyGeo, mat));
+  g.position.set(x, H(x, z), z);
+  g.rotation.y = Math.atan2(-x, -z);                    // facing where she starts
+  scene.add(g);
+  const d = {
+    g, mat, pos: g.position.clone(), radius: 0.34, height: 1.72, turn: g.rotation.y,
+    tx: 0, tz: 0, vx: 0, vz: 0, up: 0, vy: 0, flash: 0, spin: 0,
+    hit({ power, x: hx, z: hz, launch }) {
+      const p = 2.4 + 1.3 * power;
+      d.vx += hx * p; d.vz += hz * p; d.flash = 1;
+      if (launch) { d.vy = 6.4; d.spin = (i % 2 ? 1 : -1) * 7; }
+    },
+  };
+  return d;
+});
+function stepDummies(dt) {
+  for (const d of dummies) {
+    // rocking on its foot: a spring that brings it upright again
+    d.vx += (-150 * d.tx - 5.5 * d.vx) * dt; d.vz += (-150 * d.tz - 5.5 * d.vz) * dt;
+    d.tx = Math.max(-0.7, Math.min(0.7, d.tx + d.vx * dt)); d.tz = Math.max(-0.7, Math.min(0.7, d.tz + d.vz * dt));
+    if (d.up > 0 || d.vy > 0) {
+      d.vy -= 17 * dt; d.up += d.vy * dt; d.turn += d.spin * dt;
+      if (d.up <= 0) { d.up = 0; d.vy = 0; d.spin = 0; d.vx *= 0.4; d.vz *= 0.4; d.flash = Math.max(d.flash, 0.4); }
+    }
+    d.flash = Math.max(0, d.flash - dt / 0.16);
+    d.g.position.y = d.pos.y + d.up;
+    d.g.rotation.set(d.tz, d.turn, -d.tx, 'YXZ');
+    d.mat.uniforms.uFlash.value = d.flash * d.flash;
+  }
+}
+
+// ---- the light, in a scene of its own drawn over the meadow's: by night the meadow is dimmed to the hour's light first
+// (as the game does it) and the light is drawn after it, undimmed. The combo's, and the rain's
+const fxScene = new THREE.Scene();
+const fx = createMagicComboFx();
+const rain = createSpearRainFx();
+fxScene.add(fx.object, rain.object);
+const sounds = createStepSounds();                       // her casts and her lance heard (awake at the first touch)
+const heard = createSpearRainSounds({ context: () => sounds.context });      // the spear rain heard, on the same AudioContext
+const hum = createChargeHum({ context: () => sounds.context });              // her held cast heard for as long as it is held: its circle turning
+const NIGHT = [0.26, 0.31, 0.6];
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: false, depthWrite: false,
+}));
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+let night = Q.get('night') === '1';
+fx.setNight(night); rain.setNight(night);
+
+// ---- the camera: the game's (player-camera.js), behind her
+const FOV = innerWidth < innerHeight ? 70 : 55;         // (as the game: wider on an upright phone)
+const camera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 0.1, 600);
+const level = { heightAt: H, crowns: [], cameraTrunks: [] };
+const cam = createFollowCamera({ camera, level });
+cam.setView(-Math.PI, 0.2);
+
+// ---- her: walking and running as in the game (player-moves.js' numbers, at 1.75 m); the combo takes her over while a move lasts
+const TUNED = 1.412;
+const me = { pos: new THREE.Vector3(0, H(0, 0), 0), vel: new THREE.Vector3(), heading: 0 };
+const root = new THREE.Group(); root.name = 'player'; scene.add(root);
+let hero = null, combo = null, sky = null, springs = null;
+let speed = 0, slow = 1, demo = null, shake = 0, clock = 0, aimK = 0, aimWas = null;
+// the held cast's camera, as the game's (player-spells.js, AIM_CAM there)
+const AIM_CAM = { dist: 4.8, pitch: 0.38, side: 1.6, across: 0.5, far: 9, look: 0.7, most: 4.6, fov: 6, in: 5, out: 3.5 };
+const aimTo = new THREE.Vector3(), aimAt = new THREE.Vector3(), aimLook = new THREE.Vector3();
+// the rain's camera: while the lance goes up and the seal opens it looks up, toward the seal, and stands back a little;
+// as the spears come down it comes down with them; the great spear down, it is the player's again. look: how far it
+// turns to the seal at most (of the way); back: m it stands back; under: it looks at a place so far under the seal (m)
+const SKY_CAM = { look: 0.72, back: 1.5, under: 1.6, in: 3.4, out: 2.2 };
+let skyK = 0, rainLast = 0;      // (rainLast: s into the rain that its last spear lands)
+const skyFrom = new THREE.Quaternion(), skyTo = new THREE.Quaternion(), skyFocus = new THREE.Vector3();
+const WALK = 1.5, RUN = 4.2;
+const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
+const world = { stick, targets: dummies, ground: H, grounded: true };
+function attack() { if (hero && !demo && sky.press()) combo.attack(); }      // (throwing the lance up, a press is the move's own until it has left her hand)
+function release() { if (hero && !demo) { combo.release(); flickUp(0); } }
+function dodge() { if (hero && !demo) combo.dodge(); }
+function skyward() { if (hero && !demo) sky.flick(); }
+const input = createPlayerInput({
+  dom: renderer.domElement, ui: document.getElementById('stick'),
+  onJump: attack, onDash: dodge, onAttack: attack, onAttackUp: release, onRoll: dodge,      // (a keyboard: Space or J casts, Shift or K rolls)
+  onLook: (y, p) => { if (!combo || !combo.aiming) cam.turn(y, p); }, onZoom: d => { if (!combo || !combo.aiming) cam.zoom(d); },      // (aiming, the camera is the lance's)
+});
+addEventListener('keyup', e => { if (e.code === 'Space') release(); });
+addEventListener('keydown', e => { if (e.code === 'KeyR' && !e.repeat) skyward(); });
+
+// ---- the buttons. The attack button: down, the combo's press; up, its release. While it is down the finger may slide
+// up off it: past FLICK px, the lance is thrown into the sky (sky.flick remembers it a moment, so a quick press
+// and flick throws the lance up as soon as she has it). The special button over it shows where to slide to, and how
+// near the finger is; another finger on it does the same
+const FLICK = 52;
+const atkBtn = document.getElementById('atkBtn'), rollBtn = document.getElementById('rollBtn'), skyBtn = document.getElementById('skyBtn'), skyArrow = document.getElementById('skyArrow');
+let atkId = null, atkY = 0, flicked = false;
+function flickUp(near) { skyBtn.style.setProperty('--near', Math.max(0, Math.min(1, near)).toFixed(2)); }
+atkBtn.addEventListener('pointerdown', e => {
+  e.preventDefault(); atkBtn.classList.add('down');
+  try { atkBtn.setPointerCapture(e.pointerId); } catch (err) { /* (a pointer that cannot be held: the slide is then read only over the button) */ }
+  atkId = e.pointerId; atkY = e.clientY; flicked = false; flickUp(0);
+  attack();
+});
+atkBtn.addEventListener('pointermove', e => {
+  if (e.pointerId !== atkId || flicked) return;
+  const up = atkY - e.clientY;
+  flickUp(up / FLICK);
+  if (up >= FLICK) { flicked = true; skyward(); }
+});
+for (const ev of ['pointerup', 'pointercancel']) atkBtn.addEventListener(ev, e => { if (e.pointerId !== atkId) return; atkId = null; atkBtn.classList.remove('down'); release(); });
+skyBtn.addEventListener('pointerdown', e => { e.preventDefault(); skyward(); });
+rollBtn.addEventListener('pointerdown', e => { e.preventDefault(); rollBtn.classList.add('down'); dodge(); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) rollBtn.addEventListener(ev, () => rollBtn.classList.remove('down'));
+
+(async () => {
+  const [{ VIVI_GLB }, data] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+  hero = await loadCharacter(VIVI_GLB, withSkyThrow({ ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...COMBO_ANIM.clips } }));      // (and the lance hurled up: mc_sky, made of the game's own throw)
+  if (data) {
+    springs = createSprings(hero.model, data);
+    hero.attachSprings(springs);
+  }
+  hero.setSize(1.75 / hero.baseHeight);
+  root.add(hero.object);
+  combo = createMagicCombo({ character: hero, marks: MAGIC_COMBO, fx });
+  combo.onLand = kind => { if (kind === 'big' || kind === 'ring') shake = 1; };
+  combo.onBegin = (i, hit) => { if (i >= 0) sounds.cast(i + 1, hit); };      // (each timed so its blow comes as the cast leaves her hand)
+  combo.onLance = (what, hit) => { sounds.lance(what, hit); hum.pace = slow; hum.lance(what, hit); };
+  // the lance thrown up, heard as the clip has it (spear-rain-sounds.js): the whoosh of its twirl as she begins, and
+  // as it leaves her hand all the rest, each piece set to its moment. The great spear's landing shakes the picture
+  sky = createSpearRain({ character: hero, combo, marks: MAGIC_COMBO, rain });
+  sky.onThrow = lead => { heard.begin(lead / slow); document.getElementById('hint').style.opacity = 0; };      // (the first one thrown up: the hint has done its work)
+  sky.onLaunch = info => { heard.rain(info.when, slow); rainLast = info.when.last; };
+  sky.onCancel = () => heard.stop();
+  sky.onLand = kind => { if (kind === 'great') shake = 1.5; };
+  hero.play('idle', 0);
+  document.getElementById('wait').remove();
+  window.spearTrial.ready = true;
+})().catch(err => { document.getElementById('wait').textContent = 'โหลดวีวี่ไม่ได้: ' + err.message; console.error(err); });
+
+// she goes round a dummy, not through it, and stays on the meadow
+function collide(p) {
+  for (const d of dummies) {
+    const dx = p.x - d.pos.x, dz = p.z - d.pos.z, R = d.radius + 0.3, d2 = dx * dx + dz * dz;
+    if (d2 < R * R && d2 > 1e-6) { const l = Math.sqrt(d2); p.x = d.pos.x + dx / l * R; p.z = d.pos.z + dz / l * R; }
+  }
+  const rr = Math.hypot(p.x, p.z);
+  if (rr > 30) { p.x *= 30 / rr; p.z *= 30 / rr; }
+}
+
+// ---- the demo: the lance held until it is full grown and thrown up; then held again and thrown straight
+function startDemo() {
+  if (!hero || combo.active || sky.active || demo || rain.busy) return;
+  demo = { phase: 0, wait: 0 };
+}
+function stepDemo(dt) {
+  const d = demo, idle = !combo.active && !sky.active;
+  if (d.phase === 0) { combo.attack(); d.phase = 1; }                                             // press, and hold
+  else if (d.phase === 1) { if (combo.charge === 3 && (d.wait += dt) > 0.3) { sky.flick(); d.phase = 2; d.wait = 0; } }
+  else if (d.phase === 2) { if (sky.active) { combo.release(); d.phase = 3; } }
+  else if (d.phase === 3) { if (!rain.busy && idle && (d.wait += dt) > 0.5) { combo.attack(); d.phase = 4; d.wait = 0; } }
+  else if (d.phase === 4) { if (combo.charge === 3 && (d.wait += dt) > 0.3) { combo.release(); d.phase = 5; d.wait = 0; } }
+  else if (idle && (d.wait += dt) > 0.6) demo = null;
+}
+
+const tmp = new THREE.Vector3();
+function step(dt) {
+  if (!hero) return;
+  dt = Math.min(dt, 0.05) * slow;
+  clock += dt;
+  const k = hero.height / 1.75;
+  // ---- the stick, as a way over the ground (relative to the camera, as in the game)
+  let amount = input.stick(stickV);
+  if (window.spearTrial.stick) { stickV.set(...window.spearTrial.stick); amount = Math.min(1, stickV.length()); }      // (a test's hand on the stick)
+  if (demo) { stepDemo(dt); stickV.set(0, 0); amount = 0; }
+  const mx = stickV.x, mz = stickV.y;
+  const fwx = -Math.sin(cam.yaw), fwz = -Math.cos(cam.yaw), rx = -fwz, rz = fwx;
+  let wx = rx * mx - fwx * mz, wz = rz * mx - fwz * mz;
+  const wl = Math.hypot(wx, wz);
+  if (wl > 1e-4) { wx /= wl; wz /= wl; }
+  stick.x = wx; stick.z = wz; stick.amount = Math.min(1, amount);
+  // ---- throwing the lance up, or a move of the combo, has her; or she walks and runs
+  const skying = sky.step(dt, me, world);
+  const busy = combo.step(dt, me, world) || skying;
+  if (busy) speed = 0;
+  else {
+    let target = 0;
+    if (stick.amount > 0.12) {
+      target = stick.amount > 0.72 ? RUN * k : WALK * k * Math.max(0.6, stick.amount / 0.72);
+      const want = Math.atan2(wx, wz);
+      me.heading += Math.atan2(Math.sin(want - me.heading), Math.cos(want - me.heading)) * Math.min(1, dt * 11);
+    }
+    speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 : 10));
+    me.vel.set(Math.sin(me.heading) * speed, 0, Math.cos(me.heading) * speed);
+    me.pos.x += me.vel.x * dt; me.pos.z += me.vel.z * dt;
+    const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 * k ? 'walk' : 'run';
+    if (hero.state !== st) hero.play(st, st === 'idle' ? 0.25 : 0.2);
+    hero.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (hero.speeds[st] || 1))));
+  }
+  tmp.copy(me.pos); collide(tmp);
+  me.pos.x = tmp.x; me.pos.z = tmp.z;
+  me.pos.y += (H(me.pos.x, me.pos.z) - me.pos.y) * Math.min(1, dt * 18);
+  hero.update(dt);
+  root.position.copy(me.pos);
+  hero.object.position.set(0, 0, 0);
+  hero.object.rotation.set(0, me.heading, 0);
+  hero.holdSprings(1 + 4 * Math.max(combo.held, sky.active ? 0.15 : 0), 1 - combo.upside);
+  combo.after(dt, me, world);
+  sky.after(dt, me, world);
+  hero.updateSprings(dt);
+  grass.userData.setWalker(me.pos, 0.55);
+  stepDummies(dt);
+  // ---- the camera. Holding the lance it comes in over her shoulder and looks at what she aims at, as in the game
+  const aiming = combo.aiming, ease = Math.min(1, dt * (aiming ? AIM_CAM.in : AIM_CAM.out));
+  aimK += ((aiming ? 1 : 0) - aimK) * ease;
+  if (aiming) {
+    const t = combo.target;
+    if (t) aimTo.set(t.pos.x, t.pos.y + t.height * 0.62, t.pos.z);
+    else aimTo.set(me.pos.x + Math.sin(me.heading) * AIM_CAM.far * k, me.pos.y + 1.1 * k, me.pos.z + Math.cos(me.heading) * AIM_CAM.far * k);
+    if (!aimWas) { aimWas = { pitch: cam.pitch, dist: cam.dist }; aimAt.copy(aimTo); } else aimAt.lerp(aimTo, Math.min(1, dt * 8));
+    const behind = Math.atan2(me.pos.x - aimAt.x, me.pos.z - aimAt.z);
+    cam.turn(Math.atan2(Math.sin(behind - cam.yaw), Math.cos(behind - cam.yaw)) * ease, (AIM_CAM.pitch - cam.pitch) * ease);
+    cam.zoom((AIM_CAM.dist - cam.dist) * ease);
+  } else if (aimWas) {
+    cam.turn(0, (aimWas.pitch - cam.pitch) * ease); cam.zoom((aimWas.dist - cam.dist) * ease);
+    if (aimK < 0.02) { cam.turn(0, aimWas.pitch - cam.pitch); cam.zoom(aimWas.dist - cam.dist); aimWas = null; aimK = 0; }
+  }
+  cam.update(dt, { pos: me.pos, aimY: me.pos.y, height: hero.height, k: hero.height / TUNED, steady: true });
+  if (aimK > 0 || camera.fov !== FOV) {
+    camera.fov = FOV - AIM_CAM.fov * aimK * (0.55 + 0.15 * Math.max(0, combo.charge));
+    camera.updateProjectionMatrix();
+    const half = cam.dist * k * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;      // half the picture's width, at her
+    camera.position.addScaledVector(tmp.set(1, 0, 0).applyQuaternion(camera.quaternion), Math.min(AIM_CAM.side * k, AIM_CAM.across * half) * aimK * Math.min(1, dt * 14));
+    aimLook.set(me.pos.x, me.pos.y + hero.height * 0.82, me.pos.z);
+    const away = aimLook.distanceTo(aimAt);
+    camera.lookAt(aimLook.lerp(aimAt, away > 1e-3 ? aimK * Math.min(AIM_CAM.look, AIM_CAM.most * k / away) : 0));
+  }
+  // ---- the rain's camera: up to the seal as the lance goes up and it opens, down again with the spears
+  const T = SPEAR_RAIN, rt = rain.time;
+  const skyWant = rt < 0 ? (sky.active ? 0.3 : 0) : rt < T.fall ? 1 : Math.max(0, 0.42 * (1 - Math.max(0, rt - Math.max(T.fall + 0.9, rainLast - 0.7)) / 0.8));      // (a full rain goes on: the picture stays a little up for as long)
+  skyK += (skyWant - skyK) * Math.min(1, dt * (skyWant > skyK ? SKY_CAM.in : SKY_CAM.out));
+  if (skyK > 0.002 && Q.get('skycam') !== '0') {
+    if (rain.busy) skyFocus.copy(rain.portal).y -= SKY_CAM.under * k;
+    else skyFocus.set(me.pos.x + Math.sin(me.heading) * 4.6 * k, me.pos.y + 6 * k, me.pos.z + Math.cos(me.heading) * 4.6 * k);
+    camera.position.addScaledVector(tmp.set(0, 0, 1).applyQuaternion(camera.quaternion), SKY_CAM.back * k * skyK * Math.min(1, dt * 14));
+    skyFrom.copy(camera.quaternion);
+    camera.lookAt(skyFocus);
+    skyTo.copy(camera.quaternion);
+    camera.quaternion.slerpQuaternions(skyFrom, skyTo, skyK * SKY_CAM.look);
+  } else if (skyK <= 0.002) skyK = 0;
+  // a great blow landing shakes the picture a little, briefly
+  if (shake > 0) {
+    const a = 0.06 * Math.min(1, shake) * Math.min(1.5, shake);
+    shake = Math.max(0, shake - dt / 0.22);
+    camera.position.x += Math.sin(clock * 91) * a; camera.position.y += Math.sin(clock * 123 + 1) * a;
+  }
+  fx.update(dt, camera);
+  rain.update(dt, camera);
+  // ---- the label, the count, the special button (it is there while she holds the lance and the sky is free)
+  beatEl.textContent = sky.active ? sky.name : combo.beat;
+  if (combo.hits + sky.hits !== shownHits) {
+    shownHits = combo.hits + sky.hits;
+    if (shownHits > 0) countEl.innerHTML = `${shownHits}<small>HIT</small>`;
+    countEl.classList.toggle('on', shownHits > 0);
+  }
+  const offer = sky.ready;
+  if (offer !== offered) { offered = offer; skyBtn.classList.toggle('on', offer); skyArrow.classList.toggle('on', offer); }
+}
+const beatEl = document.getElementById('beat'), countEl = document.getElementById('count');
+let shownHits = 0, offered = false;
+
+function draw() {
+  renderer.clear();
+  renderer.render(scene, camera);
+  if (night) renderer.render(dimScene, camera);
+  renderer.render(fxScene, camera);
+}
+
+// ---- the buttons at the top
+const btn = id => document.getElementById(id);
+const showHour = () => { btn('hour').textContent = night ? '🌙 กลางคืน' : '☀ กลางวัน'; };
+showHour();
+btn('hour').onclick = () => { night = !night; fx.setNight(night); rain.setNight(night); showHour(); };
+const SLOWS = [1, 0.5, 0.25];
+btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
+btn('demo').onclick = () => startDemo();
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// for a test (or the console): step the world by hand, look from a chosen spot
+window.spearTrial = {
+  ready: false, held: false, stick: null,
+  me, get combo() { return combo; }, get sky() { return sky; }, get hero() { return hero; }, cam, camera, renderer, fx, rain, dummies, sounds, heard, hum,
+  run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
+  attack() { if (sky.press()) combo.attack(); }, release() { combo.release(); }, skyward() { sky.flick(); }, dodge() { combo.dodge(); }, demo() { startDemo(); },
+  look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
+  night(on) { if (on !== night) btn('hour').onclick(); },
+  draw,
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;                // 60 pictures a second at most: no hotter than it need be
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.spearTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
