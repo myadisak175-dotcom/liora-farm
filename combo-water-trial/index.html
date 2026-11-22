@@ -13,10 +13,8 @@
   Heard: the clip's sound from its fourth second on, which is two sounds. The two swipes: the first, from just before its
   blow (swipe-1); the turn: the same with all its swing (turn-1); the finisher: the second, from its charge (finish-1).
   Each begun so that its blow comes as the cast leaves her hand. Files in assets/audio/ (the game does not ask for them).
-  Drawn: the four casts aqua water, drops of water for sparks, a splash where one lands; the swipe throws needles of light
-  out round her hand, the swipe back sweeps a great crescent of water round her, the turn throws three rings of water
-  round her, the finisher a line of light, a shell going out round her, a whirl of water before her hands and a ring over
-  the ground. The lance, the leap, the roll, the rising cast and the casts in the air are as they were.
+  Drawn: transparent water flipbooks taken from the reference cast, with world-space projectiles and hit splashes.
+  Each atlas is drawn at the cast marker, attached to the palm, the sweep around the body, or the forward thrust.
   The game and magic-combo.html are as they were. This folder holds the page and its own copies of the three modules
   that change (magic-combo-fx.js: the look; magic-combo.js: the look set as a move begins, fx.cast as a cast leaves her
   hand; step-sounds.js: the four casts' own sounds, reading the game's audio folder one up); everything else is the
@@ -118,7 +116,7 @@ import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
 import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from '../magic-combo-anim.js';
 import { createMagicCombo } from './magic-combo.js?v=1';
-import { createMagicComboFx } from './magic-combo-fx.js?v=1';
+import { createMagicComboFx } from './magic-combo-fx.js?v=2';
 import { createStepSounds } from './step-sounds.js?v=1';
 import { CHARACTER_ANIM as JUMP_ANIM } from '../magic-jump-mocap-anim.js';
 import { createMagicCircles } from '../magic-circle-fx.js';

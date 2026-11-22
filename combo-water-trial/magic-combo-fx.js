@@ -1,4 +1,4 @@
-// combo-water-trial/magic-combo-fx.js: THE TRIAL'S COPY of the game's magic-combo-fx.js (see combo-water-trial/index.html): the four tapped casts drawn as water, as in the clip (fx.look, fx.cast, WATER).
+// combo-water-trial/magic-combo-fx.js: THE TRIAL'S COPY of the game's magic-combo-fx.js (see combo-water-trial/index.html): the four tapped casts drawn as water, as in the clip (fx.look, fx.cast, WATER_CASTS).
 /* ==========================================================================
    magic-combo-fx.js  —  the light of Vivi's magic combo (magic-combo.js): an orb of light gathered in her hand and
    thrown, the ribbon it leaves, the wave a cut sends out, the burst where one lands, a few gold sparks. Sky blue with
@@ -44,18 +44,8 @@
                                       "Vfx ทำแบบในวีดีโอได้ยิ่งดี", 22 Nov 2026: aqua water, drops, no gold). Glows, ribbons,
                                       what is thrown and its burst take the look there is as they are made (a shot keeps
                                       its own: shot.look). The lance and its circle are always 'sky'
-     fx.cast(n, { hand, dir, feet, heading, size, swing })   the n-th (0..3) of her four tapped casts leaves her hand,
-                                      drawn as in that clip: hand: where from; dir: the way it goes (unit); feet: where
-                                      she stands; heading: the way she faces (radians); size: hers (1 at 1.75 m); swing:
-                                      the way her hand was going (m/s, a Vector3, or none):
-                                        0  the swipe: needles of light thrown out round her hand, and a flash
-                                        1  the swipe back: a great crescent of water swept round her the way her hand
-                                           went, breaking up into drops from its inner edge
-                                        2  the turn: rings of water round her (one level at her waist, two leaning across
-                                           it, turning), a flash at her chest, needles, drops
-                                        3  the finisher: a flash with a line of light across it, a shell of light going
-                                           out round her, a whirl of water before her hands facing the way they thrust, a
-                                           ring over the ground, a burst of needles and drops all round
+     fx.cast(n, { hand, dir, feet, size })  play the water release at the strike marker. The first cast starts
+                                      at the palm, the sweep and turn wrap her body, the vortex opens ahead of her.
      fx.update(dt, camera)            every frame
      fx.setNight(on)                  by night its light is let shine more
      fx.dispose()
@@ -68,10 +58,7 @@
    shader. The gate: one square, all of it drawn by its shader (as magic-circle-fx.js draws the jump's circles, and by
    its rules for a phone's GPU: every line always drawn and then masked, nothing that can be NaN, the result kept
    between 0 and 1). Few of anything: 8 orbs, 4 waves, 3 lances (2 bands of wind and a beam each), 8 bands of the
-   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 224 sparks (and drops), 96 petals at most; of the water casts, 3
-   flares of needles, 2 crescents, 6 rings round her, 2 shells, 2 lines of light, 2 whirls. Phone-safe shaders: no
-   arrays, no loops. A crescent is one strip of 48 places whose shape its vertex shader works out (how much of it is
-   swept yet, pointed at both ends); a ring round her, a shell, a whirl, a flare: one square each, drawn by its shader.
+   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 224 sparks (and drops), 96 petals at most. Each water cast uses one pooled flipbook quad plus world-space spray.
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -83,24 +70,13 @@ export const COMBO_LOOK = { core: '#f6fdff', main: '#74cfff', deep: '#2f8fe6', g
 // her four tapped casts, as in the clip: aqua water (its colours read off the clip: the body of a crescent about
 // #7de0e1 over dark ground, its bright edge #a8f8f6, its heart #cbfdfd), drops of it in place of gold sparks
 export const WATER_LOOK = { core: '#effffe', main: '#5fe6e8', deep: '#169fb0' };
-// how her four tapped casts are drawn (fx.cast). Lengths in m at 1.75 m; life in s.
-//   flare: the needles thrown out (size: half the square's width; n: how many places round for them, some left empty)
-//   slash: the crescent (r: its outer radius round her chest, at `up` m and `ahead` m before her; thick: its width at
-//          its widest; span: how far round it goes (radians); tilt: how far it is turned in its plane, its head higher
-//          (radians); back: how far its top is tipped away (radians); sweep: s it takes to be swept; life;
-//          grow: how much wider it is by the time it has gone)
-//   rings: round her as she turns: [radius, up (m), lean (radians, about the way she faces), lean about her side, spin
-//          (rad/s), arcs]; life; grow
-//   nova: the finisher: ahead (m before her hands the whirl stands), whirl (half its width), shell (its radius at the
-//         most), streak (half its length), ring (over the ground), lives
-//   drops: how many drops each throws
-const WATER = {
-  flare: [{ size: 1.25, n: 22, life: 0.42 }, { size: 0.65, n: 16, life: 0.3 }, { size: 0.95, n: 20, life: 0.4 }, { size: 1.9, n: 30, life: 0.55 }],
-  slash: { r: 1.3, up: 1.0, ahead: 0.3, thick: 0.5, span: 3.8, tilt: 0.65, back: 0.55, sweep: 0.13, life: 0.55, grow: 0.12 },
-  rings: { list: [[1.05, 0.95, 0, 0, 7, 3], [0.78, 1.15, 0.95, 0.35, -9, 2], [0.78, 1.1, -0.95, -0.3, 8, 2]], life: 0.62, grow: 0.35 },
-  nova: { ahead: 0.35, whirl: 1.4, shell: 1.7, streak: 2.6, ring: 2.4, whirlLife: 0.95, shellLife: 0.45, streakLife: 0.3 },
-  drops: [14, 22, 26, 48],
-};
+// Five columns per atlas. Width and height are world dimensions at the standard 1.75 m stature.
+const WATER_CASTS = [
+  { asset: 'jet',    frames: 15, duration: 0.37, width: 2.90, elevation: 0,    reach: 0,    wrap: 0.08 },
+  { asset: 'sweep',  frames: 20, duration: 0.65, width: 5.15, elevation: 1.43, reach: 0,    wrap: 1.05 },
+  { asset: 'orbit',  frames: 18, duration: 0.64, width: 4.55, elevation: 1.43, reach: 0.08, wrap: 0.85 },
+  { asset: 'vortex', frames: 20, duration: 0.88, width: 4.55, elevation: 0.12, reach: 0.64, wrap: 0.05 },
+];
 
 const SHOTS = {
   orb: { size: 0.34, ribbon: 0.13, shed: 1.1 },          // the orb's own radius is about a third of its square's (m)
@@ -295,7 +271,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         float s = (ang / 6.2831853 + 0.5) * n + off, id = floor(s), f = abs(fract(s) - 0.5) * 2.0;
         float L = max(0.02, reach * (0.35 + 0.65 * hash(id + off * 50.0)));
         float w = thin * max(0.0, 1.0 - r / L);
-        return 1.0 - smoothstep(w, w + fwidth(f) * 1.5 + 0.02, f);
+        return (1.0 - smoothstep(w, w + fwidth(f) + 0.02, f)) * (1.0 - smoothstep(L * 0.85, L, r));
       }
       void main() {
         float r = length(vP);
@@ -310,9 +286,10 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         // water (uSpike): a splash, spikes of every length thrown out of the middle (two sets of them), hollowing from the
         // middle out as it goes, the ring fainter
         float reach = 0.3 + 0.68 * out_;
-        float sp = max(spikes(ang, r, 26.0, 0.0, reach, 0.7), spikes(ang, r, 15.0, 0.37, reach * 0.8, 0.55) * 0.8);
+        float curl = ang + 0.29 * r + 0.08 * sin(ang * 5.0 + uSeed + r * 7.0);
+        float sp = max(spikes(curl, r, 16.0, 0.0, reach, 1.05), spikes(curl, r, 9.0, 0.37, reach * 0.76, 1.15) * 0.8);
         sp *= smoothstep(out_ * 0.5 - 0.06, out_ * 0.5 + 0.06, r) * pow(1.0 - uT, 1.4) * uSpike;
-        ring *= 1.0 - 0.6 * uSpike;
+        ring *= 1.0 - 0.92 * uSpike;
         vec3 col = uCore * (flash * 1.2 + rays * 0.8) + mix(uMain, uCore, 0.35) * ring + uDeep * flash * 0.4
                  + mix(uMain, uCore, clamp(1.0 - r / reach, 0.0, 1.0) * 0.8) * sp;
         gl_FragColor = clamp(vec4(col * (0.75 + 0.45 * uShine), flash * 0.7 + ring * 0.4 + sp * 0.6), 0.0, 1.0);
@@ -651,216 +628,48 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     }
   }
 
-  // ===== her four tapped casts, drawn as in the clip of water casts (fx.cast) =====
-  const SHADER_TOOLS = /* glsl */`
-    #define PI 3.14159265
-    #define TAU 6.2831853
-    float hash(float n) { return fract(sin(n * 78.233 + 4.7) * 43758.5453); }
-    float noise(float x) { float i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(hash(i), hash(i + 1.0), f); }
-    float angleOf(vec2 p) { return atan(p.y, abs(p.x) < 1e-5 ? 1e-5 : p.x); }`;
-  // ---- a flare: needles of light thrown out from a middle, each its own length, way and pace; a flash at its heart.
-  // One square to the camera; n places round, a needle in most of them
-  const flareMat = () => material({
-    uniforms: { ...own(), uSize: { value: 1 }, uT: { value: 1 }, uSeed: { value: 0 }, uN: { value: 22 } },
-    depthTest: false,
-    vertexShader: FACING,
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain, uDeep;
-      uniform float uT, uSeed, uN, uShine;
-      varying vec2 vP;
-      ${SHADER_TOOLS}
-      void main() {
-        float r = length(vP), a = angleOf(vP);
-        float s = (a / TAU + 0.5) * uN, id = floor(s), f = fract(s) - 0.5;
-        float h = hash(id + uSeed), h2 = hash(id + uSeed + 31.0), h3 = hash(id + uSeed + 57.0);
-        float out_ = 1.0 - pow(1.0 - uT, 2.6);
-        float r1 = 0.1 + 0.9 * (0.35 + 0.65 * h) * out_;                   // its outer end, flying out (fast at first)
-        float r0 = r1 * (0.2 + 0.45 * h3 + 0.35 * uT);                     // its inner end: it shortens as it goes
-        float u = clamp((r - r0) / max(1e-3, r1 - r0), 0.0, 1.0);
-        float off = (f - (h2 - 0.5) * 0.55) * TAU / uN * r;                // across it, from its line
-        float w = (0.006 + 0.011 * h2) * sin(PI * u) * (1.0 - 0.45 * uT);  // pointed at both ends
-        float L = (1.0 - smoothstep(w, w + fwidth(off) + 0.002, abs(off))) * step(r0, r) * step(r, r1) * step(0.28, h3);
-        float fade = pow(1.0 - uT, 1.3);
-        float core = pow(max(0.0, 1.0 - r / (0.12 + 0.2 * out_)), 2.0) * pow(1.0 - uT, 2.2);
-        vec3 col = mix(uMain, uCore, 0.55 + 0.45 * (1.0 - u)) * L * fade + uCore * core * 1.2 + uMain * core * 0.5;
-        gl_FragColor = clamp(vec4(col * (0.8 + 0.3 * uShine), (L * fade * 0.85 + core * 0.8) * 0.75), 0.0, 1.0);
-      }`,
+  // The alpha atlases contain only the water. Two adjacent frames blend in premultiplied
+  // colour so small droplets stay clean against the grass and at quarter-speed playback.
+  const loader = new THREE.TextureLoader();
+  const casts = WATER_CASTS.map(def => {
+    const atlas = loader.load(new URL(`./water-${def.asset}.webp`, import.meta.url).href);
+    atlas.minFilter = THREE.LinearFilter;
+    atlas.generateMipmaps = false;
+    const uniforms = {
+      uAtlas: { value: atlas }, uRows: { value: Math.ceil(def.frames / 5) },
+      uFrame: { value: 0 }, uLast: { value: def.frames - 1 }, uSize: { value: 1 },
+      uWrap: { value: 0 }, uMirror: { value: 1 }
+    };
+    const mat = material({
+      uniforms, transparent: true,
+      vertexShader: /* glsl */`
+        uniform float uSize, uWrap, uMirror;
+        varying vec2 vUv;
+        void main() {
+          vUv = vec2(0.5 + (uv.x - 0.5) * uMirror, uv.y);
+          vec4 mv = modelViewMatrix * vec4(0., 0., 0., 1.);
+          mv.xy += position.xy * vec2(uSize, uSize * 0.75) * 0.5;
+          // The lower lip passes in front of Vivi while the high rim goes behind her.
+          mv.z -= position.y * uWrap;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */`
+        uniform sampler2D uAtlas;
+        uniform float uRows, uFrame, uLast;
+        varying vec2 vUv;
+        vec4 sampleFrame(float f) {
+          vec2 tile = vec2(mod(f, 5.), uRows - 1. - floor(f / 5.));
+          vec2 inset = vec2(0.5 / 256., 0.5 / 192.);
+          vec4 c = texture2D(uAtlas, (tile + mix(inset, 1. - inset, vUv)) / vec2(5., uRows));
+          return vec4(c.rgb * c.a, c.a);
+        }
+        void main() {
+          float f = floor(uFrame);
+          gl_FragColor = mix(sampleFrame(f), sampleFrame(min(f + 1., uLast)), fract(uFrame));
+        }`
+    });
+    return { def, atlas, mesh: put(square, mat), uniforms, age: 0, direction: new THREE.Vector3() };
   });
-  const flares = Array.from({ length: 3 }, () => ({ mesh: put(square, flareMat()), t: 1, life: 0.4 }));
-
-  // ---- a crescent of water swept round her: one strip, its inner edge (uv.y 0) and outer (1) at 48 places along
-  // (uv.x 0, its tail .. 1, its head). Where each lies the vertex shader works out: as much of it as is swept yet
-  // (uHead), round from its tail, pointed at both ends and widest past its middle, in its own plane (x ahead of her, y
-  // to the side the sweep goes)
-  const SLASH_N = 48;
-  const slashGeo = (() => {
-    const pos = new Float32Array(SLASH_N * 2 * 3), uv = [], idx = [];
-    for (let i = 0; i < SLASH_N; i++) for (const v of [0, 1]) uv.push(i / (SLASH_N - 1), v);
-    for (let i = 0; i < SLASH_N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setIndex(idx);
-    return g;
-  })();
-  const slashMat = () => material({
-    uniforms: { ...own(), uK: { value: 0 }, uHead: { value: 0 }, uSpan: { value: 3.9 }, uR: { value: 1 }, uThick: { value: 0.3 }, uAge: { value: 0 }, uBreak: { value: 0 } },
-    side: THREE.DoubleSide,
-    vertexShader: /* glsl */`
-      uniform float uHead, uSpan, uR, uThick;
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        float th = (uv.x * uHead - 0.5) * uSpan;
-        float prof = pow(sin(3.14159265 * pow(uv.x, 0.72)), 0.8);
-        // its outer edge on the circle; its width laid inward, most of it turned to the camera (in its own plane only, it
-        // was seen edge on from behind her, a thin line), the rest in its plane, so it is round and broad either way
-        vec4 cv = modelViewMatrix * vec4(cos(th) * uR, sin(th) * uR, 0.0, 1.0);
-        vec3 tv = (modelViewMatrix * vec4(-sin(th), cos(th), 0.0, 0.0)).xyz;
-        vec3 rv = (modelViewMatrix * vec4(cos(th), sin(th), 0.0, 0.0)).xyz;      // out from her (as long as her size)
-        float big = length(rv);
-        rv /= max(big, 1e-6);
-        vec3 side = cross(tv, -cv.xyz);
-        float l = length(side);
-        side = l > 1e-6 ? side / l : rv;
-        side *= dot(side, rv) < 0.0 ? -1.0 : 1.0;
-        vec3 inward = -normalize(mix(rv, side, 0.75) + vec3(0.0, 0.0, 1e-5));
-        cv.xyz += inward * uThick * big * prof * (1.0 - uv.y);
-        gl_Position = projectionMatrix * cv;
-      }`,
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain, uDeep;
-      uniform float uK, uShine, uAge, uBreak;
-      varying vec2 vUv;
-      ${SHADER_TOOLS}
-      void main() {
-        float v = vUv.y, x = vUv.x;
-        // its inner edge is water breaking off, ragged, and eats into it as it goes, until only its bright rim is left
-        float rag = noise(x * 30.0 + uAge * 5.0) * 0.55 + noise(x * 85.0 - uAge * 8.0) * 0.3;
-        float edge = rag * (0.25 + 0.85 * uBreak);
-        float body = smoothstep(edge, edge + 0.07, v);
-        float rim = smoothstep(0.7, 0.97, v);
-        float ends = smoothstep(0.0, 0.05, x) * smoothstep(0.0, 0.03, 1.0 - x);
-        float run = 0.78 + 0.22 * noise(x * 55.0 + v * 2.0 - uAge * 24.0);  // water running along it
-        // the water: clear toward its inner edge, streaked along, bright at its outer edge (as the clip's)
-        float clear = 0.45 + 0.55 * smoothstep(0.1, 0.8, v);
-        vec3 col = mix(mix(uDeep, uMain, 0.3 + 0.7 * v), uCore, rim * 0.85) * clear;
-        float a = body * ends * run * uK;
-        gl_FragColor = clamp(vec4(col * a * (0.85 + 0.3 * uShine), a * (0.32 + 0.55 * rim)), 0.0, 1.0);
-      }`,
-  });
-  const slashes = Array.from({ length: 2 }, () => ({ mesh: put(slashGeo, slashMat()), t: 1, age: 0, life: 0.5, sweep: 0.13, k: 1, drops: 0,
-    O: new THREE.Vector3(), A: new THREE.Vector3(), B: new THREE.Vector3(), r: 1, span: 3.9 }));
-
-  // ---- a ring of water round her: one square in the ring's own plane; arcs of it turning, a bright head on each,
-  // fringed with little spikes of water off its outer edge
-  const gyroMat = () => material({
-    uniforms: { ...own(), uT: { value: 1 }, uSpin: { value: 0 }, uArcs: { value: 3 }, uSeed: { value: 0 } },
-    side: THREE.DoubleSide,
-    vertexShader: 'varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain, uDeep;
-      uniform float uT, uSpin, uArcs, uSeed, uShine;
-      varying vec2 vP;
-      ${SHADER_TOOLS}
-      void main() {
-        float r = length(vP), a = angleOf(vP);
-        float R = 0.8, d = r - R;
-        float s = fract((a + uSpin) / TAU * uArcs + uSeed);
-        float arc = smoothstep(0.0, 0.1, s) * (1.0 - smoothstep(0.74, 0.8, s));     // each arc three quarters of its share
-        float head = smoothstep(0.45, 0.78, s) * arc;                               // brightest toward its head
-        float w = (0.028 + 0.03 * head) * (1.0 - 0.4 * uT);
-        float band = 1.0 - smoothstep(w, w + fwidth(r) * 1.5 + 0.003, abs(d));
-        float fine = (1.0 - smoothstep(0.006, 0.006 + fwidth(r) * 1.5 + 0.003, abs(d + 0.07))) * 0.6;   // a thin line inside it
-        float halo = exp(-abs(d) * 16.0) * 0.4;
-        // spikes of water off its outer edge, flung out as it turns
-        float g = (a + uSpin * 0.7) / TAU * 60.0, gf = abs(fract(g) - 0.5) * 2.0;
-        float len = 0.1 * hash(floor(g) + uSeed * 9.0) * (0.4 + uT);
-        float spike = (1.0 - smoothstep(0.0, 0.35, gf + d / max(0.01, len))) * step(0.0, d) * step(d, len) * arc;
-        float fade = pow(1.0 - uT, 1.3) * smoothstep(0.0, 0.05, uT);
-        float L = (band * arc + fine * arc + spike * 0.8) * fade;
-        vec3 col = mix(uMain, uCore, clamp(band * (0.4 + 0.6 * head), 0.0, 1.0)) * L + uDeep * halo * arc * fade;
-        gl_FragColor = clamp(vec4(col * (0.8 + 0.35 * uShine), L * 0.8 + halo * arc * fade * 0.3), 0.0, 1.0);
-      }`,
-  });
-  const gyros = Array.from({ length: 6 }, () => ({ mesh: put(square, gyroMat()), t: 1, life: 0.6, spin: 0, rate: 7, r: 1 }));
-
-  // ---- the finisher: a shell of light going out round her (one square to the camera)
-  const shellMat = () => material({
-    uniforms: { ...own(), uSize: { value: 1 }, uT: { value: 1 } },
-    depthTest: false,
-    vertexShader: FACING,
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain, uDeep;
-      uniform float uT, uShine;
-      varying vec2 vP;
-      void main() {
-        float r = length(vP);
-        float out_ = 1.0 - pow(1.0 - uT, 3.0);
-        float R = 0.25 + 0.72 * out_;
-        float rim = exp(-abs(r - R) * (22.0 + 20.0 * uT)) * step(r, R + 0.2);
-        float fill = pow(clamp(r / R, 0.0, 1.0), 3.0) * step(r, R) * 0.35;      // a sphere: brighter toward its edge
-        float fade = pow(1.0 - uT, 1.8);
-        vec3 col = mix(uMain, uCore, rim * 0.6) * rim + uMain * fill + uDeep * fill * 0.5;
-        gl_FragColor = clamp(vec4(col * fade * (0.75 + 0.3 * uShine), (rim * 0.5 + fill * 0.25) * fade), 0.0, 1.0);
-      }`,
-  });
-  const shells = Array.from({ length: 2 }, () => ({ mesh: put(square, shellMat()), t: 1, life: 0.45, size: 1 }));
-  // ... a line of light straight across the picture through its flash (one square to the camera, long and thin)
-  const streakMat = () => material({
-    uniforms: { ...own(), uSize2: { value: new THREE.Vector2(1, 0.1) }, uT: { value: 1 } },
-    depthTest: false,
-    vertexShader: /* glsl */`
-      uniform vec2 uSize2;
-      varying vec2 vP;
-      void main() {
-        vP = position.xy;
-        vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-        mv.xy += position.xy * uSize2;
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain;
-      uniform float uT, uShine;
-      varying vec2 vP;
-      void main() {
-        float along = pow(max(0.0, 1.0 - abs(vP.x)), 1.6);
-        float line = exp(-abs(vP.y) * 9.0) * along + exp(-abs(vP.y) * 40.0) * pow(along, 0.5);
-        float fade = pow(1.0 - uT, 2.0);
-        vec3 col = mix(uMain, uCore, 0.7) * line * fade;
-        gl_FragColor = clamp(vec4(col * (0.8 + 0.3 * uShine), line * fade * 0.5), 0.0, 1.0);
-      }`,
-  });
-  const streaks = Array.from({ length: 2 }, () => ({ mesh: put(square, streakMat()), t: 1, life: 0.3, long: 1 }));
-  // ... and a whirl of water before her hands, facing the way they thrust: arms of a spiral turning, broken into
-  // dashes, a ring through them (one square in its own plane)
-  const whirlMat = () => material({
-    uniforms: { ...own(), uT: { value: 1 }, uSpin: { value: 0 } },
-    side: THREE.DoubleSide,
-    vertexShader: 'varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain, uDeep;
-      uniform float uT, uSpin, uShine;
-      varying vec2 vP;
-      ${SHADER_TOOLS}
-      void main() {
-        float r = length(vP), a = angleOf(vP);
-        float s = a / TAU * 5.0 + log(max(r, 0.03)) * 1.7 - uSpin;            // five arms of a spiral, turning
-        float f = fract(s);
-        float arm = smoothstep(0.0, 0.06, f) * (1.0 - smoothstep(0.14, 0.5, f));  // a sharp leading edge, a trailing wash
-        float edge = smoothstep(0.0, 0.04, f) * (1.0 - smoothstep(0.06, 0.15, f));
-        float dash = step(0.22, hash(floor(s) * 7.0 + floor(r * 6.0 + f) * 13.0));
-        float band = smoothstep(0.16, 0.32, r) * (1.0 - smoothstep(0.72 + 0.15 * uT, 0.98, r));
-        float ring = exp(-abs(r - 0.5 - 0.25 * uT) * 45.0) * 0.6 * (0.6 + 0.4 * noise(a * 6.0 + uSpin * 3.0));
-        float heart = pow(max(0.0, 1.0 - r / 0.3), 2.0) * (1.0 - uT);
-        float fade = pow(1.0 - uT, 1.2) * smoothstep(0.0, 0.08, uT);
-        float L = ((arm * 0.7 + edge * 0.6) * dash * band + ring) * fade;
-        vec3 col = mix(mix(uDeep, uMain, arm), uCore, clamp(edge * dash + ring * 0.5, 0.0, 1.0)) * L + uCore * heart * fade;
-        gl_FragColor = clamp(vec4(col * (0.8 + 0.35 * uShine), (L * 0.7 + heart * fade * 0.5)), 0.0, 1.0);
-      }`,
-  });
-  const whirls = Array.from({ length: 2 }, () => ({ mesh: put(square, whirlMat()), t: 1, life: 0.9, spin: 0, size: 1 }));
-  const oldest = list => list.find(o => o.t >= 1) || list.reduce((m, o) => (o.t > m.t ? o : m));
 
   const tmp = new THREE.Vector3(), side = new THREE.Vector3(), tan = new THREE.Vector3(), toCam = new THREE.Vector3();
   const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), basis = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
@@ -961,80 +770,6 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       w.mesh.visible = true;
       w.mesh.material.uniforms.uK.value = l.windK * Math.min(1, l.far / 1.2);
     }
-  }
-
-  // ---- her four tapped casts (fx.cast): the pieces, each begun here and carried on by update()
-  const F = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Vector3(), q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion();
-  const FLAT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);      // a square laid level
-  function flare(at, def, k) {
-    const f = oldest(flares);
-    f.t = 0; f.life = def.life; f.mesh.position.copy(at); f.mesh.visible = true;
-    const u = f.mesh.material.uniforms;
-    u.uSize.value = def.size * k; u.uN.value = def.n; u.uSeed.value = Math.floor(rand() * 40); u.uT.value = 0;
-    paint(f.mesh.material, 'water');
-  }
-  // the crescent, as the clip's: a great arc round her standing up before her (its plane faces the way she does, its
-  // top tipped away by `back`), from low on the side her hand came from, up over her, to the side it went, higher there
-  // (as her hand rose; lower, as it fell). A: the middle of the arc; B: round toward its head
-  function slash(feet, k, toLeft, rising) {
-    const d = WATER.slash, s = slashes.find(o => o.t >= 1) || slashes[0];
-    s.O.copy(feet).addScaledVector(UP, d.up * k).addScaledVector(F, d.ahead * k);
-    const lean = d.tilt * (rising < 0 ? -1 : 1), cb = Math.cos(d.back), sb = Math.sin(d.back), cl = Math.cos(lean), sl = Math.sin(lean);
-    tmp.copy(UP).multiplyScalar(cb).addScaledVector(F, sb);                   // up, in its plane
-    s.A.copy(tmp).multiplyScalar(cl).addScaledVector(S, -toLeft * sl);
-    s.B.copy(S).multiplyScalar(toLeft * cl).addScaledVector(tmp, sl);
-    tmp.crossVectors(s.A, s.B);
-    basis.makeBasis(s.A, s.B, tmp);
-    s.mesh.quaternion.setFromRotationMatrix(basis);
-    s.mesh.position.copy(s.O); s.mesh.scale.setScalar(k); s.mesh.visible = true;
-    s.t = 0; s.age = 0; s.life = d.life; s.sweep = d.sweep; s.k = k; s.drops = 0; s.r = d.r; s.span = d.span;
-    const u = s.mesh.material.uniforms;
-    u.uSpan.value = d.span; u.uR.value = d.r; u.uThick.value = d.thick; u.uHead.value = 0; u.uK.value = 1; u.uBreak.value = 0; u.uAge.value = rand() * 10;
-    paint(s.mesh.material, 'water');
-  }
-  // a drop off the crescent's outer edge at `along` (0 its tail .. 1 its head), flung on round the way it sweeps
-  function slashDrop(s, along, speed) {
-    const th = (along - 0.5) * s.span, R = s.r * s.k * (1 + WATER.slash.grow * s.t);
-    const c = Math.cos(th), sn = Math.sin(th);
-    tmp.copy(s.O).addScaledVector(s.A, c * R).addScaledVector(s.B, sn * R);
-    side.copy(s.A).multiplyScalar(-sn).addScaledVector(s.B, c);                 // round the way it sweeps
-    toCam.copy(s.A).multiplyScalar(c).addScaledVector(s.B, sn);                 // out from her
-    const v = speed * (0.6 + 0.8 * rand()), o = 0.8 + 1.6 * rand();
-    spark(tmp, side.x * v + toCam.x * o, side.y * v + toCam.y * o + 0.5, side.z * v + toCam.z * o, 0.5 + 0.5 * rand(), (0.05 + 0.08 * rand()) * s.k, 2);
-  }
-  function gyro(feet, k, [radius, up, leanF, leanS, spin, arcs]) {
-    const g = oldest(gyros);
-    q1.setFromAxisAngle(F, leanF); q2.setFromAxisAngle(S, leanS);
-    g.mesh.quaternion.copy(q1).multiply(q2).multiply(FLAT);
-    g.mesh.position.copy(feet).addScaledVector(UP, up * k);
-    g.t = 0; g.life = WATER.rings.life; g.spin = rand() * 6.283; g.rate = spin; g.r = radius * k / 0.8; g.mesh.visible = true;
-    const u = g.mesh.material.uniforms;
-    u.uArcs.value = arcs; u.uSeed.value = rand(); u.uSpin.value = g.spin; u.uT.value = 0;
-    g.mesh.scale.setScalar(g.r * 0.7);
-    paint(g.mesh.material, 'water');
-  }
-  function nova(hand, dir, feet, k) {
-    const d = WATER.nova;
-    C.copy(hand).addScaledVector(dir, d.ahead * k);
-    flare(C, WATER.flare[3], k);
-    const st = oldest(streaks);
-    st.t = 0; st.life = d.streakLife; st.long = d.streak * k; st.mesh.position.copy(C); st.mesh.visible = true;
-    st.mesh.material.uniforms.uSize2.value.set(st.long, 0.16 * k);
-    paint(st.mesh.material, 'water');
-    const sh = oldest(shells);
-    sh.t = 0; sh.life = d.shellLife; sh.size = d.shell * k; sh.mesh.position.copy(feet).addScaledVector(UP, 1.0 * k); sh.mesh.visible = true;
-    paint(sh.mesh.material, 'water');
-    const w = oldest(whirls);
-    Z.copy(dir).normalize(); X.crossVectors(UP, Z);
-    if (X.lengthSq() < 1e-6) X.set(1, 0, 0);
-    X.normalize(); Y.crossVectors(Z, X);
-    basis.makeBasis(X, Y, Z);
-    w.mesh.quaternion.setFromRotationMatrix(basis);
-    w.mesh.position.copy(C); w.t = 0; w.life = d.whirlLife; w.spin = rand() * 6.283; w.size = d.whirl * k; w.mesh.visible = true;
-    w.mesh.scale.setScalar(w.size * 0.7);
-    paint(w.mesh.material, 'water');
-    fx.ring(tmp.copy(feet).addScaledVector(UP, 0.12 * k), d.ring * k, 'water');
-    scatter(C, WATER.drops[3], 4.4 * k, 0.15 * k, true);
   }
 
   const fx = {
@@ -1150,24 +885,20 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     },
     look(name) { look = name in LOOKS ? name : 'sky'; },
     get current() { return look; },
-    cast(n, { hand, dir, feet, heading = 0, size = 1, swing = null } = {}) {
-      const k = size;
-      F.set(Math.sin(heading), 0, Math.cos(heading)); S.crossVectors(UP, F);           // the way she faces; to her left
-      if (n === 0) {
-        flare(hand, WATER.flare[0], k);
-        scatter(hand, WATER.drops[0], 3.0 * k, 0.11 * k, true);
-      } else if (n === 1) {
-        flare(hand, WATER.flare[1], k);
-        // the way her hand went: to her left or her right, rising or falling (with none: to her left, rising)
-        const toLeft = swing && Math.abs(swing.dot(S)) > 0.2 ? Math.sign(swing.dot(S)) : 1;
-        slash(feet, k, toLeft, swing ? swing.y : 1);
-        scatter(hand, Math.round(WATER.drops[1] * 0.35), 2.4 * k, 0.1 * k, true);
-      } else if (n === 2) {
-        C.copy(feet).addScaledVector(UP, 1.05 * k).addScaledVector(F, 0.15 * k);
-        flare(C, WATER.flare[2], k);
-        for (const r of WATER.rings.list) gyro(feet, k, r);
-        scatter(C, WATER.drops[2], 3.4 * k, 0.12 * k, true);
-      } else if (n === 3) nova(hand, dir, feet, k);
+    cast(n, { hand, dir, feet, size = 1 }) {
+      const cast = casts[n];
+      if (!cast) return;
+      const { def, mesh, uniforms } = cast;
+      const fromHand = n === 0 || n === 3;
+      cast.age = 0;
+      cast.direction.copy(dir);
+      mesh.position.copy(fromHand ? hand : feet).addScaledVector(dir, def.reach * size);
+      mesh.position.y += def.elevation * size;
+      uniforms.uFrame.value = 0;
+      uniforms.uSize.value = def.width * size;
+      uniforms.uWrap.value = def.wrap * size;
+      mesh.visible = true;
+      scatter(mesh.position, [5, 9, 12, 20][n], (1.2 + n * 0.28) * size, 0.08 * size, true);
     },
     gate() {
       const g = gates.find(o => !o.mesh.visible) || gates[0];
@@ -1259,57 +990,14 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         b.mesh.visible = b.t < 1;
         b.mesh.material.uniforms.uT.value = b.t;
       }
-      // her water casts: needles, crescents, rings round her, the finisher's shell, line and whirl
-      for (const f of flares) {
-        if (f.t >= 1) continue;
-        f.t = Math.min(1, f.t + dt / f.life);
-        f.mesh.visible = f.t < 1;
-        f.mesh.material.uniforms.uT.value = f.t;
-      }
-      for (const c of slashes) {
-        if (c.t >= 1) continue;
-        c.age += dt;
-        const swept = Math.min(1, c.age / c.sweep), head = 1 - (1 - swept) * (1 - swept);
-        c.t = Math.min(1, Math.max(0, c.age - c.sweep) / c.life);
-        const u = c.mesh.material.uniforms;
-        u.uHead.value = head; u.uAge.value += dt; u.uBreak.value = c.t;
-        u.uK.value = Math.pow(1 - c.t, 1.2);
-        u.uR.value = c.r * (1 + WATER.slash.grow * (1 - Math.pow(1 - c.t, 2)));
-        // drops thrown off its head as it sweeps, and off all of it as it breaks up
-        const want = Math.round(WATER.drops[1] * (0.55 * swept + 0.45 * Math.min(1, c.t * 2)));
-        while (c.drops < want) { c.drops++; slashDrop(c, c.t > 0 ? rand() : Math.max(0, head - 0.1 * rand()), c.t > 0 ? 1.2 * c.k : 4 * c.k); }
-        c.mesh.visible = c.t < 1;
-      }
-      for (const g of gyros) {
-        if (g.t >= 1) continue;
-        g.t = Math.min(1, g.t + dt / g.life);
-        g.spin += g.rate * dt * (1 - 0.6 * g.t);
-        g.mesh.visible = g.t < 1;
-        g.mesh.scale.setScalar(g.r * (0.7 + WATER.rings.grow * (1 - Math.pow(1 - g.t, 3)) + 0.3 * (1 - Math.pow(1 - Math.min(1, g.t * 4), 2))));
-        const u = g.mesh.material.uniforms;
-        u.uT.value = g.t; u.uSpin.value = g.spin;
-      }
-      for (const h of shells) {
-        if (h.t >= 1) continue;
-        h.t = Math.min(1, h.t + dt / h.life);
-        h.mesh.visible = h.t < 1;
-        h.mesh.material.uniforms.uT.value = h.t; h.mesh.material.uniforms.uSize.value = h.size;
-      }
-      for (const l of streaks) {
-        if (l.t >= 1) continue;
-        l.t = Math.min(1, l.t + dt / l.life);
-        l.mesh.visible = l.t < 1;
-        l.mesh.material.uniforms.uT.value = l.t;
-        l.mesh.material.uniforms.uSize2.value.x = l.long * (0.6 + 0.4 * Math.min(1, l.t * 5));
-      }
-      for (const w of whirls) {
-        if (w.t >= 1) continue;
-        w.t = Math.min(1, w.t + dt / w.life);
-        w.spin += dt * (2 + 10 * (1 - w.t));
-        w.mesh.visible = w.t < 1;
-        w.mesh.scale.setScalar(w.size * (0.65 + 0.45 * (1 - Math.pow(1 - w.t, 3))));
-        const u = w.mesh.material.uniforms;
-        u.uT.value = w.t; u.uSpin.value = w.spin;
+      for (const cast of casts) {
+        if (!cast.mesh.visible) continue;
+        cast.age += dt;
+        cast.mesh.visible = cast.age < cast.def.duration;
+        cast.uniforms.uFrame.value = Math.min(cast.def.frames - 1, cast.age / cast.def.duration * (cast.def.frames - 1));
+        // Reverse the screen-space sweep when the camera is on the far side of the caster.
+        toCam.subVectors(camera.position, cast.mesh.position);
+        cast.uniforms.uMirror.value = toCam.dot(cast.direction) > 0 ? -1 : 1;
       }
       // rings over the ground
       for (const r of rings) {
@@ -1391,7 +1079,8 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       }
     },
     dispose() {
-      square.dispose(); waveGeo.dispose(); sGeo.dispose(); pGeo.dispose(); flat.dispose(); slashGeo.dispose();
+      square.dispose(); waveGeo.dispose(); sGeo.dispose(); pGeo.dispose(); flat.dispose();
+      for (const cast of casts) cast.atlas.dispose();
       for (const r of ribbons) r.mesh.geometry.dispose();
       for (const l of lances) { l.mesh.geometry.dispose(); l.shaft.mesh.geometry.dispose(); for (const w of l.wind) w.mesh.geometry.dispose(); }
       for (const b of bands) b.mesh.geometry.dispose();
