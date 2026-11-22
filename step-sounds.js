@@ -76,9 +76,10 @@
 //     instead: clear, light, short ("เสียงแบบใสๆ เบาๆ สั้นๆ"). A droplet's note with a sparkle over it came next; one of the
 //     two was "like a bird", and it was the droplet ("เอาเสียงประกายกลับมา เอาเสียงหยดน้ำออก"): the sparkle alone, until
 //     22 Nov 2026, when a breath of wind was wanted in its place ("อยากได้เอฟเฟกต์เสียงเหยียบเวทเป็นเสียงลมเบาใสๆ"), made
-//     here for a while; then the user sent the one she wanted ("เสียงเหยียบวงเวทตอนกระโดดเอาอันนี้"): a bright magical
-//     shimmer, 0.6 s, loudest at once and dying away (circle: a file of its own, ALONE). Every circle of a flight, the caught
-//     fall's too. The sparkle (glint) is still in the pack: with no circle file, it is heard
+//     here for a while; then a sound the user sent ("เสียงเหยียบวงเวทตอนกระโดดเอาอันนี้"), and then another she liked more
+//     ("ชอบเสียงเวทอันนี้", in place of it): a magical shimmer, 0.66 s, heard at once and swelling to its top 0.2 s on, as
+//     she leaves the circle (circle: a file of its own, ALONE). Every circle of a flight, the caught fall's too. The sparkle
+//     (glint) is still in the pack: with no circle file, it is heard
 // No take twice running (but the sparkle, above), each a little louder or softer and a little higher or lower than the
 // last, louder the faster she goes. A set with no takes is not heard, and nothing else changes.
 //
