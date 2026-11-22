@@ -91,19 +91,19 @@
     background: rgba(39, 52, 26, .78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
   #weightBtn.on { background: rgba(176, 108, 34, .9); }
   body:not(.dev) #weightBtn { top: 282px; }
-  /* 🎵 the music on and off: under full screen (in the hill village under the world's button; the trials' buttons under it) */
-  #musicBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
+  /* 🔊 the sound settings (sound-settings.js: its panel's own look is there): under full screen (in the hill village under
+     the world's button; the trials' buttons under it). It took the place of a 🎵 button that switched the music on and off */
+  #soundBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
     background: rgba(39, 52, 26, .78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
-  #musicBtn.off { background: rgba(60, 60, 60, .7); }
-  body:not(.dev) #musicBtn { top: 240px; }
-  body.world #musicBtn { top: 306px; }
-  body.world:not(.dev) #musicBtn { top: 282px; }
-  body.music #curseBtn { top: 306px; }
-  body.music:not(.dev) #curseBtn { top: 282px; }
-  body.music.world #curseBtn { top: 348px; }
-  body.music.world:not(.dev) #curseBtn { top: 324px; }
-  body.music #weightBtn { top: 390px; }
-  body.music:not(.dev) #weightBtn { top: 366px; }
+  body:not(.dev) #soundBtn { top: 240px; }
+  body.world #soundBtn { top: 306px; }
+  body.world:not(.dev) #soundBtn { top: 282px; }
+  body.sound #curseBtn { top: 306px; }
+  body.sound:not(.dev) #curseBtn { top: 282px; }
+  body.sound.world #curseBtn { top: 348px; }
+  body.sound.world:not(.dev) #curseBtn { top: 324px; }
+  body.sound #weightBtn { top: 390px; }
+  body.sound:not(.dev) #weightBtn { top: 366px; }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
@@ -197,6 +197,7 @@
   "./ambience.js": "./ambience.js?v=7",
   "./ambience-places.js": "./ambience-places.js?v=7",
   "./music.js": "./music.js?v=3",
+  "./sound-settings.js": "./sound-settings.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -405,16 +406,11 @@ const sounds = soundVol > 0 ? (await import('./step-sounds.js')).createStepSound
 const air = sounds && Q.get('air') !== '0' ? (await import('./ambience-places.js')).createAmbiencePlaces({ context: () => sounds.context, volume: soundVol, level, camera }) : null;
 // ---- 🎵 music, now and then (in the game since 22 Nov 2026; on step-sounds.html before): a piece, then minutes of only the
 // air about her; by the hour (music.js; assets/audio/music.json says which piece fits when). While a piece plays the air is
-// let down; by a waterfall the music is. 🎵 switches it on and off, and the player's choice is kept. ?music=0: without it,
-// and nothing of it is loaded. With ?sound=0 neither
+// let down; by a waterfall the music is. ?music=0: without it, and nothing of it is loaded. With ?sound=0 neither
 const music = sounds && Q.get('music') !== '0' ? (await import('./music.js')).createMusic({ context: () => sounds.context, volume: soundVol }) : null;
-if (music) {
-  const btn = document.createElement('button'); btn.id = 'musicBtn'; btn.type = 'button';
-  const show = () => { btn.textContent = music.on ? '🎵 เพลง: เปิด' : '🎵 เพลง: ปิด'; btn.classList.toggle('off', !music.on); btn.setAttribute('aria-pressed', String(music.on)); };
-  try { if (localStorage.getItem('loria.music') === 'off') music.on = false; } catch (err) { /* (no storage here) */ }
-  btn.onclick = () => { music.on = !music.on; show(); try { localStorage.setItem('loria.music', music.on ? 'on' : 'off'); } catch (err) { /* (no storage here) */ } };
-  show(); document.body.appendChild(btn); document.body.classList.add('music');
-}
+// ---- 🔊 the sound settings (sound-settings.js): sliders for all of it, the music, the air, her own sounds; kept for the next
+// time. The music at 0 is the music off (as the 🎵 button that was here)
+const soundSettings = sounds ? (await import('./sound-settings.js')).createSoundSettings({ sounds, air, music, base: soundVol }) : null;
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds });
 if (weighs && player.setWeight) {
   const btn = document.createElement('button');
@@ -759,7 +755,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, sounds, air, music, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, sounds, air, music, soundSettings, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
