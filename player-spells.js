@@ -2,14 +2,24 @@
 // Her spells in the game (since 22 Nov 2026: "เอาท่าโจมตีพื้นฐานที่เคยทำ ไว้กับท่ากางบาเรียลงเมนหลักด้วยค่ะ ท่าโจมตีกลาง
 // อากาศยังไม่ต้อง"): the magic combo's moves on the ground (magic-combo.js; her moves magic-combo-game-anim.js, its light
 // magic-combo-fx.js) and the water barrier (her move: the clip 'barrier', barrier-anim.js; its water: barrier-fx.js).
+// And since 23 Nov 2026 ("ขึ้นเมนเกมหลักค่ะ", of the trial on spear-rain.html) the spear rain, ฝนหอก: the lance she holds
+// thrown up into the sky instead of straight (spear-rain.js is the move, spear-rain-fx.js what is seen, spear-rain-anim.js
+// her throw; spear-rain-sounds.js and charge-hum.js what is heard).
 // What she casts and when, and the camera over her shoulder while she holds the lance; nothing else. Where she may go
 // while a move takes her is player-moves.js' (her body in the world); the buttons are index.html's. Every character.
 //
-//   const spells = createPlayerSpells({ character, comboFx, barrierFx, renderer, camera, cam, sounds })
+//   const spells = createPlayerSpells({ character, comboFx, barrierFx, renderer, camera, cam, sounds, spearRain, rainFx, rainSounds, hum })
+//   (spearRain: spear-rain.js' createSpearRain, and rainFx: spear-rain-fx.js' createSpearRainFx(),
+//   or neither: no spear rain, and nothing of it need be loaded; rainSounds: spear-rain-sounds.js', hum: charge-hum.js',
+//   or none: it is not heard. They are kept as loud as `sounds` is)
 //   (sounds: her sounds, step-sounds.js, or none: the four casts heard, each timed to leave her hand with its sound's blow,
 //   and the lance: its circle as it opens, its blast as it is let go)
 //   spells.attack(), spells.release()   the attack button down, up: tapped, the four casts; held, the lance; on the run,
 //                                       the leap. (Keyboard: J, player-input.js)
+//   spells.skyward()                    the attack button, held, is flicked up (or its badge tapped; R): the lance she holds
+//                                       is thrown into the sky and comes down as a rain of spears before her. Remembered a
+//                                       moment, so flicked just before the lance is in her hand it goes up as soon as it is.
+//                                       spells.skyReady: she holds the lance and the sky is free (for the page's badge)
 //   spells.roll()                       the roll button: the roll, and the attack button in it the rising cast (K)
 //   spells.barrier()                    the barrier button: she casts the dome of water round her where she stands (B)
 //   every frame, before her clips are played:
@@ -19,7 +29,8 @@
 //        (in the air, climbing, swimming, deep in water) nothing begins; the casts in the air are not in the game yet
 //   every frame, once she is placed (her bones where they will be drawn): spells.after(dt, me)
 //   every frame, after her camera: spells.look(dt, me, k)   holding the lance it comes in over her right shoulder, as
-//                                       on the trial page; the finisher, the leap's ring and the barrier jolt it. And the
+//                                       on the trial page; the finisher, the leap's ring and the barrier jolt it; the
+//                                       lance thrown up, it turns up to the seal and comes down with the spears. And the
 //                                       light and the water are drawn from where the camera now is
 //   spells.active (in a spell), spells.aiming (the lance: the look is not the player's to drag), spells.held, spells.upside
 //   (her hair and skirt held harder; how far she is upside down: for character.holdSprings), spells.beat (what she is
@@ -49,8 +60,12 @@ const PRESS = 0.15;           // s a press of the barrier button is remembered (
 // further from her than `most` m (so that she is in the picture however far it is); fov: how much narrower the picture
 // (degrees, more the more the lance has grown); in, out: how fast it goes there and back (1/s)
 const AIM_CAM = { dist: 4.8, pitch: 0.38, side: 1.6, across: 0.5, far: 9, look: 0.7, most: 4.6, fov: 6, in: 5, out: 3.5 };
+// the spear rain's camera, as on its trial page (spear-rain.html): as the lance goes up and the seal opens the picture
+// turns up to it (look: how far of the way, the most; under: it looks so far under the seal, m; back: and draws so far
+// back, m), and comes down again with the spears; a long rain keeps it a little up for as long. in, out: how fast (1/s)
+const SKY_CAM = { look: 0.72, back: 1.5, under: 1.6, in: 3.4, out: 2.2 };
 
-export function createPlayerSpells({ character: first, comboFx, barrierFx = null, renderer = null, camera, cam, sounds = null }) {
+export function createPlayerSpells({ character: first, comboFx, barrierFx = null, renderer = null, camera, cam, sounds = null, spearRain = null, rainFx = null, rainSounds = null, hum = null }) {
   let character = first;
   const combo = createMagicCombo({ character, marks: MAGIC_COMBO, fx: comboFx });
   const none = [];
@@ -67,26 +82,45 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
   // the four casts heard ("เสียงนี้ ท่าคอมโบปกติ"): each as it begins, timed so its blow comes as the cast leaves her hand
   combo.onBegin = (i, hit) => { if (i >= 0 && sounds && sounds.cast) sounds.cast(i + 1, hit); };
   // ... and the lance: its circle as it opens, its blast as it is let go (the clip's own sound, step-sounds.js)
-  combo.onLance = (what, hit) => { if (sounds && sounds.lance) sounds.lance(what, hit); };
+  // (and, held long, the low hum of its circle turning, until it is let go: charge-hum.js)
+  combo.onLance = (what, hit) => { if (sounds && sounds.lance) sounds.lance(what, hit); if (hum) hum.lance(what, hit); };
+  // ---- the spear rain (spear-rain.js; none without spearRain and rainFx): the lance she holds, thrown up. It stands beside the combo
+  // and takes the lance out of its hand; her move is its own. Made anew for each character (it holds her bones)
+  let sky = null, skyK = 0, rainFall = 0, rainLast = 0, loud = -1;      // (skyK: how far the picture is turned up; rainFall, rainLast: s into the rain that its first spear is let go, its last lands)
+  const skyFocus = new THREE.Vector3(), skyFrom = new THREE.Quaternion(), skyTo = new THREE.Quaternion();
+  function skyFor(who) {
+    if (!spearRain || !rainFx) return null;
+    const s = spearRain({ character: who, combo, marks: MAGIC_COMBO, rain: rainFx });
+    s.onThrow = lead => { if (rainSounds) rainSounds.begin(lead); };
+    s.onLaunch = info => { rainFall = info.when.fall; rainLast = info.when.last; if (rainSounds) rainSounds.rain(info.when, 1); };
+    s.onCancel = () => { if (rainSounds) rainSounds.stop(); };
+    s.onLand = kind => { if (kind === 'great') shake = 1.2; };
+    return s;
+  }
+  sky = skyFor(character);
 
   const casting = () => castT >= 0;
   const spells = {
-    get active() { return combo.active || casting(); },
+    get active() { return combo.active || casting() || (!!sky && sky.active); },
     get aiming() { return combo.aiming; },
     get held() { return Math.max(combo.held, 0.75 * barrierHeld()); },
     get upside() { return combo.upside; },
-    get beat() { return casting() ? 'บาเรียน้ำ' : combo.beat; },
+    get beat() { return casting() ? 'บาเรียน้ำ' : sky && sky.active ? sky.name : combo.beat; },
     get combo() { return combo; },                   // (for a test, or the console)
     get barrierT() { return waterT; },
-    attack() { if (!casting()) combo.attack(); },
+    get sky() { return sky; },                       // (the spear rain, for a test or the console; none without rainFx)
+    get skyReady() { return !!sky && !casting() && sky.ready; },
+    attack() { if (!casting() && (!sky || sky.press())) combo.attack(); },      // (a press while the lance she is throwing up is still in her hand is swallowed)
+    skyward() { if (sky && !casting()) sky.flick(); },
     release() { combo.release(); },
     roll() { if (!casting()) combo.dodge(); },
     barrier() { if (character.actions[BARRIER_CLIP]) wantBarrier = PRESS; },
-    stop() { combo.stop(); castT = -1; wantBarrier = 0; },
+    stop() { combo.stop(); if (sky) sky.stop(); castT = -1; wantBarrier = 0; },      // (a rain already thrown up comes down all the same)
     setCharacter(next) {
       spells.stop();
       character = next;
       combo.setCharacter(next);
+      sky = skyFor(next);
       hold = handOf();
     },
     step(dt, me, w) {
@@ -99,7 +133,7 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
         if (castT >= BARRIER.end || !world.grounded) { castT = -1; return false; }
         return true;
       }
-      if (wantBarrier > 0 && world.grounded && !combo.active && waterT < 0) {
+      if (wantBarrier > 0 && world.grounded && !combo.active && !(sky && sky.active) && waterT < 0) {
         wantBarrier = 0;
         combo.stop();                                // (a press of the others just before is let go)
         if (character.state === BARRIER_CLIP) character.play('idle', 0);
@@ -109,10 +143,14 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
         me.vel.set(0, 0, 0);
         return true;
       }
-      return combo.step(dt, me, world);
+      // (the spear rain first: it takes the lance out of the combo's hand, and the combo is stepped all the same, for
+      // what it has in flight)
+      const skying = sky ? sky.step(dt, me, world) : false;
+      return combo.step(dt, me, world) || skying;
     },
     after(dt, me) {
       combo.after(dt, me, world);
+      if (sky) sky.after(dt, me, world);             // (the lance in her hand as she winds up, and let go)
       if (hold) hold.getWorldPosition(hand);         // (her bones were brought up to date by combo.after)
     },
     look(dt, me, k) {
@@ -148,7 +186,23 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
         const away = aimLook.distanceTo(aimAt);
         camera.lookAt(aimLook.lerp(aimAt, away > 1e-3 ? aimK * Math.min(AIM_CAM.look, AIM_CAM.most * k / away) : 0));
       } else if (camera.fov !== fov0) { camera.fov = fov0; camera.updateProjectionMatrix(); }
-      // ---- the jolt: the finisher's burst and a leap's ring, briefly; the barrier's water breaking out and landing
+      // ---- the lance thrown up: up to the seal as it goes up and the seal opens, down again with the spears
+      if (sky) {
+        const rt = rainFx.time;
+        const want = rt < 0 ? (sky.active ? 0.3 : 0) : rt < rainFall ? 1 : Math.max(0, 0.42 * (1 - Math.max(0, rt - Math.max(rainFall + 0.9, rainLast - 0.7)) / 0.8));
+        skyK += (want - skyK) * Math.min(1, dt * (want > skyK ? SKY_CAM.in : SKY_CAM.out));
+        if (skyK > 0.002) {
+          if (rainFx.busy) skyFocus.copy(rainFx.portal).y -= SKY_CAM.under * k;
+          else skyFocus.set(me.pos.x + Math.sin(me.heading) * 4.6 * k, me.pos.y + 6 * k, me.pos.z + Math.cos(me.heading) * 4.6 * k);
+          camera.position.addScaledVector(side.set(0, 0, 1).applyQuaternion(camera.quaternion), SKY_CAM.back * k * skyK * Math.min(1, dt * 14));
+          skyFrom.copy(camera.quaternion);
+          camera.lookAt(skyFocus);
+          skyTo.copy(camera.quaternion);
+          camera.quaternion.slerpQuaternions(skyFrom, skyTo, skyK * SKY_CAM.look);
+        } else skyK = 0;
+      }
+      // ---- the jolt: the finisher's burst and a leap's ring, briefly; the barrier's water breaking out and landing; the
+      // great spear's
       shake = Math.max(0, shake - dt / 0.22);
       const a = 0.06 * shake * shake, b = barrierFx ? barrierFx.shake * 0.045 : 0;
       if (a > 0 || b > 0) {
@@ -157,6 +211,9 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
       }
       // ---- drawn from where the camera now is
       comboFx.update(dt, camera);
+      if (rainFx) rainFx.update(dt, camera);
+      // (and the spear rain and the lance's hum as loud as her other sounds are set: sound-settings.js sets those)
+      if (sounds && sounds.volume !== loud) { loud = sounds.volume; if (rainSounds) rainSounds.volume = loud; if (hum) hum.volume = loud; }
       if (barrierFx) barrierFx.update(dt, renderer, camera, waterT, at, hand);
     },
   };

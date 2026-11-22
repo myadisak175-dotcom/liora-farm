@@ -2,7 +2,8 @@
    charge-hum.js  —  her held cast heard for as long as it is held: a low hum of the lance's circle turning, round and
    round until she lets go ("อันนี้เอามาปรับเป็นเสียงทุ้มต่ำเวลาชาตเวทค้างนานๆ อยากให้ได้ยินเสียงวนเวทหมุน loop เรื่อยๆ
    จนกว่าจะปล่อย", 23 Nov 2026, with a ringing to make it from). One job: that hum, from the circle opening to the lance
-   let go or given up. A trial's for now (spear-rain.html): the game's own held cast is not given it yet.
+   let go or given up. In the game since 23 Nov 2026 (index.html makes it, player-spells.js
+   says when; ?hum=0: without); first on spear-rain.html.
 
    The hum (assets/audio/charge-hum-1.mp3, made from the ringing by tools/make-charge-hum.py: what is done to it is
    told there): six seconds that go over into their own beginning, the circle heard to turn nine times in them. The

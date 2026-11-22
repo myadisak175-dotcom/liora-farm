@@ -1,7 +1,8 @@
 /* ==========================================================================
    spear-rain-sounds.js  —  the spear rain heard (spear-rain.js, spear-rain-fx.js): the sound of the clip it was made
    after, cut to the move ("ขอเสียงจากวีดีโอเอามาดัดแปลงใส่ให้เข้ากันได้ไหมคะ", 23 Nov 2026). One job: play its four
-   pieces so that each one's moment is heard as the thing it belongs to is seen. A trial's for now (spear-rain.html).
+   pieces so that each one's moment is heard as the thing it belongs to is seen. In the game since 23 Nov 2026 (index.html makes it,
+   player-spells.js says when); first on spear-rain.html.
 
    The pieces (assets/audio/rain-*.mp3, cut from the clip by tools/make-spear-rain-sounds.py: what is in each, and
    why it is cut where it is, is told there):
