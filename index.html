@@ -91,6 +91,19 @@
     background: rgba(39, 52, 26, .78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
   #weightBtn.on { background: rgba(176, 108, 34, .9); }
   body:not(.dev) #weightBtn { top: 282px; }
+  /* 🎵 the music on and off: under full screen (in the hill village under the world's button; the trials' buttons under it) */
+  #musicBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
+    background: rgba(39, 52, 26, .78); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
+  #musicBtn.off { background: rgba(60, 60, 60, .7); }
+  body:not(.dev) #musicBtn { top: 240px; }
+  body.world #musicBtn { top: 306px; }
+  body.world:not(.dev) #musicBtn { top: 282px; }
+  body.music #curseBtn { top: 306px; }
+  body.music:not(.dev) #curseBtn { top: 282px; }
+  body.music.world #curseBtn { top: 348px; }
+  body.music.world:not(.dev) #curseBtn { top: 324px; }
+  body.music #weightBtn { top: 390px; }
+  body.music:not(.dev) #weightBtn { top: 366px; }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
 </style>
 <script type="importmap">
@@ -181,8 +194,9 @@
   "./player-hurdle.js": "./player-hurdle.js?v=3",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
   "./step-sounds.js": "./step-sounds.js?v=5",
-  "./ambience.js": "./ambience.js?v=3",
-  "./ambience-places.js": "./ambience-places.js?v=3",
+  "./ambience.js": "./ambience.js?v=4",
+  "./ambience-places.js": "./ambience-places.js?v=4",
+  "./music.js": "./music.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -237,7 +251,7 @@
 <button id="skyBtn">ปรับฟ้า</button>
 <div id="tuner" class="tuner"></div>
 <div id="skyTuner" class="tuner"></div>
-<div id="credit">v24 · Anime Water · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT) · เสียง: ElevenLabs (elevenlabs.io)</div>
+<div id="credit">v24 · Anime Water · Vivi: VRoid sample (CC0) · กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0) · หญ้า: แนวคิดจาก Cortiz (MIT) · เสียง: ElevenLabs (elevenlabs.io) · เพลง “Wandering Grassy Hills”: Suno (suno.com)</div>
 <div id="hint"><span id="hintText">แตะซ้ายเพื่อเดิน · ลากขวาเพื่อหมุนกล้อง</span></div>
 <div id="loading"><b>ทุ่งหญ้า</b><div id="bar"><i></i></div><span id="step">กำลังเตรียม…</span><small>กวาง “DEER” โดย WildMesh 3D (CC BY-NC 4.0)</small></div>
 <script type="module">
@@ -389,6 +403,18 @@ const sounds = soundVol > 0 ? (await import('./step-sounds.js')).createStepSound
 // plays them, on the AudioContext her steps woke).
 // ?air=0: her steps without it. With ?sound=0 nothing of it is loaded; no loop is fetched until it is heard
 const air = sounds && Q.get('air') !== '0' ? (await import('./ambience-places.js')).createAmbiencePlaces({ context: () => sounds.context, volume: soundVol, level, camera }) : null;
+// ---- 🎵 music, now and then (in the game since 22 Nov 2026; on step-sounds.html before): a piece, then minutes of only the
+// air about her; by the hour (music.js; assets/audio/music.json says which piece fits when). While a piece plays the air is
+// let down; by a waterfall the music is. 🎵 switches it on and off, and the player's choice is kept. ?music=0: without it,
+// and nothing of it is loaded. With ?sound=0 neither
+const music = sounds && Q.get('music') !== '0' ? (await import('./music.js')).createMusic({ context: () => sounds.context, volume: soundVol }) : null;
+if (music) {
+  const btn = document.createElement('button'); btn.id = 'musicBtn'; btn.type = 'button';
+  const show = () => { btn.textContent = music.on ? '🎵 เพลง: เปิด' : '🎵 เพลง: ปิด'; btn.classList.toggle('off', !music.on); btn.setAttribute('aria-pressed', String(music.on)); };
+  try { if (localStorage.getItem('loria.music') === 'off') music.on = false; } catch (err) { /* (no storage here) */ }
+  btn.onclick = () => { music.on = !music.on; show(); try { localStorage.setItem('loria.music', music.on ? 'on' : 'off'); } catch (err) { /* (no storage here) */ } };
+  show(); document.body.appendChild(btn); document.body.classList.add('music');
+}
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds });
 if (weighs && player.setWeight) {
   const btn = document.createElement('button');
@@ -698,6 +724,11 @@ const frame = (dt = clock.getDelta()) => {
   if (curse) curse.update(renderer);
   if (weather) weather.update(player.position);
   if (air) air.update(dt, player.position, { daylight: tod ? tod.daylight : 1, speed: player.speed, mode: player.mode });      // (what is heard from where she stands, at this hour, and the grass she goes through)
+  if (music) {      // (a piece by the hour, or none in the cursed land; the air let down under it, not by a waterfall)
+    const drowned = air ? air.drowned : 0;
+    music.update(dt, { when: level.heard && level.heard.cursed ? 'curse' : (tod ? tod.daylight : 1) > 0.5 ? 'day' : 'night', drowned });
+    if (air) air.under = music.under * (1 - drowned);
+  }
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
   if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(dt);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
@@ -728,7 +759,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, sounds, air, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, sounds, air, music, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

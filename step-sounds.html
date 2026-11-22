@@ -6,7 +6,7 @@
 <title>Loria Farm — ทดลองเสียง</title>
 <!--
   step-sounds.html: a trial page for the game's sound: her steps heard (step-sounds.js; in the game), the
-  air about her (ambience.js; in the game, by ambience-places.js), and music (music.js; a trial: 🎵 switches it on and off,
+  air about her (ambience.js; in the game, by ambience-places.js), and music (music.js; in the game: 🎵 switches it on and off,
   and on again the next piece begins in a moment; by day only, as the one piece there is is a day's).
   The game's own player (player-moves.js: walk, run, dash and sprint, the magic jump, the vault) on a small flat test
   ground, with each kind of ground side by side and a fence to go over, so every step's sound can be heard in a minute:
@@ -287,7 +287,7 @@ try {
     placed('frogs', px, pz, POND.x, POND.z, 1, 24, t.id === 'night' ? 1 : 0, POND.r);
     air.set('brush', throughGrass(player.speed, player.mode === 'ground' && surfaceAt(px, pz) === 'grass'));      // (the grass she goes through, as in the game)
     air.update(dt);
-    music.update(dt, { daylight: t.id === 'day' ? 1 : 0, drowned: fall });      // (the cursed land: no piece fits it yet, so none begins)
+    music.update(dt, { when: t.id, drowned: fall });      // (by night and in the cursed land no piece fits yet, so none begins)
     air.under = music.under * (1 - fall);      // (while a piece plays the air is let down; not by the waterfall, where the music is)
     renderer.render(scene, camera);
   };

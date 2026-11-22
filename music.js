@@ -1,18 +1,19 @@
 // music.js
 // Music, now and then: a piece plays, fades out, and for some minutes after it there is only the air about her (wind,
 // water, birds) until the next. Never all the while: heard all the while it would cover the air, and grow old.
-// ("ทำเพลงด้วยดีไหม ดนตรีเบาๆ อะ": soft music; a trial, on step-sounds.html first.)
+// ("ทำเพลงด้วยดีไหม ดนตรีเบาๆ อะ": soft music. On step-sounds.html first, then in the game: "ขึ้นเมนเลยค่ะ เอาเพลงด้วยนะคะ".)
 //
 //   const music = createMusic({ context: () => sounds.context, volume });      // the AudioContext her steps woke
-//   every frame: music.update(dt, { daylight, drowned });      // daylight 1 by day .. 0 at night; drowned 0..1: how much
-//                                                              // of what is heard a waterfall or rushing water takes up
+//   every frame: music.update(dt, { when, drowned });      // when: 'day', 'night' or 'curse' (the cursed land); drowned
+//                                                          // 0..1: how much of what is heard a waterfall or rushing water takes up
 //   air.under = music.under * (1 - drowned)      // every frame: the air about her let down while a piece plays (UNDER)
 //   music.on = false        (off: what is playing fades away, and nothing more is played until it is on again)
 //   music.volume = 0.8      music.stats (for a test, or the console)
 //
 // THE PIECES are listed in assets/audio/music.json (tools/make-music.py writes it, and each piece levelled): their file,
-// their length, and when they fit ('day', 'night', or 'any'). A piece is played when one fits the hour; at dusk the next
-// one is a night one. One playing is let finish, whatever the hour does meanwhile.
+// their length, and when they fit ('day', 'night', 'curse', or 'any': any of the living world's hours). A piece is played
+// when one fits; at dusk the next one is a night one; in the cursed land only a cursed one (there is none yet, so it is
+// silent there). One playing is let finish, whatever the hour does meanwhile.
 //
 // A LITTLE OVER THE AIR (LEVEL): the air about her is the place, the music its mood. (Under the air at first, it was too
 // quiet.) And while a piece plays the air is let down (UNDER, as the piece fades in and out: the page sets air.under), or
@@ -38,6 +39,8 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
   let ctx = null, meta = null, asked = false, failed = null, vol = Math.min(2, Math.max(0, volume)), on = true;
   let el = null, src = null, gain = null, fade = null, playing = null, wait = first, last = -1, played = 0, unlocked = false;
   let heard = 0;                   // 0..1: how much a piece is heard now (as it fades in and out), for under
+  let then = -1;                   // the AudioContext's clock at the last update: the waits go by it, not by the frames
+                                   // (a page whose frames come slowly would make them minutes longer)
 
   // the first touch: the <audio> element is let play later (and made now, so it is the one that was let)
   function unlock() {
@@ -60,9 +63,8 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
   }
 
   // which piece next: one that fits the hour, not the one played last if there is another
-  function pick(daylight) {
-    const when = daylight > 0.5 ? 'day' : 'night';
-    const fit = meta.tracks.map((t, i) => [t, i]).filter(([t]) => t.when === when || t.when === 'any');
+  function pick(when) {
+    const fit = meta.tracks.map((t, i) => [t, i]).filter(([t]) => t.when === when || (t.when === 'any' && when !== 'curse'));
     if (!fit.length) return -1;
     let k = Math.floor(Math.random() * fit.length);
     if (fit.length > 1 && fit[k][1] === last) k = (k + 1) % fit.length;
@@ -103,7 +105,7 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
     // skip the wait: the next piece now (for a test, or to hear it)
     next() { if (!playing) wait = 0; },
 
-    update(dt, { daylight = 1, drowned = 0 } = {}) {
+    update(dt, { when = 'day', drowned = 0 } = {}) {
       if (!ctx) { ctx = context ? context() : null; if (!ctx) return; }
       if (ctx.state !== 'running' || !el) return;
       if (!meta) {
@@ -115,7 +117,8 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
         return;
       }
       if (!src) wire();
-      heard += ((playing && !playing.fading ? 1 : 0) - heard) * Math.min(1, dt / (playing && !playing.fading ? FADE_IN / 2 : FADE_OUT / 3));
+      const t = ctx.currentTime, gone = then < 0 ? 0 : Math.max(0, t - then); then = t;      // (s since the last update, by the clock: it stands still while the page is put away)
+      heard += ((playing && !playing.fading ? 1 : 0) - heard) * Math.min(1, gone / (playing && !playing.fading ? FADE_IN / 2 : FADE_OUT / 3));
       gain.gain.setTargetAtTime(LEVEL * vol * (1 - DROWN * Math.min(1, Math.max(0, drowned))), ctx.currentTime, EASE);
       const now = ctx.currentTime;
       if (playing) {
@@ -125,8 +128,8 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
         return;
       }
       if (!on) return;
-      if ((wait -= dt) > 0) return;
-      const i = pick(daylight);
+      if ((wait -= gone) > 0) return;
+      const i = pick(when);
       if (i >= 0) start(i); else wait = 10;      // (nothing fits the hour: look again in a while)
     },
   };
