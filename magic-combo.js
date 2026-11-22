@@ -92,7 +92,7 @@ const CHARGE = { into: 'mc_charge_in', hold: 'mc_charge', grows: [0.35, 0.8, 1.4
 // the gate, the magic circle the lance is thrown through. hand: where her hand lets the lance go, in her own frame (m at
 // 1.75 m: ahead of her, up, to her left; measured off the throw); ahead: how far past that, on the lance's line, the
 // circle stands; radius: of its outer ring, by how grown the lance is
-const GATE = { hand: [0.68, 1.47, -0.05], ahead: 0.4, radius: [0.28, 0.33, 0.39, 0.46] };
+const GATE = { hand: [0.68, 1.47, -0.05], ahead: 0.4, radius: [0.26, 0.3, 0.35, 0.4] };
 const RUN = 3.2;              // m/s: as fast as this when the button goes down, the running cast
 // what is thrown: its pace (m/s), how near a target it lands (m, added to the target's own), how far it goes, how fast it
 // turns to its target (1/s; 0: straight), the burst where it lands; through: it goes on through what it hits; blast: all
@@ -254,7 +254,7 @@ export function createMagicCombo({ character, marks, fx }) {
         // through the middle of the circle: along the circle's own line, from where on it its point is (not past the circle)
         dir.copy(gateDir);
         from.copy(gateAt).addScaledVector(dir, Math.min(0, v.copy(from).sub(gateAt).dot(dir)));
-        move.gate.fire(); move.gate = null;
+        move.gate.fire(me.pos); move.gate = null;
       }
     } else if (kind.steer && handKnown && handVel.lengthSq() > 4) {
       // an orb leaves her hand the way her hand was going, and curves in

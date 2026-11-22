@@ -37,11 +37,13 @@ import { BARRIER } from './barrier-fx.js';
 
 const BARRIER_CLIP = 'barrier';
 const PRESS = 0.15;           // s a press of the barrier button is remembered (as the jump's)
-// the held cast's camera, as on the trial page (magic-combo.html): in over her right shoulder and along the lance.
-// dist, pitch: where it goes (m at 1.75 m, radians); side: how far to her right (m at most; across: of the picture's
+// the held cast's camera, as on the trial page (magic-combo.html): in behind her right shoulder, a little to her right of
+// the way she aims and from above (yaw, pitch: as in the picture the lance's light was asked after, so that the lance
+// goes off across the picture, up and to the right, and is not seen end on).
+// dist, pitch: where it goes (m at 1.75 m, radians); yaw: how far round to her right (radians); side: how far to her right (m at most; across: of the picture's
 // half width at her, so on an upright phone she stays in it); fov: how much narrower the picture (degrees, more the more
 // the lance has grown); in, out: how fast it goes there and back (1/s)
-const AIM_CAM = { dist: 3.3, pitch: 0.1, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
+const AIM_CAM = { dist: 3.6, pitch: 0.26, yaw: 0.22, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
 const EASED = 14 / 60;        // what the follow camera (player-camera.js) closes of the gap in a frame at 60 a second: the
                               // trial page added the side step every frame on top of it, so it was carried; added here as
                               // much as that comes to at any pace
@@ -116,7 +118,7 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
       aimK += ((aiming ? 1 : 0) - aimK) * ease;
       if (aiming) {
         if (!aimWas) aimWas = { pitch: cam.pitch, dist: cam.dist };
-        const behind = me.heading + Math.PI;
+        const behind = me.heading + Math.PI + AIM_CAM.yaw;
         cam.turn(Math.atan2(Math.sin(behind - cam.yaw), Math.cos(behind - cam.yaw)) * ease, (AIM_CAM.pitch - cam.pitch) * ease);
         cam.zoom((AIM_CAM.dist - cam.dist) * ease);
       } else if (aimWas) {

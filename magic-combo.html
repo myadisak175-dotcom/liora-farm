@@ -231,10 +231,11 @@ const root = new THREE.Group(); root.name = 'player'; scene.add(root);
 let hero = null, combo = null, springs = null, air = null;
 let landT = -1, landHold = 0, jumpWanted = 0, airBase = 0, jumpsUsed = 1;      // the magic jump, as magic-jump.html has it
 let speed = 0, slow = 1, demo = null, shake = 0, clock = 0, aimK = 0, aimWas = null;
-// the held cast's camera: in over her right shoulder and along the lance. dist, pitch: where it goes (m at 1.75 m, radians);
+// the held cast's camera: in behind her right shoulder, a little to her right of the way she aims and from above, so that
+// the lance goes off across the picture, up and to the right. dist, pitch, yaw: where it goes (m at 1.75 m, radians);
 // side: how far to her right (m at most; of the picture's half width at her, so on an upright phone she stays in it);
 // fov: how much narrower the picture (degrees, more the more the lance has grown)
-const AIM_CAM = { dist: 3.3, pitch: 0.1, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
+const AIM_CAM = { dist: 3.6, pitch: 0.26, yaw: 0.22, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
 const FOV = 55;
 const WALK = 1.5, RUN = 4.2;
 const stickV = new THREE.Vector2(), stick = { x: 0, z: 1, amount: 0 };
@@ -413,7 +414,7 @@ function step(dt) {
   aimK += ((aiming ? 1 : 0) - aimK) * ease;
   if (aiming) {
     if (!aimWas) aimWas = { pitch: cam.pitch, dist: cam.dist };
-    const behind = me.heading + Math.PI;
+    const behind = me.heading + Math.PI + AIM_CAM.yaw;
     cam.turn(Math.atan2(Math.sin(behind - cam.yaw), Math.cos(behind - cam.yaw)) * ease, (AIM_CAM.pitch - cam.pitch) * ease);
     cam.zoom((AIM_CAM.dist - cam.dist) * ease);
   } else if (aimWas) {
