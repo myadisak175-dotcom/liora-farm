@@ -50,6 +50,10 @@
        goes on round into the hold and a lance of light is in her hand, growing at 0.35, 0.8 and 1.4 s (a ring of light
        at her hand each time). Let go, it is thrown: straight, fast, through everything in its way, harder the more it
        has grown; full grown, it bursts on all near each thing it goes through. Holding, she turns slowly to her target.
+       A magic circle stands in the air before her while she holds it (the gate: on the line the lance will take, just
+       past where her hand lets it go, facing the way she aims; more of it drawn and bigger each time the lance grows),
+       and the lance is thrown through its middle ("ถ้าปาหอกเวท ขอเอฟเฟกต์คล้ายๆ มีวงแหวนเวท": asked which, the circle
+       there while she charges and the lance through it).
      - On the run (as fast as her run when the button goes down): she leaps the way she runs, turning once round in the
        air, her hands leaving rings of light; what she passes within arm's reach is hit; she comes down in a low cut and
        a ring goes out over the ground, hitting all inside it.
@@ -85,6 +89,10 @@ const SLAM = { clip: 'mc_slam', shot: null, glow: 0.5, name: 'กระแทก
 // the held cast: its two clips, when it grows (s held), how hard it lands at each size, how fast she turns holding it (1/s)
 // tilt: how far up its point is held (a slope); grip: how far along it from her hand to its point (of its length)
 const CHARGE = { into: 'mc_charge_in', hold: 'mc_charge', grows: [0.35, 0.8, 1.4], power: [2, 3, 5, 8], turn: 2.6, burst: 1.6, tilt: 0.7, grip: 0.6 };
+// the gate, the magic circle the lance is thrown through. hand: where her hand lets the lance go, in her own frame (m at
+// 1.75 m: ahead of her, up, to her left; measured off the throw); ahead: how far past that, on the lance's line, the
+// circle stands; radius: of its outer ring, by how grown the lance is
+const GATE = { hand: [0.68, 1.47, -0.05], ahead: 0.4, radius: [0.28, 0.33, 0.39, 0.46] };
 const RUN = 3.2;              // m/s: as fast as this when the button goes down, the running cast
 // what is thrown: its pace (m/s), how near a target it lands (m, added to the target's own), how far it goes, how fast it
 // turns to its target (1/s; 0: straight), the burst where it lands; through: it goes on through what it hits; blast: all
@@ -130,6 +138,7 @@ export function createMagicCombo({ character, marks, fx }) {
   const shots = [];
   const hand = new THREE.Vector3(), handWas = new THREE.Vector3(), handVel = new THREE.Vector3();
   const v = new THREE.Vector3(), aim = new THREE.Vector3(), want = new THREE.Vector3();
+  const gateAt = new THREE.Vector3(), gateDir = new THREE.Vector3(0, 0, 1);      // the gate: its middle, the way it faces (the lance's line)
   let handKnown = false;
 
   function handAt(which, out) {
@@ -168,6 +177,7 @@ export function createMagicCombo({ character, marks, fx }) {
   }
   function drop() {
     if (move && move.draw && !move.fired) move.draw.end(false);          // (a lance she still held goes out)
+    if (move && move.gate) { move.gate.end(); move.gate = null; }        // (and the circle before her)
   }
   function begin(def, me, world, fade, more = null) {
     drop();
@@ -180,7 +190,8 @@ export function createMagicCombo({ character, marks, fx }) {
   }
   function charge(me, world) {
     character.play(CHARGE.into, FADE.charge, false);
-    move = { kind: 'charge', def: THROW, m: marks.clips[CHARGE.into], t: 0, phase: 'in', level: 0, fired: false, target: pick(me, world), draw: fx.shot('lance') };
+    move = { kind: 'charge', def: THROW, m: marks.clips[CHARGE.into], t: 0, phase: 'in', level: 0, fired: false, target: pick(me, world), draw: fx.shot('lance'),
+      gate: fx.gate ? fx.gate() : null };
     wantHit = 0; mote = 0;
   }
   function roll(me, world) {
@@ -239,6 +250,12 @@ export function createMagicCombo({ character, marks, fx }) {
       kind = { ...kind, radius: kind.radius + 0.06 * g, burst: kind.burst + 0.25 * g, blast: g >= 3 ? CHARGE.burst : 0 };
       power = CHARGE.power[g];
       from.addScaledVector(dir, draw.long * CHARGE.grip * k);
+      if (move.gate) {
+        // through the middle of the circle: along the circle's own line, from where on it its point is (not past the circle)
+        dir.copy(gateDir);
+        from.copy(gateAt).addScaledVector(dir, Math.min(0, v.copy(from).sub(gateAt).dot(dir)));
+        move.gate.fire(); move.gate = null;
+      }
     } else if (kind.steer && handKnown && handVel.lengthSq() > 4) {
       // an orb leaves her hand the way her hand was going, and curves in
       dir.addScaledVector(v.copy(handVel).normalize(), 0.55).normalize();
@@ -414,9 +431,9 @@ export function createMagicCombo({ character, marks, fx }) {
         move.level = level;
         if (move.phase === 'in' && move.t >= m.dur) { move.phase = 'hold'; character.play(CHARGE.hold, FADE.charge, false); }
         if (!down && move.phase === 'hold') {
-          const { level: g, draw, target } = move;
-          move.draw = null;
-          begin(THROW, me, world, FADE.charge, { level: g, draw });
+          const { level: g, draw, gate, target } = move;
+          move.draw = null; move.gate = null;
+          begin(THROW, me, world, FADE.charge, { level: g, draw, gate });
           move.target = target || move.target;
         }
         return true;
@@ -444,6 +461,15 @@ export function createMagicCombo({ character, marks, fx }) {
       const ground = world.ground || (() => -1e5);
       // ---- holding the lance: in her right hand, pointing at her target; light drawn in to it; a ring each time it grows
       if (move && (move.kind === 'charge' || (move.def === THROW && !move.fired))) {
+        if (move.gate) {
+          // the circle before her: on the line from where her hand will let the lance go to her target
+          const sn = Math.sin(me.heading), c = Math.cos(me.heading), [ahead, up, left] = GATE.hand;
+          gateAt.set(me.pos.x + (sn * ahead + c * left) * k, me.pos.y + up * k, me.pos.z + (c * ahead - sn * left) * k);
+          gateDir.copy(aimFrom(me, gateAt, move.target, false));
+          gateAt.addScaledVector(gateDir, GATE.ahead * k);
+          move.gate.size(move.level);
+          move.gate.place(gateAt, gateDir, GATE.radius[move.level] * k);
+        }
         handAt('R', hand);
         aimFrom(me, hand, move.target, false);
         // held, its point is up over her shoulder (from behind her its whole length shows); thrown, it comes down level
