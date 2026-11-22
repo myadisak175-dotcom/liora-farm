@@ -43,8 +43,9 @@
        a square across it, turning; the circle in the square and a small star turning the other way; a ring in the
        middle, which the lance goes through; two small seals standing on its rim and a comet of light running round
        outside it. Its face is washed blue, its lines glow, sparkles drift off it while it stands
-     - the lance: an ornate spear of ice (a pommel, a thin shaft with a bead on it, a guard that is a tall thin spike
-       across, and a barbed head), white down its middle; thrown, white hot, a blue flame along its shaft
+     - the lance: an ornate spear of ice and silver, a picture the user sent ("หอกอันนี้แทนได้ไหม", the same evening:
+       assets/textures/lance-spear.webp); thrown, whiter, a blue flame licking back along its shaft. (Before it, and
+       until it has come, a spear the shader draws: a pommel, a thin shaft, a bead, a spike across, a barbed head)
      - let go: the circle's middle flares into a four-pointed star; slivers of ice are thrown out round its rim; a hoop
        of water goes out round the lance's line a little way on, spray torn off its rim, and thin hoops further on as
        it flies; a white-hot beam is left standing from the circle on for a moment
@@ -58,7 +59,7 @@
    How it is drawn: light laid over the picture with one blend (what a thing covers hides what is behind it, its glow
    only adds), every material marked userData.noGrade (the light of the hour and the curse leave it alone). An orb, a
    glow, a burst: one square turned to the camera, all of it worked out by its shader. A ribbon: a strip through up to
-   20 places, turned to the camera on the way (a lance: a strip of its own, its whole shape drawn on it by its shader;
+   20 places, turned to the camera on the way (a lance: a strip of its own, its picture laid on it by its shader;
    a ribbon of its wake: a strip laid along a helix worked out anew each frame). Sparks, sparkles and slivers: one
    instanced square each, moved by its shader. The gate and a hoop: one square each, all of it drawn by its shader (as
    magic-circle-fx.js draws the jump's circles, and by its rules for a phone's GPU: every line always drawn and then
@@ -79,11 +80,14 @@ const SHOTS = {
   big: { size: 0.95, ribbon: 0.3, shed: 0.7 },
   wave: { wide: 0.95, tall: 0.26, lean: -0.6 },         // half its width, half its height in the middle (m); radians it leans
   rise: { wide: 0.85, tall: 0.2, lean: Math.PI / 2 },
-  lance: { long: [0.75, 1.05, 1.4, 1.8], wide: [0.12, 0.15, 0.19, 0.23] },      // by how grown it is: its length; half its strip's width (m: its guard's points reach 0.66 of that, its head's barbs 0.4)
+  lance: { long: [0.75, 1.05, 1.4, 1.8], wide: 0.1196 },      // its length by how grown it is (m); half its strip's width, of its length (its picture's)
 };
 // the held cast's own light (THE LANCE, above): white at its heart, the clip's cyan, a blue under it
 export const LANCE_LOOK = { core: '#f6fffe', main: '#62ebf5', deep: '#1f86d8' };
 const LANCE = 10;                                       // places along a lance
+// the lance's look: a picture the user sent (22 Nov 2026, "หอกอันนี้แทนได้ไหม"), turned level and made 1024 x 256, its tail
+// at the left, its point at the right, as wide across as it is in the picture (SHOTS.lance.wide)
+const SPEAR = new URL('../assets/textures/lance-spear.webp', import.meta.url).href;      // (the trial's copy, in lance-trial/: the game's own textures folder, one up)
 const RIBBON = 20, SPARKS = 192, SHARDS = 64;
 // thrown, the lance is so much longer (and white hot); streak: s the streak of light behind it lasts
 const FLIGHT = { long: 1.25, streak: 0.2 };
@@ -129,6 +133,13 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     uGold: { value: rgb(COMBO_LOOK.gold) }, uShine: { value: 1 } };          // shared by every material
   // the held cast's: the same names, its own light (the hour's shine is the one shared)
   const water = { uCore: { value: rgb(LANCE_LOOK.core) }, uMain: { value: rgb(LANCE_LOOK.main) }, uDeep: { value: rgb(LANCE_LOOK.deep) }, uShine: colours.uShine };
+  // the lance's picture (SPEAR): shared by the lances; uHas 1 once it has come. Its colours are taken as they are in the
+  // file (as every colour here is), and premultiplied by its alpha as it is uploaded, so that drawn smaller its clear
+  // edges do not bleed into it
+  const spearIn = { value: 0 };
+  const spear = new THREE.TextureLoader().load(SPEAR, () => { spearIn.value = 1; }, undefined, err => console.warn('[magic combo] the lance picture', err));
+  spear.premultiplyAlpha = true; spear.anisotropy = 4;
+  const spearMap = { value: spear };
   const square = new THREE.PlaneGeometry(2, 2);
   const made = [];
   const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, ...o }); m.userData.noGrade = true; made.push(m); return m; };
@@ -261,10 +272,11 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   });
   const bursts = Array.from({ length: 6 }, () => ({ mesh: put(square, burstMat()), t: 1, life: 0.3 }));
 
-  // ---- a lance: a spear of ice and water, its whole shape drawn by its shader on a strip from its tail to its point,
-  // turned to the camera. Along it (0 its tail .. 1 its point), by how far from its middle line it reaches (1: the
-  // strip's edge): a pommel, a thin shaft with a bead on it, a guard (a tall thin spike across), and its head, barbed.
-  // White down its middle, pale cyan to its edges, a glow round it. uHot: thrown (white hot, a blue flame along it)
+  // ---- a lance: a spear of ice and water on a strip from its tail to its point, turned to the camera: the picture the
+  // user sent (SPEAR), laid on the strip from its tail (x 0) to its point (x 1), as wide across as it is in the picture.
+  // Until the picture has come (or if it does not), the shader draws one of its own in its place: a pommel, a thin
+  // shaft with a bead on it, a guard (a tall thin spike across), and its head, barbed, white down its middle.
+  // uHot: thrown (whiter, a blue flame licking back along it)
   function makeLance() {
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(LANCE * 2 * 3), uv = new Float32Array(LANCE * 2 * 2), idx = [];
@@ -274,12 +286,13 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx);
     const mat = material({
-      uniforms: { ...water, uK: { value: 1 }, uHot: { value: 0 }, uAge: { value: 0 } },
+      uniforms: { ...water, uK: { value: 1 }, uHot: { value: 0 }, uAge: { value: 0 }, uMap: spearMap, uHas: spearIn },
       side: THREE.DoubleSide,
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: /* glsl */`
         uniform vec3 uCore, uMain, uDeep;
-        uniform float uK, uShine, uHot, uAge;
+        uniform float uK, uShine, uHot, uAge, uHas;
+        uniform sampler2D uMap;
         varying vec2 vUv;
         // a part of its outline: so tall at x0, narrowing in a straight line to nothing at x1 (before x0 or after it)
         float part(float x, float y, float x0, float x1, float tall, float aa) {
@@ -295,22 +308,27 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         }
         void main() {
           float x = vUv.x, y = abs(vUv.y);
+          float ends = smoothstep(0.0, 0.05, x) * smoothstep(0.0, 0.03, 1.0 - x);
+          float glow = exp(-y * 6.5) * (0.3 + 0.7 * smoothstep(0.4, 0.8, x)) * ends;
+          // thrown: a blue flame licking back along its shaft
+          float lick = exp(-y * 4.2) * (0.5 + 0.5 * sin(x * 34.0 - uAge * 28.0 + y * 7.0)) * (1.0 - smoothstep(0.55, 0.8, x)) * smoothstep(0.0, 0.12, x) * uHot;
+          // the drawn one (until the picture has come)
           float aa = fwidth(vUv.y) * 1.2 + 0.008;
           float m = (1.0 - smoothstep(-aa, aa, y - 0.03)) * step(0.04, x) * step(x, 0.82);                 // its shaft
           m = max(m, max(part(x, y, 0.045, 0.0, 0.1, aa), part(x, y, 0.045, 0.1, 0.1, aa)));               // its pommel
           m = max(m, max(part(x, y, 0.6, 0.565, 0.12, aa), part(x, y, 0.6, 0.635, 0.12, aa)));             // the bead
           m = max(m, max(spike(x, y, 0.69, 0.65, 0.66, aa), spike(x, y, 0.69, 0.73, 0.66, aa)));           // its guard
-          // its head: from its barbs' tips (0.745 along, 0.4 out) straight to its point, less what lies between the
-          // barbs and the shaft
-          m = max(m, part(x, y, 0.745, 1.0, 0.4, aa) * (1.0 - part(x, y, 0.745, 0.81, 0.4, aa)));
+          m = max(m, part(x, y, 0.745, 1.0, 0.4, aa) * (1.0 - part(x, y, 0.745, 0.81, 0.4, aa)));         // its head, barbed
           float heart = 1.0 - smoothstep(0.0, 0.14, y);                    // white down its middle
-          float ends = smoothstep(0.0, 0.05, x) * smoothstep(0.0, 0.03, 1.0 - x);
-          float glow = exp(-y * 6.5) * (0.3 + 0.7 * smoothstep(0.4, 0.8, x)) * ends;
-          // thrown: a blue flame licking back along its shaft
-          float lick = exp(-y * 4.2) * (0.5 + 0.5 * sin(x * 34.0 - uAge * 28.0 + y * 7.0)) * (1.0 - smoothstep(0.55, 0.8, x)) * smoothstep(0.0, 0.12, x) * uHot;
           vec3 ice = mix(uMain, uCore, clamp(0.45 + 0.55 * heart + uHot, 0.0, 1.0));
-          vec3 col = ice * m + ((uMain * 0.55 + uDeep * 0.6) * glow * (0.8 + 0.7 * uHot) + uDeep * lick * 1.3) * (1.0 - m);
-          float a = m * 0.92 + (1.0 - m) * min(1.0, glow * 0.6 + lick * 0.35);
+          vec3 drawn = ice * m + ((uMain * 0.55 + uDeep * 0.6) * glow * (0.8 + 0.7 * uHot) + uDeep * lick * 1.3) * (1.0 - m);
+          float drawnA = m * 0.92 + (1.0 - m) * min(1.0, glow * 0.6 + lick * 0.35);
+          // the picture (its colour premultiplied as it was uploaded): thrown, whiter, the flame and a glow round it
+          vec4 pic = texture2D(uMap, vec2(x, 0.5 + 0.5 * vUv.y));
+          vec3 shown = mix(pic.rgb, uCore * pic.a, 0.35 * uHot) + (uDeep * lick * 1.3 + (uMain * 0.55 + uDeep * 0.6) * glow * 0.6 * uHot) * (1.0 - pic.a);
+          float shownA = pic.a + (1.0 - pic.a) * min(1.0, lick * 0.35 + glow * 0.3 * uHot);
+          vec3 col = mix(drawn, shown, uHas);
+          float a = mix(drawnA, shownA, uHas);
           gl_FragColor = clamp(vec4(col * uK * (0.8 + 0.3 * uShine), a * uK), 0.0, 1.0);
         }`,
     });
@@ -983,7 +1001,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         const mix = a => a[i0] + (a[i0 + 1] - a[i0]) * f;
         l.long = mix(def.long);
         l.hot += ((l.far > 0 ? 1 : 0) - l.hot) * Math.min(1, dt * 30);      // (thrown: white hot, and longer)
-        const long = l.long * (1 + (FLIGHT.long - 1) * l.hot), wide = mix(def.wide) * (0.97 + 0.03 * beat);
+        const long = l.long * (1 + (FLIGHT.long - 1) * l.hot), wide = l.long * def.wide * (0.97 + 0.03 * beat);      // (thrown, it is drawn out longer, not wider)
         const pos = l.mesh.geometry.attributes.position;
         for (let i = 0; i < LANCE; i++) {
           const u = i / (LANCE - 1);
@@ -1023,7 +1041,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       }
     },
     dispose() {
-      square.dispose(); waveGeo.dispose(); sGeo.dispose(); hGeo.dispose(); flat.dispose();
+      square.dispose(); waveGeo.dispose(); sGeo.dispose(); hGeo.dispose(); flat.dispose(); spear.dispose();
       for (const r of ribbons) r.mesh.geometry.dispose();
       for (const l of lances) { l.mesh.geometry.dispose(); l.beam.mesh.geometry.dispose(); for (const w of l.wake) w.mesh.geometry.dispose(); }
       for (const m of made) m.dispose();

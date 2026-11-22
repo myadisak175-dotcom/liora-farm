@@ -10,7 +10,8 @@
   clip the user sent (22 Nov 2026: a spear of water shot out of a magic circle, made with Gemini; "ใส่แทนอันเดิม", "แบบใน
   คลิปเลย", and its sound; then, shown a film of it, "ขอหน้าทดลอง": a page to try it on before it goes into the game).
   Tried here, its camera was not liked ("ไม่ชอบมุมกล้องนี้เลย ไม่เห็นมอน": on an upright phone what she aimed at was out
-  of the picture): the camera now looks at what she aims at (AIM_CAM, below).
+  of the picture): the camera now looks at what she aims at (AIM_CAM, below). Then the lance itself took a picture the
+  user sent ("หอกอันนี้แทนได้ไหม": assets/textures/lance-spear.webp, which the game does not ask for yet).
   The game and magic-combo.html are as they were. This folder holds the page and its own copies of the three modules
   that change (magic-combo-fx.js: the look; magic-combo.js: the bigger circle, what it tells the sounds and the camera;
   step-sounds.js: the lance heard, reading the game's audio folder one up); everything else is the game's, loaded from
@@ -114,12 +115,12 @@ import { CHARACTER_ANIM } from '../character-anim.js';
 import { createPlayerInput } from '../player-input.js';
 import { createFollowCamera } from '../player-camera.js';
 import { CHARACTER_ANIM as COMBO_ANIM, MAGIC_COMBO } from '../magic-combo-anim.js';
-import { createMagicCombo } from './magic-combo.js?v=2';
-import { createMagicComboFx } from './magic-combo-fx.js?v=2';
+import { createMagicCombo } from './magic-combo.js?v=3';
+import { createMagicComboFx } from './magic-combo-fx.js?v=3';
 import { CHARACTER_ANIM as JUMP_ANIM } from '../magic-jump-mocap-anim.js';
 import { createMagicCircles } from '../magic-circle-fx.js';
 import { createMagicJump } from '../magic-jump.js';
-import { createStepSounds } from './step-sounds.js?v=2';
+import { createStepSounds } from './step-sounds.js?v=3';
 
 const phone = matchMedia('(pointer: coarse)').matches;
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
