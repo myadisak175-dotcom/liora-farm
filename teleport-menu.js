@@ -1,7 +1,7 @@
 /* ==========================================================================
    teleport-menu.js  —  a button that takes her straight to a place on the map
 
-     createTeleportMenu({ level, player, top: 206 });      // reads level.views ({ name: { x, z, yaw } })
+     createTeleportMenu({ level, player, top: 206 });      // reads level.views ({ name: { x, z, yaw } }; with a label: shown in place of the name here)
      teleportPlaces(level)                                 // the same places as a list, for the map's pins
 
    One job: show the places the level offers, grouped by area, and send her there on a tap.
@@ -58,7 +58,7 @@ export function createTeleportMenu({ level, player, top = 206, onGo = null } = {
     const h = document.createElement('h4'); h.textContent = title;
     const row = document.createElement('div'); row.className = 'row';
     for (const [k, label] of items) {
-      const b = document.createElement('button'); b.textContent = label;
+      const b = document.createElement('button'); b.textContent = views[k].label || label;
       b.onclick = () => { const v = views[k]; player.teleport(v.x, v.z, v.yaw); close(); if (onGo) onGo(k); };
       row.append(b);
     }
