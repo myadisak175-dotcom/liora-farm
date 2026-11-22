@@ -191,7 +191,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   const cam = createFollowCamera({ camera, level });
   cam.setView(level.spawn.yaw - Math.PI);     // the camera starts behind her
   // her spells (player-spells.js): what she casts and when; here, where she may go while one has her
-  const spells = spellKit ? createPlayerSpells({ character, ...spellKit, camera, cam }) : null;
+  const spells = spellKit ? createPlayerSpells({ character, ...spellKit, camera, cam, sounds }) : null;
   const castStick = { x: 0, z: 1, amount: 0 };
   const groundAt = (x, z) => Math.max(standAt(x, z), surfaceAt(x, z));      // (what she casts meets the ground, or the water's surface)
   const input = createPlayerInput({

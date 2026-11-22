@@ -15,6 +15,8 @@
 //                                                        landing in it, 1.5 going in deep; height: m she came down from)
 //     sounds.stroke(x, z, y, { pace })                   a swimming stroke (pace: 0..1 of her swimming speed; 0: treading water)
 //     sounds.vault(x, z, y, part)                        her 'hand', then her 'foot', put on a low thing's top
+//     sounds.cast(n, hit)                                the n-th of her combo's four casts begins; hit: s from now that it
+//                                                        leaves her hand (player-spells.js): its sound is timed to it
 //     sounds.rush(speed, flying)                         every frame: how fast she goes through the air (m/s, at 1.75 m),
 //                                                        and whether she is in the air at all: the wind past her as she flies
 //   sounds.volume = 0.6      sounds.stats (for a test, or the console)      sounds.context (the AudioContext, once there is one)
@@ -62,6 +64,11 @@
 //         taking over from the thud). Into deep water nothing catches her, and she is heard going in as a thing
 //         thrown into water is ("เสียงแบบเราโยนของลงน้ำ เวลาคนตกน้ำอะ อยากได้เสียงแบบนั้น"): from higher than PLUNGE_FROM a
 //         heavy one (plunge), from lower a stone's plop (plop: louder the farther she came down)
+//   - HER COMBO'S FOUR CASTS ("เสียงนี้ ท่าคอมโบปกติ", 22 Nov 2026): the sound the user sent (a stylized swing and blow, its
+//     body low), one take for all four, a little different for each (CAST_RATE, CAST_GAIN: the turn's cut lower, the
+//     finisher lower and louder), begun so that its blow comes as the cast leaves her hand (its attack, found as it is
+//     decoded: where it first reaches half its loudest). Not the lance, the leap, the roll or the rising cast: those as
+//     they were (silent). A file of its own beside the pack (ALONE: cast)
 //   - a dash: her dress swishes as she bursts away
 //   - her vault: a footfall for her hand (light, higher) and one for her foot on the thing's top, and her dress swishing
 //     over it after her hand
@@ -141,9 +148,12 @@ const STROKE = 2.0, TREAD = 0.3;               // a stroke at her full swimming 
 const TOUCH = { hand: 1.1, foot: 1.9 };        // her vault: her hand and her foot on the thing's top (as loud as before the footfall was turned down 9 dB)
 const VAULT_SWISH = 0.8, VAULT_SWISH_AFTER = 0.06;      // ... and her dress going over, this long after her hand (s)
 // her jumps' whoosh, and the wind past her as she flies (above)
-const ALONE = { whoosh: ['whoosh-1.mp3'], puff: ['puff-1.mp3', 'puff-2.mp3', 'puff-3.mp3', 'puff-4.mp3'] };      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
+const ALONE = { whoosh: ['whoosh-1.mp3'], puff: ['puff-1.mp3', 'puff-2.mp3', 'puff-3.mp3', 'puff-4.mp3'], cast: ['cast-1.mp3'] };      // her sounds kept as files of their own, beside the pack (tools/make-step-sounds.py: ALONE)
 const WHOOSH = 0.7;                            // every jump's whoosh: under her dress's swish (1.0) and her push ("เบาๆ")
 const WHOOSH_RATE = { 1: 0.96, 2: 1.0, 3: 1.05, 4: 0.93 };      // off the ground a little lower; higher at each kick; the flip fuller
+// her combo's casts (above): how loud (the take is levelled 2 dB over her dress's swish) and how high, the 1st .. 4th
+const CAST = 0.8;
+const CAST_RATE = { 1: 1.0, 2: 1.07, 3: 0.94, 4: 0.86 }, CAST_GAIN = { 1: 1.0, 2: 0.95, 3: 1.05, 4: 1.3 };
 const RUSH_FILE = 'ambience/wind-1.mp3';       // the wind past her: the air about her's own wind (a 20 s loop)
 const RUSH = 2.2;                              // how loud at full speed (with FLIGHT: some 3 dB under her dress's swish; at a magic
                                                // jump's pace, 7.5 m/s, 7 dB under it; at its slowest nothing)
@@ -159,9 +169,10 @@ const RUSH_REST = 3;                           // s: silent this long, it is sto
 export function createStepSounds({ level, volume = 1 } = {}) {
   let ctx = null, out = null, buffer = null, bytes = null, meta = null, shift = 0, failed = null;
   let lastAt = -1, wind = null, note = -1, circles = 0, vol = Math.min(2, Math.max(0, volume));
-  const alone = {}, aloneBytes = {};      // her sounds of their own (ALONE): their buffers once decoded, their bytes until then
+  const alone = {}, aloneBytes = {}, aloneAttack = {};      // her sounds of their own (ALONE): their buffers once decoded (and each one's attack: s
+                                                            // to where it first reaches half its loudest), their bytes until then
   let rushBuf = null, rushBytes = null, rush = null;      // the wind past her: its buffer; what is playing of it
-  const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, whooshes: 0, rush: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
+  const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, whooshes: 0, casts: 0, rush: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
 
   // ---- the file: fetched at once (no touch needed for that), decoded when there is an AudioContext to decode it
   const fresh = { cache: 'no-cache' };      // (the file and where its takes lie change together: never one from the browser's cache and one new)
@@ -193,11 +204,21 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     await more;
     for (const [name, list] of Object.entries(aloneBytes)) {
       delete aloneBytes[name];
-      for (const b of list) try { (alone[name] || (alone[name] = [])).push(await decodeData(b)); } catch (err) { console.warn('[step sounds]', name, err); }
+      for (const b of list) try {
+        const buf = await decodeData(b);
+        (alone[name] || (alone[name] = [])).push(buf); (aloneAttack[name] || (aloneAttack[name] = [])).push(attackOf(buf));
+      } catch (err) { console.warn('[step sounds]', name, err); }
     }
     if (rushBytes) { const b = rushBytes; rushBytes = null; try { rushBuf = await decodeData(b); } catch (err) { console.warn('[step sounds] the wind', err); } }
   }
   const decodeData = data => new Promise((yes, no) => { const p = ctx.decodeAudioData(data, yes, no); if (p && p.then) p.then(yes, no); });
+  // where a sound first reaches half its loudest (5 ms at a time): its attack (s)
+  function attackOf(buf) {
+    const x = buf.getChannelData(0), n = Math.max(1, Math.round(0.005 * buf.sampleRate)), e = [];
+    let top = 0;
+    for (let i = 0; i + n <= x.length; i += n) { let sum = 0; for (let j = i; j < i + n; j++) sum += x[j] * x[j]; const v = Math.sqrt(sum / n); e.push(v); if (v > top) top = v; }
+    return Math.max(0, e.findIndex(v => v >= top * 0.5)) * n / buf.sampleRate;
+  }
 
   // ---- the first touch: only then may a page make sound
   function wake() {
@@ -250,14 +271,14 @@ export function createStepSounds({ level, volume = 1 } = {}) {
     if (takes.length > 1 && i === last[name]) i = (i + 1) % takes.length;
     return (last[name] = i);
   }
-  function playAlone(name, gain, rate = 1, i = pickAlone(name)) {
+  function playAlone(name, gain, rate = 1, i = pickAlone(name), when = 0) {
     const takes = alone[name];
     if (!takes || !takes[i]) return null;
     const src = ctx.createBufferSource(), g = ctx.createGain();
     src.buffer = takes[i]; src.playbackRate.value = rate; g.gain.value = gain;
     src.connect(g).connect(out);
     src.onended = () => { src.disconnect(); g.disconnect(); };
-    src.start();
+    src.start(Math.max(ctx.currentTime, when));
     stats.played++;
     return { src, g };
   }
@@ -385,6 +406,17 @@ export function createStepSounds({ level, volume = 1 } = {}) {
       stats.dashes++;
       if (!ready()) return;
       play('swish', ctx.currentTime, DASH_SWISH * vary(), about(1.04));
+    },
+
+    // the n-th of her combo's casts begins: its sound, begun so that its blow (its attack) comes `hit` s from now, as the
+    // cast leaves her hand (too soon for that: at once)
+    cast(n = 1, hit = 0) {
+      stats.casts++;
+      if (!ready()) return;
+      const i = pickAlone('cast');
+      if (i < 0) return;
+      const rate = about(CAST_RATE[n] || 1), attack = aloneAttack.cast[i] / rate;
+      playAlone('cast', CAST * (CAST_GAIN[n] || 1) * vary(), rate, i, ctx.currentTime + hit - attack - lag());
     },
 
     // every frame: the wind past her, as fast as she goes through the air (0: she is on the ground, it dies away)

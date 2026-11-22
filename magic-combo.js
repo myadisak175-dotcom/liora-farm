@@ -38,6 +38,8 @@
      combo.setCharacter(next)        another character takes her place (the game's picker): what she was doing is over,
                                      what is in flight flies on
      combo.onLand = (kind, at) => …  something landed (a page may shake its camera)
+     combo.onBegin = (index, hit) => …   a move begins (index: which of the four casts, 0..3; -1: another move);
+                                     hit: s from now that its cast leaves her hand (a page may time a sound to it)
 
    The rules:
      - Tapped: a cast leaves her hand at its move's `hit`; from its `cancel` on the next press is the next move (pressed
@@ -174,6 +176,7 @@ export function createMagicCombo({ character, marks, fx }) {
     move = { kind: 'hit', def, m: marks.clips[def.clip], t: 0, fired: false, target: pick(me, world, def === DASH ? 0.6 : 1.9), at: [0, 0], press, ...more };
     wantHit = 0; handKnown = false;
     me.vel.set(0, 0, 0);
+    if (combo.onBegin) combo.onBegin(HITS.indexOf(def), move.m.hit || 0);
   }
   function charge(me, world) {
     character.play(CHARGE.into, FADE.charge, false);
@@ -260,7 +263,7 @@ export function createMagicCombo({ character, marks, fx }) {
   }
 
   const combo = {
-    onLand: null,
+    onLand: null, onBegin: null,
     get active() { return !!move; },
     get hits() { return hits; },
     get beat() {

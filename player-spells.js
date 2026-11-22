@@ -5,7 +5,8 @@
 // What she casts and when, and the camera over her shoulder while she holds the lance; nothing else. Where she may go
 // while a move takes her is player-moves.js' (her body in the world); the buttons are index.html's. Every character.
 //
-//   const spells = createPlayerSpells({ character, comboFx, barrierFx, renderer, camera, cam })
+//   const spells = createPlayerSpells({ character, comboFx, barrierFx, renderer, camera, cam, sounds })
+//   (sounds: her sounds, step-sounds.js, or none: the four casts heard, each timed to leave her hand with its sound's blow)
 //   spells.attack(), spells.release()   the attack button down, up: tapped, the four casts; held, the lance; on the run,
 //                                       the leap. (Keyboard: J, player-input.js)
 //   spells.roll()                       the roll button: the roll, and the attack button in it the rising cast (K)
@@ -45,7 +46,7 @@ const EASED = 14 / 60;        // what the follow camera (player-camera.js) close
                               // trial page added the side step every frame on top of it, so it was carried; added here as
                               // much as that comes to at any pace
 
-export function createPlayerSpells({ character: first, comboFx, barrierFx = null, renderer = null, camera, cam }) {
+export function createPlayerSpells({ character: first, comboFx, barrierFx = null, renderer = null, camera, cam, sounds = null }) {
   let character = first;
   const combo = createMagicCombo({ character, marks: MAGIC_COMBO, fx: comboFx });
   const none = [];
@@ -58,6 +59,8 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
   // the camera: how far in over her shoulder (0..1), where it was before, the picture's width before; the jolt
   let aimK = 0, aimWas = null, fov0 = camera.fov, shake = 0, clock = 0;
   combo.onLand = kind => { if (kind === 'big' || kind === 'ring') shake = 1; };
+  // the four casts heard ("เสียงนี้ ท่าคอมโบปกติ"): each as it begins, timed so its blow comes as the cast leaves her hand
+  combo.onBegin = (i, hit) => { if (i >= 0 && sounds && sounds.cast) sounds.cast(i + 1, hit); };
 
   const casting = () => castT >= 0;
   const spells = {

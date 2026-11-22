@@ -50,6 +50,10 @@
 #                              whoosh (four fifths of it 500 Hz to 1 kHz, nothing over 2 kHz to speak of). Not in the pack:
 #                              each is written beside it, assets/audio/whoosh-N.mp3 (ALONE, below), so it could be put in
 #                              without the recordings above. Alone: python3 tools/make-step-sounds.py --alone SOURCE_DIR
+#                  cast-*.mp3   her magic combo's four casts ("เสียงนี้ ท่าคอมโบปกติ", 22 Nov 2026): the sound the user sent
+#                              (Professional_stylize_1, 2 s: one stylized swing and blow, half of it under 200 Hz, its top
+#                              0.2 s in and its tail gone by 1.2 s). Kept with its body (HIGHPASS 60 Hz, not a take's 350) and
+#                              the swing that rises into it (lead 0.15 s)
 #                  puff-*.mp3   a magic circle under her foot, as a breath of wind ("อยากได้เอฟเฟกต์เสียงเหยียบเวทเป็นเสียง
 #                              ลมเบาใสๆ", 22 Nov 2026, in place of the sparkle), ready made ("อยากได้สำเร็จรูปเลย"): made here
 #                              when there are none (synth_puff), since ElevenLabs' takes of it could not be fetched from where
@@ -194,10 +198,11 @@ SETS = {      # name: (recordings, 'each' | 'hit' | 'piece' | 'burst' | 'take', 
 }
 # her sounds kept as files of their own, beside the pack (step-sounds.js: ALONE): NAME-1.mp3, NAME-2.mp3 ... whichever
 # are there, each cut to what of it stands over its hiss (at most so long), faded, and levelled as a set of the pack is:
-# name: (its level by ear (dB), fades in and out (s), its most (s))
+# name: (its level by ear (dB), fades in and out (s), its most (s)[, what under it is cut (Hz), how long before its top it begins at most (s)])
 ALONE = {
     'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
     'puff':   (-30.0, (0.003, 0.1), 0.6),       # (a magic circle under her foot: about the sparkle's loudness, -31, that it takes over from)
+    'cast':   (-24.0, (0.005, 0.3), 1.3, 60, 0.15),      # (her combo's casts: over her dress, as an attack should be)
 }
 PUFF_TAKES = 4            # the puff, made here when no recording of it is given: so many takes
 
@@ -342,15 +347,16 @@ def write_alone(source_dir):
     """her sounds kept as files of their own (ALONE): assets/audio/NAME-N.mp3 for each SOURCE_DIR/NAME-N.mp3 there is
     (the puff, with none: made here)"""
     out_dir = os.path.join('assets', 'audio')
-    for name, (want, fades, most) in ALONE.items():
+    for name, (want, fades, most, *more) in ALONE.items():
+        low, lead = (more + [TAKE_HIGHPASS, EACH_LEAD][len(more):])[:2]
         paths = sorted(glob.glob(os.path.join(source_dir, name + '-*.mp3'))) if source_dir else []
         made = [] if paths or name != 'puff' else [('%s-%d.mp3' % (name, k + 1), synth_puff(k)) for k in range(PUFF_TAKES)]
         for path, x in [(p, None) for p in paths] + made:
-            if x is None: x = read(path, TAKE_HIGHPASS)
+            if x is None: x = read(path, low)
             a, b = take(x, most)
             a, b = int(a * SR), int(b * SR)
             quick = level(x[a:b], 0.003)
-            a = max(0, a + int(np.argmax(quick >= quick.max() * amp(ATTACK))) - int(EACH_LEAD * SR))
+            a = max(0, a + int(np.argmax(quick >= quick.max() * amp(ATTACK))) - int(lead * SR))
             b = min(b, a + int(most * SR))
             y = faded(x[a:b], *fades)
             g = min(amp(want) / loudest(a_weighted(y)), amp(CEILING) / np.abs(y).max())
