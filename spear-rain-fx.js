@@ -19,6 +19,8 @@
        crown, a ring going out in the air, the ground under it awash                  hoop of water in the air
    The clip takes ten seconds; a move in a fight cannot, so from her hand to the great spear's landing is about three
    seconds (SPEAR_RAIN); a lance full grown, whose rain is three times as many and as long, five.
+   And one thing the clip has not, asked after it: the spears stay where they land, stuck in the ground, a graveyard
+   of spears, and go a while after the great spear is down (GRAVES).
 
    ITS WATER IS THE BASIC COMBO'S (the README: "The look of her magic", the same night: "หลังจากนี้ใช้ style ของสกิลคอมโบ
    พื้นฐานเป็น ref"). Nothing of water is drawn by a shader here; it is the clip's own painted water, the basic combo's
@@ -54,7 +56,8 @@
      rain.onBeat = what => …                'open' the seal opens; 'fall' the first spear is let go; 'great' the great
                                             spear is let go (for a page's sounds and camera)
      rain.update(dt, camera)                every frame
-     rain.time                              s since it left her hand (-1: none); rain.busy: one is going
+     rain.time                              s since it left her hand (-1: none); rain.busy: one is going (the spears
+                                            that still stand where they landed are not counted: `rain.standing`)
      rain.portal, rain.radius               the seal's middle and how wide it rains, while one is going
      rain.stop()                            what is going is gone at once
      rain.setNight(on), rain.dispose()
@@ -101,6 +104,17 @@ export const SPEAR_RAIN = {
   high: [6.6, 6.6, 6.6, 7.6], seal: [3.4, 3.8, 4.2, 6.0], radius: [2.6, 3.0, 3.4, 5.2], spears: [8, 11, 14, 66],
   grand: [1, 1, 1, 1.3],        // the great spear, and the star it lands in, so many times as big
 };
+// THE SPEARS STAY WHERE THEY LAND ("อยากให้มีหลังตกลงมาจะมีเอฟเฟคหอกปักพื้นสักพักก่อนแล้วค่อยสลายหาย เหมือนสุสานหอก", 23 Nov
+// 2026: stuck in the ground a while, then gone; a graveyard of spears). Each stands where it struck, its point in the
+// ground (`bury` of its length, and up to `deeper` more), come to rest leaning a little its own way (up to `lean` rad
+// off the way it fell) with a quiver that dies in `quiver` s (`beats` times a second); the great spear in their
+// middle, upright, and its blow shakes those about it (`shock`: rad, the nearest). They stand until `stand` s after
+// the great spear is down, then go: the outermost first and the great one last, over `go` s, each in `gone` s, from
+// its tail down to the ground, breaking up into small squares with a white edge where it goes and sparks rising off
+// it (`sparks` a spear; the great one's `great`). While they stand a spark rises off one of them every `mote` s.
+// They are not the rain's any more once they stand: another may be thrown up over them
+export const GRAVES = { bury: 0.1, deeper: 0.07, lean: 0.26, quiver: 0.2, beats: 7, shock: 0.16, stand: 1.5, go: 0.7, gone: 0.6,
+  sparks: 3, great: 14, mote: 0.1, cool: 0.16, hot: 0.18 };      // (cool: s it takes to cool from white, to `hot`: how white it stands)
 const T = SPEAR_RAIN;
 const SPEAR = new URL('./assets/textures/lance-spear.webp', import.meta.url).href;      // her lance's picture: its tail at the left, its point at the right
 const SPEAR_WIDE = 0.125;                               // half its strip's width, of its length (the picture's)
@@ -118,7 +132,7 @@ const HIT = { life: 0.4, more: 0.1, fade: 0.3, up: 0.3 };
 // its radius; rise: its outer edge stands so much higher, of its radius; spin: rad/s; from: of its radius it begins at)
 const CROWN = { round: 3, inner: 0.56, rise: 0.17, spin: 2.6, from: 0.22, life: 0.36, more: 0.06 };
 const BOLT = { n: 5, places: 13, life: 0.17 };
-const MOST = { spears: 44, splashes: 40, rounds: 32, bits: 320, flares: 32 };      // (spears: a full rain has some 30 in the air at once, a streak behind each that falls)
+const MOST = { spears: 104, streaks: 24, stuck: 72, splashes: 40, rounds: 32, bits: 448, flares: 32 };      // (spears: a full rain has some 30 in the air at once, and its 67 stand where they landed; a streak behind each that falls)
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
 
 const NOISE = /* glsl */`
@@ -285,10 +299,13 @@ export function createSpearRainFx({ seed = 11 } = {}) {
   const ALONG = /* glsl */`
     attribute vec3 aTip, aDir;
     attribute vec4 aShape;
+    attribute vec2 aGone;
     varying vec2 vUv;
     varying float vK, vHot;
+    varying vec3 vGone;
     void main() {
       vUv = position.xy;
+      vGone = vec3(aGone, aShape.x);
       vec3 p = aTip - aDir * aShape.x * (1.0 - position.x);
       vec3 side = cross(aDir, cameraPosition - p);
       side *= inversesqrt(max(dot(side, side), 1e-8));
@@ -296,7 +313,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       vK = aShape.z; vHot = aShape.w;
       gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
     }`;
-  const spears = instanced(strip, MOST.spears, { aTip: 3, aDir: 3, aShape: 4 });
+  const spears = instanced(strip, MOST.spears, { aTip: 3, aDir: 3, aShape: 4, aGone: 2 });      // (aGone: how far gone a spear that stood is, 0..1, and a number of its own)
   const spearMesh = put(spears.geo, material({
     uniforms: { ...look, uMap: { value: picture }, uHas: spearIn },
     side: THREE.DoubleSide,
@@ -307,8 +324,13 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       uniform sampler2D uMap;
       varying vec2 vUv;
       varying float vK, vHot;
+      varying vec3 vGone;
       void main() {
         float x = vUv.x, y = abs(vUv.y);
+        // one that stood, going: from its tail down, in small squares (7 cm), a white edge where it goes
+        float sq = fract(sin(dot(floor(vec2(x, vUv.y * 0.125) * vGone.z * 14.0) + vGone.y * 61.0, vec2(127.1, 311.7))) * 43758.5453);
+        float left = x + (sq - 0.5) * 0.32 - (vGone.x * 1.32 - 0.16);
+        float kept = step(0.0, left), edge = (1.0 - step(0.06, left)) * step(0.001, vGone.x);
         // until the picture has come: a shaft and a head
         float shaft = (1.0 - smoothstep(0.03, 0.06, y)) * step(0.03, x) * step(x, 0.8);
         float head = (1.0 - smoothstep(-0.03, 0.03, y - 0.42 * (1.0 - (x - 0.74) / 0.26))) * step(0.74, x);
@@ -319,10 +341,11 @@ export function createSpearRainFx({ seed = 11 } = {}) {
         float flame = exp(-y * 7.0) * ends;
         vec3 col = mix(pic.rgb, uCore * pic.a, 0.5 * vHot) + (uMain * 0.6 + uDeep * 0.35) * flame * (0.15 + 0.6 * vHot) * (1.0 - pic.a);
         float a = pic.a + (1.0 - pic.a) * flame * 0.3 * vHot;
-        gl_FragColor = clamp(vec4(col * (0.84 + 0.2 * uShine), a) * vK, 0.0, 1.0);
+        col = mix(col, uCore * a, edge * 0.9);
+        gl_FragColor = clamp(vec4(col * (0.84 + 0.2 * uShine), a) * vK * kept, 0.0, 1.0);
       }`,
   }), 6);
-  const streaks = instanced(strip, MOST.spears, { aTip: 3, aDir: 3, aShape: 4 });
+  const streaks = instanced(strip, MOST.streaks, { aTip: 3, aDir: 3, aShape: 4, aGone: 2 });
   const streakMesh = put(streaks.geo, material({
     uniforms: { ...look },
     side: THREE.DoubleSide,
@@ -703,14 +726,34 @@ export function createSpearRainFx({ seed = 11 } = {}) {
   const upAt = t => 1 - Math.pow(1 - clamp(t / T.rise, 0, 1), RISE_EASE);
   const passed = u => T.rise * (1 - Math.pow(1 - u, 1 / RISE_EASE));      // when it was `u` of the way up
   let nSpear = 0, nStreak = 0;
-  function spearAt(tip, dir, long, there, hot) {
+  function spearAt(tip, dir, long, there, hot, gone = 0, own = 0) {
     if (nSpear >= MOST.spears || there <= 0.001) return;
     spears.a.aTip.setXYZ(nSpear, tip.x, tip.y, tip.z); spears.a.aDir.setXYZ(nSpear, dir.x, dir.y, dir.z);
     spears.a.aShape.setXYZW(nSpear, long, long * SPEAR_WIDE, there, hot);
+    spears.a.aGone.setXY(nSpear, gone, own);
     nSpear++;
   }
+  // ---- the spears that stand where they landed
+  const stuck = [];
+  let mote = 0;
+  // one stands: s, a strike that has landed; until: s from now that it begins to go
+  function stand(s, until) {
+    if (stuck.length >= MOST.stuck) stuck.shift();
+    const g = { land: s.land.clone(), fell: s.dir.clone(), rest: new THREE.Vector3(), out: new THREE.Vector3(), long: s.long, great: s.great, age: 0, until, shed: 0,
+      own: rand(), bury: s.great ? 0.18 : GRAVES.bury + GRAVES.deeper * rand(), shook: -1, shock: 0 };
+    // at rest: the way it fell, turned a little its own way (the great one: as it fell, upright)
+    const lean = s.great ? 0 : GRAVES.lean * Math.sqrt(rand()), a = rand() * TAU;
+    g.rest.set(s.dir.x + Math.cos(a) * Math.tan(lean), s.dir.y, s.dir.z + Math.sin(a) * Math.tan(lean)).normalize();
+    g.out.set(s.land.x - cast.centre.x, 0, s.land.z - cast.centre.z);
+    g.far = g.out.length(); if (g.far > 1e-3) g.out.multiplyScalar(1 / g.far);
+    stuck.push(g);
+  }
+  // the great spear's blow shakes those that stand about it: the nearest most
+  function shake(reach) {
+    for (const g of stuck) if (!g.great) { g.shook = 0; g.shock = GRAVES.shock * Math.max(0.25, 1 - g.far / Math.max(reach, 1e-3)); }
+  }
   function streakAt(tip, dir, long, wide, there) {
-    if (nStreak >= MOST.spears || there <= 0.001 || long <= 0.001) return;
+    if (nStreak >= MOST.streaks || there <= 0.001 || long <= 0.001) return;
     streaks.a.aTip.setXYZ(nStreak, tip.x, tip.y, tip.z); streaks.a.aDir.setXYZ(nStreak, dir.x, dir.y, dir.z);
     streaks.a.aShape.setXYZW(nStreak, long, wide, there, 1);
     nStreak++;
@@ -780,6 +823,10 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       v.copy(at).y += 0.25 * k;
       scatter(v, 4, 3.3 * k, 0.062 * k, 0); scatter(v, 1, 2.2 * k, 0.085 * k, 2);
     }
+    // it stands where it landed: until a while after the great spear is down, the outermost going first, the great one last
+    const c = cast, after = Math.max(0, c.great.hit - c.t) + GRAVES.stand;
+    if (s.great) { shake(c.R); stand(s, after + GRAVES.go + 0.12); }
+    else stand(s, after + GRAVES.go * (0.8 * (1 - clamp(s.far / c.R, 0, 1)) + 0.2 * rand()));
     if (rain.onStrike) rain.onStrike({ at, radius: (s.great ? cast.R : 1.15 * z), great: s.great, index: s.index });
   }
 
@@ -789,6 +836,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
     get busy() { return cast.t >= 0; },
     get portal() { return cast.portal; },
     get radius() { return cast.R; },
+    get standing() { return stuck.length; },
     hold(tip, dir, long, there = 1) { held.on = true; held.tip.copy(tip); held.dir.copy(dir); held.long = long; held.there = there; },
     twirl(at, dir, half) {
       const p = twirlPts[0];
@@ -854,7 +902,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
         when: { open: T.rise, first: T.fall + T.drop, last: c.last, great: c.great.hit } };
     },
     stop() {
-      cast.t = -1; twirlPts.length = 0; splashes.length = 0; rounds.length = 0; held.on = false;
+      cast.t = -1; twirlPts.length = 0; splashes.length = 0; rounds.length = 0; held.on = false; stuck.length = 0;
       seal.visible = false; twirlBand.mesh.visible = false;
       for (const h of helix) h.band.mesh.visible = false;
       for (const b of bolts) { b.age = 1; b.mesh.visible = false; }
@@ -975,9 +1023,8 @@ export function createSpearRainFx({ seed = 11 } = {}) {
         for (const s of c.all) {
           const far = (s.great ? 6.5 : 4.6) * k, wide = (s.great ? 0.6 : 0.25) * k * s.size;
           if (s.done) {
-            // (the great spear stands a moment where it struck, and what is left of a streak thins away)
+            // (it stands where it struck: `stuck`, below; what is left of its streak thins away)
             const since = t - s.hit;
-            if (s.great && since < 0.42) spearAt(v.copy(s.land).addScaledVector(s.dir, 0.18 * s.long), s.dir, s.long, 1 - smooth(0.12, 0.42, since), 1 - since / 0.42);
             if (since < 0.16) streakAt(s.land, s.dir, far * (1 - since / 0.16), wide, 1 - since / 0.16);
             continue;
           }
@@ -1006,6 +1053,52 @@ export function createSpearRainFx({ seed = 11 } = {}) {
         }
         if (was < T.fall && t >= T.fall && rain.onBeat) rain.onBeat('fall');
         if (t >= c.end) { c.t = -1; seal.visible = false; for (const b of bolts) b.mesh.visible = false; for (const h of helix) h.band.mesh.visible = false; }
+      }
+      // ---- the spears that stand where they landed (whether a rain is going or not): quivering to rest, standing, going
+      {
+        const G = GRAVES, k = cast.k;
+        let alive = 0;
+        for (let i = 0; i < stuck.length; i++) {
+          const g = stuck[i];
+          g.age += dt;
+          const gone = (g.age - g.until) / G.gone;
+          if (gone >= 1) continue;
+          stuck[alive++] = g;
+          // the way it points: at rest, with what is left of its quiver (from the way it fell, through its rest and back),
+          // and of the great spear's blow (away from it and back)
+          const q = Math.exp(-g.age / G.quiver) * Math.cos(TAU * G.beats * g.age);
+          w.copy(g.rest).addScaledVector(g.fell, q).addScaledVector(g.rest, -q);
+          if (g.shook >= 0) {
+            g.shook += dt;
+            const sh = g.shock * Math.exp(-g.shook / 0.28) * Math.sin(TAU * 5.5 * g.shook);
+            w.addScaledVector(g.out, sh);
+            if (g.shook > 1.5) g.shook = -1;
+          }
+          w.normalize();
+          const going = Math.max(0, gone), hot = G.hot + (0.75 - G.hot) * Math.exp(-g.age / G.cool) + 0.5 * going;
+          spearAt(v.copy(g.land).addScaledVector(w, g.bury * g.long), w, g.long, 1, Math.min(1, hot), going, g.own);
+          // sparks off it where it goes, rising
+          if (going > 0) {
+            const n = g.great ? G.great : G.sparks;
+            while (g.shed < n && going >= (g.shed + 0.5) / n) {
+              const x = clamp(going * 1.1, 0, 1 - g.bury);      // (how far down it the going has come)
+              tan.copy(g.land).addScaledVector(w, -g.long * (1 - g.bury - x));
+              bit(tan, (rand() - 0.5) * 0.5 * k, (0.5 + 0.9 * rand()) * k, (rand() - 0.5) * 0.5 * k, 0.5 + 0.5 * rand(), (g.great ? 0.1 : 0.07) * (0.7 + 0.6 * rand()) * k, 1);
+              g.shed++;
+            }
+          }
+        }
+        stuck.length = alive;
+        // (while they stand: a spark off one of them now and then)
+        mote -= dt;
+        if (alive && mote <= 0) {
+          mote = G.mote * (0.6 + 0.8 * rand()) * Math.max(1, 12 / alive);
+          const g = stuck[Math.floor(rand() * alive)];
+          if (g.age < g.until) {
+            tan.copy(g.land).addScaledVector(g.rest, -g.long * (0.15 + 0.8 * rand()));
+            bit(tan, (rand() - 0.5) * 0.2 * k, (0.25 + 0.4 * rand()) * k, (rand() - 0.5) * 0.2 * k, 0.6 + 0.5 * rand(), (0.045 + 0.04 * rand()) * k, 1);
+          }
+        }
       }
       spears.geo.instanceCount = nSpear; streaks.geo.instanceCount = nStreak;
       spearMesh.visible = nSpear > 0; streakMesh.visible = nStreak > 0;
