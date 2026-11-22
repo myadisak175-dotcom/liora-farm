@@ -36,6 +36,8 @@ import { createMagicCombo } from './magic-combo.js';
 import { MAGIC_COMBO } from './magic-combo-game-anim.js';
 import { BARRIER } from './barrier-fx.js';
 
+import { WINDUP, RELEASE, RECOVERY, FINAL_HIT } from './sky-spear.js';
+
 const BARRIER_CLIP = 'barrier';
 const PRESS = 0.15;           // s a press of the barrier button is remembered (as the jump's)
 // the held cast's camera, as on the trial page (magic-combo.html): behind her on the line from what she aims at through
@@ -50,7 +52,7 @@ const PRESS = 0.15;           // s a press of the barrier button is remembered (
 // (degrees, more the more the lance has grown); in, out: how fast it goes there and back (1/s)
 const AIM_CAM = { dist: 4.8, pitch: 0.38, side: 1.6, across: 0.5, far: 9, look: 0.7, most: 4.6, fov: 6, in: 5, out: 3.5 };
 
-export function createPlayerSpells({ character: first, comboFx, barrierFx = null, renderer = null, camera, cam, sounds = null }) {
+export function createPlayerSpells({ character: first, comboFx, barrierFx = null, skyFx = null, renderer = null, camera, cam, sounds = null }) {
   let character = first;
   const combo = createMagicCombo({ character, marks: MAGIC_COMBO, fx: comboFx });
   const none = [];
@@ -69,31 +71,63 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
   // ... and the lance: its circle as it opens, its blast as it is let go (the clip's own sound, step-sounds.js)
   combo.onLance = (what, hit) => { if (sounds && sounds.lance) sounds.lance(what, hit); };
 
-  const casting = () => castT >= 0;
+  let wantSky = false;
+  const palm = new THREE.Vector3(), focus = new THREE.Vector3();
+  const savedLook = new THREE.Quaternion();
+  const rightHand = () => character.model.getObjectByName('J_Bip_R_Middle1') || character.model.getObjectByName('J_Bip_R_Hand');
+  let grip = rightHand();
+  const skyCast = () => skyFx && skyFx.time >= 0 && skyFx.time < RECOVERY;
+  const casting = () => castT >= 0 || skyCast();
   const spells = {
     get active() { return combo.active || casting(); },
     get aiming() { return combo.aiming; },
     get held() { return Math.max(combo.held, 0.75 * barrierHeld()); },
     get upside() { return combo.upside; },
-    get beat() { return casting() ? 'บาเรียน้ำ' : combo.beat; },
+    get beat() { return skyCast() ? 'ฝนหอก' : castT >= 0 ? 'บาเรียน้ำ' : combo.beat; },
     get combo() { return combo; },                   // (for a test, or the console)
     get barrierT() { return waterT; },
+    skySpear() { if (skyFx && skyFx.time < 0 && !casting() && !combo.active) wantSky = true; },
     attack() { if (!casting()) combo.attack(); },
     release() { combo.release(); },
     roll() { if (!casting()) combo.dodge(); },
     barrier() { if (character.actions[BARRIER_CLIP]) wantBarrier = PRESS; },
-    stop() { combo.stop(); castT = -1; wantBarrier = 0; },
+    stop() { combo.stop(); castT = -1; wantBarrier = 0; wantSky = false; skyFx?.reset(); },
     setCharacter(next) {
       spells.stop();
       character = next;
       combo.setCharacter(next);
-      hold = handOf();
+      hold = handOf(); grip = rightHand();
     },
     step(dt, me, w) {
       world = { ...w, targets: none };
       wantBarrier = Math.max(0, wantBarrier - dt);
       if (waterT >= 0) { waterT += dt; if (waterT > BARRIER.gone) waterT = -1; }
-      if (casting()) {
+      if (skyFx) {
+        const prev = skyFx.time;
+        skyFx.advance(dt);
+        if (prev >= 0 && prev < WINDUP && skyFx.time >= WINDUP) {
+          character.play('mc_throw', 0.08, false);
+          sounds?.lance?.('throw', RELEASE - WINDUP);
+        }
+        if (prev >= 0 && prev < FINAL_HIT && skyFx.time >= FINAL_HIT) {
+          const p = skyFx.portal;
+          sounds?.splash?.(p.x, p.z, world.ground(p.x,p.z), {size:1.3, height:1});
+          shake = 0.68;
+        }
+        if (wantSky) {
+          wantSky = false;
+          if (world.grounded && !casting() && !combo.active && skyFx.time < 0) {
+            combo.stop();
+            wantBarrier = 0;
+            character.play('mc_charge_in', 0.10, false);
+            sounds?.lance?.('open');
+            skyFx.start(me, character.height, world.ground);
+            me.vel.set(0, 0, 0);
+          }
+        }
+        if (skyCast()) return true;
+      }
+      if (castT >= 0) {
         // casting the barrier: she stands where she is until the clip is over
         castT += dt;
         if (castT >= BARRIER.end || !world.grounded) { castT = -1; return false; }
@@ -113,6 +147,11 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
     },
     after(dt, me) {
       combo.after(dt, me, world);
+      if (skyFx && skyFx.time >= 0) {
+        if (grip) grip.getWorldPosition(palm);
+        else palm.copy(me.pos).y += character.height * .7;
+        skyFx.draw(palm);
+      }
       if (hold) hold.getWorldPosition(hand);         // (her bones were brought up to date by combo.after)
     },
     look(dt, me, k) {
@@ -148,6 +187,15 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
         const away = aimLook.distanceTo(aimAt);
         camera.lookAt(aimLook.lerp(aimAt, away > 1e-3 ? aimK * Math.min(AIM_CAM.look, AIM_CAM.most * k / away) : 0));
       } else if (camera.fov !== fov0) { camera.fov = fov0; camera.updateProjectionMatrix(); }
+      // Follow the opening seal gently, then settle back into the player's chosen view.
+      if (skyFx && skyFx.time >= 0 && !aiming) {
+        const t = skyFx.time;
+        const lift = THREE.MathUtils.smoothstep(t, .38, 1.14) * (1 - THREE.MathUtils.smoothstep(t, 2.02, 3.38));
+        savedLook.copy(camera.quaternion);
+        focus.copy(skyFx.portal); focus.y -= k * 1.15;
+        camera.lookAt(focus);
+        camera.quaternion.slerp(savedLook, 1 - lift * .65);
+      }
       // ---- the jolt: the finisher's burst and a leap's ring, briefly; the barrier's water breaking out and landing
       shake = Math.max(0, shake - dt / 0.22);
       const a = 0.06 * shake * shake, b = barrierFx ? barrierFx.shake * 0.045 : 0;
