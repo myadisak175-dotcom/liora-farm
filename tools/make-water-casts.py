@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 tools/make-water-casts.py  —  the pictures of her four water casts (the normal combo's, on its trial page for now:
-combo-water-trial/water-jet.webp, water-sweep.webp, water-orbit.webp, water-vortex.webp), of the bolt of water they
+assets/water-casts/water-jet.webp, water-sweep.webp, water-orbit.webp, water-vortex.webp), of the bolt of water they
 throw and of the splash where it lands (water-bolt.webp, water-hit.webp), of a band of the same water for her waves
 and rings (water-blade.webp), and water-casts.js, which says what is in
 them: all made from the clip the casts were asked after (22 Nov 2026: ten seconds made with Gemini, a girl's four
 water casts before the plant boss, 1280 x 720, 24 pictures a second; the clip itself is not kept here).
 
-    python3 tools/make-water-casts.py CLIP.mp4 realesr-animevideov3.pth [combo-water-trial] [WORK]
+    python3 tools/make-water-casts.py CLIP.mp4 realesr-animevideov3.pth [assets/water-casts] [WORK]
 
 Why: the first textures were the clip's frames at a quarter of their size (256 pixels across a cast five metres wide),
 which a phone held upright showed six times too big: out of focus ("vfx ดูเบลอๆ", "ถ้าทำให้ texture ชัดสวยจะดีมาก"). These
@@ -47,7 +47,7 @@ from onnx import helper, TensorProto, numpy_helper
 from PIL import Image
 
 CLIP, MODEL = sys.argv[1], sys.argv[2]
-OUT = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'combo-water-trial')
+OUT = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'water-casts')
 WORK = sys.argv[4] if len(sys.argv) > 4 else '/tmp/water-casts'
 
 # ---------------------------------------------------------------- the four casts
@@ -641,7 +641,7 @@ GLOW = (4, 20)
 DARK = 0.30                                 # the lightness kept: from this (0) to 1 (255), in 32 steps; alpha in 64
 STOPS = [0.44 + 0.08 * k for k in range(8)]
 LUMA = np.array([0.114, 0.587, 0.299], np.float32)          # (of a BGR picture)
-HEAD = """// combo-water-trial/water-casts.js: what is in the water casts' pictures (water-jet.webp, water-sweep.webp,
+HEAD = """// assets/water-casts/water-casts.js: what is in the water casts' pictures (water-jet.webp, water-sweep.webp,
 // water-orbit.webp, water-vortex.webp; water-bolt.webp, water-hit.webp, water-blade.webp), for magic-combo-fx.js. MADE by
 // tools/make-water-casts.py: not written by hand.
 //   size: the picture's (pixels); grid: the squares of a frame, across and down (a square: 14 pixels; its tile in the
