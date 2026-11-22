@@ -76,10 +76,9 @@
 //     instead: clear, light, short ("เสียงแบบใสๆ เบาๆ สั้นๆ"). A droplet's note with a sparkle over it came next; one of the
 //     two was "like a bird", and it was the droplet ("เอาเสียงประกายกลับมา เอาเสียงหยดน้ำออก"): the sparkle alone, until
 //     22 Nov 2026, when a breath of wind was wanted in its place ("อยากได้เอฟเฟกต์เสียงเหยียบเวทเป็นเสียงลมเบาใสๆ"), made
-//     here for a while; then a sound the user sent ("เสียงเหยียบวงเวทตอนกระโดดเอาอันนี้"), and then another she liked more
-//     ("ชอบเสียงเวทอันนี้", in place of it): a magical shimmer, 0.66 s, heard at once and swelling to its top 0.2 s on, as
-//     she leaves the circle (circle: a file of its own, ALONE). Every circle of a flight, the caught fall's too. The sparkle
-//     (glint) is still in the pack: with no circle file, it is heard
+//     here for a while; then two sounds the user sent, one after the other, and then the one she liked best ("เสียงตอนเหยียบ
+//     วงแหวนเวทเอาอันนี้ละดีสุด"): a powerful low burst, there at once, 1 s of it (circle: a file of its own, ALONE). Every
+//     circle of a flight, the caught fall's too. The sparkle (glint) is still in the pack: with no circle file, it is heard
 // No take twice running (but the sparkle, above), each a little louder or softer and a little higher or lower than the
 // last, louder the faster she goes. A set with no takes is not heard, and nothing else changes.
 //
@@ -133,8 +132,8 @@ const WET = 0.04;              // m: water deeper than this over the ground is w
 const PUSH = 1.6, PUSH_RATE = 0.88;            // her push off the ground: a step, this loud, this much lower
 const GUST = 0.7;                              // the air taking her up off the ground
 const CIRCLE = 0.85, CIRCLE_GROUND = 0.55;     // a circle under her foot, the sound she chose for it: in the air; on the ground (her push is
-                                               // what is heard there). Levelled as the sparkle was; 3 dB over it here (it was 0.6, 0.4),
-                                               // so her magic stands out of her steps
+                                               // what is heard there). 3 dB over the sparkle's 0.6, 0.4, so her magic stands out of her steps.
+                                               // (Its take is low, levelled as the thump is: by ear 4 dB over the sparkle's, 9 dB under a cast)
 const GLINT = 0.6, GLINT_GROUND = 0.4;         // a circle opening under her, its sparkle (only when there is no circle file): in the air (as loud as it was when it was heard
                                                // over the droplet, and asked back); on the ground (her push is what is heard)
 const LADDER = [-2, -1, 0, 1, 2];              // semitones from the take as it is: the 1st, 2nd, 3rd, 4th (5th) circle of a flight

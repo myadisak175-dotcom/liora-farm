@@ -56,12 +56,13 @@
 #                              in; the first, Professional_stylize_1, is in the history). Kept with its body (HIGHPASS 60 Hz,
 #                              not a take's 350) and the swing that rises into it (lead 0.15 s)
 #                  circle-*.mp3   a magic circle under her foot as she jumps off it: the sound the user chose for it last
-#                              ("ชอบเสียงเวทอันนี้", asked where: in place of the circle's sound, 22 Nov 2026), A_short_warm_low-p_4
-#                              (0.8 s: a magical shimmer that swells for 0.3 s and dies away, nearly all of it over 2 kHz, a
-#                              note in it at 2.08 kHz). Its first 0.09 s, the quiet start of the swell, is cut (lead 0.08 s
-#                              before it is within 6 dB of its top, faded in over 15 ms): heard as her foot is on the circle,
-#                              at its loudest 0.2 s on, as she leaves it. Before it the same day: High-quality_Japanes_4,
-#                              and a breath of wind made here (synth_puff), both in the history
+#                              ("เสียงตอนเหยียบวงแหวนเวทเอาอันนี้ละดีสุด", 22 Nov 2026), A_short_powerful_ma_4 (3 s: a
+#                              powerful low burst, there at once, four fifths of it under 200 Hz, loud for 0.3 s and then a
+#                              long low tail). Kept with its body (cut only under 45 Hz, not a take's 350: that would leave
+#                              a twentieth of it) and its first second, faded out over the last 0.45 s (a flight's circles
+#                              come a third of a second apart: three seconds of each would pile up). Before it the same
+#                              day: A_short_warm_low-p_4, High-quality_Japanes_4, and a breath of wind made here
+#                              (synth_puff), all in the history
 # (needs ffmpeg with libmp3lame, and numpy. The recordings are not kept in the repository: only what is made from them.
 #  The set before these, Kenney's Impact Sounds and Fantozzi's Footsteps, is gone from here and from the game.)
 #
@@ -205,7 +206,7 @@ SETS = {      # name: (recordings, 'each' | 'hit' | 'piece' | 'burst' | 'take', 
 # name: (its level by ear (dB), fades in and out (s), its most (s)[, what under it is cut (Hz), how long before its top it begins at most (s)])
 ALONE = {
     'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
-    'circle': (-31.0, (0.015, 0.15), 0.75, TAKE_HIGHPASS, 0.08),      # (a magic circle under her foot: the sparkle's loudness, that it takes over from)
+    'circle': (-27.0, (0.003, 0.45), 1.0, 45, 0.02),      # (a magic circle under her foot: four fifths of it under 200 Hz, so as the thump is: louder by ear and it would clip)
     'cast':   (-24.0, (0.005, 0.3), 1.1, 60, 0.15),      # (her combo's casts: over her dress, as an attack should be)
 }
 
