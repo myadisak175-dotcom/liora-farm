@@ -279,7 +279,12 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   };
   const square = new THREE.PlaneGeometry(2, 2);
   const made = [];
-  const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, ...o }); m.userData.noGrade = true; made.push(m); return m; };
+  // Every one of them is drawn with the see-through things, after all that is solid. (Until 23 Nov 2026 most were not
+  // marked so: they were drawn with the solid things and, writing no depth, were painted over by whatever solid came
+  // after them. The river comes after the land: so wherever water lay behind her light on the screen, the water was
+  // drawn over it, the lance's circle cut off along the far bank, the lance, its wake and the orbs gone over the river:
+  // "น้ำบังสกิลหมดเลย".) Those that were not see-through before are drawn in one pass, as they were (forceSinglePass).
+  const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, transparent: true, forceSinglePass: !o.transparent, ...o }); m.userData.noGrade = true; made.push(m); return m; };
   const put = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.visible = false; object.add(m); return m; };
 
   // ---- the four casts' pictures. A frame is mostly air, so a picture holds it as tiles: squares of 14 pixels, each

@@ -260,7 +260,9 @@ export function createSpearRainFx({ seed = 11 } = {}) {
     uShine: { value: 0.8 }, uTime: { value: 0 } };       // the lance's light, shared by all that has it
   const aqua = { uWCore: { value: rgb(WATER_LOOK.core) }, uWMain: { value: rgb(WATER_LOOK.main) }, uWDeep: { value: rgb(WATER_LOOK.deep) } };
   const made = [], geos = [], pictures = [];
-  const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, ...o }); m.userData.noGrade = true; made.push(m); return m; };
+  // drawn with the see-through things, after all that is solid (the water too), in their own order (put's): as
+  // magic-combo-fx.js' material says, unmarked they were painted over by the river wherever it lay behind them
+  const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, transparent: true, forceSinglePass: !o.transparent, ...o }); m.userData.noGrade = true; made.push(m); return m; };
   const put = (geo, mat, order) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.visible = false; m.renderOrder = order; object.add(m); return m; };
   const square = new THREE.PlaneGeometry(2, 2); geos.push(square);
   // so many of one thing, each with numbers of its own

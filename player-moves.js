@@ -216,7 +216,15 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // build: her pace builds with each kick, carried between them (magic-jump.js, "Building": 4.2, 5.0, 6.0, 7.2 m/s at 1.75 m
   // out of a run), in the game since 21 Nov 2026 ("อันนี้ดี เอาขึ้นเมนหลักเลยค่ะ"), with her weight or not: carried
   // whatever player.setWeight says (it carries her pace by itself: carry, below, only ever asked for more of the same)
-  const air = createMagicJump({ character, circles, mocap: true, step: 'flow', momentum: true, step3: 'jump', carry: !!weighs, build: true });      // (carry: with her weight, below)
+  // the circles the jump opens on the ground (its first, off the ground; the one that catches a long fall): wading, on the
+  // water over her feet, not on the riverbed under it, where the water hid them ("น้ำบังสกิล", 23 Nov 2026). A little
+  // over the surface, so that its slow waves (some 6 cm) do not cut through them
+  const onWater = Object.create(circles);
+  onWater.open = (at, tier, o) => {
+    if ((!o || o.ground !== false) && depthAt(at.x, at.z) > 0.02) at.y = Math.max(at.y, surfaceAt(at.x, at.z) + 0.06);
+    return circles.open(at, tier, o);
+  };
+  const air = createMagicJump({ character, circles: onWater, mocap: true, step: 'flow', momentum: true, step3: 'jump', carry: !!weighs, build: true });      // (carry: with her weight, below)
   const me = { pos, vel: new THREE.Vector3(), heading: 0 }, airStick = { x: 0, z: 1, amount: 0 };
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)

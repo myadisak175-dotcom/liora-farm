@@ -139,7 +139,10 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
         if (character.state === BARRIER_CLIP) character.play('idle', 0);
         character.play(BARRIER_CLIP, 0.1, false);
         castT = 0; waterT = 0;
+        // where it stands: her feet, or wading, the water's surface over them (on the riverbed its sheet over the ground
+        // and the foot of its dome were under the water, and the water hid them)
         at.copy(me.pos);
+        at.y = Math.max(at.y, world.ground(at.x, at.z));
         me.vel.set(0, 0, 0);
         return true;
       }
