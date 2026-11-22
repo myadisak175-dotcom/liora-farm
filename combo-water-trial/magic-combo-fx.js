@@ -67,6 +67,13 @@
      - the wake: ribbons of water wound round the lance's way from the circle on, a double helix (two broad ones, two
        thin blue ones between them), turning; each place on one, once the lance has passed it, thins to a line and
        loosens until it is gone
+     - HERE, ON THE WATER COMBO'S TRIAL ("สกิลปาหอก ทำวงคลื่นให้เป็นแนวๆ เดียวกันได้ไหม", 23 Nov 2026, the basic combo's water
+       being the look to go by from then on): its rings of water are the clip's water, as the combo's are, not lines
+       of light the shader draws. The hoops round its line, and the wave that goes out round the circle: the blade
+       laid round a ring (WATER_BLADE.hoop); the wake: the blade laid along each ribbon, crescents winding round its
+       way, the ribbons broader for it (WATER_BLADE.wake); where it lands, and each time it grows in her hand: the
+       clip's splash, with the lance's own sparkles. The circle, the spear, the beam, the slivers and the sparkles
+       are as they were
      - sparkles: beads of light shed along its way, which drift and twinkle on a second after it has gone
    The clip's glow is laid over its whole picture (bloom), which a phone would pay for every frame; here each thing
    carries its own glow in its shader, so it is not as soft as the clip's.
@@ -79,7 +86,7 @@
    instanced square each, moved by its shader. The gate and a hoop: one square each, all of it drawn by its shader (as
    magic-circle-fx.js draws the jump's circles, and by its rules for a phone's GPU: every line always drawn and then
    masked, nothing that can be NaN, the result kept between 0 and 1). Few of anything: 8 orbs, 4 waves, 3 lances (4
-   ribbons of wake and a beam each), 4 hoops, 2 gates, 3 rings, 6 bursts, 10 ribbons, 192 sparks, 64 slivers at most.
+   ribbons of wake and a beam each), 4 hoops (here: strips of the blade), 2 gates, 3 rings, 6 bursts, 10 ribbons, 192 sparks, 64 slivers at most.
    Phone-safe shaders: no arrays, no loops. Each water cast: one square with its frames' picture on it (WATER_CASTS); 6 bolts and 6
    splashes of water, a square each (WATER_BOLT, WATER_HIT); 4 waves and 3 rings of the blade, a strip each (WATER_BLADE).
    ========================================================================== */
@@ -144,6 +151,15 @@ const WATER_BLADE = {
   wave: { wide: 1.25, tall: 0.3, lean: -0.6 }, rise: { wide: 1.05, tall: 0.27, lean: Math.PI / 2 },
   fps: 11, born: 0.05, gone: 0.14,
   ring: { round: 3, inner: 0.56, rise: 0.17, spin: 2.6, from: 0.22, life: 0.36, more: 0.06 },
+  // the lance's ("สกิลปาหอก ทำวงคลื่นให้เป็นแนวๆ เดียวกันได้ไหม", 23 Nov 2026: its rings of water were lines of light the shader
+  // drew; they are the blade now, as the basic combo's water is).
+  //   hoop: the hoops round its line. round, inner: as the ring's; back: its outer edge is swept so far back along the
+  //         line (of its radius); spin: rad/s it turns; let: the one at the circle as it is let go is so much bigger;
+  //         gate: the wave that goes out round the circle itself as the lance goes through it: to so many of its radii
+  //   wake: the ribbons wound round its way. every: m of its way to one blade along a ribbon; wide: a ribbon is so
+  //         many times as wide as it was (a blade is seen only on a band broad enough for it)
+  hoop: { round: 3, inner: 0.6, back: 0.14, spin: 3.2, let: 1.2, gate: 1.7 },
+  wake: { every: 1.25, wide: 1.9 },
 };
 
 const SHOTS = {
@@ -226,6 +242,120 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   const made = [];
   const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, ...o }); m.userData.noGrade = true; made.push(m); return m; };
   const put = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.visible = false; object.add(m); return m; };
+
+  // ---- the four casts' pictures. A frame is mostly air, so a picture holds it as tiles: squares of 14 pixels, each
+  // with a rim of one pixel from its neighbours (so that it joins them without a seam), and below them a map for every
+  // frame that says where each square's tile is (a square with no water in it points at the first tile, which is
+  // empty). A pixel is two numbers: how light the water is there (red) and how much of it there is (green); its colour
+  // is the cast's own ramp of colours at that lightness (WATER_SHEETS' ramp: eight colours, from lightness 0.44 to 1).
+  // One square is drawn, only as big as the frame's water; the picture is read twice for each frame shown (the map
+  // exactly, by texelFetch; then the tile).
+  const loader = new THREE.TextureLoader();
+  const atlases = {};
+  function atlasOf(name) {
+    let atlas = atlases[name];
+    if (!atlas) {
+      atlas = atlases[name] = loader.load(new URL(`./water-${name}.webp?v=5`, import.meta.url).href);
+      atlas.format = THREE.RGFormat; atlas.colorSpace = THREE.NoColorSpace;
+      atlas.minFilter = atlas.magFilter = THREE.LinearFilter;
+      atlas.generateMipmaps = false; atlas.flipY = false; atlas.premultiplyAlpha = false;
+    }
+    return atlas;
+  }
+  // a frame's water at a place in it (counted in squares): its map says which tile; premultiplied
+  const TILED = /* glsl */`
+    uniform sampler2D uAtlas;
+    uniform vec2 uTexel, uGrid, uMapA, uMapB;
+    uniform float uMix, uK;
+    uniform vec3 uR0, uR1, uR2, uR3, uR4, uR5, uR6, uR7;
+    // the water's colour at a lightness: the ramp's eight colours, 0.08 apart from 0.44; darker below
+    vec3 ramp(float l) {
+      float t = (l - 0.44) / 0.08;
+      vec3 c = uR0 * clamp(0.25 + 0.75 * l / 0.44, 0.0, 1.0);
+      c += (uR1 - uR0) * clamp(t, 0.0, 1.0);
+      c += (uR2 - uR1) * clamp(t - 1.0, 0.0, 1.0);
+      c += (uR3 - uR2) * clamp(t - 2.0, 0.0, 1.0);
+      c += (uR4 - uR3) * clamp(t - 3.0, 0.0, 1.0);
+      c += (uR5 - uR4) * clamp(t - 4.0, 0.0, 1.0);
+      c += (uR6 - uR5) * clamp(t - 5.0, 0.0, 1.0);
+      c += (uR7 - uR6) * clamp(t - 6.0, 0.0, 1.0);
+      return c;
+    }
+    vec4 frame(vec2 map, vec2 cell, vec2 f) {
+      vec2 slot = floor(texelFetch(uAtlas, ivec2(map + cell), 0).rg * 255.0 + 0.5);
+      vec2 s = texture2D(uAtlas, (slot * 16.0 + 1.0 + f * 14.0) * uTexel).rg;
+      return vec4(ramp(0.3 + 0.7 * s.r) * s.g, s.g);
+    }
+    vec4 water(vec2 at) {
+      vec2 cell = clamp(floor(at), vec2(0.0), uGrid), f = clamp(at - cell, 0.0, 1.0);
+      vec4 c = frame(uMapA, cell, f);
+      if (uMix > 0.0) c = mix(c, frame(uMapB, cell, f), uMix);            // (slowed only: the next frame coming in)
+      return clamp(c, 0.0, 1.0) * uK;
+    }`;
+  const tiled = sheet => {
+    const uniforms = {
+      uAtlas: { value: null }, uTexel: { value: new THREE.Vector2(1 / sheet.size[0], 1 / sheet.size[1]) },
+      uGrid: { value: new THREE.Vector2(sheet.grid[0] - 1, sheet.grid[1] - 1) },
+      uMapA: { value: new THREE.Vector2() }, uMapB: { value: new THREE.Vector2() }, uMix: { value: 0 }, uK: { value: 1 },
+    };
+    sheet.ramp.forEach((c, i) => { uniforms['uR' + i] = { value: new THREE.Vector3(c[0], c[1], c[2]) }; });
+    return uniforms;
+  };
+  // a picture on one square turned to the camera, only as big as the frame's water
+  function tiles(name) {
+    const sheet = WATER_SHEETS[name], atlas = atlasOf(name);
+    const uniforms = {
+      ...tiled(sheet),
+      uBox: { value: new THREE.Vector4() }, uOrigin: { value: new THREE.Vector2(sheet.origin[0], sheet.origin[1]) },
+      uCell: { value: sheet.cell }, uHalf: { value: sheet.half }, uScale: { value: 1 }, uWrap: { value: 0 }, uMirror: { value: 1 },
+      uSpin: { value: new THREE.Vector2(1, 0) }, uNear: { value: 0 },
+    };
+    uniforms.uAtlas.value = atlas;
+    const mat = material({
+      uniforms, transparent: true,
+      side: THREE.DoubleSide,                                              // (mirrored, its square is turned over)
+      vertexShader: /* glsl */`
+        uniform vec4 uBox;                                                 // the squares with water in them: x0, y0, x1, y1
+        uniform vec2 uOrigin, uSpin;
+        uniform float uCell, uHalf, uScale, uWrap, uMirror, uNear;
+        varying vec2 vCell;
+        void main() {
+          vec2 t = position.xy * 0.5 + 0.5;
+          vCell = vec2(mix(uBox.x, uBox.z, t.x), mix(uBox.w, uBox.y, t.y));       // (squares are counted down the frame)
+          vec2 m = uOrigin + vec2(vCell.x, -vCell.y) * uCell;              // from where it is put: to the right, up
+          m = vec2(m.x * uSpin.x - m.y * uSpin.y, m.x * uSpin.y + m.y * uSpin.x);      // (turned about that point: a bolt, a splash)
+          vec4 mv = modelViewMatrix * vec4(0., 0., 0., 1.);
+          mv.xy += vec2(m.x * uMirror, m.y) * uScale;
+          // The lower lip passes in front of Vivi while the high rim goes behind her.
+          mv.z += uNear - m.y / uHalf * uWrap;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: TILED + /* glsl */`
+        varying vec2 vCell;
+        void main() { gl_FragColor = water(vCell); }`,
+    });
+    return { sheet, atlas, mesh: put(square, mat), uniforms, age: 0 };
+  }
+  // a picture laid on a shape of its own (the blade: along a wave, round a ring): the shape's uv is where along the
+  // strip (0..1, and round again past 1) and where across it (0: its outer edge)
+  function laid(name, geo) {
+    const sheet = WATER_SHEETS[name], uniforms = tiled(sheet);
+    uniforms.uAtlas.value = atlasOf(name);
+    const mat = material({
+      uniforms, transparent: true, side: THREE.DoubleSide,
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: TILED + /* glsl */`
+        varying vec2 vUv;
+        void main() { gl_FragColor = water(vec2(fract(vUv.x), clamp(vUv.y, 0.0, 0.9999)) * (uGrid + 1.0)); }`,
+    });
+    return { sheet, mesh: put(geo, mat), uniforms, age: 0 };
+  }
+  // one frame of a picture shown, whole
+  function still(p, i) {
+    const f = p.sheet.frames[i], u = p.uniforms;
+    u.uMapA.value.set(f[0], f[1]); u.uMapB.value.set(f[0], f[1]); u.uMix.value = 0;
+    if (u.uBox) u.uBox.value.set(f[2], f[3], f[4], f[5]);
+  }
 
   // ---- an orb (thrown, or gathering at her hand): its heart covers what is behind it, its glow only adds
   const orbMat = () => material({
@@ -438,38 +568,35 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       from: new THREE.Vector3(), far: 0, X: new THREE.Vector3(1, 0, 0), Y: new THREE.Vector3(0, 1, 0), flown: 0, gone: 0, pace: 30, wakeOn: false, sparkAt: 0, hoopAt: 0, hoopN: 0,
       wake: WAKE.strands.map(makeStrand), beam: makeBeam() };
   }
-  // ---- a ribbon of the wake: a strip along a helix round the lance's way, turned to the camera, laid anew each frame.
-  // Across it a wash, a bright line near each edge; where it is on the far side of the way from the camera its blue
-  // inside shows (aTone: how far it is turned to the camera, -1..1). uv.x: how far gone a place on it is (0 new, 1 gone)
+  // ---- a ribbon of the wake: a strip along a helix round the lance's way, turned to the camera, laid anew each frame;
+  // the blade laid along it, one after another (aAlong: where along them a place is), so that it is crescents of the
+  // clip's water winding round the lance's way. Where it is on the far side of the way from the camera it is fainter
+  // (aTone: how far it is turned to the camera, -1..1). uv.x: how far gone a place on it is (0 new, 1 gone)
   function makeStrand(d) {
     const N = WAKE.places, geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(N * 2 * 3), uv = new Float32Array(N * 2 * 2), tone = new Float32Array(N * 2), idx = [];
+    const pos = new Float32Array(N * 2 * 3), uv = new Float32Array(N * 2 * 2), tone = new Float32Array(N * 2), along = new Float32Array(N * 2), idx = [];
     for (let i = 0; i < N; i++) { uv[i * 4 + 1] = -1; uv[i * 4 + 3] = 1; }
     for (let i = 0; i < N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('aTone', new THREE.BufferAttribute(tone, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aAlong', new THREE.BufferAttribute(along, 1).setUsage(THREE.DynamicDrawUsage));
     geo.setIndex(idx);
+    const sheet = WATER_SHEETS.blade, uniforms = tiled(sheet);
+    uniforms.uAtlas.value = atlasOf('blade');
     const mat = material({
-      uniforms: { ...water, uK: { value: 1 }, uBlue: { value: d.blue } },
-      side: THREE.DoubleSide,
-      vertexShader: 'attribute float aTone; varying vec2 vUv; varying float vTone; void main() { vUv = uv; vTone = aTone; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: /* glsl */`
-        uniform vec3 uCore, uMain, uDeep;
-        uniform float uK, uShine, uBlue;
+      uniforms, transparent: true, side: THREE.DoubleSide,
+      vertexShader: 'attribute float aTone, aAlong; varying vec2 vUv; varying float vTone, vAlong; void main() { vUv = uv; vTone = aTone; vAlong = aAlong; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: TILED + /* glsl */`
         varying vec2 vUv;
-        varying float vTone;
+        varying float vTone, vAlong;
         void main() {
-          float across = max(0.0, 1.0 - vUv.y * vUv.y);
-          float edge = clamp(1.0 - abs(abs(vUv.y) - 0.72) * 4.5, 0.0, 1.0);
+          vec4 c = water(vec2(fract(vAlong), clamp(0.5 - 0.5 * vUv.y, 0.0, 0.9999)) * (uGrid + 1.0));
           float front = smoothstep(-0.25, 0.35, vTone);
-          vec3 body = mix(uDeep, uMain, (0.2 + 0.8 * front) * (1.0 - 0.75 * uBlue));
-          vec3 col = mix(body, uCore, edge * edge * (0.3 + 0.6 * front));
-          float a = smoothstep(0.0, 0.3, across) * pow(clamp(1.0 - vUv.x, 0.0, 1.0), 1.25);
-          gl_FragColor = clamp(vec4(col * a * uK * (0.8 + 0.3 * uShine), a * uK * (0.4 + 0.3 * front)), 0.0, 1.0);
+          gl_FragColor = c * pow(clamp(1.0 - vUv.x, 0.0, 1.0), 1.25) * (0.5 + 0.5 * front);
         }`,
     });
-    return { mesh: put(geo, mat), d };
+    return { mesh: put(geo, mat), d, sheet, uniforms };
   }
   // ---- the beam left standing as a lance is let go: a strip from where it was thrown, thin there and thick further
   // on; white hot down its middle, a blue flame flickering along it
@@ -504,32 +631,22 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   const lances = Array.from({ length: 3 }, makeLance);
   const wakeAt = new Float32Array(WAKE.places * 3), wakeR = new Float32Array(WAKE.places * 3);      // a ribbon's places; the way out from the lance's line at each
 
-  // ---- a hoop of water round the lance's line: one square across it; a ring going out, a bright line with a wash
-  // inside it. uFeather: spray torn off its rim outward (the one at the circle as the lance is let go)
-  const hoopMat = () => material({
-    uniforms: { ...water, uT: { value: 0 }, uFeather: { value: 0 }, uSeed: { value: 0 } },
-    side: THREE.DoubleSide,
-    vertexShader: 'varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: /* glsl */`
-      uniform vec3 uCore, uMain, uDeep;
-      uniform float uT, uShine, uFeather, uSeed;
-      varying vec2 vP;
-      void main() {
-        float r = length(vP), a = atan(vP.y, abs(vP.x) < 1e-6 ? 1e-6 : vP.x);
-        float out_ = 1.0 - pow(clamp(1.0 - uT, 0.0, 1.0), 2.6);             // fast at first
-        float R = 0.3 + 0.42 * out_;                                        // (its spray stands out past it, to the square's edge)
-        float w = 0.012 + 0.02 * (1.0 - uT);
-        float line = 1.0 - smoothstep(w, w + 0.02, abs(r - R));
-        float band = smoothstep(R - 0.16, R, r) * (1.0 - step(R, r)) * 0.35;
-        // the spray: tongues of it off the rim, each as long as its place round the rim has it
-        float n = 0.5 + 0.25 * sin(a * 9.0 + uSeed) + 0.25 * sin(a * 23.0 - uSeed * 1.7);
-        float spray = (1.0 - smoothstep(R, R + 0.02 + 0.24 * n, r)) * step(R, r) * uFeather * 0.7;
-        float k = (1.0 - uT) * (1.0 - uT * uT);
-        vec3 col = mix(uMain, uCore, line * 0.8) * (line + band) + mix(uDeep, uMain, 0.55) * spray;
-        gl_FragColor = clamp(vec4(col * k * (0.8 + 0.3 * uShine), clamp(line + band + spray, 0.0, 1.0) * k * 0.5), 0.0, 1.0);
-      }`,
-  });
-  const hoops = Array.from({ length: 4 }, () => ({ mesh: put(square, hoopMat()), t: 1, life: 0.4 }));
+  // ---- a hoop of water round the lance's line: the blade laid round a ring across the line, its crest outward, its
+  // outer edge swept back a little (a crown of water the lance has gone through)
+  const hoopGeo = (() => {
+    const N = 64, pos = [], uv = [], idx = [], { round, inner, back } = WATER_BLADE.hoop;
+    for (let i = 0; i <= N; i++) {
+      const th = i / N * Math.PI * 2;
+      for (const r of [1, inner]) { pos.push(Math.cos(th) * r, Math.sin(th) * r, r === 1 ? -back : 0); uv.push(i / N * round, r === 1 ? 0 : 1); }
+    }
+    for (let i = 0; i < N; i++) idx.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    return g;
+  })();
+  const hoops = Array.from({ length: 4 }, () => ({ ...laid('blade', hoopGeo), t: 1, life: 0.4, radius: 1 }));
 
   // ---- the gate: a magic circle standing in the air, which a lance is thrown through, as the clip's. One square; all
   // of it is drawn by its shader from where on it a pixel is (in radii: its outer ring at 1)
@@ -772,119 +889,6 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     }
   }
 
-  // ---- the four casts' pictures. A frame is mostly air, so a picture holds it as tiles: squares of 14 pixels, each
-  // with a rim of one pixel from its neighbours (so that it joins them without a seam), and below them a map for every
-  // frame that says where each square's tile is (a square with no water in it points at the first tile, which is
-  // empty). A pixel is two numbers: how light the water is there (red) and how much of it there is (green); its colour
-  // is the cast's own ramp of colours at that lightness (WATER_SHEETS' ramp: eight colours, from lightness 0.44 to 1).
-  // One square is drawn, only as big as the frame's water; the picture is read twice for each frame shown (the map
-  // exactly, by texelFetch; then the tile).
-  const loader = new THREE.TextureLoader();
-  const atlases = {};
-  function atlasOf(name) {
-    let atlas = atlases[name];
-    if (!atlas) {
-      atlas = atlases[name] = loader.load(new URL(`./water-${name}.webp?v=5`, import.meta.url).href);
-      atlas.format = THREE.RGFormat; atlas.colorSpace = THREE.NoColorSpace;
-      atlas.minFilter = atlas.magFilter = THREE.LinearFilter;
-      atlas.generateMipmaps = false; atlas.flipY = false; atlas.premultiplyAlpha = false;
-    }
-    return atlas;
-  }
-  // a frame's water at a place in it (counted in squares): its map says which tile; premultiplied
-  const TILED = /* glsl */`
-    uniform sampler2D uAtlas;
-    uniform vec2 uTexel, uGrid, uMapA, uMapB;
-    uniform float uMix, uK;
-    uniform vec3 uR0, uR1, uR2, uR3, uR4, uR5, uR6, uR7;
-    // the water's colour at a lightness: the ramp's eight colours, 0.08 apart from 0.44; darker below
-    vec3 ramp(float l) {
-      float t = (l - 0.44) / 0.08;
-      vec3 c = uR0 * clamp(0.25 + 0.75 * l / 0.44, 0.0, 1.0);
-      c += (uR1 - uR0) * clamp(t, 0.0, 1.0);
-      c += (uR2 - uR1) * clamp(t - 1.0, 0.0, 1.0);
-      c += (uR3 - uR2) * clamp(t - 2.0, 0.0, 1.0);
-      c += (uR4 - uR3) * clamp(t - 3.0, 0.0, 1.0);
-      c += (uR5 - uR4) * clamp(t - 4.0, 0.0, 1.0);
-      c += (uR6 - uR5) * clamp(t - 5.0, 0.0, 1.0);
-      c += (uR7 - uR6) * clamp(t - 6.0, 0.0, 1.0);
-      return c;
-    }
-    vec4 frame(vec2 map, vec2 cell, vec2 f) {
-      vec2 slot = floor(texelFetch(uAtlas, ivec2(map + cell), 0).rg * 255.0 + 0.5);
-      vec2 s = texture2D(uAtlas, (slot * 16.0 + 1.0 + f * 14.0) * uTexel).rg;
-      return vec4(ramp(0.3 + 0.7 * s.r) * s.g, s.g);
-    }
-    vec4 water(vec2 at) {
-      vec2 cell = clamp(floor(at), vec2(0.0), uGrid), f = clamp(at - cell, 0.0, 1.0);
-      vec4 c = frame(uMapA, cell, f);
-      if (uMix > 0.0) c = mix(c, frame(uMapB, cell, f), uMix);            // (slowed only: the next frame coming in)
-      return clamp(c, 0.0, 1.0) * uK;
-    }`;
-  const tiled = sheet => {
-    const uniforms = {
-      uAtlas: { value: null }, uTexel: { value: new THREE.Vector2(1 / sheet.size[0], 1 / sheet.size[1]) },
-      uGrid: { value: new THREE.Vector2(sheet.grid[0] - 1, sheet.grid[1] - 1) },
-      uMapA: { value: new THREE.Vector2() }, uMapB: { value: new THREE.Vector2() }, uMix: { value: 0 }, uK: { value: 1 },
-    };
-    sheet.ramp.forEach((c, i) => { uniforms['uR' + i] = { value: new THREE.Vector3(c[0], c[1], c[2]) }; });
-    return uniforms;
-  };
-  // a picture on one square turned to the camera, only as big as the frame's water
-  function tiles(name) {
-    const sheet = WATER_SHEETS[name], atlas = atlasOf(name);
-    const uniforms = {
-      ...tiled(sheet),
-      uBox: { value: new THREE.Vector4() }, uOrigin: { value: new THREE.Vector2(sheet.origin[0], sheet.origin[1]) },
-      uCell: { value: sheet.cell }, uHalf: { value: sheet.half }, uScale: { value: 1 }, uWrap: { value: 0 }, uMirror: { value: 1 },
-      uSpin: { value: new THREE.Vector2(1, 0) }, uNear: { value: 0 },
-    };
-    uniforms.uAtlas.value = atlas;
-    const mat = material({
-      uniforms, transparent: true,
-      side: THREE.DoubleSide,                                              // (mirrored, its square is turned over)
-      vertexShader: /* glsl */`
-        uniform vec4 uBox;                                                 // the squares with water in them: x0, y0, x1, y1
-        uniform vec2 uOrigin, uSpin;
-        uniform float uCell, uHalf, uScale, uWrap, uMirror, uNear;
-        varying vec2 vCell;
-        void main() {
-          vec2 t = position.xy * 0.5 + 0.5;
-          vCell = vec2(mix(uBox.x, uBox.z, t.x), mix(uBox.w, uBox.y, t.y));       // (squares are counted down the frame)
-          vec2 m = uOrigin + vec2(vCell.x, -vCell.y) * uCell;              // from where it is put: to the right, up
-          m = vec2(m.x * uSpin.x - m.y * uSpin.y, m.x * uSpin.y + m.y * uSpin.x);      // (turned about that point: a bolt, a splash)
-          vec4 mv = modelViewMatrix * vec4(0., 0., 0., 1.);
-          mv.xy += vec2(m.x * uMirror, m.y) * uScale;
-          // The lower lip passes in front of Vivi while the high rim goes behind her.
-          mv.z += uNear - m.y / uHalf * uWrap;
-          gl_Position = projectionMatrix * mv;
-        }`,
-      fragmentShader: TILED + /* glsl */`
-        varying vec2 vCell;
-        void main() { gl_FragColor = water(vCell); }`,
-    });
-    return { sheet, atlas, mesh: put(square, mat), uniforms, age: 0 };
-  }
-  // a picture laid on a shape of its own (the blade: along a wave, round a ring): the shape's uv is where along the
-  // strip (0..1, and round again past 1) and where across it (0: its outer edge)
-  function laid(name, geo) {
-    const sheet = WATER_SHEETS[name], uniforms = tiled(sheet);
-    uniforms.uAtlas.value = atlasOf(name);
-    const mat = material({
-      uniforms, transparent: true, side: THREE.DoubleSide,
-      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: TILED + /* glsl */`
-        varying vec2 vUv;
-        void main() { gl_FragColor = water(vec2(fract(vUv.x), clamp(vUv.y, 0.0, 0.9999)) * (uGrid + 1.0)); }`,
-    });
-    return { sheet, mesh: put(geo, mat), uniforms, age: 0 };
-  }
-  // one frame of a picture shown, whole
-  function still(p, i) {
-    const f = p.sheet.frames[i], u = p.uniforms;
-    u.uMapA.value.set(f[0], f[1]); u.uMapB.value.set(f[0], f[1]); u.uMix.value = 0;
-    if (u.uBox) u.uBox.value.set(f[2], f[3], f[4], f[5]);
-  }
   const casts = WATER_CASTS.map(def => {
     const c = { ...tiles(def.asset), def, direction: new THREE.Vector3() };
     c.frames = def.frames ? c.sheet.frames.slice(def.frames[0], def.frames[1] + 1) : c.sheet.frames;
@@ -963,10 +967,12 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     Z.copy(way).normalize(); across(Z);
     basis.makeBasis(X, Y, Z);
     h.mesh.quaternion.setFromRotationMatrix(basis);
-    h.mesh.position.copy(at); h.mesh.scale.setScalar(radius / 0.72); h.mesh.visible = true;      // (its ring ends 0.72 of the way to the square's edge)
-    h.t = 0; h.life = life;
-    const u = h.mesh.material.uniforms;
-    u.uT.value = 0; u.uFeather.value = feather ? 1 : 0; u.uSeed.value = rand() * 6.283;
+    h.mesh.rotateZ(rand() * 6.283);
+    h.radius = radius * (feather ? WATER_BLADE.hoop.let : 1);            // (feather: the one at the circle as the lance is let go)
+    h.mesh.position.copy(at); h.mesh.scale.setScalar(h.radius * 0.42); h.mesh.visible = true;
+    h.t = 0; h.age = 0; h.life = life;
+    h.uniforms.uK.value = 1;
+    still(h, 0);
   }
   // what a lance sheds `at` m along its way: a sparkle, from beside it, drifting out and on a little
   function shed(l, at) {
@@ -1005,7 +1011,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     if (!thrown || !l.wakeOn) { for (const w of l.wake) w.mesh.visible = false; return; }
     const N = WAKE.places, long = Math.min(l.far, WAKE.long), big = 1 + 0.12 * l.level, within = l.far <= WAKE.long + WAKE.near;
     for (const w of l.wake) {
-      const d = w.d, pos = w.mesh.geometry.attributes.position, uv = w.mesh.geometry.attributes.uv, tone = w.mesh.geometry.attributes.aTone;
+      const d = w.d, pos = w.mesh.geometry.attributes.position, uv = w.mesh.geometry.attributes.uv, tone = w.mesh.geometry.attributes.aTone, al = w.mesh.geometry.attributes.aAlong;
       for (let i = 0; i < N; i++) {
         const s = i / (N - 1) * long, back = l.far - s, gone = clamp((l.flown - s / l.pace) / WAKE.life, 0, 1);
         const close = within ? 0.4 + 0.6 * Math.min(1, back / WAKE.near) : 1;      // it closes in on the lance behind its point
@@ -1030,15 +1036,18 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         const turn = 0.3 + 0.7 * Math.max(Math.abs(facing), along);
         // it thins away: out of the circle, to the lance's point, at the far end of what there is of it, and as it goes
         const ends = Math.min(1, s / 0.5) * (within ? Math.min(1, back / 0.7) : 1) * clamp((WAKE.long - s) / (0.3 * WAKE.long), 0, 1);
-        const wide = len > 1e-6 ? WAKE.wide * d.wide * big * turn * ends * (1 - 0.75 * gone) / len : 0;
+        const wide = len > 1e-6 ? WAKE.wide * WATER_BLADE.wake.wide * d.wide * big * turn * ends * (1 - 0.75 * gone) / len : 0;
         pos.setXYZ(i * 2, wakeAt[j] - side.x * wide, wakeAt[j + 1] - side.y * wide, wakeAt[j + 2] - side.z * wide);
         pos.setXYZ(i * 2 + 1, wakeAt[j] + side.x * wide, wakeAt[j + 1] + side.y * wide, wakeAt[j + 2] + side.z * wide);
         uv.setX(i * 2, gone); uv.setX(i * 2 + 1, gone);
         tone.setX(i * 2, facing); tone.setX(i * 2 + 1, facing);
+        const a = s / (WATER_BLADE.wake.every * (0.6 + 0.4 * d.wide)) + d.phase;      // (a thin ribbon's blades are shorter; each ribbon's begin elsewhere)
+        al.setX(i * 2, a); al.setX(i * 2 + 1, a);
       }
-      pos.needsUpdate = true; uv.needsUpdate = true; tone.needsUpdate = true;
+      pos.needsUpdate = true; uv.needsUpdate = true; tone.needsUpdate = true; al.needsUpdate = true;
       w.mesh.visible = true;
-      w.mesh.material.uniforms.uK.value = Math.min(1, l.far / 1.0);
+      w.uniforms.uK.value = Math.min(1, l.far / 1.0);
+      still(w, Math.floor(l.flown * WATER_BLADE.fps + d.phase) % w.sheet.frames.length);
     }
   }
 
@@ -1197,8 +1206,10 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       };
     },
     burst(at, size = 0.7, sea = false, lk = look) {
-      if (lk === 'water' && !sea) {
-        // her water casts: the clip's splash, turned and mirrored a little differently each time
+      if (lk === 'water' || sea) {
+        // her water casts, and the lance's (its ring of light was the last of the rings not of the clip's water): the
+        // clip's splash, turned and mirrored a little differently each time; the lance's with its own sparkles
+        if (sea) scatter(at, Math.round(5 + 5 * Math.min(2, size)), 2.2 + 1.6 * size, 0.07 + 0.05 * Math.min(2, size), true);
         const h = splashes.find(o => !o.mesh.visible) || splashes.reduce((m, o) => (o.age > m.age ? o : m));
         const reach = Math.min(size * WATER_HIT.reach, WATER_HIT.most), turn = (rand() - 0.5) * 1.2;
         h.age = 0; h.life = WATER_HIT.life + WATER_HIT.more * reach;
@@ -1272,6 +1283,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
           // spray off its rim; slivers of ice thrown out round the circle's rim; sparkles thrown out of it and on
           const big = 0.7 + 0.1 * g.level, R = g.radius, d = g.dir, at = g.mesh.position;
           hoop(tmp.copy(at).addScaledVector(d, LAUNCH.hoop.ahead * big), d, LAUNCH.hoop.r * big, LAUNCH.hoop.life, true);
+          hoop(at, d, R * WATER_BLADE.hoop.gate, GATE.fire * 0.85, false);      // (the wave that goes out round the circle itself)
           across(d);
           const nh = Math.round(LAUNCH.shards * big), ns = Math.round(LAUNCH.sparkles * big);
           for (let i = 0; i < nh + ns; i++) {
@@ -1424,14 +1436,18 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         const opened = 0.5 + 0.5 * (1 - Math.pow(1 - g.open, 3));
         g.mesh.scale.setScalar(Math.max(1e-4, g.radius * GATE.reach * opened * (1 + 0.14 * g.beat * g.beat) * grow));
         const u = g.mesh.material.uniforms;
-        u.uOpen.value = g.open; u.uLevel.value = g.level; u.uBeat.value = g.beat; u.uFlash.value = flash; u.uWave.value = wave; u.uFade.value = g.fade; u.uAge.value = g.age;
+        u.uOpen.value = g.open; u.uLevel.value = g.level; u.uBeat.value = g.beat; u.uFlash.value = flash; u.uWave.value = 0; u.uFade.value = g.fade;      // (its wave is a hoop of the clip's water now: fire()) u.uAge.value = g.age;
       }
       // hoops of water
       for (const h of hoops) {
         if (h.t >= 1) continue;
-        h.t = Math.min(1, h.t + dt / h.life);
+        h.t = Math.min(1, h.t + dt / h.life); h.age += dt;
         h.mesh.visible = h.t < 1;
-        h.mesh.material.uniforms.uT.value = h.t;
+        const out_ = 1 - Math.pow(1 - h.t, 2.6);                             // out fast at first, as it was
+        h.mesh.scale.setScalar(h.radius * (0.42 + 0.58 * out_));
+        h.mesh.rotateZ(WATER_BLADE.hoop.spin * dt);
+        h.uniforms.uK.value = (1 - h.t) * (1 - h.t * h.t);
+        still(h, Math.floor(h.age * WATER_BLADE.fps) % h.sheet.frames.length);
       }
       // lances: each grows toward how grown it should be; its strip is laid from its tail to its point, facing the camera
       for (const l of lances) {
@@ -1483,7 +1499,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       }
     },
     dispose() {
-      square.dispose(); waveGeo.dispose(); bladeGeo.dispose(); flatGeo.dispose(); roundGeo.dispose(); sGeo.dispose(); hGeo.dispose(); flat.dispose(); spear.dispose();
+      square.dispose(); waveGeo.dispose(); bladeGeo.dispose(); flatGeo.dispose(); roundGeo.dispose(); hoopGeo.dispose(); sGeo.dispose(); hGeo.dispose(); flat.dispose(); spear.dispose();
       for (const name in atlases) atlases[name].dispose();
       for (const r of ribbons) r.mesh.geometry.dispose();
       for (const l of lances) { l.mesh.geometry.dispose(); l.beam.mesh.geometry.dispose(); for (const w of l.wake) w.mesh.geometry.dispose(); }

@@ -12,6 +12,22 @@ The game opens on its map, the hill village (the same as `?map=hillvillage`). `?
 
 Touch: left side to move, right side to rotate the camera; tap water to make ripples.
 
+## The look of her magic: the basic combo's water is the reference
+
+"หลังจากนี้ใช้ style ของสกิลคอมโบพื้นฐานเป็น ref" (the user, 23 Nov 2026). Whatever is drawn for one of her spells from now on, new or made again, is to look like the basic combo's four tapped casts as they are on their trial page (`combo-water-trial/`; in the game once they are taken into it). Look at that page before drawing anything; what its look is:
+
+- **Painted water, not light.** Flat anime shapes with hard edges, a white crest along an edge, lighter streaks inside, drops as round beads. Aqua: heart `#effffe`, body `#5fe6e8`, deep `#169fb0` (`WATER_LOOK`; each picture also carries its own ramp of eight colours, read off the clip). No soft orb of light, no glow at her hand, no ribbon of light behind a hand, no thin ring of light, no gold sparks: where the sky-blue set had one of those, the water set has a picture, or nothing.
+- **Drawn frame by frame.** A cast is a flipbook of the frames of a clip the user sent (12 to 24 a second), ONE whole frame shown at a time (two mixed read as out of focus: "vfx ดูเบลอๆ"), about 260 pixels to a metre (a phone held upright shows about 330).
+- **The pieces there are** (use them before making new ones; all `combo-water-trial/water-*.webp`, what is in each in `water-casts.js`):
+  - the four casts: `jet` (needles out of a hand), `sweep` (a crescent swung round her), `orbit` (rings round her and a burst), `vortex` (a dome, a flash, a whirl);
+  - `bolt`: what a cast throws, turned the way it flies; `hit`: the splash where anything lands;
+  - `blade`: the sweep's crescent laid out straight, three frames. A band of that water wherever a ring or a wave is wanted: along a wave (two crossed bands, so that it is a crescent from the side and from behind), round a ring over the ground (a crown thrown outward), round a hoop in the air, along a ribbon.
+- **How they are drawn** (`combo-water-trial/magic-combo-fx.js`): `tiles(name)` is a flipbook on one square turned to the camera; `laid(name, shape)` lays a strip on a shape of its own; `fx.look('water')` is the whole set (`fx.cast`, `fx.shot`, `fx.burst`, `fx.ring`). A picture is two numbers a pixel (how light, how much), coloured by its ramp, kept as tiles (a frame is mostly air).
+- **How a new piece is made from a clip**: `tools/make-water-casts.py` (the water lifted off the clip's picture; the clip's girl taken out and the water drawn again where she stood; made crisp with Real-ESRGAN's anime model; packed).
+- **For a weak phone held upright** (the user's): few squares at once, pictures no bigger than they must be, nothing that needs a pass over the whole screen.
+
+Kept as they are, by the user's own choice: the lance's magic circle and its spear (a picture the user sent), the jump's circles. The lance's rings of water (the hoops round its line, the wave round its circle, its wake, where it lands) are the blade and the splash since 23 Nov 2026 ("สกิลปาหอก ทำวงคลื่นให้เป็นแนวๆ เดียวกัน"), on the trial page.
+
 ## The shaders' noise
 
 Every shader's noise is `NOISE` in `stylized-nature.js` (`noise2`, `hash2`). Its random numbers come from whole-number arithmetic that a 32-bit float does exactly, so they are the same on every graphics chip. They used to be `fract(sin(x) * 43758.5)`, which a phone may round differently in two places of one shader: neighbouring squares of the noise then disagree on their shared corner, and whatever tone is made of noise jumps along straight lines (seen on Android on the dirt paths: straight seams a few metres apart; a computer drew it smooth). A shader that needs noise takes `NOISE`; it does not write a sine hash of its own for anything neighbours must agree on (a number for one whole drop or one whole cell is fine).
