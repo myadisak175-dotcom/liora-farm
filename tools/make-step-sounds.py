@@ -73,6 +73,15 @@
 #                              come a third of a second apart: three seconds of each would pile up). Before it the same
 #                              day: A_short_warm_low-p_4, High-quality_Japanes_4, and a breath of wind made here
 #                              (synth_puff), all in the history
+#                  gate-*.mp3, throw-*.mp3   her held cast, the lance: the sound of the clip its look was asked after
+#                              (22 Nov 2026: ten seconds made with Gemini, a spear of water shot out of a magic circle;
+#                              asked for with its sound as the circle is there and as the lance goes, not its end: "ตอน
+#                              วงเวท กับตอนพุ่ง… ช่วงท้ายๆ ไม่เอา"). Cut from the clip's sound: gate, its first 2.17 s (the
+#                              circle drawn, a soft shimmer that swells twice); throw, from there to 4.5 s (the blast: a
+#                              deep boom, nine tenths of it under 220 Hz, its top 0.3 s in, dying away over two seconds).
+#                              What comes after 4.5 s (a high glitter, six seconds of it) is what was not wanted. Both
+#                              kept whole: gate from its first sound on (lead 2 s: more than there is before its top),
+#                              throw with a tenth of a second before its blow, and cut only under 45 and 30 Hz
 # (needs ffmpeg with libmp3lame, and numpy. The recordings are not kept in the repository: only what is made from them.
 #  The set before these, Kenney's Impact Sounds and Fantozzi's Footsteps, is gone from here and from the game.)
 #
@@ -218,6 +227,8 @@ ALONE = {
     'whoosh': (-26.0, (0.003, 0.15), 0.6),      # (as loud as her dress's swish: step-sounds.js plays it softer, WHOOSH)
     'circle': (-27.0, (0.003, 0.45), 1.0, 45, 0.02),      # (a magic circle under her foot: four fifths of it under 200 Hz, so as the thump is: louder by ear and it would clip)
     'cast':   (-24.0, (0.005, 0.3), 1.1, 60, 0.15),      # (her combo's casts: over her dress, as an attack should be)
+    'gate':   (-27.0, (0.02, 0.15), 2.2, 45, 2.0),       # (the lance's circle as it is drawn: a soft shimmer, under her casts) ...
+    'throw':  (-20.0, (0.008, 0.7), 2.3, 30, 0.12),      # (... and the lance let go, a deep boom over them: the two as loud against each other as the clip has them, each within a decibel of the clip's own level)
     # the water combo's trial (combo-water-trial/; the game does not ask for these yet): the two swipes (the swing's last
     # 0.18 s into the blow: their casts leave her hand 0.18 s in), the turn (nearly all its swing: its cast is 0.44 s in),
     # the finisher (its charge, the big low burst and its tail; its body mostly under 200 Hz, so levelled as the circle is)

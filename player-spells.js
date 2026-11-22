@@ -6,7 +6,8 @@
 // while a move takes her is player-moves.js' (her body in the world); the buttons are index.html's. Every character.
 //
 //   const spells = createPlayerSpells({ character, comboFx, barrierFx, renderer, camera, cam, sounds })
-//   (sounds: her sounds, step-sounds.js, or none: the four casts heard, each timed to leave her hand with its sound's blow)
+//   (sounds: her sounds, step-sounds.js, or none: the four casts heard, each timed to leave her hand with its sound's blow,
+//   and the lance: its circle as it opens, its blast as it is let go)
 //   spells.attack(), spells.release()   the attack button down, up: tapped, the four casts; held, the lance; on the run,
 //                                       the leap. (Keyboard: J, player-input.js)
 //   spells.roll()                       the roll button: the roll, and the attack button in it the rising cast (K)
@@ -37,16 +38,17 @@ import { BARRIER } from './barrier-fx.js';
 
 const BARRIER_CLIP = 'barrier';
 const PRESS = 0.15;           // s a press of the barrier button is remembered (as the jump's)
-// the held cast's camera, as on the trial page (magic-combo.html): in behind her right shoulder, a little to her right of
-// the way she aims and from above (yaw, pitch: as in the picture the lance's light was asked after, so that the lance
-// goes off across the picture, up and to the right, and is not seen end on).
-// dist, pitch: where it goes (m at 1.75 m, radians); yaw: how far round to her right (radians); side: how far to her right (m at most; across: of the picture's
-// half width at her, so on an upright phone she stays in it); fov: how much narrower the picture (degrees, more the more
-// the lance has grown); in, out: how fast it goes there and back (1/s)
-const AIM_CAM = { dist: 3.6, pitch: 0.26, yaw: 0.22, side: 0.55, across: 0.4, fov: 6, in: 5, out: 3.5 };
-const EASED = 14 / 60;        // what the follow camera (player-camera.js) closes of the gap in a frame at 60 a second: the
-                              // trial page added the side step every frame on top of it, so it was carried; added here as
-                              // much as that comes to at any pace
+// the held cast's camera, as on the trial page (magic-combo.html): behind her on the line from what she aims at through
+// her, above, a little to her right, and LOOKING AT WHAT SHE AIMS AT, so that it is in the middle of the picture, she low
+// and to the left of it, the lance going off up the picture to it. (It looked at her, from further to her right and turned
+// away from her aim, after a picture: on an upright phone what she aimed at was then out of the picture or at its edge:
+// "ไม่ชอบมุมกล้องนี้เลย ไม่เห็นมอน", 22 Nov 2026.)
+// dist, pitch: where it goes (m at 1.75 m, radians); side: how far to her right (m at most; across: of the picture's
+// half width at her, so on an upright phone she stays in it); far: with nothing to aim at, she aims so far ahead of her
+// (m); look, most: where it looks: on the line from her shoulders to what she aims at, so much of the way, and no
+// further from her than `most` m (so that she is in the picture however far it is); fov: how much narrower the picture
+// (degrees, more the more the lance has grown); in, out: how fast it goes there and back (1/s)
+const AIM_CAM = { dist: 4.8, pitch: 0.38, side: 1.6, across: 0.5, far: 9, look: 0.7, most: 4.6, fov: 6, in: 5, out: 3.5 };
 
 export function createPlayerSpells({ character: first, comboFx, barrierFx = null, renderer = null, camera, cam, sounds = null }) {
   let character = first;
@@ -55,6 +57,7 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
   let world = { grounded: false, stick: { x: 0, z: 1, amount: 0 }, ground: () => -1e5, targets: none };
   let castT = -1, waterT = -1, wantBarrier = 0;      // s into her barrier cast (-1: none); into its water (it outlasts her move)
   const at = new THREE.Vector3(), hand = new THREE.Vector3(), side = new THREE.Vector3();
+  const aimTo = new THREE.Vector3(), aimAt = new THREE.Vector3(), aimLook = new THREE.Vector3();      // what she aims at; the same, followed softly; where the camera looks
   let hold = null;                                   // the hand the barrier is cast from
   const handOf = () => character.model.getObjectByName('J_Bip_L_Middle1') || character.model.getObjectByName('J_Bip_L_Hand');
   hold = handOf();
@@ -63,6 +66,8 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
   combo.onLand = kind => { if (kind === 'big' || kind === 'ring') shake = 1; };
   // the four casts heard ("เสียงนี้ ท่าคอมโบปกติ"): each as it begins, timed so its blow comes as the cast leaves her hand
   combo.onBegin = (i, hit) => { if (i >= 0 && sounds && sounds.cast) sounds.cast(i + 1, hit); };
+  // ... and the lance: its circle as it opens, its blast as it is let go (the clip's own sound, step-sounds.js)
+  combo.onLance = (what, hit) => { if (sounds && sounds.lance) sounds.lance(what, hit); };
 
   const casting = () => castT >= 0;
   const spells = {
@@ -112,13 +117,18 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
     },
     look(dt, me, k) {
       clock += dt;
-      // ---- holding the lance: in behind her the way she aims, low, over her right shoulder; thrown, back to where it was
+      // ---- holding the lance: in behind her on the line from what she aims at, above, a little to her right, looking
+      // at what she aims at; thrown, back to where it was
       const aiming = combo.aiming, ease = Math.min(1, dt * (aiming ? AIM_CAM.in : AIM_CAM.out));
       if (aimK === 0 && !aiming) fov0 = camera.fov;  // (the page's own: 55, or 70 on an upright phone)
       aimK += ((aiming ? 1 : 0) - aimK) * ease;
       if (aiming) {
-        if (!aimWas) aimWas = { pitch: cam.pitch, dist: cam.dist };
-        const behind = me.heading + Math.PI + AIM_CAM.yaw;
+        // what she aims at: the middle of the thing she holds the lance at; with none, so far ahead of her the way she faces
+        const t = combo.target;
+        if (t) aimTo.set(t.pos.x, t.pos.y + t.height * 0.62, t.pos.z);
+        else aimTo.set(me.pos.x + Math.sin(me.heading) * AIM_CAM.far * k, me.pos.y + 1.1 * k, me.pos.z + Math.cos(me.heading) * AIM_CAM.far * k);
+        if (!aimWas) { aimWas = { pitch: cam.pitch, dist: cam.dist }; aimAt.copy(aimTo); } else aimAt.lerp(aimTo, Math.min(1, dt * 8));
+        const behind = Math.atan2(me.pos.x - aimAt.x, me.pos.z - aimAt.z);
         cam.turn(Math.atan2(Math.sin(behind - cam.yaw), Math.cos(behind - cam.yaw)) * ease, (AIM_CAM.pitch - cam.pitch) * ease);
         cam.zoom((AIM_CAM.dist - cam.dist) * ease);
       } else if (aimWas) {
@@ -128,9 +138,15 @@ export function createPlayerSpells({ character: first, comboFx, barrierFx = null
       if (aimK > 0) {
         camera.fov = fov0 - AIM_CAM.fov * aimK * (0.55 + 0.15 * Math.max(0, combo.charge));
         camera.updateProjectionMatrix();
-        const half = camera.position.distanceTo(me.pos) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;      // half the picture's width, at her
-        const step = Math.min(AIM_CAM.side * k, AIM_CAM.across * half) * aimK * Math.min(1, dt * 14) / EASED;
+        const half = cam.dist * k * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;      // half the picture's width, at her
+        // to her right (the follow camera, player-camera.js, closes so much of the way to its own place each frame and
+        // carries the rest on: added by that much each frame, it comes to this far in all, at any pace)
+        const step = Math.min(AIM_CAM.side * k, AIM_CAM.across * half) * aimK * Math.min(1, dt * 14);
         camera.position.addScaledVector(side.set(1, 0, 0).applyQuaternion(camera.quaternion), step);
+        // ... and from there it looks at what she aims at (not at her, as the follow camera does)
+        aimLook.set(me.pos.x, me.pos.y + character.height * 0.82, me.pos.z);
+        const away = aimLook.distanceTo(aimAt);
+        camera.lookAt(aimLook.lerp(aimAt, away > 1e-3 ? aimK * Math.min(AIM_CAM.look, AIM_CAM.most * k / away) : 0));
       } else if (camera.fov !== fov0) { camera.fov = fov0; camera.updateProjectionMatrix(); }
       // ---- the jolt: the finisher's burst and a leap's ring, briefly; the barrier's water breaking out and landing
       shake = Math.max(0, shake - dt / 0.22);

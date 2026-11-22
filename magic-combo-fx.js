@@ -1,7 +1,8 @@
 /* ==========================================================================
    magic-combo-fx.js  —  the light of Vivi's magic combo (magic-combo.js): an orb of light gathered in her hand and
    thrown, the ribbon it leaves, the wave a cut sends out, the burst where one lands, a few gold sparks. Sky blue with
-   gold; made for this, not taken from her other spells. One job: draw them. It decides nothing: the combo says where.
+   gold; made for this, not taken from her other spells. And the held cast's: a spear of ice and water thrown through
+   a magic circle, in its own cyan (below). One job: draw them. It decides nothing: the combo says where.
 
      const fx = createMagicComboFx()
      scene.add(fx.object)             (a page that dims its land by night draws this after the dimming, as the circles)
@@ -12,44 +13,59 @@
      const shot = fx.shot(kind)       something thrown. kind 'orb' | 'big': an orb with a ribbon behind it, shedding a
                                       gold spark now and then; 'wave' | 'rise': the wave of a cut, a curved band of
                                       light seen from behind as a crescent (wave: leaning, as her cut came down; rise:
-                                      standing, off an upward sweep); 'lance': a spear of light, held in her hand
-                                      while it grows and then thrown (the same one: far 0 while she holds it)
+                                      standing, off an upward sweep); 'lance': a spear of ice and water, held in her
+                                      hand while it grows and then thrown (the same one: far 0 while she holds it)
        shot.place(at, dir, far)       every frame: where it is (a lance: its point), the way it goes (unit), how far
                                       it has come (m)
        shot.size(level)               a lance: how grown it is (0..3); shot.long: its length now (m)
        shot.end(hit)                  it is over: it landed (the combo then asks for a burst) or ran out (it fades)
-                                      A lance in flight is a comet (longer, thicker, a bigger light at its point):
-                                      it leaves a streak, a thick beam standing where it was thrown from, two bands
-                                      of wind winding round its way, petals of light and blue stars shed along it
-                                      (as in the picture it was asked after: "ถ้าปาหอกเวท ขอเอฟเฟกต์คล้ายๆ มีวงแหวนเวท",
-                                      22 Nov 2026; the first go at it was nothing like the picture, "ไม่เห็นเหมือน ref
-                                      เลย", "ขอเอฟเฟคทั้งหมด": the blast, below, is what was missing)
      const gate = fx.gate()           the magic circle a lance is thrown through: standing in the air, facing the way
-                                      she aims (rings, marks round a band; grown: two squares turning, points round
-                                      its rim, a cross)
+                                      she aims
        gate.place(at, dir, radius)    every frame: its middle, the way it faces (unit), its outer ring's radius (m)
        gate.size(level)               how grown (0..3): each time more of it is drawn, and it beats once
-       gate.fire(feet)                the lance goes through it: it flares, a wave goes out round it, and the blast:
-                                      broad bands of wind wind out of it round the lance's line (and low round her,
-                                      up from `feet`, where she stands: a place in the world, or none), petals and
-                                      stars are thrown out of it; and it breaks up
+       gate.fire()                    the lance goes through it: it flares, and all that is let go with the lance
+                                      (THE LANCE, below); and it breaks up
        gate.end()                     nothing is thrown after all: it breaks up
-     fx.burst(at, size)               where one lands: a flash, a ring going out, gold sparks
+     fx.burst(at, size, sea)          where one lands: a flash, a ring going out, gold sparks (sea: the lance's
+                                      sparkles instead)
      fx.ring(at, radius)              a ring of light going out over the ground from `at` to `radius` (she lands a leap)
-     fx.motes(at, n, from)            n gold sparks drawn in to `at` from `from` m away (light being gathered)
+     fx.motes(at, n, from, sea)       n gold sparks (sea: the lance's sparkles) drawn in to `at` from `from` m away
+                                      (light being gathered)
      fx.update(dt, camera)            every frame
      fx.setNight(on)                  by night its light is let shine more
      fx.dispose()
 
+   THE LANCE, as in the clip it was asked after (22 Nov 2026: ten seconds made with Gemini, a spear of water shot out of
+   a magic circle; asked which of her spells: "ใส่แทนอันเดิม", in place of what the lance had, and its light "แบบในคลิป
+   เลย", as the clip's. What it had, a picture's thick beam, crescents of wind and petals of light, an hour old, is in
+   the history). The clip takes ten seconds over it; here it is a move in a fight, so all of it is over in about one:
+     - the circle (the gate): a thick rim with a thin ring inside it, a band of marks, a ring; inside that a diamond and
+       a square across it, turning; the circle in the square and a small star turning the other way; a ring in the
+       middle, which the lance goes through; two small seals standing on its rim and a comet of light running round
+       outside it. Its face is washed blue, its lines glow, sparkles drift off it while it stands
+     - the lance: an ornate spear of ice and silver, a picture the user sent ("หอกอันนี้แทนได้ไหม", the same evening:
+       assets/textures/lance-spear.webp); thrown, whiter, a blue flame licking back along its shaft. (Before it, and
+       until it has come, a spear the shader draws: a pommel, a thin shaft, a bead, a spike across, a barbed head)
+     - let go: the circle's middle flares into a four-pointed star; slivers of ice are thrown out round its rim; a hoop
+       of water goes out round the lance's line a little way on, spray torn off its rim, and thin hoops further on as
+       it flies; a white-hot beam is left standing from the circle on for a moment
+     - the wake: ribbons of water wound round the lance's way from the circle on, a double helix (two broad ones, two
+       thin blue ones between them), turning; each place on one, once the lance has passed it, thins to a line and
+       loosens until it is gone
+     - sparkles: beads of light shed along its way, which drift and twinkle on a second after it has gone
+   The clip's glow is laid over its whole picture (bloom), which a phone would pay for every frame; here each thing
+   carries its own glow in its shader, so it is not as soft as the clip's.
+
    How it is drawn: light laid over the picture with one blend (what a thing covers hides what is behind it, its glow
    only adds), every material marked userData.noGrade (the light of the hour and the curse leave it alone). An orb, a
    glow, a burst: one square turned to the camera, all of it worked out by its shader. A ribbon: a strip through up to
-   20 places, turned to the camera on the way (a lance: the same, pointed at both ends; the wind round a lance's way: the
-   same, laid along a helix worked out anew each frame). Sparks and petals: one instanced square each, moved by its
-   shader. The gate: one square, all of it drawn by its shader (as magic-circle-fx.js draws the jump's circles, and by
-   its rules for a phone's GPU: every line always drawn and then masked, nothing that can be NaN, the result kept
-   between 0 and 1). Few of anything: 8 orbs, 4 waves, 3 lances (2 bands of wind and a beam each), 8 bands of the
-   blast, 2 gates, 3 rings, 6 bursts, 10 ribbons, 128 sparks, 96 petals at most. Phone-safe shaders: no arrays, no loops.
+   20 places, turned to the camera on the way (a lance: a strip of its own, its picture laid on it by its shader;
+   a ribbon of its wake: a strip laid along a helix worked out anew each frame). Sparks, sparkles and slivers: one
+   instanced square each, moved by its shader. The gate and a hoop: one square each, all of it drawn by its shader (as
+   magic-circle-fx.js draws the jump's circles, and by its rules for a phone's GPU: every line always drawn and then
+   masked, nothing that can be NaN, the result kept between 0 and 1). Few of anything: 8 orbs, 4 waves, 3 lances (4
+   ribbons of wake and a beam each), 4 hoops, 2 gates, 3 rings, 6 bursts, 10 ribbons, 192 sparks, 64 slivers at most.
+   Phone-safe shaders: no arrays, no loops.
    ========================================================================== */
 import * as THREE from 'three';
 
@@ -64,45 +80,38 @@ const SHOTS = {
   big: { size: 0.95, ribbon: 0.3, shed: 0.7 },
   wave: { wide: 0.95, tall: 0.26, lean: -0.6 },         // half its width, half its height in the middle (m); radians it leans
   rise: { wide: 0.85, tall: 0.2, lean: Math.PI / 2 },
-  lance: { long: [0.75, 1.05, 1.4, 1.8], thick: [0.05, 0.065, 0.085, 0.11], tip: [0.16, 0.2, 0.26, 0.34], ribbon: 0.14 },      // by how grown it is
+  lance: { long: [0.75, 1.05, 1.4, 1.8], wide: 0.1196 },      // its length by how grown it is (m); half its strip's width, of its length (its picture's)
 };
+// the held cast's own light (THE LANCE, above): white at its heart, the clip's cyan, a blue under it
+export const LANCE_LOOK = { core: '#f6fffe', main: '#62ebf5', deep: '#1f86d8' };
 const LANCE = 10;                                       // places along a lance
-const RIBBON = 20, SPARKS = 128, PETALS = 96;
-// the wind round a lance's way: two bands winding round it behind its point. long: m of its way they lie along; pitch: m
-// to a turn; r0, grow, widest: how far from the way (m: at its point, and more the further behind, by grow * m^0.75, up
-// to `widest` m behind); wide: half a band's width (m); spin: how fast the whole turns (rad/s); after: s it takes to go
-// once the lance is over, spreading `spread` m/s; streak: s the streak of light behind the lance lasts
-const WIND = { places: 44, long: 12, pitch: 4.4, r0: 0.12, grow: 0.11, widest: 6, wide: 0.24, spin: 5, after: 0.34, spread: 0.7, streak: 0.22 };
-// what a lance sheds on its way: a petal, a star every so many m (and as many again at random)
-const SHED = { petal: 0.45, star: 0.4 };
-// the blast as a lance is let go, as in the picture it was asked after (a thick beam out of the circle, broad bands of
-// wind winding round it and low round her, petals everywhere): it stays where it was thrown from, and lasts half a
-// second, whatever the lance does (at 36 m/s the lance itself is gone from before her in a tenth of one).
-//   way: bands round the lance's line, from the circle on. s: m along it, its near end .. its far end; r: m from it there;
-//        turns: how often round; phase: where round it begins (rad); wide: half its width (m); spin: rad/s the whole
-//        turns; drift: m/s it goes on along the line; life: s; draw: s it takes to be drawn out from its near end
-//   feet: the same, round her where she stands (up from the ground)
-//   grow: how much further from its line a band is by the time it has gone (of its distance)
-//   shaft: the beam itself, left standing from the circle on: m long at most, half its width (m), s it lasts
-const BAND = 30, BANDS = 8;                             // places along a band; bands at most
-const BLAST = {
-  way: [
-    { s: [-0.25, 3.4], r: [0.66, 0.3], turns: 1.0, phase: 0.0, wide: 0.24, spin: 5, drift: 2.5, life: 0.62, draw: 0.08 },
-    { s: [0.5, 5.4], r: [0.52, 0.22], turns: 1.1, phase: 2.2, wide: 0.21, spin: 5.5, drift: 3.5, life: 0.64, draw: 0.12 },
-    { s: [2.0, 8.2], r: [0.42, 0.12], turns: 1.2, phase: 4.3, wide: 0.18, spin: 6, drift: 5, life: 0.62, draw: 0.18 },
-  ],
-  feet: [
-    { s: [0.1, 0.95], r: [0.5, 0.82], turns: 1.25, phase: 0.5, wide: 0.14, spin: 9, drift: 0.5, life: 0.52, draw: 0.1 },
-    { s: [0.35, 1.5], r: [0.78, 0.55], turns: 1.1, phase: 3.4, wide: 0.12, spin: -8, drift: 0.6, life: 0.56, draw: 0.14 },
-  ],
-  grow: 0.5,
-  shaft: { places: 14, long: 9, wide: 0.19, life: 0.45 },
-  petals: 18, stars: 22,
-  lance: { long: 1.6, thick: 1.9, tip: 1.7 },           // in flight the lance is so much longer and thicker, the light at its point bigger
-};
-// the gate: its square reaches so many radii (its points stand out past its rim); it opens in `open` s, beats `beat` s as
-// it grows, and after the lance has gone through flares and is gone in `fire` s (nothing thrown: in `end` s)
-const GATE = { reach: 1.5, open: 0.28, beat: 0.22, fire: 0.45, end: 0.2 };
+// the lance's look: a picture the user sent (22 Nov 2026, "หอกอันนี้แทนได้ไหม"), turned level and made 1024 x 256, its tail
+// at the left, its point at the right, as wide across as it is in the picture (SHOTS.lance.wide)
+const SPEAR = new URL('./assets/textures/lance-spear.webp', import.meta.url).href;
+const RIBBON = 20, SPARKS = 192, SHARDS = 64;
+// thrown, the lance is so much longer (and white hot); streak: s the streak of light behind it lasts
+const FLIGHT = { long: 1.25, streak: 0.2 };
+// the wake: ribbons of water wound round the lance's way from the circle on. places: along each; long: m of its way
+// they lie along, from the circle on (nearer the far end they thin away); pitch: m to a turn; r: m from the way; near:
+// m behind the lance's point over which they close in on it; wide: half a broad one's width (m); spin: rad/s the whole
+// turns; life: s a place on one lasts once the lance has passed it, thinning to a line, further from the way by
+// `swell` of its distance and wavering as it goes. strands: each one's place round the way (rad), and its distance,
+// width and blue against a broad one's
+const WAKE = { places: 96, long: 10, pitch: 2.4, r: 0.3, near: 1.6, wide: 0.085, spin: 7, life: 0.6, swell: 0.3,
+  strands: [{ phase: 0, r: 1, wide: 1, blue: 0 }, { phase: Math.PI, r: 1, wide: 1, blue: 0 }, { phase: 1.9, r: 1.3, wide: 0.4, blue: 1 }, { phase: 1.9 + Math.PI, r: 1.3, wide: 0.4, blue: 1 }] };
+// what a lance sheds on its way: a sparkle every so many m (and as many again at random)
+const SHED = { sparkle: 0.3 };
+// as it is let go:
+//   beam: left standing from the circle on: places along it, m long at most, half its width (m), s it lasts
+//   hoop: of water round the lance's line, spray torn off its rim: m past the circle, its radius at its widest (m), s
+//   hoops: thin ones as it flies: one every so many m, so many at most, each so wide (m) and lasting so long (s)
+//   shards, sparkles: slivers of ice thrown out round the circle's rim, sparkles thrown out of it
+const LAUNCH = { beam: { places: 14, long: 9, wide: 0.1, life: 0.42 }, hoop: { ahead: 1.1, r: 0.8, life: 0.42 },
+  hoops: { every: 5, most: 3, r: 0.55, life: 0.34 }, shards: 22, sparkles: 26 };
+// the gate: its square reaches so many radii (its flare's rays and its comet stand out past its rim); it opens in `open`
+// s, beats `beat` s as it grows, and after the lance has gone through flares and is gone in `fire` s (nothing thrown:
+// in `end` s); dust: s between the sparkles that drift off it while it stands
+const GATE = { reach: 1.7, open: 0.3, beat: 0.22, fire: 0.5, end: 0.2, dust: 0.06 };
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
 
 const FACING = /* glsl */`
@@ -122,6 +131,15 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   const rand = () => { s0 = (s0 + 0x6d2b79f5) >>> 0; let t = s0; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const colours = { uCore: { value: rgb(COMBO_LOOK.core) }, uMain: { value: rgb(COMBO_LOOK.main) }, uDeep: { value: rgb(COMBO_LOOK.deep) },
     uGold: { value: rgb(COMBO_LOOK.gold) }, uShine: { value: 1 } };          // shared by every material
+  // the held cast's: the same names, its own light (the hour's shine is the one shared)
+  const water = { uCore: { value: rgb(LANCE_LOOK.core) }, uMain: { value: rgb(LANCE_LOOK.main) }, uDeep: { value: rgb(LANCE_LOOK.deep) }, uShine: colours.uShine };
+  // the lance's picture (SPEAR): shared by the lances; uHas 1 once it has come. Its colours are taken as they are in the
+  // file (as every colour here is), and premultiplied by its alpha as it is uploaded, so that drawn smaller its clear
+  // edges do not bleed into it
+  const spearIn = { value: 0 };
+  const spear = new THREE.TextureLoader().load(SPEAR, () => { spearIn.value = 1; }, undefined, err => console.warn('[magic combo] the lance picture', err));
+  spear.premultiplyAlpha = true; spear.anisotropy = 4;
+  const spearMap = { value: spear };
   const square = new THREE.PlaneGeometry(2, 2);
   const made = [];
   const material = o => { const m = new THREE.ShaderMaterial({ depthWrite: false, ...BLEND, ...o }); m.userData.noGrade = true; made.push(m); return m; };
@@ -178,9 +196,12 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     return { mesh: put(geo, mat), pts: [], width: 0.1, life: 0.14, used: false, key: null };
   }
   const ribbons = Array.from({ length: 10 }, makeRibbon);
-  function takeRibbon(width, life, key = null) {
+  // (look: whose light it is: the combo's, or the lance's)
+  function takeRibbon(width, life, key = null, look = colours) {
     const r = ribbons.find(o => !o.used && !o.pts.length) || ribbons.find(o => !o.used) || ribbons[0];
     r.pts.length = 0; r.width = width; r.life = life; r.used = true; r.key = key; r.seen = true;
+    const u = r.mesh.material.uniforms;
+    u.uCore = look.uCore; u.uMain = look.uMain;
     return r;
   }
   function feed(r, at) {
@@ -251,7 +272,11 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   });
   const bursts = Array.from({ length: 6 }, () => ({ mesh: put(square, burstMat()), t: 1, life: 0.3 }));
 
-  // ---- a lance: a strip from its tail to its point, widest two thirds of the way along, turned to the camera
+  // ---- a lance: a spear of ice and water on a strip from its tail to its point, turned to the camera: the picture the
+  // user sent (SPEAR), laid on the strip from its tail (x 0) to its point (x 1), as wide across as it is in the picture.
+  // Until the picture has come (or if it does not), the shader draws one of its own in its place: a pommel, a thin
+  // shaft with a bead on it, a guard (a tall thin spike across), and its head, barbed, white down its middle.
+  // uHot: thrown (whiter, a blue flame licking back along it)
   function makeLance() {
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(LANCE * 2 * 3), uv = new Float32Array(LANCE * 2 * 2), idx = [];
@@ -261,31 +286,96 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx);
     const mat = material({
-      uniforms: { ...colours, uK: { value: 1 } },
+      uniforms: { ...water, uK: { value: 1 }, uHot: { value: 0 }, uAge: { value: 0 }, uMap: spearMap, uHas: spearIn },
       side: THREE.DoubleSide,
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: /* glsl */`
         uniform vec3 uCore, uMain, uDeep;
-        uniform float uK, uShine;
+        uniform float uK, uShine, uHot, uAge, uHas;
+        uniform sampler2D uMap;
         varying vec2 vUv;
+        // a part of its outline: so tall at x0, narrowing in a straight line to nothing at x1 (before x0 or after it)
+        float part(float x, float y, float x0, float x1, float tall, float aa) {
+          float u = clamp((x - x0) / (x1 - x0), 0.0, 1.0);
+          float within = step(min(x0, x1), x) * step(x, max(x0, x1));
+          return within * (1.0 - smoothstep(-aa, aa, y - tall * (1.0 - u)));
+        }
+        // ... and one that narrows fast at first (a spike)
+        float spike(float x, float y, float x0, float x1, float tall, float aa) {
+          float u = clamp((x - x0) / (x1 - x0), 0.0, 1.0);
+          float within = step(min(x0, x1), x) * step(x, max(x0, x1));
+          return within * (1.0 - smoothstep(-aa, aa, y - tall * (1.0 - u) * (1.0 - u)));
+        }
         void main() {
-          float across = 1.0 - vUv.y * vUv.y;
-          float heart = smoothstep(0.45, 0.95, across);                     // the white line down its middle
-          float a = pow(across, 0.6) * (0.4 + 0.6 * vUv.x);                 // brighter toward its point
-          vec3 col = mix(mix(uDeep, uMain, across), uCore, heart);
-          gl_FragColor = vec4(col * a * uK * (0.8 + 0.3 * uShine), a * (0.4 + 0.55 * heart) * uK);
+          float x = vUv.x, y = abs(vUv.y);
+          float ends = smoothstep(0.0, 0.05, x) * smoothstep(0.0, 0.03, 1.0 - x);
+          float glow = exp(-y * 6.5) * (0.3 + 0.7 * smoothstep(0.4, 0.8, x)) * ends;
+          // thrown: a blue flame licking back along its shaft
+          float lick = exp(-y * 4.2) * (0.5 + 0.5 * sin(x * 34.0 - uAge * 28.0 + y * 7.0)) * (1.0 - smoothstep(0.55, 0.8, x)) * smoothstep(0.0, 0.12, x) * uHot;
+          // the drawn one (until the picture has come)
+          float aa = fwidth(vUv.y) * 1.2 + 0.008;
+          float m = (1.0 - smoothstep(-aa, aa, y - 0.03)) * step(0.04, x) * step(x, 0.82);                 // its shaft
+          m = max(m, max(part(x, y, 0.045, 0.0, 0.1, aa), part(x, y, 0.045, 0.1, 0.1, aa)));               // its pommel
+          m = max(m, max(part(x, y, 0.6, 0.565, 0.12, aa), part(x, y, 0.6, 0.635, 0.12, aa)));             // the bead
+          m = max(m, max(spike(x, y, 0.69, 0.65, 0.66, aa), spike(x, y, 0.69, 0.73, 0.66, aa)));           // its guard
+          m = max(m, part(x, y, 0.745, 1.0, 0.4, aa) * (1.0 - part(x, y, 0.745, 0.81, 0.4, aa)));         // its head, barbed
+          float heart = 1.0 - smoothstep(0.0, 0.14, y);                    // white down its middle
+          vec3 ice = mix(uMain, uCore, clamp(0.45 + 0.55 * heart + uHot, 0.0, 1.0));
+          vec3 drawn = ice * m + ((uMain * 0.55 + uDeep * 0.6) * glow * (0.8 + 0.7 * uHot) + uDeep * lick * 1.3) * (1.0 - m);
+          float drawnA = m * 0.92 + (1.0 - m) * min(1.0, glow * 0.6 + lick * 0.35);
+          // the picture (its colour premultiplied as it was uploaded): thrown, whiter, the flame and a glow round it
+          vec4 pic = texture2D(uMap, vec2(x, 0.5 + 0.5 * vUv.y));
+          vec3 shown = mix(pic.rgb, uCore * pic.a, 0.35 * uHot) + (uDeep * lick * 1.3 + (uMain * 0.55 + uDeep * 0.6) * glow * 0.6 * uHot) * (1.0 - pic.a);
+          float shownA = pic.a + (1.0 - pic.a) * min(1.0, lick * 0.35 + glow * 0.3 * uHot);
+          vec3 col = mix(drawn, shown, uHas);
+          float a = mix(drawnA, shownA, uHas);
+          gl_FragColor = clamp(vec4(col * uK * (0.8 + 0.3 * uShine), a * uK), 0.0, 1.0);
         }`,
     });
-    return { mesh: put(geo, mat), live: false, k: 0, level: 0, long: 0, grown: 0, tip: null, ribbon: null, head: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1),
-      // in flight: where it was thrown from, how far it has come (m), two ways across its own (for the wind round it),
-      // how long it has flown and how long it has been over (s), how much of its wind is left, what it sheds next (m)
-      from: new THREE.Vector3(), far: 0, X: new THREE.Vector3(1, 0, 0), Y: new THREE.Vector3(0, 1, 0), flown: 0, gone: 0, windK: 0, petalAt: 0, starAt: 0,
-      wind: [makeWind(), makeWind()], shaft: makeShaft() };
+    return { mesh: put(geo, mat), live: false, k: 0, level: 0, long: 0, grown: 0, hot: 0, ribbon: null, head: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1),
+      // in flight: where it was thrown from, how far it has come (m), two ways across its own (for the wake round it),
+      // how long ago it was thrown and how long it has been over (s), its pace (m/s), whether its wake is still there,
+      // where along its way it sheds its next sparkle and leaves its next hoop (m), how many hoops it has left
+      from: new THREE.Vector3(), far: 0, X: new THREE.Vector3(1, 0, 0), Y: new THREE.Vector3(0, 1, 0), flown: 0, gone: 0, pace: 30, wakeOn: false, sparkAt: 0, hoopAt: 0, hoopN: 0,
+      wake: WAKE.strands.map(makeStrand), beam: makeBeam() };
   }
-  // ---- a band of wind: a strip along a helix, turned to the camera. Round a lance's way as it flies (brightest behind
-  // its point, thinning away behind), or one of the blast's (whole from end to end, pointed at both)
-  function makeWind(N = WIND.places, whole = false) {
-    const geo = new THREE.BufferGeometry();
+  // ---- a ribbon of the wake: a strip along a helix round the lance's way, turned to the camera, laid anew each frame.
+  // Across it a wash, a bright line near each edge; where it is on the far side of the way from the camera its blue
+  // inside shows (aTone: how far it is turned to the camera, -1..1). uv.x: how far gone a place on it is (0 new, 1 gone)
+  function makeStrand(d) {
+    const N = WAKE.places, geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(N * 2 * 3), uv = new Float32Array(N * 2 * 2), tone = new Float32Array(N * 2), idx = [];
+    for (let i = 0; i < N; i++) { uv[i * 4 + 1] = -1; uv[i * 4 + 3] = 1; }
+    for (let i = 0; i < N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('aTone', new THREE.BufferAttribute(tone, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setIndex(idx);
+    const mat = material({
+      uniforms: { ...water, uK: { value: 1 }, uBlue: { value: d.blue } },
+      side: THREE.DoubleSide,
+      vertexShader: 'attribute float aTone; varying vec2 vUv; varying float vTone; void main() { vUv = uv; vTone = aTone; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: /* glsl */`
+        uniform vec3 uCore, uMain, uDeep;
+        uniform float uK, uShine, uBlue;
+        varying vec2 vUv;
+        varying float vTone;
+        void main() {
+          float across = max(0.0, 1.0 - vUv.y * vUv.y);
+          float edge = clamp(1.0 - abs(abs(vUv.y) - 0.72) * 4.5, 0.0, 1.0);
+          float front = smoothstep(-0.25, 0.35, vTone);
+          vec3 body = mix(uDeep, uMain, (0.2 + 0.8 * front) * (1.0 - 0.75 * uBlue));
+          vec3 col = mix(body, uCore, edge * edge * (0.3 + 0.6 * front));
+          float a = smoothstep(0.0, 0.3, across) * pow(clamp(1.0 - vUv.x, 0.0, 1.0), 1.25);
+          gl_FragColor = clamp(vec4(col * a * uK * (0.8 + 0.3 * uShine), a * uK * (0.4 + 0.3 * front)), 0.0, 1.0);
+        }`,
+    });
+    return { mesh: put(geo, mat), d };
+  }
+  // ---- the beam left standing as a lance is let go: a strip from where it was thrown, thin there and thick further
+  // on; white hot down its middle, a blue flame flickering along it
+  function makeBeam() {
+    const N = LAUNCH.beam.places, geo = new THREE.BufferGeometry();
     const pos = new Float32Array(N * 2 * 3), uv = new Float32Array(N * 2 * 2), idx = [];
     for (let i = 0; i < N; i++) { uv[i * 4] = uv[i * 4 + 2] = i / (N - 1); uv[i * 4 + 1] = -1; uv[i * 4 + 3] = 1; }
     for (let i = 0; i < N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
@@ -293,64 +383,59 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx);
     const mat = material({
-      uniforms: { ...colours, uK: { value: 1 } },
+      uniforms: { ...water, uK: { value: 1 }, uAge: { value: 0 } },
       side: THREE.DoubleSide,
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: /* glsl */`
         uniform vec3 uCore, uMain, uDeep;
-        uniform float uK, uShine;
-        varying vec2 vUv;                                                  // x: along it (0..1); y: across
-        void main() {
-          float across = max(0.0, 1.0 - vUv.y * vUv.y);
-          float along = ${whole ? 'smoothstep(0.0, 0.1, vUv.x) * smoothstep(0.0, 0.12, 1.0 - vUv.x)' : 'smoothstep(0.0, 0.08, vUv.x) * pow(clamp(1.0 - vUv.x, 0.0, 1.0), 1.2)'};
-          // a band of wind: a bright line along one edge, the rest of it a wash of blue, deeper toward the other
-          float rim = clamp(1.0 - abs(vUv.y - 0.55) * ${whole ? '3.0' : '4.0'}, 0.0, 1.0);
-          float side = clamp(vUv.y * 0.5 + 0.5, 0.0, 1.0);
-          float wash = across * (0.5 + 0.35 * side);
-          float a = min(1.0, wash + rim * rim) * along * across;
-          vec3 col = mix(mix(uDeep, uMain, 0.35 + 0.65 * side), uCore, clamp(rim * rim, 0.0, 1.0));
-          gl_FragColor = clamp(vec4(col * a * uK * (0.75 + 0.3 * uShine), a * ${whole ? '0.62' : '0.5'} * uK), 0.0, 1.0);
-        }`,
-    });
-    return { mesh: put(geo, mat) };
-  }
-  // ---- the beam left standing as a lance is let go: a strip from where it was thrown, thin there and thick further on
-  function makeShaft() {
-    const N = BLAST.shaft.places, geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(N * 2 * 3), uv = new Float32Array(N * 2 * 2), idx = [];
-    for (let i = 0; i < N; i++) { uv[i * 4] = uv[i * 4 + 2] = i / (N - 1); uv[i * 4 + 1] = -1; uv[i * 4 + 3] = 1; }
-    for (let i = 0; i < N - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
-    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    geo.setIndex(idx);
-    const mat = material({
-      uniforms: { ...colours, uK: { value: 1 } },
-      side: THREE.DoubleSide,
-      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: /* glsl */`
-        uniform vec3 uCore, uMain, uDeep;
-        uniform float uK, uShine;
+        uniform float uK, uShine, uAge;
         varying vec2 vUv;
         void main() {
-          float across = max(0.0, 1.0 - vUv.y * vUv.y);
-          float heart = smoothstep(0.35, 0.9, across);                      // white down its middle
-          float a = pow(across, 0.7) * smoothstep(0.0, 0.06, vUv.x) * smoothstep(0.0, 0.2, 1.0 - vUv.x);
-          vec3 col = mix(mix(uDeep, uMain, across), uCore, heart);
-          gl_FragColor = clamp(vec4(col * a * uK * (0.85 + 0.3 * uShine), a * (0.45 + 0.5 * heart) * uK), 0.0, 1.0);
+          float y = abs(vUv.y);
+          float heart = 1.0 - smoothstep(0.08, 0.3, y);                     // white hot down its middle
+          float glow = exp(-y * 3.4) * (1.0 - smoothstep(0.8, 1.0, y));
+          float lick = 0.6 + 0.4 * sin(vUv.x * 46.0 - uAge * 30.0 + y * 6.0);
+          float ends = smoothstep(0.0, 0.05, vUv.x) * smoothstep(0.0, 0.25, 1.0 - vUv.x);
+          vec3 col = uCore * heart + mix(uDeep, uMain, glow * 0.6) * glow * lick * (1.0 - heart);
+          gl_FragColor = clamp(vec4(col * ends * uK * (0.85 + 0.3 * uShine), min(1.0, heart * 0.9 + glow * 0.3 * lick) * ends * uK), 0.0, 1.0);
         }`,
     });
     return { mesh: put(geo, mat) };
   }
-  // the blast's bands: each { mesh, on, born, O, Z, X, Y (where, the line it winds round, two ways across it), and its numbers }
-  const bands = Array.from({ length: BANDS }, () => ({ ...makeWind(BAND, true), on: false, born: 0, O: new THREE.Vector3(), Z: new THREE.Vector3(0, 0, 1), X: new THREE.Vector3(1, 0, 0), Y: new THREE.Vector3(0, 1, 0),
-    s0: 0, s1: 1, r0: 0.5, r1: 0.3, turns: 1, phase: 0, wide: 0.2, spin: 5, drift: 0, life: 0.6, draw: 0.1 }));
   const lances = Array.from({ length: 3 }, makeLance);
-  const windAt = new Float32Array(Math.max(WIND.places, BAND) * 3);
+  const wakeAt = new Float32Array(WAKE.places * 3), wakeR = new Float32Array(WAKE.places * 3);      // a ribbon's places; the way out from the lance's line at each
 
-  // ---- the gate: a magic circle standing in the air, which a lance is thrown through. One square; all of it is drawn
-  // by its shader from where on it a pixel is (in radii: its outer ring at 1)
+  // ---- a hoop of water round the lance's line: one square across it; a ring going out, a bright line with a wash
+  // inside it. uFeather: spray torn off its rim outward (the one at the circle as the lance is let go)
+  const hoopMat = () => material({
+    uniforms: { ...water, uT: { value: 0 }, uFeather: { value: 0 }, uSeed: { value: 0 } },
+    side: THREE.DoubleSide,
+    vertexShader: 'varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: /* glsl */`
+      uniform vec3 uCore, uMain, uDeep;
+      uniform float uT, uShine, uFeather, uSeed;
+      varying vec2 vP;
+      void main() {
+        float r = length(vP), a = atan(vP.y, abs(vP.x) < 1e-6 ? 1e-6 : vP.x);
+        float out_ = 1.0 - pow(clamp(1.0 - uT, 0.0, 1.0), 2.6);             // fast at first
+        float R = 0.3 + 0.42 * out_;                                        // (its spray stands out past it, to the square's edge)
+        float w = 0.012 + 0.02 * (1.0 - uT);
+        float line = 1.0 - smoothstep(w, w + 0.02, abs(r - R));
+        float band = smoothstep(R - 0.16, R, r) * (1.0 - step(R, r)) * 0.35;
+        // the spray: tongues of it off the rim, each as long as its place round the rim has it
+        float n = 0.5 + 0.25 * sin(a * 9.0 + uSeed) + 0.25 * sin(a * 23.0 - uSeed * 1.7);
+        float spray = (1.0 - smoothstep(R, R + 0.02 + 0.24 * n, r)) * step(R, r) * uFeather * 0.7;
+        float k = (1.0 - uT) * (1.0 - uT * uT);
+        vec3 col = mix(uMain, uCore, line * 0.8) * (line + band) + mix(uDeep, uMain, 0.55) * spray;
+        gl_FragColor = clamp(vec4(col * k * (0.8 + 0.3 * uShine), clamp(line + band + spray, 0.0, 1.0) * k * 0.5), 0.0, 1.0);
+      }`,
+  });
+  const hoops = Array.from({ length: 4 }, () => ({ mesh: put(square, hoopMat()), t: 1, life: 0.4 }));
+
+  // ---- the gate: a magic circle standing in the air, which a lance is thrown through, as the clip's. One square; all
+  // of it is drawn by its shader from where on it a pixel is (in radii: its outer ring at 1)
   const gateMat = () => material({
-    uniforms: { ...colours, uOpen: { value: 0 }, uLevel: { value: 0 }, uBeat: { value: 0 }, uFlash: { value: 0 }, uWave: { value: 0 }, uFade: { value: 0 }, uAge: { value: 0 } },
+    uniforms: { ...water, uOpen: { value: 0 }, uLevel: { value: 0 }, uBeat: { value: 0 }, uFlash: { value: 0 }, uWave: { value: 0 }, uFade: { value: 0 }, uAge: { value: 0 } },
     side: THREE.DoubleSide,
     vertexShader: `varying vec2 vP; void main() { vP = position.xy * ${GATE.reach.toFixed(2)}; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */`
@@ -383,60 +468,58 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         return g * step(0.0, v) * step(v, 1.0);
       }
       float sq(vec2 p, float s) { vec2 q = abs(p); return max(q.x, q.y) - s; }
-      // n points standing on the rim, each a thin spike len long
-      float points(float r, float a, float n, float len) {
-        float sec = TAU / n, f = mod(a + sec * 0.5, sec) - sec * 0.5, x = r - 1.0;
-        return line(abs(f) * r - (len - x) * 0.3, 0.024) * step(0.0, x) * step(x, len);
+      // a small seal standing on the rim, at angle a0: two rings and a dot
+      float seal(vec2 p, float a0) {
+        float d = length(p - vec2(cos(a0), sin(a0)) * 0.94);
+        return max(max(line(d - 0.16, 0.018), line(d - 0.105, 0.012)), 1.0 - smoothstep(0.02, 0.04, d));
       }
       void main() {
         vec2 p = vP;
         float r = length(p), a = atan(p.y, abs(p.x) < 1e-6 ? 1e-6 : p.x);  // (no angle at the very middle)
-        float t = uAge, spinA = t * 1.1, spinB = -t * 1.7;                 // the band of marks and the figures inside turn opposite ways
+        float t = uAge, spinA = t * 0.9, spinB = -t * 1.3;                 // the band of marks and the figures inside turn opposite ways
         float L = 0.0;
-        // two rings round the rim, one inside them, a small one in the middle (the lance goes through it)
-        L = max(L, line(r - 1.0, 0.04) * drawn(a, 0.0, 0.0));
-        L = max(L, line(r - 0.9, 0.02) * drawn(a, 0.08, 0.5));
-        L = max(L, line(r - 0.64, 0.024) * drawn(a, 0.18, 0.25));
-        L = max(L, line(r - 0.2, 0.022) * drawn(a, 0.3, 0.6));
-        // the band of marks between them
-        L = max(L, runes(r, a + spinA, 0.69, 0.86, 22.0) * step(0.3, uOpen) * 0.95);
-        // grown once: two squares turning, an eight-pointed star
-        if (uLevel > 0.5) {
-          vec2 q = rot(p, spinB * 0.6);
-          L = max(L, line(sq(q, 0.4525), 0.022));
-          L = max(L, line(sq(rot(q, PI * 0.25), 0.4525), 0.022));
-        }
-        // twice: four long points round its rim and four short between them, a thin ring outside
-        if (uLevel > 1.5) {
-          L = max(L, points(r, a, 4.0, 0.42));
-          L = max(L, points(r, a + PI * 0.25, 4.0, 0.2));
-          L = max(L, line(r - 1.07, 0.014));
-        }
-        // full grown: a cross turning through the middle, a ring round it
-        if (uLevel > 2.5) {
-          float f = mod(a + spinB + PI * 0.25, PI * 0.5) - PI * 0.25;
-          L = max(L, line(f * r, 0.016) * step(0.2, r) * step(r, 0.64) * 0.85);
-          L = max(L, line(r - 0.42, 0.016));
-        }
-        // the lance has gone through: a wave going out round the rim
+        // its rim, thick, and a thin ring just inside it; the band of marks, a ring inside that; a small ring in the
+        // middle (the lance goes through it)
+        L = max(L, line(r - 1.0, 0.042) * drawn(a, 0.0, 0.0));
+        L = max(L, line(r - 0.935, 0.016) * drawn(a, 0.06, 0.5));
+        L = max(L, line(r - 0.73, 0.022) * drawn(a, 0.16, 0.25));
+        L = max(L, line(r - 0.17, 0.02) * drawn(a, 0.3, 0.6));
+        L = max(L, runes(r, a + spinA, 0.765, 0.905, 26.0) * step(0.3, uOpen));
+        // grown once: a diamond in the inner ring and a square across it, turning (how near a pixel is to either: fig)
+        vec2 q = rot(p, spinB * 0.5);
+        float fig = min(abs(sq(rot(q, PI * 0.25), 0.516)), abs(sq(q, 0.47)));
+        float one = step(0.5, uLevel), two = step(1.5, uLevel), three = step(2.5, uLevel);
+        L = max(L, line(fig, 0.022) * one);
+        // twice: the circle in the square, and a small star (two squares) turning the other way round the middle
+        vec2 q2 = rot(p, -spinB * 1.1);
+        L = max(L, line(r - 0.47, 0.016) * two);
+        L = max(L, line(min(abs(sq(q2, 0.235)), abs(sq(rot(q2, PI * 0.25), 0.235))), 0.016) * two);
+        // full grown: two small seals standing on its rim, going round with the marks
+        L = max(L, max(seal(p, 2.5 - spinA), seal(p, 3.75 - spinA)) * three);
+        // a comet of light running round outside its rim: as it opens, each time it grows, and all the while once full grown
+        float tail = clamp((fract((a - t * 3.4) / TAU + 0.5) - 0.68) / 0.32, 0.0, 1.0);
+        float comet = line(r - 1.1, 0.012 + 0.06 * tail) * tail * tail * max(max(1.0 - uOpen, uBeat), three * 0.75);
+        // the lance has gone through: a wave going out round the rim, and its middle flares into a four-pointed star
         float out_ = 1.0 - pow(clamp(1.0 - uWave, 0.0, 1.0), 3.0);
-        float W = line(r - (1.0 + 0.42 * out_), 0.03 + 0.05 * (1.0 - uWave)) * (1.0 - uWave) * (1.0 - uWave) * step(0.0005, uWave);
-        // glow: round the rim, over its whole face a little, most in the middle
-        float G = exp(-abs(r - 1.0) * 14.0) * 0.5 + exp(-abs(r - 0.64) * 20.0) * 0.22 + (1.0 - smoothstep(0.2, 1.05, r)) * 0.14 + exp(-r * 5.0) * (0.5 + 1.1 * uFlash);
-        G *= smoothstep(0.0, 0.25, uOpen) * step(r, 1.45) * (1.0 + 0.5 * uBeat + 0.5 * uFlash);
+        float W = line(r - (1.0 + 0.5 * out_), 0.03 + 0.05 * (1.0 - uWave)) * (1.0 - uWave) * (1.0 - uWave) * step(0.0005, uWave);
+        float star = (exp(-abs(p.y) * 42.0) * exp(-abs(p.x) * 1.7) + exp(-abs(p.x) * 42.0) * exp(-abs(p.y) * 2.6) + exp(-r * 6.0)) * uFlash;
+        // glow: round the rim and the inner ring, along the figure, over its whole face (a wash of blue), in its middle
+        float G = exp(-abs(r - 0.97) * 9.0) * 0.6 + exp(-abs(r - 0.73) * 16.0) * 0.25 + exp(-fig * 16.0) * 0.3 * one
+          + (1.0 - smoothstep(0.1, 0.98, r)) * 0.22 + exp(-r * 5.0) * 0.35;
+        G *= smoothstep(0.0, 0.25, uOpen) * (1.0 - smoothstep(1.3, 1.6, r)) * (1.0 + 0.5 * uBeat + 0.6 * uFlash);
         // going: it breaks into bits (by angle and by ring), from the middle out
         float bit = hash(floor((a / TAU + 0.5) * 40.0) + floor(r * 14.0) * 41.0);
         float keep = step(uFade * 1.25 - r * 0.25, bit * 0.9 + 0.08);
         float pulse = 0.9 + 0.1 * sin(t * 21.0);
-        L *= keep * pulse;
+        L = max(L, comet) * keep * pulse;
         G *= (1.0 - uFade) * pulse;
         float A = clamp(L + W, 0.0, 1.0);
-        vec3 lineCol = mix(uMain, uCore, clamp(smoothstep(0.55, 1.0, L) * 0.5 + 0.5 * uBeat + uFlash + W, 0.0, 1.0));
-        vec3 col = lineCol * A + uDeep * G + uCore * exp(-r * 5.0) * uFlash * 0.6;
-        gl_FragColor = clamp(vec4(col * (0.75 + 0.35 * uShine), A * 0.85 + min(1.0, G) * 0.45), 0.0, 1.0);
+        vec3 lineCol = mix(uMain, uCore, clamp(0.45 + 0.3 * smoothstep(0.55, 1.0, L) + 0.5 * uBeat + uFlash + W, 0.0, 1.0));
+        vec3 col = lineCol * A + mix(uDeep, uMain, 0.35) * G + uCore * star;
+        gl_FragColor = clamp(vec4(col * (0.75 + 0.35 * uShine), A * 0.85 + min(1.0, G) * 0.4 + min(1.0, star) * 0.5), 0.0, 1.0);
       }`,
   });
-  const gates = Array.from({ length: 2 }, () => ({ mesh: put(square, gateMat()), live: false, open: 0, level: 0, beat: 0, fired: -1, fade: 1, age: 0, radius: 0, want: 0, fresh: true, dir: new THREE.Vector3(0, 0, 1) }));
+  const gates = Array.from({ length: 2 }, () => ({ mesh: put(square, gateMat()), live: false, open: 0, level: 0, beat: 0, fired: -1, fade: 1, age: 0, radius: 0, want: 0, fresh: true, dust: 0, dir: new THREE.Vector3(0, 0, 1) }));
 
   // ---- a ring over the ground: going out from the middle, thinning as it goes
   const flat = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
@@ -462,19 +545,20 @@ export function createMagicComboFx({ seed = 7 } = {}) {
   });
   const rings = Array.from({ length: 3 }, () => ({ mesh: put(flat, ringMat()), t: 1, life: 0.4 }));
 
-  // ---- sparks: gold, four-pointed; thrown out, slowing, falling a little, going out (all in the shader)
+  // ---- sparks: gold, four-pointed; thrown out, slowing, falling a little, going out (all in the shader). And the
+  // lance's sparkles (aTint 1): a round bead of light with a soft glow, which hardly falls, and twinkles as it drifts
   const sGeo = new THREE.InstancedBufferGeometry();
   sGeo.index = square.index;
   sGeo.setAttribute('position', square.attributes.position);
   const sAt = new THREE.InstancedBufferAttribute(new Float32Array(SPARKS * 3), 3).setUsage(THREE.DynamicDrawUsage);
   const sVel = new THREE.InstancedBufferAttribute(new Float32Array(SPARKS * 3), 3).setUsage(THREE.DynamicDrawUsage);
   const sData = new THREE.InstancedBufferAttribute(new Float32Array(SPARKS * 4), 4).setUsage(THREE.DynamicDrawUsage);      // born, life, size, turn
-  const sTint = new THREE.InstancedBufferAttribute(new Float32Array(SPARKS), 1).setUsage(THREE.DynamicDrawUsage);         // 0: gold; 1: blue (a star off a lance)
+  const sTint = new THREE.InstancedBufferAttribute(new Float32Array(SPARKS), 1).setUsage(THREE.DynamicDrawUsage);         // 0: a gold spark; 1: a sparkle of the lance's
   for (let j = 0; j < SPARKS; j++) sData.setXYZW(j, -1000, 1, 0, 0);                                                      // (none yet)
   sGeo.setAttribute('aAt', sAt); sGeo.setAttribute('aVel', sVel); sGeo.setAttribute('aData', sData); sGeo.setAttribute('aTint', sTint);
   sGeo.instanceCount = SPARKS;
   const sMat = material({
-    uniforms: { ...colours, uTime: { value: 0 } },
+    uniforms: { ...colours, uSea: water.uMain, uTime: { value: 0 } },
     vertexShader: /* glsl */`
       attribute vec3 aAt, aVel;
       attribute vec4 aData;
@@ -486,8 +570,8 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         float age = uTime - aData.x, u = age / aData.y;
         float on = step(0.0, age) * step(u, 1.0);
         float slow = (1.0 - exp(-3.0 * age)) / 3.0;                        // (how far it has come, slowing as it goes)
-        vec3 p = aAt + aVel * slow - vec3(0.0, 0.7 * age * age, 0.0);
-        float twinkle = 0.7 + 0.3 * sin(uTime * 26.0 + aData.w * 50.0);
+        vec3 p = aAt + aVel * slow - vec3(0.0, 0.7 * age * age * (1.0 - 0.9 * aTint), 0.0);
+        float twinkle = mix(0.7 + 0.3 * sin(uTime * 26.0 + aData.w * 50.0), 0.55 + 0.45 * sin(uTime * 15.0 + aData.w * 50.0), aTint);
         float s = aData.z * on * smoothstep(0.0, 0.12, u) * pow(max(0.0, 1.0 - u), 0.6) * twinkle;
         float c = cos(aData.w), sn = sin(aData.w);
         vP = position.xy; vU = u; vTint = aTint;
@@ -496,17 +580,20 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */`
-      uniform vec3 uCore, uGold, uMain;
+      uniform vec3 uCore, uGold, uSea;
       uniform float uShine;
       varying vec2 vP;
       varying float vU, vTint;
       void main() {
         vec2 q = abs(vP);
+        float r = length(vP);
         float star = max(0.0, 1.0 - (q.x * q.y * 30.0 + (q.x + q.y) * 0.95));
-        float heart = 1.0 - smoothstep(0.0, 0.2, length(vP));
-        float a = clamp(star + heart, 0.0, 1.0);
-        vec3 col = mix(mix(uGold, uMain, vTint), uCore, heart * 0.8);
-        gl_FragColor = vec4(col * a * (0.8 + 0.4 * uShine), a * 0.55);
+        float heart = 1.0 - smoothstep(0.0, 0.2, r);
+        float bead = 1.0 - smoothstep(0.14, 0.3, r);
+        float halo = pow(max(0.0, 1.0 - r), 2.2) * 0.6 + star * 0.3;
+        float a = mix(clamp(star + heart, 0.0, 1.0), clamp(bead + halo, 0.0, 1.0), vTint);
+        vec3 col = mix(mix(uGold, uCore, heart * 0.8), mix(uSea, uCore, bead * 0.85), vTint);
+        gl_FragColor = vec4(col * a * (0.8 + 0.4 * uShine), a * mix(0.55, 0.4, vTint));
       }`,
   });
   const sparks = put(sGeo, sMat);
@@ -517,18 +604,18 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     sAt.setXYZ(j, at.x, at.y, at.z); sVel.setXYZ(j, vx, vy, vz); sData.setXYZW(j, time, life, size, rand() * 6.283); sTint.setX(j, tint);
     sAt.needsUpdate = sVel.needsUpdate = sData.needsUpdate = sTint.needsUpdate = true;
   }
-  // ---- petals of light: a leaf shape, thrown out, slowing, tumbling and turning over as it drifts, going out
-  const pGeo = new THREE.InstancedBufferGeometry();
-  pGeo.index = square.index;
-  pGeo.setAttribute('position', square.attributes.position);
-  const pAt = new THREE.InstancedBufferAttribute(new Float32Array(PETALS * 3), 3).setUsage(THREE.DynamicDrawUsage);
-  const pVel = new THREE.InstancedBufferAttribute(new Float32Array(PETALS * 3), 3).setUsage(THREE.DynamicDrawUsage);
-  const pData = new THREE.InstancedBufferAttribute(new Float32Array(PETALS * 4), 4).setUsage(THREE.DynamicDrawUsage);      // born, life, size (half its length, m), turn
-  for (let j = 0; j < PETALS; j++) pData.setXYZW(j, -1000, 1, 0, 0);
-  pGeo.setAttribute('aAt', pAt); pGeo.setAttribute('aVel', pVel); pGeo.setAttribute('aData', pData);
-  pGeo.instanceCount = PETALS;
-  const pMat = material({
-    uniforms: { ...colours, uTime: { value: 0 } },
+  // ---- slivers of ice: thin, pointed at both ends, lying along the way they fly; thrown out, slowing, going out
+  const hGeo = new THREE.InstancedBufferGeometry();
+  hGeo.index = square.index;
+  hGeo.setAttribute('position', square.attributes.position);
+  const hAt = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 3), 3).setUsage(THREE.DynamicDrawUsage);
+  const hVel = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 3), 3).setUsage(THREE.DynamicDrawUsage);
+  const hData = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4), 4).setUsage(THREE.DynamicDrawUsage);      // born, life, size (half its length, m), how thin (its width of its length)
+  for (let j = 0; j < SHARDS; j++) hData.setXYZW(j, -1000, 1, 0, 0);
+  hGeo.setAttribute('aAt', hAt); hGeo.setAttribute('aVel', hVel); hGeo.setAttribute('aData', hData);
+  hGeo.instanceCount = SHARDS;
+  const hMat = material({
+    uniforms: { ...water, uTime: { value: 0 } },
     vertexShader: /* glsl */`
       attribute vec3 aAt, aVel;
       attribute vec4 aData;
@@ -537,15 +624,16 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       void main() {
         float age = uTime - aData.x, u = age / aData.y;
         float on = step(0.0, age) * step(u, 1.0);
-        float slow = (1.0 - exp(-2.6 * age)) / 2.6;
-        vec3 p = aAt + aVel * slow - vec3(0.0, 0.3 * age * age, 0.0);
-        float s = aData.z * on * smoothstep(0.0, 0.1, u) * pow(max(0.0, 1.0 - u), 0.5);
-        float ang = aData.w + age * (fract(aData.w * 3.7) - 0.5) * 14.0;   // it tumbles
-        float c = cos(ang), sn = sin(ang);
-        float flip = 0.4 + 0.6 * abs(cos(age * 8.0 + aData.w * 5.0));      // and turns over: now broad, now nearly edge on
-        vP = position.xy;
+        float slow = (1.0 - exp(-4.0 * age)) / 4.0;
+        vec3 p = aAt + aVel * slow;
+        float s = aData.z * on * smoothstep(0.0, 0.08, u) * pow(max(0.0, 1.0 - u), 0.5);
         vec4 mv = viewMatrix * vec4(p, 1.0);
-        mv.xy += mat2(c, -sn, sn, c) * (position.xy * vec2(1.0, 0.4 * flip)) * s;
+        // it lies along the way it flies, as the camera sees that (straight at the camera: level)
+        vec2 d = (viewMatrix * vec4(aVel, 0.0)).xy;
+        float len = length(d);
+        d = len > 1e-4 ? d / len : vec2(1.0, 0.0);
+        vP = position.xy;
+        mv.xy += (d * position.x + vec2(-d.y, d.x) * position.y * aData.w) * s;
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */`
@@ -554,89 +642,66 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       varying vec2 vP;
       void main() {
         float y = abs(vP.y);
-        float w = max(0.0, 1.0 - vP.x * vP.x) * (0.78 + 0.22 * vP.x);      // a leaf: pointed at both ends, broader toward one
-        float body = 1.0 - smoothstep(w - 0.2, w, y);
-        float vein = 1.0 - smoothstep(0.0, 0.2, y);
-        float a = body * (0.5 + 0.5 * vein);
-        vec3 col = mix(uMain, uCore, 0.3 + 0.7 * vein * body);
-        gl_FragColor = clamp(vec4(col * a * (0.8 + 0.35 * uShine), a * 0.6), 0.0, 1.0);
+        float w = max(0.0, 1.0 - abs(vP.x));                               // pointed at both ends
+        float body = 1.0 - smoothstep(w * 0.6, w + 0.02, y);
+        float heart = 1.0 - smoothstep(0.0, 0.4, y);
+        vec3 col = mix(uMain, uCore, 0.45 + 0.55 * heart);
+        gl_FragColor = clamp(vec4(col * body * (0.8 + 0.35 * uShine), body * 0.6), 0.0, 1.0);
       }`,
   });
-  const petals = put(pGeo, pMat);
-  petals.visible = true;
-  let pNext = 0;
-  function petal(at, vx, vy, vz, life, size) {
-    const j = pNext; pNext = (pNext + 1) % PETALS;
-    pAt.setXYZ(j, at.x, at.y, at.z); pVel.setXYZ(j, vx, vy, vz); pData.setXYZW(j, time, life, size, rand() * 6.283);
-    pAt.needsUpdate = pVel.needsUpdate = pData.needsUpdate = true;
+  const shards = put(hGeo, hMat);
+  shards.visible = true;
+  let hNext = 0;
+  function shard(at, vx, vy, vz, life, size, thin) {
+    const j = hNext; hNext = (hNext + 1) % SHARDS;
+    hAt.setXYZ(j, at.x, at.y, at.z); hVel.setXYZ(j, vx, vy, vz); hData.setXYZW(j, time, life, size, thin);
+    hAt.needsUpdate = hVel.needsUpdate = hData.needsUpdate = true;
   }
-  // n sparks thrown out from a place, every way (up a little more than down)
-  function scatter(at, n, speed, size) {
+  // n sparks thrown out from a place, every way (up a little more than down); sea: the lance's sparkles
+  function scatter(at, n, speed, size, sea = false) {
     for (let i = 0; i < n; i++) {
       const a = rand() * 6.283, z = rand() * 1.6 - 0.6, r = Math.sqrt(Math.max(0, 1 - Math.min(1, z * z))), v = speed * (0.55 + 0.6 * rand());
-      spark(at, Math.cos(a) * r * v, z * v + 0.6, Math.sin(a) * r * v, 0.35 + 0.3 * rand(), size * (0.7 + 0.6 * rand()));
+      spark(at, Math.cos(a) * r * v, z * v + 0.6, Math.sin(a) * r * v, (sea ? 0.5 : 0.35) + 0.3 * rand(), size * (0.7 + 0.6 * rand()), sea ? 1 : 0);
     }
   }
 
   const tmp = new THREE.Vector3(), side = new THREE.Vector3(), tan = new THREE.Vector3(), toCam = new THREE.Vector3();
   const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), basis = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
 
-  // one of the blast's bands begins: round the line through `at` along `way`, by its numbers (d: BLAST.way's, .feet's), so big
-  function band(at, way, d, big) {
-    const b = bands.find(o => !o.on) || bands.reduce((m, o) => (o.born < m.born ? o : m));
-    b.on = true; b.born = time;
-    b.O.copy(at); b.Z.copy(way).normalize();
-    b.X.crossVectors(UP, b.Z);
-    if (b.X.lengthSq() < 1e-6) b.X.set(1, 0, 0);
-    b.X.normalize(); b.Y.crossVectors(b.Z, b.X);
-    b.s0 = d.s[0] * big; b.s1 = d.s[1] * big; b.r0 = d.r[0] * big; b.r1 = d.r[1] * big; b.wide = d.wide * big;
-    b.turns = d.turns; b.phase = d.phase + rand() * 0.8; b.spin = d.spin; b.drift = d.drift; b.life = d.life; b.draw = d.draw;
+  // two ways across `way` (unit), into X and Y: level, and up
+  function across(way) {
+    X.crossVectors(UP, way);
+    if (X.lengthSq() < 1e-6) X.set(1, 0, 0);
+    X.normalize(); Y.crossVectors(way, X);
   }
-  // ... and is laid: drawn out from its near end, turning round its line, going on along it, wider and fainter until it has gone
-  function gust(b, camera) {
-    const t = time - b.born;
-    if (t >= b.life) { b.on = false; b.mesh.visible = false; return; }
-    const N = BAND, shown = Math.min(1, t / b.draw), u = t / b.life, wider = 1 + BLAST.grow * u;
-    for (let i = 0; i < N; i++) {
-      const v = i / (N - 1) * shown, at = b.s0 + (b.s1 - b.s0) * v + b.drift * t, r = (b.r0 + (b.r1 - b.r0) * v) * wider;
-      const th = b.phase + b.turns * 6.2832 * v + b.spin * t, c = Math.cos(th) * r, sn = Math.sin(th) * r;
-      windAt[i * 3] = b.O.x + b.Z.x * at + b.X.x * c + b.Y.x * sn;
-      windAt[i * 3 + 1] = b.O.y + b.Z.y * at + b.X.y * c + b.Y.y * sn;
-      windAt[i * 3 + 2] = b.O.z + b.Z.z * at + b.X.z * c + b.Y.z * sn;
-    }
-    const pos = b.mesh.geometry.attributes.position, thin = 1 - 0.35 * u;
-    for (let i = 0; i < N; i++) {
-      const v = i / (N - 1), i0 = Math.max(0, i - 1) * 3, i1 = Math.min(N - 1, i + 1) * 3, j = i * 3;
-      tan.set(windAt[i0] - windAt[i1], windAt[i0 + 1] - windAt[i1 + 1], windAt[i0 + 2] - windAt[i1 + 2]);
-      toCam.set(camera.position.x - windAt[j], camera.position.y - windAt[j + 1], camera.position.z - windAt[j + 2]);
-      side.crossVectors(tan, toCam);
-      const len = side.length();
-      const wide = len > 1e-6 ? b.wide * thin * Math.pow(Math.sin(Math.PI * Math.pow(v, 0.8)), 0.8) / len : 0;      // (pointed at both ends: a crescent)
-      pos.setXYZ(i * 2, windAt[j] - side.x * wide, windAt[j + 1] - side.y * wide, windAt[j + 2] - side.z * wide);
-      pos.setXYZ(i * 2 + 1, windAt[j] + side.x * wide, windAt[j + 1] + side.y * wide, windAt[j + 2] + side.z * wide);
-    }
-    pos.needsUpdate = true;
-    b.mesh.visible = true;
-    b.mesh.material.uniforms.uK.value = Math.pow(1 - u, 1.3);
+  // a hoop of water begins: round the line through `at` along `way`, so wide at its widest, lasting so long
+  function hoop(at, way, radius, life, feather) {
+    const h = hoops.find(o => o.t >= 1) || hoops.reduce((m, o) => (o.t > m.t ? o : m));
+    Z.copy(way).normalize(); across(Z);
+    basis.makeBasis(X, Y, Z);
+    h.mesh.quaternion.setFromRotationMatrix(basis);
+    h.mesh.position.copy(at); h.mesh.scale.setScalar(radius / 0.72); h.mesh.visible = true;      // (its ring ends 0.72 of the way to the square's edge)
+    h.t = 0; h.life = life;
+    const u = h.mesh.material.uniforms;
+    u.uT.value = 0; u.uFeather.value = feather ? 1 : 0; u.uSeed.value = rand() * 6.283;
   }
-  // what a lance sheds `at` m along its way: a petal of light (or a blue star), from beside it, thrown out and on
-  function shed(l, at, leaf) {
-    const a = rand() * 6.283, c = Math.cos(a), sn = Math.sin(a), out = 0.12 + 0.28 * rand();
+  // what a lance sheds `at` m along its way: a sparkle, from beside it, drifting out and on a little
+  function shed(l, at) {
+    const a = rand() * 6.283, c = Math.cos(a), sn = Math.sin(a), out = 0.1 + 0.4 * rand();
     side.copy(l.X).multiplyScalar(c).addScaledVector(l.Y, sn);
     tmp.copy(l.from).addScaledVector(l.dir, at).addScaledVector(side, out);
-    const v = 1 + 1.8 * rand(), f = 3 + 3 * rand(), d = l.dir;
-    if (leaf) petal(tmp, side.x * v + d.x * f, side.y * v + d.y * f + 0.5, side.z * v + d.z * f, 0.5 + 0.35 * rand(), 0.09 + 0.07 * rand() + 0.02 * l.level);
-    else spark(tmp, side.x * v + d.x * f * 0.6, side.y * v + d.y * f * 0.6 + 0.6, side.z * v + d.z * f * 0.6, 0.4 + 0.35 * rand(), 0.09 + 0.09 * rand(), 1);
+    const v = 0.5 + 1.4 * rand(), f = 1 + 2.5 * rand(), d = l.dir;
+    spark(tmp, side.x * v + d.x * f, side.y * v + d.y * f + 0.3, side.z * v + d.z * f, 0.7 + 0.6 * rand(), 0.06 + 0.07 * rand(), 1);
   }
-  // the wind round a lance's way: each band's strip laid along its helix, from the lance's point back
-  function blow(l, dt, camera) {
-    const on = l.far > 0 && l.windK > 0;
-    if (l.far > 0) l.flown += dt;
-    // the beam it leaves standing where it was thrown from: thin there, thick further on, thinner as it goes out
-    const sh = BLAST.shaft, left = l.far > 0 ? 1 - l.flown / sh.life : 0;
-    l.shaft.mesh.visible = left > 0;
+  // a lance's way since it was let go: the beam left standing from the circle on, and the wake wound round it
+  function leaves(l, dt, camera) {
+    const thrown = l.far > 0;
+    if (thrown) { l.flown += dt; if (l.live) l.pace = Math.max(1, l.far / Math.max(l.flown, 1e-3)); else l.gone += dt; }
+    // the beam: thin at the circle, thick further on, thinner as it goes out
+    const bm = LAUNCH.beam, left = thrown ? 1 - l.flown / bm.life : 0;
+    l.beam.mesh.visible = left > 0;
     if (left > 0) {
-      const N = sh.places, pos = l.shaft.mesh.geometry.attributes.position, long = Math.min(l.far, sh.long), W = sh.wide * (0.8 + 0.12 * l.level) * Math.pow(left, 0.6);
+      const N = bm.places, pos = l.beam.mesh.geometry.attributes.position, long = Math.min(l.far, bm.long), W = bm.wide * (0.8 + 0.12 * l.level) * Math.pow(left, 0.6);
       for (let i = 0; i < N; i++) {
         const u = i / (N - 1);
         tan.copy(l.from).addScaledVector(l.dir, u * long);
@@ -647,35 +712,50 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         pos.setXYZ(i * 2 + 1, tan.x + side.x * w, tan.y + side.y * w, tan.z + side.z * w);
       }
       pos.needsUpdate = true;
-      l.shaft.mesh.material.uniforms.uK.value = Math.min(1, left * 2.2);
+      const u = l.beam.mesh.material.uniforms;
+      u.uK.value = Math.min(1, left * 2.2); u.uAge.value = time;
     }
-    if (!on) { for (const w of l.wind) w.mesh.visible = false; return; }
-    if (!l.live) { l.gone += dt; l.windK = Math.max(0, l.windK - dt / WIND.after); }
-    const N = WIND.places, long = Math.min(l.far, WIND.long), big = 1 + 0.1 * l.level;
-    for (let b = 0; b < 2; b++) {
-      const w = l.wind[b], pos = w.mesh.geometry.attributes.position;
-      const pitch = WIND.pitch * (b ? 1.3 : 1), phase = b * Math.PI + (b ? 0.7 : 0);
+    // the wake: each ribbon's strip laid along its helix, from the circle to the lance's point (the first `long` m of
+    // its way). A place the lance passed some while ago is so far gone: thinner, further out, wavering. All of it is
+    // gone `life` s after the lance is over (or has left the last of it behind)
+    if (l.wakeOn && l.flown - Math.min(l.far, WAKE.long) / l.pace >= WAKE.life) l.wakeOn = false;
+    if (!thrown || !l.wakeOn) { for (const w of l.wake) w.mesh.visible = false; return; }
+    const N = WAKE.places, long = Math.min(l.far, WAKE.long), big = 1 + 0.12 * l.level, within = l.far <= WAKE.long + WAKE.near;
+    for (const w of l.wake) {
+      const d = w.d, pos = w.mesh.geometry.attributes.position, uv = w.mesh.geometry.attributes.uv, tone = w.mesh.geometry.attributes.aTone;
       for (let i = 0; i < N; i++) {
-        const u = i / (N - 1), back = u * long, at = l.far - back;
-        const r = (WIND.r0 + WIND.grow * Math.pow(Math.min(back, WIND.widest), 0.75)) * big * (b ? 1.25 : 1) + WIND.spread * l.gone * (0.4 + u);
-        const th = phase + at * 6.2832 / pitch + l.flown * WIND.spin, c = Math.cos(th) * r, sn = Math.sin(th) * r;
-        windAt[i * 3] = l.from.x + l.dir.x * at + l.X.x * c + l.Y.x * sn;
-        windAt[i * 3 + 1] = l.from.y + l.dir.y * at + l.X.y * c + l.Y.y * sn;
-        windAt[i * 3 + 2] = l.from.z + l.dir.z * at + l.X.z * c + l.Y.z * sn;
+        const s = i / (N - 1) * long, back = l.far - s, gone = clamp((l.flown - s / l.pace) / WAKE.life, 0, 1);
+        const close = within ? 0.4 + 0.6 * Math.min(1, back / WAKE.near) : 1;      // it closes in on the lance behind its point
+        const r = WAKE.r * d.r * big * close * (1 + WAKE.swell * gone + 0.14 * gone * Math.sin(s * 2.1 + l.flown * 9 + d.phase));
+        const th = d.phase + s * 6.2832 / WAKE.pitch - l.flown * WAKE.spin, c = Math.cos(th), sn = Math.sin(th), j = i * 3;
+        wakeR[j] = l.X.x * c + l.Y.x * sn; wakeR[j + 1] = l.X.y * c + l.Y.y * sn; wakeR[j + 2] = l.X.z * c + l.Y.z * sn;
+        wakeAt[j] = l.from.x + l.dir.x * s + wakeR[j] * r;
+        wakeAt[j + 1] = l.from.y + l.dir.y * s + wakeR[j + 1] * r;
+        wakeAt[j + 2] = l.from.z + l.dir.z * s + wakeR[j + 2] * r;
       }
       for (let i = 0; i < N; i++) {
-        const u = i / (N - 1), i0 = Math.max(0, i - 1) * 3, i1 = Math.min(N - 1, i + 1) * 3, j = i * 3;
-        tan.set(windAt[i0] - windAt[i1], windAt[i0 + 1] - windAt[i1 + 1], windAt[i0 + 2] - windAt[i1 + 2]);
-        toCam.set(camera.position.x - windAt[j], camera.position.y - windAt[j + 1], camera.position.z - windAt[j + 2]);
+        const s = i / (N - 1) * long, back = l.far - s, gone = clamp((l.flown - s / l.pace) / WAKE.life, 0, 1);
+        const i0 = Math.max(0, i - 1) * 3, i1 = Math.min(N - 1, i + 1) * 3, j = i * 3;
+        tan.set(wakeAt[i0] - wakeAt[i1], wakeAt[i0 + 1] - wakeAt[i1 + 1], wakeAt[i0 + 2] - wakeAt[i1 + 2]);
+        toCam.set(camera.position.x - wakeAt[j], camera.position.y - wakeAt[j + 1], camera.position.z - wakeAt[j + 2]);
         side.crossVectors(tan, toCam);
-        const len = side.length();
-        const wide = len > 1e-6 ? WIND.wide * big * Math.sin(Math.PI * Math.pow(u, 0.6)) / len : 0;
-        pos.setXYZ(i * 2, windAt[j] - side.x * wide, windAt[j + 1] - side.y * wide, windAt[j + 2] - side.z * wide);
-        pos.setXYZ(i * 2 + 1, windAt[j] + side.x * wide, windAt[j + 1] + side.y * wide, windAt[j + 2] + side.z * wide);
+        const len = side.length(), far = toCam.length() || 1;
+        // a ribbon seen flat on is broad, seen edge on narrow: as it winds round, as the camera sees it (from behind
+        // the lance, looking along its way, all of it is broad)
+        const facing = (wakeR[j] * toCam.x + wakeR[j + 1] * toCam.y + wakeR[j + 2] * toCam.z) / far;
+        const along = Math.abs(l.dir.x * toCam.x + l.dir.y * toCam.y + l.dir.z * toCam.z) / far;
+        const turn = 0.3 + 0.7 * Math.max(Math.abs(facing), along);
+        // it thins away: out of the circle, to the lance's point, at the far end of what there is of it, and as it goes
+        const ends = Math.min(1, s / 0.5) * (within ? Math.min(1, back / 0.7) : 1) * clamp((WAKE.long - s) / (0.3 * WAKE.long), 0, 1);
+        const wide = len > 1e-6 ? WAKE.wide * d.wide * big * turn * ends * (1 - 0.75 * gone) / len : 0;
+        pos.setXYZ(i * 2, wakeAt[j] - side.x * wide, wakeAt[j + 1] - side.y * wide, wakeAt[j + 2] - side.z * wide);
+        pos.setXYZ(i * 2 + 1, wakeAt[j] + side.x * wide, wakeAt[j + 1] + side.y * wide, wakeAt[j + 2] + side.z * wide);
+        uv.setX(i * 2, gone); uv.setX(i * 2 + 1, gone);
+        tone.setX(i * 2, facing); tone.setX(i * 2 + 1, facing);
       }
-      pos.needsUpdate = true;
+      pos.needsUpdate = true; uv.needsUpdate = true; tone.needsUpdate = true;
       w.mesh.visible = true;
-      w.mesh.material.uniforms.uK.value = l.windK * Math.min(1, l.far / 1.2);
+      w.mesh.material.uniforms.uK.value = Math.min(1, l.far / 1.0);
     }
   }
 
@@ -695,34 +775,33 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     shot(kind) {
       const def = SHOTS[kind] || SHOTS.orb;
       if (def.long) {
-        const l = lances.find(o => !o.mesh.visible && o.windK <= 0) || lances.find(o => !o.mesh.visible) || lances[0];
-        l.live = true; l.k = 1; l.level = 0; l.grown = 0; l.long = def.long[0]; l.mesh.visible = true;
-        l.tip = orbs.find(v => !v.mesh.visible) || orbs[0];
-        l.tip.live = true; l.tip.k = 1; l.tip.kind = { size: def.tip[0] }; l.tip.mesh.visible = true; l.tip.ribbon = null;
+        const l = lances.find(o => !o.mesh.visible && !o.wakeOn) || lances.find(o => !o.mesh.visible) || lances[0];
+        l.live = true; l.k = 1; l.level = 0; l.grown = 0; l.hot = 0; l.long = def.long[0]; l.mesh.visible = true;
+        if (l.ribbon) l.ribbon.used = false;
         l.ribbon = null;
-        l.far = 0; l.flown = 0; l.gone = 0; l.windK = 0; l.shaft.mesh.visible = false;
+        l.far = 0; l.flown = 0; l.gone = 0; l.wakeOn = false; l.beam.mesh.visible = false;
         return {
           get long() { return l.long; },
           size(level) { l.level = Math.max(0, Math.min(3, level)); },
           place(at, dir, far = 0) {
             l.head.copy(at); l.dir.copy(dir).normalize();
-            l.tip.mesh.position.copy(at);
             if (far <= 0) return;
-            // in flight: a streak behind it; the wind round its way; petals and stars shed from beside it as it goes
-            if (!l.ribbon) l.ribbon = takeRibbon(def.ribbon + 0.05 * l.level, WIND.streak);
+            // in flight: a streak behind it; its wake; sparkles shed from beside it as it goes, a thin hoop now and then
+            if (!l.ribbon) l.ribbon = takeRibbon(0.1 + 0.03 * l.level, FLIGHT.streak, null, water);
             feed(l.ribbon, at);
             if (l.far <= 0) {
               l.from.copy(at).addScaledVector(l.dir, -far);
-              l.X.crossVectors(UP, l.dir);
-              if (l.X.lengthSq() < 1e-6) l.X.set(1, 0, 0);
-              l.X.normalize(); l.Y.crossVectors(l.dir, l.X);
-              l.windK = 1; l.petalAt = 0.5; l.starAt = 0.25;
+              across(l.dir); l.X.copy(X); l.Y.copy(Y);
+              l.wakeOn = true; l.sparkAt = 0.3; l.hoopAt = LAUNCH.hoops.every; l.hoopN = LAUNCH.hoops.most;
             }
             l.far = far;
-            while (far >= l.petalAt) { shed(l, l.petalAt, true); l.petalAt += SHED.petal * (1 + rand()); }
-            while (far >= l.starAt) { shed(l, l.starAt, false); l.starAt += SHED.star * (1 + rand()); }
+            while (far >= l.sparkAt) { shed(l, l.sparkAt); l.sparkAt += SHED.sparkle * (1 + rand()); }
+            if (l.hoopN > 0 && far >= l.hoopAt) {
+              hoop(tmp.copy(l.from).addScaledVector(l.dir, l.hoopAt), l.dir, LAUNCH.hoops.r * (1 + 0.1 * l.level), LAUNCH.hoops.life, false);
+              l.hoopAt += LAUNCH.hoops.every; l.hoopN--;
+            }
           },
-          end() { l.live = false; l.tip.live = false; if (l.ribbon) l.ribbon.used = false; },
+          end() { l.live = false; if (l.ribbon) l.ribbon.used = false; },
         };
       }
       if (def.wide) {
@@ -764,12 +843,12 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         end(hit) { o.live = false; o.ribbon.used = false; if (hit) { o.k = 0; o.mesh.visible = false; } },
       };
     },
-    burst(at, size = 0.7) {
+    burst(at, size = 0.7, sea = false) {
       const b = bursts.find(o => o.t >= 1) || bursts.reduce((m, o) => (o.t > m.t ? o : m));
       b.t = 0; b.life = 0.24 + 0.1 * Math.min(1.5, size);
       b.mesh.position.copy(at); b.mesh.visible = true;
       b.mesh.material.uniforms.uSize.value = size;
-      scatter(at, Math.round(5 + 5 * Math.min(2, size)), 2.2 + 1.6 * size, 0.07 + 0.05 * Math.min(2, size));
+      scatter(at, Math.round(5 + 5 * Math.min(2, size)), 2.2 + 1.6 * size, 0.07 + 0.05 * Math.min(2, size), sea);
     },
     ring(at, radius = 2) {
       const r = rings.find(o => o.t >= 1) || rings[0];
@@ -779,14 +858,12 @@ export function createMagicComboFx({ seed = 7 } = {}) {
     },
     gate() {
       const g = gates.find(o => !o.mesh.visible) || gates[0];
-      g.live = true; g.open = 0; g.level = 0; g.beat = 0; g.fired = -1; g.fade = 0; g.age = rand() * 10; g.fresh = true;
+      g.live = true; g.open = 0; g.level = 0; g.beat = 0; g.fired = -1; g.fade = 0; g.age = rand() * 10; g.fresh = true; g.dust = 0;
       return {
         place(at, dir, radius) {
           g.mesh.position.copy(at);
           g.dir.copy(dir).normalize();
-          X.crossVectors(UP, g.dir);
-          if (X.lengthSq() < 1e-6) X.set(1, 0, 0);
-          X.normalize(); Y.crossVectors(g.dir, X);
+          across(g.dir);
           basis.makeBasis(X, Y, g.dir);
           g.mesh.quaternion.setFromRotationMatrix(basis);
           g.want = radius;
@@ -797,43 +874,44 @@ export function createMagicComboFx({ seed = 7 } = {}) {
           if (to > g.level) g.beat = 1;
           g.level = to;
         },
-        fire(feet = null) {
+        fire() {
           if (g.fired >= 0 || !g.mesh.visible) return;
           g.fired = 0; g.live = false;
-          // the blast: bands of wind winding out of it round the lance's line (and low round her, where her feet are
-          // given), petals and stars thrown out of it, round its rim and on the way the lance goes. The more the lance
-          // has grown, the bigger
-          const big = 0.7 + 0.1 * g.level;
-          BLAST.way.forEach((d, i) => { if (i < 2 || g.level >= 2) band(g.mesh.position, g.dir, d, big); });
-          if (feet) for (const d of BLAST.feet) band(feet, UP, d, big);
-          X.crossVectors(UP, g.dir);
-          if (X.lengthSq() < 1e-6) X.set(1, 0, 0);
-          X.normalize(); Y.crossVectors(g.dir, X);
-          const R = g.radius, d = g.dir, np = Math.round(BLAST.petals * big), ns = Math.round(BLAST.stars * big);
-          for (let i = 0; i < np + ns; i++) {
-            const a = rand() * 6.283, c = Math.cos(a), sn = Math.sin(a), out = R * (0.45 + 0.9 * rand());
+          // let go with the lance, the bigger the more it has grown: a hoop of water round its line a little way on,
+          // spray off its rim; slivers of ice thrown out round the circle's rim; sparkles thrown out of it and on
+          const big = 0.7 + 0.1 * g.level, R = g.radius, d = g.dir, at = g.mesh.position;
+          hoop(tmp.copy(at).addScaledVector(d, LAUNCH.hoop.ahead * big), d, LAUNCH.hoop.r * big, LAUNCH.hoop.life, true);
+          across(d);
+          const nh = Math.round(LAUNCH.shards * big), ns = Math.round(LAUNCH.sparkles * big);
+          for (let i = 0; i < nh + ns; i++) {
+            const a = rand() * 6.283, c = Math.cos(a), sn = Math.sin(a);
             side.copy(X).multiplyScalar(c).addScaledVector(Y, sn);
-            tmp.copy(g.mesh.position).addScaledVector(side, out).addScaledVector(d, rand() * 0.6);
-            const v = 2.2 + 2.6 * rand(), f = 1.5 + 4.5 * rand();
-            if (i < np) petal(tmp, side.x * v + d.x * f, side.y * v + d.y * f + 0.5, side.z * v + d.z * f, 0.55 + 0.4 * rand(), 0.1 + 0.1 * rand() + 0.02 * g.level);
-            else spark(tmp, side.x * v * 1.3 + d.x * f, side.y * v * 1.3 + d.y * f + 0.5, side.z * v * 1.3 + d.z * f, 0.5 + 0.4 * rand(), 0.1 + 0.12 * rand(), 1);
+            if (i < nh) {
+              const v = 5 + 6 * rand(), f = 0.5 + 2 * rand();
+              tmp.copy(at).addScaledVector(side, R * (0.95 + 0.3 * rand()));
+              shard(tmp, side.x * v + d.x * f, side.y * v + d.y * f, side.z * v + d.z * f, 0.28 + 0.2 * rand(), (0.1 + 0.12 * rand()) * big, 0.1 + 0.08 * rand());
+            } else {
+              const v = 1.2 + 3 * rand(), f = 1 + 5 * rand();
+              tmp.copy(at).addScaledVector(side, R * (0.3 + 1.0 * rand())).addScaledVector(d, rand() * 0.6);
+              spark(tmp, side.x * v + d.x * f, side.y * v + d.y * f + 0.4, side.z * v + d.z * f, 0.6 + 0.6 * rand(), 0.06 + 0.07 * rand(), 1);
+            }
           }
         },
         end() { g.live = false; },
       };
     },
-    motes(at, n = 1, from = 0.6) {
+    motes(at, n = 1, from = 0.6, sea = false) {
       for (let i = 0; i < n; i++) {
         const a = rand() * 6.283, z = rand() * 1.4 - 0.4, r = Math.sqrt(Math.max(0, 1 - Math.min(1, z * z)));
         tmp.set(at.x + Math.cos(a) * r * from, at.y + z * from, at.z + Math.sin(a) * r * from);
         // (a spark slows to a third of its first pace's reach: sent three times as fast as the way is long, it ends at `at`)
-        spark(tmp, (at.x - tmp.x) * 3, (at.y - tmp.y) * 3 + 0.5, (at.z - tmp.z) * 3, 0.42, 0.06 + 0.03 * rand());
+        spark(tmp, (at.x - tmp.x) * 3, (at.y - tmp.y) * 3 + 0.5, (at.z - tmp.z) * 3, 0.42, 0.06 + 0.03 * rand(), sea ? 1 : 0);
       }
     },
     setNight(on) { colours.uShine.value = on ? 1.35 : 0.8; },
     update(dt, camera) {
       time += dt;
-      sMat.uniforms.uTime.value = time; pMat.uniforms.uTime.value = time;
+      sMat.uniforms.uTime.value = time; hMat.uniforms.uTime.value = time;
       const beat = 0.5 + 0.5 * Math.sin(time * 34);
       // orbs: one that ran out goes out quickly
       for (const o of orbs) {
@@ -874,7 +952,8 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         r.mesh.visible = r.t < 1;
         r.mesh.material.uniforms.uT.value = r.t;
       }
-      // gates: opening, beating as they grow; the lance through, a flare and gone (nothing thrown: gone)
+      // gates: opening, beating as they grow, a sparkle drifting off now and then; the lance through, a flare and gone
+      // (nothing thrown: gone)
       for (const g of gates) {
         if (!g.mesh.visible) continue;
         g.age += dt;
@@ -886,40 +965,55 @@ export function createMagicComboFx({ seed = 7 } = {}) {
           g.fired += dt;
           const f = Math.min(1, g.fired / GATE.fire);
           flash = (1 - f) * (1 - f); wave = Math.max(0.001, f); grow = 1 + 0.15 * (1 - Math.pow(1 - f, 3));
-          g.fade = clamp((f - 0.3) / 0.7, 0, 1);
+          g.fade = clamp((f - 0.35) / 0.65, 0, 1);
         } else if (!g.live) g.fade = Math.min(1, g.fade + dt / GATE.end);
         if (g.fade >= 1) { g.mesh.visible = false; continue; }
+        if (g.live && g.open > 0.4) {
+          g.dust -= dt;
+          if (g.dust <= 0) {
+            g.dust = GATE.dust * (0.6 + 0.8 * rand());
+            const a = rand() * 6.283, c = Math.cos(a), sn = Math.sin(a), v = 0.25 + 0.5 * rand();
+            across(g.dir);
+            side.copy(X).multiplyScalar(c).addScaledVector(Y, sn);
+            tmp.copy(g.mesh.position).addScaledVector(side, g.radius * (0.7 + 0.6 * rand()));
+            spark(tmp, side.x * v, side.y * v + 0.25, side.z * v, 0.6 + 0.5 * rand(), 0.035 + 0.035 * rand(), 1);
+          }
+        }
         const opened = 0.5 + 0.5 * (1 - Math.pow(1 - g.open, 3));
         g.mesh.scale.setScalar(Math.max(1e-4, g.radius * GATE.reach * opened * (1 + 0.14 * g.beat * g.beat) * grow));
         const u = g.mesh.material.uniforms;
         u.uOpen.value = g.open; u.uLevel.value = g.level; u.uBeat.value = g.beat; u.uFlash.value = flash; u.uWave.value = wave; u.uFade.value = g.fade; u.uAge.value = g.age;
       }
-      // the blast's bands of wind
-      for (const b of bands) if (b.on) gust(b, camera);
+      // hoops of water
+      for (const h of hoops) {
+        if (h.t >= 1) continue;
+        h.t = Math.min(1, h.t + dt / h.life);
+        h.mesh.visible = h.t < 1;
+        h.mesh.material.uniforms.uT.value = h.t;
+      }
       // lances: each grows toward how grown it should be; its strip is laid from its tail to its point, facing the camera
       for (const l of lances) {
-        blow(l, dt, camera);
+        leaves(l, dt, camera);
         if (!l.mesh.visible) continue;
         if (!l.live) { l.k -= dt / 0.1; if (l.k <= 0) { l.mesh.visible = false; continue; } }
         l.grown += (l.level - l.grown) * Math.min(1, dt * 14);
         const def = SHOTS.lance, i0 = Math.min(2, Math.floor(l.grown)), f = l.grown - i0;
         const mix = a => a[i0] + (a[i0 + 1] - a[i0]) * f;
         l.long = mix(def.long);
-        const flying = l.far > 0, long = l.long * (flying ? BLAST.lance.long : 1);      // (thrown: a comet, as in the picture)
-        const thick = mix(def.thick) * (0.94 + 0.06 * beat) * (flying ? BLAST.lance.thick : 1);
-        l.tip.kind.size = mix(def.tip) * (flying ? BLAST.lance.tip : 1);
+        l.hot += ((l.far > 0 ? 1 : 0) - l.hot) * Math.min(1, dt * 30);      // (thrown: white hot, and longer)
+        const long = l.long * (1 + (FLIGHT.long - 1) * l.hot), wide = l.long * def.wide * (0.97 + 0.03 * beat);      // (thrown, it is drawn out longer, not wider)
         const pos = l.mesh.geometry.attributes.position;
         for (let i = 0; i < LANCE; i++) {
           const u = i / (LANCE - 1);
           tan.copy(l.head).addScaledVector(l.dir, -long * (1 - u));
           toCam.subVectors(camera.position, tan);
           side.crossVectors(l.dir, toCam).normalize();
-          const w = thick * Math.sin(Math.PI * Math.pow(u, 1.7));
-          pos.setXYZ(i * 2, tan.x - side.x * w, tan.y - side.y * w, tan.z - side.z * w);
-          pos.setXYZ(i * 2 + 1, tan.x + side.x * w, tan.y + side.y * w, tan.z + side.z * w);
+          pos.setXYZ(i * 2, tan.x - side.x * wide, tan.y - side.y * wide, tan.z - side.z * wide);
+          pos.setXYZ(i * 2 + 1, tan.x + side.x * wide, tan.y + side.y * wide, tan.z + side.z * wide);
         }
         pos.needsUpdate = true;
-        l.mesh.material.uniforms.uK.value = Math.max(0, l.k);
+        const u = l.mesh.material.uniforms;
+        u.uK.value = Math.max(0, l.k); u.uHot.value = l.hot; u.uAge.value = time;
       }
       // ribbons: every place on one grows older and is dropped; the strip is laid through what is left, facing the camera
       for (const r of ribbons) {
@@ -947,10 +1041,9 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       }
     },
     dispose() {
-      square.dispose(); waveGeo.dispose(); sGeo.dispose(); pGeo.dispose(); flat.dispose();
+      square.dispose(); waveGeo.dispose(); sGeo.dispose(); hGeo.dispose(); flat.dispose(); spear.dispose();
       for (const r of ribbons) r.mesh.geometry.dispose();
-      for (const l of lances) { l.mesh.geometry.dispose(); l.shaft.mesh.geometry.dispose(); for (const w of l.wind) w.mesh.geometry.dispose(); }
-      for (const b of bands) b.mesh.geometry.dispose();
+      for (const l of lances) { l.mesh.geometry.dispose(); l.beam.mesh.geometry.dispose(); for (const w of l.wake) w.mesh.geometry.dispose(); }
       for (const m of made) m.dispose();
     },
   };
