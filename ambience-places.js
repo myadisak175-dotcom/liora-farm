@@ -31,6 +31,9 @@
 //   frogs    by the water at night; fewer where a fall drowns them
 //   windmill the windmill's sails, creaking round, from their hub (high up: under them she is some metres from it)
 //   wheel    the water wheel at the mill, its paddles pouring; not under the curse (the stream does not run)
+//   creak    their wood, once each time one of the windmill's sails goes by (most times: not every one, nor all as loud),
+//   wheelcreak  and each time a quarter of the wheel goes round: heard in time with what is seen turning. The wood in the
+//            loops was not heard ("เอาเสียงไม้ค่ะ มันไม่ได้ยินเลย"). Under the curse the wheel's wood, slowly, and no water
 //
 // THE GRASS SHE GOES THROUGH (brush): wherever she is on her feet in grass and moving, the blades parted round her legs, a
 // soft rustle ("เสียงใบหญ้าตอนโดนแหวก เบาๆ"), louder the faster she goes (throughGrass, below: the trial page asks it too).
@@ -49,6 +52,8 @@ const LEAVES = { near: 2.5, far: 14, over: 4 };                         // (over
 const PIT = { near: 0.5, far: 45 };
 const WINDMILL = { near: 3, far: 45 };                                  // (from the sails' reach)
 const WHEEL = { near: 1.5, far: 25 };                                   // (from the wheel's rim)
+const CREAK = { every: 1, often: 0.75, vary: 0.35 };                    // the windmill's wood: at every sail, three times in four, louder or softer by so much
+const WHEEL_CREAK = { every: 3, often: 0.9, vary: 0.3 };                // the wheel's: every third paddle (a quarter of it round)
 const FROGS = { near: 1, far: 24, drowned: 0.8 };                       // (drowned: how much of them a fall at its loudest takes away)
 const NIGHT_WIND = 0.35;                                                // the wind by night, of the day's
 const CURSE_CROWS = 0.3;                                                // the crows by night, of the day's
@@ -72,7 +77,8 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
     for (const [x, z] of points) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     return { points, x0, x1, z0, z1, river: !!(heard.rivers && heard.rivers[k]) };
   }).filter(w => w.points.length > 1);
-  const falls = heard.falls || [], pit = heard.pit || null, turning = [['windmill', heard.windmill, WINDMILL], ['wheel', heard.wheel, WHEEL]];
+  const falls = heard.falls || [], pit = heard.pit || null;
+  const turning = [['windmill', heard.windmill, WINDMILL, 'creak', CREAK], ['wheel', heard.wheel, WHEEL, 'wheelcreak', WHEEL_CREAK]].map(([name, m, range, wood, often]) => ({ name, m, range, wood, often, round: 0, gone: 0 }));
 
   let rx = 1, rz = 0, drowned = 0;                                        // the camera's right, on the ground; (see the getter)
   const brookAt = { d: Infinity, dx: 0, dz: 0, d0: 0 }, riverAt = { d: Infinity, dx: 0, dz: 0, d0: 0 };
@@ -174,11 +180,20 @@ export function createAmbiencePlaces({ context, volume = 1, level, camera } = {}
       air.set('brush', throughGrass(speed, mode === 'ground' && !!level && !!level.surfaceAt && level.surfaceAt(x, z, y) === 'grass'));
 
       // ---- the windmill and the water wheel: how far from what turns (its reach counted, up and down too)
-      for (const [name, m, range] of turning) {
-        if (!m) { air.set(name, 0); continue; }
+      for (const T of turning) {
+        const m = T.m;
+        if (!m) { air.set(T.name, 0); continue; }
         const dx = m.x - x, dz = m.z - z, d0 = Math.hypot(dx, dz), d = Math.hypot(Math.max(0, d0 - m.r), Math.max(0, Math.abs(m.y - (y + 1.5)) - m.r));
-        const t = along(d, range.near, range.far);
-        air.set(name, (1 - t) * (1 - t), { pan: side(dx, dz, d0, d), far: t });
+        const t = along(d, T.range.near, T.range.far), loud = (1 - t) * (1 - t), where = { pan: side(dx, dz, d0, d), far: t };
+        air.set(T.name, m.water === false ? 0 : loud, where);
+        // its wood, as a sail (or a few paddles) goes by: counted by the same turning as what is seen (and fetched as she comes
+        // within hearing, before the first of it is due)
+        if (loud > 0.003) air.ready(T.wood);
+        T.round += dt * (m.turns || 0) * (m.blades || 1) / T.often.every;
+        if (T.round >= 1) {
+          T.round -= Math.floor(T.round);
+          if (loud > 0.003 && Math.random() < T.often.often) air.hit(T.wood, loud * (1 - T.often.vary * Math.random()), where);
+        }
       }
 
       // ---- the pit

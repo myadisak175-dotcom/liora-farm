@@ -339,11 +339,12 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // model's (stylized-props.js takes them out of the file), in the kit's own wood and a linen that sits with its plaster, on
   // an axle out of the tower's wall
   let mill = null;
+  const SAILS_TURN = 0.12, WHEEL_TURN = 0.5, WHEEL_TURN_CURSED = 0.08;      // the windmill's sails: turns a second; the water wheel: radians a second (living, cursed)
   const wm = P.buildings.find(b => b.kind === 'sails');
   if (wm) try {
     const foot = Math.max(...corners(wm.x, wm.z, 4, 4, wm.yaw)) + 0.03, fx = Math.sin(wm.yaw), fz = Math.cos(wm.yaw);
     const WOOD = [0.545, 0.369, 0.212], LINEN = [0.87, 0.82, 0.69];        // (the kit's wood trim; the kit's plaster, a shade paler)
-    mill = await loadSpinner(url(M.windmill), { part: M.sails, span: wm.span, speed: 0.12, recolor: (r, g, b) => (r - b > 0.23 ? WOOD : LINEN) });
+    mill = await loadSpinner(url(M.windmill), { part: M.sails, span: wm.span, speed: SAILS_TURN, recolor: (r, g, b) => (r - b > 0.23 ? WOOD : LINEN) });
     mill.object.position.set(wm.x + fx * wm.out, foot + wm.hub, wm.z + fz * wm.out); mill.object.rotation.y = wm.yaw; mill.object.name = 'windmillSails';
     group.add(mill.object);
     const tower = things.find(t => t.id === 'mill_tower'), turn = tower ? wm.yaw - tower.yaw : 0;      // (the sails stand on the tower's front: they go where it goes)
@@ -977,10 +978,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     // water runs: none of it is heard
     heard: { cursed, ways: cursed ? [] : P.brooks, rivers: cursed ? [] : P.brooks.map((w, k) => /river/.test((P.waters && P.waters[k] && P.waters[k].id) || '')), falls: cursed ? [] : P.falls.map(f => ({ x: f.x, z: f.z, top: f.top, bottom: f.bottom, width: f.width })),
       pit: P.pit ? { x: P.pit.x, z: P.pit.z, r: P.pit.brink - Math.max(...P.pit.shelves.map(sh => sh.u1)) } : null,
-      // the windmill's sails (their hub, and how far they reach) and the water wheel (its axle, and its radius): both turn, and
-      // are heard. Under the curse the wheel all but stands, out of a stream that does not run: not heard
-      windmill: mill ? { x: mill.object.position.x, y: mill.object.position.y, z: mill.object.position.z, r: P.buildings.find(b => b.kind === 'sails').span / 2 } : null,
-      wheel: cursed ? null : { x: P.wheel.x, y: P.wheel.level + 1.35, z: P.wheel.z, r: 2.0 } },
+      // the windmill's sails (their hub, how far they reach, how fast they turn and how many there are) and the water wheel
+      // (its axle, its radius, its turning, its paddles): both turn, and are heard, their wood as they go round. Under the curse
+      // the wheel all but stands, out of a stream that does not run (water: false): its wood only, slowly
+      windmill: mill ? { x: mill.object.position.x, y: mill.object.position.y, z: mill.object.position.z, r: P.buildings.find(b => b.kind === 'sails').span / 2, turns: SAILS_TURN, blades: 4 } : null,
+      wheel: { x: P.wheel.x, y: P.wheel.level + 1.35, z: P.wheel.z, r: 2.0, turns: (cursed ? WHEEL_TURN_CURSED : WHEEL_TURN) / (2 * Math.PI), blades: 12, water: !cursed } },
     addUnderwater(obj) { obj.traverse(o => o.layers.enable(W.UNDERWATER)); },
     tapWater(origin, dir) {
       for (let t = 1; t < 70; t += 0.25) {
@@ -1026,7 +1028,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       droplets.update(renderer);
       if (mill) mill.update(dt);
       if (camera) { rocks.userData.update(camera); wet.userData.update(camera); }      // (each rock as finely as its distance calls for)
-      wheel.rotation.x += dt * (cursed ? 0.08 : 0.5);                       // (in the drought it barely turns)
+      wheel.rotation.x += dt * (cursed ? WHEEL_TURN_CURSED : WHEEL_TURN);     // (in the drought it barely turns)
       if (scene && camera) {
         frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         camWorld.setFromMatrixPosition(camera.matrixWorld);

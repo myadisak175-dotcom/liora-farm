@@ -35,6 +35,17 @@ PLAIN = -20.0             # dB: no loop's plain (unweighted) level where it is l
 CEILING = -2.0            # dB: no loop's peak over this
 STEREO_RATE, MONO_RATE = '96k', '64k'
 STEADY = {'brush': 0.75}  # how much of a layer's swells is smoothed away (see 2b)
+ONCE = {      # takes heard once each, not looped (ambience.js hit): the windmill's wood as a sail goes by, the wheel's
+    'creak':      ['creak-1', 'creak-2', 'creak-3', 'creak-4'],
+    'wheelcreak': ['wheelcreak-1', 'wheelcreak-2', 'wheelcreak-3', 'wheelcreak-4'],
+}
+ONCE_LEVEL = -21.0        # dB, A-weighted, its loudest 0.1 s: a creak stands 9 dB over a loop's loud parts, where it is
+ONCE_HIGHPASS = 250       # Hz: what a take loses under it. Half of a windmill's creak lay under 300 Hz, where a phone's speaker gives
+                          # nothing and the ear little, and it was what its peaks were made of: without it the take can be louder
+ONCE_FROM = 40.0          # dB under its loudest: what is quieter at its start and end is cut away (then a short fade)
+ONCE_MOST = {'creak': 1.2}      # s: no more of a take than this (the windmill's creaks came 1.7 s long, and a sail goes by every
+                          # 2.1 s: whole, they would be one unbroken groan). The rest fades away over ONCE_TAIL
+ONCE_TAIL = 0.3
 STEADY_MOST = 9.0         # dB: no more than this up or down
 
 LAYERS = {      # layer: (its loops, has a place?)
@@ -60,9 +71,10 @@ db = lambda v: 20 * np.log10(max(float(v), 1e-12))
 amp = lambda d: 10 ** (d / 20)
 
 
-def read(path):
-    """the loop as two channels of floats (samples x 2)"""
-    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', path, '-f', 'f32le', '-ac', '2', '-ar', str(SR), '-'], capture_output=True, check=True).stdout
+def read(path, highpass=None):
+    """the loop as two channels of floats (samples x 2); less what lies under highpass (Hz, four poles), if any"""
+    cut = ['-af', 'highpass=f=%d:poles=2,highpass=f=%d:poles=2' % (highpass, highpass)] if highpass else []
+    raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', path] + cut + ['-f', 'f32le', '-ac', '2', '-ar', str(SR), '-'], capture_output=True, check=True).stdout
     return np.frombuffer(raw, dtype=np.float32).astype(np.float64).reshape(-1, 2)
 
 
@@ -131,6 +143,32 @@ def main():
             size = os.path.getsize(mp3); total += size
             meta['layers'][layer].append({'file': 'ambience/%s.mp3' % name, 'secs': round(len(x) / SR, 3)})
             print('%-9s %-9s %6.2f %7.1fdB %+7.1fdB %6.1fdB %5.1fdB %5.0f%s' % (layer, name, len(x) / SR, db(was), db(g), db(where_loud(a_weighted(bm))), db(np.abs(back).max()), size / 1000, '  mono' if placed else ''))
+    # ---- takes heard once: cut to the sound, faded, levelled by their loudest moment; mono (each has a place)
+    for layer, names in ONCE.items():
+        meta['layers'][layer] = []
+        for name in names:
+            path = os.path.join(src, name + '.mp3')
+            if not os.path.isfile(path): sys.exit('not found: ' + path)
+            m = read(path, ONCE_HIGHPASS).mean(axis=1)
+            q = int(0.01 * SR); e = np.sqrt(np.convolve(m * m, np.ones(q) / q, mode='same'))
+            on = np.where(e > e.max() * amp(-ONCE_FROM))[0]
+            a, b = max(0, on[0] - q), min(len(m), on[-1] + 5 * q)
+            most = ONCE_MOST.get(layer)
+            cut = bool(most and (b - a) / SR > most)
+            if cut: b = a + int(most * SR)
+            y = m[a:b].copy()
+            fi, fo = min(len(y) // 4, int(0.005 * SR)), min(len(y) // 3, int((ONCE_TAIL if cut else 0.06) * SR))
+            y[:fi] *= np.linspace(0, 1, fi); y[-fo:] *= np.linspace(1, 0, fo)
+            n = int(0.1 * SR); w = a_weighted(y); c = np.concatenate(([0.0], np.cumsum(w * w)))
+            top = np.sqrt(np.max((c[n:] - c[:-n]) / n)) if len(w) > n else np.sqrt(np.mean(w * w))
+            g = min(amp(ONCE_LEVEL) / top, amp(CEILING) / np.abs(y).max())
+            mp3 = os.path.join(out_dir, name + '.mp3')
+            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'f32le', '-ar', str(SR), '-ac', '1', '-i', '-',
+                            '-codec:a', 'libmp3lame', '-b:a', MONO_RATE, '-map_metadata', '-1', mp3],
+                           input=np.clip(y * g, -1, 1).astype('<f4').tobytes(), check=True)
+            size = os.path.getsize(mp3); total += size
+            meta['layers'][layer].append({'file': 'ambience/%s.mp3' % name, 'secs': round(len(y) / SR, 3), 'once': True})
+            print('%-9s %-9s %6.2f %7.1fdB %+7.1fdB %6.1fdB %5.1fdB %5.0f  once (cut %.2f..%.2f s of %.2f)' % (layer, name, len(y) / SR, db(top), db(g), ONCE_LEVEL, db(np.abs(y * g).max()), size / 1000, a / SR, b / SR, len(m) / SR))
     with open(os.path.join('assets', 'audio', 'ambience.json'), 'w') as f:
         json.dump(meta, f, separators=(',', ':'))
         f.write('\n')
