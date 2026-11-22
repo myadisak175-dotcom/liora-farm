@@ -32,12 +32,12 @@
   /* her spells (player-spells.js; ?spell=0: without): the attack button under the right thumb, where the jump was; the
      jump over the dash beside it; the roll and the barrier further in. All of them low: the buttons down the right edge
      (the world's, the sound's) come down to some 100 px over the bottom of a phone on its side */
-  #atkBtn, #rollBtn, #skySpearBtn, #barrierBtn { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
+  #atkBtn, #rollBtn, #barrierBtn { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
     color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
     -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
   #atkBtn svg, #rollBtn svg, #barrierBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
   #atkBtn.down, #rollBtn.down, #barrierBtn.down { background: rgba(255, 255, 255, .5); }
-  #atkBtn[hidden], #rollBtn[hidden], #skySpearBtn[hidden], #barrierBtn[hidden] { display: none; }
+  #atkBtn[hidden], #rollBtn[hidden], #barrierBtn[hidden] { display: none; }
   #atkBtn { right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 78px; height: 78px;
     background: rgba(116, 207, 255, .32); border-color: rgba(190, 235, 255, .9); }
   #atkBtn svg { width: 26px; height: 26px; }
@@ -47,10 +47,6 @@
   #rollBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 56px; height: 56px; }
   #barrierBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 66px); width: 56px; height: 56px;
     background: rgba(111, 203, 255, .26); }
-  #skySpearBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 85px);
-    width: 62px; height: 62px; color:#eaffff; border-color:#b3fbff; background:radial-gradient(circle at 40% 25%,#427a87ed,#133d5de8); }
-  #skySpearBtn svg { width:25px; height:25px; display:block; margin:0 auto; }
-  #skySpearBtn:disabled { opacity:.55; }
   #barrierBtn.wait { opacity: .45; }
   #fps { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 8px; font-size: 11px; color: rgba(39, 52, 26, .75);
     background: rgba(255, 255, 255, .62); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
@@ -203,7 +199,7 @@
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
   "./player-moves.js": "./player-moves.js?v=28",
-  "./player-spells.js": "./player-spells.js?v=5",
+  "./player-spells.js": "./player-spells.js?v=4",
   "./magic-combo.js": "./magic-combo.js?v=6",
   "./magic-combo-fx.js": "./magic-combo-fx.js?v=4",
   "./magic-combo-game-anim.js": "./magic-combo-game-anim.js?v=1",
@@ -452,8 +448,7 @@ const soundSettings = sounds ? (await import('./sound-settings.js')).createSound
 // barrier's water is dimmed to the hour by its own setLight
 const spellKit = spellsOn ? await (async () => {
   const [{ createMagicComboFx }, { createBarrierFx }] = await Promise.all([import('./magic-combo-fx.js'), import('./barrier-fx.js')]);
-  const { createSkySpear } = await import('./sky-spear.js');
-  return { skyFx: createSkySpear(), comboFx: createMagicComboFx(), barrierFx: createBarrierFx({ lift: 0.12, seed: 1 }), renderer };      // (lift: the water on the ground stands in the grass, its tips through it)
+  return { comboFx: createMagicComboFx(), barrierFx: createBarrierFx({ lift: 0.12, seed: 1 }), renderer };      // (lift: the water on the ground stands in the grass, its tips through it)
 })() : null;
 const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds, spells: spellKit });
 if (weighs && player.setWeight) {
@@ -494,17 +489,10 @@ if (spellKit && player.attack) {
     return b;
   };
   make('barrierBtn', 'บาเรีย', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 18 0"/><path d="M1.5 19h21"/><path d="M12 7.5c1.5 1.9 2.3 3.1 2.3 4.2a2.3 2.3 0 0 1-4.6 0c0-1.1.8-2.3 2.3-4.2z"/></svg>', () => player.barrier());
-  const skyButton = make('skySpearBtn', 'ฝนหอก', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="2.4"/><path d="M7 6 5 15l-1-3m1 3 3-2m5-6-2 14-2-4m2 4 3-4m5-11-1 10-2-3m2 3 2-3"/></svg>', () => player.spells.skySpear());
-  skyButton.title = 'ฝนหอก (R)';
-  skyButton.addEventListener('click', event => { if (event.detail === 0) player.spells.skySpear(); });
-  addEventListener('keydown', event => {
-    if (event.code === 'KeyR' && !event.repeat && !editing() && !event.target.closest?.('input, textarea, select, [contenteditable="true"]')) player.spells.skySpear();
-  });
   make('rollBtn', 'กลิ้ง', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/></svg>', () => player.roll());
   make('atkBtn', 'โจมตี', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg>', () => player.attack(), () => player.release());
 }
 const barrierBtn = document.getElementById('barrierBtn');
-const skySpearBtn = document.getElementById('skySpearBtn');
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: hero, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
@@ -639,7 +627,7 @@ if (Q.has('curse')) {
   curse.changed();                                       // the values remembered from last time
 }
 // her spells' light and water (above): into the scene now that its materials have been given the clouds' shade and the curse
-if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrierFx.object, spellKit.skyFx.object);
+if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrierFx.object);
 
 // ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
 // it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
@@ -772,7 +760,6 @@ const frame = (dt = clock.getDelta()) => {
       const cast = level.sunCast;
       spellKit.barrierFx.setSun(cast ? cast.dir : (sky.userData.sun || NOON));
     }
-    if (skySpearBtn) skySpearBtn.disabled = spellKit.skyFx.time >= 0;
     if (barrierBtn) barrierBtn.classList.toggle('wait', player.spells.barrierT >= 0);      // (not again until its water has gone)
   }
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
