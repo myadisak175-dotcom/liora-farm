@@ -19,8 +19,8 @@
        crown, a ring going out in the air, the ground under it awash                  hoop of water in the air
    The clip takes ten seconds; a move in a fight cannot, so from her hand to the great spear's landing is about three
    seconds (SPEAR_RAIN); a lance full grown, whose rain is three times as many and as long, five.
-   And one thing the clip has not, asked after it: the spears stay where they land, stuck in the ground, a graveyard
-   of spears, and go a while after the great spear is down (GRAVES).
+   And one thing the clip has not, asked after it: each spear stays a moment where it lands, stuck in the ground, and
+   then goes, the first to land the first to go: a graveyard of spears that follows the rain (GRAVES).
 
    ITS WATER IS THE BASIC COMBO'S (the README: "The look of her magic", the same night: "หลังจากนี้ใช้ style ของสกิลคอมโบ
    พื้นฐานเป็น ref"). Nothing of water is drawn by a shader here; it is the clip's own painted water, the basic combo's
@@ -104,19 +104,20 @@ export const SPEAR_RAIN = {
   high: [6.6, 6.6, 6.6, 7.6], seal: [3.4, 3.8, 4.2, 6.0], radius: [2.6, 3.0, 3.4, 5.2], spears: [8, 11, 14, 66],
   grand: [1, 1, 1, 1.3],        // the great spear, and the star it lands in, so many times as big
 };
-// THE SPEARS STAY WHERE THEY LAND ("อยากให้มีหลังตกลงมาจะมีเอฟเฟคหอกปักพื้นสักพักก่อนแล้วค่อยสลายหาย เหมือนสุสานหอก", 23 Nov
-// 2026: stuck in the ground a while, then gone; a graveyard of spears). Each stands where it struck, its point in the
+// THE SPEARS STAY WHERE THEY LAND, A MOMENT ("อยากให้มีหลังตกลงมาจะมีเอฟเฟคหอกปักพื้นสักพักก่อนแล้วค่อยสลายหาย เหมือนสุสานหอก",
+// 23 Nov 2026: stuck in the ground, then gone; a graveyard of spears). Each stands where it struck, its point in the
 // ground (`bury` of its length, and up to `deeper` more), come to rest leaning a little its own way (up to `lean` rad
 // off the way it fell) with a quiver that dies in `quiver` s (`beats` times a second); the great spear in their
-// middle, upright, and its blow shakes those about it (`shock`: rad, the nearest). They stand until `stand` s after
-// the great spear is down, then go ONE AT A TIME, not together ("สลายไปทีละอันดีกว่า ไม่ต้องพร้อมกัน", a little later the
-// same night): in the order they landed, the next `each` s after the one before (a full rain's 66 closer together, so
-// that all of them take no longer than `go` s), the great one last; each in `gone` s, from its tail down to the
-// ground, breaking up into small squares with a white edge where it goes and sparks rising off it (`sparks` a spear;
-// the great one's `great`). While they stand a spark rises off one of them every `mote` s.
+// middle, upright, and its blow shakes those that still stand about it (`shock`: rad, the nearest).
+// EACH GOES BY ITS OWN CLOCK, THE FIRST TO LAND THE FIRST TO GO ("ตกแล้วปัก สลายทันที อันไหนปักก่อน สลายก่อน", the same
+// night; they were first made to stand until the great spear was down and go together, then one after another from
+// then: neither was what was meant): `stand` s after it struck it begins to go (the great one `last` times as long),
+// and is gone in `gone` s: from its tail down to the ground, breaking up into small squares with a white edge where
+// it goes and sparks rising off it (`sparks` a spear; the great one's `great`). So through a long rain there is always
+// a second's worth of them standing where it has just rained, going as the rain goes on.
 // They are not the rain's any more once they stand: another may be thrown up over them
-export const GRAVES = { bury: 0.1, deeper: 0.07, lean: 0.26, quiver: 0.2, beats: 7, shock: 0.16, stand: 1.5, each: 0.14, go: 4.5, gone: 0.45,
-  sparks: 4, great: 14, mote: 0.1, cool: 0.16, hot: 0.18 };      // (cool: s it takes to cool from white, to `hot`: how white it stands)
+export const GRAVES = { bury: 0.1, deeper: 0.07, lean: 0.26, quiver: 0.2, beats: 7, shock: 0.16, stand: 0.55, last: 1.6, gone: 0.45,
+  sparks: 4, great: 14, mote: 0.1, cool: 0.16, hot: 0.18 };      // (mote: while they stand a spark rises off one of them so often; cool: s it takes to cool from white, to `hot`: how white it stands)
 const T = SPEAR_RAIN;
 const SPEAR = new URL('./assets/textures/lance-spear.webp', import.meta.url).href;      // her lance's picture: its tail at the left, its point at the right
 const SPEAR_WIDE = 0.125;                               // half its strip's width, of its length (the picture's)
@@ -134,7 +135,7 @@ const HIT = { life: 0.4, more: 0.1, fade: 0.3, up: 0.3 };
 // its radius; rise: its outer edge stands so much higher, of its radius; spin: rad/s; from: of its radius it begins at)
 const CROWN = { round: 3, inner: 0.56, rise: 0.17, spin: 2.6, from: 0.22, life: 0.36, more: 0.06 };
 const BOLT = { n: 5, places: 13, life: 0.17 };
-const MOST = { spears: 112, streaks: 24, stuck: 80, splashes: 40, rounds: 32, bits: 448, flares: 32 };      // (spears: a full rain has some 30 in the air at once, and its 67 stand where they landed; a streak behind each that falls)
+const MOST = { spears: 80, streaks: 24, stuck: 48, splashes: 40, rounds: 32, bits: 448, flares: 32 };      // (spears: a full rain has some 30 in the air at once, and as many standing where they have just landed; a streak behind each that falls)
 const BLEND = { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation };
 
 const NOISE = /* glsl */`
@@ -713,7 +714,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
 
   // ---- the cast that is going (one at a time)
   const cast = { t: -1, k: 1, level: 0, R: 1, sealR: 1, from: new THREE.Vector3(), mid: new THREE.Vector3(), portal: new THREE.Vector3(), centre: new THREE.Vector3(),
-    right: new THREE.Vector3(1, 0, 0), long: 1, heading: 0, strikes: [], great: null, all: [], last: 0, close: 0, end: 0, bolt: 0, dust: 0, glow: 0, flash: 0, shed: 0, landed: 0, ground: null };
+    right: new THREE.Vector3(1, 0, 0), long: 1, heading: 0, strikes: [], great: null, all: [], last: 0, close: 0, end: 0, bolt: 0, dust: 0, glow: 0, flash: 0, shed: 0, ground: null };
   const held = { on: false, tip: new THREE.Vector3(), dir: new THREE.Vector3(), long: 1, there: 1 };
   // where on its way up the lance is, `u` of the way (0 her hand .. 1 the seal): a bend, up first and then over
   function wayAt(u, out) {
@@ -825,11 +826,9 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       v.copy(at).y += 0.25 * k;
       scatter(v, 4, 3.3 * k, 0.062 * k, 0); scatter(v, 1, 2.2 * k, 0.085 * k, 2);
     }
-    // it stands where it landed: until a while after the great spear is down; then they go one after another as they
-    // landed, the great one last
-    const c = cast, after = Math.max(0, c.great.hit - c.t) + GRAVES.stand, n = c.strikes.length, apart = Math.min(GRAVES.each, GRAVES.go / Math.max(1, n));
-    if (s.great) { shake(c.R); stand(s, after + n * apart + 0.15); }
-    else stand(s, after + (c.landed++) * apart);
+    // it stands where it landed, a moment, and goes by its own clock: the first to land is the first to go
+    if (s.great) { shake(cast.R); stand(s, GRAVES.stand * GRAVES.last); }
+    else stand(s, GRAVES.stand);
     if (rain.onStrike) rain.onStrike({ at, radius: (s.great ? cast.R : 1.15 * z), great: s.great, index: s.index });
   }
 
@@ -896,7 +895,7 @@ export function createSpearRainFx({ seed = 11 } = {}) {
       c.close = c.great.hit + 0.12; c.end = c.great.hit + T.end;
       // its way up: from her hand, up first, then over to the seal's middle
       c.mid.copy(from).lerp(c.portal, 0.18); c.mid.y = from.y + (c.portal.y - from.y) * 0.72;
-      c.bolt = 0; c.dust = 0; c.glow = 0; c.flash = 0; c.shed = 0; c.landed = 0;
+      c.bolt = 0; c.dust = 0; c.glow = 0; c.flash = 0; c.shed = 0;
       for (const b of bolts) { b.age = 1; b.mesh.visible = false; }
       // let go: a splash at her hand, beads thrown off
       splash(from, 0.7 * k, 0);
