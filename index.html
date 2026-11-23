@@ -168,6 +168,7 @@
   "./plant-boss-turn.js": "./plant-boss-turn.js?v=1",
   "./boss-trial.js": "./boss-trial.js?v=4",
   "./sprite-trial.js": "./sprite-trial.js?v=1",
+  "./sprite-companion.js": "./sprite-companion.js?v=1",
   "./village-kit.js": "./village-kit.js?v=bridge3",
   "./map-rim.js": "./map-rim.js?v=4",
   "./path-brush.js": "./path-brush.js?v=1",
@@ -567,9 +568,17 @@ const bossTrial = Q.has('boss') && MAP === 'hillvillage'
 // ---- 🌱 ?sprite=1 (a trial): three forest sprites (สไปรต์ป่า) on the road east of where she starts, to see the model and its
 // four moves in the game (sprite-trial.js): one floats along the road, one is glad when she comes near, one jumps now and
 // then. Made here for the same reason as the boss. Without it nothing of the trial is loaded
-const spriteTrial = Q.has('sprite') && MAP === 'hillvillage'
+const spriteTrial = Q.has('sprite') && Q.get('sprite') !== '0' && MAP === 'hillvillage'
   ? await (await import('./sprite-trial.js')).createSpriteTrial({ level, scene, feet: () => player.position })
   : null;
+// ---- 🌱 the forest sprite (สไปรต์ป่า) that goes with her, on every map (sprite-companion.js): it floats at her shoulder, catches up,
+// jumps when she does, is glad now and then, and is beside her again after a warp. ?sprite=0 leaves it out. Should its model
+// not load, the game goes on without it
+let sprite = null;
+if (Q.get('sprite') !== '0') {
+  try { sprite = await (await import('./sprite-companion.js')).createSpriteCompanion({ level, scene, player }); }
+  catch (err) { console.warn('[sprite]', err); }
+}
 fit();
 
 // Find a collision-free shallow bank on whichever map is active.
@@ -894,7 +903,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, spriteTrial, sounds, air, music, soundSettings, spellKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, sounds, air, music, soundSettings, spellKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
