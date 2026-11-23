@@ -39,6 +39,13 @@
 //     not in the game yet.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
+//   - blink (in the game since 24 Nov 2026, the วาร์ป button, E or L; ?blink=0: none. A page gives it: createPlayer({ blink })
+//     and player.blink(); blink.html tries it alone): she is gone, and there again a few metres on, the way the stick points (blink.js says where
+//     and when, blink-fx.js and blink-sounds.js what is seen and heard). On the ground only, as the dash; while it has her
+//     (mode 'blink') she is not seen, and is carried along her way for the camera to follow. There, with the stick let go,
+//     she comes to a stop (Mixamo's Run To Stop, the user's: blink-stop-anim.js, given as the blink's `stop`), carried
+//     along its way; the stick pushed, she runs on (at once while she is still running in it, after a moment once she
+//     has begun to stop); a jump, a dash, another blink or a spell cuts it short.
 // Her walk and run are the walker's (a run is 4.2 m/s at 1.75 m; the first trial ran at 5.0 and that was too fast).
 //
 // Her weight (a trial since 20 Nov 2026: createPlayer({ weight: true }), player.setWeight(on); in the game with ?weight=1 and
@@ -91,6 +98,8 @@ const FAR0 = 16;                              // a drop taller than this (m; 20 
 const STEP0 = 0.45;                           // the ground falling away under her by more than this (m): she falls, not steps
 const SLIDE0 = 5, SLIDE_FALL0 = 11;           // down a cliff's face: no faster than this over the ground, nor than this downwards (m/s)
 const DASH_T = 0.2, DASH_COOL = 0.8;          // the burst (s), and how soon she can dash again (s)
+const BLINK_STRIDE = 0.39;                    // a blink from standing: her run begun this far into its clip, mid-stride (her left foot up behind her)
+const STOP_HOLD = 0.12;                       // s the stick is pushed, once her stop has begun to brake, before she runs on out of it
 // her weight (see above; at Vivi's 1.412 m: x 1.24 at 1.75 m)
 const W_ACC0 = 8.5, W_DEC0 = 12.9;            // m/s² gathering speed, losing it (10.5, 16 at 1.75 m: her run in 0.4 s, stopped from it in 0.26 s)
 const W_TURN = [12, 5];                       // 1/s she turns at, walking .. sprinting (11 at any pace without)
@@ -124,7 +133,8 @@ const NO_CIRCLES = { open() {} };
 // thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep, begins to swim), she swims a stroke, the circle
 // opens under a long fall, and (every frame) how fast she goes through the air
 // spells: what her spells draw with (player-spells.js): { comboFx, barrierFx, renderer }, or none (no spells)
-export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null }) {
+// blink: the blink (blink.js' createBlink), or none (no blink: the game)
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null, blink = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   // the level, asked at her height (see above): where her feet are, how deep the water is, where its surface is, and what
   // the ground is like (null: this map cannot say). A steep bank under the water is ground to her: she wades down it
@@ -146,6 +156,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   let landT = -1, landHold = LAND_HOLD, jumpWanted = 0;
   let landClip = 'jump_land', landRate = LAND_RATE;       // the landing she is in: its clip, how fast it plays
   let dashWanted = 0, dashT = 0, dashCool = 0, sprint = false, easedOff = 0;
+  let blinkWanted = 0, blinkAim = null, blinkKeep = 0;      // (the blink, when there is one: a press kept a moment; a way asked for; her pace as she went)
+  let blinkOut = -1, outPush = 0;                 // (her stop after it: s into it, -1 none; s the stick has been pushed in it)
+  const blinkFrom = new THREE.Vector3(), blinkTo = new THREE.Vector3();
   let lifting = false, circled = false, caught = false;      // (heard: a jump's feet still to leave the ground; a circle open under her last frame; the circle that catches a long fall, open)
   let edgeT = 0, edgeGrace = 0;               // how long she has pushed at a tall cliff's brink
   let shy = 0;                                // s after a slide that got her nowhere: edges are walls for a moment
@@ -200,6 +213,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     onLook: (yaw, pitch) => { if (!spells || !spells.aiming) cam.turn(yaw, pitch); }, onZoom: d => { if (!spells || !spells.aiming) cam.zoom(d); },      // (holding the lance, the camera is the lance's)
     onAttack: spells ? () => spells.attack() : null, onAttackUp: spells ? () => spells.release() : null,
     onRoll: spells ? () => spells.roll() : null, onBarrier: spells ? () => spells.barrier() : null,
+    onBlink: blink ? () => { blinkWanted = JUMP_BUFFER; blinkAim = null; } : null,
   });
   const steps = createFootsteps(level, sounds);
   steps.find(character);
@@ -656,6 +670,86 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     lastSafe.copy(pos);
   }
 
+  // ---- the blink (blink.js): she presses on the ground; it says where she is put down, the way the stick points (the
+  // way she faces, let go; or a way the page asked for). Nowhere to go (a wall at once): nothing happens
+  function startBlink(k, pushing, want) {
+    blinkWanted = 0;
+    const dir = blinkAim !== null ? blinkAim : pushing ? want : heading;
+    blinkAim = null;
+    const scale = (character.height || 1.75) / 1.75;
+    const to = blink.plan({ x: pos.x, y: pos.y, z: pos.z, dir, size: scale, standAt, footing, depthAt,
+      colliders: level.colliders || [], radius: level.radius || Infinity, confine: footing ? null : level.confine || null });
+    if (!to) return;
+    blinkFrom.copy(pos); blinkTo.set(to.x, to.y, to.z);
+    mode = 'blink'; heading = dir; blinkKeep = speed;
+    landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; hurdleT = 0; vy = 0;
+    // her afterimages are of her bursting off, as the clip's are of a girl running: standing or walking, her run is
+    // begun at once, mid-stride (BLINK_STRIDE), for the moment before she is gone
+    if (blinkKeep < RUN0 * k * 0.6 && character.actions.run) {
+      character.play('run', 0.04, false);
+      const a = character.actions.run;
+      a.time = BLINK_STRIDE * a.getClip().duration; a.timeScale = 1;
+    }
+    blink.begin(blinkFrom, blinkTo, scale, character);
+  }
+  // while it has her: unseen once she is gone, carried along her way (the camera comes after her); there, her hair and
+  // dress let go of where they were, she comes to a stop (stopStep), or, with no stop given, is on her feet again as she
+  // was going (running, in a sprint, as after the dash; from standing, crouched and up: the mocap's landing)
+  function blinkStep(dt, k, pushing) {
+    if (blinkOut >= 0) { stopStep(dt, k, pushing); return; }
+    const s = blink.step(dt);
+    character.object.visible = shadow.visible = !s.gone;
+    if (s.done) {
+      pos.copy(blinkTo); lastSafe.copy(pos);
+      if (character.resetSprings) character.resetSprings();
+      if (blink.stop && character.actions.blink_stop) {
+        blinkOut = 0; outPush = 0; speed = 0; went = 0;
+        character.play('blink_stop', 0.06, false);
+        stopStep(0, k, pushing);
+        return;
+      }
+      mode = 'ground'; speed = blinkKeep; sprint = blinkKeep > RUN0 * k * 0.9; easedOff = 0; went = speed;
+      if (blinkKeep < RUN0 * k * 0.6) { lightLanding(LAND_HOLD); landT = 0; landW = 0; stopT = 0; character.play(landClip, 0.06, false); }
+      return;
+    }
+    if (s.gone) pos.lerpVectors(blinkFrom, blinkTo, s.u);
+    went = 0;
+  }
+  // her stop (blink.stop: Mixamo's Run To Stop, posed for her by tools/make-blink-stop-anim.py): the clip at its own pace,
+  // and she is carried along its way (where its hips go, out of place: BLINK_STOP.path), kept out of things and on ground
+  // she may stand on; the ground falling away under her, she falls. The stick pushed, she runs on out of it: at once
+  // while she is still running in it (before `brake`), after STOP_HOLD s once she has begun to stop. A jump, a dash or
+  // another blink cuts it short (each then goes as it would from standing). It ends in her standing pose
+  function stopStep(dt, k, pushing) {
+    const S = blink.stop, a = character.actions.blink_stop;
+    blink.step(dt);                                                           // (cooling down)
+    outPush = pushing ? outPush + dt : 0;
+    const out = pushing && (blinkOut < S.brake || outPush >= STOP_HOLD);
+    if (out || jumpWanted > 0 || dashWanted > 0 || (blinkWanted > 0 && blink.ready) || !a || character.state !== 'blink_stop') {
+      blinkOut = -1; mode = 'ground'; landT = -1;
+      speed = out ? Math.max(blinkKeep, RUN0 * k) : 0; sprint = out && blinkKeep > RUN0 * k * 0.9; easedOff = 0; went = speed;
+      return;
+    }
+    const t0 = blinkOut, t1 = Math.min(S.duration, blinkOut + dt);
+    blinkOut = t1;
+    a.time = Math.max(0, t1 - dt);                                            // (the clip at the stop's own time: character.update adds dt)
+    // along its way, as the clip's hips go (x to her left, z ahead, hips heights, per frame)
+    const hh = (character.hipsHeight || 1) * (character.size || 1), P = S.path;
+    const at = (t, j) => { const n = P.length / 2, f = Math.min(n - 1, Math.max(0, t * S.fps)), i = Math.min(n - 2, Math.floor(f)), u = f - i; return P[i * 2 + j] + (P[(i + 1) * 2 + j] - P[i * 2 + j]) * u; };
+    const dx = (at(t1, 0) - at(t0, 0)) * hh, dz = (at(t1, 1) - at(t0, 1)) * hh, sh = Math.sin(heading), ch = Math.cos(heading);
+    tmp.set(pos.x + ch * dx + sh * dz, 0, pos.z - sh * dx + ch * dz);
+    solids(tmp, k);
+    if (footing) { if (!mayCast(tmp.x, tmp.z, k)) { if (mayCast(tmp.x, pos.z, k)) tmp.z = pos.z; else if (mayCast(pos.x, tmp.z, k)) tmp.x = pos.x; else tmp.set(pos.x, 0, pos.z); } }
+    else if (level.confine) level.confine(tmp, pos);
+    went = dt > 0 ? Math.hypot(tmp.x - pos.x, tmp.z - pos.z) / dt : 0;
+    pos.x = tmp.x; pos.z = tmp.z;
+    const ground = standAt(pos.x, pos.z), dy = ground - pos.y;
+    if (dy < -(STEP0 * k + went * dt * 1.2)) { blinkOut = -1; mode = 'ground'; speed = 0; leave(0, k, false); return; }      // (the ground fell away under her)
+    pos.y = Math.abs(dy) <= went * dt * 1.5 + 0.004 ? ground : pos.y + dy * Math.min(1, dt * 18);
+    lastSafe.copy(pos);
+    if (blinkOut >= S.duration) { blinkOut = -1; mode = 'ground'; speed = 0; went = 0; }      // (in her standing pose: the idle goes on from it)
+  }
+
   // ---- on her feet, in the air, down a face: walking, running, dashing, jumping, falling, sliding
   function walkStep(dt, k, amount, pushing, running, want) {
     const WALK = WALK0 * k, RUN = RUN0 * k, SPRINT = SPRINT0 * k, DASH = DASH0 * k, DEEP = DEEP0 * k, grav = GRAV0 * k;
@@ -947,11 +1041,14 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     object: root, position: pos, blob: shadow, lookDir: cam.lookDir,
     get character() { return character; },
     get heading() { return heading; }, get camYaw() { return cam.yaw; }, get camPitch() { return cam.pitch; }, get camDist() { return cam.dist; }, get speed() { return speed; },
-    get airborne() { return mode !== 'ground' && mode !== 'cast'; }, get mode() { return mode; }, get sprinting() { return sprint; },
+    get airborne() { return mode !== 'ground' && mode !== 'cast' && mode !== 'blink'; }, get mode() { return mode; }, get sprinting() { return sprint; },
     get flight() { return air; },                                  // (for a test, or the console: the magic jump)
     get weight() { return weight; }, setWeight(on) { weight = !!on; air.carry = weight; if (!weight) { landW = 0; stopT = 0; gain = 0; } },      // her weight (see above), and her pace carried through the air with it (magic-jump.js)
     jump() { jumpWanted = JUMP_BUFFER; },
     dash() { dashWanted = JUMP_BUFFER; },
+    // the blink (blink.js; none without createPlayer({ blink })): the way the stick points, or `yaw` (radians, 0 = +z) if given
+    blink(yaw) { if (blink) { blinkWanted = JUMP_BUFFER; blinkAim = typeof yaw === 'number' ? yaw : null; } },
+    get blinking() { return mode === 'blink'; },
     // her spells (player-spells.js; none without createPlayer({ spells })): the attack button down and up, the roll, the barrier
     get spells() { return spells; },
     attack() { if (spells) spells.attack(); },
@@ -972,6 +1069,10 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       landT = -1;
       if (spells) spells.setCharacter(character);
       if (mode === 'cast') mode = 'ground';
+      if (blink) {
+        if (mode === 'blink') { if (blinkOut < 0) pos.copy(blinkTo); blink.cancel(); blinkOut = -1; mode = 'ground'; lastSafe.copy(pos); }
+        character.object.visible = shadow.visible = true;
+      }
       if (mode === 'vault') { if (ctPlan.ok) pos.set(ctPlan.x1, ctPlan.y1, ctPlan.z1); else pos.copy(vault1); mode = 'ground'; }
       if (mode === 'hurdle') { character.play(VAULT_CLIP, 0); character.setRate(0); character.actions[VAULT_CLIP].time = overC; }
       else character.play(mode === 'ground' ? 'idle' : mode === 'climb' ? 'climb' : mode === 'swim' ? 'swim_idle' : 'jump_air', 0);
@@ -980,6 +1081,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // (y: about how high she stands, where that tells two grounds apart: on a bridge's deck, or on the bed under it. None: the top)
     teleport(x, z, yaw = heading, y) {
       pos.set(x, standOn(x, z, y), z); heading = yaw; cam.setView(yaw - Math.PI);
+      if (blink && mode === 'blink') { blink.cancel(); blinkOut = -1; character.object.visible = shadow.visible = true; }
       air.end(); if (spells) spells.stop(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; ikTail = 0; ctTail = 0; reachFrom.set(0, 0, 0); shown.set(0, 0, 0); lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
@@ -993,21 +1095,38 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const want = pushing ? Math.atan2(rx * stickV.x - fx * stickV.y, rz * stickV.x - fz * stickV.y) : heading;
       depthHere = depthAt(pos.x, pos.z);
       jumpWanted = Math.max(0, jumpWanted - dt); dashWanted = Math.max(0, dashWanted - dt); dashCool = Math.max(0, dashCool - dt);
+      if (blink) blinkWanted = Math.max(0, blinkWanted - dt);
       shy = Math.max(0, shy - dt); grabShy = Math.max(0, grabShy - dt);
       // ---- a spell (player-spells.js): on the ground (or wading no deeper than her knees) one may begin, or has her
       if (spells) {
-        const can = (mode === 'ground' || mode === 'cast') && depthHere < 0.32 * k;
+        // (her stop after a blink is on the ground too: a spell may cut it, as the jump and the dash do; gone in the blink
+        // itself, none may begin)
+        const stopping = mode === 'blink' && blinkOut >= 0;
+        const can = (mode === 'ground' || mode === 'cast' || stopping) && depthHere < 0.32 * k;
         if (!can && spells.active) spells.stop();
         me.heading = heading;
         if (mode === 'ground') me.vel.set(Math.sin(heading) * speed, 0, Math.cos(heading) * speed);      // (on the run: the leap)
+        else if (stopping) me.vel.set(0, 0, 0);                                                      // (coming to a stop: not the leap)
         castStick.amount = pushing ? Math.min(1, amount) : 0; castStick.x = Math.sin(want); castStick.z = Math.cos(want);
         const x0 = pos.x, z0 = pos.z;
-        if (spells.step(dt, me, { grounded: can, stick: castStick, ground: groundAt })) mode = 'cast';
+        if (spells.step(dt, me, { grounded: can, stick: castStick, ground: groundAt })) {
+          if (stopping) { blinkOut = -1; landT = -1; speed = 0; went = 0; }                          // (her stop let go: the spell has her)
+          mode = 'cast';
+        }
         else if (mode === 'cast') { mode = 'ground'; heading = me.heading; }
         if (mode === 'cast') castStep(dt, k, x0, z0);
       }
+      // ---- the blink (blink.js; none with ?blink=0): on the ground (or wading no deeper than her knees), as the dash
+      if (blink) {
+        if (mode === 'blink') blinkStep(dt, k, pushing);
+        else {
+          blink.step(dt);                                                     // (cooling down)
+          if (blinkWanted > 0 && mode === 'ground' && depthHere < 0.32 * k && blink.ready) startBlink(k, pushing, want);
+        }
+      }
       // ---- she moves, as what she is doing has it
       if (mode === 'cast') { /* (castStep, above) */ }
+      else if (mode === 'blink') { /* (blinkStep, above) */ }
       else if (mode === 'climb') climbStep(dt, k, amount, pushing, want);
       else if (mode === 'vault') vaultStep(dt, k, pushing);
       else if (mode === 'hurdle') hurdleStep(dt, k, pushing);
@@ -1021,7 +1140,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       else { wetAmt = Math.max(0, wetAmt - dt / 15); if (wetAmt === 0) wetH = 0; }
       pose(dt, k, WALK, RUN);
       // the blob stays on the ground under her, smaller the higher she is; none on a face or in the water
-      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : mode === 'hurdle' ? hopLift : 0, onFeet = mode === 'ground' || mode === 'cast' || mode === 'air' || mode === 'slide' || mode === 'hurdle';
+      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : mode === 'hurdle' ? hopLift : 0, onFeet = mode === 'ground' || mode === 'cast' || mode === 'air' || mode === 'slide' || mode === 'hurdle' || mode === 'blink';
       shadow.position.y = 0.06 - lift;
       shadow.scale.setScalar(onFeet ? k * (1 - 0.35 * Math.min(1, lift / (1.2 * k))) : 1e-4);
       // tell her materials where the water's surface is (far below when she is on land) and how high she is wet

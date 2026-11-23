@@ -60,6 +60,19 @@
   #barrierBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 66px); width: 56px; height: 56px;
     background: rgba(111, 203, 255, .26); }
   #barrierBtn.wait { opacity: .45; }
+  /* her blink (blink.js; ?blink=0: without): วาร์ป, in its own cyan. Without the spells, beside the dash; with them, over the
+     barrier (on a phone on its side the world's button reaches in over the jump's column), and on a phone upright over
+     the attack (there the jump's column is where a warp stone's button comes up) */
+  #blinkBtn { position: fixed; z-index: 4; right: calc(max(24px, env(safe-area-inset-right) + 14px) + 140px); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(214, 252, 255, .95); background: rgba(95, 230, 232, .3); color: #fff;
+    font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; box-shadow: 0 0 12px rgba(95, 230, 232, .55); transition: opacity .1s; }
+  #blinkBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #blinkBtn.down { background: rgba(170, 248, 250, .55); }
+  #blinkBtn.wait { opacity: .5; box-shadow: none; }
+  #blinkBtn[hidden] { display: none; }
+  body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 132px); }
+  @media (orientation: portrait) { body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 11px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 124px); } }
   #fps { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 8px; font-size: 11px; color: rgba(39, 52, 26, .75);
     background: rgba(255, 255, 255, .62); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
   #style { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 34px; font: inherit; font-size: 12px; color: #fff;
@@ -213,7 +226,11 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=29",
+  "./player-moves.js": "./player-moves.js?v=30",
+  "./blink.js": "./blink.js?v=2",
+  "./blink-fx.js": "./blink-fx.js?v=1",
+  "./blink-sounds.js": "./blink-sounds.js?v=2",
+  "./blink-stop-anim.js": "./blink-stop-anim.js?v=1",
   "./player-spells.js": "./player-spells.js?v=6",
   "./spear-rain.js": "./spear-rain.js?v=1",
   "./spear-rain-fx.js": "./spear-rain-fx.js?v=3",
@@ -233,7 +250,7 @@
   "./magic-jump-flow-anim.js": "./magic-jump-flow-anim.js?v=2",
   "./magic-jump.js": "./magic-jump.js?v=15",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=6",
-  "./player-input.js": "./player-input.js?v=2",
+  "./player-input.js": "./player-input.js?v=3",
   "./player-camera.js": "./player-camera.js?v=3",
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=3",
@@ -415,7 +432,12 @@ const [COMBO_ANIM, BARRIER_ANIM] = spellsOn ? (await Promise.all([import('./magi
 const rainOn = spellsOn && Q.get('rain') !== '0';
 const SKY_CLIP = rainOn ? (await import('./spear-rain-anim.js')).skyThrowClip(COMBO_ANIM) : null;
 const SPELL_CLIPS = spellsOn ? { ...COMBO_ANIM.clips, barrier: BARRIER_ANIM.clips.barrier, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}) } : {};
-const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...SPELL_CLIPS } };
+// ... and her blink's (since 24 Nov 2026; ?blink=0: without, and nothing of it is loaded): her stop after it, blink_stop
+// (blink-stop-anim.js: Mixamo's Run To Stop, posed for her). Not with the old walker (?move=0) either
+const blinkOn = Q.get('blink') !== '0' && Q.get('move') !== '0';
+const BLINK_MODS = blinkOn ? await Promise.all([import('./blink.js'), import('./blink-fx.js'), import('./blink-sounds.js'), import('./blink-stop-anim.js')]) : null;
+const BLINK_CLIPS = BLINK_MODS ? BLINK_MODS[3].CHARACTER_ANIM.clips : {};
+const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...SPELL_CLIPS, ...BLINK_CLIPS } };
 // before her shadow is made, so its picture fits her
 const HERO_HEIGHT = 1.75, HERO_KEY = 'liora.character';
 let heroId = DEFAULT_CHARACTER;
@@ -486,7 +508,19 @@ const spellKit = spellsOn ? await (async () => {
   }
   return kit;
 })() : null;
-const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds, spells: spellKit });
+// ---- 💨 her blink, วาร์ป (in the game since 24 Nov 2026; on blink.html before): she is gone in a flash of cyan and there,
+// up to 6 m on, the way the stick points (or she faces), with afterimages of her left along the way; there, with the stick
+// let go, she comes to a stop (blink.js: where she may go; blink-fx.js: what is seen; blink-sounds.js: the sound of the clip
+// it was made from; blink-stop-anim.js: her stop; player-moves.js: when). Its light is put in the scene with the spells'
+// (below); heard on the AudioContext her steps woke, as loud as her own sounds are set. ?blink=0: without it
+const blinkKit = BLINK_MODS ? (() => {
+  const [{ createBlink }, { createBlinkFx }, { createBlinkSounds }, { BLINK_STOP }] = BLINK_MODS;
+  const fx = createBlinkFx();
+  const heard = sounds ? createBlinkSounds({ context: () => sounds.context, volume: sounds.volume }) : null;
+  return { fx, heard, blink: createBlink({ fx, heard, stop: BLINK_STOP }) };
+})() : null;
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds, spells: spellKit, blink: blinkKit ? blinkKit.blink : null });
+if (blinkKit) blinkKit.fx.prepare(hero);                 // (her meshes read now, for her afterimages, not as she first blinks)
 if (weighs && player.setWeight) {
   const btn = document.createElement('button');
   btn.id = 'weightBtn';
@@ -510,6 +544,16 @@ if (player.dash) {
   jumpBtn.after(dashBtn);
   dashBtn.addEventListener('pointerdown', e => { e.preventDefault(); dashBtn.classList.add('down'); player.dash(); });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dashBtn.addEventListener(ev, () => dashBtn.classList.remove('down'));
+}
+// the blink's button, วาร์ป (none with ?blink=0): pressed, not clicked; dimmed until it may be pressed again. E or L on a
+// keyboard (player-input.js)
+let blinkBtn = null;
+if (blinkKit) {
+  blinkBtn = document.createElement('button'); blinkBtn.id = 'blinkBtn'; blinkBtn.type = 'button'; blinkBtn.setAttribute('aria-label', 'วาร์ป');
+  blinkBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="9" cy="12" r="1.6"/><path d="M13 5.5l6.5 6.5-6.5 6.5"/><path d="M19.5 12h-6"/><path d="M15.5 3.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" stroke-width="1.2"/></svg><br>วาร์ป</span>';
+  document.body.append(blinkBtn);
+  blinkBtn.addEventListener('pointerdown', e => { e.preventDefault(); blinkBtn.classList.add('down'); player.blink(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) blinkBtn.addEventListener(ev, () => blinkBtn.classList.remove('down'));
 }
 // her spells' buttons (player-spells.js): โจมตี (tapped: four casts; held: the lance, thrown as it is let go; on the run: the
 // leap), กลิ้ง (the roll; โจมตี in it: the rising cast), บาเรีย (the dome of water). J, K, B on a keyboard (player-input.js)
@@ -702,6 +746,7 @@ if (Q.has('curse')) {
 // her spells' light and water (above): into the scene now that its materials have been given the clouds' shade and the curse
 if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrierFx.object);
 if (spellKit && spellKit.rainFx) scene.add(spellKit.rainFx.object);      // (the spear rain's, in the lance's own light)
+if (blinkKit) scene.add(blinkKit.fx.object);                              // (the blink's, in its own light too)
 
 // ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
 // it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
@@ -792,6 +837,7 @@ const picker = createCharacterPicker({
     const next = await loadPlayable(id, PLAYER_ANIM, { height: HERO_HEIGHT });
     const old = hero;
     level.addUnderwater(next.object);                     // seen through the water, like the one before
+    if (blinkKit) blinkKit.fx.prepare(next);               // (her afterimages: the new one's meshes, read now)
     player.setCharacter(next);
     charShadow.setCharacter(next);
     hero = next; heroId = id;
@@ -824,6 +870,14 @@ const frame = (dt = clock.getDelta()) => {
   player.update(dt);
   circles.setNight(!!tod && tod.daylight < 0.3);                          // (by night their light is let shine more)
   circles.update(dt, camera);
+  if (blinkKit) {
+    // her blink's light (the player says when: player-moves.js) shines more by night, as the circles'; it is heard as loud as
+    // her own sounds are set (the sound settings' เสียงตัวละคร)
+    blinkKit.fx.setNight(!!tod && tod.daylight < 0.3);
+    blinkKit.fx.update(dt, camera);
+    if (blinkKit.heard && sounds && blinkKit.heard.volume !== sounds.volume) blinkKit.heard.volume = sounds.volume;
+    if (blinkBtn) blinkBtn.classList.toggle('wait', !blinkKit.blink.ready);      // (not again yet)
+  }
   if (spellKit) {
     // her spells (drawn by the player, player-spells.js): the combo's light shines more by night; the barrier's water is
     // dimmed to the hour (as on its trial page: by night it keeps more of its light than the land does) and lit by the sun
@@ -841,6 +895,7 @@ const frame = (dt = clock.getDelta()) => {
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
   for (const b of spellBtns) if (b.hidden !== editing()) b.hidden = editing();
   if (dashBtn && dashBtn.hidden !== editing()) dashBtn.hidden = editing();
+  if (blinkBtn && blinkBtn.hidden !== editing()) blinkBtn.hidden = editing();
   if (dashBtn && dashLabel && (player.mode === 'climb') !== climbing) { climbing = !climbing; dashLabel.textContent = climbing ? 'ปล่อย' : 'พุ่ง'; }      // (on a rock face the dash button lets go)
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   const rockEditing = rockEditor && rockEditor.active;
@@ -903,7 +958,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, spriteTrial, sprite, sounds, air, music, soundSettings, spellKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
