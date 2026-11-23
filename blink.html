@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d2547">
+<title>วีวี่ — วาร์ป (Blink)</title>
+<!--
+  blink.html  —  Vivi's blink, to try (24 Nov 2026, with ten seconds of a clip: "ในวีดีโอมันวิ่ง แต่เราจะทำเป็น Blink แทน
+  ให้เหมือนตัวละครวาร์ปได้ แต่ทำ effect คล้ายๆ ในวีดีโอ เอาเสียงในวีดีโอมาใช้กับ effect Blink ได้ทำให้เข้ากัน"). Kept apart
+  from the game: the game is as it was (player-moves.js takes a blink only from a page that gives it one, and index.html
+  gives none).
+  One job: try that one move. The วาร์ป button (E or L on a keyboard): she is gone, and there again a few metres on, the
+  way the stick points (with it let go, the way she faces), in the clip's light: a circle under her, a dome bursting,
+  afterimages of her left along the way, ribbons of light, sparks (blink.js: the rules; blink-fx.js: what is seen;
+  blink-sounds.js: the clip's own sound, cut to it). The rest is the game's own player (player-moves.js: walk, run, the
+  dash, the magic jump, the vault), to try it beside them, in the game's meadow, by night as the clip is (☀ for day).
+  On the field: a fence, which she blinks over (as she vaults it running), and rocks, which stop her short.
+  Up top: ☀/🌙 the hour, ⏱ slower, 🔊 which of the clip's two sets of sound, ▶ a few blinks by themselves.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #dffcff; text-shadow: 0 1px 6px #000b; min-height: 18px; transition: opacity .4s; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #2b3a55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  .act { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 700 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  .act.down { background: rgba(255, 255, 255, .5); }
+  .act svg { width: 24px; height: 24px; margin-bottom: -4px; }
+  /* the blink: the big one, under the right thumb (where the game has its attack); the jump and the dash beside it */
+  #blinkBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px)); width: 84px; height: 84px;
+    background: rgba(95, 230, 232, .3); border-color: rgba(214, 252, 255, .95); box-shadow: 0 0 calc(6px + 18px * var(--ready, 1)) rgba(95, 230, 232, calc(.25 + .5 * var(--ready, 1))); }
+  #blinkBtn svg { width: 30px; height: 30px; margin-bottom: -3px; }
+  #blinkBtn.down { background: rgba(170, 248, 250, .55); }
+  #jumpBtn { right: max(116px, calc(env(safe-area-inset-right) + 108px)); bottom: max(62px, calc(env(safe-area-inset-bottom) + 56px)); width: 60px; height: 60px; }
+  #dashBtn { right: max(120px, calc(env(safe-area-inset-right) + 112px)); bottom: max(8px, calc(env(safe-area-inset-bottom) + 2px)); width: 52px; height: 52px; }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 200px 0 16px; text-align: left; pointer-events: none;
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; transition: opacity .6s; }
+  #tap { position: fixed; left: 0; right: 0; top: 40%; display: flex; justify-content: center; pointer-events: none; }
+  #tap span { background: rgba(31, 134, 160, .9); color: #fff; font: 600 14px system-ui; padding: 10px 18px; border-radius: 999px; }
+  #tap[hidden] { display: none; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; white-space: pre-wrap; }
+  @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
+    #name, #beat { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+    #hint { top: calc(58px + env(safe-area-inset-top)); bottom: auto; padding: 0 0 0 calc(14px + env(safe-area-inset-left)); max-width: 60%; font-size: 11px; }
+  }
+  @media (max-height: 520px) {                       /* a phone on its side: the title shorter */
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="name">วีวี่ · วาร์ป (Blink)<small>กดปุ่มวาร์ป = หายวับแล้วโผล่ไปข้างหน้า ทางที่ดันจอย (ปล่อยจอย = ทางที่หันอยู่)</small></div>
+<div id="beat"></div>
+<div id="bar">
+  <button id="hour" type="button">🌙 กลางคืน</button>
+  <button id="slow" type="button">⏱ ×1</button>
+  <button id="sound" type="button">🔊 เสียง: ชุด 1</button>
+  <button id="demo" type="button">▶ เดโมวาร์ป</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="dashBtn" class="act" type="button" aria-label="พุ่ง"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span></button>
+<button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
+<button id="blinkBtn" class="act" type="button" aria-label="วาร์ป"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="9" cy="12" r="1.6"/><path d="M13 5.5l6.5 6.5-6.5 6.5"/><path d="M19.5 12h-6"/><path d="M15.5 3.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" stroke-width="1.2"/></svg><br>วาร์ป</span></button>
+<div id="hint">ปุ่มวาร์ป (คีย์บอร์ด E) · ลองวาร์ปข้ามรั้ว · วาร์ปเข้าหาหินจะหยุดตรงหน้าหิน<br>กดตอนวิ่งอยู่ วาร์ปแล้ววิ่งต่อได้เลย</div>
+<div id="tap" hidden><span>แตะจอหนึ่งครั้งเพื่อเปิดเสียง</span></div>
+<div id="wait">กำลังโหลดวีวี่…</div>
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
+import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
+import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
+import { createPlayer } from './player-moves.js?v=blink1';
+import { createMagicCircles } from './magic-circle-fx.js';
+import { createStepSounds } from './step-sounds.js';
+import { createBlink, BLINK } from './blink.js?v=1';
+import { createBlinkFx } from './blink-fx.js?v=1';
+import { createBlinkSounds } from './blink-sounds.js?v=1';
+
+const Q = new URLSearchParams(location.search);
+const phone = matchMedia('(pointer: coarse)').matches;
+const waitEl = document.getElementById('wait');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass (as the other trial pages')
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+
+// ---- what is on the field: a fence (a thing with a top: she blinks over it, as she vaults it running) and rocks (no
+// top: they stop her short). Drawn plainly, lit as the game lights (one edge between light and shade)
+const hex = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+const tint = (g, h) => { const c = hex(h), n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) a.set(c, i * 3); g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+const lit = new THREE.ShaderMaterial({
+  vertexShader: /* glsl */`
+    attribute vec3 color;
+    varying vec3 vC, vN;
+    void main() { vC = color; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */`
+    varying vec3 vC, vN;
+    void main() {
+      float d = dot(normalize(vN), normalize(vec3(-0.4, 0.9, 0.5))) * 0.5 + 0.5;
+      gl_FragColor = vec4(vC * mix(vec3(0.66, 0.66, 0.8), vec3(1.03, 1.01, 0.97), smoothstep(0.43, 0.47, d)), 1.0);
+    }`,
+});
+const colliders = [];
+const FENCE = { z: 8.5, half: 6, top: 1.0 };
+{
+  const parts = [];
+  for (let x = -FENCE.half; x <= FENCE.half + 1e-6; x += 2) parts.push(tint(new THREE.BoxGeometry(0.14, FENCE.top + 0.06, 0.14).translate(x, (FENCE.top + 0.06) / 2, FENCE.z), '#7d5630'));
+  for (const y of [0.5, 0.92]) parts.push(tint(new THREE.BoxGeometry(2 * FENCE.half, 0.1, 0.07).translate(0, y, FENCE.z), '#8f6a40'));
+  const m = new THREE.Mesh(mergeGeometries(parts), lit); m.position.y = H(0, FENCE.z); scene.add(m);
+  for (let x = -FENCE.half; x <= FENCE.half + 1e-6; x += 0.35) colliders.push([x, FENCE.z, 0.17, undefined, undefined, H(x, FENCE.z) + FENCE.top]);
+}
+const ROCKS = [[-4.6, 12, 1.25], [7.5, 2.5, 1.0], [-8, -3, 1.4], [3.5, -9, 1.15]];
+for (const [x, z, r] of ROCKS) {
+  const g = new THREE.IcosahedronGeometry(r, 1);                  // (each face its own corners: a corner's bump goes by where it is, so they meet)
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const px = p.getX(i), py = p.getY(i), pz = p.getZ(i), n = Math.sin(px * 12.9898 + py * 78.233 + pz * 37.719) * 43758.5453, v = 0.85 + 0.25 * (n - Math.floor(n));
+    p.setXYZ(i, px * v, py * v * 0.78, pz * v);
+  }
+  g.computeVertexNormals();                                        // (flat: one normal a face)
+  const m = new THREE.Mesh(tint(g, '#9aa0a6'), lit);
+  m.position.set(x, H(x, z) + r * 0.35, z);
+  scene.add(m);
+  colliders.push([x, z, r * 0.95]);
+}
+function sign(text, x, y, z, w = 4.4) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(29, 37, 71, .78)'; g.beginPath(); if (g.roundRect) g.roundRect(4, 4, 504, 120, 60); else g.rect(4, 4, 504, 120); g.fill();
+  let px = 56;
+  do { g.font = `700 ${px}px system-ui, "Noto Sans Thai", sans-serif`; px -= 2; } while (g.measureText(text).width > 460 && px > 22);
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 68);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
+  s.scale.set(w, w / 4, 1); s.position.set(x, H(x, z) + y, z);
+  scene.add(s);
+}
+sign('รั้ว: วาร์ปข้ามได้', 2.6, 2.2, FENCE.z, 4.2);
+sign('หิน: วาร์ปไปหยุดตรงหน้า', ROCKS[0][0], 3.3, ROCKS[0][1], 5);
+
+// ---- the light: the circles of her jump and the blink's, in a scene of their own drawn after the meadow (by night the
+// meadow is dimmed to the hour's light first, as the game does it, and the light is drawn over it undimmed)
+const fxScene = new THREE.Scene();
+const circles = createMagicCircles({ seed: 2 });
+const fx = createBlinkFx();
+fxScene.add(circles.object, fx.object);
+const NIGHT = [0.26, 0.31, 0.6];
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: false, depthWrite: false,
+}));
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+let night = Q.get('day') !== '1';            // (by night, as the clip is)
+fx.setNight(night); if (circles.setNight) circles.setNight(night);
+
+// ---- the camera: the game's (player-moves.js makes it), as wide as the game's
+const FOV = () => (innerWidth < innerHeight ? 70 : 55);
+const camera = new THREE.PerspectiveCamera(FOV(), innerWidth / innerHeight, 0.1, 600);
+
+// ---- her: the game's own player, on this field, and the blink given to her
+const level = {
+  spawn: { x: 0, z: 0, yaw: 0 }, heightAt: H, waterDepthAt: () => 0, footing: () => 'ground', surfaceAt: () => 'grass',
+  colliders, cameraTrunks: [], crowns: [], radius: 30,
+};
+const sounds = createStepSounds({ level, volume: 1 });                                   // her steps, her jump, the dash (the game's), and the AudioContext
+const heard = createBlinkSounds({ context: () => sounds.context, set: Q.get('snd') === '2' ? 2 : 1 });      // the blink heard, on the same AudioContext
+const blink = createBlink({ fx, heard });
+let player = null, hero = null, slow = 1, demo = null, shownBlinks = 0, shownTries = 0, beatT = 0;
+
+(async () => {
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips } };
+  const [{ VIVI_GLB: model }, springs] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+  // (her pictures read as <img>, not fetched: as step-sounds.html does)
+  const bitmap = window.createImageBitmap;
+  window.createImageBitmap = undefined;
+  try { hero = await loadCharacter(model, anim); } finally { window.createImageBitmap = bitmap; }
+  if (springs) hero.attachSprings(createSprings(hero.model, springs));
+  hero.setSize(1.75 / hero.baseHeight);
+  player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, blink });
+  fx.prepare(hero);                                       // (her meshes read now, not as she first blinks)
+  scene.add(player.object);
+  waitEl.remove();
+  window.blinkTrial.ready = true;
+})().catch(err => { waitEl.textContent = 'โหลดวีวี่ไม่ได้\n' + (err && err.message || err); console.error(err); });
+
+// ---- the buttons: pressed, not clicked (as the game's)
+function press(id, act) {
+  const b = document.getElementById(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); if (player && !demo) act(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+}
+press('blinkBtn', () => player.blink());
+press('jumpBtn', () => player.jump());
+press('dashBtn', () => player.dash());
+addEventListener('keydown', e => { if ((e.code === 'KeyE' || e.code === 'KeyL') && !e.repeat && player && !demo) player.blink(); });
+
+// ---- ▶: a few blinks by themselves: on, on over the fence, at a rock (stopped short of it), back over the fence, across
+const DEMO = [{ yaw: 0, wait: 0.5 }, { yaw: 0, wait: 1.1 }, { yaw: -Math.PI / 2, wait: 1.1 }, { yaw: Math.PI, wait: 1.1 }, { yaw: Math.PI / 2, wait: 1.1 }];
+function startDemo() {
+  if (!player || demo || player.blinking) return;
+  player.teleport(0, 0, 0);
+  demo = { i: 0, wait: DEMO[0].wait };
+}
+function stepDemo(dt) {
+  demo.wait -= dt;
+  if (demo.wait > 0 || player.blinking) return;
+  if (demo.i >= DEMO.length) { demo = null; return; }
+  player.blink(DEMO[demo.i].yaw);
+  demo.i++;
+  demo.wait = demo.i < DEMO.length ? DEMO[demo.i].wait : 1.2;
+}
+
+const beatEl = document.getElementById('beat'), tapEl = document.getElementById('tap'), btnEl = document.getElementById('blinkBtn');
+function step(dt) {
+  if (!player) return;
+  dt = Math.min(dt, 0.05) * slow;
+  if (demo) stepDemo(dt);
+  player.update(dt);
+  circles.update(dt, camera);
+  grass.userData.setWalker(player.position, 0.55);
+  fx.update(dt, camera);
+  // the label: how far the last blink went, or that there was nowhere to go
+  if (blink.count !== shownBlinks) {
+    shownBlinks = blink.count; shownTries = blink.tries;
+    const d = blink.last ? blink.last.d / (hero.height / 1.75) : 0;
+    beatEl.textContent = `วาร์ป ${d.toFixed(1)} ม.` + (d < BLINK.reach - 0.15 ? ' (ติดของข้างหน้า)' : '');
+    beatEl.style.opacity = 1; beatT = 1.6;
+  } else if (blink.tries !== shownTries) {
+    shownTries = blink.tries;
+    beatEl.textContent = 'ทางนั้นไปไม่ได้'; beatEl.style.opacity = 1; beatT = 1.2;
+  }
+  if (beatT > 0 && (beatT -= dt / slow) <= 0) beatEl.style.opacity = 0;
+  btnEl.style.setProperty('--ready', blink.ready ? 1 : 0.2);
+  const s = sounds.stats;
+  tapEl.hidden = s.ready || !!s.failed;
+}
+function draw() {
+  renderer.clear();
+  renderer.render(scene, camera);
+  if (night) renderer.render(dimScene, camera);
+  renderer.render(fxScene, camera);
+}
+
+// ---- the buttons at the top
+const btn = id => document.getElementById(id);
+const showHour = () => { btn('hour').textContent = night ? '🌙 กลางคืน' : '☀ กลางวัน'; };
+showHour();
+btn('hour').onclick = () => { night = !night; fx.setNight(night); if (circles.setNight) circles.setNight(night); showHour(); };
+const SLOWS = [1, 0.5, 0.25];
+btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; blink.pace = slow; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
+const showSound = () => { btn('sound').textContent = `🔊 เสียง: ชุด ${heard.set}`; };
+showSound();
+btn('sound').onclick = () => { heard.set = heard.set === 1 ? 2 : 1; showSound(); };
+btn('demo').onclick = () => startDemo();
+addEventListener('resize', () => { camera.fov = FOV(); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+tapEl.hidden = false;
+
+// for a test (or the console): step the world by hand
+window.blinkTrial = {
+  ready: false, held: false,
+  get player() { return player; }, get hero() { return hero; }, blink, fx, heard, sounds, camera, renderer, level, BLINK,
+  run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
+  night(on) { if (on !== night) btn('hour').onclick(); },
+  demo() { startDemo(); }, get demoing() { return !!demo; },
+  draw,
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;                // 60 pictures a second at most: no hotter than it need be
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.blinkTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
