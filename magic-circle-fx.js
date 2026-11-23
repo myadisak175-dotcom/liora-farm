@@ -475,6 +475,7 @@ const SPARK_F = /* glsl */`
 export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
   const object = new THREE.Group();
   object.name = 'magicCircles';
+  object.renderOrder = 100;          // (a Group's renderOrder orders all within it as one, a Group within it too: after all the world's own see-through things (the falls' foam, the mist, splashes: their renderOrder goes up to 6), so that those behind her spells are not painted over them (README, "Over water"); the order within stays as set below)
   let look = CIRCLE_LOOKS.flight, night = false;
   const day = { value: 1 };                             // shared by every material
   // each circle has its own colours (its jump's, by the look): its three and the hour's, for all that is drawn of it
@@ -553,6 +554,7 @@ export function createMagicCircles({ seed = 1, lift = 0.14 } = {}) {
     splashMat.userData.noGrade = burstMat.userData.noGrade = true;
     object.add(flare);
     const g = new THREE.Group();
+    g.renderOrder = object.renderOrder;            // (a Group within sets its own: the same)
     g.add(disc, pillar, gem, wave, dome, crown);
     g.visible = false;
     object.add(g);

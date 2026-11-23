@@ -566,6 +566,7 @@ export function createBarrierFx({ radius = B.radius, lift = 0.06, seed = 1, look
   const rng = mulberry32(seed * 977 + 5);
   const object = new THREE.Group();
   object.name = 'barrier_fx';
+  object.renderOrder = 100;          // (a Group's renderOrder orders all within it as one, a Group within it too: after all the world's own see-through things (the falls' foam, the mist, splashes: their renderOrder goes up to 6), so that those behind her spells are not painted over them (README, "Over water"); the order within stays as set below)
   const time = { value: 0 };                                 // seconds, for what flows (it only ever goes on)
   const uAt = { value: new THREE.Vector3() }, uHand = { value: new THREE.Vector3() };
   const uR = { value: radius }, uLift = { value: lift }, uT = { value: -1 }, uSpin = { value: 0 }, uRaise = { value: 0 }, uScale = { value: 500 };
@@ -645,10 +646,12 @@ export function createBarrierFx({ radius = B.radius, lift = 0.06, seed = 1, look
   const puff = { puffAmount: { value: 1 }, puffSize: { value: 0.24 }, puffGrow: { value: 0.9 }, puffSpread: { value: 0.4 }, puffRise: { value: 0.5 },
     puffLife: { value: 1.3 }, puffFade: { value: 0.3 }, puffSoft: { value: 0.32 }, puffOpacity: { value: 0 } };
   const SIDES = 6, spray = new THREE.Group(), billows = [];
+  spray.renderOrder = object.renderOrder;            // (a Group within sets its own: the same, and for each side below)
   for (let i = 0; i < SIDES; i++) {
     // one stretch of the barrier's foot each: its puffs come up along it and drift outwards
     const side = new THREE.Group(), b = createBillows({ width: 2 * radius * Math.tan(Math.PI / SIDES) * 0.9, count: 7, time, tune: puff });
     side.rotation.y = i / SIDES * Math.PI * 2;
+    side.renderOrder = object.renderOrder;
     b.position.z = radius * 0.97;
     b.frustumCulled = false;
     side.add(b); spray.add(side); billows.push(b);

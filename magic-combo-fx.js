@@ -252,6 +252,7 @@ const FACING = /* glsl */`
 export function createMagicComboFx({ seed = 7 } = {}) {
   const object = new THREE.Group();
   object.name = 'magicComboFx';
+  object.renderOrder = 100;          // (a Group's renderOrder orders all within it as one: after all the world's own see-through things (the falls' foam, the mist, splashes: their renderOrder goes up to 6), so that those behind her spells are not painted over them (README, "Over water"); the order within stays as set below)
   let s0 = seed >>> 0;
   const rand = () => { s0 = (s0 + 0x6d2b79f5) >>> 0; let t = s0; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const colours = { uCore: { value: rgb(COMBO_LOOK.core) }, uMain: { value: rgb(COMBO_LOOK.main) }, uDeep: { value: rgb(COMBO_LOOK.deep) },
