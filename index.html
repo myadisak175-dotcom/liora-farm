@@ -167,6 +167,7 @@
   "./speech-bubbles.js": "./speech-bubbles.js?v=1",
   "./plant-boss-turn.js": "./plant-boss-turn.js?v=1",
   "./boss-trial.js": "./boss-trial.js?v=4",
+  "./sprite-trial.js": "./sprite-trial.js?v=1",
   "./village-kit.js": "./village-kit.js?v=bridge3",
   "./map-rim.js": "./map-rim.js?v=4",
   "./path-brush.js": "./path-brush.js?v=1",
@@ -563,6 +564,12 @@ const NOON = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();
 const bossTrial = Q.has('boss') && MAP === 'hillvillage'
   ? (await import('./boss-trial.js')).createBossTrial({ level, scene, camera, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null })
   : null;
+// ---- 🌱 ?sprite=1 (a trial): three forest sprites (สไปรต์ป่า) on the road east of where she starts, to see the model and its
+// four moves in the game (sprite-trial.js): one floats along the road, one is glad when she comes near, one jumps now and
+// then. Made here for the same reason as the boss. Without it nothing of the trial is loaded
+const spriteTrial = Q.has('sprite') && MAP === 'hillvillage'
+  ? await (await import('./sprite-trial.js')).createSpriteTrial({ level, scene, feet: () => player.position })
+  : null;
 fit();
 
 // Find a collision-free shallow bank on whichever map is active.
@@ -610,6 +617,7 @@ if (Q.get('view') === 'water') visitWater();
 // ?view=climb (the foot of the cliff path) or ?view=mill (the meadow by the windmill): start there
 if (level.views && level.views[Q.get('view')]) { const v = level.views[Q.get('view')]; player.teleport(v.x, v.z, v.yaw); }
 else if (bossTrial) player.teleport(bossTrial.spot.x, bossTrial.spot.z, bossTrial.spot.yaw);      // ?boss=1: she starts before it
+else if (spriteTrial) player.teleport(spriteTrial.spot.x, spriteTrial.spot.z, spriteTrial.spot.yaw);      // ?sprite=1: she starts where she does, turned to look down the way at them
 // ---- an editor's "save" loads the map again: she comes back where she stood, not at the map's start. The page going away while
 // an editor is open notes her spot (this tab only); the map loading again puts her back on it, once
 const SPOT_KEY = 'liora.player.spot';
@@ -886,7 +894,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, sounds, air, music, soundSettings, spellKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sounds, air, music, soundSettings, spellKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
