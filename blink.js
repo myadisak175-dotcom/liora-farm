@@ -9,7 +9,9 @@
    One job: the move's rules. Where a blink takes her, and when she is gone and there again. What is seen is
    blink-fx.js, what is heard blink-sounds.js; the player (player-moves.js, createPlayer({ blink })) moves her.
 
-     const blink = createBlink({ fx, heard })     fx: blink-fx.js's (or none), heard: blink-sounds.js's (or none)
+     const blink = createBlink({ fx, heard, stop })   fx: blink-fx.js's (or none), heard: blink-sounds.js's (or none),
+                            stop: BLINK_STOP (blink-stop-anim.js: her stop after it, whose clip `blink_stop` her clips
+                            must have too; none: no stop, she goes on as she was)
      blink.plan(q)          where a blink would take her: q = { x, y, z (her feet), dir (the way: radians, 0 = +z),
                             size (her height / 1.75 m), standAt(x, z), footing(x, z) ('ground' | 'cliff' | 'water' |
                             'wall' | 'out', or none: all ground), depthAt(x, z), colliders, radius (the map's), confine
@@ -21,7 +23,8 @@
      blink.step(dt)         every frame (it cools down between blinks): -> where she is, { gone, u, done }: gone, she
                             is not to be seen; u, how far along her way she is (0..1, for the camera); done, she is
                             there (this frame)
-     blink.stop()           it is broken off (another character, a teleport): she is wherever the player puts her
+     blink.cancel()         it is broken off (another character, a teleport): she is wherever the player puts her
+     blink.stop             her stop (BLINK_STOP), or null
      blink.active, blink.time (s since the press), blink.count (blinks begun), blink.tries (ways looked along),
      blink.last (where the last look found to go: { x, y, z, d }, or null)  (for a page's label, or a test)
 
@@ -44,7 +47,11 @@
      - Her body flashes cyan and she is gone at `vanish` (0.06 s), and there again `travel` later (0.075 s for a blink of
        `least`, 0.125 s for one of `reach`: she goes some 50 m/s): 0.19 s from the press to there, at the most. She is
        not seen between; the camera comes after her as it does after a run (player-camera.js: about 0.2 s).
-     - What she was doing goes on: running, she runs on from there (a sprint, as after the dash); standing, she stands.
+     - There, with the stick let go, she comes to a stop: Mixamo's Run To Stop, which the user sent for it on 24 Nov 2026
+       ("หลังวาร์ปเสร็จขออนิเมชั่นนี้นะ"): out of it at a run, a long stride onto her left foot, her right skidding up, low over
+       her left knee and up into her standing pose, carried 0.8 hips heights on (blink-stop-anim.js, made by
+       tools/make-blink-stop-anim.py; player-moves.js plays it). The stick pushed, she runs on instead (a sprint, as after
+       the dash): at once if it is pushed as she comes out, after a moment once she has begun to stop.
      - Not again until `cool` (0.55 s) after the press.
    ========================================================================== */
 
@@ -63,7 +70,7 @@ export const BLINK = {
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-export function createBlink({ fx = null, heard = null } = {}) {
+export function createBlink({ fx = null, heard = null, stop = null } = {}) {
   let active = false, t = 0, cool = 0, count = 0, pace = 1, tries = 0, last = null;
   let gone = false, travel = BLINK.travel[1], character = null;
   const from = { x: 0, y: 0, z: 0 }, to = { x: 0, y: 0, z: 0 };
@@ -148,6 +155,7 @@ export function createBlink({ fx = null, heard = null } = {}) {
       // (along her way out fast and slowing as she comes: where the camera is drawn after, and the ghosts are left)
       return { gone, u: gone ? 1 - (1 - u) * (1 - u) : 0, done: false };
     },
-    stop() { if (active) { active = false; if (fx) fx.stop(character); } },
+    stop,
+    cancel() { if (active) { active = false; if (fx) fx.stop(character); } },
   };
 }

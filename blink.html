@@ -13,7 +13,9 @@
   One job: try that one move. The วาร์ป button (E or L on a keyboard): she is gone, and there again a few metres on, the
   way the stick points (with it let go, the way she faces), in the clip's light: a circle under her, a dome bursting,
   afterimages of her left along the way, ribbons of light, sparks (blink.js: the rules; blink-fx.js: what is seen;
-  blink-sounds.js: the clip's own sound, cut to it). The rest is the game's own player (player-moves.js: walk, run, the
+  blink-sounds.js: the clip's own sound, cut to it). There, with the stick let go, she comes to a stop: Mixamo's Run To
+  Stop, which the user sent for it ("หลังวาร์ปเสร็จขออนิเมชั่นนี้นะ"; blink-stop-anim.js, made by
+  tools/make-blink-stop-anim.py); the stick pushed, she runs on. The rest is the game's own player (player-moves.js: walk, run, the
   dash, the magic jump, the vault), to try it beside them, in the game's meadow, by night as the clip is (☀ for day).
   On the field: a fence, which she blinks over (as she vaults it running), and rocks, which stop her short.
   Up top: ☀/🌙 the hour, ⏱ slower, 🔊 which of the clip's two sets of sound, ▶ a few blinks by themselves.
@@ -82,7 +84,7 @@
 <button id="dashBtn" class="act" type="button" aria-label="พุ่ง"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span></button>
 <button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
 <button id="blinkBtn" class="act" type="button" aria-label="วาร์ป"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="9" cy="12" r="1.6"/><path d="M13 5.5l6.5 6.5-6.5 6.5"/><path d="M19.5 12h-6"/><path d="M15.5 3.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" stroke-width="1.2"/></svg><br>วาร์ป</span></button>
-<div id="hint">ปุ่มวาร์ป (คีย์บอร์ด E) · ลองวาร์ปข้ามรั้ว · วาร์ปเข้าหาหินจะหยุดตรงหน้าหิน<br>กดตอนวิ่งอยู่ วาร์ปแล้ววิ่งต่อได้เลย</div>
+<div id="hint">ปุ่มวาร์ป (คีย์บอร์ด E) · ปล่อยจอยแล้ววาร์ป = โผล่มาแล้วเบรกหยุด · ดันจอยค้าง = วาร์ปแล้ววิ่งต่อ<br>ลองวาร์ปข้ามรั้ว · วาร์ปเข้าหาหินจะหยุดตรงหน้าหิน</div>
 <div id="tap" hidden><span>แตะจอหนึ่งครั้งเพื่อเปิดเสียง</span></div>
 <div id="wait">กำลังโหลดวีวี่…</div>
 <script type="module">
@@ -97,10 +99,11 @@ import { VAULT_ANIM } from './vault-anim.js';
 import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
 import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
 import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
-import { createPlayer } from './player-moves.js?v=blink1';
+import { CHARACTER_ANIM as STOP_ANIM, BLINK_STOP } from './blink-stop-anim.js?v=1';      // (her stop after it: Mixamo's Run To Stop, posed for her)
+import { createPlayer } from './player-moves.js?v=blink2';
 import { createMagicCircles } from './magic-circle-fx.js';
 import { createStepSounds } from './step-sounds.js';
-import { createBlink, BLINK } from './blink.js?v=1';
+import { createBlink, BLINK } from './blink.js?v=2';
 import { createBlinkFx } from './blink-fx.js?v=1';
 import { createBlinkSounds } from './blink-sounds.js?v=1';
 
@@ -218,11 +221,11 @@ const level = {
 };
 const sounds = createStepSounds({ level, volume: 1 });                                   // her steps, her jump, the dash (the game's), and the AudioContext
 const heard = createBlinkSounds({ context: () => sounds.context, set: Q.get('snd') === '2' ? 2 : 1 });      // the blink heard, on the same AudioContext
-const blink = createBlink({ fx, heard });
+const blink = createBlink({ fx, heard, stop: BLINK_STOP });
 let player = null, hero = null, slow = 1, demo = null, shownBlinks = 0, shownTries = 0, beatT = 0;
 
 (async () => {
-  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips } };
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...STOP_ANIM.clips } };
   const [{ VIVI_GLB: model }, springs] = await Promise.all([
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
