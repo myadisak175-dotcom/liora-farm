@@ -1,7 +1,7 @@
 /* ==========================================================================
    blink-sounds.js  —  the blink heard (blink.js, blink-fx.js): the sound of the clip it was made after, cut to the move
    ("เอาเสียงในวีดีโอมาใช้กับ effect Blink ได้ทำให้เข้ากัน", 24 Nov 2026). One job: play its two pieces so that each one's
-   moment is heard as the thing it belongs to is seen. A trial, with the blink: blink.html.
+   moment is heard as the thing it belongs to is seen. In the game with the blink (index.html; blink.html tries it alone).
 
    The pieces (assets/audio/blink-*.mp3, cut from the clip by tools/make-blink-sounds.py: what is in each, and why it is
    cut where it is, is told there). The clip does the same thing twice, each time with sounds of its own, so there are
@@ -41,15 +41,19 @@ export function createBlinkSounds({ context = null, volume = 1, set = 1 } = {}) 
   const raw = {}, bufs = {}, voices = new Set();
   const stats = { blinks: 0, played: 0, late: 0, last: [] };
   const key = (n, name) => n + name;
-  // the files: fetched at once (no touch is needed for that)
-  for (const [n, pieces] of Object.entries(SETS)) {
-    for (const [name, p] of Object.entries(pieces)) {
+  // the files: the set's, fetched at once (no touch is needed for that); another set's only once it is chosen
+  const fetched = new Set();
+  function load(n) {
+    if (fetched.has(+n)) return;
+    fetched.add(+n);
+    for (const [name, p] of Object.entries(SETS[n])) {
       fetch(AT + p.file).then(r => { if (!r.ok) throw new Error(p.file + ': HTTP ' + r.status); return r.arrayBuffer(); })
         .then(b => { raw[key(n, name)] = b; if (ctx) decode(key(n, name)); })
         .catch(err => { failed = failed || err; console.warn('[blink sounds]', err); });
     }
   }
-  const all = Object.values(SETS).reduce((s, p) => s + Object.keys(p).length, 0);
+  load(which);
+  const all = () => [...fetched].reduce((s, n) => s + Object.keys(SETS[n]).length, 0);
   function decode(k) {
     const b = raw[k];
     if (!b || bufs[k] || !ctx) return;
@@ -102,8 +106,8 @@ export function createBlinkSounds({ context = null, volume = 1, set = 1 } = {}) 
     get volume() { return vol; },
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (out) out.gain.value = MASTER * vol; },
     get set() { return which; },
-    set set(n) { if (SETS[n]) which = +n; },
-    get stats() { return { ...stats, set: which, state: ctx ? ctx.state : 'asleep', ready: Object.keys(bufs).length, of: all, failed: failed ? String(failed) : null, sounding: voices.size }; },
+    set set(n) { if (SETS[n]) { which = +n; load(which); } },
+    get stats() { return { ...stats, set: which, state: ctx ? ctx.state : 'asleep', ready: Object.keys(bufs).length, of: all(), failed: failed ? String(failed) : null, sounding: voices.size }; },
     blink(gone = 0.06, there = 0.18, pace = 1) {
       stats.blinks++;
       if (!ready() || !bufs[key(which, 'out')]) return;      // (asleep still, or not read yet: this one goes unheard)

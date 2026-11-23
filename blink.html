@@ -7,9 +7,9 @@
 <title>วีวี่ — วาร์ป (Blink)</title>
 <!--
   blink.html  —  Vivi's blink, to try (24 Nov 2026, with ten seconds of a clip: "ในวีดีโอมันวิ่ง แต่เราจะทำเป็น Blink แทน
-  ให้เหมือนตัวละครวาร์ปได้ แต่ทำ effect คล้ายๆ ในวีดีโอ เอาเสียงในวีดีโอมาใช้กับ effect Blink ได้ทำให้เข้ากัน"). Kept apart
-  from the game: the game is as it was (player-moves.js takes a blink only from a page that gives it one, and index.html
-  gives none).
+  ให้เหมือนตัวละครวาร์ปได้ แต่ทำ effect คล้ายๆ ในวีดีโอ เอาเสียงในวีดีโอมาใช้กับ effect Blink ได้ทำให้เข้ากัน"). In the
+  game too since the same day ("อันนี้ขึ้นเมนเลย": index.html gives the player the same blink, ?blink=0 none); here it is
+  alone, to look at closely.
   One job: try that one move. The วาร์ป button (E or L on a keyboard): she is gone, and there again a few metres on, the
   way the stick points (with it let go, the way she faces), in the clip's light: a circle under her, a dome bursting,
   afterimages of her left along the way, ribbons of light, sparks (blink.js: the rules; blink-fx.js: what is seen;
@@ -100,12 +100,12 @@ import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
 import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
 import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
 import { CHARACTER_ANIM as STOP_ANIM, BLINK_STOP } from './blink-stop-anim.js?v=1';      // (her stop after it: Mixamo's Run To Stop, posed for her)
-import { createPlayer } from './player-moves.js?v=blink2';
+import { createPlayer } from './player-moves.js?v=blink3';
 import { createMagicCircles } from './magic-circle-fx.js';
 import { createStepSounds } from './step-sounds.js';
 import { createBlink, BLINK } from './blink.js?v=2';
 import { createBlinkFx } from './blink-fx.js?v=1';
-import { createBlinkSounds } from './blink-sounds.js?v=1';
+import { createBlinkSounds } from './blink-sounds.js?v=2';
 
 const Q = new URLSearchParams(location.search);
 const phone = matchMedia('(pointer: coarse)').matches;

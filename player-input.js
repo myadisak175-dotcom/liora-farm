@@ -7,9 +7,10 @@
 //   jump, dash buttons (index.html) call player.jump(), player.dash()    keyboard: Space, Shift
 //   attack, roll, barrier buttons (index.html): player.attack() .. release(), player.roll(), player.barrier()
 //                                                                        keyboard: J (held: held), K, B
+//   blink button (index.html, blink.html): player.blink()                keyboard: E or L
 //
 //   const input = createPlayerInput({ dom: renderer.domElement, ui: document.getElementById('stick'), onTap, onJump, onDash, onLook, onZoom,
-//                                     onAttack, onAttackUp, onRoll, onBarrier });
+//                                     onAttack, onAttackUp, onRoll, onBarrier, onBlink });
 //   input.stick(out)   every frame: fills out (a Vector2: x to the right, y towards the player, -1..1) and returns how far it is pushed, 0..1
 //   input.looking      a finger (or the mouse) is turning the camera right now
 //
@@ -20,7 +21,7 @@ import * as THREE from 'three';
 const STICK_R = 56;                           // the joystick's reach on the screen (px)
 
 export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null, onDash = null, onLook = null, onZoom = null,
-  onAttack = null, onAttackUp = null, onRoll = null, onBarrier = null }) {
+  onAttack = null, onAttackUp = null, onRoll = null, onBarrier = null, onBlink = null }) {
   const move = new THREE.Vector2();           // the joystick, -1..1
   const keys = new Set();
   let stickId = null, lookId = null, tapT = 0;
@@ -71,6 +72,7 @@ export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null,
     if (e.code === 'KeyJ' && onAttack) onAttack();
     if (e.code === 'KeyK' && onRoll) onRoll();
     if (e.code === 'KeyB' && onBarrier) onBarrier();
+    if ((e.code === 'KeyE' || e.code === 'KeyL') && onBlink) onBlink();
   });
   addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'KeyJ' && onAttackUp) onAttackUp(); });
   addEventListener('blur', () => keys.clear());

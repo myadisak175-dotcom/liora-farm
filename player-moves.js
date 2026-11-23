@@ -39,13 +39,13 @@
 //     not in the game yet.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
-//   - blink (a trial since 24 Nov 2026, on blink.html only: createPlayer({ blink }) and player.blink(); the game passes no
-//     blink and has none): she is gone, and there again a few metres on, the way the stick points (blink.js says where
+//   - blink (in the game since 24 Nov 2026, the วาร์ป button, E or L; ?blink=0: none. A page gives it: createPlayer({ blink })
+//     and player.blink(); blink.html tries it alone): she is gone, and there again a few metres on, the way the stick points (blink.js says where
 //     and when, blink-fx.js and blink-sounds.js what is seen and heard). On the ground only, as the dash; while it has her
 //     (mode 'blink') she is not seen, and is carried along her way for the camera to follow. There, with the stick let go,
 //     she comes to a stop (Mixamo's Run To Stop, the user's: blink-stop-anim.js, given as the blink's `stop`), carried
 //     along its way; the stick pushed, she runs on (at once while she is still running in it, after a moment once she
-//     has begun to stop); a jump, a dash or another blink cuts it short.
+//     has begun to stop); a jump, a dash, another blink or a spell cuts it short.
 // Her walk and run are the walker's (a run is 4.2 m/s at 1.75 m; the first trial ran at 5.0 and that was too fast).
 //
 // Her weight (a trial since 20 Nov 2026: createPlayer({ weight: true }), player.setWeight(on); in the game with ?weight=1 and
@@ -213,6 +213,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     onLook: (yaw, pitch) => { if (!spells || !spells.aiming) cam.turn(yaw, pitch); }, onZoom: d => { if (!spells || !spells.aiming) cam.zoom(d); },      // (holding the lance, the camera is the lance's)
     onAttack: spells ? () => spells.attack() : null, onAttackUp: spells ? () => spells.release() : null,
     onRoll: spells ? () => spells.roll() : null, onBarrier: spells ? () => spells.barrier() : null,
+    onBlink: blink ? () => { blinkWanted = JUMP_BUFFER; blinkAim = null; } : null,
   });
   const steps = createFootsteps(level, sounds);
   steps.find(character);
@@ -1098,17 +1099,24 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       shy = Math.max(0, shy - dt); grabShy = Math.max(0, grabShy - dt);
       // ---- a spell (player-spells.js): on the ground (or wading no deeper than her knees) one may begin, or has her
       if (spells) {
-        const can = (mode === 'ground' || mode === 'cast') && depthHere < 0.32 * k;
+        // (her stop after a blink is on the ground too: a spell may cut it, as the jump and the dash do; gone in the blink
+        // itself, none may begin)
+        const stopping = mode === 'blink' && blinkOut >= 0;
+        const can = (mode === 'ground' || mode === 'cast' || stopping) && depthHere < 0.32 * k;
         if (!can && spells.active) spells.stop();
         me.heading = heading;
         if (mode === 'ground') me.vel.set(Math.sin(heading) * speed, 0, Math.cos(heading) * speed);      // (on the run: the leap)
+        else if (stopping) me.vel.set(0, 0, 0);                                                      // (coming to a stop: not the leap)
         castStick.amount = pushing ? Math.min(1, amount) : 0; castStick.x = Math.sin(want); castStick.z = Math.cos(want);
         const x0 = pos.x, z0 = pos.z;
-        if (spells.step(dt, me, { grounded: can, stick: castStick, ground: groundAt })) mode = 'cast';
+        if (spells.step(dt, me, { grounded: can, stick: castStick, ground: groundAt })) {
+          if (stopping) { blinkOut = -1; landT = -1; speed = 0; went = 0; }                          // (her stop let go: the spell has her)
+          mode = 'cast';
+        }
         else if (mode === 'cast') { mode = 'ground'; heading = me.heading; }
         if (mode === 'cast') castStep(dt, k, x0, z0);
       }
-      // ---- the blink (blink.js; none in the game): on the ground (or wading no deeper than her knees), as the dash
+      // ---- the blink (blink.js; none with ?blink=0): on the ground (or wading no deeper than her knees), as the dash
       if (blink) {
         if (mode === 'blink') blinkStep(dt, k, pushing);
         else {

@@ -5,7 +5,8 @@
    runs off trailing cyan afterimages of herself and ribbons of light, and lands crouched on another circle in a splash
    of sparks): "ในวีดีโอมันวิ่ง แต่เราจะทำเป็น Blink แทน ให้เหมือนตัวละครวาร์ปได้ แต่ทำ effect คล้ายๆ ในวีดีโอ เอาเสียงใน
    วีดีโอมาใช้กับ effect Blink ได้ทำให้เข้ากัน" (in the clip she runs; here she blinks instead, warps, with an effect like
-   the clip's, and the clip's own sound made to go with it). A trial, kept apart from the game: blink.html.
+   the clip's, and the clip's own sound made to go with it). In the game since 24 Nov 2026 ("อันนี้ขึ้นเมนเลย": index.html,
+   the วาร์ป button; ?blink=0: without); blink.html tries it alone, on a field by night.
    One job: the move's rules. Where a blink takes her, and when she is gone and there again. What is seen is
    blink-fx.js, what is heard blink-sounds.js; the player (player-moves.js, createPlayer({ blink })) moves her.
 
