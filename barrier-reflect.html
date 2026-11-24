@@ -112,8 +112,8 @@ import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
 import { createPlayer } from './player-moves.js?v=blink3';
 import { createMagicCircles } from './magic-circle-fx.js';
 import { createStepSounds } from './step-sounds.js';
-import { createReflectBarrier, REFLECT_BARRIER } from './barrier-reflect.js?v=2';
-import { createReflectBarrierFx, REFLECT_FX } from './barrier-reflect-fx.js?v=2';
+import { createReflectBarrier, REFLECT_BARRIER } from './barrier-reflect.js?v=3';
+import { createReflectBarrierFx, REFLECT_FX } from './barrier-reflect-fx.js?v=3';
 import { createReflectBarrierSounds } from './barrier-reflect-sounds.js?v=2';
 
 const Q = new URLSearchParams(location.search);
@@ -249,7 +249,7 @@ const chest = (out = new THREE.Vector3()) => out.copy(player.position).add(new T
 })().catch(err => { waitEl.textContent = 'โหลดวีวี่ไม่ได้\n' + (err && err.message || err); console.error(err); });
 
 // ---- the bolts: thrown by a tower at her chest (the clip's bolt), or thrown back by the barrier at the tower
-const SHOT = { charge: 0.32, speed: 24, len: 2.4, wide: 0.3, range: 34, backSpeed: 44, backLen: 3.2, backWide: 0.34 };
+const SHOT = { charge: 0.32, speed: 24, len: 2.4, wide: 0.3, range: 34, backSpeed: 44, backLen: 3.2, backWide: 0.22 };
 const shots = [];
 let seedTurn = 1;
 function fire(t, wait = 0) {
@@ -270,13 +270,14 @@ barrier.onReflect = ({ at, blows }) => {
     shots.push({ kind: 1, pos: at.clone(), way: t.position.clone().sub(at).normalize(), speed: SHOT.backSpeed, went: 0, tower: t, from: at.clone(), seed: seedTurn++ * 0.37 });
   }
   say('สะท้อนกลับ!', 1.4);
-  hitStop(0.08); shake(0.12);
+  hitStop(0.08, 0.05); shake(0.12);      // (the world stops once the burst is big and white, not before it is seen)
 };
 barrier.onStrike = ({ first }) => { hitStop(first ? 0.05 : 0.03); shake(first ? 0.05 : 0.03); };
-// the action game's weight: the world stops for an instant (s) and the camera shakes (m), dying away
-let stopT = 0, shakeA = 0, shakeAge = 9;
+// the action game's weight: the world stops for an instant (s; `after` s of the game's time from now) and the camera
+// shakes (m), dying away
+let stopT = 0, shakeA = 0, shakeAge = 9, stopLater = null;
 const shakeOff = new THREE.Vector3();
-function hitStop(s) { stopT = Math.max(stopT, s); }
+function hitStop(s, after = 0) { if (after > 0) stopLater = { at: time + after, s }; else stopT = Math.max(stopT, s); }
 function shake(a) { shakeA = Math.max(shakeA * Math.exp(-shakeAge * 14), a); shakeAge = 0; }
 // she, hit with no barrier: a flash on her, washed red a moment
 function hitHer(at, from) {
@@ -417,6 +418,7 @@ function step(dt) {
   if (!player) return;
   const real = Math.min(dt, 0.05);
   let k = slow;
+  if (stopLater && time >= stopLater.at) { stopT = Math.max(stopT, stopLater.s); stopLater = null; }
   if (stopT > 0) { stopT -= real; k *= 0.05; }
   shakeAge += real;
   dt = real * k;

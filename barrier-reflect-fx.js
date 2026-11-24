@@ -5,10 +5,12 @@
    over a disc of light on the ground; sparkles hang, and the dome stands up again). "สกิลบาเรียอยากได้เอฟเฟคประมาณนี้ค่ะ
    เหมือนเป็นโล่อะ เคลื่อนที่ได้ แล้วก็มี reflection ตอนบาเรียโดนโจมตี แล้วก็แตกด้วย ... เอฟเฟคขอแบบในวีดีโอเลยนะคะ": the
    clip's own look, on a shield that goes where she goes. Then, the same day, of the first try: "เอฟเฟคแข็งมาก ไม่นุ่มแบบ
-   anime เลย แล้วก็อนิเมชั่นมันช้าไปอะ อยากได้แบบเกม action rpg": so every light here is soft (a white heart in a wide
-   glow, as the clip's has, which a picture over the whole screen gives it there and this cannot have on a phone), nothing
-   has a hard edge, and it all goes at an action game's pace: up with a pop, struck, thrown back and broken inside half a
-   second. One job: draw it. It decides nothing.
+   anime เลย แล้วก็อนิเมชั่นมันช้าไปอะ อยากได้แบบเกม action rpg": so its light is soft (a white heart in a wide glow, as
+   the clip's has, which a picture over the whole screen gives it there and this cannot have on a phone), and it all goes
+   at an action game's pace: up with a pop, struck, thrown back and broken inside half a second. And of the second try:
+   "ทำเอฟเฟคตอนโดน สะท้อน ให้ใกล้เคียง ref หน่อยได้ไหมคะ": so the blow and the burst are the clip's shapes again, drawn
+   crisp, each in a glow (the clip's are: anime's light is sharp shapes that glow, not blurs), at that pace still.
+   One job: draw it. It decides nothing.
 
      const fx = createReflectBarrierFx({ heightAt })    heightAt(x, z): the ground's height (the disc lies on it)
      scene.add(fx.object)                     (a page that dims its land by night draws this after the dimming)
@@ -36,36 +38,43 @@
      - the dome: a ball a little bigger than she is tall, its middle a third of its radius over her feet, as clear as
        glass with a sky-blue tint and a bright edge; round it, bundles of thin lines of light (a white heart, cyan beside
        it, fanning out and drawn in again) going round it in waves (REFLECT_LOOK; the colours read off the clip's frames)
-     - the blow: a white flash where it lands, a ring of light thrown out round it with deep blue in it, needles of light,
-       a line of light back the way it came, white lightning leaping off
+     - the blow: where it lands, at once a white heart in a crown of rays; then a ball of blue thrown out round it, lit
+       at its rim as glass is, as the heart is drawn in to a point; needles of light all round it (white, thick, thinning
+       to their tails); a few dark bits of glass; a long thin line of light across the picture through it; a line of light
+       back the way it came; white lightning leaping off
      - the dome deep blue, darker at its edge, lightning cracking all through it from where it was struck, purple
        lightning round a star of light where the blow went in
-     - it bursts: a flash where it was struck, a long line of light back the way the blow came (the blow thrown back,
-       barrier-reflect.js), a ball of light swelling out of it, the shell blown out, the glass flying off, a disc of light
-       thrown out over the ground (a bright rim, pale aqua, blots of deep blue, purple lightning) with dust over its edge;
-       dashes of light flung up and out that hang as sparkles
+     - it bursts: the dome is gone at once; a ball of light swells out between where it was struck and her (round her
+       hand, in the clip): white at first, its edge spiked like ice; then sky-blue glass, white at its heart with rays out
+       of it, petals of deep blue between them, wide at its rim; it clears from its middle out to its bright spiked rim,
+       and that goes. A long line of light across the picture through it and a short one up and down; a long line back
+       the way the blow came (the blow thrown back, barrier-reflect.js); purple lightning out of it; its glass flying off
+       as dark shards, turning slowly; a disc of light thrown out over the ground (a broad white rim, a pale band, sky
+       blue with blots of deep blue, purple lightning) with dust over its edge; dashes of light flung out of the ball as
+       it clears, that hang as sparkles
      - standing up: clear, sparkles in it, a purple glow at its foot, the lines of light coming last
    What is not the clip's, for the action game's pace: the beats a quarter as long (the clip takes 1.8 s from the blow to
    the burst, here 0.4); the dome pops up as it is raised (smaller, past its size, back) with a ring of light over the
-   ground; it swells and trembles as it charges, and swells and whitens a moment as it bursts; its shards are its own
-   glass, lit (the clip's are dark); a glow round its edge. The page stops the world for an instant and shakes the camera
-   at the blow and the burst (barrier-reflect.html).
+   ground; it swells and trembles as it charges; a glow round its edge. The page stops the world for an instant and
+   shakes the camera at the blow, and at the burst once the ball is big and white (barrier-reflect.html).
 
    HOW IT IS DRAWN (as her other spells are: blink-fx.js, magic-combo-fx.js). Light laid over the picture with one blend
    (what a thing covers hides what is behind it, its glow only adds); every material see-through, writing no depth,
    marked userData.noGrade (the light of the hour and the curse leave it alone); the whole a Group whose renderOrder is
-   100 (README, "Over water"). Soft, not blurred: every line and flash a thin white heart in a wide falling-off glow
-   (its shader's own exp(), or its picture read twice: as it is, and from a smaller copy of itself the graphics chip
-   makes (a mipmap, read at a set size: textureLod), which is the same lines blurred).
+   100 (README, "Over water"). Sharp shapes in a glow: each shape's edge drawn crisp to the pixel (its shader's own
+   fwidth()), its glow falling off round it (exp()); the dome's lines a thin white heart in a wide glow (their picture
+   read twice: as it is, and from a smaller copy of itself the graphics chip makes (a mipmap, read at a set size:
+   textureLod), which is the same lines blurred).
      - the dome: a ball drawn twice (its far wall, then its near one), everything on it worked out by its shader from
        where on the ball it is: the glass, the lines of light, the ripples, the lightning (a picture of cracks laid round
        the place it was struck); a glow round its edge (a square turned to the eye). 3 draws
      - the pictures: drawn once as the page opens, on canvases, the same each time (a seeded random)
-     - the ring as it is raised, the shell, the disc, the dust: one shape each; the shards: one shape, instanced; the
-       needles, dashes, sparkles, puffs: one square each, instanced, their whole way worked out by the shader from where
-       and when they began; the lightning: one strip through all of it, its points made anew as it flickers; flashes and
-       the burst: a square each turned to the eye; the bolts: one square each, instanced
-   At most some 16 draws while it bursts, 3 to 5 while it stands, none when nothing is.
+     - the ring as it is raised, the disc, the dust: one shape each; the shards: one shape, instanced; the needles,
+       dashes, sparkles, puffs: one square each, instanced, their whole way worked out by the shader from where and when
+       they began; the lightning: one strip through all of it, its points made anew as it flickers; flashes, the burst,
+       the long lines of light: a square each turned to the eye (a line's drawn out); the bolts: one square each,
+       instanced
+   At most some 15 draws while it bursts, 3 to 5 while it stands, none when nothing is.
    ========================================================================== */
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
@@ -96,15 +105,16 @@ export const REFLECT_LOOK = {
 //            that); white: s its flash takes to go; sparkles thrown out of it as it pops up
 //   ring:    the ring of light over the ground as it is raised (life; r: as far as it goes, of the dome's radius)
 //   fade:    s it takes to go without a blow
-//   strike:  the blow (s from it): flash (its life), needles (how many), bolts (white lightning off it: when, how long),
-//            dim (its lines go, from .. to), white (s the dome's own flash takes to go)
+//   strike:  the blow (s from it): flash (its life), needles (how many), bits (dark bits of glass off it), bolts (white
+//            lightning off it: when, how long), dim (its lines go, from .. to), white (s the dome's own flash takes to go)
 //   charge:  at: the cracks begin; spread: s they take to run all through it; rise: s it takes to go deep blue; flick: s
 //            each look of the lightning lasts; purple: from when purple lightning plays round the star; swell: how much
 //            bigger it grows as it charges, of its size
-//   pop:     as it bursts: s it swells and whitens before it is gone, how much bigger
-//   burst:   the ball of light where it was struck (life; r: m it reaches; drift: of the way to the dome's middle)
-//   shell:   the dome's shell blown out (at, life, grow: of r)
-//   shards:  its glass flying (at, how many, speed m/s out, up, life, size m)
+//   burst:   the ball of light where it was struck, the dome gone at once (life; size: m, its square's half; from: how
+//            far it is from there to her, of the way; drift: how much further it goes as it swells)
+//   flare:   the long line of light across the picture through the blow and through the burst: [life, m thick (its
+//            square's half), how many times that long]
+//   shards:  its glass flying, dark (at, how many, speed m/s out, up, life, size m)
 //   flash:   purple lightning out of the burst (at, how many, life, len m)
 //   disc:    at, life, r0 .. r1 (m), hole (its middle going, from .. to, of its life), lift (over the ground: over the
 //            grass), drop (it comes down so far onto that in its first `fall` s)
@@ -118,16 +128,15 @@ export const REFLECT_FX = {
   form: { time: 0.34, from: 0.22, lines: [0.3, 1.0], white: 0.32, sparkles: 34 },
   ring: { life: 0.42, r: 1.45 },
   fade: 0.32,
-  strike: { flash: 0.3, needles: 60, bolts: 3, boltAt: 0.03, boltLife: 0.2, dim: [0.05, 0.16], white: 0.07 },
-  charge: { at: 0.09, spread: 0.07, rise: 0.08, flick: 0.045, purple: 0.12, swell: 0.06 },
-  pop: { time: 0.07, grow: 0.1 },
-  burst: { life: 0.38, r: 1.35, drift: 0.45 },
-  shell: { at: 0.03, life: 0.26, grow: 0.42 },
-  shards: { at: 0.02, n: 40, speed: [4.5, 10], up: [0.6, 3.2], life: [0.45, 0.8], size: [0.05, 0.13] },
-  flash: { at: 0.02, n: 6, life: 0.26, len: [1.2, 2.4] },
-  disc: { at: 0.03, life: 0.78, r0: 0.6, r1: 4.4, hole: [0.22, 0.72], lift: 0.3, drop: 0.2, fall: 0.12 },
+  strike: { flash: 0.34, needles: 90, bits: 7, bolts: 3, boltAt: 0.05, boltLife: 0.2, dim: [0.06, 0.16], white: 0.05 },
+  charge: { at: 0.1, spread: 0.07, rise: 0.08, flick: 0.045, purple: 0.13, swell: 0.05 },
+  burst: { life: 0.6, size: 2.0, from: 0.45, drift: 0.3 },
+  flare: { hit: [0.3, 0.3, 9], burst: [0.3, 0.36, 12] },
+  shards: { at: 0.08, n: 16, speed: [1.8, 4.2], up: [0.3, 1.6], life: [0.6, 1.0], size: [0.15, 0.3] },
+  flash: { at: 0.06, n: 7, life: 0.34, len: [0.9, 1.8] },
+  disc: { at: 0.03, life: 0.85, r0: 0.6, r1: 4.4, hole: [0.3, 0.78], lift: 0.3, drop: 0.2, fall: 0.12 },
   dust: { at: 0.06, life: 0.62, h: 0.5 },
-  dashes: { at: 0.02, n: 140, speed: [3, 8.5], life: [0.45, 0.85], sparkles: 70, sparkleLife: [0.8, 1.4] },
+  dashes: { at: 0.14, n: 90, speed: [2.5, 7.5], life: [0.45, 0.85], sparkles: 70, sparkleLife: [0.8, 1.4] },
   crackles: { from: 0.1, to: 0.62, every: 0.05, len: [0.35, 0.8] },
   puffs: { at: 0.22, n: 8 },
   near: { none: 0.6, whole: 1.6 },
@@ -403,27 +412,9 @@ const RING_FRAG = /* glsl */`
     gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), (ring * 0.45 + fill * 0.15) * k);
   }`;
 
-// ---- the shell blown out as it bursts: the same ball, only its glowing edge, breaking up
-const SHELL_FRAG = /* glsl */`
-  uniform float uU, uAlpha, uNight;
-  uniform vec2 uNear;
-  varying vec3 vL, vW, vN;
-  ${NOISE}
-  void main() {
-    vec3 n = normalize(vL);
-    vec3 N = normalize(vN), V = normalize(cameraPosition - vW);
-    float f = 1.0 - abs(dot(N, V));
-    float edge = pow(f, 3.0);
-    float bits = noise2(vec2(n.x * 4.1 + n.y * 2.3, n.z * 4.3 - n.y * 1.9) + 11.0) * 0.65 + noise2(vec2(n.x * 11.0 - n.z * 3.0, n.y * 10.0 + n.z * 4.0)) * 0.35;
-    float keep = smoothstep(uU * 1.1 - 0.12, uU * 1.1 + 0.12, bits);
-    float a = (edge * 0.7 + 0.05) * keep * (1.0 - smoothstep(0.4, 1.0, uU)) * uAlpha;
-    vec3 col = mix(vec3(0.42, 0.85, 1.0), vec3(0.96, 1.0, 1.0), smoothstep(0.6, 1.0, f)) * (1.0 + 0.15 * uNight);
-    a *= smoothstep(uNear.x, uNear.y, length(cameraPosition - vW));
-    gl_FragColor = vec4(clamp(col * a * 1.3, 0.0, 1.0), clamp(a * 0.6, 0.0, 1.0));
-  }`;
-
 // ---- the disc on the ground: a round grid laid over the ground (its heights set as it is thrown out), drawn by its
-// shader: a soft bright rim running out, light and blots of blue behind it, its middle going first
+// shader as the clip's: a broad white rim running out, a pale band in it, sky blue behind with blots of deep blue (their
+// edges a little soft), a glow past the rim; its middle going first
 const DISC_VERT = /* glsl */`
   uniform float uMax, uDrop;
   varying vec2 vP;
@@ -441,29 +432,35 @@ const DISC_FRAG = /* glsl */`
   void main() {
     float d = length(vP);
     float s = d / max(uRad, 1e-3);
-    if (s > 1.25) discard;
-    float rimD = (s - 0.95) / 0.055;
-    float rim = exp(-rimD * rimD);                                    // its bright rim, soft
-    float past = max(s - 0.95, 0.0);
-    float outer = exp(-past * past / 0.006) * step(0.95, s);          // and a glow past it
-    float body = smoothstep(1.0, 0.86, s) * smoothstep(uHole - 0.16, uHole + 0.1, s);          // behind it, its middle going
+    if (s > 1.2) discard;
+    float aa = fwidth(s) * 1.3 + 1e-4;
+    float inside = 1.0 - smoothstep(1.0 - aa, 1.0 + aa, s);
+    float body = inside * smoothstep(uHole - 0.07, uHole + 0.02, s);           // (its middle going)
+    float rim = smoothstep(0.875 - aa, 0.875 + aa, s);                         // its broad white rim
+    float pale = smoothstep(0.75 - 2.0 * aa, 0.75 + 2.0 * aa, s) * (1.0 - rim); // a pale band in it
     float cs = cos(uSpin), sn = sin(uSpin);
     vec2 q = vP / uRad;
     vec2 uv = 0.5 + 0.47 * vec2(q.x * cs - q.y * sn, q.x * sn + q.y * cs);
-    float b = textureLod(uBlots, uv, 1.6).r;
-    float blot = smoothstep(0.18, 0.5, b), deep = smoothstep(0.45, 0.8, b);
-    vec3 col = mix(vec3(0.38, 0.64, 0.95), vec3(0.6, 0.92, 1.0), smoothstep(0.45, 0.85, s));
-    col = mix(col, vec3(0.3, 0.5, 0.9), blot * 0.8);
-    col = mix(col, vec3(0.2, 0.34, 0.72), deep * 0.7);
-    float ba = body * (0.42 + 0.3 * smoothstep(0.5, 0.92, s));
-    vec3 rgb = col * ba + vec3(0.8, 0.98, 1.0) * rim * 0.95 + vec3(0.45, 0.85, 1.0) * outer * 0.55;
-    float a = ba + rim * 0.5 + outer * 0.12;
-    // purple lightning over it
+    float b = textureLod(uBlots, uv, 0.8).r;
+    float blot = smoothstep(0.23, 0.37, b), deep = smoothstep(0.55, 0.71, b);
+    vec3 col = mix(vec3(0.36, 0.62, 0.93), vec3(0.52, 0.88, 0.99), smoothstep(0.4, 0.75, s));
+    col = mix(col, vec3(0.27, 0.47, 0.88), blot);
+    col = mix(col, vec3(0.14, 0.27, 0.64), deep);
+    col = mix(col, vec3(0.72, 0.96, 0.99), pale);
+    col = mix(col, vec3(0.97, 0.995, 1.0), rim);
+    float a = body * mix(0.8, 0.97, rim);
+    vec3 rgb = col * a;
+    // a glow past its rim, soft
+    float past = max(s - 1.0, 0.0);
+    float glow = exp(-past * past / 0.005) * (1.0 - inside) * (1.0 - smoothstep(0.8, 1.0, uHole));
+    rgb += vec3(0.5, 0.9, 1.0) * glow * 0.75; a += glow * 0.22;
+    // purple lightning over it: white hearts in a purple glow
     vec2 q1 = 0.5 + 0.46 * vec2(q.x * uTurn.x - q.y * uTurn.y, q.x * uTurn.y + q.y * uTurn.x);
     float l = dot(textureLod(uCracks, q1, 0.0).rg, uPick) * uLight * body;
     float lg = min(1.0, dot(textureLod(uCracks, q1, 2.0).rg, uPick) * 3.0) * uLight * body;
-    rgb += vec3(0.6, 0.28, 1.0) * lg * 0.7 + vec3(0.4, 0.62, 0.05) * smoothstep(0.35, 0.95, l);
-    a += lg * 0.15 + smoothstep(0.35, 0.95, l) * 0.3;
+    float lh = smoothstep(0.4, 0.9, l);
+    rgb += vec3(0.66, 0.3, 1.0) * lg * 0.85 + vec3(0.3, 0.55, 0.02) * lh;
+    a += lg * 0.2 + lh * 0.35;
     rgb *= 1.0 + 0.15 * uNight;
     gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), clamp(a, 0.0, 1.0)) * uAlpha;
   }`;
@@ -485,11 +482,12 @@ const DUST_FRAG = /* glsl */`
     gl_FragColor = vec4(col * a, a);
   }`;
 
-// ---- a flash, the star, the burst: a square turned to the eye (q -1..1), drawn by what it is. All of them soft: a
-// white heart in glows falling off one wider than the other
+// ---- a flash, the star, the burst, a flare: a square turned to the eye (q -1..1; a flare's drawn out along, uAspect
+// times as long, and turned uSpin), drawn by what it is. As the clip's: crisp shapes of light, each in a glow, laid one
+// over another (`over`: what it covers is hidden; `add`: light only)
 const SPRITE_VERT = /* glsl */`
   uniform vec3 uPos;
-  uniform float uSize, uPull;
+  uniform float uSize, uPull, uAspect, uSpin;
   varying vec2 vQ;
   void main() {
     vQ = position.xy;
@@ -498,77 +496,131 @@ const SPRITE_VERT = /* glsl */`
     mv.z = min(mv.z + uPull, -0.15);                       // (towards the eye: not cut by the ground it stands on)
     float k = mv.z / min(z0, -0.15);
     mv.xy *= k;
-    mv.xy += position.xy * uSize * k;
+    vec2 p = vec2(position.x * uAspect, position.y);
+    float c = cos(uSpin), s = sin(uSpin);
+    mv.xy += vec2(c * p.x - s * p.y, s * p.x + c * p.y) * uSize * k;
     gl_Position = projectionMatrix * mv;
   }`;
 const SPRITE_FRAG = /* glsl */`
-  uniform float uKind, uAge, uLife, uSeed, uFade, uNight, uTime;
+  uniform float uKind, uAge, uLife, uSeed, uFade, uNight, uTime, uAspect;
   varying vec2 vQ;
   float h1(float n) { return fract(sin(n * 12.9898 + uSeed * 78.233) * 43758.5453); }      // (a number for one whole ray)
-  // a star of soft rays out of the middle: count of them, from lo to hi of the square long, w their glow's width
-  float rays(vec2 q, float count, float lo, float hi, float w) {
+  vec4 over(vec4 c, vec3 col, float k) { k = clamp(k, 0.0, 1.0); return vec4(col * k, k) + c * (1.0 - k); }
+  vec4 add(vec4 c, vec3 col, float k, float w) { return c + vec4(col * k, k * w); }
+  // a star of rays out of the middle: count of them, lo to hi of the square long (a few the longest), w wide at their
+  // foot (from r0 out), narrowing to their tips. Each a crisp heart (x) in a glow (y)
+  vec2 rays(vec2 q, float count, float lo, float hi, float w, float r0) {
     float r = length(q);
     float k = (atan(q.y, q.x) / 6.2831853 + 0.5) * count;
     float i = floor(k);
-    float da = (fract(k) - 0.5 - (h1(i) - 0.5) * 0.5) / count * 6.2831853;
-    float len = mix(lo, hi, h1(i + 7.0));
-    float d = abs(sin(da)) * r / (w * (1.0 - 0.8 * clamp(r / len, 0.0, 1.0)) + 1e-4);
-    return exp(-d * d) * (1.0 - smoothstep(len * 0.55, len, r)) * smoothstep(0.0, 0.05, r);
+    float da = (fract(k) - 0.5 - (h1(i) - 0.5) * 0.6) / count * 6.2831853;
+    float hk = h1(i + 7.0);
+    float len = mix(lo, hi, hk * hk);
+    float d = abs(sin(da)) * r;
+    float ww = w * (0.6 + 0.8 * h1(i + 3.0)) * (1.0 - smoothstep(r0, len, r));
+    float aa = fwidth(d) + 1e-4;
+    float on = step(r, len) * smoothstep(r0 * 0.5, r0, r);
+    return vec2(1.0 - smoothstep(ww * 0.5 - aa, ww * 0.5 + aa, d), exp(-d * d / (ww * ww * 3.0 + 1e-5))) * on;
   }
   void main() {
     vec2 q = vQ;
-    float r = length(q), r2 = r * r;
-    float u = clamp(uAge / max(uLife, 1e-3), 0.0, 1.0);
-    vec3 rgb = vec3(0.0); float a = 0.0;
+    float r = length(q), r2 = r * r, t = uAge;
+    float u = clamp(t / max(uLife, 1e-3), 0.0, 1.0);
+    float aa = fwidth(r) + 1e-4;
+    vec4 c = vec4(0.0);
     if (uKind < 0.5) {
-      // a blow landing: a white heart, a blue glow round it and a wider one, soft needles out of it, and a ring of
-      // light thrown out round it with deep blue in it (the clip's)
-      float grow = 1.0 - pow(1.0 - clamp(uAge / 0.035, 0.0, 1.0), 3.0);
-      float go = 1.0 - smoothstep(0.08, 1.0, u);
-      float heart = exp(-r2 / (0.003 + 0.012 * grow * (1.0 - 0.75 * u))) * (1.0 - smoothstep(0.2, 0.85, u));
-      float bloom = exp(-r2 / 0.05) * go, wide = exp(-r2 / 0.26) * go * go;
-      float ringR = mix(0.12, 0.74, 1.0 - exp(-uAge * 16.0));
-      float rd = (r - ringR) / (0.04 + 0.1 * u);
-      float ring = exp(-rd * rd) * (1.0 - smoothstep(0.15, 0.8, u));
-      float deep = smoothstep(ringR + 0.02, ringR * 0.25, r) * (1.0 - smoothstep(0.1, 0.55, u));
-      float ry = rays(q, 26.0, 0.35, 1.0, 0.022) * (1.0 - smoothstep(0.2, 0.75, u)) * grow;
-      rgb = vec3(1.0) * heart + vec3(0.3, 0.62, 1.0) * bloom * 0.75 + vec3(0.16, 0.34, 1.0) * wide * 0.5
-          + vec3(0.62, 0.93, 1.0) * ring + vec3(0.08, 0.16, 0.75) * deep * 0.7 + vec3(0.75, 0.95, 1.0) * ry;
-      a = heart * 0.9 + bloom * 0.3 + wide * 0.08 + ring * 0.35 + deep * 0.45 + ry * 0.3;
+      // a blow landing (the clip's): at once a white heart in a crown of rays; then a ball of blue thrown out round it,
+      // lit at its rim as glass is, as the heart is drawn in to a point
+      float rc = mix(0.24, 0.05, smoothstep(0.03, 0.17, t)) * (1.0 - smoothstep(0.6, 1.0, u));
+      float lk = smoothstep(0.012, 0.045, t) * (1.0 - smoothstep(0.55, 0.95, u));
+      float ringR = 0.26 + 0.34 * (1.0 - exp(-max(t - 0.012, 0.0) * 8.0));
+      float inL = 1.0 - smoothstep(ringR - aa, ringR + aa, r);
+      float fr = smoothstep(0.45, 1.0, r / ringR); fr *= fr;
+      float past = max(r - ringR, 0.0) / 0.04;
+      c = add(c, vec3(0.2, 0.45, 1.0), exp(-r2 / 0.1) * (1.0 - smoothstep(0.1, 0.7, u)) * 0.4, 0.2);
+      c = over(c, mix(vec3(0.16, 0.25, 0.84), vec3(0.58, 0.92, 1.0), fr), mix(0.38, 0.85, fr) * inL * lk);
+      c = add(c, vec3(0.45, 0.85, 1.0), exp(-past * past) * (1.0 - inL) * lk * 0.6, 0.25);
+      vec2 cr = rays(q, 44.0, 0.38, 0.86, 0.05, 0.12) * (1.0 - smoothstep(0.05, 0.16, t));
+      vec2 lr = rays(vec2(q.x * 0.8 - q.y * 0.6, q.x * 0.6 + q.y * 0.8), 9.0, 0.6, 1.0, 0.04, 0.1) * (1.0 - smoothstep(0.08, 0.24, t));
+      c = add(c, vec3(0.4, 0.8, 1.0), (cr.y + lr.y) * 0.5, 0.3);
+      c = over(c, vec3(0.95, 1.0, 1.0), (cr.x + lr.x) * 0.95);
+      c = add(c, vec3(0.55, 0.85, 1.0), exp(-r2 / (rc * rc * 3.0 + 0.002)) * (1.0 - smoothstep(0.5, 1.0, u)) * 0.6, 0.4);
+      c = over(c, vec3(1.0), smoothstep(rc, rc * 0.45, r));
     } else if (uKind < 1.5) {
-      // the star where the blow went in, while the lightning runs through the dome: a soft cross of light, pulsing
+      // the star where the blow went in, while the lightning runs through the dome: a cross of light, rays, pulsing
       float pulse = 0.82 + 0.18 * sin(uTime * 34.0 + uSeed * 9.0);
       float tw = uTime * 0.8;
       vec2 qr = vec2(q.x * cos(tw) - q.y * sin(tw), q.x * sin(tw) + q.y * cos(tw));
-      float heart = exp(-r2 / 0.004);
-      float halo = exp(-r2 / 0.05) * 0.8 + exp(-r2 / 0.25) * 0.25;
       float crossL = exp(-qr.y * qr.y / 0.0006) * exp(-abs(qr.x) * 3.2) + exp(-qr.x * qr.x / 0.0006) * exp(-abs(qr.y) * 3.2);
-      float ry = rays(q, 18.0, 0.18, 0.5, 0.03);
-      rgb = vec3(1.0) * heart + vec3(0.75, 0.9, 1.0) * crossL + vec3(0.6, 0.8, 1.0) * ry * 0.7 + vec3(0.2, 0.4, 1.0) * halo;
-      a = heart + crossL * 0.5 + ry * 0.3 + halo * 0.25;
-      rgb *= pulse; a *= pulse;
+      vec2 ry = rays(q, 18.0, 0.18, 0.5, 0.035, 0.05);
+      c = add(c, vec3(0.2, 0.4, 1.0), exp(-r2 / 0.05) * 0.8 + exp(-r2 / 0.25) * 0.25, 0.25);
+      c = add(c, vec3(0.6, 0.8, 1.0), ry.y * 0.5, 0.3);
+      c = over(c, vec3(0.8, 0.92, 1.0), ry.x * 0.8);
+      c = add(c, vec3(0.75, 0.9, 1.0), crossL, 0.5);
+      c = over(c, vec3(1.0), smoothstep(0.1, 0.045, r));
+      c *= pulse;
+    } else if (uKind < 2.5) {
+      // the burst (the clip's): a ball of light swelling out of where the blow went in, its edge spiked like ice: white
+      // at first; then sky-blue glass, white at its heart with rays out of it, petals of blue between them (wide at its
+      // rim, drawn out to a point towards its heart). It clears from its middle out to a bright spiked rim, and that
+      // goes. A glow round all of it
+      float g = 1.0 - exp(-t * 7.0);
+      float R = mix(0.12, 0.5, g) + 0.1 * smoothstep(0.35, 1.0, u);
+      float ang = atan(q.y, q.x) / 6.2831853 + 0.5;
+      float k1 = ang * 40.0, t1 = 1.0 - abs(fract(k1) - 0.5) * 2.0, s1 = h1(floor(k1));
+      float k2 = ang * 13.0 + 0.37, t2 = 1.0 - abs(fract(k2) - 0.5) * 2.0, s2 = h1(floor(k2) + 40.0);
+      float spike = max(pow(t1, 4.0) * (0.06 + 0.24 * s1 * s1), pow(t2, 7.0) * (0.25 + 0.4 * s2 * s2) * step(0.45, s2)) * R * (1.5 - 0.9 * g);
+      float edge = R + spike;
+      float ea = aa * 1.4;
+      float inside = 1.0 - smoothstep(edge - ea, edge + ea, r);
+      float rim = inside * smoothstep(R * (1.0 - mix(0.12, 0.06, smoothstep(0.2, 0.7, u))) - ea, R * (1.0 - mix(0.12, 0.06, smoothstep(0.2, 0.7, u))) + ea, r);
+      float body = inside - rim;
+      float rr = r / R;
+      float white = 1.0 - smoothstep(0.03, 0.1, t);
+      float clear = smoothstep(0.3, 0.62, u);
+      float keep = smoothstep(clear * 1.25 - 0.3, clear * 1.25, rr);
+      float clearP = smoothstep(0.45, 0.82, u);
+      float keepP = smoothstep(clearP * 1.25 - 0.3, clearP * 1.25, rr);
+      float rimK = 1.0 - smoothstep(0.7, 1.0, u);
+      // its petals: one in each of 13 turns round it (a few missing), from p0 out to p1 of its radius, widest out
+      float pk = ang * 13.0 + 0.5, pi = floor(pk), pf = fract(pk);
+      float p0 = 0.16 + 0.2 * h1(pi + 62.0), p1 = 0.86 + 0.09 * h1(pi + 63.0);
+      float along = clamp((rr - p0) / (p1 - p0), 0.0, 1.0);
+      float pw = (0.27 + 0.13 * h1(pi + 64.0)) * sqrt(max(1.0 - pow(2.0 * along - 1.0, 2.0), 0.0)) * (0.65 + 0.35 * along) * (1.0 + 0.15 * sin(rr * 17.0 + pi * 3.1));
+      float pd = (abs(pf - 0.5 - (h1(pi + 61.0) - 0.5) * 0.35) - pw) / 13.0 * 6.2831853 * r;
+      float pa = fwidth(pd) * 1.5 + 1e-4;
+      float petal = (1.0 - smoothstep(-pa, pa, pd)) * step(p0, rr) * step(rr, p1) * step(0.15, h1(pi + 60.0));
+      c = add(c, vec3(0.25, 0.55, 1.0), exp(-r2 / (R * R * 1.6)) * (1.0 - smoothstep(0.0, 0.25, u)) * 0.14, 0.08);
+      float past = max(r - edge, 0.0);
+      c = add(c, vec3(0.35, 0.8, 1.0), exp(-past * past / (0.0004 + 0.0012 * g)) * (1.0 - inside) * 0.4 * rimK, 0.2);
+      vec3 light = mix(mix(vec3(0.74, 0.97, 1.0), vec3(0.5, 0.87, 1.0), smoothstep(0.2, 0.95, rr)), vec3(1.0), white * (1.0 - 0.35 * smoothstep(0.3, 1.0, rr)));
+      c = over(c, light, body * mix(mix(0.66, 0.82, smoothstep(0.3, 1.0, rr)), 0.97, white) * keep);
+      c = over(c, mix(vec3(0.34, 0.53, 0.96), vec3(0.17, 0.3, 0.8), along), body * petal * mix(0.88, 0.7, clear) * (1.0 - white) * keepP);
+      c = over(c, vec3(1.0), body * smoothstep(0.4, 0.0, rr) * (1.0 - smoothstep(0.15, 0.5, u)));
+      vec2 ry = rays(q, 34.0, 0.45 * R, 0.95 * R, 0.025, 0.06 * R) * (1.0 - smoothstep(0.3, 0.6, u));
+      c = add(c, vec3(0.5, 0.85, 1.0), ry.y * 0.4, 0.3);
+      c = over(c, vec3(0.95, 1.0, 1.0), ry.x * 0.9);
+      c = over(c, mix(vec3(0.6, 0.93, 1.0), vec3(0.96, 1.0, 1.0), 0.3 + 0.7 * white), rim * 0.95 * rimK);
+      float rc = R * mix(0.36, 0.1, smoothstep(0.0, 0.25, t));
+      c = add(c, vec3(0.6, 0.9, 1.0), exp(-r2 / (rc * rc * 4.0 + 0.003)) * (1.0 - smoothstep(0.25, 0.7, u)) * 0.5, 0.4);
+      c = over(c, vec3(1.0), smoothstep(rc, rc * 0.35, r) * (1.0 - smoothstep(0.3, 0.7, u)));
+      c *= 1.0 - smoothstep(0.82, 1.0, u);
     } else {
-      // the burst: a ball of light swelling out of where it was struck, a bright ring thrown out of it with soft spikes
-      // of light on it, soft rays, and a glow round all of it
-      float g = 1.0 - exp(-uAge * 11.0);
-      float R = 0.16 + 0.6 * g;
-      float go = 1.0 - smoothstep(0.2, 1.0, u);
-      float k = (atan(q.y, q.x) / 6.2831853 + 0.5) * 30.0;
-      float tip = 1.0 - abs(fract(k) - 0.5) * 2.0, hk = h1(floor(k));
-      float spike = tip * tip * tip * (0.03 + 0.16 * hk * hk) * step(0.25, h1(floor(k) + 50.0));
-      float rd = (r - R - spike * 0.6) / (0.035 + 0.06 * u + spike * 0.4);
-      float ring = exp(-rd * rd) * go;
-      float inside = smoothstep(R + 0.03, R * 0.15, r);
-      float fill = inside * (1.0 - smoothstep(0.0, 0.6, u)) * 0.55;
-      float heart = exp(-r2 / (0.01 + 0.05 * g)) * (1.0 - smoothstep(0.0, 0.5, u));
-      float bloom = exp(-r2 / 0.18) * go * 0.7, wide = exp(-r2 / 0.55) * go * go * 0.35;
-      float ry = rays(q, 30.0, 0.3 * R, 1.3 * R, 0.02) * go;
-      rgb = vec3(0.85, 0.98, 1.0) * ring + vec3(0.36, 0.76, 1.0) * fill + vec3(1.0) * heart + vec3(0.4, 0.75, 1.0) * bloom
-          + vec3(0.25, 0.45, 1.0) * wide + vec3(0.85, 0.97, 1.0) * ry * 0.7;
-      a = ring * 0.55 + fill * 0.3 + heart * 0.9 + bloom * 0.25 + wide * 0.06 + ry * 0.25;
+      // a flare: a long thin line of light across the picture (q.x along it, of its half-length; q.y across, of
+      // uSize), shooting out from its middle; a glow round it and round its middle
+      float x = abs(q.x), y = q.y;
+      float reach = max(1.0 - exp(-t * 40.0), 0.05);
+      float along = max(1.0 - x / reach, 0.0);
+      float th = 0.04 * pow(along, 0.8) * (1.0 - 0.5 * u);
+      float ya = fwidth(y) + 1e-4;
+      float k = (1.0 - smoothstep(0.35, 1.0, u)) * smoothstep(0.0, 0.012, t);
+      float xm = x * uAspect;
+      c = add(c, vec3(0.35, 0.75, 1.0), exp(-y * y / (0.006 + 0.014 * along)) * along * along * 0.7 * k, 0.15);
+      c = add(c, vec3(0.5, 0.85, 1.0), exp(-xm * xm * 1.5 - y * y * 6.0) * 0.6 * k, 0.2);
+      c = over(c, vec3(0.97, 1.0, 1.0), (1.0 - smoothstep(th - ya, th + ya, abs(y))) * step(0.0001, along) * k);
     }
-    rgb *= 1.0 + 0.15 * uNight;
-    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), clamp(a, 0.0, 1.0)) * uFade;
+    c.rgb *= 1.0 + 0.15 * uNight;
+    gl_FragColor = clamp(c, 0.0, 1.0) * uFade;
   }`;
 
 // ---- needles, dashes, sparkles, puffs: one square each (corner -1..1), instanced; each one's whole way worked out
@@ -611,7 +663,7 @@ const SPARK_VERT = /* glsl */`
     vLen = l / max(w, 1e-5);
     vL = vec2(sx * (vLen + 2.0) - 1.0, corner.y);
     float twinkle = 0.6 + 0.4 * sin(uTime * 13.0 + aC.w * 40.0);
-    float needle = pow(1.0 - u, 1.3);
+    float needle = 1.0 - smoothstep(0.4, 1.0, u);
     float dash = (1.0 - smoothstep(0.7, 1.0, u)) * mix(1.0, twinkle, smoothstep(0.45, 0.7, u));
     float dot1 = smoothstep(0.0, 0.1, u) * (1.0 - smoothstep(0.5, 1.0, u)) * twinkle;
     float puff = smoothstep(0.0, 0.2, u) * pow(1.0 - u, 1.5);
@@ -627,14 +679,24 @@ const SPARK_FRAG = /* glsl */`
   varying float vLen, vFade, vKind, vSeed;
   void main() {
     vec2 q = vL;
-    float d = length(vec2(q.x - clamp(q.x, 0.0, vLen), q.y));       // from its line, in its glow's widths
-    float isPuff = step(2.5, vKind);
-    float heart = exp(-d * d * 14.0);
-    float glow = exp(-d * d * 3.2);
+    float line = step(0.05, vLen);
     float toHead = vLen > 0.01 ? clamp(q.x / vLen, 0.0, 1.0) : 1.0;
-    float bright = mix(1.0, 0.35 + 0.65 * toHead, step(0.05, vLen));
-    float a = (heart * 0.85 + glow * 0.28) * bright;
-    vec3 col = (vec3(1.0) * heart + vec3(0.38, 0.82, 1.0) * glow * 0.8 * (1.0 + 0.4 * uNight)) * bright;
+    float d = length(vec2(q.x - clamp(q.x, 0.0, vLen), q.y)) / mix(1.0, 0.55 + 0.45 * toHead, line);   // (thinner to its tail)
+    float aa = fwidth(d) + 1e-4;
+    float isPuff = step(2.5, vKind);
+    float heart = 1.0 - smoothstep(0.3 - aa, 0.3 + aa, d);          // as the clip's: a crisp white heart
+    float body = 1.0 - smoothstep(0.5 - aa, 0.5 + aa, d);            // in a crisp pale blue (a needle's all but white)
+    float glow = exp(-d * d * 3.2);                                  // in a soft glow
+    float bright = mix(1.0, 0.55 + 0.45 * toHead, line);
+    vec3 sky = vec3(0.42, 0.86, 1.0);
+    vec3 pale = mix(vec3(0.62, 0.92, 1.0), vec3(0.86, 0.98, 1.0), 1.0 - step(0.5, vKind));
+    float tail = mix(0.0, 1.0 - toHead, line);                       // (its tail bluer: light, not grey, as it goes)
+    pale = mix(pale, sky, tail * 0.7);
+    vec3 col = sky * glow * 0.35 * (1.0 + 0.4 * uNight);
+    float a = glow * 0.1;
+    col = col * (1.0 - body) + pale * body; a = a * (1.0 - body) + body * 0.9;
+    col = col * (1.0 - heart) + mix(vec3(1.0), pale, tail * 0.6) * heart; a = a * (1.0 - heart) + heart;
+    col *= bright; a *= bright;
     float rag = 0.8 + 0.12 * sin(q.x * 6.0 + vSeed * 20.0) * sin(q.y * 5.0 - vSeed * 13.0);
     float pa = (1.0 - smoothstep(rag - 0.45, rag, d)) * 0.3;
     vec3 pc = vec3(0.76, 0.78, 0.84) * pa;
@@ -642,7 +704,8 @@ const SPARK_FRAG = /* glsl */`
     gl_FragColor = vec4(clamp(col * vFade, 0.0, 1.0), clamp(a * vFade, 0.0, 1.0));
   }`;
 
-// ---- the shards: one shape (a sliver of its glass), instanced, lit as glass: its edges catching the light, a glow
+// ---- the shards: one shape (a long sliver of its glass), instanced; dark, as the clip's (deep navy, its edges catching
+// a blue light, a glint), shrinking away at their end
 //   aP: where (x, y, z), when;  aV: its speed (x, y, z), how long it lasts;  aS: the way it turns (x, y, z), how fast (rad/s);
 //   aZ: its size (m), a number of its own
 const SHARD_VERT = /* glsl */`
@@ -669,19 +732,17 @@ const SHARD_VERT = /* glsl */`
     if (age < 0.0 || age > life) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }`;
 const SHARD_FRAG = /* glsl */`
-  uniform float uNight;
   varying vec3 vN, vW;
-  varying float vFade;
   void main() {
     vec3 n = normalize(vN);
     if (!gl_FrontFacing) n = -n;
     vec3 v = normalize(cameraPosition - vW);
     float f = 1.0 - abs(dot(n, v));
-    float glint = pow(max(dot(reflect(-v, n), normalize(vec3(-0.35, 0.85, 0.4))), 0.0), 12.0);
-    float edge = smoothstep(0.3, 0.9, f);
-    vec3 col = mix(vec3(0.2, 0.45, 0.85), vec3(0.75, 0.95, 1.0), edge) + vec3(1.0) * glint * 0.9;
-    float a = (0.35 + 0.45 * edge + glint * 0.3) * vFade;
-    gl_FragColor = vec4(clamp(col * a * (1.25 + 0.3 * uNight), 0.0, 1.0), clamp(a * 0.85, 0.0, 1.0));
+    float glint = pow(max(dot(reflect(-v, n), normalize(vec3(-0.35, 0.85, 0.4))), 0.0), 16.0);
+    float up = n.y * 0.5 + 0.5;
+    vec3 col = mix(vec3(0.06, 0.09, 0.23), vec3(0.12, 0.18, 0.4), up);
+    col = mix(col, vec3(0.3, 0.5, 0.9), smoothstep(0.45, 0.95, f)) + vec3(0.55, 0.8, 1.0) * glint * 0.8;
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }`;
 
 // ---- the lightning: one strip through all of it. Each point: where it is, which way its line goes there, which side
@@ -739,9 +800,9 @@ const BOLT_VERT = /* glsl */`
     vec2 side = vec2(-along.y, along.x);
     float sx = corner.x * 0.5 + 0.5;
     vec4 p = mix(t, h, sx);
-    p.xy += along * aW.w * 1.4 * sx + side * corner.y * aW.w;
+    p.xy += along * aW.w * 2.2 * sx + side * corner.y * aW.w * 2.0;          // (room for its glow all round)
     vLen = l / max(aW.w, 1e-4);
-    vQ = vec2(sx * (vLen + 1.4), corner.y);
+    vQ = vec2(sx * (vLen + 2.2), corner.y * 2.0);
     vKind = aK.x; vSeed = aK.y; vA = aK.z;
     gl_Position = projectionMatrix * p;
     if (aK.z <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -753,7 +814,7 @@ const BOLT_FRAG = /* glsl */`
   void main() {
     float y = vQ.y;
     float back = vLen - vQ.x;                                  // half-widths behind its head (less than 0: before it)
-    float hd = length(vec2(max(back, -1.4) * 0.75, y));
+    float hd = length(vec2(max(back, -2.2) * 0.75, y));
     float heart = exp(-hd * hd * 5.0);
     float glow = exp(-hd * hd * 1.2);
     float along = clamp(back / max(vLen, 0.01), 0.0, 1.0);     // 0 at its head .. 1 at its tail
@@ -813,7 +874,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
   const farWall = put(ball, material({ uniforms: { ...domeU, uBack: { value: 1 } }, vertexShader: DOME_VERT, fragmentShader: DOME_FRAG, side: THREE.BackSide }), 1);
   const nearWall = put(ball, material({ uniforms: { ...domeU, uBack: { value: 0 } }, vertexShader: DOME_VERT, fragmentShader: DOME_FRAG, side: THREE.FrontSide }), 2);
   const square = new THREE.PlaneGeometry(2, 2);
-  const haloU = { uPos: { value: new THREE.Vector3() }, uSize: { value: 1 }, uPull: { value: 0 }, uRim: { value: 0.74 }, uAlpha: { value: 0 }, uCharge: domeU.uCharge, uNight: nightU, uWhite: domeU.uWhite };
+  const haloU = { uPos: { value: new THREE.Vector3() }, uSize: { value: 1 }, uPull: { value: 0 }, uAspect: { value: 1 }, uSpin: { value: 0 }, uRim: { value: 0.74 }, uAlpha: { value: 0 }, uCharge: domeU.uCharge, uNight: nightU, uWhite: domeU.uWhite };
   const halo = put(square, material({ uniforms: haloU, vertexShader: SPRITE_VERT, fragmentShader: HALO_FRAG }), 3);
   const dome = {
     on: false, center: new THREE.Vector3(), size: 1, ground: 0, formT: -1, fadeT: -1, strikeT: -1, popT: -1, hit: new THREE.Vector3(0, 0, 1),
@@ -823,13 +884,11 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
   let scaleNow = 1;
   const hitPoint = out => out.copy(dome.hit).multiplyScalar(radius() * scaleNow).add(dome.center);
 
-  // ---- the ring as it is raised, the shell, the disc, the dust
+  // ---- the ring as it is raised, the disc, the dust
   const ringU = { uU: { value: 0 }, uNight: nightU };
   const ring = put(square, material({ uniforms: ringU, vertexShader: RING_VERT, fragmentShader: RING_FRAG }), 0);
   ring.rotation.x = -Math.PI / 2;
   const ringS = { t0: -99, on: false };
-  const shell = put(ball, material({ uniforms: { uU: { value: 0 }, uAlpha: { value: 1 }, uNight: nightU, uNear: near }, vertexShader: DOME_VERT, fragmentShader: SHELL_FRAG, side: THREE.FrontSide }), 4);
-  const shellS = { t0: -99, r: 1, on: false };
   const DISC_RINGS = 14, DISC_ROUND = 72;
   const discGeo = (() => {
     const pos = [], idx = [];
@@ -855,20 +914,25 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
   const dust = put(dustGeo, material({ uniforms: { uU: { value: 0 }, uAlpha: { value: 1 } }, vertexShader: DUST_VERT, fragmentShader: DUST_FRAG }), 5);
   const dustS = { t0: -99, size: 1, on: false };
 
-  // ---- the flashes, the star, the burst
+  // ---- the flashes, the star, the burst, the flares (kind 0 .. 3)
   const sprites = Array.from({ length: SPRITES }, () => {
     const mat = material({
-      uniforms: { uPos: { value: new THREE.Vector3() }, uSize: { value: 1 }, uPull: { value: 0 }, uKind: { value: 0 }, uAge: { value: 0 }, uLife: { value: 1 }, uSeed: { value: 0 }, uFade: { value: 1 }, uNight: nightU, uTime: clockU },
+      uniforms: {
+        uPos: { value: new THREE.Vector3() }, uSize: { value: 1 }, uPull: { value: 0 }, uAspect: { value: 1 }, uSpin: { value: 0 }, uKind: { value: 0 },
+        uAge: { value: 0 }, uLife: { value: 1 }, uSeed: { value: 0 }, uFade: { value: 1 }, uNight: nightU, uTime: clockU,
+      },
       vertexShader: SPRITE_VERT, fragmentShader: SPRITE_FRAG,
     });
     return { mesh: put(square, mat, 9), u: mat.uniforms, on: false, t0: 0, life: 1, kind: 0, at: new THREE.Vector3(), to: null, drift: 0, onDome: false, size: 1 };
   });
   let spriteTurn = 0;
-  function sprite(kind, at, size, life, { onDome = false, to = null, drift = 0, pull = 0.4 } = {}) {
+  // aspect: a flare's length, of its thickness; spin: which way it lies on the picture (0 across)
+  function sprite(kind, at, size, life, { onDome = false, to = null, drift = 0, pull = 0.4, aspect = 1, spin = 0 } = {}) {
     let s = sprites.find(x => !x.on);
     if (!s) s = sprites[spriteTurn++ % SPRITES];
     s.on = true; s.kind = kind; s.t0 = clock; s.life = life; s.at.copy(at); s.size = size; s.onDome = onDome; s.to = to ? to.clone() : null; s.drift = drift;
     s.u.uKind.value = kind; s.u.uLife.value = life; s.u.uSeed.value = rand() * 10; s.u.uSize.value = size; s.u.uPull.value = pull; s.u.uFade.value = 1; s.u.uAge.value = 0;
+    s.u.uAspect.value = aspect; s.u.uSpin.value = spin;
     s.u.uPos.value.copy(at);
     s.mesh.visible = true;
     return s;
@@ -897,9 +961,9 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     sparkDirty = true; sparkEnd = Math.max(sparkEnd, clock + wait + life);
   }
 
-  // ---- the shards (its own glass)
+  // ---- the shards (its own glass: long slivers, as the clip's)
   const shardGeo = (() => {
-    const P = [[0, 0.62, 0.02], [-0.3, -0.42, 0.07], [0.38, -0.28, 0.05], [0.04, -0.1, -0.16]];
+    const P = [[0, 1.0, 0.0], [-0.2, -0.46, 0.06], [0.24, -0.3, 0.04], [0.03, -0.14, -0.11]];
     const F = [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
     const pos = [];
     for (const f of F) for (const k of f) pos.push(...P[k]);
@@ -912,13 +976,13 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
   const zS = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4), 4), zZ = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4), 4);
   for (const [n, at] of [['aP', zA], ['aV', zV], ['aS', zS], ['aZ', zZ]]) { at.setUsage(THREE.DynamicDrawUsage); shardGeo.setAttribute(n, at); }
   shardGeo.instanceCount = SHARDS;
-  const shards = put(shardGeo, material({ uniforms: { uTime: clockU, uNight: nightU }, vertexShader: SHARD_VERT, fragmentShader: SHARD_FRAG }), 6);
+  const shards = put(shardGeo, material({ uniforms: { uTime: clockU }, vertexShader: SHARD_VERT, fragmentShader: SHARD_FRAG }), 6);
   let shardTurn = 0, shardDirty = false, shardEnd = -1;
-  function shard(p, v, life, size, wait = 0) {
+  function shard(p, v, life, size, wait = 0, spin = between(8, 20)) {
     const i = shardTurn++ % SHARDS;
     zA.array.set([p.x, p.y, p.z, clock + wait], i * 4);
     zV.array.set([v.x, v.y, v.z, life], i * 4);
-    zS.array.set([rand() - 0.5, rand() - 0.5, rand() - 0.5, between(8, 20) * (rand() < 0.5 ? -1 : 1)], i * 4);
+    zS.array.set([rand() - 0.5, rand() - 0.5, rand() - 0.5, spin * (rand() < 0.5 ? -1 : 1)], i * 4);
     zZ.array.set([size, rand(), 0, 0], i * 4);
     shardDirty = true; shardEnd = Math.max(shardEnd, clock + wait + life);
   }
@@ -1018,13 +1082,21 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     dome.ground = ground === null ? center.y - REFLECT_FX.dome.lift * radius() : ground;
   }
   function ringAt(dir) { const r = dome.rings[dome.ringTurn++ % 3]; r.dir.copy(dir); r.t = clock; }
-  // a flash with needles where a blow lands (the dome's, or a thing's): `out` the way the needles go most
-  function flashAt(point, out, back, size, count, life) {
+  // a flash with needles where a blow lands (the dome's, or a thing's): `out` the way the needles go most; the long line
+  // of light across the picture through it; `bits` dark bits of glass thrown off
+  function flashAt(point, out, back, size, count, life, bits = 0) {
     sprite(0, point, 1.25 * size, life);
+    const [fl, th, long] = REFLECT_FX.flare.hit;
+    sprite(3, point, th * size, fl * life / REFLECT_FX.strike.flash, { aspect: long, pull: 0.45 });
     for (let i = 0; i < count; i++) {
       v1.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize();
-      v1.addScaledVector(out, 0.55 + rand() * 0.6).addScaledVector(back, rand() * 0.6).normalize();
-      spark(0, point, v1.multiplyScalar(between(3.0, 11.0) * size), between(0.14, 0.3), between(0.045, 0.075) * size, between(0.025, 0.045), { drag: 5, wait: rand() < 0.3 ? rand() * 0.05 : 0 });
+      v1.addScaledVector(out, rand() * 0.3).normalize();
+      const p = v2.copy(point).addScaledVector(v1, between(0.08, 0.3) * size);
+      spark(0, p, v1.multiplyScalar(between(2.0, 7.0) * size), between(0.25, 0.45), between(0.035, 0.052) * size, between(0.05, 0.09), { drag: 3, wait: between(0.012, 0.07) });
+    }
+    for (let i = 0; i < bits; i++) {
+      v1.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().addScaledVector(out, 0.8).addScaledVector(back, 0.3).normalize();
+      shard(point, v1.multiplyScalar(between(3, 7) * size), between(0.3, 0.5), between(0.05, 0.1) * size, 0.02 + rand() * 0.04);
     }
   }
   function strike(point, from) {
@@ -1038,7 +1110,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
       domeU.uHit.value.copy(dir); domeU.uE1.value.copy(e1); domeU.uE2.value.crossVectors(dir, e1);
       ringAt(dir);
       const S = REFLECT_FX.strike;
-      flashAt(point, dir, back, size, S.needles, S.flash);
+      flashAt(point, dir, back, size, S.needles, S.flash, S.bits);
       // a line of light back the way the blow came (the clip's)
       const p0 = point.clone(), p1 = point.clone().addScaledVector(back, 2.6 * size);
       bolt(0, 0.26, 0.1 * size, pts => jagged(pts, p0, p1, 10, 0.09 * size), { every: 0.04 });
@@ -1059,49 +1131,50 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     const size = dome.size, R = radius();
     const at = hitPoint(new THREE.Vector3());
     const center = dome.center.clone(), ground = dome.ground;
-    dome.popT = clock;                                   // (it swells and whitens a moment, then is gone: update)
+    dome.popT = clock; hide();                           // (gone at once, as the clip's: the burst is all there is)
     for (const b of bolts) if (b.on && b.onDome) b.on = false;       // (the lightning on the dome goes with it)
     for (const s of sprites) if (s.on && s.onDome) { s.on = false; s.mesh.visible = false; }
-    // the burst where it was struck, drifting towards the dome's middle as it swells; a white flash in it
+    // the burst between where it was struck and her (as the clip's: round her hand), drifting a little more towards her
+    // as it swells; the long line of light across the picture through it, and a short one up and down
     const B = REFLECT_FX.burst;
-    sprite(2, at, B.r * 1.25 * size, B.life, { to: center.clone().setY(at.y), drift: B.drift, pull: 0.9 * size });
-    sprite(0, at, 1.0 * size, 0.2, { pull: 0.5 });
+    const mid = at.clone().lerp(v1.copy(center).setY(at.y), B.from), midTo = center.clone().setY(at.y);
+    sprite(2, mid, B.size * size, B.life, { to: midTo, drift: B.drift, pull: 0 });
+    const heart = mid.clone().lerp(midTo, B.drift * 0.7);              // (where it is, about, as things fly out of it)
+    const [fl, th, long] = REFLECT_FX.flare.burst;
+    sprite(3, at, th * size, fl, { aspect: long, pull: 1.0 * size });
+    sprite(3, at, th * 0.8 * size, fl * 0.45, { aspect: long * 0.25, spin: Math.PI / 2, pull: 1.0 * size });
     // long lines of light back the way each blow came (the blow thrown back goes along it)
     for (const t of targets) {
       const way = v1.subVectors(t, at); const len = Math.min(way.length(), 9 * size); way.normalize();
       const p0 = at.clone(), p1 = at.clone().addScaledVector(way, len);
-      bolt(2, 0.28, 0.14 * size, pts => { pts.length = 0; for (let i = 0; i < 4; i++) pts.push(p0.clone().lerp(p1, i / 3)); return pts; }, { every: 10 });
+      bolt(2, 0.24, 0.07 * size, pts => { pts.length = 0; for (let i = 0; i < 4; i++) pts.push(p0.clone().lerp(p1, i / 3)); return pts; }, { every: 10 });
     }
-    // purple lightning out of it
+    // purple lightning out of it, from within it out past its rim
     const F = REFLECT_FX.flash;
     for (let i = 0; i < F.n; i++) {
-      const way = new THREE.Vector3(rand() - 0.5, between(-0.15, 0.7), rand() - 0.5).normalize();
-      const from = center.clone().lerp(at, 0.45);
+      const way = new THREE.Vector3(rand() - 0.5, between(-0.3, 0.8), rand() - 0.5).normalize();
+      const from = heart.clone().addScaledVector(way, between(0.1, 0.4) * size);
       const len = between(F.len[0], F.len[1]) * size;
-      bolt(1, F.life, 0.11 * size, pts => jagged(pts, from, v2.copy(from).addScaledVector(way, len), 11, 0.22 * size), { wait: F.at + rand() * 0.08, every: 0.04 });
+      bolt(1, F.life, 0.1 * size, pts => jagged(pts, from, v2.copy(from).addScaledVector(way, len), 11, 0.2 * size), { wait: F.at + rand() * 0.1, every: 0.04 });
     }
-    // the shell blown out
-    shellS.t0 = clock + REFLECT_FX.shell.at; shellS.on = true; shellS.r = R * scaleNow;
-    shell.position.copy(center); shell.scale.setScalar(R); shell.visible = false;
-    // its glass flying off as shards (from all over it, more where it was struck)
+    // its glass flying off as dark shards, out of the burst's edge (more out the way it was struck, and up), turning
+    // slowly as the clip's
     const Z = REFLECT_FX.shards;
     for (let i = 0; i < Z.n; i++) {
-      v1.set(rand() - 0.5, rand() - 0.25, rand() - 0.5).normalize();
-      if (i < Z.n * 0.4) v1.lerp(dome.hit, 0.6).normalize();
-      if (v1.y < -0.3) v1.y = -v1.y * 0.5;
-      const p = center.clone().addScaledVector(v1, R * between(0.85, 1.0));
+      v1.set(rand() - 0.5, between(-0.1, 0.9), rand() - 0.5).normalize().addScaledVector(dome.hit, 0.5).normalize();
+      const p = heart.clone().addScaledVector(v1, between(0.45, 0.85) * size);
       const v = v1.clone().multiplyScalar(between(Z.speed[0], Z.speed[1]) * size); v.y += between(Z.up[0], Z.up[1]) * size;
-      shard(p, v, between(Z.life[0], Z.life[1]), between(Z.size[0], Z.size[1]) * size, Z.at + rand() * 0.05);
+      shard(p, v, between(Z.life[0], Z.life[1]), between(Z.size[0], Z.size[1]) * size, Z.at + rand() * 0.1, between(3, 9));
     }
     // the disc thrown out over the ground, the dust over its edge
     layDisc(center, ground, size);
-    // dashes of light flung up and out, left hanging as sparkles low round her
+    // dashes of light flung out of the burst as it clears, up and out, left hanging as sparkles low round her
     const D = REFLECT_FX.dashes;
     for (let i = 0; i < D.n; i++) {
-      v1.set(rand() - 0.5, between(-0.05, 0.7), rand() - 0.5).normalize();
-      const p = center.clone().addScaledVector(v1, R * between(0.2, 0.75));
+      v1.set(rand() - 0.5, between(-0.2, 0.75), rand() - 0.5).normalize();
+      const p = heart.clone().addScaledVector(v1, between(0.05, 0.55) * size);
       const v = v1.clone().multiplyScalar(between(D.speed[0], D.speed[1]) * size);
-      spark(1, p, v, between(D.life[0], D.life[1]), between(0.045, 0.075) * size, 0.035, { drag: 3.6, up: -0.6, wait: D.at + rand() * 0.08 });
+      spark(1, p, v, between(D.life[0], D.life[1]), between(0.035, 0.055) * size, 0.035, { drag: 3.6, up: -0.6, wait: D.at + rand() * 0.1 });
     }
     for (let i = 0; i < D.sparkles; i++) {
       const a = rand() * 2 * Math.PI, r = R * Math.sqrt(rand()) * 2.3;
@@ -1220,7 +1293,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
         crackA = sstep(C.at - 0.01, C.at + 0.02, ts) * dome.flick;
         purple = (sstep(0.0, 0.03, ts) * (1 - sstep(0.06, 0.12, ts)) * 0.8 + 1.3 * sstep(C.purple, C.purple + 0.05, ts)) * (0.55 + 0.45 * rand());
         star = sstep(C.at - 0.02, C.at + 0.03, ts) * 1.2;
-        white = Math.max(white, Math.exp(-ts / S.white) * 0.75);
+        white = Math.max(white, Math.exp(-ts / S.white) * 0.15);
         // it swells and trembles as it charges
         scale *= 1 + C.swell * sstep(C.at, C.at + 0.3, ts) + 0.006 * Math.sin(clock * 95) * sstep(C.at, C.at + 0.05, ts);
         // the star where the blow went in, and purple lightning round it, on the dome (going with it)
@@ -1233,13 +1306,6 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
           }
         }
       } else dome.starOn = null;
-      // bursting: it swells and whitens a moment, then is gone
-      if (dome.popT >= 0) {
-        const u = (clock - dome.popT) / REFLECT_FX.pop.time;
-        scale *= 1 + REFLECT_FX.pop.grow * sstep(0, 1, u);
-        white = Math.max(white, 1 - u * 0.3); alpha *= 1 - sstep(0.4, 1, u); lines = 0;
-        if (u >= 1) hide();
-      }
       // now and then a little lightning over it near its foot, and sparkles in it (the clip's, as it stands)
       if (dome.strikeT < 0 && dome.fadeT < 0 && dome.popT < 0 && tf > F.time) {
         if (clock >= dome.crackles) {
@@ -1286,19 +1352,10 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
       s.u.uAge.value = age;
       s.u.uFade.value = s.kind === 1 ? sstep(0, 0.04, age) : 1;
     }
-    // ---- the ring as it is raised, the shell, the disc, the dust
+    // ---- the ring as it is raised, the disc, the dust
     if (ringS.on) {
       const u = (clock - ringS.t0) / REFLECT_FX.ring.life;
       if (u > 1) { ringS.on = false; ring.visible = false; } else ringU.uU.value = u;
-    }
-    if (shellS.on) {
-      const u = (clock - shellS.t0) / REFLECT_FX.shell.life;
-      if (u > 1) { shellS.on = false; shell.visible = false; }
-      else if (u >= 0) {
-        shell.visible = true;
-        shell.scale.setScalar(shellS.r * (1 + REFLECT_FX.shell.grow * (1 - Math.pow(1 - u, 2.5))));
-        shell.material.uniforms.uU.value = u;
-      }
     }
     if (discS.on) {
       const D = REFLECT_FX.disc, age = clock - discS.t0, u = age / D.life;
@@ -1379,7 +1436,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     update,
     get up() { return dome.on; },
     get struck() { return dome.on && dome.strikeT >= 0; },
-    get busy() { return dome.on || sparks.visible || shards.visible || lights.visible || discS.on || shellS.on || dustS.on || ringS.on || sprites.some(s => s.on) || later.length > 0; },
+    get busy() { return dome.on || sparks.visible || shards.visible || lights.visible || discS.on || dustS.on || ringS.on || sprites.some(s => s.on) || later.length > 0; },
     get clock() { return clock; },
     hitPoint: out => hitPoint(out || new THREE.Vector3()),
     setNight(on) { night = !!on; nightU.value = night ? 1 : 0; },
