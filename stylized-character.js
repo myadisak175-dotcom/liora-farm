@@ -23,7 +23,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const SUN = new THREE.Vector3(-0.4, 0.9, 0.5).normalize();   // same sun as the trees and rocks
 
-function celMaterial(src, water, tint) {
+function celMaterial(src, water, tint, indoor) {
   const ex = src.userData || {};
   const map = src.map || null;
   if (map) { map.colorSpace = THREE.NoColorSpace; map.needsUpdate = true; }   // raw sRGB, like the rest of the kit
@@ -40,6 +40,7 @@ function celMaterial(src, water, tint) {
       uCut: { value: mask ? src.alphaTest : (hair ? 0.5 : 0.0) },
       uWaterY: water.level, uWet: water.wet,
       uTint: tint,
+      uIndoor: indoor,               // (indoors: the room's light in place of the hour's, cloud-shadows.js; set by whoever moves her)
       uSolid: { value: blend && !hair ? 0 : 1 },         // (a blended overlay keeps its own alpha)
     },
     vertexShader: /* glsl */`
@@ -121,9 +122,10 @@ export async function loadCharacter(source, anim) {
   const made = new Map();
   const water = { level: { value: -1e5 }, wet: { value: new THREE.Vector2(-1e5, 0) } };      // shared by all her materials; on land: no water, dry
   const tint = { value: new THREE.Vector4(0, 0, 0, 0) };                                       // shared too: no colour washed over her
+  const indoor = { value: new THREE.Vector4(1, 1, 1, 0) };                                     // and the light of a room she is in (a: how much; 0 out of doors)
   model.traverse(o => {
     if (!o.isMesh) return;
-    if (!made.has(o.material)) made.set(o.material, celMaterial(o.material, water, tint));
+    if (!made.has(o.material)) made.set(o.material, celMaterial(o.material, water, tint, indoor));
     const queue = (o.material.userData && o.material.userData.queue) || 2000;
     o.material = made.get(o.material);
     o.renderOrder = queue > 2500 ? 10 + (queue - 2500) / 1000 : 0;      // face overlays (brows, lashes, highlights) after the skin
@@ -148,7 +150,7 @@ export async function loadCharacter(source, anim) {
   const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
   let springs = null;
   const ch = {
-    object, model, mixer, actions, height: baseHeight, water, tint: tint.value, baseHeight, hipsHeight, size: 1,
+    object, model, mixer, actions, height: baseHeight, water, tint: tint.value, indoor: indoor.value, baseHeight, hipsHeight, size: 1,
     speeds: { ...baseSpeeds },
     // k times her modelled size (1 = as the GLB is, ~1.41 m). A bigger step covers more ground: the clips' speeds grow with her
     setSize(k) {

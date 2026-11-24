@@ -22,7 +22,8 @@
      const [kit, props] = await Promise.all([loadVillageKit(), loadFantasyProps()]);
      const guild = createGuildHall({ kit, props, x, y, z, yaw, heightAt });      // y: the hall's floor (the plaza lies GUILD_HALL.plinth below it)
      scene.add(guild.group);
-     guild.heightAt(x, z, land)   the height to stand at: a floor, a stair, the gallery, the steps, or the land
+     guild.heightAt(x, z, land, storey)   the height to stand at: a floor, a stair, the gallery, the steps, or the land (on her
+                              storey, or on the one named: an NPC's)
      guild.collide(p)         keeps { x, z } out of the walls, rails and furniture of the storey she is on
      guild.follow(pos)        every frame: which storey she is on (-1 out of doors, 0 the hall, 1 the gallery). A jump high
                               enough lands her on the gallery (its floor can be risen through from below), or takes her off
@@ -33,6 +34,7 @@
      guild.casts              [[x, z, height, radius, darkness]]: the shadows it throws on a level's ground picture
      guild.spots              places for people and for things to do later: [x, z, storey, facing]
      guild.night(k)           0 by day .. 1 at night: how much the lamps light the rooms against the daylight
+     guild.roomLight          the light someone in the hall is lit by (by night its lamps'), for a character's uIndoor
    Its children are named guild:<layer> (out, wN wS wE wW, hall, gallery, under, roof, N S E W, NG, grounds): a page that
    dims the world by night draws the rooms' layers after the dimming, in their own light (guild-hall.html). The rooms', the
    windows' and the flames' materials say userData.noGrade, so the game's light of the hour (cloud-shadows.js, which darkens
@@ -864,7 +866,7 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
       Hp.solid(new THREE.CylinderGeometry(0.035, 0.04, 0.06, 8), C.iron, mat4(x - 0.5, h + 0.03, z0 - 0.47));       // ink and a quill
       Hp.box(C.paper, x - 0.47, h + 0.06, z0 - 0.47, 0.01, 0.22, 0.04, { rz: 0.35 });
       candle('hall', x - 0.76, h, z0 - 0.2, true);
-      prop('hall', 'Stool', x, 0, z0 - 1.2, k * 0.7); round(x, z0 - 1.2, 0.24, S0);
+      if (x) { prop('hall', 'Stool', x, 0, z0 - 1.2, k * 0.7); round(x, z0 - 1.2, 0.24, S0); }      // (none at the middle place: the receptionist stands there, spots.desk)
     }
     prop('hall', 'Scroll_1', -1.4, h, z0 - 0.24, 0.3); prop('hall', 'Scroll_2', 1.42, h, z0 - 0.42, -0.5);
     prop('hall', 'Coin_Pile', 1.5, h, z0 - 0.2, 0.5);
@@ -1220,11 +1222,13 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
   const lampWorld = lamps.slice(0, LAMPS).map(([x, y, z, reach, r, g, b, fl]) => { const [wx, wz] = toWorld(x, z); return { p: new THREE.Vector4(wx, Y + y, wz, reach), c: new THREE.Vector3(r, g, b), fl, ph: wx * 1.7 + wz }; });
   lampWorld.forEach((l, i) => shared.uLamp.value[i].copy(l.p));
   let nightK = 0;
+  const roomLight = new THREE.Vector3();                                    // what someone in the hall is lit by (a character's uIndoor: npc.js, the game)
   const setLight = () => {
     const k = nightK;
     glowing.value = k;
     shared.uUp.value.set(0.86 - 0.5 * k, 0.8 - 0.47 * k, 0.72 - 0.36 * k);
     shared.uDown.value.set(0.6 - 0.36 * k, 0.55 - 0.34 * k, 0.53 - 0.27 * k);
+    roomLight.set(0.93 + 0.02 * k, 0.9 - 0.12 * k, 0.84 - 0.24 * k);      // (by day the windows' light, a little dimmer than the sun's; by night the lamps', warm)
   };
   setLight();
 
@@ -1234,7 +1238,7 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
   const inStair = (u, v) => u > STAIR.x0 - 0.05 && u < W / 2 && v < STAIR.z0 + 0.1 && v > STAIR.z1 - 0.3;
   const tStair = v => (STAIR.z0 - v) / (STAIR.z0 - STAIR.z1);
   const climb = t => Math.min(F1, Math.max(0, t * F1 + F1 / STAIR.n * 0.5));      // on the treads, not through them
-  const floorAt = (u, v) => (storey <= 1 && inStair(u, v) ? climb(tStair(v)) : storey === 1 ? F1 : 0);
+  const floorAt = (u, v, s = storey) => (s <= 1 && inStair(u, v) ? climb(tStair(v)) : s === 1 ? F1 : 0);
   const onSteps = (u, v) => Math.abs(u) < STEP.half && v > D / 2 - 0.05 && v < D / 2 + 0.12 + 3 * STEP.run;
   const bare = [];
   {                                                                         // no grass under the building and on the plaza before it
@@ -1267,9 +1271,9 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
       if (onSteps(u, v) || (plaza && u > PLAZA.u0 && u < PLAZA.u1 && v > PLAZA.v0 - 0.2 && v < PLAZA.v1)) return 'stone';
       return null;
     },
-    heightAt(x, z, land) {
+    heightAt(x, z, land, s = storey) {                                    // (s: the storey asked about; hers, unless another is named: an NPC's)
       const [u, v] = toLocal(x, z);
-      if (storey >= 0 && inHall(u, v, 0.05)) return Y + floorAt(u, v);
+      if (s >= 0 && inHall(u, v, 0.05)) return Y + floorAt(u, v, s);
       if (onSteps(u, v)) return Y + Math.max(-PLINTH, Math.min(0, -PLINTH / 3 * ((v - D / 2 - 0.12) / STEP.run + 0.5)));
       return land;
     },
@@ -1348,6 +1352,9 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
       if (!open && Math.hypot(cu, cv) > FAR_ROOMS) for (const k of ROOMS) meshes[k].visible = false;
     },
     night(k) { nightK = Math.min(1, Math.max(0, k)); setLight(); },
+    get nightLevel() { return nightK; },
+    // the light someone in the hall is lit by, in place of the hour's (a character's material: cloud-shadows.js, uIndoor)
+    roomLight,
     // places for people, and for things to do, later: [x, z, storey, the way they face]
     spots: {},
     lamps: lampWorld,
@@ -1357,6 +1364,8 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
   Object.assign(guild.spots, {
     door: spot(0, D / 2 + 2.2, -1, Math.PI), plaza: spot(0, 12.5, -1, Math.PI), inside: spot(0, 6.2, 0, Math.PI),
     reception: [spot(-2, -5.4, 0, 0), spot(0, -5.4, 0, 0), spot(2, -5.4, 0, 0)], counter: spot(0, -3.4, 0, Math.PI),
+    // the receptionist's (npc.js): where she stands at the middle place, before her stool at the east place, and at the pigeonholes
+    desk: spot(0, -5.25, 0, 0), deskSeat: spot(2, -5.2, 0, 0), pigeonholes: spot(0.35, -6.92, 0, Math.PI),
     board: spot(3.9, 3.6, 0, Math.PI / 2), bar: spot(-5.0, 5.6, 0, Math.PI / 2), barSeat: spot(-2.95, 5.2, 0, -Math.PI / 2), exchange: spot(-4.7, -5.4, 0, 0),
     exchangeFront: spot(-4.6, -3.4, 0, Math.PI), hearth: spot(-2.5, 0, 0, -Math.PI / 2), stair: spot(5.2, 1.2, 0, Math.PI), gallery: spot(1.6, -4.35, 1, 0), master: spot(0, -6.3, 1, 0),
     tables: [spot(-3.2, 2.9, 0, 0), spot(2.5, -1.35, 0, 0)], training: spot(-10, -1, -1, -Math.PI / 2),

@@ -103,12 +103,15 @@ function patch(mat, uniforms) {
   } else if (vs.includes('#include <project_vertex>')) {
     vs = beforeEnd(vs, '\n  vCloud = cloudShade(mvPosition.xyz);\n');
   } else return false;
-  // tint what the material drew, but not the haze laid over it
+  // tint what the material drew, but not the haze laid over it. A material with a uIndoor of its own (a character's, an
+  // animal's: stylized-character.js, stylized-animals.js) is lit, while it is indoors, by the room it is in: its rgb, taking
+  // the place of the hour's light and the clouds' shade as far as its a (0 out of doors .. 1 in; npc.js, the game)
+  const indoor = !!(mat.uniforms && mat.uniforms.uIndoor), light = indoor ? 'mix(mix(vec3(1.0), uCloudCol, vCloud) * uGrade, uIndoor.rgb, uIndoor.a)' : 'mix(vec3(1.0), uCloudCol, vCloud) * uGrade';
   fs = beforeEnd(fs, hazed
-    ? '\n  { vec3 cH = uHaze * vHaze; gl_FragColor.rgb = (gl_FragColor.rgb - cH) * mix(vec3(1.0), uCloudCol, vCloud) * uGrade + cH; }\n'
-    : '\n  gl_FragColor.rgb *= mix(vec3(1.0), uCloudCol, vCloud) * uGrade;\n');
+    ? `\n  { vec3 cH = uHaze * vHaze; gl_FragColor.rgb = (gl_FragColor.rgb - cH) * ${light} + cH; }\n`
+    : `\n  gl_FragColor.rgb *= ${light};\n`);
   mat.vertexShader = VERT + vs;
-  mat.fragmentShader = FRAG + fs;
+  mat.fragmentShader = FRAG + (indoor ? 'uniform vec4 uIndoor;\n' : '') + fs;
   Object.assign(mat.uniforms, uniforms);
   mat.needsUpdate = true;
   return true;

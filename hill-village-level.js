@@ -1002,8 +1002,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const standG = guild ? (x, z, y) => guild.heightAt(x, z, standAt(x, z, y)) : standAt;
   const footingG = guild ? (x, z, y) => (guild.blocked(x, z) ? 'wall' : footing(x, z, y)) : footing;
   const surfaceG = guild ? (x, z, y) => guild.surfaceAt(x, z) || surfaceAt(x, z, y) : surfaceAt;
+  // the floor on a storey (-1 out of doors, 0 the guild's hall, 1 its gallery) whatever storey she is on: an NPC's (npc.js)
+  const floorAt = guild ? (x, z, s = -1) => guild.heightAt(x, z, H(x, z), s) : (x, z) => H(x, z);
   return {
-    group, map, field, grass, terrain, heightAt: heightG, standAt: standG, waterDepthAt, surfaceAt: surfaceG, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing: footingG, views, placeEdit, pathEdit, foliageEdit, guild,
+    group, map, field, grass, terrain, heightAt: heightG, standAt: standG, waterDepthAt, surfaceAt: surfaceG, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing: footingG, floorAt, views, placeEdit, pathEdit, foliageEdit, guild,
     homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]]), ...(P.guild ? [[P.guild.x, P.guild.z]] : [])],      // (the village's houses and stalls, and the guild: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, green, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },

@@ -36,6 +36,7 @@ export function toonMaterial(map = null, color = '#b98a5e', { sat = 1.0 } = {}) 
       uMid: { value: new THREE.Vector3(0.9, 0.84, 0.8) },
       uShade: { value: new THREE.Vector3(0.64, 0.6, 0.72) },    // cool shadow band
       uSat: { value: sat },                                    // >1 to push a realistic texture toward the kit
+      uIndoor: { value: new THREE.Vector4(1, 1, 1, 0) },       // indoors: the room's light in place of the hour's (cloud-shadows.js)
     },
     vertexShader: /* glsl */`
       #include <common>

@@ -172,7 +172,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=66",
+  "./hill-village-level.js": "./hill-village-level.js?v=67",
   "./west-fringe.js": "./west-fringe.js?v=7",
   "./west-fringe-water.js": "./west-fringe-water.js?v=1",
   "./plant-boss.js": "./plant-boss.js?v=3",
@@ -184,10 +184,10 @@
   "./boss-trial.js": "./boss-trial.js?v=4",
   "./sprite-trial.js": "./sprite-trial.js?v=1",
   "./sprite-companion.js": "./sprite-companion.js?v=1",
-  "./npc.js": "./npc.js?v=2",
-  "./npc-anim.js": "./npc-anim.js?v=2",
+  "./npc.js": "./npc.js?v=3",
+  "./npc-anim.js": "./npc-anim.js?v=3",
   "./village-kit.js": "./village-kit.js?v=guild3",
-  "./guild-hall.js": "./guild-hall.js?v=4",
+  "./guild-hall.js": "./guild-hall.js?v=6",
   "./map-rim.js": "./map-rim.js?v=4",
   "./path-brush.js": "./path-brush.js?v=1",
   "./path-edits.js": "./path-edits.js?v=3",
@@ -203,9 +203,9 @@
   "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1look1bways1dry3",
   "./stylized-sky.js": "./stylized-sky.js?v=alps1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
-  "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
+  "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1indoor1",
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1",
-  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1indoor1",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./character-springs.js": "./character-springs.js?v=2",
   "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1vault1",
@@ -215,7 +215,7 @@
   "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1murk1",
   "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
   "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
-  "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
+  "./cloud-shadows.js": "./cloud-shadows.js?v=tod4",
   "./time-of-day.js": "./time-of-day.js?v=tod4",
   "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
   "./hills-level.js": "./hills-level.js?v=rocks1t4",
@@ -635,12 +635,13 @@ if (Q.get('sprite') !== '0') {
   try { sprite = await (await import('./sprite-companion.js')).createSpriteCompanion({ level, scene, player }); }
   catch (err) { console.warn('[sprite]', err); }
 }
-// ---- 👩 ?npc=1 (a trial): the first NPC (npc.js), from a model the user sent: she tends the west fields of the hill village,
-// up and down the lane between the carrots and the cabbages (pulling, kneeling, crouching, looking about); when she comes up she
-// stops, turns to her and talks (a bubble), her eyes and head follow her, and she goes back to work when she goes. Without it
-// nothing of it is loaded; should her model not load, the game goes on
-let npcs = null;
-if (Q.has('npc') && Q.get('npc') !== '0' && MAP === 'hillvillage') {
+// ---- 👩 the people of the hill village (npc.js; ?npc=0: none): the first, from a model the user sent, is the guild's
+// receptionist (until 25 Nov 2026 she tended the west fields): behind the reception counter she writes, leans on it, files
+// papers, reaches under it and rests on her stool; she waves as Vivi comes into the hall, and when she comes up to the
+// counter she turns to her and talks (a bubble), her eyes and head following her, and goes back to work when she goes. Should
+// her model not load, the game goes on. ?npc=1: Vivi starts before the counter
+let npcs = null, indoorLights = null;
+if (Q.get('npc') !== '0' && MAP === 'hillvillage') {
   try { npcs = await (await import('./npc.js')).createNpcs({ map: MAP, level, scene, camera, player }); }
   catch (err) { console.warn('[npc]', err); }
 }
@@ -692,7 +693,7 @@ if (Q.get('view') === 'water') visitWater();
 if (level.views && level.views[Q.get('view')]) { const v = level.views[Q.get('view')]; player.teleport(v.x, v.z, v.yaw); }
 else if (bossTrial) player.teleport(bossTrial.spot.x, bossTrial.spot.z, bossTrial.spot.yaw);      // ?boss=1: she starts before it
 else if (spriteTrial) player.teleport(spriteTrial.spot.x, spriteTrial.spot.z, spriteTrial.spot.yaw);      // ?sprite=1: she starts where she does, turned to look down the way at them
-else if (npcs && npcs.spot) player.teleport(npcs.spot.x, npcs.spot.z, npcs.spot.yaw);      // ?npc=1: she starts on the road by the fields' gate, looking in at her work
+else if (npcs && npcs.spot && Q.get('npc') === '1') player.teleport(npcs.spot.x, npcs.spot.z, npcs.spot.yaw);      // ?npc=1: she starts before the guild's counter, the receptionist behind it
 // ---- an editor's "save" loads the map again: she comes back where she stood, not at the map's start. The page going away while
 // an editor is open notes her spot (this tab only); the map loading again puts her back on it, once
 const SPOT_KEY = 'liora.player.spot';
@@ -939,6 +940,13 @@ const frame = (dt = clock.getDelta()) => {
   player.update(dt);
   if (towers) towers.update(dt, playT);                                   // (the practice towers' bolts, after her: ?towers=1)
   if (npcs) npcs.update(dt);                                              // (after her: they turn to where she now is)
+  // in the guild's hall she (and the sprite with her) is lit by the hall's own light, by night its lamps', not by the hour's:
+  // cloud-shadows.js gives a character's material that light in place of the hour's as far as uIndoor's a
+  if (level.guild && level.guild.roomLight) {
+    const G = level.guild, inside = G.storey >= 0 ? 1 : 0, k = Math.min(1, dt * 4);
+    if (!indoorLights) { indoorLights = []; if (sprite && sprite.object) sprite.object.traverse(o => { for (const m of [].concat(o.material || [])) if (m.uniforms && m.uniforms.uIndoor && !indoorLights.includes(m.uniforms.uIndoor.value)) indoorLights.push(m.uniforms.uIndoor.value); }); }
+    for (const lit of hero.indoor ? [hero.indoor, ...indoorLights] : indoorLights) { lit.w += (inside - lit.w) * k; lit.x = G.roomLight.x; lit.y = G.roomLight.y; lit.z = G.roomLight.z; }
+  }
   circles.setNight(!!tod && tod.daylight < 0.3);                          // (by night their light is let shine more)
   circles.update(dt, camera);
   if (blinkKit) {
