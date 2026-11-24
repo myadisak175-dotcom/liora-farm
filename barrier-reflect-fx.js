@@ -9,7 +9,9 @@
    the clip's has, which a picture over the whole screen gives it there and this cannot have on a phone), and it all goes
    at an action game's pace: up with a pop, struck, thrown back and broken inside half a second. And of the second try:
    "ทำเอฟเฟคตอนโดน สะท้อน ให้ใกล้เคียง ref หน่อยได้ไหมคะ": so the blow and the burst are the clip's shapes again, drawn
-   crisp, each in a glow (the clip's are: anime's light is sharp shapes that glow, not blurs), at that pace still.
+   crisp, each in a glow (the clip's are: anime's light is sharp shapes that glow, not blurs), at that pace still. Then:
+   "เอฟเฟคตอนที่บาเรียกำลังจะแตกอะ ไม่เหมือน ลายสายฟ้าไม่เหมือน": so its lightning as it charges is the clip's: bolts
+   straight out from where it was struck, kinked sharply, not lines wandering round it like hair.
    One job: draw it. It decides nothing.
 
      const fx = createReflectBarrierFx({ heightAt })    heightAt(x, z): the ground's height (the disc lies on it)
@@ -42,8 +44,10 @@
        at its rim as glass is, as the heart is drawn in to a point; needles of light all round it (white, thick, thinning
        to their tails); a few dark bits of glass; a long thin line of light across the picture through it; a line of light
        back the way it came; white lightning leaping off
-     - the dome deep blue, darker at its edge, lightning cracking all through it from where it was struck, purple
-       lightning round a star of light where the blow went in
+     - the dome deep blue (the world behind her blue through it, she as she is), darker at its edge, its glow gone; from
+       a star of light where the blow went in, lightning straight out every way across it: each bolt short straight
+       pieces kinked sharply about its way, forking now and then, thinning to its tip, a white heart in a blue glow,
+       flickering (the same bolts, about, their zigzags new); purple lightning round the star, kinked as lightning is
      - it bursts: the dome is gone at once; a ball of light swells out between where it was struck and her (round her
        hand, in the clip): white at first, its edge spiked like ice; then sky-blue glass, white at its heart with rays out
        of it, petals of deep blue between them, wide at its rim; it clears from its middle out to its bright spiked rim,
@@ -129,8 +133,8 @@ export const REFLECT_FX = {
   ring: { life: 0.42, r: 1.45 },
   fade: 0.32,
   strike: { flash: 0.34, needles: 90, bits: 7, bolts: 3, boltAt: 0.05, boltLife: 0.2, dim: [0.06, 0.16], white: 0.05 },
-  charge: { at: 0.1, spread: 0.07, rise: 0.08, flick: 0.045, purple: 0.13, swell: 0.05 },
-  burst: { life: 0.6, size: 2.0, from: 0.45, drift: 0.3 },
+  charge: { at: 0.1, spread: 0.07, rise: 0.08, flick: 0.06, purple: 0.13, swell: 0.05 },
+  burst: { life: 0.6, size: 2.0, from: 0.2, drift: 0.15 },
   flare: { hit: [0.3, 0.3, 9], burst: [0.3, 0.36, 12] },
   shards: { at: 0.08, n: 16, speed: [1.8, 4.2], up: [0.3, 1.6], life: [0.6, 1.0], size: [0.15, 0.3] },
   flash: { at: 0.06, n: 7, life: 0.34, len: [0.9, 1.8] },
@@ -227,38 +231,43 @@ function makePictures(seed) {
     for (const dx of [-SW, 0, SW]) line(sg, pts, 2, 2.5, 0.35 + 0.3 * r1(), dx);
   }
 
-  // ---- the cracks: laid round where the dome was struck (the middle of the canvas that place, its edge the far side
-  // of the ball). Red one set, green another, blue purple lightning close round the middle
+  // ---- the lightning through it: laid round where the dome was struck (the middle of the canvas that place, its edge the
+  // far side of the ball). As the clip's: bolts straight out from there in every way, each a zigzag of short straight
+  // pieces kinked sharply about its way (not a wandering line), forking now and then, thinning to its tip. Red one set,
+  // green another (it flickers between them, turned), blue the purple lightning close round the middle (wider zigzags)
   const CW = 1024, C = CW / 2, PX = C / Math.PI;
   const [cc, cg] = sheet(CW, CW);
-  function walk(rr, ch, x, y, a, len, w, depth, k) {
+  function fork(rr, ch, x, y, way, len, w, depth) {
     const pts = [[C + x, C + y]];
     let d = 0;
     while (d < len) {
-      const step = 7 + rr() * 11;
-      a += (rr() - 0.5) * 1.05;
-      const out = Math.hypot(x, y) > 1 ? Math.atan2(y, x) : a;
-      a += Math.atan2(Math.sin(out - a), Math.cos(out - a)) * 0.28;      // (drawn back to going outward)
+      const step = 7 + rr() * 12;
+      way += (rr() - 0.5) * 0.16;                                   // (its way bends a little)
+      const a = way + (rr() - 0.5) * 0.95;                          // (each piece kinked off it)
       x += Math.cos(a) * step; y += Math.sin(a) * step; d += step;
       pts.push([C + x, C + y]);
-      if (depth < 2 && rr() < 0.15) walk(rr, ch, x, y, a + (rr() < 0.5 ? -1 : 1) * (0.4 + 0.5 * rr()), (len - d) * (0.25 + 0.45 * rr()), w * 0.74, depth + 1, k * 0.9);
+      if (depth < 2 && rr() < (depth ? 0.03 : 0.055)) fork(rr, ch, x, y, way + (rr() < 0.5 ? -1 : 1) * (0.3 + 0.45 * rr()), (len - d) * (0.3 + 0.4 * rr()), w * 0.7, depth + 1);
       if (Math.hypot(x, y) > C - 8) break;
     }
-    line(cg, pts, ch, w, k);
+    const n = pts.length;                                            // (thinner each third of it)
+    for (let p = 0; p < 3; p++) {
+      const a0 = Math.floor(p * (n - 1) / 3), a1 = Math.floor((p + 1) * (n - 1) / 3);
+      if (a1 > a0) line(cg, pts.slice(a0, a1 + 1), ch, w * (1 - 0.24 * p), 1 - 0.12 * p);
+    }
   }
   for (const ch of [0, 1]) {
     const rr = seeded(seed * 13 + 101 * (ch + 1));
-    const n = 11 + Math.floor(rr() * 4);
-    for (let i = 0; i < n; i++) walk(rr, ch, 0, 0, (i + rr() * 0.7) / n * 2 * Math.PI, (0.42 + 0.52 * rr()) * Math.PI * PX, 1.8, 0, 1);
+    const n = 10 + Math.floor(rr() * 4);
+    for (let i = 0; i < n; i++) fork(rr, ch, 0, 0, (i + 0.2 + rr() * 0.6) / n * 2 * Math.PI, (0.5 + 0.5 * rr()) * Math.PI * PX, 1.5 + rr() * 1.0, 0);
   }
   {
     const rr = seeded(seed * 17 + 303);
-    for (let i = 0; i < 8; i++) {
-      const a = rr() * 2 * Math.PI, r = (0.015 + 0.05 * rr()) * Math.PI * PX;
+    for (let i = 0; i < 9; i++) {
+      const a = rr() * 2 * Math.PI, r = (0.01 + 0.04 * rr()) * Math.PI * PX;
       let x = Math.cos(a) * r, y = Math.sin(a) * r, h = a + (rr() - 0.5) * 1.2, d = 0, turn = rr() < 0.5 ? -1 : 1;
-      const pts = [[C + x, C + y]], len = (0.07 + 0.13 * rr()) * Math.PI * PX;
-      while (d < len) { const st = 5 + rr() * 11; turn = -turn; h += turn * (0.5 + 0.75 * rr()); x += Math.cos(h) * st; y += Math.sin(h) * st; d += st; pts.push([C + x, C + y]); }
-      line(cg, pts, 2, 2.0, 1);
+      const way = h, pts = [[C + x, C + y]], len = (0.08 + 0.18 * rr()) * Math.PI * PX;
+      while (d < len) { const st = 6 + rr() * 16; if (rr() < 0.7) turn = -turn; const k = way + turn * (0.3 + 0.65 * rr()); x += Math.cos(k) * st; y += Math.sin(k) * st; d += st; pts.push([C + x, C + y]); }
+      line(cg, pts, 2, 2.2, 1);
     }
   }
 
@@ -328,8 +337,10 @@ const DOME_FRAG = /* glsl */`
     // its glass: clear and sky blue, its edge glowing; struck, deep blue (each wall half of it: two make the clip's)
     vec3 rgb = mix(vec3(0.05, 0.115, 0.21), vec3(0.3, 0.52, 0.66), e * e) + vec3(0.06, 0.13, 0.16) * foot;
     float a = mix(0.085, 0.34, e * e) + 0.05 * foot;
-    vec3 rgbC = mix(vec3(0.03, 0.07, 0.25), vec3(0.09, 0.19, 0.46), e);
-    float aC = mix(0.34, 0.64, e);
+    // struck, as the clip's: deep blue, its far wall the blue behind her, its near wall clear before her and blue only
+    // towards its edge (she is seen as she is, the world behind her blue)
+    vec3 rgbC = mix(mix(vec3(0.01, 0.02, 0.07), vec3(0.07, 0.14, 0.48), uBack), vec3(0.1, 0.2, 0.56), e);
+    float aC = mix(mix(0.08, 0.62, uBack), 0.8, mix(pow(e, 1.5), e, uBack));
     rgb = mix(rgb, rgbC, uCharge); a = mix(a, aC, uCharge);
     // its lines of light: one picture round it, read twice, moving two ways and waving; each line's heart from the
     // picture as it is, its glow from a smaller copy (the same lines, blurred)
@@ -363,14 +374,15 @@ const DOME_FRAG = /* glsl */`
       float rad = 0.5 * th / PI;
       vec2 q1 = 0.5 + rad * vec2(d2.x * uTurn.x - d2.y * uTurn.y, d2.x * uTurn.y + d2.y * uTurn.x);
       vec2 q2 = 0.5 + rad * vec2(d2.x * uTurn.z - d2.y * uTurn.w, d2.x * uTurn.w + d2.y * uTurn.z);
-      float reach = 1.0 - smoothstep(uCrackR - 0.35, uCrackR, th);
-      float cr = dot(textureLod(uCracks, q1, 0.0).rg, uPick) * uCrackA * reach;
-      float cg = min(1.0, dot(textureLod(uCracks, q1, 2.5).rg, uPick) * 3.0) * uCrackA * reach;
-      float pr = textureLod(uCracks, q2, 0.0).b * uPurple, pg = min(1.0, textureLod(uCracks, q2, 2.5).b * 3.0) * uPurple;
-      float ch = smoothstep(0.35, 0.95, cr), ph = smoothstep(0.35, 0.95, pr);
-      rgb += vec3(0.25, 0.5, 1.0) * cg * 0.8 + vec3(0.72, 0.5, 0.0) * ch + vec3(0.2, 0.2, 0.2) * ch;
+      float reach = (1.0 - smoothstep(uCrackR - 0.35, uCrackR, th)) * mix(1.0, 0.65, smoothstep(0.4 * PI, 0.9 * PI, th));   // (dimmer far round it)
+      float lc = max(uLod.x - 1.0, 0.0);              // (as fine as the picture can show it from here: no shimmer far off)
+      float cr = dot(textureLod(uCracks, q1, lc).rg, uPick) * uCrackA * reach;
+      float cg = min(1.0, dot(textureLod(uCracks, q1, lc + 2.5).rg, uPick) * 3.0) * uCrackA * reach;
+      float pr = textureLod(uCracks, q2, lc).b * uPurple, pg = min(1.0, textureLod(uCracks, q2, lc + 2.5).b * 3.0) * uPurple;
+      float ch = smoothstep(0.3, 0.85, cr * (1.0 + 0.7 * lc)), ph = smoothstep(0.3, 0.85, pr * (1.0 + 0.7 * lc));
+      rgb += vec3(0.25, 0.5, 1.0) * cg * 0.55 + vec3(0.72, 0.5, 0.0) * ch + vec3(0.2, 0.2, 0.2) * ch;
       rgb += vec3(0.55, 0.22, 1.0) * pg * 0.8 + vec3(0.42, 0.6, 0.0) * ph;
-      a += cg * 0.15 + ch * 0.4 + pg * 0.12 + ph * 0.3;
+      a += cg * 0.1 + ch * 0.4 + pg * 0.12 + ph * 0.3;
       float st = exp(-th * th * 220.0) * uStar;
       rgb += vec3(0.9, 0.97, 1.0) * st; a += st * 0.4;
     }
@@ -532,7 +544,7 @@ const SPRITE_FRAG = /* glsl */`
       // a blow landing (the clip's): at once a white heart in a crown of rays; then a ball of blue thrown out round it,
       // lit at its rim as glass is, as the heart is drawn in to a point
       float rc = mix(0.24, 0.05, smoothstep(0.03, 0.17, t)) * (1.0 - smoothstep(0.6, 1.0, u));
-      float lk = smoothstep(0.012, 0.045, t) * (1.0 - smoothstep(0.55, 0.95, u));
+      float lk = smoothstep(0.012, 0.045, t) * (1.0 - smoothstep(0.42, 0.8, u));
       float ringR = 0.26 + 0.34 * (1.0 - exp(-max(t - 0.012, 0.0) * 8.0));
       float inL = 1.0 - smoothstep(ringR - aa, ringR + aa, r);
       float fr = smoothstep(0.45, 1.0, r / ringR); fr *= fr;
@@ -878,7 +890,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
   const halo = put(square, material({ uniforms: haloU, vertexShader: SPRITE_VERT, fragmentShader: HALO_FRAG }), 3);
   const dome = {
     on: false, center: new THREE.Vector3(), size: 1, ground: 0, formT: -1, fadeT: -1, strikeT: -1, popT: -1, hit: new THREE.Vector3(0, 0, 1),
-    rings: [0, 1, 2].map(() => ({ dir: new THREE.Vector3(0, 0, 1), t: -99 })), ringTurn: 0, flickT: 0, flick: 1, crackles: 0, sparkT: 0, purpleT: 0, starOn: null,
+    rings: [0, 1, 2].map(() => ({ dir: new THREE.Vector3(0, 0, 1), t: -99 })), ringTurn: 0, flickT: 0, flick: 1, pick: false, turn: 0, crackles: 0, sparkT: 0, purpleT: 0, starOn: null,
   };
   const radius = () => REFLECT_FX.dome.r * dome.size;
   let scaleNow = 1;
@@ -1037,9 +1049,9 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     const step = len / (n - 1);
     for (let i = 0; i < n; i++) {
       pts.push(p.clone().multiplyScalar(r * 1.012));
-      turn = -turn;
+      if (rand() < 0.7) turn = -turn;                    // (kinked as lightning is: not a row of Ws)
       const side = v2.crossVectors(p, h).normalize();
-      h.addScaledVector(side, turn * (0.5 + 0.8 * rand())).normalize();
+      h.addScaledVector(side, turn * (0.3 + 0.7 * rand())).normalize();
       p.addScaledVector(h, step).normalize();
       h.sub(v1.copy(p).multiplyScalar(h.dot(p))).normalize();
     }
@@ -1092,7 +1104,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
       v1.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize();
       v1.addScaledVector(out, rand() * 0.3).normalize();
       const p = v2.copy(point).addScaledVector(v1, between(0.08, 0.3) * size);
-      spark(0, p, v1.multiplyScalar(between(2.0, 7.0) * size), between(0.25, 0.45), between(0.035, 0.052) * size, between(0.05, 0.09), { drag: 3, wait: between(0.012, 0.07) });
+      spark(0, p, v1.multiplyScalar(between(2.0, 7.0) * size), between(0.2, 0.34), between(0.035, 0.052) * size, between(0.05, 0.09), { drag: 3, wait: between(0.012, 0.05) });
     }
     for (let i = 0; i < bits; i++) {
       v1.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().addScaledVector(out, 0.8).addScaledVector(back, 0.3).normalize();
@@ -1105,7 +1117,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     const back = new THREE.Vector3().subVectors(from, point).normalize();
     const size = dome.size;
     if (dome.strikeT < 0) {
-      dome.strikeT = clock; dome.hit.copy(dir);
+      dome.strikeT = clock; dome.hit.copy(dir); dome.turn = rand() * 6.283;
       const e1 = new THREE.Vector3().crossVectors(dir, Math.abs(dir.y) < 0.9 ? THREE.Object3D.DEFAULT_UP : new THREE.Vector3(1, 0, 0)).normalize();
       domeU.uHit.value.copy(dir); domeU.uE1.value.copy(e1); domeU.uE2.value.crossVectors(dir, e1);
       ringAt(dir);
@@ -1284,9 +1296,12 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
         charge = 0.25 * sstep(0.02, 0.08, ts) + 0.75 * sstep(C.at, C.at + C.rise, ts);
         crackR = Math.PI * 1.08 * clamp((ts - C.at) / C.spread, 0, 1);
         if (clock >= dome.flickT) {
+          // it flickers as the clip's does: the other set of bolts, turned a little about the way they lie (so the
+          // bolts are still where they were, about, their zigzags new), the purple anywhere
           dome.flickT = clock + C.flick * between(0.7, 1.3);
-          const pick = rand() < 0.5, a1 = rand() * 6.283, a2 = rand() * 6.283;
-          domeU.uPick.value.set(pick ? 1 : 0, pick ? 0 : 1);
+          dome.pick = !dome.pick;
+          const a1 = dome.turn + (rand() - 0.5) * 0.5, a2 = rand() * 6.283;
+          domeU.uPick.value.set(dome.pick ? 1 : 0, dome.pick ? 0 : 1);
           domeU.uTurn.value.set(Math.cos(a1), Math.sin(a1), Math.cos(a2), Math.sin(a2));
           dome.flick = between(0.75, 1.0);
         }
@@ -1302,7 +1317,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
           dome.purpleT = clock + between(0.05, 0.1);
           for (let k = 0; k < 2; k++) {
             const from = dome.hit.clone(), head = v2.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().clone();
-            bolt(1, between(0.07, 0.14), 0.085 * dome.size, pts => onBall(pts, from, head, between(0.22, 0.55), 9, radius() * scaleNow), { onDome: true, every: 0.04 });
+            bolt(1, between(0.07, 0.14), 0.075 * dome.size, pts => onBall(pts, from, head, between(0.22, 0.6), 11, radius() * scaleNow), { onDome: true, every: 0.04 });
           }
         }
       } else dome.starOn = null;
@@ -1338,7 +1353,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
         const edge = rr * dist / Math.sqrt(Math.max(1e-4, dist * dist - rr * rr));      // its edge's radius, as seen
         haloU.uPos.value.copy(dome.center); haloU.uSize.value = edge * 1.35; haloU.uRim.value = 1 / 1.35;
       }
-      haloU.uAlpha.value = dome.on ? alpha * (0.55 + 0.45 * lines + charge * 0.4) : 0;
+      haloU.uAlpha.value = dome.on ? alpha * (0.55 + 0.45 * lines) * (1 - 0.65 * charge) : 0;      // (struck: its edge dark, as the clip's)
     }
     sparkU.uCenter.value.copy(dome.center);
     // ---- the sprites
