@@ -42,7 +42,13 @@ const WALLS = {
     door: ['Wall_UnevenBrick_Door_Flat', 'Wall_UnevenBrick_Door_Round'], wide: ['Wall_UnevenBrick_Window_Wide_Flat', 'Wall_UnevenBrick_Window_Wide_Round'], thin: 'Wall_UnevenBrick_Window_Thin_Round' },
 };
 
-export async function loadVillageKit(url = new URL('./assets/models/village-kit.glb', import.meta.url).href) {
+// The guild's furniture is another of Quaternius' kits, the Fantasy Props MegaKit (CC0), packed the same way into
+// assets/models/fantasy-props.glb (tools/pack-fantasy-props.py): it is loaded and built from just as this kit is, its vertex
+// colours kept (the kit tints its pictures with them: the books' and potions' colours, darker and paler woods)
+export const loadFantasyProps = () => loadVillageKit(new URL('./assets/models/fantasy-props.glb', import.meta.url).href, { colors: true });
+
+const toDisplay = c => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);      // (vertex colours come linear; the props' material works in display colours)
+export async function loadVillageKit(url = new URL('./assets/models/village-kit.glb', import.meta.url).href, { colors = false } = {}) {
   const gltf = await new GLTFLoader().loadAsync(url);
   // every piece: its primitives, each with the picture it is painted from (or none: glass)
   const pieces = new Map(), pictures = new Map();
@@ -55,7 +61,12 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
     for (let i = 0; i < n.count; i++) { nf[i * 3] = n.getX(i); nf[i * 3 + 1] = n.getY(i); nf[i * 3 + 2] = n.getZ(i); }
     g.setAttribute('normal', new THREE.BufferAttribute(nf, 3));
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    if (colors) {                                                      // its tints, as plain display colours (white where it has none)
+      const c = g.attributes.color, n = g.attributes.position.count, cf = new Float32Array(n * 3).fill(1);
+      if (c) for (let i = 0; i < n; i++) { cf[i * 3] = toDisplay(c.getX(i)); cf[i * 3 + 1] = toDisplay(c.getY(i)); cf[i * 3 + 2] = toDisplay(c.getZ(i)); }
+      g.setAttribute('color', new THREE.BufferAttribute(cf, 3));
+    }
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', ...(colors ? ['color'] : [])].includes(k)) g.deleteAttribute(k);
     const map = o.material.map || null, key = map ? map.name || map.uuid : '';
     if (map) pictures.set(key, map);
     if (!pieces.has(name)) pieces.set(name, []);

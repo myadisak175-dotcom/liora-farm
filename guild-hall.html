@@ -10,6 +10,7 @@
   "อาคารกิลยังไม่สมบูรณ์อะ อยากได้ฟีลแบบกิลในเกมต่างโลกจริงๆ" ... "ใช้ model ฟรีที่มีได้ไหม เหมือนโมเดลหมู่บ้านอะ เอามาสร้างกิล
   เหมือนที่เธอเสนอ"). One job: to walk round it and into it. The guild (guild-hall.js) stands on a meadow with its plaza before
   it; she is the game's own player (player-moves.js), and walks in through the door with no cut, up the stair to the gallery.
+  Furnished from Quaternius' Fantasy Props MegaKit (CC0, sent the same night: "ตกแต่งเพิ่มได้ไหม"): assets/models/fantasy-props.glb.
   Up top: ☀/🌙 the hour (by night the rooms are lit by their own lamps), and places to go to at once (📍).
   ?night=1 starts by night.
 -->
@@ -58,8 +59,8 @@
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
-  "./village-kit.js": "./village-kit.js?v=guild1",
-  "./guild-hall.js": "./guild-hall.js?v=1"
+  "./village-kit.js": "./village-kit.js?v=guild2",
+  "./guild-hall.js": "./guild-hall.js?v=2"
 } }
 </script>
 </head>
@@ -94,7 +95,7 @@ import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
 import { createPlayer } from './player-moves.js?v=guild1';
 import { createMagicCircles } from './magic-circle-fx.js';
 import { createStepSounds } from './step-sounds.js';
-import { loadVillageKit } from './village-kit.js';
+import { loadVillageKit, loadFantasyProps } from './village-kit.js';
 import { createGuildHall, GUILD_HALL } from './guild-hall.js';
 
 const Q = new URLSearchParams(location.search);
@@ -139,8 +140,8 @@ scene.add(ground);
 
 // ---- the guild: its middle at (0, -6), the door south (+z) onto its plaza
 let guild = null, map = null, grass = null;
-const kit = await loadVillageKit();
-guild = createGuildHall({ kit, x: GX, y: PAD + GUILD_HALL.plinth, z: GZ, yaw: 0, heightAt: H });
+const [kit, props] = await Promise.all([loadVillageKit(), loadFantasyProps()]);      // the village's building kit, and the props kit it is furnished from
+guild = createGuildHall({ kit, props, x: GX, y: PAD + GUILD_HALL.plinth, z: GZ, yaw: 0, heightAt: H });
 scene.add(guild.group);
 map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0, bare: guild.bare });
 G.applyGroundMap(ground, map, { far: FAR });

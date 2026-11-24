@@ -44,6 +44,8 @@ const STAIR = { x0: 4.55, x1: IX, z0: 0.3, z1: GAL.z1, n: 16 };          // up t
 const TRUSS = [-6.4, -2.4, 1.6, 5.6];                                    // the roof's trusses (the chandeliers hang from the last three)
 const STEP = { half: 1.9, run: 0.38 };                                   // the steps up to the door: three risers of PLINTH / 3
 const POSTS = [-3.3, 3.3];                                               // the posts under the gallery's edge
+// where the candles' wicks are on the props kit's chandelier (its own frame: hung from its top, at y = 0)
+const CHANDELIER_CANDLES = [[0.407, -0.908, -0.407], [-0.577, -0.908, 0], [-0.405, -0.908, 0.415], [0.578, -0.908, 0.006], [-0.004, -0.943, 0.576], [-0.001, -0.943, -0.571], [-0.406, -0.969, -0.411], [0.403, -0.969, 0.412]];
 const PLAZA = { u0: -7.4, u1: 7.4, v0: D / 2 + 0.12, v1: 15.6 };          // the paved plaza before the door
 const OUT = 1, S0 = 2, S1 = 4;                                           // which storeys a wall stands on: out of doors, the hall, the gallery
 export const GUILD_HALL = {
@@ -384,7 +386,7 @@ function glassMaterial(see, glow) {
 }
 // the rooms: the same paint in the light of their own lamps: a soft light from above (more by day, through the windows),
 // banded as the prop material bands the sun's, and warm pools round every lamp (falling away to nothing at its reach)
-const LAMPS = 16;
+const LAMPS = 20;
 function roomMaterial(map, side, shared) {
   return new THREE.ShaderMaterial({
     defines: map ? { ROOM_MAP: 1, LAMPS } : { LAMPS },
@@ -441,7 +443,7 @@ function roomMaterial(map, side, shared) {
 }
 
 // ------------------------------------------------------------------ the guild
-export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, heightAt = () => Y - PLINTH, look = 'kit', plaza = true, seed = 9 } = {}) {
+export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, heightAt = () => Y - PLINTH, look = 'kit', plaza = true, seed = 9 } = {}) {
   const group = new THREE.Group();
   group.name = 'guildHall';
   group.position.set(X, Y, Z); group.rotation.y = yaw;
@@ -453,6 +455,8 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
   const art = guildArt(kit);
   const A = art.rect;
   const mat4 = (x, y, z, ry = 0, s = null) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), s ? new THREE.Vector3(...s) : new THREE.Vector3(1, 1, 1));
+  // a prop of the props kit in a layer: where it stands, turned ry about the vertical (and rx, rz about its own middle first)
+  const prop = (layer, name, x, y, z, ry = 0, s = 1, rx = 0, rz = 0) => L[layer].pb.place(name, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'YZX')), new THREE.Vector3(s, s, s)));
 
   // the layers she is seen into, each built from the kit's pieces and painted faces, and its little glows:
   //   out: the outside (the sun's light; thinned away while she is in)     walls: the room's side of the walls (seen from in front only)
@@ -460,7 +464,7 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
   //   roof: the roof's timbers and boards, the chandeliers      N, S, E, W: what hangs on or stands against each wall
   const layers = {};
   for (const [name, i] of [['out', 1], ['walls', 2], ['hall', 3], ['gallery', 4], ['under', 5], ['roof', 6], ['N', 7], ['S', 8], ['E', 9], ['W', 10], ['NG', 11]]) {
-    layers[name] = { b: kit.builder(), P: painter(seed * 31 + i), glow: [] };
+    layers[name] = { b: kit.builder(), pb: props.builder(), P: painter(seed * 31 + i), glow: [] };
   }
   const L = layers;
   const segs = [], rounds = [], colliders = [];                           // walls and rails [u1, v1, u2, v2, half, storeys]; furniture [u, v, r, storeys]
@@ -621,22 +625,38 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
       P.solid(new THREE.CylinderGeometry(0.03, 0.03, 1.1, 6).rotateZ(Math.PI / 2), C.iron, mat4(x, 5.62, z));
       P.artQuad(A.banner, [x - 0.48, 3.25, z], [x + 0.48, 3.25, z], [x + 0.48, 5.6, z], [x - 0.48, 5.6, z]);
     }
-    // ---- lanterns either side of the door
+    // ---- the props kit's wall lanterns either side of the door, on their brackets
     for (const e of [-1, 1]) {
-      const x = e * 1.72, y = 2.2, z = D / 2 + 0.26;
-      P.box(C.iron, x, y + 0.1, D / 2 + 0.1, 0.05, 0.05, 0.3);
-      P.box(C.iron, x, y - 0.18, z, 0.24, 0.04, 0.24); P.box(C.iron, x, y + 0.2, z, 0.26, 0.05, 0.26);
-      P.solid(new THREE.ConeGeometry(0.19, 0.18, 4).rotateY(Math.PI / 4), C.iron, mat4(x, y + 0.34, z));
-      P.box('#ffd68a', x, y - 0.14, z, 0.17, 0.34, 0.17);
-      glow('out', [x, y + 0.03, z], [1.0, 0.62, 0.25], 0.9);
+      const x = e * 1.72, y = 1.0, k = 0.9;
+      prop('out', 'Lantern_Wall', x, y, D / 2, 0, k);
+      glow('out', [x, y + 0.5 * k, D / 2 + 0.85 * k], [1.0, 0.62, 0.25], 0.95);
     }
-    // ---- out of doors: a stack of crates and barrels by the west corner, a wagon, a notice board, lamp posts
+    // ---- out of doors: crates, barrels and a sack by the west corner, a wagon, a notice board, lamp posts; a potion seller's
+    // cart on the plaza; round the west side a corner to train in (straw dummies, a weapon stand, a grindstone)
     const ground = (u, v) => groundY(u, v);
-    O.b.place('Prop_Crate', mat4(-5.0, ground(-5.0, 9.0), 9.0, 0.3)); O.b.place('Prop_Crate', mat4(-4.2, ground(-4.2, 9.6), 9.6, -0.2, [0.8, 0.8, 0.8]));
-    O.b.place('Prop_Crate', mat4(-4.95, ground(-5.0, 9.0) + 1.06, 9.05, 0.1, [0.85, 0.85, 0.85]));
-    solidOut(-4.8, 9.25, 0.95);
-    barrel(P, -6.3, ground(-6.3, 9.0), 9.0, { r: 0.36, h: 0.95 }); barrel(P, -6.9, ground(-6.9, 9.6), 9.6, { r: 0.33, h: 0.9 }); solidOut(-6.6, 9.3, 0.7);
+    prop('out', 'Crate_Wooden', -5.0, ground(-5.0, 9.0), 9.0, 0.3); O.b.place('Prop_Crate', mat4(-4.1, ground(-4.1, 9.7), 9.7, -0.2, [0.8, 0.8, 0.8]));
+    O.b.place('Prop_Crate', mat4(-4.95, ground(-5.0, 9.0) + 1.06, 9.05, 0.1, [0.72, 0.72, 0.72]));
+    solidOut(-4.7, 9.3, 0.95);
+    prop('out', 'Barrel', -6.3, ground(-6.3, 9.0), 9.0, 0.4); prop('out', 'Barrel_Apples', -6.9, ground(-6.9, 9.7), 9.7, 1.1); solidOut(-6.6, 9.35, 0.75);
+    prop('out', 'Bag', -5.75, ground(-5.75, 10.1), 10.1, 0.6, 0.9); solidOut(-5.75, 10.1, 0.3);
     O.b.place('Prop_Wagon', mat4(-9.6, ground(-9.6, 4.5), 4.5, 0.25)); solidOut(-9.6, 3.6, 1.2); solidOut(-9.9, 2.2, 1.2); solidOut(-9.3, 4.9, 1.0);
+    {                                                                      // the potion seller's cart, bottles on its counter
+      const u = 5.6, v = 13.9, ry = 0.35, gy = ground(u, v), c = Math.cos(ry), sn = Math.sin(ry);
+      const on = (name, lx, ly, lz, r = 0, k = 1) => prop('out', name, u + lx * c + lz * sn, gy + ly, v - lx * sn + lz * c, ry + r, k);
+      on('Stall_Cart_Empty', 0, 0, 0);
+      for (const [n, lx, lz] of [['SmallBottles_1', -0.75, 0.12], ['Potion_2', -0.4, -0.15], ['Potion_1', -0.15, 0.15], ['Potion_4', 0.15, -0.05], ['SmallBottles_1', 0.45, 0.15], ['Potion_2', 0.6, -0.2], ['Coin_Pile', -0.95, -0.2]]) on(n, lx, 0.83, lz, lx * 3);
+      for (const lx of [-1.6, -0.6, 0.4]) solidOut(u + lx * c, v - lx * sn, 0.55);
+    }
+    {                                                                      // the training corner, west of the hall
+      for (const [u, v, r] of [[-11.2, -2.2, 1.2], [-11.6, 0.6, 1.8]]) { prop('out', 'Dummy', u, ground(u, v), v, r); solidOut(u, v, 0.35); }
+      prop('out', 'WeaponStand', -8.7, ground(-8.7, -4.4), -4.4, Math.PI / 2); solidOut(-8.7, -4.4, 0.7);
+      prop('out', 'Sword_Bronze', -8.7, ground(-8.7, -4.4) + 0.22, -4.55, Math.PI / 2, 1, 0.1);
+      prop('out', 'Whetstone', -9.0, ground(-9.0, -6.6), -6.6, Math.PI / 2); solidOut(-9.0, -6.6, 0.6);
+      prop('out', 'Bucket_Wooden_1', -8.2, ground(-8.2, -6.1), -6.1, 0.4);
+    }
+    // ---- banners on brackets, standing out from the walls so they are seen from the plaza: the west wall's blue, the tower's red
+    prop('out', 'Banner_2', -W / 2, 5.3, 6.3, Math.PI);
+    prop('out', 'Banner_1', 10.0, 7.4, 6.6, 0);
     {                                                                      // the notice board out front: two posts, a little roof, papers
       const u = 5.2, v = 11.2, ry = -0.35, gy = ground(u, v);
       P.at(u, gy, v, ry);
@@ -785,30 +805,35 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
   }
 
   // ================================================================== the hall: what stands in it
+  // (the furniture is the props kit's where it has the thing: tables, benches, stools, chairs, bookcases, shelves of bottles,
+  // barrels on their racks, chests, crates, candles and candlesticks, mugs, plates, coins, books and scrolls, shields and swords;
+  // made here where it has not: the counters, the board, the hearth, the pigeonholes, the skulls)
   const Hp = L.hall.P;
-  // ---- the reception counter across the far end, under the gallery: three places, a lamp, a bell and a book at each
+  // ---- the reception counter across the far end, under the gallery: three places, each with a candle, a bell, a register,
+  // forms, ink and a quill; a stool behind each
   {
     const z0 = -4.3, d = 0.62, x0 = -3.0, x1 = 3.0, h = 1.05;
     counter(Hp, x0, x1, z0, d, h);
-    for (const x of [-1, 1]) { Hp.box('dark', x, h, z0 - d / 2, 0.05, 0.36, d); }
+    for (const x of [-1, 1]) Hp.box('dark', x, h, z0 - d / 2, 0.05, 0.36, d);
     for (const [k, x] of [-2, 0, 2].entries()) {
       Hp.solid(new THREE.CylinderGeometry(0.02, 0.07, 0.08, 10), C.brass, mat4(x + 0.55, h + 0.04, z0 - 0.2));        // the bell
       Hp.solid(new THREE.SphereGeometry(0.03, 8, 6), C.brass, mat4(x + 0.55, h + 0.1, z0 - 0.2));
-      Hp.box(C.books[k * 2 % 7], x - 0.15, h, z0 - 0.3, 0.42, 0.05, 0.3, { ry: 0.15 }); Hp.box(C.paper, x - 0.15, h + 0.05, z0 - 0.3, 0.38, 0.01, 0.27, { ry: 0.15 });      // an open ledger
-      Hp.box(C.paper, x + 0.2, h, z0 - 0.45, 0.24, 0.06, 0.3, { ry: -0.2 });      // a stack of forms
-      Hp.solid(new THREE.CylinderGeometry(0.035, 0.04, 0.06, 8), C.iron, mat4(x - 0.55, h + 0.03, z0 - 0.42));      // ink and a quill
-      Hp.box(C.paper, x - 0.52, h + 0.06, z0 - 0.42, 0.01, 0.22, 0.04, { rz: 0.35 });
-      lamp(L.hall, x - 0.75, h, z0 - 0.18);
+      prop('hall', 'Book_7', x - 0.12, h + 0.03, z0 - 0.33, 0.25 - k * 0.35);                                         // the register
+      Hp.box(C.paper, x + 0.22, h, z0 - 0.46, 0.24, 0.05, 0.3, { ry: -0.2 });                                       // forms
+      Hp.solid(new THREE.CylinderGeometry(0.035, 0.04, 0.06, 8), C.iron, mat4(x - 0.55, h + 0.03, z0 - 0.45));      // ink and a quill
+      Hp.box(C.paper, x - 0.52, h + 0.06, z0 - 0.45, 0.01, 0.22, 0.04, { rz: 0.35 });
+      candle('hall', x - 0.8, h, z0 - 0.22, true);
       lamps.push([x, 2.2, z0 - 0.3, 3.0, 0.42, 0.33, 0.2, 0.3]);
-      Hp.box('dark', x, 0, z0 - 1.25, 0.4, 0.62, 0.4); round(x, z0 - 1.25, 0.25, S0);      // a stool behind
+      prop('hall', 'Stool', x, 0, z0 - 1.25, k * 0.7); round(x, z0 - 1.25, 0.25, S0);
     }
+    prop('hall', 'Scroll_1', -1.45, h, z0 - 0.26, 0.3); prop('hall', 'Scroll_2', 1.42, h, z0 - 0.42, -0.5);
+    prop('hall', 'Coin_Pile', 1.5, h, z0 - 0.22, 0.5);
     wall(x0, z0 - d / 2, x1, z0 - d / 2, d / 2, S0);
-    // the board hung over it from the gallery's edge
     hangSign(L.under, 0, F1 - 0.55, GAL.z1 + 0.18, 1.6, A.lReception);
-    // behind: pigeonholes up the back wall, full of rolled papers
     pigeonholes(L.N.P, -2.8, 2.8, -IZ, 2.5);
   }
-  // ---- the materials counter in the west corner under the gallery: scales, a tray of glowing stones, horns and hides
+  // ---- the materials counter in the west corner under the gallery: scales, a tray of glowing stones, coins; behind it a
+  // chest, crates, sacks, potions on the wall and a beast's pelt
   {
     const z0 = -4.3, d = 0.62, x0 = -IX, x1 = -3.6, h = 1.0;
     counter(Hp, x0, x1, z0, d, h, 'wood');
@@ -822,17 +847,16 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
       glow('hall', [x, h + 0.12, z], hex(col).map(c => c * 0.8), 0.32);
     }
     lamps.push([-5.1, h + 0.4, z0 - 0.3, 1.4, 0.16, 0.3, 0.42, 0]);
-    // behind: crates of the kit's, sacks, a horn and a hide on the wall
-    L.hall.b.place('Prop_Crate', mat4(-5.1, 0, -6.9, 0.2, [0.7, 0.7, 0.7])); L.hall.b.place('Prop_Crate', mat4(-4.2, 0, -7.1, -0.15, [0.6, 0.6, 0.6]));
-    L.hall.b.place('Prop_Crate', mat4(-5.05, 0.74, -6.9, 0.5, [0.55, 0.55, 0.55]));
-    round(-5.1, -6.9, 0.5, S0); round(-4.2, -7.1, 0.42, S0);
-    for (const [x, z] of [[-3.9, -6.2], [-4.4, -5.9]]) { sack(Hp, x, z); round(x, z, 0.3, S0); }
-    hide(L.W.P, -IX + 0.04, 1.4, -6.6);
-    for (const y of [1.25, 1.7, 2.15]) {
-      L.N.P.box('dark', -4.6, y, -IZ + 0.16, 1.9, 0.04, 0.3, { grain: 'x' });
-      for (let i = 0; i < 9; i++) bottle(L.N.P, -5.4 + i * 0.2, y + 0.04, -IZ + 0.16, ['#c8324a', '#3a7ad0', '#4fb05a', '#d8b040', '#9a5ad0'][(i + Math.round(y * 3)) % 5]);
+    prop('hall', 'Coin_Pile_2', -3.82, h, z0 - 0.42, 0.3); prop('hall', 'Pouch_Large', -4.62, h, z0 - 0.48, 0.8);
+    prop('hall', 'Chest_Wood', -3.3, 0, -7.35, 0); round(-3.3, -7.35, 0.62, S0);
+    L.hall.b.place('Prop_Crate', mat4(-5.35, 0, -6.55, 0.2, [0.75, 0.75, 0.75])); round(-5.35, -6.55, 0.5, S0);
+    L.hall.b.place('Prop_Crate', mat4(-5.3, 0.8, -6.5, -0.3, [0.55, 0.55, 0.55]));
+    for (const [x, z, ry, sc] of [[-3.95, -6.0, 0.4, 1], [-4.5, -5.7, -0.6, 0.85]]) { prop('hall', 'Bag', x, 0, z, ry, sc); round(x, z, 0.3, S0); }
+    for (const [y, list] of [[1.45, [[-7.05, 'SmallBottles_1'], [-6.7, 'Potion_4'], [-6.45, 'Potion_1'], [-6.15, 'SmallBottles_1']]], [2.05, [[-7.0, 'Potion_2'], [-6.75, 'Potion_1'], [-6.5, 'Potion_4'], [-6.25, 'Potion_2'], [-6.05, 'Potion_1']]]]) {
+      prop('W', 'Shelf_Simple', -IX, y, -6.6, Math.PI / 2);
+      for (const [z, n] of list) prop('W', n, -IX + 0.19, y + 0.1, z, z * 3);
     }
-    for (const x of [-5.55, -3.65]) L.N.P.box('dark', x, 1.0, -IZ + 0.16, 0.05, 1.4, 0.3, { grain: 'y' });
+    hide(L.W.P, -IX + 0.04, 1.55, -5.15);
   }
   // ---- the fireplace on the west wall: a stone chimney breast to the roof, a beam over the fire, a beast's skull above
   {
@@ -847,49 +871,49 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     glow('hall', [-5.3, 0.45, 0], [1.0, 0.45, 0.15], 1.5);
     lamps.push([-4.7, 0.6, 0, 5.2, 0.95, 0.5, 0.2, 1]);
     wall(xb, -zw - 0.05, xf, -zw - 0.05, 0.05, S0); wall(xf, -zw, xf, zw, 0.1, S0); wall(xb, zw + 0.05, xf, zw + 0.05, 0.05, S0);
+    for (const e of [-1, 1]) candle('hall', -4.93, 1.46, e * 0.95, false, 'Candle_2');      // candles on the mantel
     skull(L.W.P, xf + 0.06, 3.3, 0, 1.0);
-    for (const e of [-1, 1]) { shieldOnWall(L.W.P, -IX + 0.05, 4.2, e * 2.3, e > 0 ? C.cloth : C.red); }
-    // two chairs before it, a little table between
+    for (const e of [-1, 1]) trophy('W', -IX + 0.02, 4.2, e * 2.3, Math.PI / 2);
+    // two chairs before it, a little table between with a mug on it; a bucket and a vase by the hearth
     for (const e of [-1, 1]) { armchair(Hp, -3.55, e * 0.85, -Math.PI / 2 + e * 0.5); round(-3.55, e * 0.85, 0.42, S0); }
     Hp.solid(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 12), '#6b4128', mat4(-3.4, 0.55, 0)); Hp.solid(new THREE.CylinderGeometry(0.05, 0.08, 0.55, 8), '#4a2e1c', mat4(-3.4, 0.27, 0));
-    mug(Hp, -3.35, 0.575, 0.08); round(-3.4, 0, 0.3, S0);
+    prop('hall', 'Mug', -3.35, 0.575, 0.08, 2.0); round(-3.4, 0, 0.3, S0);
+    prop('hall', 'Bucket_Wooden_1', -4.7, 0, 1.75, 0.6); prop('hall', 'Vase_4', -4.75, 0, -1.72, 0.2); round(-4.7, 1.75, 0.25, S0); round(-4.75, -1.72, 0.22, S0);
   }
-  // ---- the bar along the west wall by the door: a counter, stools, barrels on a rack behind with bottles over them
+  // ---- the bar along the west wall by the door: a counter, stools, mugs; behind it barrels on their racks, bottles over them
   {
     const xc = -4.3, z0 = 3.6, z1 = 6.8, d = 0.6, h = 1.08;
     Hp.at(xc, 0, (z0 + z1) / 2, Math.PI / 2);
     counter(Hp, -(z1 - z0) / 2, (z1 - z0) / 2, 0.3, d, h);
     Hp.back();
     wall(xc, z0, xc, z1, d / 2, S0);
-    for (const z of [4.0, 4.8, 5.6, 6.4]) { stool(Hp, -3.6, z); round(-3.6, z, 0.2, S0); }
-    for (const [z, k] of [[4.3, 0], [5.2, 1], [6.1, 2]]) mug(Hp, xc + 0.1, h, z + k * 0.07);
+    for (const z of [4.0, 4.8, 5.6, 6.4]) { prop('hall', 'Stool', -3.6, 0, z, z * 1.3); round(-3.6, z, 0.22, S0); }
+    prop('hall', 'Mug', xc + 0.12, h, 4.3, 1.2); prop('hall', 'Mug', xc + 0.05, h, 5.25, -0.4); prop('hall', 'Bottle_1', xc - 0.08, h, 5.85); prop('hall', 'Chalice', xc + 0.1, h, 6.35);
     L.W.P.box('dark', -IX + 0.03, 2.85, 5.2, 0.05, 0.42, 1.98, { grain: 'z' });
     L.W.P.artQuad(A.lTavern, [-IX + 0.06, 2.88, 6.1], [-IX + 0.06, 2.88, 4.3], [-IX + 0.06, 3.24, 4.3], [-IX + 0.06, 3.24, 6.1]);
-    // the rack of barrels against the wall, taps out
-    const Pw = L.W.P;
-    Pw.box('dark', -IX + 0.42, 0, 5.2, 0.7, 0.42, 3.6, { grain: 'z' });
-    for (const z of [3.9, 4.85, 5.8, 6.7]) { barrel(Pw, -IX + 0.42, 0.42, z, { r: 0.36, h: 0.78, lying: true }); Pw.box(C.brass, -IX + 0.84, 0.75, z, 0.08, 0.05, 0.05); }
-    for (const y of [1.75, 2.3]) {
-      Pw.box('dark', -IX + 0.15, y, 5.2, 0.3, 0.05, 3.6, { grain: 'z' });
-      for (let i = 0; i < 14; i++) bottle(Pw, -IX + 0.15, y + 0.05, 3.55 + i * 0.24 + Pw.rng() * 0.05, C.bottles[(i + (y > 2 ? 3 : 0)) % 6]);
-    }
+    for (const z of [4.35, 6.0]) { prop('W', 'Barrel_Holder', -IX + 0.42, 0, z, Math.PI / 2); prop('W', 'Shelf_Small_Bottles', -IX, 1.5, z, Math.PI / 2); }
     lamps.push([-4.9, 2.6, 4.4, 3.4, 0.42, 0.3, 0.16, 0.25]); lamps.push([-4.9, 2.6, 6.2, 3.4, 0.42, 0.3, 0.16, 0.25]);
     for (const z of [4.4, 6.2]) hangingLamp(L.roof, -4.7, 2.7, z);
   }
-  // ---- tables: a long one with benches, round ones with stools, one by the stair
+  // ---- tables: the kit's long table with a bench either side, plates and mugs, a candelabrum; round ones with stools
   {
-    longTable(Hp, -2.5, 1.9, 2.1, 0.8);
-    for (const e of [-1, 1]) { bench(Hp, -2.5 + e * 0.72, 1.9, 2.0); }
-    wall(-2.5, 1.0, -2.5, 2.8, 0.82, S0);
-    for (const [x, z, r] of [[-2.0, 5.5, 0.6], [2.3, -1.2, 0.55], [2.6, 5.4, 0.55]]) {
-      roundTable(Hp, x, z, r);
-      for (let k = 0; k < 3; k++) { const a = k * 2.1 + x; stool(Hp, x + Math.cos(a) * (r + 0.35), z + Math.sin(a) * (r + 0.35)); }
-      round(x, z, r + 0.42, S0);
-      mug(Hp, x + 0.15, 0.82, z - 0.1); mug(Hp, x - 0.2, 0.82, z + 0.12);
-      flame('hall', x, 0.98, z, 0.05); Hp.solid(new THREE.CylinderGeometry(0.03, 0.03, 0.14, 8), C.candle, mat4(x, 0.885, z));
+    const x = -2.5, z = 2.6;
+    prop('hall', 'Table_Large', x, 0, z, Math.PI / 2);
+    for (const e of [-1, 1]) prop('hall', 'Bench', x + e * 0.85, 0, z, Math.PI / 2);
+    wall(x, z - 1.4, x, z + 1.4, 1.05, S0);
+    for (const [dx, dz, k] of [[-0.3, -0.9, 0], [0.3, -0.35, 1], [-0.3, 0.4, 2], [0.3, 0.95, 3]]) {
+      prop('hall', 'Table_Plate', x + dx, 0.81, z + dz, k); prop('hall', 'Mug', x + dx * 0.4, 0.81, z + dz + 0.25, k * 1.7);
     }
-    for (const [x, z] of [[-2.7, 1.2], [-2.3, 2.6]]) { mug(Hp, x, 0.81, z); }
-    Hp.solid(new THREE.CylinderGeometry(0.18, 0.18, 0.03, 12), '#c9b48a', mat4(-2.5, 0.825, 1.9));
+    prop('hall', 'Table_Fork', x - 0.12, 0.812, z - 0.9, 0.3); prop('hall', 'Table_Knife', x + 0.45, 0.812, z - 0.35, -0.2);
+    candelabrum('hall', x, 0.81, z, Math.PI / 2);
+    lamps.push([x, 1.6, z, 2.8, 0.34, 0.26, 0.14, 0.3]);
+    for (const [cx, cz, r] of [[-2.0, 5.55, 0.6], [2.3, -1.2, 0.55], [2.6, 5.4, 0.55]]) {
+      roundTable(Hp, cx, cz, r);
+      for (let k = 0; k < 3; k++) { const a = k * 2.1 + cx; prop('hall', 'Stool', cx + Math.cos(a) * (r + 0.35), 0, cz + Math.sin(a) * (r + 0.35), a); }
+      round(cx, cz, r + 0.42, S0);
+      prop('hall', 'Mug', cx + 0.16, 0.815, cz - 0.12, cx); prop('hall', 'Mug', cx - 0.22, 0.815, cz + 0.12, cz);
+      candle('hall', cx + 0.02, 0.815, cz + 0.02, false, 'Candle_2');
+    }
   }
   // ---- the quest board on the east wall by the door: seven columns of notes under the ranks F .. S, a wanted poster
   {
@@ -915,56 +939,92 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     const wq = (a, b) => [x - 0.07, 1.6 + b, 0.75 + a];
     Pe.artQuad(A.wanted, wq(-0.27, -0.36), wq(0.27, -0.36), wq(0.27, 0.36), wq(-0.27, 0.36));
     for (const z of [z0 - 0.4, z1 + 0.35]) { sconce(L.E, x, 2.6, z, -1); lamps.push([x - 0.4, 2.7, z, 3.6, 0.38, 0.3, 0.18, 0.2]); }
-    // a wyvern's head over it
-    skull(L.E.P, IX - 0.02, 4.5, 5.0, 1.2, -1, 1);
+    skull(L.E.P, IX - 0.02, 4.5, 5.0, 1.2, -1, 1);                         // a wyvern's head over it
   }
-  // ---- by the door: a rack of practice weapons, a barrel of staves; and the banner over the door inside
+  // ---- by the door: the kit's weapon stand with swords in it and a shield over it, a barrel of staves, a rack of pegs with
+  // bags on it, a bench; the banner over the door inside
   {
     const P = L.S.P;
-    weaponRack(P, 4.2, IZ - 0.25);
-    barrel(P, 5.3, 0, IZ - 0.45, { r: 0.3, h: 0.8 }); for (let i = 0; i < 4; i++) P.box('wood', 5.3 + (i - 1.5) * 0.08, 0.5, IZ - 0.45 + (i % 2 - 0.5) * 0.1, 0.05, 1.2, 0.05, { rz: (i - 1.5) * 0.06, grain: 'y' });
-    round(4.2, IZ - 0.3, 0.45, S0); round(5.3, IZ - 0.45, 0.35, S0); round(3.4, IZ - 0.3, 0.3, S0);
+    prop('S', 'WeaponStand', 4.25, 0, IZ - 0.6, 0);
+    for (const [dx, t] of [[-0.3, 0.08], [0.35, -0.06]]) prop('S', 'Sword_Bronze', 4.25 + dx, 0.22, IZ - 0.6, 0, 1, t, 0);
+    prop('S', 'Shield_Wooden', 4.25, 2.05, IZ, Math.PI);
+    prop('S', 'Barrel', 5.35, 0, IZ - 0.45, 0.3, 0.85);
+    for (let i = 0; i < 4; i++) P.box('wood', 5.35 + (i - 1.5) * 0.08, 0.5, IZ - 0.45 + (i % 2 - 0.5) * 0.1, 0.05, 1.2, 0.05, { rz: (i - 1.5) * 0.06, grain: 'y' });
+    round(4.25, IZ - 0.6, 0.6, S0); round(5.35, IZ - 0.45, 0.35, S0);
     P.artQuad(A.banner, [0.7, 3.5, IZ - 0.04], [-0.7, 3.5, IZ - 0.04], [-0.7, 5.7, IZ - 0.04], [0.7, 5.7, IZ - 0.04]);
     for (const e of [-1, 1]) { sconce(L.S, e * 1.85, 2.3, IZ - 0.05, 0, -1); }
     lamps.push([0, 2.4, IZ - 0.6, 3.2, 0.3, 0.24, 0.14, 0.2]);
-    // a bench by the door, west
-    bench(Hp, -3.2, IZ - 0.4, 1.6, Math.PI / 2); round(-3.2, IZ - 0.4, 0.4, S0); round(-2.6, IZ - 0.4, 0.4, S0); round(-3.8, IZ - 0.4, 0.4, S0);
+    prop('S', 'Peg_Rack', -3.4, 1.8, IZ, Math.PI);
+    prop('S', 'Bag', -3.75, 1.02, IZ - 0.2, Math.PI, 0.55); prop('S', 'Pouch_Large', -3.1, 1.45, IZ - 0.1, Math.PI);
+    prop('hall', 'Bench', -3.4, 0, IZ - 0.45, 0, 0.75); round(-3.4, IZ - 0.45, 0.4, S0); round(-2.6, IZ - 0.45, 0.4, S0); round(-4.2, IZ - 0.45, 0.4, S0);
   }
-  // ---- behind the stair, under the gallery: stores (crates, barrels, a cabinet)
+  // ---- behind the stair, under the gallery: stores (crates, barrels, a coil of rope)
   {
-    L.hall.b.place('Prop_Crate', mat4(4.9, 0, -6.8, 0.1, [0.75, 0.75, 0.75])); L.hall.b.place('Prop_Crate', mat4(4.0, 0, -7.0, -0.3, [0.65, 0.65, 0.65]));
-    barrel(Hp, 5.1, 0, -5.4, { r: 0.33, h: 0.85 }); barrel(Hp, 4.4, 0, -5.6, { r: 0.3, h: 0.8 });
-    for (const [x, z, r] of [[4.9, -6.8, 0.5], [4.0, -7.0, 0.45], [5.1, -5.4, 0.35], [4.4, -5.6, 0.32]]) round(x, z, r, S0);
+    prop('hall', 'Crate_Wooden', 4.9, 0, -6.9, 0.1, 0.85); L.hall.b.place('Prop_Crate', mat4(4.0, 0, -7.15, -0.3, [0.75, 0.75, 0.75])); L.hall.b.place('Prop_Crate', mat4(4.85, 0.9, -6.95, 0.6, [0.6, 0.6, 0.6]));
+    prop('hall', 'Barrel', 5.1, 0, -5.4, 0.3); prop('hall', 'Barrel', 4.4, 0, -5.6, 1.2, 0.9); prop('hall', 'Rope_2', 3.5, 0, -6.3, 0.4, 0.9);
+    for (const [x, z, r] of [[4.9, -6.9, 0.55], [4.0, -7.15, 0.45], [5.1, -5.4, 0.38], [4.4, -5.6, 0.34]]) round(x, z, r, S0);
   }
-  // ---- the chandeliers: wheels of wood and iron on chains from the trusses, a ring of candles each
-  for (const z of TRUSS.slice(1)) { chandelier(L.roof, 0, 4.4, z, 0.85); lamps.push([0, 4.2, z, 7.5, 0.62, 0.46, 0.26, 0.15]); }
+  // ---- the chandeliers: the kit's, hung from the trusses, a ring of eight candles each
+  for (const z of TRUSS.slice(1)) {
+    const s = 1.35, y = TOP + 0.05 - 0.04 * s;
+    prop('roof', 'Chandelier', 0, y, z, 0, s);
+    for (const [cx, cy, cz] of CHANDELIER_CANDLES) flame('roof', cx * s, y + (cy + 0.015) * s, z + cz * s, 0.07);
+    glow('roof', [0, y - 0.92 * s, z], [1.0, 0.55, 0.2], 3.4);
+    lamps.push([0, y - 0.95 * s, z, 7.5, 0.62, 0.46, 0.26, 0.15]);
+  }
 
   // ================================================================== the gallery
   {
     const Gp = L.gallery.P;
-    // the guild master's desk looking out over the hall, a chair, a crystal ball; books behind
+    // the guild master's desk looking out over the hall, a chair, a crystal ball, books, a scroll, a candle; bookcases behind
     desk(Gp, 0, -5.6);
     Gp.solid(new THREE.SphereGeometry(0.13, 16, 12), C.glassBlue, mat4(0.6, F1 + 0.93, -5.55)); Gp.solid(new THREE.CylinderGeometry(0.08, 0.1, 0.06, 10), C.brass, mat4(0.6, F1 + 0.8, -5.55));
     glow('gallery', [0.6, F1 + 0.93, -5.55], [0.3, 0.6, 0.9], 0.6);
-    flame('gallery', -0.65, F1 + 1.0, -5.6, 0.05); Gp.solid(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 8), C.candle, mat4(-0.65, F1 + 0.88, -5.6));
+    candle('gallery', -0.72, F1 + 0.8, -5.55, true, 'Candle_1', 0.4);
+    prop('gallery', 'Book_Stack_2', 0.88, F1 + 0.8, -5.85, 0.3); prop('gallery', 'Scroll_2', -0.3, F1 + 0.8, -5.3, -0.2);
+    prop('gallery', 'Coin_Pile_2', 0.25, F1 + 0.8, -5.3, 0.6); prop('gallery', 'Chalice', -0.42, F1 + 0.8, -5.85);
     wall(-1.0, -5.6, 1.0, -5.6, 0.42, S1); round(0, -6.45, 0.35, S1);
-    for (const e of [-1, 1]) { bookshelf(L.NG.P, e * 3.0, -IZ + 0.22, 1.5); wall(e * 2.2, -IZ + 0.24, e * 3.8, -IZ + 0.24, 0.22, S1); }
+    for (const e of [-1, 1]) {
+      const x = e * 3.0, z = -IZ + 0.22;
+      prop('NG', 'Bookcase_2', x, F1, z, 0);
+      for (const [y, g, dx] of [[0.14, 2, 0.1], [0.77, 1, -0.08], [1.15, 3, 0.06], [1.53, 2, -0.1], [1.92, 1, 0.08]]) prop('NG', 'BookGroup_Medium_' + g, x + dx, F1 + y, z + 0.03, 0, 1.0);
+      prop('NG', 'Book_Stack_1', x - 0.45, F1 + 2.52, z, 0.4); prop('NG', 'Vase_4', x + 0.4, F1 + 2.52, z, 0, 0.7);
+      wall(x - 0.75, -IZ + 0.24, x + 0.75, -IZ + 0.24, 0.22, S1);
+    }
     lamps.push([0, F1 + 1.4, -5.4, 3.2, 0.32, 0.25, 0.15, 0.25]);
-    // the meeting table at the west end, the map of the lands on it and on the wall
-    roundTable(Gp, -4.0, -6.0, 0.75, F1);
-    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.4; chair(Gp, -4.0 + Math.cos(a) * 1.05, -6.0 + Math.sin(a) * 1.05, Math.atan2(-Math.cos(a), -Math.sin(a)), F1); }
-    round(-4.0, -6.0, 1.3, S1);
-    Gp.artQuad(A.map, [-4.45, F1 + 0.83, -5.7], [-3.55, F1 + 0.83, -5.7], [-3.55, F1 + 0.83, -6.3], [-4.45, F1 + 0.83, -6.3]);
+    // the meeting table at the west end, chairs round it, the map of the lands on it (and on the wall), a candelabrum
+    prop('gallery', 'Table_Large', -4.0, F1, -6.0, 0);
+    for (const x of [-4.85, -4.0, -3.15]) { prop('gallery', 'Chair_1', x, F1, -6.85, 0); prop('gallery', 'Chair_1', x, F1, -5.15, Math.PI); }
+    wall(-5.3, -6.0, -2.7, -6.0, 1.15, S1);
+    Gp.artQuad(A.map, [-4.95, F1 + 0.816, -5.75], [-3.65, F1 + 0.816, -5.75], [-3.65, F1 + 0.816, -6.3], [-4.95, F1 + 0.816, -6.3]);
+    candelabrum('gallery', -3.2, F1 + 0.81, -6.05, 0);
     L.walls.P.artQuad(A.map, [-IX + 0.04, F1 + 1.0, -4.3], [-IX + 0.04, F1 + 1.0, -5.9], [-IX + 0.04, F1 + 2.1, -5.9], [-IX + 0.04, F1 + 2.1, -4.3]);
-    // a globe and a suit of armour at the east end, banners hung from the rail over the hall
+    // a globe, a chest and a suit of armour at the east end; a lectern by the rail; banners hung from the rail over the hall
     Gp.solid(new THREE.CylinderGeometry(0.18, 0.24, 0.6, 8), '#4a2e1c', mat4(3.6, F1 + 0.3, -6.9)); Gp.solid(new THREE.SphereGeometry(0.3, 16, 12), '#3f6b8a', mat4(3.6, F1 + 0.95, -6.9));
     Gp.solid(new THREE.TorusGeometry(0.34, 0.02, 6, 24), C.brass, mat4(3.6, F1 + 0.95, -6.9, 0.4)); round(3.6, -6.9, 0.35, S1);
+    prop('gallery', 'Chest_Wood', 4.95, F1, -7.35, 0); round(4.95, -7.35, 0.62, S1);
     armour(Gp, 5.1, -5.0); round(5.1, -5.0, 0.4, S1);
+    prop('gallery', 'BookStand', -2.0, F1, -5.0, 0); prop('gallery', 'Book_7', -2.0, F1 + 1.3, -5.0, 0, 1, -0.5, 0); round(-2.0, -5.0, 0.3, S1);
     for (const x of [-2.2, 2.2]) Gp.artQuad(A.banner, [x - 0.4, F1 - 1.2, GAL.z1 + 0.05], [x + 0.4, F1 - 1.2, GAL.z1 + 0.05], [x + 0.4, F1 + 1.05, GAL.z1 + 0.05], [x - 0.4, F1 + 1.05, GAL.z1 + 0.05]);
     for (const x of [-3.9, 3.9]) { sconce(L.gallery, x, F1 + 1.7, -IZ + 0.05, 0, 1); lamps.push([x, F1 + 1.8, -IZ + 0.6, 3.8, 0.36, 0.28, 0.16, 0.2]); }
   }
 
   // ================================================================== furniture makers (in a painter's frame; y = the floor they stand on)
+  function candle(layer, x, y, z, holder = false, kind = 'Candle_1', ry = 0) {      // the kit's candle, alight (in its candlestick)
+    let y0 = y;
+    if (holder) { prop(layer, 'CandleStick', x, y, z, ry); y0 = y + 0.065; }
+    prop(layer, kind, x, y0, z, ry);
+    flame(layer, x, y0 + (kind === 'Candle_2' ? 0.253 : 0.133) + 0.012, z, 0.05);
+  }
+  function candelabrum(layer, x, y, z, ry = 0) {                             // the kit's three-armed candlestick, alight
+    prop(layer, 'CandleStick_Triple', x, y, z, ry);
+    const c = Math.cos(ry), sn = Math.sin(ry);
+    for (const [lx, ly] of [[-0.171, 0.34], [0.175, 0.339], [0.003, 0.462]]) flame(layer, x + lx * c, y + ly + 0.012, z - lx * sn, 0.05);
+  }
+  function trophy(layer, x, y, z, ry) {                                     // a round shield over two crossed swords, on a wall the way ry faces
+    for (const e of [-1, 1]) prop(layer, 'Sword_Bronze', x, y - 0.3, z, ry, 1.15, 0, e * 0.75);
+    prop(layer, 'Shield_Wooden', x, y, z, ry, 1.25);
+  }
   function counter(P, x0, x1, z0, d, h, top = 'dark') {                    // front at z0 (facing +z), from x0 to x1
     const xm = (x0 + x1) / 2, w = x1 - x0, zm = z0 - d / 2;
     P.box('dark', xm, 0, zm, w, 0.12, d - 0.06);
@@ -972,11 +1032,6 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     P.box('dark', xm, 0.12, zm, w - 0.04, h - 0.2, d - 0.14);
     P.box(top, xm, h - 0.08, zm + 0.02, w + 0.08, 0.08, d + 0.08, { grain: 'x' });
     for (let x = x0 + 0.02; x <= x1 + 0.01; x += Math.max(0.6, w / Math.round(w / 1.1))) P.box('dark', Math.min(x, x1 - 0.04), 0, z0 - 0.02, 0.09, h - 0.08, 0.06, { grain: 'y' });
-  }
-  function lamp(layer, x, y, z) {                                          // a candle in a glass on the counter
-    const P = layer.P;
-    P.box(C.iron, x, y, z, 0.12, 0.02, 0.12); P.box('#ffe2a8', x, y + 0.02, z, 0.1, 0.16, 0.1); P.box(C.iron, x, y + 0.18, z, 0.12, 0.02, 0.12);
-    glow(layer === L.hall ? 'hall' : layer === L.gallery ? 'gallery' : 'out', [x, y + 0.1, z], [1.0, 0.62, 0.25], 0.55);
   }
   function hangSign(layer, x, y, z, w, rect, ry = 0) {                    // a board on two chains, its picture on both faces
     const P = layer.P, h = w * (rect[3] - rect[1]) / (rect[2] - rect[0]);
@@ -1005,9 +1060,6 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     for (const e of [-1, 1]) { P.box(C.brass, x + e * 0.28, y + 0.32, z, 0.006, 0.22, 0.006); P.solid(new THREE.CylinderGeometry(0.11, 0.07, 0.04, 12), C.brass, mat4(x + e * 0.28, y + 0.3, z)); }
     P.solid(new THREE.OctahedronGeometry(0.05), '#b98cff', mat4(x - 0.28, y + 0.36, z));
     glow('hall', [x - 0.28, y + 0.36, z], [0.5, 0.35, 0.8], 0.28);
-  }
-  function sack(P, x, z) {
-    P.solid(new THREE.SphereGeometry(0.28, 10, 8).scale(1, 1.15, 0.9), C.burlap, mat4(x, 0.3, z)); P.solid(new THREE.CylinderGeometry(0.06, 0.12, 0.12, 8), C.burlapDark, mat4(x, 0.62, z));
   }
   function hide(P, x, y, z) {                                              // a beast's pelt nailed to a wall facing +x
     const s = new THREE.Shape();
@@ -1039,12 +1091,6 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
       if (kind) P.tube([w(0.25, 0.25, e * 0.18), w(0.22, 0.45, e * 0.3), w(0.3, 0.55, e * 0.36)], 0.04 * s, 0.008 * s, '#3d2f27', '#5a4636');
     }
   }
-  function shieldOnWall(P, x, y, z, col) {                                  // a round shield and two crossed swords behind it, on a wall facing +x
-    for (const e of [-1, 1]) P.box(C.steel, x + 0.04, y - 0.6, z, 0.03, 1.2, 0.07, { rx: e * 0.7 });
-    P.solid(new THREE.CylinderGeometry(0.36, 0.36, 0.06, 16).rotateZ(Math.PI / 2), col, mat4(x + 0.08, y, z));
-    P.solid(new THREE.CylinderGeometry(0.39, 0.39, 0.04, 16).rotateZ(Math.PI / 2), C.gold, mat4(x + 0.06, y, z));
-    P.solid(new THREE.SphereGeometry(0.09, 8, 6), C.gold, mat4(x + 0.12, y, z));
-  }
   function armchair(P, x, z, ry) {
     P.at(x, 0, z, ry);
     P.box('dark', 0, 0, 0, 0.7, 0.42, 0.7); P.box(C.red, 0, 0.42, 0.02, 0.6, 0.12, 0.6);
@@ -1052,33 +1098,10 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     for (const e of [-1, 1]) P.box('dark', e * 0.32, 0.42, 0, 0.1, 0.28, 0.66);
     P.back();
   }
-  function mug(P, x, y, z) { P.solid(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 10), '#8a5a34', mat4(x, y + 0.06, z)); P.solid(new THREE.CylinderGeometry(0.04, 0.04, 0.01, 10), '#f0e0b0', mat4(x, y + 0.122, z)); }
-  function bottle(P, x, y, z, col) {
-    P.solid(new THREE.CylinderGeometry(0.045, 0.05, 0.2, 8), col, mat4(x, y + 0.1, z)); P.solid(new THREE.CylinderGeometry(0.015, 0.035, 0.1, 6), col, mat4(x, y + 0.25, z));
-    P.solid(new THREE.CylinderGeometry(0.018, 0.018, 0.03, 6), '#a08060', mat4(x, y + 0.315, z));
-  }
-  function stool(P, x, z) { P.solid(new THREE.CylinderGeometry(0.2, 0.18, 0.06, 10), '#7a4e2e', mat4(x, 0.6, z)); for (let k = 0; k < 3; k++) { const a = k * 2.094; P.box('dark', x + Math.cos(a) * 0.12, 0, z + Math.sin(a) * 0.12, 0.05, 0.6, 0.05, { grain: 'y' }); } }
-  function bench(P, x, z, len, ry = 0) {
-    P.at(x, 0, z, ry);
-    P.box('wood', 0, 0.42, 0, 0.36, 0.06, len, { grain: 'z' });
-    for (const e of [-1, 1]) P.box('dark', 0, 0, e * (len / 2 - 0.2), 0.3, 0.42, 0.08);
-    P.back();
-  }
-  function longTable(P, x, z, len, w, y = 0) {
-    P.box('wood', x, y + 0.74, z, w, 0.07, len, { grain: 'z' });
-    for (const e of [-1, 1]) P.box('dark', x, y, z + e * (len / 2 - 0.25), w - 0.2, 0.74, 0.1);
-    P.box('dark', x, y + 0.2, z, 0.1, 0.1, len - 0.5, { grain: 'z' });
-  }
   function roundTable(P, x, z, r, y = 0) {
     P.solid(new THREE.CylinderGeometry(r, r, 0.07, 16), '#8a5a34', mat4(x, y + 0.74, z));
     P.solid(new THREE.CylinderGeometry(r * 0.96, r * 0.96, 0.02, 16), '#a2703f', mat4(x, y + 0.805, z));
     P.solid(new THREE.CylinderGeometry(0.07, 0.1, 0.74, 8), '#4a2e1c', mat4(x, y, z)); P.solid(new THREE.CylinderGeometry(0.32, 0.36, 0.05, 12), '#4a2e1c', mat4(x, y, z));
-  }
-  function chair(P, x, z, ry, y = 0) {
-    P.at(x, y, z, ry);
-    P.box('wood', 0, 0.45, 0, 0.44, 0.05, 0.42); for (const a of [-1, 1]) for (const b of [-1, 1]) P.box('dark', a * 0.18, 0, b * 0.17, 0.05, 0.45, 0.05, { grain: 'y' });
-    P.box('dark', 0, 0.5, -0.19, 0.44, 0.5, 0.05, { grain: 'x' });
-    P.back();
   }
   function desk(P, x, z) {
     const y = F1;
@@ -1091,19 +1114,6 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     P.box(C.gold, 0, 1.5, -0.3, 0.2, 0.14, 0.1);
     P.back();
   }
-  function bookshelf(P, x, z, w) {                                          // against the back wall at z (facing +z), on the gallery
-    const y = F1, h = 2.2;
-    P.box('dark', x, y, z, w, h, 0.4, { skip: '+z' });
-    for (let r = 0; r < 5; r++) {
-      const yy = y + 0.1 + r * 0.43;
-      P.box('dark', x, yy - 0.04, z + 0.02, w - 0.04, 0.04, 0.36, { grain: 'x' });
-      for (let a = x - w / 2 + 0.08; a < x + w / 2 - 0.12;) {
-        const bw = 0.05 + P.rng() * 0.05, bh = 0.24 + P.rng() * 0.12;
-        if (P.rng() < 0.88) P.box(C.books[Math.floor(P.rng() * 7)], a + bw / 2, yy, z + 0.03, bw, bh, 0.3, { rz: P.rng() < 0.1 ? 0.25 : 0 });
-        a += bw + 0.008;
-      }
-    }
-  }
   function armour(P, x, z) {
     const y = F1;
     P.solid(new THREE.CylinderGeometry(0.3, 0.32, 0.06, 10), '#4a2e1c', mat4(x, y, z)); P.box('dark', x, y, z, 0.06, 1.6, 0.06, { grain: 'y' });
@@ -1111,15 +1121,6 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     P.box(C.steel, x, y + 1.38, z, 0.76, 0.12, 0.22); P.solid(new THREE.SphereGeometry(0.15, 10, 8), C.steel, mat4(x, y + 1.72, z));
     P.solid(new THREE.ConeGeometry(0.05, 0.25, 6), C.red, mat4(x, y + 1.95, z));
     P.box(C.cloth, x, y + 0.65, z, 0.4, 0.4, 0.3);
-  }
-  function weaponRack(P, x, z) {                                            // against the front wall (facing -z)
-    for (const e of [-1, 1]) P.box('dark', x + e * 0.8, 0, z, 0.1, 1.4, 0.3);
-    for (const y of [0.35, 1.2]) P.box('dark', x, y, z, 1.7, 0.08, 0.1);
-    for (let i = 0; i < 5; i++) {
-      const xx = x - 0.6 + i * 0.3;
-      if (i % 2) { P.box('wood', xx, 0.1, z - 0.05, 0.05, 1.9, 0.05, { grain: 'y' }); P.solid(new THREE.ConeGeometry(0.05, 0.25, 4), C.steel, mat4(xx, 2.12, z - 0.05)); }
-      else { P.box(C.steel, xx, 0.38, z - 0.05, 0.08, 1.0, 0.02); P.box('dark', xx, 1.3, z - 0.05, 0.3, 0.05, 0.06); P.box('dark', xx, 1.35, z - 0.05, 0.05, 0.25, 0.05); }
-    }
   }
   function sconce(layer, x, y, z, dirX, dirZ = 0) {                           // an iron arm off a wall with a candle in a glass
     const P = layer.P, ox = dirX * 0.18, oz = dirZ * 0.18;
@@ -1134,44 +1135,6 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
     P.box(C.iron, x, y - 0.2, z, 0.22, 0.03, 0.22); P.box('#ffd68a', x, y - 0.17, z, 0.18, 0.3, 0.18); P.box(C.iron, x, y + 0.13, z, 0.24, 0.04, 0.24);
     P.solid(new THREE.ConeGeometry(0.17, 0.16, 4).rotateY(Math.PI / 4), C.iron, mat4(x, y + 0.25, z));
     glow('roof', [x, y - 0.02, z], [1.0, 0.62, 0.25], 0.8);
-  }
-  function chandelier(layer, x, y, z, r) {                                  // a cart wheel hung flat, candles round its rim
-    const P = layer.P;
-    P.solid(new THREE.TorusGeometry(r, 0.06, 6, 24).rotateX(Math.PI / 2), '#4a2e1c', mat4(x, y, z));
-    P.solid(new THREE.TorusGeometry(r + 0.04, 0.025, 4, 24).rotateX(Math.PI / 2), C.iron, mat4(x, y - 0.02, z));
-    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; P.box('#4a2e1c', x + Math.cos(a) * r / 2, y - 0.03, z + Math.sin(a) * r / 2, r, 0.05, 0.05, { ry: -a }); }
-    P.solid(new THREE.CylinderGeometry(0.1, 0.1, 0.14, 8), '#4a2e1c', mat4(x, y - 0.07, z));
-    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.4; P.tube([[x + Math.cos(a) * r, y + 0.02, z + Math.sin(a) * r], [x, y + 1.15, z]], 0.012, 0.012, C.iron, C.iron, 4); }
-    P.solid(new THREE.TorusGeometry(0.07, 0.015, 4, 10), C.iron, mat4(x, y + 1.17, z));
-    P.box(C.iron, x, y + 1.17, z, 0.025, TOP + 0.05 - y - 1.17, 0.025);
-    for (let k = 0; k < 10; k++) {
-      const a = k * Math.PI / 5, cx = x + Math.cos(a) * r, cz = z + Math.sin(a) * r;
-      P.solid(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 6), C.candle, mat4(cx, y + 0.05, cz));
-      glow('roof', [cx, y + 0.3, cz], [1.0, 0.6, 0.22], 0.08, 1);
-    }
-    glow('roof', [x, y + 0.2, z], [1.0, 0.55, 0.2], 3.2);
-  }
-  function barrel(P, x, y, z, { r = 0.35, h = 0.9, lying = false, ry = 0 } = {}) {      // staves of dark board, iron hoops
-    const n = 12, prof = t => r * (0.88 + 0.12 * Math.sin(Math.PI * t));
-    P.at(x, y + (lying ? r : 0), z, ry);
-    const put = (px, py, pz) => (lying ? [py - h / 2, px, pz] : [px, py, pz]);
-    for (let i = 0; i < n; i++) {
-      const a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2;
-      for (let s = 0; s < 3; s++) {
-        const t0 = s / 3, t1 = (s + 1) / 3, r0 = prof(t0), r1 = prof(t1);
-        const p = (a, rr, t) => put(Math.cos(a) * rr, t * h, Math.sin(a) * rr);
-        P.quad('dark', p(a0, r0, t0), p(a0, r1, t1), p(a1, r1, t1), p(a1, r0, t0), 0.95 + (i % 3) * 0.05);
-      }
-    }
-    for (const t of [0.15, 0.85]) {
-      const g = new THREE.TorusGeometry(prof(t) + 0.01, 0.018, 4, 18); g.rotateX(Math.PI / 2);
-      if (lying) g.rotateZ(Math.PI / 2);
-      P.solid(g, C.iron, lying ? mat4(t * h - h / 2, 0, 0) : mat4(0, t * h, 0));
-    }
-    const cap = new THREE.CircleGeometry(r * 0.88, n);
-    if (lying) { const c1 = cap.clone().rotateY(Math.PI / 2); P.solid(c1, '#6b4128', mat4(h / 2, 0, 0)); P.solid(cap.rotateY(-Math.PI / 2), '#6b4128', mat4(-h / 2, 0, 0)); }
-    else P.solid(cap.rotateX(-Math.PI / 2), '#6b4128', mat4(0, h, 0));
-    P.back();
   }
 
   // ================================================================== meshes
@@ -1192,7 +1155,8 @@ export function createGuildHall({ kit, x: X = 0, y: Y = 0, z: Z = 0, yaw = 0, he
   const meshes = {};
   for (const [name, Lr] of Object.entries(layers)) {
     const { flat, art: artG } = Lr.P.flush(Lr.b);
-    const g = Lr.b.build({ look });
+    const g = Lr.b.build({ look }), gp = Lr.pb.build({ look });
+    for (const m of [...gp.children]) { m.name = 'props:' + m.name; g.add(m); }
     const kind = name === 'out' ? 'out' : (name === 'walls' || name === 'under') ? 'front' : 'room';
     if (name === 'out') for (const m of g.children) if (m.name === 'kit:glass') { m.material = glassMaterial(see, glowing); m.layers.enable(1); }
     for (const m of g.children) if (m.name !== 'kit:glass' || name !== 'out') m.material = materialFor(kind, m.material.uniforms && m.material.uniforms.uMap ? m.material.uniforms.uMap.value : null);
