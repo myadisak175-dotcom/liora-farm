@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b3a55">
+<title>กิลด์นักผจญภัย (ลอง)</title>
+<!--
+  guild-hall.html  —  the adventurers' guild, rebuilt from the village's own building kit, to try (25 Nov 2026:
+  "อาคารกิลยังไม่สมบูรณ์อะ อยากได้ฟีลแบบกิลในเกมต่างโลกจริงๆ" ... "ใช้ model ฟรีที่มีได้ไหม เหมือนโมเดลหมู่บ้านอะ เอามาสร้างกิล
+  เหมือนที่เธอเสนอ"). One job: to walk round it and into it. The guild (guild-hall.js) stands on a meadow with its plaza before
+  it; she is the game's own player (player-moves.js), and walks in through the door with no cut, up the stair to the gallery.
+  Up top: ☀/🌙 the hour (by night the rooms are lit by their own lamps), and places to go to at once (📍).
+  ?night=1 starts by night.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2b3a55; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #fff3d6; text-shadow: 0 1px 6px #000b; min-height: 18px; transition: opacity .4s; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #2b3a55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #bar button.go { background: #55402bd9; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  .act { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 700 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  .act.down { background: rgba(255, 255, 255, .5); }
+  .act svg { width: 24px; height: 24px; margin-bottom: -4px; }
+  #jumpBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: max(26px, calc(env(safe-area-inset-bottom) + 20px)); width: 70px; height: 70px; }
+  #dashBtn { right: max(104px, calc(env(safe-area-inset-right) + 96px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 56px; height: 56px; }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 180px 0 16px; text-align: left; pointer-events: none;
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; transition: opacity .6s; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; white-space: pre-wrap; }
+  @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
+    #name, #beat { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+    #hint { top: calc(58px + env(safe-area-inset-top)); bottom: auto; padding: 0 0 0 calc(14px + env(safe-area-inset-left)); max-width: 52%; font-size: 11px; }
+    #bar button { padding: 6px 9px; font-size: 11px; }
+  }
+  @media (max-height: 520px) {                       /* a phone on its side: the buttons up top in two rows */
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+    #bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
+    #bar button { padding: 6px 9px; font-size: 11px; }
+    #hint { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
+  "./village-kit.js": "./village-kit.js?v=guild1",
+  "./guild-hall.js": "./guild-hall.js?v=1"
+} }
+</script>
+</head>
+<body>
+<div id="name">กิลด์นักผจญภัย (ลอง)<small>สร้างจากชิ้นโมเดลชุดเดียวกับหมู่บ้าน · เดินเข้าประตูได้เลย ไม่มีโหลดฉาก</small></div>
+<div id="beat"></div>
+<div id="bar">
+  <button id="hour" type="button">☀ กลางวัน</button>
+  <button class="go" type="button" data-go="plaza">📍 หน้ากิลด์</button>
+  <button class="go" type="button" data-go="inside">📍 ในห้องโถง</button>
+  <button class="go" type="button" data-go="counter">📍 เคาน์เตอร์รับภารกิจ</button>
+  <button class="go" type="button" data-go="board">📍 บอร์ดภารกิจ</button>
+  <button class="go" type="button" data-go="barSeat">📍 โรงเตี๊ยม</button>
+  <button class="go" type="button" data-go="gallery">📍 ชั้นลอย</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="dashBtn" class="act" type="button" aria-label="พุ่ง"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span></button>
+<button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
+<div id="hint">เดินเข้าประตูได้เลย · ข้างในมีเคาน์เตอร์รับภารกิจ บอร์ดภารกิจ (แรงก์ F–S) โรงเตี๊ยม เตาผิง เคาน์เตอร์รับซื้อวัตถุดิบ<br>บันไดขึ้นชั้นลอยอยู่ทางขวาด้านใน</div>
+<div id="wait">กำลังสร้างกิลด์…</div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
+import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
+import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
+import { createPlayer } from './player-moves.js?v=guild1';
+import { createMagicCircles } from './magic-circle-fx.js';
+import { createStepSounds } from './step-sounds.js';
+import { loadVillageKit } from './village-kit.js';
+import { createGuildHall, GUILD_HALL } from './guild-hall.js';
+
+const Q = new URLSearchParams(location.search);
+const phone = matchMedia('(pointer: coarse)').matches;
+const waitEl = document.getElementById('wait');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass (as the other trial pages'), the ground levelled where the guild stands
+const scene = new THREE.Scene();
+const sky = (() => {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
+scene.background = sky;
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+const H0 = ground.userData.heightAt;
+const GX = 0, GZ = -6, F = GUILD_HALL.foot, PAD = H0(GX, GZ + 12);
+const flatK = (x, z) => {                               // 0 on the guild's ground (its building and plaza) .. 1 six metres off
+  const u = x - GX, v = z - GZ, du = Math.max(F.x0 - 3.5 - u, u - F.x1 - 3, 0), dv = Math.max(F.z0 - 2.5 - v, v - 17, 0);
+  return THREE.MathUtils.smoothstep(Math.hypot(du, dv), 0, 7);
+};
+const H = (x, z) => PAD + (H0(x, z) - PAD) * flatK(x, z);
+{
+  const p = ground.geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, H(p.getX(i), p.getZ(i)));
+  p.needsUpdate = true; ground.geometry.computeVertexNormals();
+  ground.userData.heightAt = H;
+}
+scene.add(ground);
+
+// ---- the guild: its middle at (0, -6), the door south (+z) onto its plaza
+let guild = null, map = null, grass = null;
+const kit = await loadVillageKit();
+guild = createGuildHall({ kit, x: GX, y: PAD + GUILD_HALL.plinth, z: GZ, yaw: 0, heightAt: H });
+scene.add(guild.group);
+map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0, bare: guild.bare });
+G.applyGroundMap(ground, map, { far: FAR });
+grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+// by night the rooms are drawn a second time over the dimmed world, in their own light: their meshes (and the lanterns'
+// glow) are on layer 1 too
+for (const g of guild.group.children) g.traverse(o => { if (o.isMesh && (g.name !== 'guild:out' || o.name === 'guildGlow')) o.layers.enable(1); });
+
+// ---- the light of the hour: by night the world is dimmed (as the game's grade does it), the rooms keep their lamps
+const NIGHT = [0.26, 0.31, 0.6];
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: false, depthWrite: false,
+}));
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+let night = Q.get('night') === '1';
+
+// ---- the camera (the game's: player-moves.js makes it) and her
+const FOV = () => (innerWidth < innerHeight ? 70 : 55);
+const camera = new THREE.PerspectiveCamera(FOV(), innerWidth / innerHeight, 0.1, 600);
+const circles = createMagicCircles({ seed: 2 });
+const fxScene = new THREE.Scene(); fxScene.add(circles.object);
+const level = {
+  spawn: { x: guild.spots.plaza[0], z: guild.spots.plaza[1] + 2, yaw: Math.PI },
+  heightAt: (x, z) => guild.heightAt(x, z, H(x, z)), waterDepthAt: () => 0,      // (no footing: a map that cannot say what its ground is like has its walls by confine)
+  surfaceAt: (x, z) => guild.surfaceAt(x, z) || 'grass',
+  colliders: [...guild.colliders], cameraTrunks: [], crowns: [], radius: 60,
+  confine: p => guild.collide(p),
+};
+const sounds = createStepSounds({ level, volume: 1 });
+let player = null, hero = null, beatT = 0;
+(async () => {
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips } };
+  const [{ VIVI_GLB: model }, springs] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+  const bitmap = window.createImageBitmap;              // (her pictures read as <img>, not fetched: as step-sounds.html does)
+  window.createImageBitmap = undefined;
+  try { hero = await loadCharacter(model, anim); } finally { window.createImageBitmap = bitmap; }
+  if (springs) hero.attachSprings(createSprings(hero.model, springs));
+  hero.setSize(1.75 / hero.baseHeight);
+  player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds });
+  scene.add(player.object);
+  waitEl.remove();
+  window.guildTrial.ready = true;
+})().catch(err => { waitEl.textContent = 'โหลดวีวี่ไม่ได้\n' + (err && err.message || err); console.error(err); });
+
+// ---- the buttons: pressed, not clicked (as the game's)
+function press(id, act) {
+  const b = document.getElementById(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); if (player) act(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+}
+press('jumpBtn', () => player.jump());
+press('dashBtn', () => player.dash());
+const NAMES = { plaza: 'หน้ากิลด์', inside: 'ห้องโถง', counter: 'เคาน์เตอร์รับภารกิจ', board: 'บอร์ดภารกิจ', barSeat: 'โรงเตี๊ยม', gallery: 'ชั้นลอย (ห้องกิลด์มาสเตอร์)' };
+function go(name) {
+  if (!player) return;
+  const s = guild.spots[name];
+  guild.storey = s[2];
+  player.teleport(s[0], s[1], s[3]);
+  say(NAMES[name] || '', 1.4);
+}
+for (const b of document.querySelectorAll('[data-go]')) b.onclick = () => go(b.dataset.go);
+const btn = id => document.getElementById(id);
+const showHour = () => { btn('hour').textContent = night ? '🌙 กลางคืน' : '☀ กลางวัน'; guild.night(night ? 1 : 0); if (circles.setNight) circles.setNight(night); };
+btn('hour').onclick = () => { night = !night; showHour(); };
+showHour();
+
+function say(text, secs) { if (!text) return; beatEl.textContent = text; beatEl.style.opacity = 1; beatT = secs; }
+const beatEl = document.getElementById('beat');
+let wasIn = -1;
+function step(dt) {
+  if (!player) return;
+  dt = Math.min(dt, 0.05);
+  player.update(dt);
+  guild.follow(player.position);
+  guild.update(dt, camera);
+  circles.update(dt, camera);
+  grass.userData.setWalker(player.position, 0.55);
+  if (guild.storey !== wasIn) {                         // (her own light by night: the rooms' when she is in)
+    const lit = guild.storey >= 0;
+    player.object.traverse(o => { if (lit) o.layers.enable(1); else o.layers.disable(1); });
+    if (wasIn !== -2 && lit !== (wasIn >= 0)) say(lit ? (guild.storey === 1 ? 'ชั้นลอย' : 'ยินดีต้อนรับสู่กิลด์!') : '', 1.2);
+    wasIn = guild.storey;
+  }
+  if (beatT > 0 && (beatT -= dt) <= 0) beatEl.style.opacity = 0;
+}
+function draw() {
+  renderer.clear();
+  renderer.render(scene, camera);
+  if (night) {
+    renderer.render(dimScene, camera);
+    scene.background = null; camera.layers.set(1);
+    renderer.render(scene, camera);
+    camera.layers.set(0); scene.background = sky;
+  }
+  renderer.render(fxScene, camera);
+}
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.fov = FOV(); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+camera.fov = FOV(); camera.updateProjectionMatrix();
+
+// for a test (or the console): step the world by hand
+window.guildTrial = {
+  ready: false, held: false,
+  get player() { return player; }, guild, camera, renderer, scene, level,
+  run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
+  go, night(on) { if (on !== night) btn('hour').onclick(); }, draw,
+  key: (code, down) => dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code })),
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.guildTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

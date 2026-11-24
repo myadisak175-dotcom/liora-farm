@@ -16,6 +16,14 @@
    its own z, gables at +z ("front") and -z, eaves at +x and -x. y = 0 is the foot of the walls.
    houseFootprint(spec) gives [w, l] with the eaves' and steps' room, for colliders and bare ground.
 
+   For a building she walks into (guild-hall.js), two more ways to put things in:
+     b.place(name, matrix, side);     // a piece where a Matrix4 says (any turn, any stretch); side 'out' or 'in': only the
+                                      //   outside of a wall piece, or only its room side (the plaster and beams more than
+                                      //   0.12 m behind its face), cut apart triangle by triangle; null: all of it
+     b.paint(/WoodTrim/, geometry);   // a geometry of one's own (position, normal, uv, index; colour if wanted), painted from the
+                                      //   kit's picture whose name matches: merged with the kit's pieces of that picture
+     kit.picture(/Plaster/)           // that picture itself (a texture), for a material of one's own
+
    look: 'kit' (the kit's own painted pictures) or 'flat' (each face one flat colour taken from them, like the restyled props).
    ========================================================================== */
 import * as THREE from 'three';
@@ -64,14 +72,41 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
     const d = { n, data: x.getImageData(0, 0, n, n).data }; pixels.set(key, d);
     return d;
   };
+  const keyOf = re => [...pictures.keys()].find(k => re.test(k)) || '';
+  // a wall piece cut in two (b.place's side): its outside, and its room side: every triangle whose middle lies more than 0.12 m
+  // behind the wall's face (the kit's walls are 0.2 m of plaster behind their face, their beams 0.31)
+  const halves = new Map();
+  const halvesOf = name => {
+    if (halves.has(name)) return halves.get(name);
+    const out = [], inside = [];
+    for (const p of pieces.get(name) || []) {
+      const g = p.geometry, pos = g.attributes.position, idx = g.index ? g.index.array : null, n = idx ? idx.length : pos.count;
+      const a = [], b = [];
+      for (let t = 0; t < n; t += 3) {
+        const i0 = idx ? idx[t] : t, i1 = idx ? idx[t + 1] : t + 1, i2 = idx ? idx[t + 2] : t + 2;
+        ((pos.getZ(i0) + pos.getZ(i1) + pos.getZ(i2)) / 3 < -0.12 ? b : a).push(i0, i1, i2);
+      }
+      const cut = list => { const h = g.clone(); h.setIndex(list); return h; };
+      if (a.length) out.push({ key: p.key, geometry: cut(a) });
+      if (b.length) inside.push({ key: p.key, geometry: cut(b) });
+    }
+    const r = { out, in: inside };
+    halves.set(name, r);
+    return r;
+  };
 
   function builder() {
     const parts = new Map();                                               // picture key -> geometries, already where they stand
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), root = new THREE.Matrix4();
-    const put = (name, m) => {
-      const prims = pieces.get(name);
-      if (!prims) { console.warn('[kit] no piece', name); return; }
-      for (const p of prims) { const g = p.geometry.clone().applyMatrix4(m); if (!parts.has(p.key)) parts.set(p.key, []); parts.get(p.key).push(g); }
+    const put = (name, m, side = null) => {
+      if (!pieces.has(name)) { console.warn('[kit] no piece', name); return; }
+      const prims = side ? halvesOf(name)[side] : pieces.get(name), mirror = m.determinant() < 0;
+      for (const p of prims) {
+        const g = p.geometry.clone().applyMatrix4(m);
+        if (mirror && g.index) { const ix = g.index.array; for (let t = 0; t < ix.length; t += 3) { const s = ix[t + 1]; ix[t + 1] = ix[t + 2]; ix[t + 2] = s; } }      // (a mirrored piece still faces out)
+        if (!parts.has(p.key)) parts.set(p.key, []);
+        parts.get(p.key).push(g);
+      }
     };
     // a piece at x, y, z (in the frame set by root), turned yaw about the vertical
     const local = (name, x, y, z, yaw = 0, sx = 1) => put(name, M.compose(new THREE.Vector3(x, y, z), Q.setFromAxisAngle(UP, yaw), new THREE.Vector3(sx, 1, 1)).premultiply(root));
@@ -122,6 +157,8 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       root.identity();
     }
     const piece = (name, x, y, z, yaw = 0) => { root.identity(); local(name, x, y, z, yaw); };
+    const place = (name, m, side = null) => put(name, m, side);
+    const paint = (re, g) => { const key = keyOf(re); if (!parts.has(key)) parts.set(key, []); parts.get(key).push(g); };
 
     // a humpbacked stone bridge along its own x, laid in the kit's own stone (the kit has no bridge, so it is made here, faces
     // and pictures as the kit's pieces have them): walls of the rubble the brick houses are built of, a ring of cut stones round
@@ -129,8 +166,7 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
     // strips of ashlar and slab), its deck paved with the rubble as the kit's floors are. Merged with the houses' meshes of the same
     // pictures: nothing more to draw. y = 0 is the bank, deck(u) the height of its walking surface u metres from its middle
     function bridge({ length: L = 11, width: W = 2.9, deck, span = 2.7, crown = 1.75, spring = -1.0, foot = -2.2, wall = 0.32, high = 0.6, ring = 0.45 }, x = 0, y = 0, z = 0, yaw = 0) {
-      const keyOf = re => [...pictures.keys()].find(k => re.test(k)) || '';
-      const RUB = keyOf(/UnevenBrick/), TRIM = keyOf(/RockTrim/);
+        const RUB = keyOf(/UnevenBrick/), TRIM = keyOf(/RockTrim/);
       const SLAB = [0.345, 0.575], ASHLAR = [0.605, 0.985];                 // (two strips of the RockTrim sheet: v from .. to)
       const out = new Map();
       // the kit's stone is grey and cool, the world's (the cliffs, the ways, the bridge as it was) warm and pale: each part is
@@ -255,9 +291,9 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       parts.clear();
       return group;
     }
-    return { house, piece, bridge, build };
+    return { house, piece, place, paint, bridge, build };
   }
-  return { builder, names: [...pieces.keys()], dispose() { for (const list of pieces.values()) for (const p of list) p.geometry.dispose(); for (const t of pictures.values()) t.dispose(); } };
+  return { builder, names: [...pieces.keys()], picture: re => pictures.get(keyOf(re)) || null, dispose() { for (const list of pieces.values()) for (const p of list) p.geometry.dispose(); for (const h of halves.values()) for (const p of [...h.out, ...h.in]) p.geometry.dispose(); for (const t of pictures.values()) t.dispose(); } };
 }
 
 // the ground a house takes, eaves and doorstep included: [across, along]
