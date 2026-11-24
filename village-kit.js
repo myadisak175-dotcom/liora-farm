@@ -84,8 +84,9 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
     return d;
   };
   const keyOf = re => [...pictures.keys()].find(k => re.test(k)) || '';
-  // a wall piece cut in two (b.place's side): its outside, and its room side: every triangle whose middle lies more than 0.12 m
-  // behind the wall's face (the kit's walls are 0.2 m of plaster behind their face, their beams 0.31)
+  // a wall piece cut in two (b.place's side): its outside, and its room side: every triangle that lies wholly more than 0.12 m
+  // behind the wall's face (the kit's walls are 0.2 m of plaster behind their face, their beams 0.31). A face that goes
+  // through the wall (the sides of a window's or a door's opening, of a frame) is in both: either half shows the wall's thickness
   const halves = new Map();
   const halvesOf = name => {
     if (halves.has(name)) return halves.get(name);
@@ -95,7 +96,9 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       const a = [], b = [];
       for (let t = 0; t < n; t += 3) {
         const i0 = idx ? idx[t] : t, i1 = idx ? idx[t + 1] : t + 1, i2 = idx ? idx[t + 2] : t + 2;
-        ((pos.getZ(i0) + pos.getZ(i1) + pos.getZ(i2)) / 3 < -0.12 ? b : a).push(i0, i1, i2);
+        const z0 = pos.getZ(i0), z1 = pos.getZ(i1), z2 = pos.getZ(i2), back = Math.max(z0, z1, z2) < -0.12, front = Math.min(z0, z1, z2) >= -0.12;
+        if (!back) a.push(i0, i1, i2);
+        if (!front) b.push(i0, i1, i2);
       }
       const cut = list => { const h = g.clone(); h.setIndex(list); return h; };
       if (a.length) out.push({ key: p.key, geometry: cut(a) });

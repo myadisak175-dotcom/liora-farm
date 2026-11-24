@@ -10,8 +10,11 @@
   "อาคารกิลยังไม่สมบูรณ์อะ อยากได้ฟีลแบบกิลในเกมต่างโลกจริงๆ" ... "ใช้ model ฟรีที่มีได้ไหม เหมือนโมเดลหมู่บ้านอะ เอามาสร้างกิล
   เหมือนที่เธอเสนอ"). One job: to walk round it and into it. The guild (guild-hall.js) stands on a meadow with its plaza before
   it; she is the game's own player (player-moves.js), and walks in through the door with no cut, up the stair to the gallery.
-  Furnished from Quaternius' Fantasy Props MegaKit (CC0, sent the same night: "ตกแต่งเพิ่มได้ไหม"): assets/models/fantasy-props.glb.
-  Up top: ☀/🌙 the hour (by night the rooms are lit by their own lamps), and places to go to at once (📍).
+  Furnished from Quaternius' Fantasy Props MegaKit (CC0, sent the same night: "ตกแต่งเพิ่มได้ไหม"): assets/models/fantasy-props.glb;
+  then laid out afresh and its faults mended ("ตกแต่งใหม่ค่ะ แล้วก็แก้บักด้วย"): the plaza and all out of doors stay when she
+  goes in, no frame is left hanging where a wall was, furniture stops her at its own edge, nothing hangs over a window, a
+  high jump lands her on the gallery, flames are seen by day, the kit's iron is dark.
+  Up top: ☀/🌙 the hour (by night the rooms are lit by their own lamps), and 📍 places to go to at once.
   ?night=1 starts by night.
 -->
 <style>
@@ -25,6 +28,8 @@
   #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
   #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #2b3a55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
   #bar button.go { background: #55402bd9; }
+  #list { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  #list[hidden] { display: none; }
   #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
     background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
   #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
@@ -50,6 +55,7 @@
     #name small { display: none; }
     #beat { top: calc(32px + env(safe-area-inset-top)); }
     #bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
+    #list { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; }
     #bar button { padding: 6px 9px; font-size: 11px; }
     #hint { display: none; }
   }
@@ -59,8 +65,8 @@
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
-  "./village-kit.js": "./village-kit.js?v=guild2",
-  "./guild-hall.js": "./guild-hall.js?v=2"
+  "./village-kit.js": "./village-kit.js?v=guild3",
+  "./guild-hall.js": "./guild-hall.js?v=3"
 } }
 </script>
 </head>
@@ -69,17 +75,23 @@
 <div id="beat"></div>
 <div id="bar">
   <button id="hour" type="button">☀ กลางวัน</button>
-  <button class="go" type="button" data-go="plaza">📍 หน้ากิลด์</button>
-  <button class="go" type="button" data-go="inside">📍 ในห้องโถง</button>
-  <button class="go" type="button" data-go="counter">📍 เคาน์เตอร์รับภารกิจ</button>
-  <button class="go" type="button" data-go="board">📍 บอร์ดภารกิจ</button>
-  <button class="go" type="button" data-go="barSeat">📍 โรงเตี๊ยม</button>
-  <button class="go" type="button" data-go="gallery">📍 ชั้นลอย</button>
+  <button id="places" type="button">📍 ไปที่… ▾</button>
+  <div id="list" hidden>
+    <button class="go" type="button" data-go="plaza">หน้ากิลด์</button>
+    <button class="go" type="button" data-go="inside">ห้องโถง</button>
+    <button class="go" type="button" data-go="counter">เคาน์เตอร์รับภารกิจ</button>
+    <button class="go" type="button" data-go="exchangeFront">รับซื้อวัตถุดิบ</button>
+    <button class="go" type="button" data-go="board">บอร์ดภารกิจ</button>
+    <button class="go" type="button" data-go="barSeat">โรงเตี๊ยม</button>
+    <button class="go" type="button" data-go="hearth">เตาผิง</button>
+    <button class="go" type="button" data-go="gallery">ชั้นลอย</button>
+    <button class="go" type="button" data-go="training">ลานฝึก</button>
+  </div>
 </div>
 <div id="stick"><i></i></div>
 <button id="dashBtn" class="act" type="button" aria-label="พุ่ง"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span></button>
 <button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
-<div id="hint">เดินเข้าประตูได้เลย · ข้างในมีเคาน์เตอร์รับภารกิจ บอร์ดภารกิจ (แรงก์ F–S) โรงเตี๊ยม เตาผิง เคาน์เตอร์รับซื้อวัตถุดิบ<br>บันไดขึ้นชั้นลอยอยู่ทางขวาด้านใน</div>
+<div id="hint">เดินเข้าประตูได้เลย · บันไดอยู่ขวามือด้านใน<br>กระโดดต่อกันให้สูง ขึ้น/ลงชั้นลอยได้</div>
 <div id="wait">กำลังสร้างกิลด์…</div>
 <script type="module">
 import * as THREE from 'three';
@@ -102,7 +114,7 @@ const Q = new URLSearchParams(location.search);
 const phone = matchMedia('(pointer: coarse)').matches;
 const waitEl = document.getElementById('wait');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.autoClear = false;
@@ -147,9 +159,10 @@ map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0,
 G.applyGroundMap(ground, map, { far: FAR });
 grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
 scene.add(grass);
-// by night the rooms are drawn a second time over the dimmed world, in their own light: their meshes (and the lanterns'
-// glow) are on layer 1 too
-for (const g of guild.group.children) g.traverse(o => { if (o.isMesh && (g.name !== 'guild:out' || o.name === 'guildGlow')) o.layers.enable(1); });
+// the rooms, the windows' glass and every little light are on layer 1 alone: by day the eye sees both layers at once; by night
+// the world (layer 0) is drawn and dimmed first, and they are drawn after it in their own light
+const LIT = /^guild:(walls|hall|gallery|under|roof|N|S|E|W|NG)$/;
+for (const g of guild.group.children) g.traverse(o => { if (o.isMesh && (LIT.test(g.name) || o.name === 'guildGlow' || o.name === 'kit:glass')) o.layers.set(1); });
 
 // ---- the light of the hour: by night the world is dimmed (as the game's grade does it), the rooms keep their lamps
 const NIGHT = [0.26, 0.31, 0.6];
@@ -202,7 +215,7 @@ function press(id, act) {
 }
 press('jumpBtn', () => player.jump());
 press('dashBtn', () => player.dash());
-const NAMES = { plaza: 'หน้ากิลด์', inside: 'ห้องโถง', counter: 'เคาน์เตอร์รับภารกิจ', board: 'บอร์ดภารกิจ', barSeat: 'โรงเตี๊ยม', gallery: 'ชั้นลอย (ห้องกิลด์มาสเตอร์)' };
+const NAMES = { plaza: 'หน้ากิลด์', inside: 'ห้องโถง', counter: 'เคาน์เตอร์รับภารกิจ', exchangeFront: 'เคาน์เตอร์รับซื้อวัตถุดิบ', board: 'บอร์ดภารกิจ', barSeat: 'โรงเตี๊ยม', hearth: 'เตาผิง', gallery: 'ชั้นลอย (ห้องกิลด์มาสเตอร์)', training: 'ลานฝึก' };
 function go(name) {
   if (!player) return;
   const s = guild.spots[name];
@@ -210,7 +223,9 @@ function go(name) {
   player.teleport(s[0], s[1], s[3]);
   say(NAMES[name] || '', 1.4);
 }
-for (const b of document.querySelectorAll('[data-go]')) b.onclick = () => go(b.dataset.go);
+const listEl = document.getElementById('list');
+document.getElementById('places').onclick = () => { listEl.hidden = !listEl.hidden; };
+for (const b of document.querySelectorAll('[data-go]')) b.onclick = () => { go(b.dataset.go); listEl.hidden = true; };
 const btn = id => document.getElementById(id);
 const showHour = () => { btn('hour').textContent = night ? '🌙 กลางคืน' : '☀ กลางวัน'; guild.night(night ? 1 : 0); if (circles.setNight) circles.setNight(night); };
 btn('hour').onclick = () => { night = !night; showHour(); };
@@ -229,7 +244,7 @@ function step(dt) {
   grass.userData.setWalker(player.position, 0.55);
   if (guild.storey !== wasIn) {                         // (her own light by night: the rooms' when she is in)
     const lit = guild.storey >= 0;
-    player.object.traverse(o => { if (lit) o.layers.enable(1); else o.layers.disable(1); });
+    player.object.traverse(o => o.layers.set(lit ? 1 : 0));
     if (wasIn !== -2 && lit !== (wasIn >= 0)) say(lit ? (guild.storey === 1 ? 'ชั้นลอย' : 'ยินดีต้อนรับสู่กิลด์!') : '', 1.2);
     wasIn = guild.storey;
   }
@@ -237,13 +252,14 @@ function step(dt) {
 }
 function draw() {
   renderer.clear();
-  renderer.render(scene, camera);
   if (night) {
+    camera.layers.set(0); renderer.render(scene, camera);
     renderer.render(dimScene, camera);
     scene.background = null; camera.layers.set(1);
     renderer.render(scene, camera);
-    camera.layers.set(0); scene.background = sky;
-  }
+    scene.background = sky;
+  } else { camera.layers.enableAll(); renderer.render(scene, camera); }
+  camera.layers.enableAll();
   renderer.render(fxScene, camera);
 }
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.fov = FOV(); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });

@@ -3,7 +3,8 @@
 #
 # The kit comes as 94 separate .gltf files with 2048 px colour, normal and roughness pictures (163 MB unpacked). The game needs
 # only the props in PROPS below, their colour pictures (it lights them itself) at a size a phone is happy with, and their
-# vertex colours (the kit tints its pictures with them: the books' and potions' colours, darker and paler woods). One node for
+# vertex colours (the kit tints its pictures with them: the books' and potions' colours, darker and paler woods; its plain
+# metal is darkened to iron in them here: IRON below). One node for
 # each prop, named as in the kit; one primitive for each picture it is painted from (the kit's "..._Vertex" materials are the
 # same pictures, tinted by the vertex colours, so they join the others). A prop made of several parts (the chest: its base
 # and lid, on bones) is one node: its parts where they stand at rest, the bones left out.
@@ -18,12 +19,13 @@ from PIL import Image
 
 PROPS = """
 Table_Large Chair_1 Stool Bench Cabinet Bookcase_2 Nightstand_Shelf Shelf_Simple Shelf_Arch Shelf_Small_Bottles BookStand
-Workbench WeaponStand Peg_Rack Barrel Barrel_Holder Barrel_Apples Crate_Wooden Chest_Wood Stall_Cart_Empty Dummy Whetstone
-Chandelier CandleStick CandleStick_Triple Candle_1 Candle_2 Lantern_Wall Torch_Metal
+Workbench WeaponStand Peg_Rack Barrel Barrel_Holder Barrel_Apples Crate_Wooden Chest_Wood Stall_Cart_Empty Stall_Empty
+Dummy Whetstone Anvil_Log Cauldron Cage_Small FarmCrate_Apple FarmCrate_Carrot Bucket_Wooden_1 Vase_2 Vase_4 Rope_1 Rope_2
+Chandelier CandleStick CandleStick_Triple CandleStick_Stand Candle_1 Candle_2 Lantern_Wall Torch_Metal
 Mug Table_Plate Table_Fork Table_Knife Table_Spoon Chalice Bottle_1 Potion_1 Potion_2 Potion_4 SmallBottle SmallBottles_1
-Coin_Pile Coin_Pile_2 Pouch_Large Bag Scroll_1 Scroll_2 Book_5 Book_7 Book_Stack_1 Book_Stack_2
-BookGroup_Medium_1 BookGroup_Medium_2 BookGroup_Medium_3 BookGroup_Small_1 BookGroup_Small_2
-Vase_4 Bucket_Wooden_1 Rope_2 Shield_Wooden Sword_Bronze Axe_Bronze Banner_1 Banner_2 Banner_1_Cloth Banner_2_Cloth
+Coin_Pile Coin_Pile_2 Pouch_Large Bag Scroll_1 Scroll_2 Book_5 Book_7 Book_Stack_1 Book_Stack_2 Key_Gold
+BookGroup_Medium_1 BookGroup_Medium_2 BookGroup_Medium_3 BookGroup_Small_1 BookGroup_Small_2 BookGroup_Small_3
+Shield_Wooden Sword_Bronze Axe_Bronze Pickaxe_Bronze Banner_1 Banner_2 Banner_1_Cloth Banner_2_Cloth
 """.split()
 
 src = Path(sys.argv[1])
@@ -32,6 +34,13 @@ out = Path(__file__).resolve().parent.parent / 'assets/models/fantasy-props.glb'
 CT = {5120: 'i1', 5121: 'u1', 5122: '<i2', 5123: '<u2', 5125: '<u4', 5126: '<f4'}
 NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}
 NORM = {5121: 255.0, 5123: 65535.0}
+# the kit's plain metal (MI_Trim_Metal: iron bands, hinges, chains, pots, torches, lanterns) is a PBR metal: its colour picture
+# is pale and it is the metalness that makes it dark. The game does not light that way, so the iron's darkness is put into
+# its vertex colours here (linear: about 0.45 of the picture's brightness as seen, a little cool). The kit's tinted metal
+# (MI_Trim_Metal_Vertex: coins, a shield's boss) keeps its own colours.
+IRON = np.array([0.16, 0.17, 0.2], '<f4')
+PEWTER = np.array([0.44, 0.45, 0.48], '<f4')      # (plates, cutlery, a cup: paler)
+TABLEWARE = {'Table_Plate', 'Table_Fork', 'Table_Knife', 'Table_Spoon', 'Chalice'}
 
 
 def read(j, bins, i):
@@ -113,6 +122,7 @@ for name in PROPS:
                 nor /= np.maximum(1e-9, np.linalg.norm(nor, axis=1, keepdims=True))
                 uv = read(j, bins, at['TEXCOORD_0']).astype('<f4') if 'TEXCOORD_0' in at else np.zeros((len(pos), 2), '<f4')
                 col = read(j, bins, at['COLOR_0'])[:, :3].astype('<f4') if 'COLOR_0' in at else np.ones((len(pos), 3), '<f4')
+                if j['materials'][p['material']]['name'] == 'MI_Trim_Metal': col = col * (PEWTER if name in TABLEWARE else IRON)
                 idx = read(j, bins, p['indices']).reshape(-1).astype(np.int64)
                 if np.linalg.det(m[:3, :3]) < 0: idx = idx.reshape(-1, 3)[:, [0, 2, 1]].reshape(-1)
                 mi = material(j, j['materials'][p['material']])
