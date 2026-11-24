@@ -213,6 +213,12 @@ def paint(MODE):
     for b, wide, fill, edge in [(br, 3.4, COL['stone'], COL['stone_edge'])] + [(q, 2.3, COL['plank'], COL['fence']) for q in [plan['plank']] + plan.get('planks', [])]:
         c, s = math.cos(b['yaw']), math.sin(b['yaw']); a, e = (b['x'] - c * b['length'] / 2, b['z'] + s * b['length'] / 2), (b['x'] + c * b['length'] / 2, b['z'] - s * b['length'] / 2)
         d.line([P(*a), P(*e)], fill=edge, width=int((wide + 0.5) * K)); d.line([P(*a), P(*e)], fill=fill, width=int(wide * K))
+    # the guild (the game builds it: guild-hall.js), in its own frame: u across, v toward its door. Its plaza and steps of stone
+    GD = plan.get('guild')
+    gw = (lambda u, v: (GD['x'] + u * math.cos(GD['yaw']) + v * math.sin(GD['yaw']), GD['z'] - u * math.sin(GD['yaw']) + v * math.cos(GD['yaw']))) if GD else None
+    if GD:
+        d.polygon(box(*gw(0, 11.86), 15.0, 7.7, GD['yaw']), fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K)))
+        d.polygon(box(*gw(0, 8.6), 4.4, 1.3, GD['yaw']), fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.12 * K)))
 
     # ---- shadows of what stands up (one soft layer, laid under the things themselves)
     sh = layer(); ds = ImageDraw.Draw(sh)
@@ -224,6 +230,8 @@ def paint(MODE):
         if b['kind'] == 'house':
             w, l = b['spec']['w'] + 1.0, b['spec']['l'] + 0.8; o = 0.5 + b['spec'].get('floors', 1) * 0.6
             ds.polygon(box(b['x'] + o, b['z'] + o, w, l, b['yaw']), fill=COL['shadow'])
+    if GD:                                                                # the guild's hall and its tower
+        for u, v, w, l, o in ((0, 0, 13.0, 17.0, 2.6), (8, 6, 5.0, 5.0, 3.5)): ds.polygon(box(gw(u, v)[0] + o, gw(u, v)[1] + o, w, l, GD['yaw']), fill=COL['shadow'])
     for kind, x, z, scale, *_ in plants:
         r = COL['tree_r'][kind] * scale * K; cx, cy = P(x + 0.7 * scale, z + 0.7 * scale); ds.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['shadow'])
     canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(K * 0.35)))
@@ -249,6 +257,16 @@ def paint(MODE):
             cx, cy = P(b['x'], b['z']); r = 1.2 * K
             d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K)))
             d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill='#4a4038' if CURSED else COL['water'])
+    if GD:                                                                # the guild: its hall's roof, its ridge along v; its tower's, four slopes to a point
+        ew = max(1, int(0.22 * K)); hx, hz = gw(0, 0); w, l, yaw = 13.0, 17.0, GD['yaw']; west_lit = math.cos(yaw) > math.sin(yaw)
+        d.polygon(box(hx, hz, w, l, yaw, -0.5, 0.0), fill=COL['roof_lit' if west_lit else 'roof_dark'])
+        d.polygon(box(hx, hz, w, l, yaw, 0.0, 0.5), fill=COL['roof_dark' if west_lit else 'roof_lit'])
+        q = box(hx, hz, w, l, yaw); d.line(q + q[:1], fill=COL['roof_edge'], width=ew, joint='curve')
+        r0, r1 = box(hx, hz, w, l, yaw, 0.0, 0.0)[0], box(hx, hz, w, l, yaw, 0.0, 0.0)[2]; d.line([r0, r1], fill=COL['roof_edge'], width=max(1, ew // 2))
+        q = box(*gw(8, 6), 5.0, 5.0, yaw); mid = P(*gw(8, 6))
+        for i, shade in enumerate(('roof_lit', 'roof_dark', 'roof_dark', 'roof_lit')): d.polygon([q[i], q[(i + 1) % 4], mid], fill=COL[shade])
+        d.line(q + q[:1], fill=COL['roof_edge'], width=ew, joint='curve')
+        for c_ in q: d.line([c_, mid], fill=COL['roof_edge'], width=max(1, ew // 2))
     for b in plan['buildings']:
         if b['kind'] == 'sails':                                          # the windmill's sails: a cross before the tower's face
             fx, fz = math.sin(b['yaw']), math.cos(b['yaw']); hx, hz = b['x'] + fx * b['out'], b['z'] + fz * b['out']; r = b['span'] / 2

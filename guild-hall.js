@@ -29,10 +29,14 @@
                               it over its rail
      guild.update(dt, camera) every frame: shows and hides the outside, each wall and its things, the gallery; the lamps flicker
      guild.colliders          [[x, z, r], ...] solid things out of doors;  guild.bare [[x, z, r]]: no grass (the paving)
+     guild.blocked(x, z)      whether she would be in a wall, a rail or furniture there (what collide would put her out of)
+     guild.casts              [[x, z, height, radius, darkness]]: the shadows it throws on a level's ground picture
      guild.spots              places for people and for things to do later: [x, z, storey, facing]
      guild.night(k)           0 by day .. 1 at night: how much the lamps light the rooms against the daylight
    Its children are named guild:<layer> (out, wN wS wE wW, hall, gallery, under, roof, N S E W, NG, grounds): a page that
-   dims the world by night draws the rooms' layers after the dimming, in their own light (guild-hall.html).
+   dims the world by night draws the rooms' layers after the dimming, in their own light (guild-hall.html). The rooms', the
+   windows' and the flames' materials say userData.noGrade, so the game's light of the hour (cloud-shadows.js, which darkens
+   every other material by night) leaves them as their lamps light them.
 
    The plan (metres, the hall's own frame): x across, z along it, the door at +z, y = 0 the hall's floor.
    ========================================================================== */
@@ -1190,7 +1194,11 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
   const materialFor = (kind, map) => {
     const key = kind + ':' + (map ? map.uuid : '-');
     if (kind === 'sun') return propMaterial(map);                            // (the props' own, shared with the village: not this building's to throw away)
-    if (!mats.has(key)) { const m = kind === 'out' ? outsideMaterial(map, see) : roomMaterial(map, kind === 'front' ? THREE.FrontSide : THREE.DoubleSide, shared); mats.set(key, m); made.push(m); }
+    if (!mats.has(key)) {
+      const m = kind === 'out' ? outsideMaterial(map, see) : roomMaterial(map, kind === 'front' ? THREE.FrontSide : THREE.DoubleSide, shared);
+      if (kind !== 'out') m.userData.noGrade = true;                      // (the rooms are lit by their own lamps: a game that darkens the world by night leaves them out of it, cloud-shadows.js)
+      mats.set(key, m); made.push(m);
+    }
     return mats.get(key);
   };
   const meshes = {};
@@ -1199,11 +1207,11 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
     const g = Lr.b.build({ look }), gp = Lr.pb.build({ look });
     for (const m of [...gp.children]) { m.name = 'props:' + m.name; g.add(m); }
     const kind = name === 'out' ? 'out' : name === 'grounds' ? 'sun' : (/^w[NSEW]$/.test(name) || name === 'under') ? 'front' : 'room';
-    if (name === 'out') for (const m of g.children) if (m.name === 'kit:glass') { m.material = glassMaterial(see, glowing); m.layers.enable(1); }
+    if (name === 'out') for (const m of g.children) if (m.name === 'kit:glass') { m.material = glassMaterial(see, glowing); m.material.userData.noGrade = true; made.push(m.material); m.layers.enable(1); }
     for (const m of g.children) if (m.name !== 'kit:glass' || name !== 'out') m.material = materialFor(kind, m.material.uniforms && m.material.uniforms.uMap ? m.material.uniforms.uMap.value : null);
     if (flat) { const m = new THREE.Mesh(flat, materialFor(kind, null)); m.name = name + ':flat'; m.userData.dispose = () => flat.dispose(); g.add(m); }
     if (artG) { const m = new THREE.Mesh(artG, materialFor(kind, art.texture)); m.name = name + ':art'; m.userData.dispose = () => artG.dispose(); g.add(m); }
-    if (Lr.glow.length) { const gm = glowMesh(Lr.glow, time); g.add(gm); Lr.glowMesh = gm; }
+    if (Lr.glow.length) { const gm = glowMesh(Lr.glow, time); gm.material.userData.noGrade = true; g.add(gm); Lr.glowMesh = gm; }
     g.name = 'guild:' + name;
     group.add(g);
     meshes[name] = g;
@@ -1235,10 +1243,14 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
     for (let u = PLAZA.u0; u <= PLAZA.u1 + 0.01; u += 0.7) for (let v = PLAZA.v0; v <= PLAZA.v1 + 0.3; v += 0.7) add(u, v, 0.7);
   }
   const hiddenWalls = { E: true, W: true, N: true, S: true };
+  const ROOMS = ['hall', 'gallery', 'under', 'roof', 'N', 'S', 'E', 'W', 'wN', 'wS', 'wE', 'wW', 'NG'], FAR_ROOMS = 45;
   let herU = 0, herV = 99, herY = 0;
   const RAIL_TOP = F1 + 0.95;                                              // her feet over this clear the gallery's rail
   const guild = {
     group, colliders, bare, site: { x: X, y: Y, z: Z, yaw }, plan: GUILD_HALL,
+    // what throws a shadow on the ground, for a level's ground picture: [x, z, how high, how wide (a radius), how dark] (the hall
+    // as three, along it; the tower)
+    casts: [[0, -5.3], [0, 0], [0, 5.3]].map(([u, v]) => [...toWorld(u, v), 11, 6.4, 0.85]).concat([[...toWorld(8, 6), 17, 2.4, 0.85]]),
     get storey() { return storey; }, set storey(s) { storey = s; },
     toLocal, toWorld,
     // the paved ground of the plaza before the door and round the building: d (0 = on it .. 1 at its edge), for a level's ways
@@ -1261,6 +1273,9 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
       if (onSteps(u, v)) return Y + Math.max(-PLINTH, Math.min(0, -PLINTH / 3 * ((v - D / 2 - 0.12) / STEP.run + 0.5)));
       return land;
     },
+    // would she be in a wall, a rail or a piece of furniture standing at (x, z) (on the storey she is on, as collide has it): a
+    // level that says what its ground is like answers 'wall' there (hill-village-level.js), and its confine puts her out of it
+    blocked(x, z) { const q = { x, z }; guild.collide(q); return Math.abs(q.x - x) + Math.abs(q.z - z) > 1e-4; },
     collide(p) {
       const bit = 1 << (storey + 1), Rr = 0.28;
       let [u, v] = toLocal(p.x, p.z);
@@ -1328,6 +1343,9 @@ export function createGuildHall({ kit, props, x: X = 0, y: Y = 0, z: Z = 0, yaw 
       hiddenWalls.E = open && (peek || cu > IX); hiddenWalls.W = open && (peek || cu < -IX); hiddenWalls.N = open && (peek || cv < -IZ); hiddenWalls.S = open && (peek || cv > IZ);
       for (const k of ['E', 'W', 'N', 'S']) meshes[k].visible = meshes['w' + k].visible = !hiddenWalls[k];
       meshes.NG.visible = !hiddenWalls.N && meshes.gallery.visible;
+      // from further off the rooms are seen only through the doorway, small by then: they are not drawn at all (a game with the
+      // guild in a village: some 170 000 triangles fewer, wherever it is in view from)
+      if (!open && Math.hypot(cu, cv) > FAR_ROOMS) for (const k of ROOMS) meshes[k].visible = false;
     },
     night(k) { nightK = Math.min(1, Math.max(0, k)); setLight(); },
     // places for people, and for things to do, later: [x, z, storey, the way they face]

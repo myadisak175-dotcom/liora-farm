@@ -306,8 +306,12 @@ house('cottage_upper_3', (.615, .43), dict(w=4, l=4, floors=1, wall='brick', see
 house('manor', (.58, .105), dict(w=8, l=14, floors=2, wall='brick', door='left', seed=19, dormer=True, windows=0.8), math.pi / 2, pad=10.5)
 house('barn', (.73, .245), dict(w=6, l=10, floors=1, wall='brick', seed=20, chimney=False, windows=0.25, shutters=False), 0.0)
 house('stable_shed', (.85, .285), dict(w=4, l=4, floors=1, wall='plaster', seed=21, chimney=False, windows=0.3), 0.0)
-# the keep on its crag: a tall tower with a hall against its east wall
-KEEP = M(.345, .125)
+# the keep: a tall tower with a hall against its east wall. It stood on the keep's crag (KEEP_WAS), where the guild stands now
+# (GUILD, below); it stands on the mound in the north-east, east of the manor and over the pasture. What went with it there (its
+# yard at the end of its way, its crates and its lamp, the place to look at it from, the ways painted round it by hand) went
+# with it: castle(p) is where a spot of the castle's as it stood on the crag is now
+KEEP_WAS, KEEP = M(.345, .125), (52.0, -67.0)
+castle = lambda p: (round(float(p[0]) + KEEP[0] - KEEP_WAS[0], 2), round(float(p[1]) + KEEP[1] - KEEP_WAS[1], 2))
 house('castle_keep', KEEP, dict(w=4, l=4, floors=4, wall='brick', upper='brick', tower=True, door='back', seed=22, windows=0.35, shutters=False), 0.0, pad=9.5)
 house('castle_hall', (KEEP[0] + 6, KEEP[1]), dict(w=4, l=8, floors=2, wall='brick', upper='plaster', door='left', doorAt=1, seed=23), math.pi / 2, pad=1)
 # the windmill, of the kit like the other houses: a tower, the miller's house against its south wall, and on its west face
@@ -319,6 +323,21 @@ house('mill_house', (WMILL[0] + 2.0, WMILL[1] + 4.0), dict(w=4, l=6, floors=1, w
 B.append({'id': 'windmill', 'kind': 'sails', 'x': WMILL[0], 'z': WMILL[1], 'yaw': round(WM_YAW, 3), 'hub': 7.6, 'span': 10.4, 'out': 2.8, 'pad': 1})
 B.append({'id': 'fountain', 'kind': 'well', 'x': PLAZA[0] - 0.8, 'z': PLAZA[1] - 3.0, 'yaw': 0.4, 'pad': 3.2})      # (beside the road through the market, not on it)
 B.append({'id': 'great_tree', 'kind': 'tree', 'x': M(.55, .345)[0], 'z': M(.55, .345)[1], 'type': 'oak', 'scale': 2.3, 'pad': 4.5, 'shape': 1162, 'turn': 3.83863})      # (not in the written plan: its yard and the ways round it are laid out by it. shape, turn: which oak, how turned, should it stand again)
+# the adventurers' guild on the keep's crag (the game builds it: guild-hall.js): its hall, 12 m by 16 m, and its tower; its door
+# to the south, looking out over the village, with its plaza before it; a corner to train in on its west side. GUILD: its
+# middle and the way its door faces (y, the ground's height under it, once that is made even). Its own frame: u across it, v
+# toward its door. GUILD_EVEN: the ground made even under it (the hall's footing, its steps, its plaza); GUILD_ALL: all it
+# stands on, the wagon and the training corner's dummies too. Not one of the plan's buildings: a thing of its own, the game's
+GUILD = {'x': -24.5, 'z': -66.0, 'yaw': 0.0}
+GUILD_EVEN, GUILD_ALL = (-7.8, 10.9, -8.9, 16.3), (-12.9, 10.9, -8.9, 16.3)
+GUILD_DOOR = lambda v: (GUILD['x'] + v * math.sin(GUILD['yaw']), GUILD['z'] + v * math.cos(GUILD['yaw']))      # a spot on the line out of its door, v metres from its middle
+
+
+def guild_out(box):
+    """every pixel: metres out from a box in the guild's frame (inside: below 0)"""
+    c, s = math.cos(GUILD['yaw']), math.sin(GUILD['yaw']); dx, dz = WX - GUILD['x'], WZ - GUILD['z']
+    u, v = dx * c - dz * s, dx * s + dz * c; u0, u1, v0, v1 = box
+    return np.maximum(np.maximum(u0 - u, u - u1), np.maximum(v0 - v, v - v1))
 
 # ------------------------------------------------------------------ 3. the water, as planned: stretches, each on its own level
 # (name, the terrace it lies on, how far under that terrace the water stands, how deep its bed is pressed, the line: (u, v,
@@ -366,6 +385,9 @@ for b_ in B:
     if b_['pad'] > 1.5: b_['y'] = round(level_ground(b_['x'], b_['z'], b_['pad']), 2)
 by_id = {b_['id']: b_ for b_ in B}
 by_id['castle_hall']['y'] = by_id['castle_keep']['y']
+# the guild's ground: made even at the middle height of the ground under it, and feathered out three metres round it
+_out = guild_out(GUILD_EVEN); GUILD['y'] = round(float(np.median(H[_out < 0])), 2)
+_w = 1 - sm(0.0, 3.0, _out); H = H * (1 - _w) + GUILD['y'] * _w
 
 # ------------------------------------------------------------------ 4. fields (fenced) and the pasture
 FIELDS = [   # centre, size across x and z, yaw, what grows
@@ -468,7 +490,10 @@ FALL_FOOT = (float(BASIN[0]) + 8.2 + 3.6, float(BASIN[1]) + 5.0)        # on the
 PATHS = {   # name: (half-width, points in the plan's u, v)
     'road_in': (1.5, [(-.13, .815), (-.05, .83), (0, .845), (.06, .875), (.12, .895), (.18, .845), (.26, .76), (.34, .70), (.39, .685), uv(BS)]),
     'bridge_up': (1.4, [uv(BN), (.515, .56), (.525, .49), (.53, .43), (.54, .385)]),
-    'to_castle': (1.2, [(.54, .385), (.50, .31), (.475, .245), (.44, .19), (.405, .162), (.385, .158)]),
+    # up the crag to the guild, as the way to the keep went: up its east side, onto the top beside the guild's tower, to the east
+    # side of its plaza; and to the keep where it stands now, from the manor's yard east along the mound's foot
+    'to_guild': (1.2, [(.54, .385), (.50, .31), (.475, .245), (.44, .19), (.405, .162), uvm(-16.4, -54.5)]),
+    'to_castle': (1.2, [(.565, .158), uvm(18.0, -53.8), uvm(26.0, -53.0), uvm(33.0, -52.3), uvm(40.0, -52.6), uvm(47.0, -54.6), uvm(53.5, -58.4), uvm(*castle(M(.385, .158)))]),
     'to_manor': (1.2, [(.475, .245), (.52, .185), (.565, .158)]),
     'to_pasture': (1.2, [(.54, .385), (.62, .355), (.69, .32), (.725, .33), (.755, .36)]),
     'to_barn': (0.9, [(.725, .33), (.73, .295)]),
@@ -497,7 +522,7 @@ PATHS = {   # name: (half-width, points in the plan's u, v)
     'valley_east_south': (0.9, [uvm(*PE)] + [uvm(*east_bank(s_)) for s_ in (PLANK_S + 7, 70, 78, 86, 92, 98)] + [uvm(*J_E)]),
     **{f'pit_ring_{i_ + 1}': (1.0, [uvm(*p_) for p_ in arc_]) for i_, arc_ in enumerate(RING)},
 }
-YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(M(.385, .158)), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0],
+YARDS = [[*R2(PLAZA), 6.5, 1], [*R2(TREE_YARD), 5.0, 0], [*R2(castle(M(.385, .158))), 3.0, 1], [*R2(M(.565, .158)), 2.6, 1], [*R2(door_of('barn', 2.0)), 2.6, 0],
          [*R2(LOOKOUT), 2.2, 0], [*R2(PIT_SOUTH), 2.4, 0], [*R2(PIT_ABOVE), 2.4, 0], [*R2(FALL_FOOT), 2.6, 0]]     # x, z, radius, paved?
 STEP = 0.15
 
@@ -542,6 +567,7 @@ path_d = np.full(NZ * NX, 1e9); plan_paths = []
 BANK_SIDE = 2.6                                                      # a bank h m high has sides 2.6 h m wide: no steeper than about a half
 keep_land = np.zeros((NZ, NX), bool)
 for b_ in B: keep_land |= np.hypot(WX - b_['x'], WZ - b_['z']) < b_['pad'] + 1.0
+keep_land |= guild_out(GUILD_ALL) < 1.0                              # (nor over the guild's ground)
 for _, _, _, _, line_ in WATER:
     for u_, v_, hw_ in line_:
         x_, z_ = M(u_, v_); keep_land |= np.hypot(WX - x_, WZ - z_) < hw_ * S + 4.0
@@ -887,7 +913,7 @@ PROPS = [   # kind (stylized-buildings.js propGeometry, or kit:<piece>), x, z, y
     ['sheep', fr[0] - 5, fr[1] - 2, 0.6], ['sheep', fr[0] + 1, fr[1] + 2.4, 2.4], ['sheep', fr[0] + 5.5, fr[1] - 1.5, 4.0], ['sheep', fr[0] - 1.5, fr[1] + 4.6, 5.2], ['sheep', fr[0] + 8, fr[1] + 3, 1.6],
     ['hay', fr[0] - 8.5, fr[1] - 4.5, 1.0], ['hay', wmill['x'] + 5.5, wmill['z'] - 4.0, 0.3], ['barrels', wmill['x'] + 6.2, wmill['z'] + 3.2, 1.0], ['cart', wmill['x'] - 4.0, wmill['z'] + 6.0, 2.0],
     ['woodpile', MILL[0] + nrm[0] * 3.6 - t[0] * 2, MILL[1] + nrm[1] * 3.6 - t[1] * 2, mill_yaw], ['barrels', MILL[0] + t[0] * 4.6 + nrm[0] * 2.6, MILL[1] + t[1] * 4.6 + nrm[1] * 2.6, 0.2],
-    ['crates', by_id['castle_hall']['x'] + 2.5, by_id['castle_hall']['z'] + 4.2, 0.5], ['lamp', M(.385, .158)[0] + 2.6, M(.385, .158)[1] + 1.2, 0],
+    ['crates', by_id['castle_hall']['x'] + 2.5, by_id['castle_hall']['z'] + 4.2, 0.5], ['lamp', castle(M(.385, .158))[0] + 2.6, castle(M(.385, .158))[1] + 1.2, 0],
     ['barrels', by_id['manor']['x'] - 5.0, by_id['manor']['z'] + 5.6, 0], ['bench', by_id['manor']['x'] + 4.0, by_id['manor']['z'] + 5.6, 3.14], ['lamp', M(.565, .158)[0] - 2.4, M(.565, .158)[1] + 0.6, 0],
     ['signpost', *M(.535, .40), 2.0], ['signpost', BS[0] - 2.2, BS[1] + 2.4, 0.4], ['woodpile', by_id['ledge_house']['x'] + 4.0, by_id['ledge_house']['z'] - 1.5, 1.57],
     # the valley: a signpost where the way to it comes down onto the meadow, another at the foot of the way down; a bench at the lookout
@@ -934,6 +960,7 @@ def _keep_round(x, z, r, edge=1.6):
     global _keep
     _keep = np.maximum(_keep, sm(r + edge, r, np.hypot(WX - x, WZ - z)))
 for b_ in B: _keep_round(b_['x'], b_['z'], b_['pad'] + 1.5)
+_keep = np.maximum(_keep, sm(2.0, 0.0, guild_out(GUILD_ALL)))         # (the guild's ground)
 for x, z, r, _ in YARDS: _keep_round(x, z, r + 1.0)
 for x, z, r in BRIDGES: _keep_round(x, z, r + 2.0)
 for kind_, x, z, sc_, _ in ROCKS_KEPT: _keep_round(x, z, 0.9 * sc_ + 0.8)
@@ -961,7 +988,8 @@ SPAWN = M(.04, .868); FALL = tuple(LIP + RIVER_DIR * 2.0); above = M(.60, .80); 
 VIEWS = {
     'start': [*R2(SPAWN), round(face(SPAWN, M(.12, .895)), 2)], 'vl-plaza': [*R2((px_ + 1.5, pz_ + 5.0)), 3.0], 'vl-bridge': [*R2(BS - BRIDGE_DIR * 3), round(face(BS, BN), 2)],
     'vl-tree': [*R2((ty[0] - 2.5, ty[1] + 3.5)), round(face(ty, (by_id['great_tree']['x'], by_id['great_tree']['z'])), 2)],
-    'vl-castle': [*R2(M(.405, .168)), round(face(M(.405, .168), KEEP), 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
+    'vl-castle': [*R2(castle(M(.405, .168))), round(face(castle(M(.405, .168)), KEEP), 2)],
+    'vl-guild': [*R2(GUILD_DOOR(12.5)), round(GUILD['yaw'] + math.pi, 2)], 'vl-guild-in': [*R2(GUILD_DOOR(6.2)), round(GUILD['yaw'] + math.pi, 2)], 'vl-manor': [*R2(M(.555, .168)), round(face(M(.555, .168), (by_id['manor']['x'], by_id['manor']['z'])), 2)],
     'vl-pasture': [*R2(M(.735, .345)), 1.4], 'vl-windmill': [*R2(M(.60, .535)), round(face(M(.60, .535), (wmill['x'], wmill['z'])), 2)],
     'vl-watermill': [*R2(M(.40, .49)), round(face(M(.40, .49), tuple(WHEEL)), 2)], 'vl-fields': [*R2(M(.15, .75)), -1.57], 'vl-falltop': [*R2(above), round(face(above, tuple(BASIN)), 2)],
     'vl-spring': [*R2(M(.15, .345)), round(face(M(.15, .345), M(.085, .365)), 2)],
@@ -1783,7 +1811,8 @@ for name_, line_, knoll_ in INFLOWS:
 plan = {
     'land': {'x0': -XH, 'z0': round(Z0, 4), 'cell': CELL, 'nx': nx, 'nz': nz, 'base': BASE, 'range': RANGE, 'play': list(PLAY)},
     'brooks': brooks, 'falls': falls, 'waters': [{'id': t_['name'], 'level': round(t_['level'], 2)} for t_ in tiers],
-    'buildings': [b_ for b_ in B if b_['kind'] != 'tree'], 'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
+    'buildings': [b_ for b_ in B if b_['kind'] != 'tree'], 'guild': {k_: GUILD[k_] for k_ in ('x', 'z', 'yaw', 'y')},      # (the guild: its middle, the way its door faces, the ground under it)
+    'wheel': {'x': round(float(WHEEL[0]), 2), 'z': round(float(WHEEL[1]), 2), 'yaw': round(mill_yaw, 3), 'level': round(tiers[1]['level'], 2)},
     'bridge': {'x': round(float(BRIDGE_C[0]), 2), 'z': round(float(BRIDGE_C[1]), 2), 'length': BRIDGE_LEN, 'yaw': round(math.atan2(-BRIDGE_DIR[1], BRIDGE_DIR[0]), 3)},
     'plank': {'x': round(PLANK_X, 2), 'z': round(PLANK_Z, 2), 'length': PLANK_LEN, 'yaw': round(PLANK_YAW, 3)},
     'planks': [{'x': round(float(p_['mid'][0]), 2), 'z': round(float(p_['mid'][1]), 2), 'length': p_['len'], 'yaw': round(p_['yaw'], 3)} for p_ in PLANKS],      # the three round the pit

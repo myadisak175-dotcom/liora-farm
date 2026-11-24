@@ -179,6 +179,7 @@ export function cursedLand({ plan: P, rect: [x0, z0, w, d], west = null, near = 
   const parts = [];                                                      // each: (x, z) -> metres outside it
   for (const b of P.buildings || []) if (inVillage(b.x, b.z)) { const r = (b.pad > 1.5 ? b.pad : 3) + V.house; parts.push([b.x, b.z, r + 12, (x, z) => Math.hypot(x - b.x, z - b.z) - r]); }
   for (const [x, z, r] of P.yards || []) if (inVillage(x, z)) parts.push([x, z, r + V.yard + 12, (px, pz) => Math.hypot(px - x, pz - z) - r - V.yard]);
+  if (P.guild && inVillage(P.guild.x, P.guild.z)) { const g = P.guild, r = 14 + V.house; parts.push([g.x, g.z, r + 12, (x, z) => Math.hypot(x - g.x, z - g.z) - r]); }      // (the guild: its hall, its tower, its plaza)
   for (const f of P.fields || []) {
     const c = Math.cos(f.yaw || 0), s = Math.sin(f.yaw || 0), hw = f.w / 2 + V.field, hd = f.d / 2 + V.field;
     parts.push([f.x, f.z, Math.hypot(hw, hd) + 12, (x, z) => { const lx = Math.abs((x - f.x) * c - (z - f.z) * s) - hw, lz = Math.abs((x - f.x) * s + (z - f.z) * c) - hd; return Math.hypot(Math.max(lx, 0), Math.max(lz, 0)) + Math.min(Math.max(lx, lz), 0); }]);

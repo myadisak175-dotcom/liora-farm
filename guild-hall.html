@@ -66,7 +66,7 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./village-kit.js": "./village-kit.js?v=guild3",
-  "./guild-hall.js": "./guild-hall.js?v=3"
+  "./guild-hall.js": "./guild-hall.js?v=4"
 } }
 </script>
 </head>
@@ -161,7 +161,7 @@ grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, r
 scene.add(grass);
 // the rooms, the windows' glass and every little light are on layer 1 alone: by day the eye sees both layers at once; by night
 // the world (layer 0) is drawn and dimmed first, and they are drawn after it in their own light
-const LIT = /^guild:(walls|hall|gallery|under|roof|N|S|E|W|NG)$/;
+const LIT = /^guild:(w[NSEW]|hall|gallery|under|roof|N|S|E|W|NG)$/;
 for (const g of guild.group.children) g.traverse(o => { if (o.isMesh && (LIT.test(g.name) || o.name === 'guildGlow' || o.name === 'kit:glass')) o.layers.set(1); });
 
 // ---- the light of the hour: by night the world is dimmed (as the game's grade does it), the rooms keep their lamps

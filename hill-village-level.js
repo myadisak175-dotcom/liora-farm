@@ -8,7 +8,9 @@
 // trodden dirt ways (ground-paths.js), the woods, the valley's clear water lying in each stretch's bed and a fall where a
 // terrace ends (land-water.js: both are worked out from the land as it is drawn), and the village: houses put together from the building kit (village-kit.js), the windmill, a water mill with a
 // turning wheel, a stone bridge, a keep, a market, fenced fields and a pasture (stylized-buildings.js, village-fields.js); in
-// the valley a plank bridge and the river's stones, and three more plank bridges on the way round the pit.
+// the valley a plank bridge and the river's stones, and three more plank bridges on the way round the pit. On the crag where the
+// keep stood, the adventurers' guild (guild-hall.js, the plan's guild): a hall she walks into, its tower, its plaza; the keep
+// stands on the mound in the north-east now.
 //
 // The land picture is raw 16-bit numbers (little-endian), plan.land.nx across by plan.land.nz down, one every plan.land.cell
 // metres from (x0, z0): 0 is plan.land.base metres, 65535 base + range. Places in the plan are metres from the middle of the
@@ -52,7 +54,8 @@ import { waterLookup, createLandWater } from './land-water.js';
 import { createAbyssClouds, createAbyssFalls } from './abyss-scene.js';
 import { createPaths, loadPathTextures } from './ground-paths.js';
 import { loadSpinner, propMaterial } from './stylized-props.js';
-import { loadVillageKit } from './village-kit.js';
+import { loadVillageKit, loadFantasyProps } from './village-kit.js';
+import { createGuildHall, GUILD_HALL } from './guild-hall.js';
 import { fieldGeometry } from './village-fields.js';
 import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
@@ -329,6 +332,19 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const corners = (x, z, w, d, yaw) => { const c = Math.cos(yaw), s = Math.sin(yaw); return [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]].map(([a, b]) => H(x + a * w / 2 * c + b * d / 2 * s, z - a * w / 2 * s + b * d / 2 * c)); };
   const kit = await loadVillageKit();
   const kb = kit.builder();
+  // the adventurers' guild on the crag where the keep stood (guild-hall.js: the village's building kit, furnished from the props
+  // kit, which is loaded for it alone). Its ground was made even by the map's tool (the plan's guild: its middle, the way its
+  // door faces, the ground's height); its floor stands GUILD_HALL.plinth over that. She walks into it: its floors are her ground
+  // there (heightAt, standAt below), and its walls, rails and furniture stop her (footing says 'wall' in them, and confine
+  // puts her back out). Its rooms are lit by their own lamps, by night too (setSun)
+  let guild = null;
+  if (P.guild) try {
+    guild = createGuildHall({ kit, props: await loadFantasyProps(), x: P.guild.x, y: P.guild.y + GUILD_HALL.plinth, z: P.guild.z, yaw: P.guild.yaw, heightAt: H });
+    group.add(guild.group);
+    for (const c of guild.colliders) colliders.push(c);
+    for (const b of guild.bare) bare.push(b);
+    for (const c of guild.casts) casters.push(c);
+  } catch (e) { console.warn('[hill-village] the guild', e); guild = null; }
   // the things that may be moved by hand (place-edits.js says which): each knows how high it stands wherever it is put (lift:
   // { y, deep }) and builds itself there (make), into the village's merged meshes - or, while the place editor is open, into an
   // object of its own (placeEdit, below)
@@ -549,6 +565,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const pp = pathPaint(x, z);
     if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }               // the ways: trodden earth, short grass beside them
     if (inField(x, z, 0.5)) earth = 1; else if (inField(x, z, 1.6)) mow = Math.max(mow, 0.7);
+    const g = guild && guild.ground(x, z);                                // the guild's paving and footing: trodden earth round them, short grass round that
+    if (g) { earth = Math.max(earth, 1 - ss(0.4, 1.5, g.d)); mow = Math.max(mow, 1 - ss(1.2, 2.6, g.d)); }
     return [earth, sand, mow];
   };
   const L = new THREE.Vector3(...sun).normalize();
@@ -978,9 +996,15 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const [earth, sand] = paint(x, z);
     return sand > 0.5 ? 'sand' : earth > 0.5 ? (slope(x, z) > 0.75 ? 'stone' : 'earth') : 'grass';
   };
+  // with the guild: its floors are her ground in it (the gallery's, while she is up on it), its walls, rails and furniture are
+  // walls, its boards and its paving are what her feet are heard on
+  const heightG = guild ? (x, z) => guild.heightAt(x, z, H(x, z)) : H;
+  const standG = guild ? (x, z, y) => guild.heightAt(x, z, standAt(x, z, y)) : standAt;
+  const footingG = guild ? (x, z, y) => (guild.blocked(x, z) ? 'wall' : footing(x, z, y)) : footing;
+  const surfaceG = guild ? (x, z, y) => guild.surfaceAt(x, z) || surfaceAt(x, z, y) : surfaceAt;
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, surfaceAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
-    homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
+    group, map, field, grass, terrain, heightAt: heightG, standAt: standG, waterDepthAt, surfaceAt: surfaceG, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing: footingG, views, placeEdit, pathEdit, foliageEdit, guild,
+    homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]]), ...(P.guild ? [[P.guild.x, P.guild.z]] : [])],      // (the village's houses and stalls, and the guild: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, green, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
     map: url(cursed ? M.mapCursed : green ? M.mapGreen : M.map), mapOverlay,
@@ -1007,6 +1031,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       return false;
     },
     confine(p, from = null) {                                              // off the cliffs and out of deep water (and under a bridge, out of its piers: at her height, from's)
+      if (guild) guild.collide(p);                                         // (out of the guild's walls, rails and furniture)
       const y = from ? from.y : undefined, walkable = (x, z) => walkableAt(x, z, y);
       if (walkable(p.x, p.z)) return;
       // walking into a cliff's edge (from: where she was, where she may be): she goes along the edge with the part of her step that
@@ -1038,6 +1063,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       }
     },
     update(renderer, dt, scene = null, camera = null) {
+      if (guild) guild.update(dt, camera);                                 // (its outside thinned while she is in it, its rooms seen into as a doll's house; its lamps flicker)
       sim.step(renderer, dt);
       droplets.update(renderer);
       if (mill) mill.update(dt);
@@ -1076,8 +1102,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k); },      // (the trees' crowns are lit by it live)
+    setSun(dir, k = 1) { if (guild) guild.night(1 - k); wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k); },      // (the trees' crowns are lit by it live)
     get sunCast() { return cast; },
-    follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
+    follow(pos, lookDir) { if (guild) guild.follow(pos); grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };
 }
