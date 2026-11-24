@@ -117,6 +117,8 @@
   body:not(.dev) #timeRun { top:156px; }
   body:not(.dev) #fullscreen { top:198px; }
   /* ?curse=1: the curse trial's button, under full screen */
+  #towerBar { position: fixed; left: max(10px, env(safe-area-inset-left)); z-index: 4; display: flex; gap: 6px; }
+  #towerBar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #5a2b55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; }
   #curseBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
     background: rgba(70, 56, 92, .85); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
   body:not(.dev) #curseBtn { top: 240px; }
@@ -228,12 +230,12 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=30",
+  "./player-moves.js": "./player-moves.js?v=31",
   "./blink.js": "./blink.js?v=2",
   "./blink-fx.js": "./blink-fx.js?v=1",
   "./blink-sounds.js": "./blink-sounds.js?v=2",
   "./blink-stop-anim.js": "./blink-stop-anim.js?v=1",
-  "./player-spells.js": "./player-spells.js?v=6",
+  "./player-spells.js": "./player-spells.js?v=7",
   "./spear-rain.js": "./spear-rain.js?v=1",
   "./spear-rain-fx.js": "./spear-rain-fx.js?v=3",
   "./spear-rain-anim.js": "./spear-rain-anim.js?v=1",
@@ -244,6 +246,10 @@
   "./magic-combo-game-anim.js": "./magic-combo-game-anim.js?v=1",
   "./barrier-fx.js": "./barrier-fx.js?v=2",
   "./barrier-anim.js": "./barrier-anim.js?v=1",
+  "./barrier-reflect.js": "./barrier-reflect.js?v=6",
+  "./barrier-reflect-fx.js": "./barrier-reflect-fx.js?v=6",
+  "./barrier-reflect-sounds.js": "./barrier-reflect-sounds.js?v=2",
+  "./practice-towers.js": "./practice-towers.js?v=1",
   "./player-vault.js": "./player-vault.js?v=2",
   "./player-climb-top.js": "./player-climb-top.js?v=2",
   "./climb-top-anim.js": "./climb-top-anim.js?v=1",
@@ -491,12 +497,15 @@ const music = sounds && Q.get('music') !== '0' ? (await import('./music.js')).cr
 // time. The music at 0 is the music off (as the 🎵 button that was here)
 const soundSettings = sounds ? (await import('./sound-settings.js')).createSoundSettings({ sounds, air, music, base: soundVol }) : null;
 // ---- ✨ her spells (player-spells.js says what she casts and when; player-moves.js where she may go meanwhile): the light
-// of the magic combo (magic-combo-fx.js) and the barrier's water (barrier-fx.js), drawn in the scene. They are put in it
-// once the cloud shadows and the curse have done their work on its materials (below): the light keeps its own, and the
-// barrier's water is dimmed to the hour by its own setLight
+// of the magic combo (magic-combo-fx.js) and the barrier (since 25 Nov 2026 the one that throws a blow back, in the old one's
+// place, her move the old one's: barrier-reflect.js its rules, barrier-reflect-fx.js what is seen, barrier-reflect-sounds.js
+// the sound of the clip it was made after, on the AudioContext her steps woke), drawn in the scene. They are put in it once
+// the cloud shadows and the curse have done their work on its materials (below): the light keeps its own
 const spellKit = spellsOn ? await (async () => {
-  const [{ createMagicComboFx }, { createBarrierFx }] = await Promise.all([import('./magic-combo-fx.js'), import('./barrier-fx.js')]);
-  const kit = { comboFx: createMagicComboFx(), barrierFx: createBarrierFx({ lift: 0.12, seed: 1 }), renderer };      // (lift: the water on the ground stands in the grass, its tips through it)
+  const [{ createMagicComboFx }, { createReflectBarrier }, { createReflectBarrierFx }, { createReflectBarrierSounds }] = await Promise.all([import('./magic-combo-fx.js'), import('./barrier-reflect.js'), import('./barrier-reflect-fx.js'), import('./barrier-reflect-sounds.js')]);
+  const fx = createReflectBarrierFx({ heightAt: level.heightAt });
+  const heard = sounds ? createReflectBarrierSounds({ context: () => sounds.context, volume: sounds.volume }) : null;
+  const kit = { comboFx: createMagicComboFx(), barrier: { fx, heard, rules: createReflectBarrier({ fx, heard, heightAt: level.heightAt }) }, renderer };
   // the spear rain (spear-rain.js: the move; spear-rain-fx.js: the lance going up, the seal, the spears;
   // spear-rain-sounds.js: its sound) and the hum
   // of the lance's circle while it is held (charge-hum.js; ?hum=0: without): heard on the AudioContext her steps woke
@@ -558,7 +567,7 @@ if (blinkKit) {
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) blinkBtn.addEventListener(ev, () => blinkBtn.classList.remove('down'));
 }
 // her spells' buttons (player-spells.js): โจมตี (tapped: four casts; held: the lance, thrown as it is let go; on the run: the
-// leap), กลิ้ง (the roll; โจมตี in it: the rising cast), บาเรีย (the dome of water). J, K, B on a keyboard (player-input.js)
+// leap), กลิ้ง (the roll; โจมตี in it: the rising cast), บาเรีย (the barrier). J, K, B on a keyboard (player-input.js)
 const spellBtns = [];
 if (spellKit && player.attack) {
   document.body.classList.add('spells');
@@ -756,7 +765,7 @@ if (Q.has('curse')) {
   curse.changed();                                       // the values remembered from last time
 }
 // her spells' light and water (above): into the scene now that its materials have been given the clouds' shade and the curse
-if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrierFx.object);
+if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrier.fx.object);
 if (spellKit && spellKit.rainFx) scene.add(spellKit.rainFx.object);      // (the spear rain's, in the lance's own light)
 if (blinkKit) scene.add(blinkKit.fx.object);                              // (the blink's, in its own light too)
 
@@ -870,16 +879,64 @@ const warpUI = createWarpUI({ level, player });
 const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;
 if (farHills && level.horizon) { farHills.position.set(level.horizon.center[0], 0, level.horizon.center[1]); farHills.scale.setScalar(level.horizon.scale); }      // a long map: the far hills stand round its middle, further out
 
+// ---- 🛡 the barrier's weight, as on its trial page (barrier-reflect.html): the world stops for an instant as a blow lands on
+// it (0.05 s; one taken while it charges, 0.03) and as it bursts (0.08 s, once its ball of light is big and white: 0.05 s of
+// play after), and the camera jolts (player-spells.js). Its burst throws each blow back at whoever threw it: nothing in the
+// game throws one at her yet but the practice towers (below)
+let stopT = 0, stopLater = null, playT = 0, towers = null;
+const viewPx = new THREE.Vector2();
+const hitStop = (s, after = 0) => { if (after > 0) stopLater = { at: playT + after, s }; else stopT = Math.max(stopT, s); };
+if (spellKit) {
+  const rules = spellKit.barrier.rules;
+  rules.onStrike = ({ first }) => { hitStop(first ? 0.05 : 0.03); player.spells.jolt(first ? 0.9 : 0.7); };
+  rules.onReflect = ({ at, blows }) => { if (towers) towers.thrownBack({ at, blows }); hitStop(0.08, 0.05); player.spells.jolt(1.4); };
+}
+// ---- 🎯 ?towers=1 (a trial): three practice towers (practice-towers.js, as on the barrier's trial page: a crystal that throws
+// a bolt at her when asked; here it floats by itself, with no stone post to walk into) round where she is, to try the barrier
+// in the game. 🎯 the one most in view throws (F on a keyboard), 🎯×3 all three (G); away from them (25 m on), they stand
+// round her again where she is. Without it nothing of it is loaded
+if (spellKit && Q.has('towers') && Q.get('towers') !== '0') {
+  const { createPracticeTowers } = await import('./practice-towers.js');
+  const bar = spellKit.barrier;
+  towers = createPracticeTowers({ heightAt: level.heightAt, fx: bar.fx, barrier: bar.rules, heard: bar.heard, her: () => ({ feet: player.position, size: hero.height / 1.75 }), post: false });
+  const ahead = () => { const f = new THREE.Vector3(); camera.getWorldDirection(f); return Math.atan2(f.x, f.z); };
+  const round = () => { if (towers.near(player.position) > 25) towers.placeAround(player.position, ahead()); };
+  towers.placeAround(player.position, player.heading);
+  towers.onHit = () => player.spells.jolt(0.8);
+  scene.add(towers.object);
+  const box = document.createElement('div'); box.id = 'towerBar';
+  const add = (label, act) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); round(); act(); });
+    box.append(b);
+  };
+  add('🎯 ยิงใส่', () => towers.fireOne(camera));
+  add('🎯×3', () => towers.fireAll());
+  document.body.append(box);
+  const under = document.getElementById('charBtn');
+  box.style.top = `${Math.round((under ? under.getBoundingClientRect().bottom : 150) + 8)}px`;
+  addEventListener('keydown', e => {
+    if (e.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || document.body).tagName)) return;
+    if (e.code === 'KeyF') { round(); towers.fireOne(camera); }
+    if (e.code === 'KeyG') { round(); towers.fireAll(); }
+  });
+}
+
 const clock = new THREE.Clock();
 let moved = false;
 // an editor is open (the scene's, the rocks', move-things, the path brush): its own camera, and its own pace (below)
 const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active));
 const frame = (dt = clock.getDelta()) => {
   dt = Math.min(Math.max(dt, 0), 0.05);
+  const real = dt;                                   // (the world's time is stopped a moment by a blow on the barrier: above)
+  if (stopLater && playT >= stopLater.at) { stopT = Math.max(stopT, stopLater.s); stopLater = null; }
+  if (stopT > 0) { stopT -= dt; dt *= 0.05; }
+  playT += dt;
   if (dprDue) { dprDue = false; renderer.setPixelRatio(renderDPR); fit(); }
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  if (towers) towers.update(dt, playT);                                   // (the practice towers' bolts, after her: ?towers=1)
   if (npcs) npcs.update(dt);                                              // (after her: they turn to where she now is)
   circles.setNight(!!tod && tod.daylight < 0.3);                          // (by night their light is let shine more)
   circles.update(dt, camera);
@@ -892,17 +949,16 @@ const frame = (dt = clock.getDelta()) => {
     if (blinkBtn) blinkBtn.classList.toggle('wait', !blinkKit.blink.ready);      // (not again yet)
   }
   if (spellKit) {
-    // her spells (drawn by the player, player-spells.js): the combo's light shines more by night; the barrier's water is
-    // dimmed to the hour (as on its trial page: by night it keeps more of its light than the land does) and lit by the sun
-    const day = tod ? tod.daylight : 1;
+    // her spells (drawn by the player, player-spells.js): the combo's light and the barrier's shine more by night; the
+    // barrier's lines are drawn as fine as the picture is (it is made coarser when the phone struggles); it is heard as
+    // loud as her own sounds are set
+    const day = tod ? tod.daylight : 1, bar = spellKit.barrier;
     spellKit.comboFx.setNight(day < 0.3);
     if (spellKit.rainFx) spellKit.rainFx.setNight(day < 0.3);
-    if (spellKit.barrierFx.busy || player.spells.barrierT >= 0) {
-      spellKit.barrierFx.setLight(0.5 + 0.5 * day, 0.58 + 0.42 * day, 0.8 + 0.2 * day);
-      const cast = level.sunCast;
-      spellKit.barrierFx.setSun(cast ? cast.dir : (sky.userData.sun || NOON));
-    }
-    if (barrierBtn) barrierBtn.classList.toggle('wait', player.spells.barrierT >= 0);      // (not again until its water has gone)
+    bar.fx.setNight(day < 0.3);
+    if (bar.fx.busy) bar.fx.setView(renderer.getDrawingBufferSize(viewPx).y);
+    if (bar.heard && sounds && bar.heard.volume !== sounds.volume) bar.heard.volume = sounds.volume;
+    if (barrierBtn) barrierBtn.classList.toggle('wait', player.spells.barrierWait);      // (not again until it has gone)
     if (rainBtn) rainBtn.classList.toggle('on', player.spells.skyReady);                   // (she holds the lance: it may be thrown up)
   }
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
@@ -943,7 +999,7 @@ const frame = (dt = clock.getDelta()) => {
   }
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
-  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(dt);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
+  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(real);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
@@ -971,7 +1027,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, towers, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>

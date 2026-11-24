@@ -6,7 +6,7 @@
 //
 //   const player = createPlayer({ character, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap });
 //   every frame: player.update(dt)          player.jump(), player.dash(): the buttons (Space, Shift on a keyboard)
-//   with spells: { comboFx, barrierFx, renderer } (player-spells.js): player.attack(), player.release(), player.roll(),
+//   with spells: { comboFx, barrier, renderer } (player-spells.js): player.attack(), player.release(), player.roll(),
 //   player.barrier(): the attack button down and up, the roll button, the barrier button (J, K, B on a keyboard)
 //
 // The point of the moves: she gets about the land without going round. What she can do that the walker cannot:
@@ -32,7 +32,7 @@
 //     down into a landing and stops; over a bridge's parapet she falls into the river. The jump button by one is the magic jump, not the vault.
 //   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running.
 //   - cast (since 22 Nov 2026; player-spells.js says what and when): the magic combo's moves on the ground (four casts, the
-//     lance held and thrown, the leap off a run, the roll and the rising cast out of it) and the water barrier. While one
+//     lance held and thrown, the leap off a run, the roll and the rising cast out of it) and the barrier. While one
 //     has her (mode 'cast') her clips are its and it moves her where a move takes her (a turn, the roll, the leap); here
 //     she is kept out of things and on ground she may stand on: at a cliff's brink or deep water she stops, she does not
 //     go over. On the ground only (not in the air, on a face, swimming or deep in the water); the casts in the air are
@@ -132,7 +132,7 @@ const NO_CIRCLES = { open() {} };
 // magic circle opens under her, she jumps (each jump of a flight), she lands, she dashes, her hand and foot are put on a
 // thing she vaults, the water splashes (she lands in it, jumps out of it, goes in deep, begins to swim), she swims a stroke, the circle
 // opens under a long fall, and (every frame) how fast she goes through the air
-// spells: what her spells draw with (player-spells.js): { comboFx, barrierFx, renderer }, or none (no spells)
+// spells: what her spells draw with (player-spells.js): { comboFx, barrier, renderer }, or none (no spells)
 // blink: the blink (blink.js' createBlink), or none (no blink: the game)
 export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null, blink = null }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another

@@ -29,10 +29,13 @@
        after the blow it bursts and throws it back (the clip takes 1.81 s; the first try did). Blows that land on it
        meanwhile are taken in too, and each is thrown back at whoever threw it
      - `again` s after it bursts or has gone it may be raised again
-   Her body does nothing for it (none of the clip's moves: "ไม่ต้องทำแบบนั้นค่ะ").
+   Her body does nothing for it here (none of the clip's moves: "ไม่ต้องทำแบบนั้นค่ะ"). In the game (since 25 Nov 2026, in the
+   water barrier's place: "เอาขึ้นเมนแทนบาเรียอันเก่าได้ไหม แต่เอา animation ของบาเรียอันเก่าไว้") she casts it with the water
+   barrier's move, and player-spells.js raises it as her hand is up. Taken far from her at once (a warp stone), it is with
+   her at once, not flown after her.
    ========================================================================== */
 import * as THREE from 'three';
-import { REFLECT_FX } from './barrier-reflect-fx.js?v=5';
+import { REFLECT_FX } from './barrier-reflect-fx.js';
 
 export const REFLECT_BARRIER = {
   form: 0.34,        // s it takes to pop up (the fx's)
@@ -75,6 +78,7 @@ export function createReflectBarrier({ fx, heard = null, heightAt = null } = {})
     if (state !== 'broken') {
       size = sz;
       want.set(feet.x, feet.y + lift(), feet.z);
+      if (center.distanceToSquared(want) > (3 * R()) ** 2) { center.copy(want); vel.set(0, 0, 0); }      // (taken far at once, as by a warp stone: with her at once, not flown after her)
       follow(dt);
       const ground = heightAt ? heightAt(center.x, center.z) : feet.y;
       fx.place(center, size, Math.min(ground, center.y - lift() * 0.2));

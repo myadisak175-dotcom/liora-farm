@@ -1284,6 +1284,26 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     flying.visible = n > 0;
   }
 
+  // ---- her gathering it, as she casts it (in the game her old cast's move, player-spells.js: she gathers it in her hand
+  // and raises the hand): a star of light in her hand, growing, sparkles drawn into it. at: her hand (world) each frame;
+  // k: how far gathered (0..1); sz: her size. Let go (at: null) it flashes, as the dome is raised
+  let held = null;
+  function gather(at, k = 1, sz = 1) {
+    if (!at) {
+      if (held) { held.on = false; held.mesh.visible = false; sprite(0, held.at, 0.55 * sz, 0.24, { pull: 0.3 }); held = null; }
+      return;
+    }
+    if (!held || !held.on) { held = sprite(1, at, 0.1, 1e9, { pull: 0.25 }); held.sparkT = 0; }
+    held.at.copy(at);
+    held.u.uSize.value = (0.08 + 0.32 * k) * sz;
+    if (clock >= held.sparkT) {                       // (sparkles drawn in to it, more as it grows)
+      held.sparkT = clock + lerp(0.07, 0.025, k);
+      v1.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize();
+      const life = between(0.2, 0.3), far = between(0.35, 0.65) * sz;
+      spark(2, v2.copy(at).addScaledVector(v1, far), v1.multiplyScalar(-far / life), life, between(0.02, 0.032) * sz, 0, { drag: 0 });
+    }
+  }
+
   // ------------------------------------------------------------------------------------------------------------------
   const camPos = new THREE.Vector3();
   function update(dt, camera = null) {
@@ -1461,7 +1481,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
 
   return {
     object,
-    raise, place, strike, reflect, fade, drop, impact,
+    raise, place, strike, reflect, fade, drop, impact, gather,
     bolts: setBolts,
     update,
     get up() { return dome.on; },
