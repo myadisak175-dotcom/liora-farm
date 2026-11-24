@@ -32,7 +32,7 @@
    Her body does nothing for it (none of the clip's moves: "ไม่ต้องทำแบบนั้นค่ะ").
    ========================================================================== */
 import * as THREE from 'three';
-import { REFLECT_FX } from './barrier-reflect-fx.js?v=4';
+import { REFLECT_FX } from './barrier-reflect-fx.js?v=5';
 
 export const REFLECT_BARRIER = {
   form: 0.34,        // s it takes to pop up (the fx's)

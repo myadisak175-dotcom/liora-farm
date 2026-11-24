@@ -11,7 +11,8 @@
    "ทำเอฟเฟคตอนโดน สะท้อน ให้ใกล้เคียง ref หน่อยได้ไหมคะ": so the blow and the burst are the clip's shapes again, drawn
    crisp, each in a glow (the clip's are: anime's light is sharp shapes that glow, not blurs), at that pace still. Then:
    "เอฟเฟคตอนที่บาเรียกำลังจะแตกอะ ไม่เหมือน ลายสายฟ้าไม่เหมือน": so its lightning as it charges is the clip's: bolts
-   straight out from where it was struck, kinked sharply, not lines wandering round it like hair.
+   straight out from where it was struck, kinked sharply, not lines wandering round it like hair. And of the pieces
+   flying off it: "ตัวชิ้นส่วนที่แตกออกไม่สวยเลย": so they are the clip's flat flakes, not cut facets.
    One job: draw it. It decides nothing.
 
      const fx = createReflectBarrierFx({ heightAt })    heightAt(x, z): the ground's height (the disc lies on it)
@@ -53,7 +54,7 @@
        of it, petals of deep blue between them, wide at its rim; it clears from its middle out to its bright spiked rim,
        and that goes. A long line of light across the picture through it and a short one up and down; a long line back
        the way the blow came (the blow thrown back, barrier-reflect.js); purple lightning out of it; its glass flying off
-       as dark shards, turning slowly; a disc of light thrown out over the ground (a broad white rim, a pale band, sky
+       as dark flakes with smooth edges (fangs drawn out to a point, then pebbles), across the picture; a disc of light thrown out over the ground (a broad white rim, a pale band, sky
        blue with blots of deep blue, purple lightning) with dust over its edge; dashes of light flung out of the ball as
        it clears, that hang as sparkles
      - standing up: clear, sparkles in it, a purple glow at its foot, the lines of light coming last
@@ -118,7 +119,8 @@ export const REFLECT_LOOK = {
 //            far it is from there to her, of the way; drift: how much further it goes as it swells)
 //   flare:   the long line of light across the picture through the blow and through the burst: [life, m thick (its
 //            square's half), how many times that long]
-//   shards:  its glass flying, dark (at, how many, speed m/s out, up, life, size m)
+//   shards:  its glass flying off, dark flakes: fangs (at, how many, speed m/s out, up, life, half-width m), then pebbles
+//            (from pebbleAt, how many, half-width m)
 //   flash:   purple lightning out of the burst (at, how many, life, len m)
 //   disc:    at, life, r0 .. r1 (m), hole (its middle going, from .. to, of its life), lift (over the ground: over the
 //            grass), drop (it comes down so far onto that in its first `fall` s)
@@ -136,12 +138,12 @@ export const REFLECT_FX = {
   charge: { at: 0.1, spread: 0.07, rise: 0.08, flick: 0.06, purple: 0.13, swell: 0.05 },
   burst: { life: 0.6, size: 2.0, from: 0.2, drift: 0.15 },
   flare: { hit: [0.3, 0.3, 9], burst: [0.3, 0.36, 12] },
-  shards: { at: 0.08, n: 16, speed: [1.8, 4.2], up: [0.3, 1.6], life: [0.6, 1.0], size: [0.15, 0.3] },
+  shards: { at: 0.07, fangs: 7, speed: [2.4, 4.6], up: [0.4, 1.6], life: [0.4, 0.7], fang: [0.04, 0.06], pebbleAt: 0.2, pebbles: 22, pebble: [0.03, 0.055] },
   flash: { at: 0.06, n: 7, life: 0.34, len: [0.9, 1.8] },
-  disc: { at: 0.03, life: 0.85, r0: 0.6, r1: 4.4, hole: [0.3, 0.78], lift: 0.3, drop: 0.2, fall: 0.12 },
+  disc: { at: 0.03, life: 1.05, r0: 0.6, r1: 4.4, hole: [0.6, 0.97], lift: 0.3, drop: 0.2, fall: 0.12 },
   dust: { at: 0.06, life: 0.62, h: 0.5 },
   dashes: { at: 0.14, n: 90, speed: [2.5, 7.5], life: [0.45, 0.85], sparkles: 70, sparkleLife: [0.8, 1.4] },
-  crackles: { from: 0.1, to: 0.62, every: 0.05, len: [0.35, 0.8] },
+  crackles: { from: 0.1, to: 0.85, every: 0.05, len: [0.35, 0.8] },
   puffs: { at: 0.22, n: 8 },
   near: { none: 0.6, whole: 1.6 },
 };
@@ -716,45 +718,52 @@ const SPARK_FRAG = /* glsl */`
     gl_FragColor = vec4(clamp(col * vFade, 0.0, 1.0), clamp(a * vFade, 0.0, 1.0));
   }`;
 
-// ---- the shards: one shape (a long sliver of its glass), instanced; dark, as the clip's (deep navy, its edges catching
-// a blue light, a glint), shrinking away at their end
-//   aP: where (x, y, z), when;  aV: its speed (x, y, z), how long it lasts;  aS: the way it turns (x, y, z), how fast (rad/s);
-//   aZ: its size (m), a number of its own
+// ---- the shards: flakes of its dark glass, as the clip's: smooth-edged, not cut facets. A fang (drawn out to a point,
+// a little bent) as it bursts, pebbles after; one square each turned to the eye, instanced, its whole way worked out
+// here from where and when it began, pointing the way it flies, turning in the picture and tumbling (drawn narrower and
+// wider as it turns over), shrinking away at its end. Deep navy, lighter on one side and at its rim
+//   aP: where (x, y, z), when;  aV: its speed (x, y, z), how long it lasts;  aS: its turning (rad/s), its tumbling
+//   (rad/s), its length (of its width), its fall (m/s²);  aZ: its half-width (m), a number of its own, its bend, how
+//   wide it is at its tip (of its width at its back)
 const SHARD_VERT = /* glsl */`
+  attribute vec2 corner;
   attribute vec4 aP, aV, aS, aZ;
   uniform float uTime;
-  varying vec3 vN, vW;
-  varying float vFade;
-  mat3 turn(vec3 a, float t) {
-    float c = cos(t), s = sin(t), k = 1.0 - c;
-    return mat3(c + a.x * a.x * k, a.y * a.x * k + a.z * s, a.z * a.x * k - a.y * s,
-                a.x * a.y * k - a.z * s, c + a.y * a.y * k, a.z * a.y * k + a.x * s,
-                a.x * a.z * k + a.y * s, a.y * a.z * k - a.x * s, c + a.z * a.z * k);
-  }
+  uniform vec2 uNear;
+  varying vec2 vQ;
+  varying float vFade, vLight, vBend, vTip;
   void main() {
     float age = uTime - aP.w, life = max(aV.w, 0.01), u = clamp(age / life, 0.0, 1.0);
-    float drag = 2.2;
-    vec3 p = aP.xyz + aV.xyz * (1.0 - exp(-drag * age)) / drag + vec3(0.0, -3.8 * age * age, 0.0);
-    mat3 R = turn(normalize(aS.xyz + vec3(1e-4)), aS.w * age + aZ.y * 6.0);
-    float s = aZ.x * (1.0 - smoothstep(0.55, 1.0, u)) * smoothstep(0.0, 0.03, age);
-    vec3 w = p + R * (position * s);
-    vN = R * normal; vW = w;
-    vFade = 1.0 - smoothstep(0.6, 1.0, u);
-    gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+    float drag = 2.0;
+    vec3 p = aP.xyz + aV.xyz * (1.0 - exp(-drag * age)) / drag - vec3(0.0, 0.5 * aS.w * age * age, 0.0);
+    vec4 mv = viewMatrix * vec4(p, 1.0);
+    vec3 vv = mat3(viewMatrix) * aV.xyz;
+    float turn = atan(vv.y, vv.x + 1e-5) + (aZ.y - 0.5) * 0.8 + aS.x * age;
+    float tumble = abs(cos(aZ.y * 17.0 + aS.y * age));
+    float w = aZ.x * (1.0 - smoothstep(0.6, 1.0, u)) * smoothstep(0.0, 0.04, age);
+    vec2 q = vec2(corner.x * aS.z, corner.y * mix(0.3, 1.0, tumble)) * w;
+    float c = cos(turn), s = sin(turn);
+    mv.xy += vec2(c * q.x - s * q.y, s * q.x + c * q.y);
+    vQ = corner; vBend = aZ.z; vTip = aZ.w;
+    vLight = 0.5 + 0.5 * sin(turn + aS.y * age * 0.5);
+    vFade = smoothstep(uNear.x, uNear.y, -mv.z);
+    gl_Position = projectionMatrix * mv;
     if (age < 0.0 || age > life) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }`;
 const SHARD_FRAG = /* glsl */`
-  varying vec3 vN, vW;
+  varying vec2 vQ;
+  varying float vFade, vLight, vBend, vTip;
   void main() {
-    vec3 n = normalize(vN);
-    if (!gl_FrontFacing) n = -n;
-    vec3 v = normalize(cameraPosition - vW);
-    float f = 1.0 - abs(dot(n, v));
-    float glint = pow(max(dot(reflect(-v, n), normalize(vec3(-0.35, 0.85, 0.4))), 0.0), 16.0);
-    float up = n.y * 0.5 + 0.5;
-    vec3 col = mix(vec3(0.06, 0.09, 0.23), vec3(0.12, 0.18, 0.4), up);
-    col = mix(col, vec3(0.3, 0.5, 0.9), smoothstep(0.45, 0.95, f)) + vec3(0.55, 0.8, 1.0) * glint * 0.8;
-    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    float x = vQ.x, y = vQ.y + vBend * (1.0 - x * x);
+    float hw = sqrt(max(1.0 - x * x, 0.0)) * mix(0.92, vTip, smoothstep(-0.4, 1.0, x));     // round at its back, to a point (or not)
+    float d = abs(y) - hw;                                    // (< 0 in it; in its half-widths)
+    float aa = fwidth(d) + 1e-4;
+    float k = 1.0 - smoothstep(-aa, aa, d);
+    if (k <= 0.001) discard;
+    float rim = smoothstep(-0.32, -0.02, d);
+    vec3 col = mix(vec3(0.05, 0.07, 0.18), vec3(0.14, 0.2, 0.42), vLight * (0.5 + 0.5 * sign(y) * min(abs(y) / max(hw, 1e-3), 1.0)));
+    col = mix(col, vec3(0.3, 0.45, 0.85), rim * 0.4);
+    gl_FragColor = vec4(col * k, k) * vFade;
   }`;
 
 // ---- the lightning: one strip through all of it. Each point: where it is, which way its line goes there, which side
@@ -973,29 +982,26 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     sparkDirty = true; sparkEnd = Math.max(sparkEnd, clock + wait + life);
   }
 
-  // ---- the shards (its own glass: long slivers, as the clip's)
-  const shardGeo = (() => {
-    const P = [[0, 1.0, 0.0], [-0.2, -0.46, 0.06], [0.24, -0.3, 0.04], [0.03, -0.14, -0.11]];
-    const F = [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
-    const pos = [];
-    for (const f of F) for (const k of f) pos.push(...P[k]);
-    const g = new THREE.InstancedBufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-    g.computeVertexNormals();
-    return g;
-  })();
+  // ---- the shards: flakes of its dark glass (a fang, a pebble), one square each, instanced
+  const shardGeo = new THREE.InstancedBufferGeometry();
+  shardGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+  shardGeo.setAttribute('corner', new THREE.BufferAttribute(new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]), 2));
+  shardGeo.setIndex([0, 1, 2, 0, 2, 3]);
   const zA = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4).fill(-1e5), 4), zV = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4), 4);
   const zS = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4), 4), zZ = new THREE.InstancedBufferAttribute(new Float32Array(SHARDS * 4), 4);
   for (const [n, at] of [['aP', zA], ['aV', zV], ['aS', zS], ['aZ', zZ]]) { at.setUsage(THREE.DynamicDrawUsage); shardGeo.setAttribute(n, at); }
   shardGeo.instanceCount = SHARDS;
-  const shards = put(shardGeo, material({ uniforms: { uTime: clockU }, vertexShader: SHARD_VERT, fragmentShader: SHARD_FRAG }), 6);
+  const shards = put(shardGeo, material({ uniforms: { uTime: clockU, uNear: near }, vertexShader: SHARD_VERT, fragmentShader: SHARD_FRAG }), 9.5);      // (over the burst)
   let shardTurn = 0, shardDirty = false, shardEnd = -1;
-  function shard(p, v, life, size, wait = 0, spin = between(8, 20)) {
+  // a flake: p where, v its speed (m/s), life (s), w its half-width (m); long: its length, of its width (a fang 3 .. 5,
+  // a pebble 1.2 .. 1.8); spin: rad/s it turns in the picture; fall: m/s² down; bend: how it curves; tip: how wide at
+  // its tip (a fang's sharp, 0.2; a pebble's blunt)
+  function shard(p, v, life, w, { wait = 0, long = 4, spin = between(-4, 4), fall = 3.5, bend = between(-0.25, 0.25), tip = 0.2 } = {}) {
     const i = shardTurn++ % SHARDS;
     zA.array.set([p.x, p.y, p.z, clock + wait], i * 4);
     zV.array.set([v.x, v.y, v.z, life], i * 4);
-    zS.array.set([rand() - 0.5, rand() - 0.5, rand() - 0.5, spin * (rand() < 0.5 ? -1 : 1)], i * 4);
-    zZ.array.set([size, rand(), 0, 0], i * 4);
+    zS.array.set([spin, between(3, 9) * (rand() < 0.5 ? -1 : 1), long, fall], i * 4);
+    zZ.array.set([w, rand(), bend, tip], i * 4);
     shardDirty = true; shardEnd = Math.max(shardEnd, clock + wait + life);
   }
 
@@ -1108,7 +1114,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     }
     for (let i = 0; i < bits; i++) {
       v1.set(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().addScaledVector(out, 0.8).addScaledVector(back, 0.3).normalize();
-      shard(point, v1.multiplyScalar(between(3, 7) * size), between(0.3, 0.5), between(0.05, 0.1) * size, 0.02 + rand() * 0.04);
+      shard(point, v1.multiplyScalar(between(3, 7) * size), between(0.3, 0.5), between(0.02, 0.032) * size, { wait: 0.02 + rand() * 0.04, long: between(3.5, 5) });
     }
   }
   function strike(point, from) {
@@ -1169,14 +1175,23 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
       const len = between(F.len[0], F.len[1]) * size;
       bolt(1, F.life, 0.1 * size, pts => jagged(pts, from, v2.copy(from).addScaledVector(way, len), 11, 0.2 * size), { wait: F.at + rand() * 0.1, every: 0.04 });
     }
-    // its glass flying off as dark shards, out of the burst's edge (more out the way it was struck, and up), turning
-    // slowly as the clip's
+    // its glass flying off as dark flakes, as the clip's: first a few fangs out of the burst's edge (more out the way it
+    // was struck, and up), pointing the way they fly; then, as it clears, pebbles thrown out from all round its rim,
+    // drifting up and out and falling
     const Z = REFLECT_FX.shards;
-    for (let i = 0; i < Z.n; i++) {
-      v1.set(rand() - 0.5, between(-0.1, 0.9), rand() - 0.5).normalize().addScaledVector(dome.hit, 0.5).normalize();
-      const p = heart.clone().addScaledVector(v1, between(0.45, 0.85) * size);
+    const look = new THREE.Vector3().subVectors(heart, camPos).normalize();      // (they fly across the picture, as the
+    const across = d => d.addScaledVector(look, -d.dot(look) * 0.75).normalize();  // clip's do: few at the eye)
+    for (let i = 0; i < Z.fangs; i++) {
+      across(v1.set(rand() - 0.5, between(0.0, 0.9), rand() - 0.5).normalize().addScaledVector(dome.hit, 0.3));
+      const p = heart.clone().addScaledVector(v1, between(0.4, 0.75) * size);
       const v = v1.clone().multiplyScalar(between(Z.speed[0], Z.speed[1]) * size); v.y += between(Z.up[0], Z.up[1]) * size;
-      shard(p, v, between(Z.life[0], Z.life[1]), between(Z.size[0], Z.size[1]) * size, Z.at + rand() * 0.1, between(3, 9));
+      shard(p, v, between(Z.life[0], Z.life[1]), between(Z.fang[0], Z.fang[1]) * size, { wait: Z.at + rand() * 0.08, long: between(3.2, 4.6), spin: between(-1.5, 1.5), fall: 2 });
+    }
+    for (let i = 0; i < Z.pebbles; i++) {
+      across(v1.set(rand() - 0.5, between(-0.4, 0.5), rand() - 0.5).normalize());
+      const p = heart.clone().addScaledVector(v1, between(0.55, 0.95) * size);
+      const v = v1.clone().multiplyScalar(between(1.2, 2.8) * size); v.y += between(0.1, 0.9) * size;
+      shard(p, v, between(0.6, 1.0), between(Z.pebble[0], Z.pebble[1]) * size, { wait: Z.pebbleAt + rand() * 0.16, long: between(1.15, 1.6), spin: between(-6, 6), fall: 4, tip: between(0.55, 0.8), bend: between(-0.15, 0.15) });
     }
     // the disc thrown out over the ground, the dust over its edge
     layDisc(center, ground, size);
@@ -1252,7 +1267,7 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
     }
     for (let i = 0; i < 8; i++) {
       v1.set(rand() - 0.5, between(0.2, 1), rand() - 0.5).normalize().add(back).normalize();
-      shard(at, v1.multiplyScalar(between(2.5, 6) * size), between(0.35, 0.6), between(0.04, 0.08) * size);
+      shard(at, v1.multiplyScalar(between(2.5, 6) * size), between(0.35, 0.6), between(0.025, 0.045) * size, { long: between(2.5, 4) });
     }
   }
   function setBolts(list) {
@@ -1377,17 +1392,17 @@ export function createReflectBarrierFx({ seed = 5, heightAt = null } = {}) {
       if (u > 1) { discS.on = false; disc.visible = false; }
       else if (age >= 0) {
         disc.visible = true;
-        const g = 1 - Math.pow(1 - clamp(u * 1.1, 0, 1), 3);
+        const g = 1 - Math.pow(1 - clamp(u * 1.4, 0, 1), 3);
         discU.uRad.value = lerp(D.r0, D.r1, g) * discS.size;
         discU.uHole.value = lerp(-0.2, 1.0, sstep(D.hole[0], D.hole[1], u));
-        discU.uAlpha.value = sstep(0, 0.03, age) * (1 - sstep(0.6, 1, u));
+        discU.uAlpha.value = sstep(0, 0.03, age) * (1 - sstep(0.7, 1, u));
         discU.uDrop.value = D.drop * discS.size * (1 - sstep(0, D.fall, age));
         if (clock >= discS.flickT) {
           discS.flickT = clock + 0.045;
           const pick = rand() < 0.5, a1 = rand() * 6.283;
           discU.uPick.value.set(pick ? 1 : 0, pick ? 0 : 1); discU.uTurn.value.set(Math.cos(a1), Math.sin(a1), 1, 0);
         }
-        discU.uLight.value = sstep(0.06, 0.14, u) * (1 - sstep(0.4, 0.65, u)) * between(0.6, 1.0);
+        discU.uLight.value = sstep(0.08, 0.16, u) * (1 - sstep(0.6, 0.85, u)) * between(0.6, 1.0);
       }
     }
     if (dustS.on) {
