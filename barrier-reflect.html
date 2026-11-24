@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d2547">
+<title>วีวี่ — บาเรียสะท้อน (ลอง)</title>
+<!--
+  barrier-reflect.html  —  the barrier that throws a blow back, to try (24 Nov 2026, with ten seconds of a clip:
+  "สกิลบาเรียอยากได้เอฟเฟคประมาณนี้ค่ะ เหมือนเป็นโล่อะ เคลื่อนที่ได้ แล้วก็มี reflection ตอนบาเรียโดนโจมตี แล้วก็แตกด้วย แต่ใน
+  วีดีโอใส่อนิเมชั่นตัวละครตอนมัน reflection ไม่ต้องทำแบบนั้นค่ะ ... เอฟเฟคขอแบบในวีดีโอเลยนะคะ ขอลิ้งทดลองเหมือนเดิม").
+  Since 25 Nov 2026 it is the game's barrier ("เอาขึ้นเมนแทนบาเรียอันเก่าได้ไหม แต่เอา animation ของบาเรียอันเก่าไว้": cast
+  there with the water barrier's move, player-spells.js); this page is where it is tried and worked on. Of the first
+  try: "เอฟเฟคแข็งมาก ไม่นุ่มแบบ anime เลย แล้วก็อนิเมชั่นมันช้าไปอะ อยากได้แบบเกม action rpg": so its light is soft and it
+  goes at an action game's pace, and the world stops for an instant and the camera shakes at the blow and the burst.
+  One job: try that one thing. The บาเรีย button (B on a keyboard): a dome of light stands up round her and goes where she
+  goes (walk, run, jump, dash: the game's own player, player-moves.js). Three practice towers (practice-towers.js, the
+  game's ?towers=1 too) stand on the meadow and throw
+  a bolt at her when asked (🎯: the one most in view; 🎯×3: all three); a bolt that meets the dome is stopped there, the
+  dome turns deep blue with lightning all through it, then bursts, throwing the bolt back at the tower that threw it
+  (barrier-reflect.js: the rules; barrier-reflect-fx.js: what is seen; barrier-reflect-sounds.js: the clip's own sound,
+  cut to it). Without the dome the bolt strikes her. Her body does nothing for it (the clip's girl's moves are not wanted).
+  Up top: ☀/🌙 the hour, ⏱ slower, 🔊 the sound, 🎥 the game's camera or one in front of her as the clip's, 🎯 / 🎯×3,
+  ▶ a demo by itself.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 800 15px system-ui; color: #dffcff; text-shadow: 0 1px 6px #000b; min-height: 18px; transition: opacity .4s; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #2b3a55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #bar button.fire { background: #5a2b55d9; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  .act { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 700 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  .act.down { background: rgba(255, 255, 255, .5); }
+  .act svg { width: 24px; height: 24px; margin-bottom: -4px; }
+  /* the barrier: the big one, under the right thumb; the jump and the dash beside it */
+  #shieldBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px)); width: 84px; height: 84px;
+    background: rgba(90, 170, 255, calc(.12 + .2 * var(--ready, 1))); border-color: rgba(214, 240, 255, calc(.35 + .6 * var(--ready, 1)));
+    box-shadow: 0 0 calc(4px + 18px * var(--ready, 1)) rgba(110, 200, 255, calc(.15 + .55 * var(--ready, 1))); }
+  #shieldBtn svg { width: 32px; height: 32px; margin-bottom: -3px; }
+  #shieldBtn.down { background: rgba(170, 225, 255, .55); }
+  #shieldBtn b { position: absolute; left: 0; right: 0; bottom: 10px; font: 700 10px system-ui; opacity: .9; }
+  #jumpBtn { right: max(116px, calc(env(safe-area-inset-right) + 108px)); bottom: max(62px, calc(env(safe-area-inset-bottom) + 56px)); width: 60px; height: 60px; }
+  #dashBtn { right: max(120px, calc(env(safe-area-inset-right) + 112px)); bottom: max(8px, calc(env(safe-area-inset-bottom) + 2px)); width: 52px; height: 52px; }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 200px 0 16px; text-align: left; pointer-events: none;
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; transition: opacity .6s; }
+  #tap { position: fixed; left: 0; right: 0; top: 40%; display: flex; justify-content: center; pointer-events: none; }
+  #tap span { background: rgba(31, 134, 160, .9); color: #fff; font: 600 14px system-ui; padding: 10px 18px; border-radius: 999px; }
+  #tap[hidden] { display: none; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; white-space: pre-wrap; }
+  @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
+    #name, #beat { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+    #hint { top: calc(58px + env(safe-area-inset-top)); bottom: auto; padding: 0 0 0 calc(14px + env(safe-area-inset-left)); max-width: 58%; font-size: 11px; }
+    #bar button { padding: 6px 9px; font-size: 11px; }
+  }
+  @media (max-height: 520px) {                       /* a phone on its side: the title shorter, the buttons up top in two rows */
+    #name small { display: none; }
+    #beat { top: calc(32px + env(safe-area-inset-top)); }
+    #bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 56vw; }
+    #bar button { padding: 6px 9px; font-size: 11px; }
+    #hint { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
+  "./barrier-reflect.js": "./barrier-reflect.js?v=6",
+  "./barrier-reflect-fx.js": "./barrier-reflect-fx.js?v=6",
+  "./barrier-reflect-sounds.js": "./barrier-reflect-sounds.js?v=2",
+  "./practice-towers.js": "./practice-towers.js?v=1"
+} }
+</script>
+</head>
+<body>
+<div id="name">วีวี่ · บาเรียสะท้อน (ลอง)<small>กดบาเรีย = โดมกางรอบตัว เดินไปด้วยได้ · โดนยิงแล้วสะท้อนกลับ แล้วแตก</small></div>
+<div id="beat"></div>
+<div id="bar">
+  <button id="hour" type="button">☀ กลางวัน</button>
+  <button id="slow" type="button">⏱ ×1</button>
+  <button id="sound" type="button">🔊 เสียง: เปิด</button>
+  <button id="view" type="button">🎥 กล้อง: เกม</button>
+  <button id="fire1" class="fire" type="button">🎯 ยิงใส่</button>
+  <button id="fire3" class="fire" type="button">🎯×3 ยิงพร้อมกัน</button>
+  <button id="demo" type="button">▶ เดโม</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="dashBtn" class="act" type="button" aria-label="พุ่ง"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br>พุ่ง</span></button>
+<button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
+<button id="shieldBtn" class="act" type="button" aria-label="บาเรีย"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 19.5a8.5 8.5 0 0 1 17 0"/><path d="M2.5 19.5h19"/><path d="M7 15.5c2-1.6 4-1.2 5 .2s3.2 1.6 5-.2" stroke-width="1.3"/><path d="M8.5 11.5c1.6-1 3-.6 3.8.4" stroke-width="1.2"/></svg><br>บาเรีย</span><b id="cool"></b></button>
+<div id="hint">บาเรีย (คีย์บอร์ด B) แล้วเดิน/วิ่ง/กระโดดได้ โดมตามไปด้วย<br>กด 🎯 ให้ป้อมยิงใส่ · โดนแล้วโดมเป็นน้ำเงิน → สะท้อนกลับ → แตก (ไม่ถึงครึ่งวิ)</div>
+<div id="tap" hidden><span>แตะจอหนึ่งครั้งเพื่อเปิดเสียง</span></div>
+<div id="wait">กำลังโหลดวีวี่…</div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
+import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
+import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
+import { createPlayer } from './player-moves.js?v=blink3';
+import { createMagicCircles } from './magic-circle-fx.js';
+import { createStepSounds } from './step-sounds.js';
+import { createReflectBarrier, REFLECT_BARRIER } from './barrier-reflect.js';
+import { createReflectBarrierFx, REFLECT_FX } from './barrier-reflect-fx.js';
+import { createReflectBarrierSounds } from './barrier-reflect-sounds.js';
+import { createPracticeTowers } from './practice-towers.js';
+
+const Q = new URLSearchParams(location.search);
+const phone = matchMedia('(pointer: coarse)').matches;
+const waitEl = document.getElementById('wait');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass (as the other trial pages')
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+
+// ---- the practice towers (practice-towers.js): a stone post with a crystal over it that throws a bolt at her when asked;
+// made once she and the barrier are (below)
+const colliders = [];
+
+// ---- the light: the circles of her jump and the barrier's, in a scene of their own drawn after the meadow (by night
+// the meadow is dimmed to the hour's light first, as the game does it, and the light is drawn over it undimmed)
+const fxScene = new THREE.Scene();
+const circles = createMagicCircles({ seed: 2 });
+const fx = createReflectBarrierFx({ heightAt: H });
+fxScene.add(circles.object, fx.object);
+const NIGHT = [0.26, 0.31, 0.6];
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: false, depthWrite: false,
+}));
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+let night = Q.get('night') === '1';            // (by day, as the clip is)
+fx.setNight(night); if (circles.setNight) circles.setNight(night);
+
+// ---- the camera: the game's (player-moves.js makes it), as wide as the game's; or one in front of her, as the clip's
+const FOV = () => (innerWidth < innerHeight ? 70 : 55);
+const camera = new THREE.PerspectiveCamera(FOV(), innerWidth / innerHeight, 0.1, 600);
+let clipView = Q.get('view') === 'clip', clipYaw = 0;
+
+// ---- her: the game's own player, on this field; the barrier goes with her
+const level = {
+  spawn: { x: 0, z: 0, yaw: 0 }, heightAt: H, waterDepthAt: () => 0, footing: () => 'ground', surfaceAt: () => 'grass',
+  colliders, cameraTrunks: [], crowns: [], radius: 30,
+};
+const sounds = createStepSounds({ level, volume: 1 });                                   // her steps, her jump, the dash (the game's), and the AudioContext
+const heard = createReflectBarrierSounds({ context: () => sounds.context });
+const barrier = createReflectBarrier({ fx, heard, heightAt: H });
+let player = null, hero = null, slow = 1, demo = null, beatT = 0, hurt = 0;
+const size = () => (hero ? hero.height / 1.75 : 1);
+const chest = (out = new THREE.Vector3()) => out.copy(player.position).add(new THREE.Vector3(0, 1.02 * size(), 0));
+
+(async () => {
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips } };
+  const [{ VIVI_GLB: model }, springs] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+  // (her pictures read as <img>, not fetched: as step-sounds.html does)
+  const bitmap = window.createImageBitmap;
+  window.createImageBitmap = undefined;
+  try { hero = await loadCharacter(model, anim); } finally { window.createImageBitmap = bitmap; }
+  if (springs) hero.attachSprings(createSprings(hero.model, springs));
+  hero.setSize(1.75 / hero.baseHeight);
+  player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds });
+  scene.add(player.object);
+  waitEl.remove();
+  window.barrierTrial.ready = true;
+})().catch(err => { waitEl.textContent = 'โหลดวีวี่ไม่ได้\n' + (err && err.message || err); console.error(err); });
+
+// ---- the towers and their bolts (practice-towers.js): thrown at her chest, or thrown back by the barrier at the tower
+const towers = createPracticeTowers({ heightAt: H, fx, barrier, heard, her: () => ({ feet: player.position, size: size() }) });
+scene.add(towers.object);
+colliders.push(...towers.colliders);
+towers.onTaken = () => say(barrier.state === 'struck' ? 'บาเรียรับไว้ได้' : '', 1.2);
+towers.onHit = () => { hurt = 1; shake(0.07); hitStop(0.04); say('โดน! (ยังไม่ได้กางบาเรีย)', 1.2); };      // (she, hit with no barrier: washed red a moment)
+towers.onStun = () => { shake(0.03); say('ป้อมโดนสะท้อน!', 1.4); };
+towers.onBusy = () => say('ป้อมยังมึนอยู่', 1);
+barrier.onReflect = ({ at, blows }) => {
+  towers.thrownBack({ at, blows });
+  say('สะท้อนกลับ!', 1.4);
+  hitStop(0.08, 0.05); shake(0.12);      // (the world stops once the burst is big and white, not before it is seen)
+};
+barrier.onStrike = ({ first }) => { hitStop(first ? 0.05 : 0.03); shake(first ? 0.05 : 0.03); };
+// the action game's weight: the world stops for an instant (s; `after` s of the game's time from now) and the camera
+// shakes (m), dying away
+let stopT = 0, shakeA = 0, shakeAge = 9, stopLater = null;
+const shakeOff = new THREE.Vector3();
+function hitStop(s, after = 0) { if (after > 0) stopLater = { at: time + after, s }; else stopT = Math.max(stopT, s); }
+function shake(a) { shakeA = Math.max(shakeA * Math.exp(-shakeAge * 14), a); shakeAge = 0; }
+const fire = t => player && towers.fire(t);
+const fireOne = () => player && towers.fireOne(camera);
+const fireAll = () => player && towers.fireAll();
+function raise() {
+  if (!player) return;
+  if (barrier.raise(player.position, size())) say('บาเรีย!', 1.0);
+  else if (barrier.state === 'off') say(`บาเรียยังไม่พร้อม (${barrier.cooldown.toFixed(1)} วิ)`, 0.8);
+}
+
+// ---- the buttons: pressed, not clicked (as the game's)
+function press(id, act) {
+  const b = document.getElementById(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); if (player && !demo) act(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+}
+press('shieldBtn', raise);
+press('jumpBtn', () => player.jump());
+press('dashBtn', () => player.dash());
+addEventListener('keydown', e => {
+  if (e.repeat || !player || demo) return;
+  if (e.code === 'KeyB') raise();
+  if (e.code === 'KeyF') fireOne();
+  if (e.code === 'KeyG') fireAll();
+});
+
+// ---- ▶: by itself: the barrier up, a few steps with it, a bolt from the tower ahead on the left (as the clip's, from the
+// side) thrown back; up again, and all three at once
+const key = (code, down) => dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code }));
+const DEMO = [
+  [0.3, () => raise()], [0.8, () => key('KeyW', true)], [1.8, () => key('KeyW', false)],
+  [2.0, () => fire(0)],
+  [4.6, () => raise()], [5.2, () => fireAll()],
+  [7.6, null],
+];
+function startDemo() {
+  if (!player || demo) return;
+  barrier.drop();
+  player.teleport(0, 0, 0);
+  demo = { t: 0, i: 0 };
+}
+function stepDemo(dt) {
+  demo.t += dt;
+  while (demo && demo.i < DEMO.length && demo.t >= DEMO[demo.i][0]) {
+    const f = DEMO[demo.i][1];
+    demo.i++;
+    if (f) f(); else { key('KeyW', false); demo = null; }
+  }
+}
+
+function say(text, secs) { if (!text) return; beatEl.textContent = text; beatEl.style.opacity = 1; beatT = secs; }
+const beatEl = document.getElementById('beat'), tapEl = document.getElementById('tap'), btnEl = document.getElementById('shieldBtn'), coolEl = document.getElementById('cool');
+let time = 0;
+function step(dt) {
+  if (!player) return;
+  const real = Math.min(dt, 0.05);
+  let k = slow;
+  if (stopLater && time >= stopLater.at) { stopT = Math.max(stopT, stopLater.s); stopLater = null; }
+  if (stopT > 0) { stopT -= real; k *= 0.05; }
+  shakeAge += real;
+  dt = real * k;
+  time += dt;
+  if (demo) stepDemo(dt);
+  player.update(dt);
+  if (clipView) {
+    // in front of her, as the clip's: a little below her eyes, looking at her
+    const p = player.position, s = size();
+    camera.position.set(p.x + Math.sin(clipYaw) * 5.0 * s, p.y + 1.35 * s, p.z + Math.cos(clipYaw) * 5.0 * s);
+    camera.lookAt(p.x, p.y + 0.98 * s, p.z);
+    camera.updateMatrixWorld();
+  }
+  barrier.update(dt, player.position, size());
+  towers.update(dt, time);
+  circles.update(dt, camera);
+  grass.userData.setWalker(player.position, 0.55);
+  fx.update(dt, camera);
+  if (hurt > 0) { hurt = Math.max(0, hurt - dt / 0.35); hero.tint.set(1, 0.32, 0.3, hurt * 0.7); }
+  if (beatT > 0 && (beatT -= dt / slow) <= 0) beatEl.style.opacity = 0;
+  btnEl.style.setProperty('--ready', barrier.ready ? 1 : 0.15);
+  const cd = barrier.cooldown;
+  coolEl.textContent = barrier.state !== 'off' ? '' : cd > 0.05 ? cd.toFixed(1) : '';
+  const s = sounds.stats;
+  tapEl.hidden = s.ready || !!s.failed;
+}
+function draw() {
+  const amp = shakeA * Math.exp(-shakeAge * 14);
+  if (amp > 0.002) { shakeOff.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * amp); camera.position.add(shakeOff); camera.updateMatrixWorld(); }
+  renderer.clear();
+  renderer.render(scene, camera);
+  if (night) renderer.render(dimScene, camera);
+  renderer.render(fxScene, camera);
+  if (amp > 0.002) { camera.position.sub(shakeOff); camera.updateMatrixWorld(); }      // (the game's camera goes on from where it was)
+}
+
+// ---- the buttons at the top
+const btn = id => document.getElementById(id);
+const showHour = () => { btn('hour').textContent = night ? '🌙 กลางคืน' : '☀ กลางวัน'; };
+showHour();
+btn('hour').onclick = () => { night = !night; fx.setNight(night); if (circles.setNight) circles.setNight(night); showHour(); };
+const SLOWS = [1, 0.5, 0.25];
+btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; barrier.pace = slow; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
+btn('sound').onclick = () => { heard.on = !heard.on; btn('sound').textContent = `🔊 เสียง: ${heard.on ? 'เปิด' : 'ปิด'}`; };
+const showView = () => { btn('view').textContent = clipView ? '🎥 กล้อง: แบบคลิป' : '🎥 กล้อง: เกม'; camera.fov = clipView ? (innerWidth < innerHeight ? 50 : 32) : FOV(); camera.updateProjectionMatrix(); };
+btn('view').onclick = () => { clipView = !clipView; if (player) clipYaw = player.heading; showView(); };
+showView();
+btn('fire1').onclick = () => { if (!demo) fireOne(); };
+btn('fire3').onclick = () => { if (!demo) fireAll(); };
+btn('demo').onclick = () => startDemo();
+const viewSize = new THREE.Vector2();
+const fitView = () => fx.setView(renderer.getDrawingBufferSize(viewSize).y);
+fitView();
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; showView(); renderer.setSize(innerWidth, innerHeight); fitView(); });
+tapEl.hidden = false;
+
+// for a test (or the console): step the world by hand
+window.barrierTrial = {
+  ready: false, held: false,
+  get player() { return player; }, get hero() { return hero; }, barrier, fx, heard, sounds, camera, renderer, level, towers: towers.list, shots: towers.shots, practice: towers, REFLECT_BARRIER, REFLECT_FX,
+  run(seconds, { fps = 60, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
+  raise, fire: i => fire(i), fireAll, night(on) { if (on !== night) btn('hour').onclick(); },
+  view(clip, yaw) { clipView = !!clip; clipYaw = yaw === undefined ? (player ? player.heading : 0) : yaw; showView(); },
+  demo() { startDemo(); }, get demoing() { return !!demo; }, key,
+  draw,
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;                // 60 pictures a second at most: no hotter than it need be
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.barrierTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
