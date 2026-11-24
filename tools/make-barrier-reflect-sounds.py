@@ -15,20 +15,21 @@
 # What is in the clip's sound (48 kHz; its two ears nearly the same, read as one), and what is made of it. Under all
 # of it a meadow: birds now and then (at 0.3 - 1.1 s, 2.0 - 2.1, 8.3 - 9.9), which every piece is cut clear of. The
 # barrier's beats are the clip's own, one after another, so each piece is the clip's sound of that beat as it is, cut
-# where it begins and ends; played on the same beats they are heard as the clip has them.
+# where it begins and ends. The barrier goes at an action game's pace, not the clip's ("อนิเมชั่นมันช้าไปอะ อยากได้แบบ
+# เกม action rpg", 24 Nov 2026: the blow to the burst 0.4 s, not 1.8): so each piece is its beat's sound cut short, each
+# played as its beat comes.
 #   2.1 - 2.46 s  the bolt coming: a rush of crackle rising, a hum at 1.5 kHz under it
-#                 -> shot: 2.11 to 2.44 s (played as a bolt is thrown)
+#                 -> shot: 2.2 to 2.44 s (played as a bolt is thrown)
 #   2.46 s        the blow: cracks over everything from 2.436 s (loudest 2.50 to 2.62), the crackle dying away
-#                 -> hit: 2.43 to 3.22 s, played from its start as the blow lands (a blow is not known before it lands:
+#                 -> hit: 2.43 to 2.95 s, played from its start as the blow lands (a blow is not known before it lands:
 #                    its first crack 0.006 s in)
 #   3.2 - 4.4 s   the charge: the crackle swelling again (3.3 to 3.55) and held, the hum in it
-#                 -> charge: 3.18 to 4.40 s, played 0.74 s after the blow (the clip's 3.20)
+#                 -> charge: its swell, 3.30 to 3.66 s, played 0.07 s after the blow (as the dome goes blue)
 #   4.434 s       the burst: a crack and a rush, loud to 5.8, glass ringing and dying away to 6.8
-#                 -> burst: 4.425 to 6.80 s. Its moment, the crack, 0.009 s into it: 0.15 s after the dome is gone (the
-#                    clip's dome goes at 4.27, its burst swells at 4.42)
+#                 -> burst: 4.425 to 5.75 s, played from its start as the dome bursts (its crack 0.009 s in)
 #   7.35 - 8.2 s  the dome standing up again: a chime, many bright partials (3 to 15 kHz), coming in at 7.35, loudest
 #                 7.6 - 7.75, dying away
-#                 -> raise: 7.28 to 8.24 s, played as the button is pressed (its chime then comes as the dome does)
+#                 -> raise: 7.36 to 8.05 s, played as the button is pressed (its chime comes at once, as the dome pops up)
 # Each is read as one ear, cut under 40 Hz, faded in and out, and levelled by ear as tools/make-step-sounds.py levels
 # its own (the loudest tenth of a second, A-weighted, to so many dB; its peak no higher than -1 dB): the burst as loud as
 # her finisher (-21), the blow a little under it (-22), the chime as a jump off a circle (-25), the charge and the
@@ -50,11 +51,11 @@ CEILING = -1.0            # dB: no piece's peak over this
 LOW = 40                  # Hz: under this is cut
 # name: ((from, to) in the clip (s), its moment in the clip (s), fades in and out (s), its level by ear (dB))
 PIECES = {
-    'shot':   ((2.11, 2.44), 2.11, (0.02, 0.05), -29.0),
-    'hit':    ((2.43, 3.22), 2.43, (0.003, 0.3), -22.0),
-    'charge': ((3.18, 4.40), 3.20, (0.05, 0.12), -27.0),
-    'burst':  ((4.425, 6.80), 4.434, (0.003, 0.7), -21.0),
-    'raise':  ((7.28, 8.24), 7.28, (0.02, 0.25), -25.0),
+    'shot':   ((2.20, 2.44), 2.20, (0.015, 0.05), -29.0),
+    'hit':    ((2.43, 2.95), 2.43, (0.003, 0.22), -22.0),
+    'charge': ((3.30, 3.66), 3.30, (0.02, 0.1), -27.0),
+    'burst':  ((4.425, 5.75), 4.434, (0.003, 0.6), -21.0),
+    'raise':  ((7.36, 8.05), 7.36, (0.01, 0.2), -25.0),
 }
 
 db = lambda v: 20 * np.log10(max(float(v), 1e-12))

@@ -7,9 +7,9 @@
    and why it is cut where it is, is told there):
      raise   the chime as the dome stands up (as the button is pressed)
      shot    the rush of a bolt coming (as one is thrown at her)
-     hit     the crack of the blow on the dome (its moment as it lands); taken in while it is charged: softer, higher
-     charge  the crackle swelling as it turns deep blue (0.74 s after the blow, the clip's)
-     burst   the crack and rush as it bursts, glass ringing after (its moment 0.15 s after the dome is gone)
+     hit     the crack of the blow on the dome (as it lands); taken in while it is charged: softer, higher
+     charge  the crackle swelling as it turns deep blue (0.07 s after the blow)
+     burst   the crack and rush as it bursts, glass ringing after (as it bursts)
      thud    a blow thrown back landing on whoever threw it: the hit, softer and higher
 
      const heard = createReflectBarrierSounds({ context: () => sounds.context })      the AudioContext her steps woke
@@ -26,10 +26,10 @@ export const PIECES = {
   raise: { file: 'reflect-raise-1.mp3', top: 0.0, gain: 1.0 },
   shot: { file: 'reflect-shot-1.mp3', top: 0.0, gain: 1.0 },
   hit: { file: 'reflect-hit-1.mp3', top: 0.0, gain: 1.0 },
-  charge: { file: 'reflect-charge-1.mp3', top: 0.02, gain: 1.0 },
+  charge: { file: 'reflect-charge-1.mp3', top: 0.0, gain: 1.0 },
   burst: { file: 'reflect-burst-1.mp3', top: 0.009, gain: 1.0 },
 };
-export const BEATS = { charge: 0.74, burst: 0.15 };      // s after the blow the charge begins; s after the dome is gone the burst's crack
+export const BEATS = { charge: 0.07 };      // s after the blow the charge's swell begins
 const AT = new URL('./assets/audio/', import.meta.url).href;
 const MASTER = 1.0, STOP = 0.1;
 
@@ -38,7 +38,7 @@ export function createReflectBarrierSounds({ context = null, volume = 1 } = {}) 
   const raw = {}, bufs = {}, voices = new Set();
   const stats = { played: 0, late: 0, last: [] };
   for (const [name, p] of Object.entries(PIECES)) {
-    fetch(AT + p.file).then(r => { if (!r.ok) throw new Error(p.file + ': HTTP ' + r.status); return r.arrayBuffer(); })
+    fetch(AT + p.file + '?v=2').then(r => { if (!r.ok) throw new Error(p.file + ': HTTP ' + r.status); return r.arrayBuffer(); })
       .then(b => { raw[name] = b; if (ctx) decode(name); })
       .catch(err => { failed = failed || err; console.warn('[barrier sounds]', err); });
   }
@@ -102,7 +102,7 @@ export function createReflectBarrierSounds({ context = null, volume = 1 } = {}) 
     raise() { play('raise', 0, { now: true }); },
     strike(pace = 1) { play('hit', 0, { now: true }); play('charge', BEATS.charge * slow(pace)); },
     absorb() { play('hit', 0, { gain: 0.6, rate: 1.12, now: true }); },
-    burst(pace = 1) { play('burst', BEATS.burst * slow(pace)); },
+    burst() { play('burst', 0, { now: true }); },
     shot(gain = 1) { play('shot', 0, { gain: Math.min(1, gain), rate: 0.96 + 0.08 * Math.random(), now: true }); },
     thud(gain = 1) { play('hit', 0, { gain: 0.55 * Math.min(1, gain), rate: 1.18, now: true }); },
     stop,

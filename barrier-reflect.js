@@ -9,6 +9,8 @@
      barrier.meet(p0, p1)           where a blow going from p0 to p1 this frame first meets it (or null)
      barrier.strike(point, from, source)              the blow lands on it there: true if it took it. `source`: who
                                     threw it (anything; given back as it is thrown back)
+     barrier.onStrike = ({ point, first }) => ...     a blow landed on it (first: the one that set it off), for the page's
+                                    shake and stop
      barrier.onReflect = ({ at, blows }) => ...       it bursts, throwing the blows back: `at` where it was struck (the
                                     blows leave from there), blows: [{ from, source }] as they were taken
      barrier.state                  'off' | 'forming' | 'up' | 'struck' | 'broken' | 'fading'
@@ -17,27 +19,28 @@
      barrier.drop()                 gone at once (another character, a teleport)
      barrier.pace                   how fast the page runs (1; ×½: 0.5), for the sounds
 
-   How it goes (REFLECT_BARRIER):
-     - raised, it stands up round her in `form` s, and takes blows from `takes` s on. It goes where she goes: its middle
+   How it goes (REFLECT_BARRIER), at an action game's pace ("อนิเมชั่นมันช้าไปอะ อยากได้แบบเกม action rpg", of the first
+   try, which went at the clip's):
+     - raised, it pops up round her in `form` s, and takes blows from `takes` s on. It goes where she goes: its middle
        is kept over her feet by a spring (`keep`: it lags a little as she sets off and catches her up as she stops), up
        with her as she jumps (it is a whole ball then, she in it)
      - unstruck, it stands `hold` s, then goes (`fade` s, the fx's)
      - struck: the blow is stopped where it meets it. It turns deep blue, the lightning runs through it, and `charge` s
-       after the blow it bursts and throws it back (the clip's 1.81 s). Blows that land on it meanwhile are taken in too,
-       and each is thrown back at whoever threw it
+       after the blow it bursts and throws it back (the clip takes 1.81 s; the first try did). Blows that land on it
+       meanwhile are taken in too, and each is thrown back at whoever threw it
      - `again` s after it bursts or has gone it may be raised again
    Her body does nothing for it (none of the clip's moves: "ไม่ต้องทำแบบนั้นค่ะ").
    ========================================================================== */
 import * as THREE from 'three';
-import { REFLECT_FX } from './barrier-reflect-fx.js?v=1';
+import { REFLECT_FX } from './barrier-reflect-fx.js?v=2';
 
 export const REFLECT_BARRIER = {
-  form: 0.85,        // s it takes to stand up (the fx's)
-  takes: 0.3,        // s after it is raised that it takes blows
+  form: 0.34,        // s it takes to pop up (the fx's)
+  takes: 0.06,       // s after it is raised that it takes blows
   hold: 12,          // s it stands if nothing strikes it
-  charge: 1.81,      // s from the blow to its bursting (the clip's 2.46 s to its 4.27)
-  again: 1.4,        // s after it bursts, or has gone, before it can be raised again
-  keep: 13,          // its spring (1/s): how quickly it keeps up with her
+  charge: 0.4,       // s from the blow to its bursting (the clip's 2.46 s to its 4.27 was 1.81: too slow)
+  again: 0.7,        // s after it bursts, or has gone, before it can be raised again
+  keep: 16,          // its spring (1/s): how quickly it keeps up with her
 };
 
 export function createReflectBarrier({ fx, heard = null, heightAt = null } = {}) {
@@ -52,7 +55,7 @@ export function createReflectBarrier({ fx, heard = null, heightAt = null } = {})
     size = sz;
     center.set(feet.x, feet.y + lift(), feet.z); vel.set(0, 0, 0);
     state = 'forming'; since = 0; blows = [];
-    fx.raise(center, size);
+    fx.raise(center, size, feet);
     if (heard) heard.raise(pace);
     return true;
   }
@@ -106,16 +109,18 @@ export function createReflectBarrier({ fx, heard = null, heightAt = null } = {})
   }
   function strike(point, from, source = null) {
     if (!guarding()) return false;
-    if (state !== 'struck') { state = 'struck'; since = 0; blows = []; if (heard) heard.strike(pace); }
+    const first = state !== 'struck';
+    if (first) { state = 'struck'; since = 0; blows = []; if (heard) heard.strike(pace); }
     else if (heard) heard.absorb(pace);
     blows.push({ from: from.clone(), source });
     fx.strike(point, from);
+    if (api.onStrike) api.onStrike({ point, first });
     return true;
   }
   function drop() { if (state !== 'off' && state !== 'broken') { fx.drop(); state = 'off'; readyAt = clock + REFLECT_BARRIER.again; } }
 
   const api = {
-    raise, update, meet, strike, drop, onReflect: null,
+    raise, update, meet, strike, drop, onStrike: null, onReflect: null,
     get state() { return state; },
     get ready() { return state === 'off' && clock >= readyAt; },
     get guarding() { return guarding(); },
