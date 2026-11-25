@@ -13,6 +13,9 @@
      every frame: moves.update(dt, player)     player: where she stands (her feet, world, a Vector3)
      moves.play('whip' | 'spit' | 'roots')     a head's blow (BOSS_OWNERS says whose). false if that head is down,
                                                or another blow is under way, or it is dying, dead or coming up
+     moves.play('seed' | 'pollen' | 'venom')   a head's straight shot (since 26 Nov 2026, for her parry: below): the
+                                               right head's thorned dart, the middle head's ball of pollen, the left
+                                               head's three balls of venom. Fired straight at her: the game flies them
      moves.play('bramble')                     the great blow (below)
      moves.play('thicket')                     shut in its bud, it makes thorned vines burst up all round itself (below)
      moves.play('poison')                      all three spit poison up into the sky and it rains down on her (below)
@@ -38,6 +41,11 @@
                                                             0, 1, 2, and no head: it is all of them)
          { type: 'hit', move, head, shape }                 it lands now: whoever stands in the shape is struck
          { type: 'cancel', move, head }                     its head went down before it was over: the warning goes
+         { type: 'charge', move, head, lead }               a straight shot gathers in that head's mouth: it leaves it
+                                                            in lead seconds (seed, pollen, venom; venom: before each)
+         { type: 'shot', move, head, shot }                 it leaves the mouth now, straight at her (shot: which, from
+                                                            0: venom has three). What it is and how it flies is the
+                                                            game's (boss-shots.js): only its head and the moment are said
          { type: 'down', head }                             a head is beaten
          { type: 'shut' | 'bloom', move }                   the bud is shut over the heads; it bursts open (bramble, thicket)
          { type: 'sink', move: 'thicket' }                  the thicket's vines go back into the ground
@@ -87,6 +95,16 @@
    Struck: that head flashes and flinches back, eyes screwed up. Beaten: a cry; its neck gives way and it comes down to
    the ground, its eyes go out, it dries. The others look at it, aghast, then sorrowful, then turn on her and roar;
    from then on they glare harder and snap more often. All three down: its skirt wilts and all its colours dry.
+   The straight shots (26 Nov 2026: "เพิ่มท่ายิงให้บอส ... เอาสามหัวทำเป็นท่ายิงตรงๆ ให้แพรี่ด้วย": shots straight at her, each
+   of its own kind and pace, that she may throw back at the head that spat it with her parry; the poison rain, up into the
+   sky, she must still walk or blink out of the way of). Each head roars first, in its own way, as before its other blow:
+     right   the seed: it draws back and up, jaws clamped, quivering, glaring; snaps its head at her and spits a thorned
+             dart, fast; holds the snap a moment and bites the air after it, twice
+     middle  the pollen: it draws itself up and back, breathing in slowly, its mouth opening on the ball that swells in it;
+             then lunges at her and lets it go, a great slow ball; holds, its mouth wide; the other two lean out of its
+             way, as for its spray
+     left    the venom: it sways, grinning, then pecks at her three times, quick, a ball of venom with each, a giggle
+             between; cackles after the last
    The bramble: the heads still up rear up and roar at the sky together; then they draw down, growing small, as the
    skirt's leaves curl up one after another round the ring and wind shut into a bud over them. The bud glows from
    within and beats like a heart. Three waves of thorn patches break out round her (each wave has one patch where
@@ -139,6 +157,11 @@ export const BOSS_MOVES = {
   whip:  { length: 4.1, roar: 0.6, warn: 0.9, hit: 2.4, lasts: 0.3 },
   spit:  { length: 4.05, roar: 0.65, warn: 0.7, hit: 1.8, lasts: 1.35 },
   roots: { length: 3.9, roar: 0.7, warn: 0.75, hit: 2.1, lasts: 0.55 },
+  // the straight shots: roar: how long its head roars first; fire: when each shot leaves its mouth; charge: how long
+  // before each it gathers in the mouth (the 'charge' event's lead)
+  seed:   { length: 2.35, roar: 0.55, fire: [1.24], charge: 0.5 },
+  pollen: { length: 3.3, roar: 0.65, fire: [1.82], charge: 0.95 },
+  venom:  { length: 3.2, roar: 0.6, fire: [1.36, 1.74, 2.12], charge: 0.2 },
   // the great blow: when the bud is shut, bursts open, the heads are worn out (open), and recover; each wave's warning
   // and the moment its thorns break out; how many patches each wave has, how wide one is (metres), how long it stands
   // the thicket: the bud shut; the warning (a ring round it, out to radius metres), the vines burst up (hit) and stand
@@ -175,7 +198,7 @@ export const BOSS_MOVES = {
   down:  { length: 2.8 },                                                   // a head going down (then it stays down)
   rise:  { length: 8.0, down: 0.6, sly: 4.2, burst: 4.8, roar: 6.05 },      // (its beats are counted from when it is under the ground)
 };
-export const BOSS_OWNERS = { whip: 1, spit: 0, roots: 2 };                 // whose blow each is
+export const BOSS_OWNERS = { whip: 1, spit: 0, roots: 2, seed: 1, pollen: 0, venom: 2 };      // whose blow each is
 const DEEP = 3.6;                               // metres down, only its heads look out of the ground
 export const BOSS_DEEP = DEEP;
 const C = 0, R = 1, L = 2;                      // the heads: middle, toward +x, toward -x
@@ -452,6 +475,76 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     body.shake.set(Math.sin(t * 61) * 0.03 * rumble, 0.1 * pulse(t, m.hit - 0.03, m.hit + 0.03, m.hit + 0.08, m.hit + 0.3), Math.sin(t * 47) * 0.03 * rumble);
     body.skirt = 0.3 * pulse(t, m.hit - 0.02, m.hit + 0.08, m.hit + 0.2, m.hit + 0.6);
     roars(L, t, m.roar);
+  }
+
+  // ---- the straight shots. Each tells 'charge' as the shot gathers in its head's mouth and 'shot' as it leaves it
+  function fires(m, head) {
+    m.fire.forEach((at, k) => {
+      once('charge' + k, Math.max(0, at - m.charge), () => tell('charge', { head, shot: k, lead: Math.min(m.charge, at) }));
+      once('shot' + k, at, () => tell('shot', { head, shot: k }));
+    });
+  }
+  // the right head's seed: drawn back and up, jaws clamped, quivering with rage, glaring; it snaps at her and spits; holds
+  // the snap a moment, then bites the air after it twice; the others watch her, sly
+  function seed(tt) {
+    const m = BOSS_MOVES.seed, d = dirs[R], t = tt - m.roar, f = m.fire[0] - m.roar;      // (t: seconds since the roar; f: the shot)
+    fires(m, R);
+    stance(false);
+    const p = P[R];
+    const coil = pulse(t, 0.0, f - 0.12, f - 0.06, f - 0.01), snap = pulse(t, f - 0.07, f, f + 0.14, f + 0.42);
+    const bite = t > f + 0.42 && t < f + 0.95 ? Math.abs(Math.sin((t - f - 0.42) * Math.PI / 0.265)) : 0;
+    const quiver = Math.sin(t * 59) * 0.035 * coil;
+    p.lean.set(d.x * (-0.55 * coil + 1.05 * snap) + quiver, 0.42 * coil - 0.25 * snap + Math.sin(t * 67) * 0.03 * coil, d.z * (-0.55 * coil + 1.05 * snap));
+    p.bow.set(-d.x * 0.35 * coil, 0.25 * snap, -d.z * 0.35 * coil);
+    p.nod = -0.12 * coil - 0.05 * snap; p.yaw = 0;
+    Object.assign(p.face, { jaw: Math.max(0.06 * coil, snap, 0.55 * bite), lid: lerp(0.95, 0.75, coil), slant: 1, flare: Math.max(0.9 * coil, snap), size: 1 + 0.15 * snap, curve: -0.9, smile: 0 });
+    p.quick = 1 + 2.4 * Math.max(sstep(f - 0.08, f - 0.02, t) * (1 - sstep(f + 0.1, f + 0.3, t)), bite > 0 ? 0.6 : 0);
+    p.wave = lerp(p.wave, 0.4, Math.max(coil, snap));
+    for (const i of [C, L]) Object.assign(P[i].face, { lid: 0.75, slant: 0.6, curve: 0.6, smile: 0 });
+    roars(R, tt, m.roar);
+  }
+  // the middle head's pollen: drawn up and back, breathing in slowly, its mouth opening on the ball that swells in it;
+  // it lunges at her and lets it go; holds, its mouth wide, and comes back slowly. The other two lean out of its way
+  function pollen(tt) {
+    const m = BOSS_MOVES.pollen, d = dirs[C], t = tt - m.roar, f = m.fire[0] - m.roar;
+    fires(m, C);
+    stance(false);
+    const breath = pulse(t, 0.0, f - 0.18, f - 0.12, f + 0.02), out = sstep(f - 0.12, f + 0.06, t) * (1 - sstep(f + 0.55, f + 1.2, t));
+    const p = P[C], k = -0.85 * breath + 1.9 * out;
+    p.lean.set(d.x * k + Math.sin(t * 41) * 0.03 * out, 0.62 * breath - 0.35 * out + Math.sin(t * 2.6) * 0.04 * breath, d.z * k);
+    p.bow.set(-d.x * 0.6 * breath, 0.5 * out, -d.z * 0.6 * breath);
+    p.nod = -0.32 * breath - 0.18 * out;
+    Object.assign(p.face, { jaw: Math.max(lerp(0.35, 0.85, breath), out), lid: lerp(0.9, 0.62, breath), slant: lerp(0.75, 0.95, out), size: 1 + 0.12 * out, flare: Math.max(0.7 * breath, out) });
+    p.quick = 1 + 2 * sstep(f - 0.14, f - 0.06, t) * (1 - sstep(f + 0.1, f + 0.3, t)); p.wave = 0.5;
+    for (const i of [R, L]) {
+      const q = P[i], side = i === R ? 1 : -1, away = 0.5 * breath + out;
+      q.lean.set(side * 0.5 * away, -0.08 * away, -0.2 * away);
+      q.yaw = 0;
+      Object.assign(q.face, { lid: lerp(q.face.lid, 0.6, out), jaw: 0.2, smile: 0 });
+    }
+    roars(C, tt, m.roar);
+  }
+  // the left head's venom: it sways, grinning; then pecks at her three times, quick, a breath drawn in before each and a
+  // giggle after; cackles after the last
+  function venom(tt) {
+    const m = BOSS_MOVES.venom, d = dirs[L], t = tt - m.roar;
+    fires(m, L);
+    stance(false);
+    const p = P[L], first = m.fire[0] - m.roar, last = m.fire[m.fire.length - 1] - m.roar;
+    const sway = sstep(0, 0.3, t) * (1 - sstep(first - 0.2, first, t)), laugh = Math.sin(t * 11.5);
+    let peck = 0, draw = 0;
+    for (const at of m.fire) { const f = at - m.roar; peck = Math.max(peck, pulse(t, f - 0.05, f + 0.01, f + 0.08, f + 0.24)); draw = Math.max(draw, pulse(t, f - 0.2, f - 0.07, f - 0.06, f - 0.01)); }
+    const busy = sstep(first - 0.25, first - 0.1, t) * (1 - sstep(last + 0.2, last + 0.4, t));
+    const cackle = pulse(t, last + 0.25, last + 0.45, m.length - m.roar - 0.3, m.length - m.roar);
+    p.lean.set(d.x * (0.25 * busy - 0.35 * draw + 0.85 * peck) + Math.sin(t * 3.1) * 0.25 * sway, 0.15 * sway + 0.2 * draw - 0.15 * peck + 0.1 * laugh * cackle, d.z * (0.25 * busy - 0.35 * draw + 0.85 * peck));
+    p.tilt = lerp(0.22 * Math.sin(t * 2.4), 0.12, busy) * (1 - cackle);
+    p.nod = -0.08 * draw + 0.04 * peck - 0.2 * cackle + 0.04 * laugh * cackle;
+    Object.assign(p.face, { smile: Math.max(0.6 * sway, cackle, 0.4 * busy * (1 - peck)), curve: 0.9, slant: lerp(0.3, 0.7, busy), lid: lerp(0.7, 0.85, busy),
+      jaw: Math.max(0.15 + 0.1 * Math.abs(Math.sin(t * 9)) * sway, peck, 0.7 + 0.3 * Math.abs(laugh) * cackle), flare: Math.max(0.3, peck), size: 1 + 0.12 * peck });
+    p.quick = 1 + 2.4 * Math.max(peck, draw, 0.5 * cackle);
+    p.wave = lerp(p.wave, 0.5, busy);
+    for (const i of [C, R]) Object.assign(P[i].face, { curve: 0.4, smile: 0 });
+    roars(L, tt, m.roar);
   }
 
   // ---- the bramble: the heads still up roar at the sky; they draw down, growing small, as the skirt's leaves curl up
@@ -1017,6 +1110,9 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     else if (st === 'whip') whip(tt);
     else if (st === 'spit') spit(tt);
     else if (st === 'roots') roots(tt);
+    else if (st === 'seed') seed(tt);
+    else if (st === 'pollen') pollen(tt);
+    else if (st === 'venom') venom(tt);
     else if (st === 'bramble') bramble(tt);
     else if (st === 'thicket') thicket(tt);
     else if (st === 'poison') poison(tt);

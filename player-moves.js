@@ -39,6 +39,15 @@
 //     not in the game yet.
 //   - go at the land's pace: a little slower up a slope and faster down it, leaning into the hill, her turns and a dash; her
 //     feet stay on a slope she walks.
+//   - parry (a trial since 26 Nov 2026, parry.html: createPlayer({ guard }), guard being parry.js' createParry; the page's
+//     button calls guard.press()): her left palm thrown out at what comes, a circle of her magic at it; on her feet only,
+//     as the spells. While it has her (mode 'guard') her clips are its, it turns her to what comes and lets her run die
+//     away under her; here she is kept out of things and on ground she may stand on, as in a spell. A blink cuts it short
+//     once it is no longer hot
+//   - her run gathering speed by itself (a trial since 26 Nov 2026, parry.html: createPlayer({ ramp: true }); "dash มันคือ
+//     วิ่งเร็ว ควรใส่ลงท่าวิ่งธรรมดา แล้วเพิ่มความเร็วเอา"): kept running RAMP.after s she gathers speed, over RAMP.rise s,
+//     up to the sprint's pace (as after the dash); eased off a moment, she is back to her run. createPlayer({ dash: false }):
+//     the dash button does nothing on the ground (on a face it still lets go)
 //   - blink (in the game since 24 Nov 2026, the วาร์ป button, E or L; ?blink=0: none. A page gives it: createPlayer({ blink })
 //     and player.blink(); blink.html tries it alone): she is gone, and there again a few metres on, the way the stick points (blink.js says where
 //     and when, blink-fx.js and blink-sounds.js what is seen and heard). On the ground only, as the dash; while it has her
@@ -100,6 +109,8 @@ const SLIDE0 = 5, SLIDE_FALL0 = 11;           // down a cliff's face: no faster 
 const DASH_T = 0.2, DASH_COOL = 0.8;          // the burst (s), and how soon she can dash again (s)
 const BLINK_STRIDE = 0.39;                    // a blink from standing: her run begun this far into its clip, mid-stride (her left foot up behind her)
 const STOP_HOLD = 0.12;                       // s the stick is pushed, once her stop has begun to brake, before she runs on out of it
+const RAMP = { after: 0.9, rise: 1.3 };       // her run gathering speed by itself (createPlayer({ ramp })): s kept running before it
+                                              // begins, s it takes to reach the sprint's pace
 // her weight (see above; at Vivi's 1.412 m: x 1.24 at 1.75 m)
 const W_ACC0 = 8.5, W_DEC0 = 12.9;            // m/s² gathering speed, losing it (10.5, 16 at 1.75 m: her run in 0.4 s, stopped from it in 0.26 s)
 const W_TURN = [12, 5];                       // 1/s she turns at, walking .. sprinting (11 at any pace without)
@@ -134,7 +145,8 @@ const NO_CIRCLES = { open() {} };
 // opens under a long fall, and (every frame) how fast she goes through the air
 // spells: what her spells draw with (player-spells.js): { comboFx, barrier, renderer }, or none (no spells)
 // blink: the blink (blink.js' createBlink), or none (no blink: the game)
-export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null, blink = null }) {
+// guard: her parry (parry.js' createParry), or none. ramp: her run gathers speed by itself. dash: false: no dash on the ground
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null, blink = null, guard = null, ramp = false, dash: dashes = true }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   // the level, asked at her height (see above): where her feet are, how deep the water is, where its surface is, and what
   // the ground is like (null: this map cannot say). A steep bank under the water is ground to her: she wades down it
@@ -149,13 +161,13 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   pos.y = standOn(pos.x, pos.z);
   let heading = level.spawn.yaw;              // where she faces (0 = +Z)
   // 'ground' | 'air' (a jump, a hop, a fall) | 'slide' (down a cliff's face) | 'climb' | 'vault' (over a top) | 'hurdle' (over a low thing) | 'swim'
-  // | 'cast' (a spell has her: player-spells.js)
+  // | 'cast' (a spell has her: player-spells.js) | 'guard' (her parry has her: parry.js)
   let mode = 'ground';
   let speed = 0, went = 0, paceWas = 0, pace = 0;      // how fast she means to go, how fast she really went (last frame), the pace before, the pace her legs go at
   let vy = 0, peakY = pos.y, airBase = pos.y, slideV = 0, slideT = 0, stuckT = 0;
   let landT = -1, landHold = LAND_HOLD, jumpWanted = 0;
   let landClip = 'jump_land', landRate = LAND_RATE;       // the landing she is in: its clip, how fast it plays
-  let dashWanted = 0, dashT = 0, dashCool = 0, sprint = false, easedOff = 0;
+  let dashWanted = 0, dashT = 0, dashCool = 0, sprint = false, easedOff = 0, rampT = 0;
   let blinkWanted = 0, blinkAim = null, blinkKeep = 0;      // (the blink, when there is one: a press kept a moment; a way asked for; her pace as she went)
   let blinkOut = -1, outPush = 0;                 // (her stop after it: s into it, -1 none; s the stick has been pushed in it)
   const blinkFrom = new THREE.Vector3(), blinkTo = new THREE.Vector3();
@@ -651,7 +663,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
   // move takes her: a turn, the roll, the leap off a run. Here she is kept out of things and on ground she may stand on:
   // not over a cliff's brink nor into deep water (she stops at it, or goes along it)
   const mayCast = (x, z, k) => footing(x, z) === 'ground' && depthAt(x, z) < 0.32 * k;
-  function castStep(dt, k, x0, z0) {
+  function castStep(dt, k, x0, z0, kit = spells) {
     tmp.set(pos.x, 0, pos.z);
     pos.x = x0; pos.z = z0;
     solids(tmp, k);
@@ -665,7 +677,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     speed = 0; pace = 0; paceWas = 0; turned = 0; grade = 0; landT = -1; dashT = 0; sprint = false;
     edgeT = 0; edgeGrace = 0; grabT = 0; hurdleT = 0;
     const ground = standAt(pos.x, pos.z), dy = ground - pos.y;
-    if (dy < -(STEP0 * k + went * dt * 1.2)) { spells.stop(); mode = 'ground'; leave(0, k, false); return; }      // the ground fell away under her (a rock's top's end)
+    if (dy < -(STEP0 * k + went * dt * 1.2)) { kit.stop(); mode = 'ground'; leave(0, k, false); return; }      // the ground fell away under her (a rock's top's end)
     pos.y = Math.abs(dy) <= went * dt * 1.5 + 0.004 ? ground : pos.y + dy * Math.min(1, dt * 18);
     lastSafe.copy(pos);
   }
@@ -756,19 +768,25 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     airStick.amount = pushing ? Math.min(1, amount) : 0; airStick.x = Math.sin(want); airStick.z = Math.cos(want);      // (the stick, as the magic jump reads it)
     const shallow = depthHere < 0.32 * k;      // (deeper than her knees: no jump, no dash)
     // ---- dash: a burst the way the stick points, then a sprint while she keeps running
-    if (dashWanted > 0 && dashCool === 0 && mode === 'ground' && shallow) {
+    if (dashes && dashWanted > 0 && dashCool === 0 && mode === 'ground' && shallow) {
       dashWanted = 0; dashT = DASH_T; dashCool = DASH_COOL; sprint = true; landT = -1;
       if (sounds) sounds.dash(pos.x, pos.z, pos.y);
       if (pushing) heading = want;
     }
     easedOff = running ? 0 : easedOff + dt;
     if (sprint && dashT <= 0 && (easedOff > 0.25 || !shallow)) sprint = false;
+    // her run gathering speed by itself (ramp): kept running on the ground; eased off a moment (or out of her depth), from the start again
+    if (ramp) {
+      if (easedOff > 0.25 || !shallow) rampT = 0;
+      else if (mode === 'ground' && running && pushing) rampT += dt;
+    }
+    const rampK = ramp ? Math.min(1, Math.max(0, (rampT - RAMP.after) / RAMP.rise)) : 0, rampS = rampK * rampK * (3 - 2 * rampK);
     if (edgeGrace > 0 && pushing) { edgeGrace -= dt; edgeT += dt; } else { edgeGrace = 0; edgeT = 0; }
     // ---- how fast, and which way she turns
     let target = 0;
     turned = 0;
     if (pushing) {
-      target = running ? (sprint ? SPRINT : RUN) : WALK * Math.max(0.6, amount / 0.72);
+      target = running ? (sprint ? SPRINT : RUN + (SPRINT - RUN) * rampS) : WALK * Math.max(0.6, amount / 0.72);
       // (with her weight: the faster she goes the slower she turns, and turned back at a run she brakes first)
       const back = weight && mode === 'ground' && speed > WALK * 1.3 && Math.abs(wrap(want - heading)) > W_BACK;
       const turnRate = back ? W_PIVOT : weight && mode === 'ground' ? W_TURN[0] + (W_TURN[1] - W_TURN[0]) * Math.min(1, Math.max(0, (speed - WALK) / (SPRINT - WALK))) : 11;
@@ -981,7 +999,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     // ---- her body leans: forward up a hill and back down one (walking it, not standing on it), forward in a dash and a
     // sprint, and into her turns. Climbing, she is laid against the rock: tilted to it about her feet, as far out of it as the clip's wall is
     const going = Math.min(1, pace / WALK), walking = mode === 'ground';
-    const wantLean = !walking ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : sprint && pace > RUN ? 0.06 : 0)
+    const wantLean = !walking ? 0 : grade * (grade > 0 ? 0.2 : 0.14) * going + (dashT > 0 ? 0.2 : (sprint || rampT > RAMP.after + RAMP.rise * 0.5) && pace > RUN ? 0.06 : 0)
       + (weight && gain > 0 ? W_LEAN[0] * Math.min(1, gain / (W_ACC0 * k)) : weight && gain < 0 ? -W_LEAN[1] * Math.min(1, -gain / (W_DEC0 * k)) : 0);      // (her weight: with how she gathers or loses speed)
     const wantRoll = !walking || dt <= 0 ? 0 : Math.min(0.14, Math.max(-0.14, -turned / dt * 0.03 * Math.min(1, pace / RUN)));
     lean += (wantLean - lean) * ease(8, dt); roll += (wantRoll - roll) * ease(6, dt);
@@ -1032,7 +1050,8 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       vaultIK.apply(plan, overC, crossing, crossing.dx, crossing.dz, mode === 'hurdle' ? 1 : ikTail / VAULT_TAIL);
     }
     if (spells) spells.after(dt, me);                              // a spell's light at her hand, what she cast in flight
-    const held = Math.max(air.held, spells ? spells.held : 0), upside = Math.max(air.upside, spells ? spells.upside : 0);
+    if (guard) guard.after(dt, me);                                // her parry's circle at her palm
+    const held = Math.max(air.held, spells ? spells.held : 0, guard ? guard.held : 0), upside = Math.max(air.upside, spells ? spells.upside : 0);
     if (character.holdSprings) character.holdSprings(1 + 4 * held, 1 - upside);      // her hair and skirt held harder in the air (and in a roll, a turn, the barrier)
     if (character.updateSprings) character.updateSprings(dt);      // hair and cloth follow where she now is
   }
@@ -1041,7 +1060,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     object: root, position: pos, blob: shadow, lookDir: cam.lookDir,
     get character() { return character; },
     get heading() { return heading; }, get camYaw() { return cam.yaw; }, get camPitch() { return cam.pitch; }, get camDist() { return cam.dist; }, get speed() { return speed; },
-    get airborne() { return mode !== 'ground' && mode !== 'cast' && mode !== 'blink'; }, get mode() { return mode; }, get sprinting() { return sprint; },
+    get airborne() { return mode !== 'ground' && mode !== 'cast' && mode !== 'guard' && mode !== 'blink'; }, get mode() { return mode; }, get sprinting() { return sprint; },
     get flight() { return air; },                                  // (for a test, or the console: the magic jump)
     get weight() { return weight; }, setWeight(on) { weight = !!on; air.carry = weight; if (!weight) { landW = 0; stopT = 0; gain = 0; } },      // her weight (see above), and her pace carried through the air with it (magic-jump.js)
     jump() { jumpWanted = JUMP_BUFFER; },
@@ -1069,6 +1088,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       landT = -1;
       if (spells) spells.setCharacter(character);
       if (mode === 'cast') mode = 'ground';
+      if (guard) { guard.setCharacter(character); if (mode === 'guard') mode = 'ground'; }
       if (blink) {
         if (mode === 'blink') { if (blinkOut < 0) pos.copy(blinkTo); blink.cancel(); blinkOut = -1; mode = 'ground'; lastSafe.copy(pos); }
         character.object.visible = shadow.visible = true;
@@ -1082,10 +1102,11 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     teleport(x, z, yaw = heading, y) {
       pos.set(x, standOn(x, z, y), z); heading = yaw; cam.setView(yaw - Math.PI);
       if (blink && mode === 'blink') { blink.cancel(); blinkOut = -1; character.object.visible = shadow.visible = true; }
-      air.end(); if (spells) spells.stop(); mode = 'ground'; vy = 0; speed = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; ikTail = 0; ctTail = 0; reachFrom.set(0, 0, 0); shown.set(0, 0, 0); lastSafe.copy(pos);
+      air.end(); if (spells) spells.stop(); if (guard) guard.stop(); mode = 'ground'; vy = 0; speed = 0; rampT = 0; landT = -1; dashT = 0; edgeT = 0; edgeGrace = 0; grabT = 0; climbW = 0; ikTail = 0; ctTail = 0; reachFrom.set(0, 0, 0); shown.set(0, 0, 0); lastSafe.copy(pos);
       if (character.resetSprings) character.resetSprings();
     },
     setView(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
+    turnView(dYaw, dPitch = 0) { cam.turn(dYaw, dPitch); },      // (as a drag of the look: a page keeping something in view)
     update(dt) {
       dt = Math.min(dt, 0.05);
       const k = size(), WALK = WALK0 * k, RUN = RUN0 * k;
@@ -1116,16 +1137,38 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
         else if (mode === 'cast') { mode = 'ground'; heading = me.heading; }
         if (mode === 'cast') castStep(dt, k, x0, z0);
       }
-      // ---- the blink (blink.js; none with ?blink=0): on the ground (or wading no deeper than her knees), as the dash
+      // ---- her parry (parry.js; a page gives it): on the ground (or wading no deeper than her knees), as a spell
+      if (guard) {
+        const stopping = mode === 'blink' && blinkOut >= 0;
+        const can = (mode === 'ground' || mode === 'guard' || stopping) && depthHere < 0.32 * k && !(spells && spells.active);
+        me.heading = heading;
+        if (mode === 'ground') me.vel.set(Math.sin(heading) * speed, 0, Math.cos(heading) * speed);
+        else if (stopping) me.vel.set(0, 0, 0);
+        castStick.amount = pushing ? Math.min(1, amount) : 0; castStick.x = Math.sin(want); castStick.z = Math.cos(want);
+        const x0 = pos.x, z0 = pos.z;
+        if (guard.step(dt, me, { grounded: can, stick: castStick })) {
+          if (stopping) { blinkOut = -1; landT = -1; speed = 0; went = 0; }                          // (her stop let go: the parry has her)
+          if (mode !== 'guard') rampT = 0;
+          mode = 'guard';
+        }
+        else if (mode === 'guard') { mode = 'ground'; heading = me.heading; }
+        if (mode === 'guard') castStep(dt, k, x0, z0, guard);
+      }
+      // ---- the blink (blink.js; none with ?blink=0): on the ground (or wading no deeper than her knees), as the dash. It
+      // cuts her parry short once the parry is no longer hot
       if (blink) {
         if (mode === 'blink') blinkStep(dt, k, pushing);
         else {
           blink.step(dt);                                                     // (cooling down)
-          if (blinkWanted > 0 && mode === 'ground' && depthHere < 0.32 * k && blink.ready) startBlink(k, pushing, want);
+          const parried = mode === 'guard' && !guard.hot;
+          if (blinkWanted > 0 && (mode === 'ground' || parried) && depthHere < 0.32 * k && blink.ready) {
+            if (parried) { guard.stop(); mode = 'ground'; }
+            startBlink(k, pushing, want);
+          }
         }
       }
       // ---- she moves, as what she is doing has it
-      if (mode === 'cast') { /* (castStep, above) */ }
+      if (mode === 'cast' || mode === 'guard') { /* (castStep, above) */ }
       else if (mode === 'blink') { /* (blinkStep, above) */ }
       else if (mode === 'climb') climbStep(dt, k, amount, pushing, want);
       else if (mode === 'vault') vaultStep(dt, k, pushing);
@@ -1140,7 +1183,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       else { wetAmt = Math.max(0, wetAmt - dt / 15); if (wetAmt === 0) wetH = 0; }
       pose(dt, k, WALK, RUN);
       // the blob stays on the ground under her, smaller the higher she is; none on a face or in the water
-      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : mode === 'hurdle' ? hopLift : 0, onFeet = mode === 'ground' || mode === 'cast' || mode === 'air' || mode === 'slide' || mode === 'hurdle' || mode === 'blink';
+      const lift = mode === 'air' ? Math.max(0, pos.y - standAt(pos.x, pos.z)) : mode === 'hurdle' ? hopLift : 0, onFeet = mode === 'ground' || mode === 'cast' || mode === 'guard' || mode === 'air' || mode === 'slide' || mode === 'hurdle' || mode === 'blink';
       shadow.position.y = 0.06 - lift;
       shadow.scale.setScalar(onFeet ? k * (1 - 0.35 * Math.min(1, lift / (1.2 * k))) : 1e-4);
       // tell her materials where the water's surface is (far below when she is on land) and how high she is wet

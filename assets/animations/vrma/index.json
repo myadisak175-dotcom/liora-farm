@@ -371,6 +371,30 @@
       "loop": false
     },
     {
+      "name": "Parry",
+      "file": "Parry.vrma",
+      "source": "liora-farm",
+      "duration": 0.6167,
+      "frames": 38,
+      "loop": false
+    },
+    {
+      "name": "Parry_Hit",
+      "file": "Parry_Hit.vrma",
+      "source": "liora-farm",
+      "duration": 0.5,
+      "frames": 31,
+      "loop": false
+    },
+    {
+      "name": "Parry_Hurt",
+      "file": "Parry_Hurt.vrma",
+      "source": "liora-farm",
+      "duration": 0.4667,
+      "frames": 29,
+      "loop": false
+    },
+    {
       "name": "PickUp_Table",
       "file": "PickUp_Table.vrma",
       "source": "UAL1",

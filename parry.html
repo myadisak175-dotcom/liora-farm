@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d2547">
+<title>วีวี่ — ปัด (ลอง)</title>
+<!--
+  parry.html  —  her parry against the plant boss's straight shots, to try (26 Nov 2026). Asked for in the barrier's place:
+  "จะเอา บาเรีย ออก แต่ ทำ เป็น pary แบบ doctor strang แทน", "เป็นแบบปัดสกิลระยะไกล กดให้ตรงจังหวะ"; the boss given a straight
+  shot for each head to parry ("เพิ่มท่ายิงให้บอส ... เอาสามหัวทำเป็นท่ายิงตรงๆ ให้แพรี่ด้วย"), its shot into the sky (the poison
+  rain) to be walked or blinked out of ("อันนั้นเดินหลบไม่ก็วาร์ปหลบ"); no dash and no roll ("ไม่เอา dash กับ กลิ้ง แล้ว เพราะ
+  dash มันคือวิ่งเร็ว ควรใส่ลงท่าวิ่งธรรมดา แล้วเพิ่มความเร็วเอา"): her run gathers speed by itself instead. The game is not
+  changed by this page.
+  One job: try that. The game's own player (player-moves.js: walk, run, the magic jump, the blink) with her parry
+  (parry.js: the rules and her move; parry-fx.js: the circle at her palm; her moves parry-anim.js) and her run gathering
+  speed (createPlayer({ ramp: true, dash: false })); the plant boss (plant-boss.js, its moves plant-boss-moves.js, turning
+  to her plant-boss-turn.js) spitting its straight shots at her (boss-shots.js: their flight; boss-shots-fx.js: their look)
+  and now and then its poison rain (howl-fx.js, poison-rain-fx.js). Thrown back, a shot strikes the head that spat it;
+  enough of them and the head goes down; all three down, the plant dies, and comes up again.
+  Up top: ☀/🌙 the hour, ⏱ slower, 🔊 the sound, ⚔ the boss fighting by itself, 🌱 🌼 ☠ ☁ one move each, 🎥 the camera
+  kept on the boss, ↺ again. Bottom right: ปัด (K or P), กระโดด (Space), วาร์ป (E or L).
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
+  #beat { position: fixed; left: 0; right: 0; top: 13%; text-align: center; pointer-events: none;
+    font: 900 22px system-ui; color: #fff; text-shadow: 0 2px 8px #000c; min-height: 26px; transition: opacity .35s; }
+  #beat.good { color: #c9fbff; } #beat.bad { color: #ffd0c4; }
+  #heads { position: fixed; left: calc(10px + env(safe-area-inset-left)); top: calc(52px + env(safe-area-inset-top)); pointer-events: none;
+    font: 700 12px system-ui; color: #fff; text-shadow: 0 1px 4px #000b; line-height: 1.55; }
+  #heads b { display: inline-block; min-width: 54px; }
+  #heads i { display: inline-block; width: 11px; height: 8px; margin-right: 2px; border-radius: 2px; background: #ff7d63; box-shadow: 0 0 3px #0008; }
+  #heads i.gone { background: #ffffff38; }
+  #heads .down { opacity: .45; text-decoration: line-through; }
+  #score { margin-top: 3px; font-weight: 600; opacity: .95; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 5px; z-index: 3; }
+  #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 6px 10px; background: #2b3a55c8; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #bar button.boss { background: #3c5a2bd9; }
+  #bar button.on { background: #6a4c2b; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  .act { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 700 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 30, 60, .7); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  .act.down { background: rgba(255, 255, 255, .5); }
+  .act svg { width: 24px; height: 24px; margin-bottom: -4px; }
+  /* the parry: the big one, under the right thumb; the jump and the blink beside it */
+  #parryBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px)); width: 86px; height: 86px;
+    background: rgba(98, 235, 245, calc(.1 + .2 * var(--ready, 1))); border-color: rgba(220, 255, 255, calc(.35 + .6 * var(--ready, 1)));
+    box-shadow: 0 0 calc(4px + 18px * var(--ready, 1) + 22px * var(--hot, 0)) rgba(98, 235, 245, calc(.15 + .55 * var(--ready, 1))); }
+  #parryBtn svg { width: 34px; height: 34px; margin-bottom: -3px; }
+  #parryBtn.down { background: rgba(190, 250, 255, .55); }
+  #jumpBtn { right: max(118px, calc(env(safe-area-inset-right) + 110px)); bottom: max(64px, calc(env(safe-area-inset-bottom) + 58px)); width: 60px; height: 60px; }
+  #blinkBtn { right: max(122px, calc(env(safe-area-inset-right) + 114px)); bottom: max(6px, calc(env(safe-area-inset-bottom) + 0px)); width: 54px; height: 54px;
+    background: rgba(95, 230, 232, calc(.1 + .22 * var(--ready, 1))); border-color: rgba(200, 255, 255, calc(.35 + .5 * var(--ready, 1))); }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 210px 0 16px; text-align: left; pointer-events: none;
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; transition: opacity .6s; }
+  #tap { position: fixed; left: 0; right: 0; top: 46%; display: flex; justify-content: center; pointer-events: none; }
+  #tap span { background: rgba(31, 134, 160, .9); color: #fff; font: 600 14px system-ui; padding: 10px 18px; border-radius: 999px; }
+  #tap[hidden] { display: none; }
+  #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; white-space: pre-wrap; }
+  @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
+    #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
+    #name small { display: none; }
+    #heads { top: calc(34px + env(safe-area-inset-top)); }
+    #hint { top: calc(122px + env(safe-area-inset-top)); bottom: auto; padding: 0 0 0 calc(14px + env(safe-area-inset-left)); max-width: 56%; font-size: 11px; }
+    #beat { top: 27%; }
+    #bar button { padding: 6px 9px; font-size: 11px; }
+  }
+  @media (max-height: 520px) {                       /* a phone on its side: the title on the left, the buttons down the right edge */
+    #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); font-size: 14px; }
+    #name small { display: none; }
+    #heads { top: calc(30px + env(safe-area-inset-top)); }
+    #bar { gap: 3px; top: calc(6px + env(safe-area-inset-top)); }
+    #bar button { padding: 4px 8px; font-size: 11px; }
+    #hint { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
+  "./player-moves.js": "./player-moves.js?v=parry1",
+  "./plant-boss-moves.js": "./plant-boss-moves.js?v=parry1",
+  "./magic-combo-fx.js": "./magic-combo-fx.js?v=parry1",
+  "./parry.js": "./parry.js?v=1",
+  "./parry-fx.js": "./parry-fx.js?v=1",
+  "./parry-anim.js": "./parry-anim.js?v=1",
+  "./boss-shots.js": "./boss-shots.js?v=1",
+  "./boss-shots-fx.js": "./boss-shots-fx.js?v=1"
+} }
+</script>
+</head>
+<body>
+<div id="name">วีวี่ · ปัด (ลอง)<small>กดปัดตอนลูกที่ยิงมาเรืองแสง → สะท้อนกลับใส่หัวที่ยิง · ฝนพิษปัดไม่ได้ ต้องเดินหรือวาร์ปหลบ</small></div>
+<div id="heads"></div>
+<div id="beat"></div>
+<div id="bar">
+  <button id="auto" class="boss on" type="button">⚔ สู้เอง</button>
+  <button id="seed" class="boss" type="button" title="หัวขวา: หนาม">🌱 ขวา</button>
+  <button id="pollen" class="boss" type="button" title="หัวกลาง: เกสร">🌼 กลาง</button>
+  <button id="venom" class="boss" type="button" title="หัวซ้าย: พิษ ×3">☠ ซ้าย</button>
+  <button id="rain" class="boss" type="button" title="ฝนพิษ: หลบ">☁ ฝน</button>
+  <button id="lock" class="on" type="button" title="กล้องหันหาบอส">🎥</button>
+  <button id="hour" type="button">☀</button>
+  <button id="slow" type="button">⏱ ×1</button>
+  <button id="sound" type="button">🔊</button>
+  <button id="again" type="button">↺</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="blinkBtn" class="act" type="button" aria-label="วาร์ป"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.6"/><path d="M10.5 12h9M16 8.5l3.5 3.5-3.5 3.5" /></svg><br>วาร์ป</span></button>
+<button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
+<button id="parryBtn" class="act" type="button" aria-label="ปัด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="6.2"/><path d="M12 5.8l5.4 9.3H6.6z" stroke-width="1.3"/><circle cx="12" cy="12" r="2" stroke-width="1.3"/></svg><br>ปัด</span></button>
+<div id="hint">ปัด (คีย์บอร์ด K/P) ตอนลูกเรืองแสง · วาร์ป (E/L) · กระโดด (Space)<br>วิ่งค้างไว้แล้วจะค่อยๆ เร็วขึ้นเอง (ไม่มีพุ่ง ไม่มีกลิ้ง)</div>
+<div id="tap" hidden><span>แตะจอหนึ่งครั้งเพื่อเปิดเสียง</span></div>
+<div id="wait">กำลังโหลดวีวี่กับบอส…</div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import * as G from './stylized-grassfield.js';
+import { loadCharacter } from './stylized-character.js';
+import { createSprings } from './character-springs.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
+import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
+import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
+import { CHARACTER_ANIM as STOP_ANIM, BLINK_STOP } from './blink-stop-anim.js?v=1';
+import { CHARACTER_ANIM as PARRY_ANIM } from './parry-anim.js';
+import { createPlayer } from './player-moves.js';
+import { createMagicCircles } from './magic-circle-fx.js';
+import { createStepSounds } from './step-sounds.js';
+import { createBlink } from './blink.js?v=2';
+import { createBlinkFx } from './blink-fx.js?v=1';
+import { createBlinkSounds } from './blink-sounds.js?v=2';
+import { createMagicComboFx } from './magic-combo-fx.js';
+import { createReflectBarrierSounds } from './barrier-reflect-sounds.js?v=2';
+import { createParry, PARRY } from './parry.js';
+import { createParryFx } from './parry-fx.js';
+import { createPlantBoss, setPlantBossSun } from './plant-boss.js';
+import { createBossMoves, BOSS_MOVES } from './plant-boss-moves.js';
+import { createBossTurn } from './plant-boss-turn.js';
+import { createHowlFx } from './howl-fx.js';
+import { HOWL } from './plant-boss-talk.js';
+import { createPoisonRainFx, poolStrength } from './poison-rain-fx.js';
+import { createBossShots, BOSS_SHOTS } from './boss-shots.js';
+import { createBossShotsFx } from './boss-shots-fx.js';
+
+const Q = new URLSearchParams(location.search);
+const phone = matchMedia('(pointer: coarse)').matches;
+const waitEl = document.getElementById('wait');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.75 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+document.body.prepend(renderer.domElement);
+
+// ---- the meadow: the game's sky, ground and grass (as the other trial pages')
+const scene = new THREE.Scene();
+{
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2f72c4'); gr.addColorStop(0.55, '#7fb4e6'); gr.addColorStop(1, '#dcecf5');
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+const FAR = '#d6e8ef';
+scene.add(N.createAlphaFix());
+N.setHaze({ color: FAR, near: 45, far: 150, max: 0.65 });
+const ground = N.createGround({ radius: 120, flat: 32, hills: 1, far: FAR });
+scene.add(ground);
+const H = ground.userData.heightAt;
+const map = G.createGroundMap({ radius: 120, size: 768, seed: 4, heightAt: H, dirt: 0 });
+G.applyGroundMap(ground, map, { far: FAR });
+const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150000, radius: 32, far: FAR });
+scene.add(grass);
+const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
+
+// ---- the boss: 14 m before where she starts, turned to her; how it fights; its gathering's light and its poison rain
+const BOSS_AT = new THREE.Vector3(0, 0, 14);
+BOSS_AT.y = H(BOSS_AT.x, BOSS_AT.z) - 0.05;
+const boss = createPlantBoss({ seed: 1, clip: true });
+boss.position.copy(BOSS_AT); boss.rotation.y = Math.PI;
+scene.add(boss);
+setPlantBossSun(sun);
+const moves = createBossMoves(boss, { snaps: true }), turn = createBossTurn(boss);
+const howl = createHowlFx({ seed: 1, breath: false });
+const rain = createPoisonRainFx({ heightAt: H, seed: 3, lift: 0.3 });
+howl.setSun(sun); rain.setSun(sun);
+scene.add(howl.object, rain.object);
+const colliders = [[BOSS_AT.x, BOSS_AT.z, 2.9]];
+
+// ---- the light: her jump's circles, the blink's, her parry's circle (the lance's circle: magic-combo-fx.js), the shots';
+// in a scene of their own drawn after the meadow (by night the meadow is dimmed to the hour's light first, as the game
+// does it, and the light is drawn over it undimmed). The shots' darts are solid: in the meadow's scene
+const fxScene = new THREE.Scene();
+const circles = createMagicCircles({ seed: 2 });
+const blinkFx = createBlinkFx();
+const combo = createMagicComboFx();
+const parryFx = createParryFx({ combo });
+const shotsFx = createBossShotsFx({ seed: 4 });
+shotsFx.setSun(sun);
+scene.add(shotsFx.solid);
+fxScene.add(circles.object, blinkFx.object, parryFx.object, shotsFx.object);
+const NIGHT = [0.26, 0.31, 0.6];
+const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform vec3 uC; void main() { gl_FragColor = vec4(uC, 1.0); }',
+  blending: THREE.CustomBlending, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthTest: false, depthWrite: false,
+}));
+dim.frustumCulled = false;
+const dimScene = new THREE.Scene(); dimScene.add(dim);
+let night = Q.get('night') === '1';
+const setNight = on => { night = on; circles.setNight && circles.setNight(on); blinkFx.setNight(on); parryFx.setNight(on); shotsFx.setNight(on); };
+setNight(night);
+
+// ---- the camera: the game's (player-moves.js makes it), as wide as the game's; a little lower and further back than the
+// game starts it, so the boss's heads (some 6 m up, 14 m off) are in the picture over her
+const FOV = () => (innerWidth < innerHeight ? 70 : 55);
+const VIEW = { pitch: 0.07, dist: 4.6, get side() { return innerWidth < innerHeight ? 0.12 : 0.3; } };      // (side: radians the locked camera stands off the line from her to the boss, so it is not hidden behind her; less on a phone held upright, whose picture is narrow)
+const camera = new THREE.PerspectiveCamera(FOV(), innerWidth / innerHeight, 0.1, 600);
+
+// ---- her: the game's own player, on this field, with the blink, her parry, and her run gathering speed (no dash)
+const level = {
+  spawn: { x: 0, z: 0, yaw: 0 }, heightAt: H, waterDepthAt: () => 0, footing: () => 'ground', surfaceAt: () => 'grass',
+  colliders, cameraTrunks: [], crowns: [[BOSS_AT.x, BOSS_AT.y + 1.6, BOSS_AT.z, 2.7]], radius: 30,
+};
+const sounds = createStepSounds({ level, volume: 1 });                                   // her steps, her jump (the game's), and the AudioContext
+const heard = createReflectBarrierSounds({ context: () => sounds.context });              // the clip the barrier was made after: the parry's chime and its crack, the shots' rush
+const blinkHeard = createBlinkSounds({ context: () => sounds.context, set: 1 });
+const blink = createBlink({ fx: blinkFx, heard: blinkHeard, stop: BLINK_STOP });
+let player = null, hero = null, guard = null, shots = null, slow = 1, beatT = 0, hurt = 0;
+const size = () => (hero ? hero.height / 1.75 : 1);
+const herVel = new THREE.Vector3(), herWas = new THREE.Vector3();
+let herWasSet = false;
+
+// what she turns to as she parries: the shot that will reach her first (if it comes within a second and a half), else
+// the boss's middle head
+const bossChest = new THREE.Vector3();
+function aim() {
+  const s = shots ? shots.soonest() : null;
+  if (s && s.eta < 1.5) return s.shot.pos;
+  return shots ? shots.podOf(0, bossChest) : null;
+}
+
+(async () => {
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...STOP_ANIM.clips, ...PARRY_ANIM.clips } };
+  const [{ VIVI_GLB: model }, springs] = await Promise.all([
+    import('./vivi-data.js'),
+    fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+  // (her pictures read as <img>, not fetched: as step-sounds.html does)
+  const bitmap = window.createImageBitmap;
+  window.createImageBitmap = undefined;
+  try { hero = await loadCharacter(model, anim); } finally { window.createImageBitmap = bitmap; }
+  if (springs) hero.attachSprings(createSprings(hero.model, springs));
+  hero.setSize(1.75 / hero.baseHeight);
+  guard = createParry({ character: hero, fx: parryFx, heard, aim });
+  player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, blink, guard, ramp: true, dash: false });
+  player.setView(Math.PI + VIEW.side, VIEW.pitch, VIEW.dist);
+  blinkFx.prepare(hero);
+  scene.add(player.object);
+  shots = createBossShots({ boss, moves, fx: shotsFx, guard, heightAt: H, heard,
+    her: () => ({ feet: player.position, size: size(), vel: herVel }) });
+  shots.onTaken = (s) => { say('ปัดได้!', 0.9, 'good'); hitStop(0.06); shake(0.06); tally.takes++; };
+  shots.onHit = (s) => {
+    const early = lastWindowEnd > 0 && time - lastWindowEnd < 0.45 && time - lastWindowEnd >= 0;
+    say(early ? 'เร็วไป' : 'โดน!', 0.9, 'bad');
+    hurt = 1; shake(0.07); hitStop(0.04); guard.struck(); tally.hits++; lastHit = time;
+  };
+  shots.onBack = (s, head, dmg) => { hurtHead(head, dmg); shake(0.05); };
+  guard.onPress = () => { if (time - lastHit < 0.3) say('ช้าไป', 0.8, 'bad'); lastWindowEnd = time + PARRY.window; };
+  waitEl.remove();
+  showHeads();
+  window.parryTrial.ready = true;
+})().catch(err => { waitEl.textContent = 'โหลดไม่ได้\n' + (err && err.message || err); console.error(err); });
+
+// ---- the heads: how much each can take of its own thrown back (enough, and it goes down; all three, the plant dies)
+const NAMES = ['หัวกลาง', 'หัวขวา', 'หัวซ้าย'];
+const MOST = [4, 3, 6];                         // (the middle one's pollen is two; the left one's venom comes three at a time)
+const life = [...MOST];
+const tally = { takes: 0, hits: 0, downs: 0 };
+let deadT = -1, lastHit = -9, lastWindowEnd = -9;
+function hurtHead(head, dmg) {
+  if (!dmg || life[head] <= 0) return;
+  life[head] = Math.max(0, life[head] - dmg);
+  if (life[head] === 0) { moves.play('down', head); tally.downs++; say(`${NAMES[head]} ล่มแล้ว!`, 1.4, 'good'); }
+  showHeads();
+}
+const headsEl = document.getElementById('heads');
+function showHeads() {
+  const order = [2, 0, 1];                      // (as she sees them: left, middle, right)
+  headsEl.innerHTML = order.map(i => `<div class="${life[i] ? '' : 'down'}"><b>${NAMES[i]}</b>${Array.from({ length: MOST[i] }, (_, k) => `<i class="${k < life[i] ? '' : 'gone'}"></i>`).join('')}</div>`).join('')
+    + `<div id="score">ปัดได้ ${tally.takes} · โดน ${tally.hits}</div>`;
+}
+
+// ---- the poison rain: its drops strike whoever is under them as they land (not in the air, not gone in a blink); its pools
+// turn her green while she stands in one
+const pools = [];
+moves.onEvent = e => {
+  if (shots) shots.event(e);
+  rain.event(e);
+  if (e.move === 'poison' && e.type === 'hit' && e.drop !== undefined && e.shape && player) {
+    const p = player.position, d = Math.hypot(p.x - e.shape.x, p.z - e.shape.z);
+    if (d < e.shape.radius + 0.25 * size() && !player.airborne && !player.blinking) { say('โดนฝนพิษ!', 0.9, 'bad'); hurt = 1; shake(0.06); guard.struck(); tally.hits++; showHeads(); }
+    if (e.pool) pools.push({ x: e.shape.x, z: e.shape.z, r: e.pool.radius, born: time, lasts: e.pool.lasts });
+  }
+  if (e.type === 'end') wait = e.move === 'poison' ? 2.2 : 1.25;
+  if (e.type === 'end' && e.move === 'rise') wait = 1.5;
+};
+
+// ---- the boss fighting by itself: its moves in turn, a breath between; a move whose head is down is passed over
+const SEQ = ['seed', 'pollen', 'venom', 'seed', 'venom', 'poison', 'pollen', 'seed', 'venom', 'pollen'];
+const OWNER = { seed: 1, pollen: 0, venom: 2 };
+let auto = Q.get('auto') !== '0', seqI = 0, wait = 2.0;
+function next() {
+  for (let n = 0; n < SEQ.length; n++) {
+    const m = SEQ[seqI % SEQ.length]; seqI++;
+    if (m in OWNER && moves.isDown(OWNER[m])) continue;
+    if (moves.play(m)) return m;
+  }
+  return null;
+}
+function playOne(m) { if (moves.state === 'idle' && (!(m in OWNER) || !moves.isDown(OWNER[m]))) { moves.play(m); wait = 9; } }
+
+// ---- the action game's weight: the world stops for an instant and the camera shakes, dying away
+let stopT = 0, shakeA = 0, shakeAge = 9;
+const shakeOff = new THREE.Vector3();
+function hitStop(s) { stopT = Math.max(stopT, s); }
+function shake(a) { shakeA = Math.max(shakeA * Math.exp(-shakeAge * 14), a); shakeAge = 0; }
+
+// ---- the buttons: pressed, not clicked (as the game's)
+function press(id, act) {
+  const b = document.getElementById(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); if (player) act(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+}
+press('parryBtn', () => guard.press());
+press('jumpBtn', () => player.jump());
+press('blinkBtn', () => player.blink());
+addEventListener('keydown', e => {
+  if (e.repeat || !player) return;
+  if (e.code === 'KeyK' || e.code === 'KeyP') guard.press();
+});
+
+function say(text, secs, kind = '') { if (!text) return; beatEl.textContent = text; beatEl.className = kind; beatEl.style.opacity = 1; beatT = secs; }
+const beatEl = document.getElementById('beat'), tapEl = document.getElementById('tap'), parryBtn = document.getElementById('parryBtn'), blinkBtn = document.getElementById('blinkBtn');
+let time = 0, lock = Q.get('lock') !== '0';
+const tmp = new THREE.Vector3();
+function step(dt) {
+  if (!player) return;
+  const real = Math.min(dt, 0.05);
+  let k = slow;
+  if (stopT > 0) { stopT -= real; k *= 0.05; }
+  shakeAge += real;
+  dt = real * k;
+  time += dt;
+  blink.pace = slow;
+  // how she goes (for the shots' lead)
+  if (herWasSet && dt > 0) { tmp.subVectors(player.position, herWas).divideScalar(dt); tmp.y = 0; if (tmp.lengthSq() > 144) tmp.setLength(12); herVel.lerp(tmp, Math.min(1, dt * 8)); }
+  herWas.copy(player.position); herWasSet = true;
+  // the boss fights by itself; dead, it comes up again after a while
+  if (moves.state === 'dead') { if (deadT < 0) { deadT = time; say('บอสแพ้แล้ว! เดี๋ยวขึ้นมาใหม่', 2.2, 'good'); } else if (time - deadT > 4) again(); }
+  if (auto && moves.state === 'idle' && (wait -= dt) <= 0) { next(); wait = 9; }
+  player.update(dt);
+  N.update(dt);
+  turn.update(dt, player.position, true);
+  moves.update(dt, player.position);
+  shots.update(dt);
+  const t = moves.state === 'poison' ? moves.time : -1;
+  howl.update(dt, camera, boss, t >= 0 && t < HOWL.length ? t : -1, player.position);
+  // poisoned: green while she stands in a pool
+  for (let i = pools.length - 1; i >= 0; i--) if (time - pools[i].born > pools[i].lasts) pools.splice(i, 1);
+  let sick = 0;
+  for (const q of pools) { const d = Math.hypot(player.position.x - q.x, player.position.z - q.z); sick = Math.max(sick, poolStrength(time - q.born, q.lasts) * (1 - THREE.MathUtils.smoothstep(d, q.r * 0.65, q.r * 0.95))); }
+  rain.afflict(player.position, sick);
+  rain.update(dt, camera, boss, t);
+  circles.update(dt, camera);
+  grass.userData.setWalker(player.position, 0.55);
+  blinkFx.update(dt, camera);
+  parryFx.update(dt, camera);
+  shotsFx.update(dt, camera);
+  // the camera kept on the boss (a slow drag of the look, as a hand would; the stick still walks her where it points)
+  if (lock && real > 0) {
+    const p = player.position, want = Math.atan2(p.x - BOSS_AT.x, p.z - BOSS_AT.z) + VIEW.side;
+    let d = want - player.camYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+    player.turnView(d * Math.min(1, real * 2.2));
+  }
+  if (hurt > 0) { hurt = Math.max(0, hurt - dt / 0.35); hero.tint.set(1, 0.32, 0.3, hurt * 0.7); }
+  else if (sick > 0.05) hero.tint.set(0.42, 1.0, 0.18, Math.min(0.5, sick * 0.5) * (0.8 + 0.2 * Math.sin(time * 7)));
+  else hero.tint.set(0, 0, 0, 0);
+  if (beatT > 0 && (beatT -= real) <= 0) beatEl.style.opacity = 0;
+  parryBtn.style.setProperty('--ready', guard.ready ? 1 : 0.25);
+  parryBtn.style.setProperty('--hot', guard.hot ? 1 : 0);
+  blinkBtn.style.setProperty('--ready', blink.ready ? 1 : 0.2);
+  if (tally.takes + tally.hits !== shownTally) { shownTally = tally.takes + tally.hits; showHeads(); }
+  const s = sounds.stats;
+  tapEl.hidden = s.ready || !!s.failed;
+}
+let shownTally = 0;
+function draw() {
+  const amp = shakeA * Math.exp(-shakeAge * 14) + 0.06 * Math.max(howl.shake * 0.5, rain.shake * 0.7, shotsFx.shake * 0.5);
+  if (amp > 0.002) { shakeOff.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * amp); camera.position.add(shakeOff); camera.updateMatrixWorld(); }
+  renderer.clear();
+  renderer.render(scene, camera);
+  if (night) renderer.render(dimScene, camera);
+  renderer.render(fxScene, camera);
+  if (amp > 0.002) { camera.position.sub(shakeOff); camera.updateMatrixWorld(); }
+}
+function again() {
+  life.splice(0, 3, ...MOST); deadT = -1; tally.takes = tally.hits = tally.downs = 0;
+  shots.clear(); pools.length = 0;
+  moves.play('rise'); wait = 2.5; seqI = 0;
+  showHeads();
+}
+
+// ---- the buttons at the top
+const btn = id => document.getElementById(id);
+const showHour = () => { btn('hour').textContent = night ? '🌙' : '☀'; };
+showHour();
+btn('hour').onclick = () => { setNight(!night); showHour(); };
+const SLOWS = [1, 0.5, 0.25];
+btn('slow').onclick = () => { slow = SLOWS[(SLOWS.indexOf(slow) + 1) % SLOWS.length]; btn('slow').textContent = `⏱ ×${slow === 1 ? 1 : slow === 0.5 ? '½' : '¼'}`; };
+btn('sound').onclick = () => { heard.on = !heard.on; blinkHeard.volume = heard.on ? 1 : 0; sounds.volume = heard.on ? 1 : 0; btn('sound').textContent = heard.on ? '🔊' : '🔇'; };
+const showAuto = () => { btn('auto').textContent = auto ? '⚔ สู้เอง' : '⚔ พัก'; btn('auto').classList.toggle('on', auto); };
+btn('auto').onclick = () => { auto = !auto; wait = 1.0; showAuto(); };
+showAuto();
+btn('seed').onclick = () => playOne('seed');
+btn('pollen').onclick = () => playOne('pollen');
+btn('venom').onclick = () => playOne('venom');
+btn('rain').onclick = () => playOne('poison');
+const showLock = () => { btn('lock').textContent = lock ? '🎥 ล็อก' : '🎥'; btn('lock').classList.toggle('on', lock); };
+btn('lock').onclick = () => { lock = !lock; showLock(); };
+showLock();
+btn('again').onclick = () => { if (player) { player.teleport(0, 0, 0); player.setView(Math.PI + VIEW.side, VIEW.pitch, VIEW.dist); again(); } };
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.fov = FOV(); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+tapEl.hidden = false;
+setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 9000);      // (the hint goes once it has been read)
+
+// for a test (or the console): step the world by hand
+window.parryTrial = {
+  ready: false, held: false,
+  get player() { return player; }, get hero() { return hero; }, get guard() { return guard; }, get shots() { return shots; },
+  boss, moves, turn, camera, renderer, tally, life, PARRY, BOSS_SHOTS, BOSS_MOVES,
+  run(seconds, { fps = 60, show = true, each = null } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) { if (each) each(); step(1 / fps); } if (show) draw(); },
+  play: m => { wait = 99; return moves.play(m); }, auto(on) { auto = !!on; wait = 1; showAuto(); }, lock(on) { lock = !!on; showLock(); },
+  press: () => guard.press(), night(on) { setNight(!!on); showHour(); }, again, draw,
+  get time() { return time; },
+};
+
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;                // 60 pictures a second at most: no hotter than it need be
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.parryTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

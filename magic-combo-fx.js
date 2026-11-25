@@ -19,8 +19,10 @@
                                       it has come (m)
        shot.size(level)               a lance: how grown it is (0..3); shot.long: its length now (m)
        shot.end(hit)                  it is over: it landed (the combo then asks for a burst) or ran out (it fades)
-     const gate = fx.gate()           the magic circle a lance is thrown through: standing in the air, facing the way
-                                      she aims
+     const gate = fx.gate({ open, shut })   the magic circle a lance is thrown through: standing in the air, facing the way
+                                      she aims. open: s it takes to open (GATE.open); shut: how fast its layers come
+                                      together when told (1/s, GATE.shut). The parry's circle (parry-fx.js) is this one,
+                                      snapped open and shut far faster
        gate.place(at, dir, radius)    every frame: its middle, the way it faces (unit), its outer ring's radius (m)
        gate.size(level)               how grown (0..3): it beats once each time (and its seals come when full grown)
        gate.close(k)                  how far its three layers have come together (0: apart, one before another on
@@ -1358,10 +1360,11 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       show(cast, 0);
       mesh.visible = true;
     },
-    gate() {
+    gate({ open = GATE.open, shut = GATE.shut } = {}) {
       const g = gates.find(o => !o.mesh.visible) || gates[0];
       g.live = true; g.open = 0; g.level = 0; g.beat = 0; g.fired = -1; g.fade = 0; g.age = rand() * 10; g.fresh = true; g.dust = 0;
       g.shut = 0; g.toShut = 0; g.told = false; g.spin = g.age;
+      g.openFor = open; g.shutRate = shut;                              // (the lance's: GATE's; the parry's circle snaps up and shut far faster)
       return {
         place(at, dir, radius) {
           g.mesh.position.copy(at);
@@ -1551,7 +1554,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
       for (const g of gates) {
         if (!g.mesh.visible) continue;
         g.age += dt;
-        g.open = Math.min(1, g.open + dt / GATE.open);
+        g.open = Math.min(1, g.open + dt / (g.openFor || GATE.open));
         g.beat = Math.max(0, g.beat - dt / GATE.beat);
         g.radius += (g.want - g.radius) * Math.min(1, dt * 16);
         let flash = 0, wave = 0, grow = 1;
@@ -1578,7 +1581,7 @@ export function createMagicComboFx({ seed = 7 } = {}) {
         // its three layers: apart at first, one before another on the lance's line, turning fast against each other;
         // together as the lance grows (the combo says how far along: close()), and at once as it is let go or given up
         const going = g.fired >= 0 || !g.live;
-        g.shut += ((going ? 1 : g.toShut) - g.shut) * Math.min(1, dt * (going ? GATE.snap : GATE.shut));
+        g.shut += ((going ? 1 : g.toShut) - g.shut) * Math.min(1, dt * (going ? GATE.snap : g.shutRate || GATE.shut));
         g.spin += dt * (1 + GATE.apart * (1 - g.shut));
         const gap = GATE.gap * g.radius * (1 - g.shut) * opened / g.mesh.scale.x;       // (in the outer one's own measure)
         g.ahead.forEach((m, i) => { m.position.z = gap * (i + 1); });
