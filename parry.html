@@ -4,39 +4,51 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1d2547">
-<title>วีวี่ — ปัด (ลอง)</title>
+<title>วีวี่ — ปัด สู้บอส (ลอง)</title>
 <!--
-  parry.html  —  her parry against the plant boss's straight shots, to try (26 Nov 2026). Asked for in the barrier's place:
-  "จะเอา บาเรีย ออก แต่ ทำ เป็น pary แบบ doctor strang แทน", "เป็นแบบปัดสกิลระยะไกล กดให้ตรงจังหวะ"; the boss given a straight
-  shot for each head to parry ("เพิ่มท่ายิงให้บอส ... เอาสามหัวทำเป็นท่ายิงตรงๆ ให้แพรี่ด้วย"), its shot into the sky (the poison
-  rain) to be walked or blinked out of ("อันนั้นเดินหลบไม่ก็วาร์ปหลบ"); no dash and no roll ("ไม่เอา dash กับ กลิ้ง แล้ว เพราะ
-  dash มันคือวิ่งเร็ว ควรใส่ลงท่าวิ่งธรรมดา แล้วเพิ่มความเร็วเอา"): her run gathers speed by itself instead. The game is not
-  changed by this page.
-  One job: try that. The game's own player (player-moves.js: walk, run, the magic jump, the blink) with her parry
-  (parry.js: the rules and her move; parry-fx.js: the circle at her palm; her moves parry-anim.js) and her run gathering
-  speed (createPlayer({ ramp: true, dash: false })); the plant boss (plant-boss.js, its moves plant-boss-moves.js, turning
-  to her plant-boss-turn.js) spitting its straight shots at her (boss-shots.js: their flight; boss-shots-fx.js: their look)
-  and now and then its poison rain (howl-fx.js, poison-rain-fx.js). Thrown back, a shot strikes the head that spat it;
-  enough of them and the head goes down; all three down, the plant dies, and comes up again.
-  Up top: ☀/🌙 the hour, ⏱ slower, 🔊 the sound, ⚔ the boss fighting by itself, 🌱 🌼 ☠ ☁ one move each, 🎥 the camera
-  kept on the boss, ↺ again. Bottom right: ปัด (K or P), กระโดด (Space), วาร์ป (E or L).
+  parry.html  —  her parry against the plant boss, to try (26 Nov 2026); and the fight made an action game's the same day
+  ("อยากได้ action มันสๆ", then "ทำค่ะ" to three things: her spells strike the heads; a perfect parry or a perfect blink slows
+  the boss's world while she goes at her own pace; out of a perfect parry, her attack is a counter).
+  The parry was asked for in the barrier's place: "จะเอา บาเรีย ออก แต่ ทำ เป็น pary แบบ doctor strang แทน", "เป็นแบบปัดสกิล
+  ระยะไกล กดให้ตรงจังหวะ"; the boss given a straight shot for each head to parry ("เพิ่มท่ายิงให้บอส ... เอาสามหัวทำเป็นท่ายิง
+  ตรงๆ ให้แพรี่ด้วย"), its poison rain to be walked or blinked out of; no dash and no roll ("dash มันคือวิ่งเร็ว ควรใส่ลงท่าวิ่ง
+  ธรรมดา แล้วเพิ่มความเร็วเอา"): her run gathers speed by itself. The heads are not beaten: water calms them (the fight's own
+  idea: her rain at the end makes the plant a friend, not made yet), and a head calmed through falls asleep. The game is
+  not changed by this page.
+
+  Who does what: the game's own player (player-moves.js: walk, the run gathering speed, the magic jump, the blink) with her
+  spells (player-spells.js: the four casts, the lance, the spear rain; given the heads to strike, and the counter's cast),
+  her parry (parry.js: its rules and her move, and when it is perfect; parry-fx.js: the circle at her palm; her moves
+  parry-anim.js); the plant boss (plant-boss.js; its moves plant-boss-moves.js, with its heads falling asleep; turning to
+  her plant-boss-turn.js) spitting its straight shots (boss-shots.js: their flight, slowed with its world; boss-shots-fx.js:
+  their look) and now and then its poison rain (howl-fx.js, poison-rain-fx.js). This page: the heads as things to strike,
+  the calm, the slow time, the counter, the buttons.
+
+  Bottom right: โจมตี (J; held: the lance; slid up: the spear rain, R), ปัด (K or P), วาร์ป (E or L), กระโดด (Space). Up top:
+  ⚔ the boss fighting by itself, 🌱 🌼 ☠ ☁ one move each, 🎥 the camera kept on the boss, ☀/🌙, ⏱ slower, 🔊, ↺ again.
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2547; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
   canvas { display: block; touch-action: none; }
-  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
-    font: 700 16px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
-  #name small { display: block; font: 500 12px system-ui; opacity: 0.92; margin-top: 3px; }
-  #beat { position: fixed; left: 0; right: 0; top: 13%; text-align: center; pointer-events: none;
+  /* the slow time's edge of cyan: over the picture, under everything else */
+  #witch { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(40, 170, 220, .2) 74%, rgba(14, 70, 140, .55) 100%); }
+  #name { position: fixed; left: calc(12px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); pointer-events: none;
+    font: 700 15px system-ui; color: #fff; text-shadow: 0 1px 6px #0009; }
+  #beat { position: fixed; left: 0; right: 0; top: 14%; text-align: center; pointer-events: none;
     font: 900 22px system-ui; color: #fff; text-shadow: 0 2px 8px #000c; min-height: 26px; transition: opacity .35s; }
   #beat.good { color: #c9fbff; } #beat.bad { color: #ffd0c4; }
-  #heads { position: fixed; left: calc(10px + env(safe-area-inset-left)); top: calc(52px + env(safe-area-inset-top)); pointer-events: none;
-    font: 700 12px system-ui; color: #fff; text-shadow: 0 1px 4px #000b; line-height: 1.55; }
-  #heads b { display: inline-block; min-width: 54px; }
-  #heads i { display: inline-block; width: 11px; height: 8px; margin-right: 2px; border-radius: 2px; background: #ff7d63; box-shadow: 0 0 3px #0008; }
-  #heads i.gone { background: #ffffff38; }
-  #heads .down { opacity: .45; text-decoration: line-through; }
-  #score { margin-top: 3px; font-weight: 600; opacity: .95; }
+  #beat.perfect { font-size: 28px; letter-spacing: 1px; text-shadow: 0 0 12px #62ebf5, 0 0 26px #1f86d8, 0 2px 8px #000c; }
+  #heads { position: fixed; left: calc(12px + env(safe-area-inset-left)); top: calc(34px + env(safe-area-inset-top)); pointer-events: none;
+    font: 700 12px system-ui; color: #fff; text-shadow: 0 1px 4px #000b; line-height: 1.7; }
+  #heads .row { display: flex; align-items: center; gap: 6px; }
+  #heads b { display: inline-block; min-width: 50px; }
+  #heads .bar { position: relative; width: 92px; height: 8px; border-radius: 99px; background: #ff7d6366; border: 1px solid #ffffff80; overflow: hidden; }
+  #heads .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #5fe6e8, #effffe); transition: width .25s ease-out; }
+  #heads .asleep b { opacity: .65; }
+  #heads .riled .bar { animation: riled .6s ease-out; }
+  @keyframes riled { 0%, 45% { border-color: #ffb09c; box-shadow: 0 0 9px #ff5a3c; } 100% { border-color: #ffffff80; box-shadow: none; } }
+  #score { margin-top: 2px; font-weight: 600; opacity: .95; }
   #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 5px; z-index: 3; }
   #bar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 6px 10px; background: #2b3a55c8; color: #fff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
   #bar button.boss { background: #3c5a2bd9; }
@@ -50,36 +62,44 @@
     -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
   .act.down { background: rgba(255, 255, 255, .5); }
   .act svg { width: 24px; height: 24px; margin-bottom: -4px; }
-  /* the parry: the big one, under the right thumb; the jump and the blink beside it */
-  #parryBtn { right: max(22px, calc(env(safe-area-inset-right) + 14px)); bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px)); width: 86px; height: 86px;
+  /* the attack, the big one, under the right thumb (it glows white while a counter is there to be had); the parry beside
+     it, the jump over the parry, the blink further in */
+  #atkBtn { right: max(16px, calc(env(safe-area-inset-right) + 8px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 84px; height: 84px;
+    background: rgba(170, 225, 255, .22); box-shadow: 0 0 calc(26px * var(--counter, 0)) rgba(255, 255, 255, calc(.85 * var(--counter, 0))); }
+  #atkBtn svg { width: 30px; height: 30px; }
+  #atkBtn.down { background: rgba(170, 225, 255, .55); }
+  #parryBtn { right: max(112px, calc(env(safe-area-inset-right) + 104px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 70px; height: 70px;
     background: rgba(98, 235, 245, calc(.1 + .2 * var(--ready, 1))); border-color: rgba(220, 255, 255, calc(.35 + .6 * var(--ready, 1)));
-    box-shadow: 0 0 calc(4px + 18px * var(--ready, 1) + 22px * var(--hot, 0)) rgba(98, 235, 245, calc(.15 + .55 * var(--ready, 1))); }
-  #parryBtn svg { width: 34px; height: 34px; margin-bottom: -3px; }
+    box-shadow: 0 0 calc(4px + 14px * var(--ready, 1) + 22px * var(--hot, 0)) rgba(98, 235, 245, calc(.15 + .55 * var(--ready, 1))); }
+  #parryBtn svg { width: 30px; height: 30px; margin-bottom: -3px; }
   #parryBtn.down { background: rgba(190, 250, 255, .55); }
-  #jumpBtn { right: max(118px, calc(env(safe-area-inset-right) + 110px)); bottom: max(64px, calc(env(safe-area-inset-bottom) + 58px)); width: 60px; height: 60px; }
-  #blinkBtn { right: max(122px, calc(env(safe-area-inset-right) + 114px)); bottom: max(6px, calc(env(safe-area-inset-bottom) + 0px)); width: 54px; height: 54px;
+  #jumpBtn { right: max(117px, calc(env(safe-area-inset-right) + 109px)); bottom: max(92px, calc(env(safe-area-inset-bottom) + 86px)); width: 60px; height: 60px; }
+  #blinkBtn { right: max(192px, calc(env(safe-area-inset-right) + 184px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px)); width: 56px; height: 56px;
     background: rgba(95, 230, 232, calc(.1 + .22 * var(--ready, 1))); border-color: rgba(200, 255, 255, calc(.35 + .5 * var(--ready, 1))); }
-  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 210px 0 16px; text-align: left; pointer-events: none;
-    font: 500 12px/1.5 system-ui; color: #fff; opacity: .85; text-shadow: 0 1px 4px #000a; transition: opacity .6s; }
+  /* the spear rain's badge, over the attack button while she holds the lance: slide up to it (or tap it) */
+  #rainBtn { position: fixed; z-index: 5; right: max(14px, calc(env(safe-area-inset-right) + 6px)); bottom: max(104px, calc(env(safe-area-inset-bottom) + 98px));
+    border: 2px solid rgba(255, 255, 255, calc(.6 + .4 * var(--near, 0))); border-radius: 999px; padding: 5px 12px; color: #fff; font: 800 12px system-ui;
+    background: rgba(98, 235, 245, calc(.3 + .5 * var(--near, 0))); box-shadow: 0 0 calc(6px + 16px * var(--near, 0)) #62ebf5; touch-action: none; }
+  #rainBtn svg { width: 22px; height: 11px; display: block; margin: 0 auto 1px; }
+  #rainBtn[hidden] { display: none; }
+  #hint { position: fixed; left: calc(12px + env(safe-area-inset-left)); top: calc(118px + env(safe-area-inset-top)); max-width: 46%; pointer-events: none;
+    font: 500 12px/1.5 system-ui; color: #fff; opacity: .9; text-shadow: 0 1px 4px #000a; transition: opacity .8s; }
   #tap { position: fixed; left: 0; right: 0; top: 46%; display: flex; justify-content: center; pointer-events: none; }
   #tap span { background: rgba(31, 134, 160, .9); color: #fff; font: 600 14px system-ui; padding: 10px 18px; border-radius: 999px; }
   #tap[hidden] { display: none; }
   #wait { position: fixed; left: 0; right: 0; top: 46%; text-align: center; color: #fff; font: 700 15px system-ui; text-shadow: 0 1px 6px #0008; pointer-events: none; white-space: pre-wrap; }
-  @media (max-width: 640px) {                        /* a phone upright: the title on the left, clear of the buttons */
-    #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
-    #name small { display: none; }
-    #heads { top: calc(34px + env(safe-area-inset-top)); }
-    #hint { top: calc(122px + env(safe-area-inset-top)); bottom: auto; padding: 0 0 0 calc(14px + env(safe-area-inset-left)); max-width: 56%; font-size: 11px; }
-    #beat { top: 27%; }
+  @media (max-width: 640px) {                        /* a phone upright */
+    #beat { top: 30%; }
+    #hint { max-width: 54%; font-size: 11px; }
     #bar button { padding: 6px 9px; font-size: 11px; }
   }
-  @media (max-height: 520px) {                       /* a phone on its side: the title on the left, the buttons down the right edge */
-    #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); font-size: 14px; }
-    #name small { display: none; }
-    #heads { top: calc(30px + env(safe-area-inset-top)); }
-    #bar { gap: 3px; top: calc(6px + env(safe-area-inset-top)); }
+  @media (max-height: 520px) {                       /* a phone on its side: the buttons up top in a row */
+    #name { font-size: 14px; }
+    #heads { top: calc(28px + env(safe-area-inset-top)); line-height: 1.55; }
+    #bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; gap: 4px; top: calc(6px + env(safe-area-inset-top)); }
     #bar button { padding: 4px 8px; font-size: 11px; }
-    #hint { display: none; }
+    #beat { top: 17%; }
+    #hint { top: calc(104px + env(safe-area-inset-top)); max-width: 38%; font-size: 11px; }
   }
 </style>
 <script type="importmap">
@@ -88,18 +108,21 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./player-moves.js": "./player-moves.js?v=parry1",
-  "./plant-boss-moves.js": "./plant-boss-moves.js?v=parry1",
+  "./player-spells.js": "./player-spells.js?v=parry2",
+  "./magic-combo.js": "./magic-combo.js?v=parry2",
   "./magic-combo-fx.js": "./magic-combo-fx.js?v=parry1",
-  "./parry.js": "./parry.js?v=1",
+  "./plant-boss-moves.js": "./plant-boss-moves.js?v=parry2",
+  "./parry.js": "./parry.js?v=2",
   "./parry-fx.js": "./parry-fx.js?v=1",
   "./parry-anim.js": "./parry-anim.js?v=1",
-  "./boss-shots.js": "./boss-shots.js?v=1",
+  "./boss-shots.js": "./boss-shots.js?v=2",
   "./boss-shots-fx.js": "./boss-shots-fx.js?v=1"
 } }
 </script>
 </head>
 <body>
-<div id="name">วีวี่ · ปัด (ลอง)<small>กดปัดตอนลูกที่ยิงมาเรืองแสง → สะท้อนกลับใส่หัวที่ยิง · ฝนพิษปัดไม่ได้ ต้องเดินหรือวาร์ปหลบ</small></div>
+<div id="witch"></div>
+<div id="name">วีวี่ · ปัด สู้บอส (ลอง)</div>
 <div id="heads"></div>
 <div id="beat"></div>
 <div id="bar">
@@ -108,7 +131,7 @@
   <button id="pollen" class="boss" type="button" title="หัวกลาง: เกสร">🌼 กลาง</button>
   <button id="venom" class="boss" type="button" title="หัวซ้าย: พิษ ×3">☠ ซ้าย</button>
   <button id="rain" class="boss" type="button" title="ฝนพิษ: หลบ">☁ ฝน</button>
-  <button id="lock" class="on" type="button" title="กล้องหันหาบอส">🎥</button>
+  <button id="lock" class="on" type="button" title="กล้องหันหาบอส">🎥 ล็อก</button>
   <button id="hour" type="button">☀</button>
   <button id="slow" type="button">⏱ ×1</button>
   <button id="sound" type="button">🔊</button>
@@ -118,7 +141,9 @@
 <button id="blinkBtn" class="act" type="button" aria-label="วาร์ป"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.6"/><path d="M10.5 12h9M16 8.5l3.5 3.5-3.5 3.5" /></svg><br>วาร์ป</span></button>
 <button id="jumpBtn" class="act" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
 <button id="parryBtn" class="act" type="button" aria-label="ปัด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="6.2"/><path d="M12 5.8l5.4 9.3H6.6z" stroke-width="1.3"/><circle cx="12" cy="12" r="2" stroke-width="1.3"/></svg><br>ปัด</span></button>
-<div id="hint">ปัด (คีย์บอร์ด K/P) ตอนลูกเรืองแสง · วาร์ป (E/L) · กระโดด (Space)<br>วิ่งค้างไว้แล้วจะค่อยๆ เร็วขึ้นเอง (ไม่มีพุ่ง ไม่มีกลิ้ง)</div>
+<button id="atkBtn" class="act" type="button" aria-label="โจมตี"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg><br>โจมตี</span></button>
+<button id="rainBtn" type="button" aria-label="ฝนหอก" hidden><span><svg viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l10-8 10 8"/></svg>ฝนหอก</span></button>
+<div id="hint">ลูกที่ยิงมาเรืองแสง กดปัด · ปัดตอนเกือบโดน = ปัดเป๊ะ โลกช้าลง แล้วกดโจมตีทันที = สวนกลับ<br>วาร์ปหลบตอนเกือบโดน = หลบเป๊ะ · ตีหัวด้วยเวทน้ำจนสงบ แล้วมันจะหลับ</div>
 <div id="tap" hidden><span>แตะจอหนึ่งครั้งเพื่อเปิดเสียง</span></div>
 <div id="wait">กำลังโหลดวีวี่กับบอส…</div>
 <script type="module">
@@ -134,6 +159,8 @@ import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
 import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
 import { CHARACTER_ANIM as STOP_ANIM, BLINK_STOP } from './blink-stop-anim.js?v=1';
 import { CHARACTER_ANIM as PARRY_ANIM } from './parry-anim.js';
+import { CHARACTER_ANIM as COMBO_ANIM } from './magic-combo-game-anim.js';
+import { skyThrowClip } from './spear-rain-anim.js';
 import { createPlayer } from './player-moves.js';
 import { createMagicCircles } from './magic-circle-fx.js';
 import { createStepSounds } from './step-sounds.js';
@@ -141,6 +168,10 @@ import { createBlink } from './blink.js?v=2';
 import { createBlinkFx } from './blink-fx.js?v=1';
 import { createBlinkSounds } from './blink-sounds.js?v=2';
 import { createMagicComboFx } from './magic-combo-fx.js';
+import { createSpearRain } from './spear-rain.js';
+import { createSpearRainFx } from './spear-rain-fx.js';
+import { createSpearRainSounds } from './spear-rain-sounds.js';
+import { createChargeHum } from './charge-hum.js';
 import { createReflectBarrierSounds } from './barrier-reflect-sounds.js?v=2';
 import { createParry, PARRY } from './parry.js';
 import { createParryFx } from './parry-fx.js';
@@ -185,33 +216,38 @@ const grass = G.createFluffyGrass({ map, heightAt: H, count: phone ? 70000 : 150
 scene.add(grass);
 const sun = new THREE.Vector3(-0.45, 0.78, 0.45).normalize();
 
-// ---- the boss: 14 m before where she starts, turned to her; how it fights; its gathering's light and its poison rain
-const BOSS_AT = new THREE.Vector3(0, 0, 14);
+// ---- the boss: 12 m before where she starts (in reach of her casts: magic-combo.js turns her to nothing further than
+// 13 m), turned to her; how it fights (calmed through, a head falls asleep: sleep); its gathering's light, its poison rain
+const BOSS_AT = new THREE.Vector3(0, 0, 12);
 BOSS_AT.y = H(BOSS_AT.x, BOSS_AT.z) - 0.05;
 const boss = createPlantBoss({ seed: 1, clip: true });
 boss.position.copy(BOSS_AT); boss.rotation.y = Math.PI;
 scene.add(boss);
 setPlantBossSun(sun);
-const moves = createBossMoves(boss, { snaps: true }), turn = createBossTurn(boss);
+const moves = createBossMoves(boss, { snaps: true, sleep: true }), turn = createBossTurn(boss);
 const howl = createHowlFx({ seed: 1, breath: false });
 const rain = createPoisonRainFx({ heightAt: H, seed: 3, lift: 0.3 });
 howl.setSun(sun); rain.setSun(sun);
 scene.add(howl.object, rain.object);
 const colliders = [[BOSS_AT.x, BOSS_AT.z, 2.9]];
 
-// ---- the light: her jump's circles, the blink's, her parry's circle (the lance's circle: magic-combo-fx.js), the shots';
-// in a scene of their own drawn after the meadow (by night the meadow is dimmed to the hour's light first, as the game
-// does it, and the light is drawn over it undimmed). The shots' darts are solid: in the meadow's scene
+// ---- the light: her jump's circles, the blink's, her spells' (the combo's, whose circle is also her parry's: the lance's
+// circle, magic-combo-fx.js), the spear rain's, the shots'; in a scene of their own drawn after the meadow (by night the
+// meadow is dimmed to the hour's light first, as the game does it, and the light is drawn over it undimmed). The shots'
+// darts are solid: in the meadow's scene
 const fxScene = new THREE.Scene();
 const circles = createMagicCircles({ seed: 2 });
 const blinkFx = createBlinkFx();
 const combo = createMagicComboFx();
 const parryFx = createParryFx({ combo });
+const spearFx = createSpearRainFx();
 const shotsFx = createBossShotsFx({ seed: 4 });
 shotsFx.setSun(sun);
 scene.add(shotsFx.solid);
-fxScene.add(circles.object, blinkFx.object, parryFx.object, shotsFx.object);
-const NIGHT = [0.26, 0.31, 0.6];
+fxScene.add(circles.object, blinkFx.object, combo.object, spearFx.object, shotsFx.object);
+// (the dimming is also the slow time's: while the boss's world is slow the meadow, she and the boss go a little bluer, and
+// the light drawn over them keeps its own colour)
+const NIGHT = [0.26, 0.31, 0.6], SLOWED = [0.8, 0.9, 1.0];
 const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
   uniforms: { uC: { value: new THREE.Vector3(...NIGHT) } },
   vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
@@ -220,22 +256,31 @@ const dim = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMateri
 }));
 dim.frustumCulled = false;
 const dimScene = new THREE.Scene(); dimScene.add(dim);
+const dimC = dim.material.uniforms.uC.value;
+function shade(w) {                                     // (the meadow's light now: the hour's, and the slow time's by w; false: as it is)
+  for (let i = 0; i < 3; i++) dimC.setComponent(i, (night ? NIGHT[i] : 1) * (1 - (1 - SLOWED[i]) * w));
+  return night || w > 0.005;
+}
 let night = Q.get('night') === '1';
-const setNight = on => { night = on; circles.setNight && circles.setNight(on); blinkFx.setNight(on); parryFx.setNight(on); shotsFx.setNight(on); };
+const setNight = on => { night = on; if (circles.setNight) circles.setNight(on); blinkFx.setNight(on); combo.setNight(on); spearFx.setNight(on); shotsFx.setNight(on); };
 setNight(night);
 
 // ---- the camera: the game's (player-moves.js makes it), as wide as the game's; a little lower and further back than the
-// game starts it, so the boss's heads (some 6 m up, 14 m off) are in the picture over her
+// game starts it, so the boss's heads are in the picture over her; kept turned toward the boss (🎥), standing a little off
+// the line from her to it so it is not hidden behind her (less on a phone held upright, whose picture is narrow), and
+// near the boss coming down to look up (from `far` m of it to `near`, its pitch from `pitch` to `low`), so its heads stay
+// in the picture as she closes in
 const FOV = () => (innerWidth < innerHeight ? 70 : 55);
-const VIEW = { pitch: 0.07, dist: 4.6, get side() { return innerWidth < innerHeight ? 0.12 : 0.3; } };      // (side: radians the locked camera stands off the line from her to the boss, so it is not hidden behind her; less on a phone held upright, whose picture is narrow)
+const VIEW = { pitch: 0.07, low: -0.2, far: 11, near: 4.5, dist: 4.6, get side() { return innerWidth < innerHeight ? 0.12 : 0.3; } };
 const camera = new THREE.PerspectiveCamera(FOV(), innerWidth / innerHeight, 0.1, 600);
 
-// ---- her: the game's own player, on this field, with the blink, her parry, and her run gathering speed (no dash)
+// ---- her: the game's own player on this field, with her spells (the heads given her to strike), the blink, her parry,
+// and her run gathering speed (no dash, no roll, no barrier)
 const level = {
   spawn: { x: 0, z: 0, yaw: 0 }, heightAt: H, waterDepthAt: () => 0, footing: () => 'ground', surfaceAt: () => 'grass',
   colliders, cameraTrunks: [], crowns: [[BOSS_AT.x, BOSS_AT.y + 1.6, BOSS_AT.z, 2.7]], radius: 30,
 };
-const sounds = createStepSounds({ level, volume: 1 });                                   // her steps, her jump (the game's), and the AudioContext
+const sounds = createStepSounds({ level, volume: 1 });                                   // her steps, her casts, her jump (the game's), and the AudioContext
 const heard = createReflectBarrierSounds({ context: () => sounds.context });              // the clip the barrier was made after: the parry's chime and its crack, the shots' rush
 const blinkHeard = createBlinkSounds({ context: () => sounds.context, set: 1 });
 const blink = createBlink({ fx: blinkFx, heard: blinkHeard, stop: BLINK_STOP });
@@ -243,18 +288,44 @@ let player = null, hero = null, guard = null, shots = null, slow = 1, beatT = 0,
 const size = () => (hero ? hero.height / 1.75 : 1);
 const herVel = new THREE.Vector3(), herWas = new THREE.Vector3();
 let herWasSet = false;
+const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
 
-// what she turns to as she parries: the shot that will reach her first (if it comes within a second and a half), else
-// the boss's middle head
-const bossChest = new THREE.Vector3();
+// ---- what her spells strike: the heads that are awake. Each a column round its head (magic-combo.js' target: its foot,
+// how wide, how tall), from TARGET.under m under the head to TARGET.over over it: what is cast at it aims a little under
+// the head's middle (0.62 of the way up), and a lance thrown from the ground (aimed half as steep) meets it at the neck.
+// Its foot no more than 3 m over the ground: the spear rain strikes what stands about where its spears land
+const TARGET = { under: 3.0, over: 0.8, radius: 1.0 };
+const targets = [0, 1, 2].map(i => ({ head: i, pos: new THREE.Vector3(), radius: TARGET.radius, height: TARGET.under + TARGET.over, hit: h => hitHead(i, h) }));
+const live = [], only = [];
+function placeTargets() {
+  live.length = 0;
+  if (!shots || moves.state === 'rise' || moves.state === 'asleep' || moves.state === 'dead') return;
+  for (const t of targets) {
+    if (moves.isDown(t.head)) continue;
+    shots.podOf(t.head, tmp);
+    t.pos.set(tmp.x, tmp.y - TARGET.under, tmp.z);
+    live.push(t);
+  }
+}
+// (while the counter begins, only the head she parried: her finisher turns to it whichever way the stick points)
+function aimable() {
+  if (counterArmed <= COUNTER.armed - COUNTER.pick || counterHead < 0) return live;
+  only.length = 0;
+  for (const t of live) if (t.head === counterHead) only.push(t);
+  return only.length ? only : live;
+}
+
+// what she turns to as she parries: the shot that will reach her first (within a second and a half), else the middle head
 function aim() {
   const s = shots ? shots.soonest() : null;
   if (s && s.eta < 1.5) return s.shot.pos;
-  return shots ? shots.podOf(0, bossChest) : null;
+  return shots ? shots.podOf(0, tmp2) : null;
 }
 
 (async () => {
-  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...STOP_ANIM.clips, ...PARRY_ANIM.clips } };
+  const SKY_CLIP = skyThrowClip(COMBO_ANIM);
+  const anim = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips, ...STOP_ANIM.clips,
+    ...PARRY_ANIM.clips, ...COMBO_ANIM.clips, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}) } };
   const [{ VIVI_GLB: model }, springs] = await Promise.all([
     import('./vivi-data.js'),
     fetch('assets/characters/vivi.springs.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
@@ -266,42 +337,156 @@ function aim() {
   if (springs) hero.attachSprings(createSprings(hero.model, springs));
   hero.setSize(1.75 / hero.baseHeight);
   guard = createParry({ character: hero, fx: parryFx, heard, aim });
-  player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, blink, guard, ramp: true, dash: false });
+  const spells = { comboFx: combo, renderer, spearRain: createSpearRain, rainFx: spearFx, targets: aimable,
+    rainSounds: createSpearRainSounds({ context: () => sounds.context, volume: sounds.volume }),
+    hum: createChargeHum({ context: () => sounds.context, volume: sounds.volume }) };
+  player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, spells, blink, guard, ramp: true, dash: false });
   player.setView(Math.PI + VIEW.side, VIEW.pitch, VIEW.dist);
   blinkFx.prepare(hero);
   scene.add(player.object);
   shots = createBossShots({ boss, moves, fx: shotsFx, guard, heightAt: H, heard,
     her: () => ({ feet: player.position, size: size(), vel: herVel }) });
-  shots.onTaken = (s) => { say('ปัดได้!', 0.9, 'good'); hitStop(0.06); shake(0.06); tally.takes++; };
-  shots.onHit = (s) => {
+  shots.onTaken = s => { if (!s.perfect) say('ปัดได้!', 0.8, 'good'); hitStop(0.06); shake(0.06); tally.takes++; };
+  shots.onHit = s => {
     const early = lastWindowEnd > 0 && time - lastWindowEnd < 0.45 && time - lastWindowEnd >= 0;
     say(early ? 'เร็วไป' : 'โดน!', 0.9, 'bad');
-    hurt = 1; shake(0.07); hitStop(0.04); guard.struck(); tally.hits++; lastHit = time;
+    struck();
+    rile(s.head, CALM.riled[s.kind]);
   };
-  shots.onBack = (s, head, dmg) => { hurtHead(head, dmg); shake(0.05); };
+  // a shot thrown back strikes its head (boss-shots.js makes it flinch): wrapped in her water, it calms it
+  shots.onBack = (s, head, dmg) => { if (dmg) calmHead(head, CALM.shot[s.kind] * (s.perfect ? CALM.perfect : 1)); shake(0.05); };
   guard.onPress = () => { if (time - lastHit < 0.3) say('ช้าไป', 0.8, 'bad'); lastWindowEnd = time + PARRY.window; };
+  // a perfect parry: the shot goes back calming its head more, the boss's world slows, and her attack now is the counter
+  guard.onTake = (point, shot, perfect) => {
+    if (!shot) return;
+    shot.perfect = perfect;
+    if (!perfect) return;
+    tally.perfects++;
+    slowTime('ปัดเป๊ะ!');
+    counterT = COUNTER.lasts; counterHead = shot.head;
+  };
   waitEl.remove();
   showHeads();
   window.parryTrial.ready = true;
 })().catch(err => { waitEl.textContent = 'โหลดไม่ได้\n' + (err && err.message || err); console.error(err); });
 
-// ---- the heads: how much each can take of its own thrown back (enough, and it goes down; all three, the plant dies)
+// ---- the heads calmed, not beaten: water calms them (her casts, and the shots she throws back wrapped in her water), and a
+// head calmed through falls asleep; all three asleep, the plant sleeps (then wakes again, here: the ending, her rain, is
+// not made yet). A blow of its own that lands on her stirs it up again. How much calm:
+//   spell: for each of a cast's power (an orb 1, the turning cast's wave 2, the finisher 4 and its splash on the heads
+//   near 2, the lance 2 to 8); rain: for each of a spear's (0.6 to 1.3); great: the great spear's (3 to 7); shot: a shot
+//   thrown back, by which; perfect: so much more for one thrown back by a perfect parry; witch: her casts while the boss's
+//   world is slow; counter: the counter's finisher; riled: the calm a head loses when its shot strikes her (a drop of the
+//   poison rain: every head awake). (Her casts alone, struck all the while, never get there: a good player asleep
+//   all three in some 25 s with her casts worth half again as much and nothing lost, before this)
+const CALM = { max: 100, spell: 2, rain: 2, great: 4, shot: { seed: 20, pollen: 30, venom: 10 }, perfect: 1.5, witch: 1.4, counter: 2,
+  riled: { seed: 12, pollen: 15, venom: 6, poison: 5 } };
 const NAMES = ['หัวกลาง', 'หัวขวา', 'หัวซ้าย'];
-const MOST = [4, 3, 6];                         // (the middle one's pollen is two; the left one's venom comes three at a time)
-const life = [...MOST];
-const tally = { takes: 0, hits: 0, downs: 0 };
-let deadT = -1, lastHit = -9, lastWindowEnd = -9;
-function hurtHead(head, dmg) {
-  if (!dmg || life[head] <= 0) return;
-  life[head] = Math.max(0, life[head] - dmg);
-  if (life[head] === 0) { moves.play('down', head); tally.downs++; say(`${NAMES[head]} ล่มแล้ว!`, 1.4, 'good'); }
+const calm = [0, 0, 0];
+const tally = { takes: 0, perfects: 0, dodges: 0, counters: 0, hits: 0, sleeps: 0 };
+let lastHit = -9, lastWindowEnd = -9, asleepAt = -1;
+function calmHead(head, add) {
+  if (!add || moves.isDown(head)) return;
+  calm[head] = Math.min(CALM.max, calm[head] + add);
   showHeads();
 }
+function rile(head, by) {
+  if (!by || !(head >= 0) || moves.isDown(head) || calm[head] <= 0) return;
+  calm[head] = Math.max(0, calm[head] - by);
+  showHeads(); flash(head);
+}
+// calmed through: it falls asleep (tried again each frame until it can: not while the boss is coming up)
+function sleepHeads() {
+  for (let i = 0; i < 3; i++) {
+    if (calm[i] < CALM.max || moves.isDown(i) || !moves.play('down', i)) continue;
+    tally.sleeps++; say(`${NAMES[i]} หลับแล้ว 💤`, 1.4, 'good'); showHeads();
+  }
+}
+// a cast of hers lands on a head: it calms; it flinches (a spear of the rain is too small to make it); the world stops for
+// an instant for the harder blows and the camera jolts
+function hitHead(head, h) {
+  const kind = h.kind || '', power = h.power || 1;
+  let add = power * (kind === 'rain' ? CALM.rain : kind === 'great' ? CALM.great : CALM.spell);
+  const isCounter = counterArmed > 0 && (kind === 'big' || kind === 'blast');
+  if (isCounter) { add *= CALM.counter; if (!counterLanded) { counterLanded = true; tally.counters++; say('สวนกลับ!', 1.0, 'perfect'); } }
+  if (witchK > 0.5) add *= CALM.witch;
+  calmHead(head, add);
+  if (kind === 'rain') return;
+  moves.play('hit', head);
+  if (power >= 1) { hitStop(Math.min(0.08, 0.025 + 0.01 * power) * (isCounter ? 1.6 : 1)); shake(Math.min(0.09, 0.015 + 0.008 * power) * (isCounter ? 1.5 : 1)); }
+}
+// the gauges, top left: one for each head as she sees them (left, middle, right), filling as it calms; a flash of red as
+// one is stirred up again; and the count of what she has done
 const headsEl = document.getElementById('heads');
+const rows = [2, 0, 1].map(i => {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<b>${NAMES[i]}</b><span class="bar"><i></i></span><span class="z"></span>`;
+  headsEl.append(row);
+  return { i, row, fill: row.querySelector('i'), z: row.querySelector('.z') };
+});
+const scoreEl = document.createElement('div');
+scoreEl.id = 'score'; headsEl.append(scoreEl);
 function showHeads() {
-  const order = [2, 0, 1];                      // (as she sees them: left, middle, right)
-  headsEl.innerHTML = order.map(i => `<div class="${life[i] ? '' : 'down'}"><b>${NAMES[i]}</b>${Array.from({ length: MOST[i] }, (_, k) => `<i class="${k < life[i] ? '' : 'gone'}"></i>`).join('')}</div>`).join('')
-    + `<div id="score">ปัดได้ ${tally.takes} · โดน ${tally.hits}</div>`;
+  for (const r of rows) {
+    const sleeping = moves.isDown(r.i);
+    r.row.classList.toggle('asleep', sleeping);
+    r.fill.style.width = `${(calm[r.i] / CALM.max * 100).toFixed(1)}%`;
+    r.z.textContent = sleeping ? '💤' : '';
+  }
+  scoreEl.textContent = `ปัดได้ ${tally.takes} · เป๊ะ ${tally.perfects} · หลบเป๊ะ ${tally.dodges} · สวน ${tally.counters} · โดน ${tally.hits}`;
+}
+function flash(head) {
+  const r = rows.find(r => r.i === head);
+  r.row.classList.remove('riled'); void r.row.offsetWidth; r.row.classList.add('riled');
+}
+function struck() { hurt = 1; shake(0.07); hitStop(0.04); guard.struck(); tally.hits++; lastHit = time; }
+
+// ---- slow time: a perfect parry, or a blink at the last moment out of the way of what was coming, slows the boss's world
+// (its moves, its turning, what it throws and its light, its rain) to WITCH.slow for WITCH.lasts s of her own time, eased
+// in and out over WITCH.ease s; she goes at her own pace. (Not made longer by another while it lasts.) A blink counts when
+// something was to reach her within WITCH.dodge s
+const WITCH = { lasts: 2.0, slow: 0.25, ease: 0.12, dodge: 0.3 };
+let witchT = 0, witchK = 0;
+const witchEl = document.getElementById('witch');
+function slowTime(text) { if (witchT <= 0) witchT = WITCH.lasts; say(text, 1.1, 'perfect'); hitStop(0.05); }
+// ---- the counter: her attack pressed within COUNTER.lasts s of a perfect parry. Further from the head than COUNTER.warp m,
+// she blinks at it first; the finisher at once (magic-combo.js' strike: the fourth of the four casts), at that head (for
+// COUNTER.pick s it is the only thing to turn to); its blows for COUNTER.armed s calm twice as much
+const COUNTER = { lasts: 1.2, warp: 4.5, armed: 1.8, pick: 0.5 };
+let counterT = 0, counterHead = -1, counterArmed = 0, counterLanded = false, counterBlinkAt = -9;
+function counter() {
+  if (!player || counterT <= 0 || counterHead < 0 || moves.isDown(counterHead)) return false;
+  counterT = 0; counterArmed = COUNTER.armed; counterLanded = false;
+  guard.stop();                                         // (out of the parry at once)
+  const p = player.position;
+  shots.podOf(counterHead, tmp);
+  const d = Math.hypot(tmp.x - p.x, tmp.z - p.z);
+  if (d > COUNTER.warp * size() && blink.ready) { player.blink(Math.atan2(tmp.x - p.x, tmp.z - p.z)); counterBlinkAt = time; }
+  player.spells.strike(3);
+  return true;
+}
+function attackDown() { if (!counter()) player.attack(); }
+// the parry or the blink pressed: whatever she is casting is cut short (a cast not yet gone from her hand is lost, the
+// lance she holds goes out), so they answer at once in the middle of her casting too. Pressed while they cannot be yet
+// (the parry just after one that took nothing, the blink cooling down), it is cut as soon as they can, while the press
+// is remembered (0.15 s, as parry.js and player-moves.js remember them)
+const CUT_FOR = 0.15;
+let parryCut = 0, blinkCut = 0;
+function cut() { if (player.spells.active) player.spells.stop(); }
+function parryDown() { guard.press(); parryCut = CUT_FOR; if (guard.ready) cut(); }
+function blinkDown() { blinkCut = CUT_FOR; if (blink.ready) cut(); player.blink(); }
+function cutting(dt) {                                 // (every frame, before she moves)
+  if (parryCut > 0) { parryCut = guard.active ? 0 : parryCut - dt; if (parryCut > 0 && guard.ready) cut(); }
+  if (blinkCut > 0) { blinkCut = player.blinking ? 0 : blinkCut - dt; if (blinkCut > 0 && blink.ready) cut(); }
+}
+// what is about to reach her where she stands (x, z): a shot (its eta, in her time), a drop of the poison rain
+const drops = new Map();                                // drop -> { x, z, r, left: s of the boss's time until it lands }
+let blinksSeen = 0;
+function threatened(x, z) {
+  for (const s of shots.list) if (!s.back && s.eta !== undefined && s.eta <= WITCH.dodge) return true;
+  for (const w of drops.values()) if (w.left / bossK <= WITCH.dodge + 0.1 && Math.hypot(w.x - x, w.z - z) < w.r + 0.5 * size()) return true;
+  return false;
 }
 
 // ---- the poison rain: its drops strike whoever is under them as they land (not in the air, not gone in a blink); its pools
@@ -310,16 +495,28 @@ const pools = [];
 moves.onEvent = e => {
   if (shots) shots.event(e);
   rain.event(e);
-  if (e.move === 'poison' && e.type === 'hit' && e.drop !== undefined && e.shape && player) {
-    const p = player.position, d = Math.hypot(p.x - e.shape.x, p.z - e.shape.z);
-    if (d < e.shape.radius + 0.25 * size() && !player.airborne && !player.blinking) { say('โดนฝนพิษ!', 0.9, 'bad'); hurt = 1; shake(0.06); guard.struck(); tally.hits++; showHeads(); }
-    if (e.pool) pools.push({ x: e.shape.x, z: e.shape.z, r: e.pool.radius, born: time, lasts: e.pool.lasts });
+  if (e.move === 'poison' && e.drop !== undefined && e.shape) {
+    if (e.type === 'warn') drops.set(e.drop, { x: e.shape.x, z: e.shape.z, r: e.shape.radius, left: e.lead || 1 });
+    if (e.type === 'hit') {
+      drops.delete(e.drop);
+      if (player) {
+        const p = player.position, d = Math.hypot(p.x - e.shape.x, p.z - e.shape.z);
+        if (d < e.shape.radius + 0.25 * size() && !player.airborne && !player.blinking) {
+          say('โดนฝนพิษ!', 0.9, 'bad'); struck();
+          for (let i = 0; i < 3; i++) rile(i, CALM.riled.poison);
+        }
+      }
+      if (e.pool) pools.push({ x: e.shape.x, z: e.shape.z, r: e.pool.radius, born: time, lasts: e.pool.lasts });
+    }
   }
-  if (e.type === 'end') wait = e.move === 'poison' ? 2.2 : 1.25;
+  if (e.type === 'cancel' && e.move === 'poison') drops.clear();
+  if (e.type === 'end') wait = e.move === 'poison' ? 2.0 : Math.max(0.55, 1.2 - 0.3 * [0, 1, 2].filter(i => moves.isDown(i)).length);
   if (e.type === 'end' && e.move === 'rise') wait = 1.5;
+  if (e.type === 'asleep') { asleepAt = time; drops.clear(); say('หลับหมดแล้ว 💤', 3.0, 'good'); }
 };
 
-// ---- the boss fighting by itself: its moves in turn, a breath between; a move whose head is down is passed over
+// ---- the boss fighting by itself: its moves in turn, a breath between (shorter the more of its heads are asleep); a move
+// whose head is asleep is passed over
 const SEQ = ['seed', 'pollen', 'venom', 'seed', 'venom', 'poison', 'pollen', 'seed', 'venom', 'pollen'];
 const OWNER = { seed: 1, pollen: 0, venom: 2 };
 let auto = Q.get('auto') !== '0', seqI = 0, wait = 2.0;
@@ -340,23 +537,45 @@ function hitStop(s) { stopT = Math.max(stopT, s); }
 function shake(a) { shakeA = Math.max(shakeA * Math.exp(-shakeAge * 14), a); shakeAge = 0; }
 
 // ---- the buttons: pressed, not clicked (as the game's)
-function press(id, act) {
+function press(id, act, up = null) {
   const b = document.getElementById(id);
-  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('down'); if (player) act(); });
-  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('down'));
+  b.addEventListener('pointerdown', e => { e.preventDefault(); if (b.setPointerCapture) b.setPointerCapture(e.pointerId); b.classList.add('down'); if (player) act(); });
+  for (const ev of ['pointerup', 'pointercancel']) b.addEventListener(ev, () => { b.classList.remove('down'); if (player && up) up(); });
 }
-press('parryBtn', () => guard.press());
+press('parryBtn', parryDown);
 press('jumpBtn', () => player.jump());
-press('blinkBtn', () => player.blink());
+press('blinkBtn', blinkDown);
+press('atkBtn', attackDown, () => player.release());
+// the spear rain (ฝนหอก), as the game has it: while the attack button is down its finger may slide up off it; past 52 px the
+// lance she holds is thrown into the sky. The badge over the button while she holds the lance; tapped, the same
+const FLICK = 52, atkEl = document.getElementById('atkBtn'), rainBtn = document.getElementById('rainBtn');
+{
+  const near = v => rainBtn.style.setProperty('--near', Math.max(0, Math.min(1, v)).toFixed(2));
+  let finger = null, from = 0, gone = false;
+  atkEl.addEventListener('pointerdown', e => { finger = e.pointerId; from = e.clientY; gone = false; near(0); });
+  atkEl.addEventListener('pointermove', e => {
+    if (e.pointerId !== finger || gone || !player) return;
+    const up = from - e.clientY;
+    near(up / FLICK);
+    if (up >= FLICK) { gone = true; player.spells.skyward(); }
+  });
+  for (const ev of ['pointerup', 'pointercancel']) atkEl.addEventListener(ev, e => { if (e.pointerId === finger) { finger = null; near(0); } });
+  rainBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (player) player.spells.skyward(); });
+}
+// keyboard: J the attack (the counter first), K or P the parry, R the spear rain; E or L the blink (her own keys blink her:
+// her cast is cut first). (K is the game's roll and B its barrier, neither on this page: caught before her keys see them)
 addEventListener('keydown', e => {
-  if (e.repeat || !player) return;
-  if (e.code === 'KeyK' || e.code === 'KeyP') guard.press();
-});
+  if (!player) return;
+  if (e.code === 'KeyK' || e.code === 'KeyP') { e.stopImmediatePropagation(); if (!e.repeat) parryDown(); }
+  else if (e.code === 'KeyB') e.stopImmediatePropagation();
+  else if ((e.code === 'KeyE' || e.code === 'KeyL') && !e.repeat) { blinkCut = CUT_FOR; if (blink.ready) cut(); }
+  else if (e.code === 'KeyJ' && !e.repeat && counter()) e.stopImmediatePropagation();
+  else if (e.code === 'KeyR' && !e.repeat) player.spells.skyward();
+}, true);
 
 function say(text, secs, kind = '') { if (!text) return; beatEl.textContent = text; beatEl.className = kind; beatEl.style.opacity = 1; beatT = secs; }
 const beatEl = document.getElementById('beat'), tapEl = document.getElementById('tap'), parryBtn = document.getElementById('parryBtn'), blinkBtn = document.getElementById('blinkBtn');
-let time = 0, lock = Q.get('lock') !== '0';
-const tmp = new THREE.Vector3();
+let time = 0, bossK = 1, lock = Q.get('lock') !== '0', shownTally = '';
 function step(dt) {
   if (!player) return;
   const real = Math.min(dt, 0.05);
@@ -366,60 +585,78 @@ function step(dt) {
   dt = real * k;
   time += dt;
   blink.pace = slow;
+  // slow time: the boss's world at bossK of hers
+  witchT = Math.max(0, witchT - dt);
+  witchK += ((witchT > 0 ? 1 : 0) - witchK) * Math.min(1, dt / WITCH.ease);
+  bossK = 1 - (1 - WITCH.slow) * witchK;
+  const bdt = dt * bossK;
+  counterT = Math.max(0, counterT - dt); counterArmed = Math.max(0, counterArmed - dt);
+  for (const w of drops.values()) w.left -= bdt;
   // how she goes (for the shots' lead)
   if (herWasSet && dt > 0) { tmp.subVectors(player.position, herWas).divideScalar(dt); tmp.y = 0; if (tmp.lengthSq() > 144) tmp.setLength(12); herVel.lerp(tmp, Math.min(1, dt * 8)); }
-  herWas.copy(player.position); herWasSet = true;
-  // the boss fights by itself; dead, it comes up again after a while
-  if (moves.state === 'dead') { if (deadT < 0) { deadT = time; say('บอสแพ้แล้ว! เดี๋ยวขึ้นมาใหม่', 2.2, 'good'); } else if (time - deadT > 4) again(); }
-  if (auto && moves.state === 'idle' && (wait -= dt) <= 0) { next(); wait = 9; }
+  const wasX = player.position.x, wasZ = player.position.z;
+  // the boss fights by itself; all asleep, it wakes again after a while
+  if (moves.state === 'asleep' && asleepAt >= 0 && time - asleepAt > 6) again();
+  if (auto && moves.state === 'idle' && (wait -= bdt) <= 0) { next(); wait = 9; }
+  placeTargets();
+  cutting(dt);
   player.update(dt);
+  // a blink begun this frame, out of the way of something about to reach where she stood: a perfect one (not the counter's)
+  if (blink.count !== blinksSeen) { blinksSeen = blink.count; if (time - counterBlinkAt > 0.3 && threatened(wasX, wasZ)) { tally.dodges++; slowTime('หลบเป๊ะ!'); } }
+  herWas.copy(player.position); herWasSet = true;
   N.update(dt);
-  turn.update(dt, player.position, true);
-  moves.update(dt, player.position);
-  shots.update(dt);
+  turn.update(bdt, player.position, true);
+  moves.update(bdt, player.position);
+  shots.update(dt, bossK);
+  sleepHeads();                                         // (calmed through by her casts or by what she threw back, this frame)
   const t = moves.state === 'poison' ? moves.time : -1;
-  howl.update(dt, camera, boss, t >= 0 && t < HOWL.length ? t : -1, player.position);
+  howl.update(bdt, camera, boss, t >= 0 && t < HOWL.length ? t : -1, player.position);
   // poisoned: green while she stands in a pool
   for (let i = pools.length - 1; i >= 0; i--) if (time - pools[i].born > pools[i].lasts) pools.splice(i, 1);
   let sick = 0;
   for (const q of pools) { const d = Math.hypot(player.position.x - q.x, player.position.z - q.z); sick = Math.max(sick, poolStrength(time - q.born, q.lasts) * (1 - THREE.MathUtils.smoothstep(d, q.r * 0.65, q.r * 0.95))); }
   rain.afflict(player.position, sick);
-  rain.update(dt, camera, boss, t);
+  rain.update(bdt, camera, boss, t);
   circles.update(dt, camera);
   grass.userData.setWalker(player.position, 0.55);
   blinkFx.update(dt, camera);
-  parryFx.update(dt, camera);
-  shotsFx.update(dt, camera);
-  // the camera kept on the boss (a slow drag of the look, as a hand would; the stick still walks her where it points)
-  if (lock && real > 0) {
+  shotsFx.update(bdt, camera);                          // (her spells' light, the combo's and the rain's, is drawn by player.update: spells.look)
+  // the camera kept on the boss (a slow drag of the look, as a hand would), but not while she holds the lance (its own)
+  if (lock && real > 0 && !player.spells.aiming) {
     const p = player.position, want = Math.atan2(p.x - BOSS_AT.x, p.z - BOSS_AT.z) + VIEW.side;
     let d = want - player.camYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
-    player.turnView(d * Math.min(1, real * 2.2));
+    const near = THREE.MathUtils.clamp((VIEW.far - Math.hypot(p.x - BOSS_AT.x, p.z - BOSS_AT.z)) / (VIEW.far - VIEW.near), 0, 1);
+    const e = Math.min(1, real * 2.2);
+    player.turnView(d * e, (VIEW.pitch + (VIEW.low - VIEW.pitch) * near - player.camPitch) * e);
   }
   if (hurt > 0) { hurt = Math.max(0, hurt - dt / 0.35); hero.tint.set(1, 0.32, 0.3, hurt * 0.7); }
   else if (sick > 0.05) hero.tint.set(0.42, 1.0, 0.18, Math.min(0.5, sick * 0.5) * (0.8 + 0.2 * Math.sin(time * 7)));
   else hero.tint.set(0, 0, 0, 0);
+  witchEl.style.opacity = witchK.toFixed(3);
   if (beatT > 0 && (beatT -= real) <= 0) beatEl.style.opacity = 0;
   parryBtn.style.setProperty('--ready', guard.ready ? 1 : 0.25);
   parryBtn.style.setProperty('--hot', guard.hot ? 1 : 0);
   blinkBtn.style.setProperty('--ready', blink.ready ? 1 : 0.2);
-  if (tally.takes + tally.hits !== shownTally) { shownTally = tally.takes + tally.hits; showHeads(); }
+  atkEl.style.setProperty('--counter', counterT > 0 ? (0.65 + 0.35 * Math.sin(time * 30)).toFixed(2) : 0);
+  rainBtn.hidden = !player.spells.skyReady;
+  const tallyNow = `${tally.takes}.${tally.perfects}.${tally.dodges}.${tally.counters}.${tally.hits}`;
+  if (tallyNow !== shownTally) { shownTally = tallyNow; showHeads(); }
   const s = sounds.stats;
   tapEl.hidden = s.ready || !!s.failed;
 }
-let shownTally = 0;
 function draw() {
   const amp = shakeA * Math.exp(-shakeAge * 14) + 0.06 * Math.max(howl.shake * 0.5, rain.shake * 0.7, shotsFx.shake * 0.5);
   if (amp > 0.002) { shakeOff.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * amp); camera.position.add(shakeOff); camera.updateMatrixWorld(); }
   renderer.clear();
   renderer.render(scene, camera);
-  if (night) renderer.render(dimScene, camera);
+  if (shade(witchK)) renderer.render(dimScene, camera);
   renderer.render(fxScene, camera);
   if (amp > 0.002) { camera.position.sub(shakeOff); camera.updateMatrixWorld(); }
 }
 function again() {
-  life.splice(0, 3, ...MOST); deadT = -1; tally.takes = tally.hits = tally.downs = 0;
-  shots.clear(); pools.length = 0;
+  calm.fill(0); asleepAt = -1; counterT = 0; counterArmed = 0; witchT = 0;
+  for (const k in tally) tally[k] = 0;
+  shots.clear(); pools.length = 0; drops.clear();
   moves.play('rise'); wait = 2.5; seqI = 0;
   showHeads();
 }
@@ -445,16 +682,18 @@ showLock();
 btn('again').onclick = () => { if (player) { player.teleport(0, 0, 0); player.setView(Math.PI + VIEW.side, VIEW.pitch, VIEW.dist); again(); } };
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.fov = FOV(); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 tapEl.hidden = false;
-setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 9000);      // (the hint goes once it has been read)
+setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 14000);      // (the hint goes once it has been read)
 
 // for a test (or the console): step the world by hand
 window.parryTrial = {
   ready: false, held: false,
   get player() { return player; }, get hero() { return hero; }, get guard() { return guard; }, get shots() { return shots; },
-  boss, moves, turn, camera, renderer, tally, life, PARRY, BOSS_SHOTS, BOSS_MOVES,
+  boss, moves, turn, camera, renderer, tally, calm, targets, live, drops, PARRY, BOSS_SHOTS, BOSS_MOVES, CALM, WITCH, COUNTER, TARGET, BOSS_AT, H,
+  get witch() { return witchK; }, get bossK() { return bossK; }, get counterT() { return counterT; }, get counterArmed() { return counterArmed; },
   run(seconds, { fps = 60, show = true, each = null } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) { if (each) each(); step(1 / fps); } if (show) draw(); },
   play: m => { wait = 99; return moves.play(m); }, auto(on) { auto = !!on; wait = 1; showAuto(); }, lock(on) { lock = !!on; showLock(); },
-  press: () => guard.press(), night(on) { setNight(!!on); showHour(); }, again, draw,
+  press: () => parryDown(), attack: () => attackDown(), release: () => player.release(), blink: yaw => { blinkCut = CUT_FOR; if (blink.ready) cut(); player.blink(yaw); }, sky: () => player.spells.skyward(),
+  night(on) { setNight(!!on); showHour(); }, again, draw,
   get time() { return time; },
 };
 

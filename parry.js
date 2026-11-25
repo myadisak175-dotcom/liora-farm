@@ -20,7 +20,9 @@
      guard.meet(p0, p1, r)              where something r metres round going from p0 to p1 this frame meets the circle
                                         while it is hot (or null): boss-shots.js asks it for every shot
      guard.take(point, shot)            it took that blow there (true): it flares, she is knocked back a hand's width
-                                        and drives her palm out after it; the thrower throws it back
+                                        and drives her palm out after it; the thrower throws it back. Taken within
+                                        PARRY.perfect s of the press (pressed at the last moment) it is perfect:
+                                        guard.onTake(point, shot, perfect), guard.stats.perfects
      guard.struck(from)                 a blow got through: she flinches back from it (on her feet; in the air, nothing
                                         more is done to her)
      guard.window (s), guard.reach(r)   how long it is hot from the press; how far before her chest a blow r round is
@@ -46,6 +48,7 @@ import * as THREE from 'three';
 
 export const PARRY = {
   window: 0.28,      // s it is hot from the press
+  perfect: 0.12,     // a blow taken within this of the press (pressed at the last moment) is a perfect parry
   buffer: 0.15,      // s a press is kept (as her jump's): she was not on her feet yet, or not free yet
   again: 0.44,       // s after a press that took nothing before another is taken
   free: 0.4,         // s into it the stick pushed walks her out of it (nothing taken)
@@ -64,8 +67,8 @@ const CLIPS = { guard: 'parry', hit: 'parry_hit', hurt: 'hurt' };
 
 export function createParry({ character: first, fx, heard = null, aim = null }) {
   let character = first;
-  let state = 'off', t = 0, pressT = 0, hotUntil = -1, clock = 0, hurtWanted = false, took = false, size = 1;
-  const stats = { presses: 0, takes: 0, whiffs: 0, hurts: 0 };
+  let state = 'off', t = 0, pressT = 0, hotUntil = -1, clock = 0, hurtWanted = false, took = false, size = 1, pressedAt = -9;
+  const stats = { presses: 0, takes: 0, perfects: 0, whiffs: 0, hurts: 0 };
   const chest = new THREE.Vector3(), centre = new THREE.Vector3(), dir = new THREE.Vector3(0, 0, 1), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
   let want = null;                      // the heading she turns to (radians), or null
   let palm = null, mid = null;          // her left hand's bones (the circle stands before her palm)
@@ -99,7 +102,7 @@ export function createParry({ character: first, fx, heard = null, aim = null }) 
   }
   function begin(me) {
     state = 'guard'; t = 0; pressT = 0; took = false;
-    hotUntil = clock + PARRY.window;
+    hotUntil = clock + PARRY.window; pressedAt = clock;
     stats.presses++;
     chest.set(me.pos.x, me.pos.y + 1.12 * size, me.pos.z);
     aimFrom(me);
@@ -189,8 +192,9 @@ export function createParry({ character: first, fx, heard = null, aim = null }) 
     tmp.copy(point).sub(chest); if (tmp.lengthSq() > 1e-6) dir.copy(tmp.normalize());
     fx.take(point, dir, size);
     if (heard) { heard.absorb(); heard.burst(); }
-    stats.takes++;
-    if (api.onTake) api.onTake(point, shot);
+    const perfect = clock - pressedAt <= PARRY.perfect;
+    stats.takes++; if (perfect) stats.perfects++;
+    if (api.onTake) api.onTake(point, shot, perfect);
     return true;
   }
   function struck() { if (!hot()) hurtWanted = true; }

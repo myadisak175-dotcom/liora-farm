@@ -15,6 +15,8 @@
 //   (spearRain: spear-rain.js' createSpearRain, and rainFx: spear-rain-fx.js' createSpearRainFx(),
 //   or neither: no spear rain, and nothing of it need be loaded; rainSounds: spear-rain-sounds.js', hum: charge-hum.js',
 //   or none: it is not heard. They are kept as loud as `sounds` is)
+//   (targets: () => [what she may hit: magic-combo.js' targets], or none: nothing to hit, as in the game for now; parry.html
+//   gives the plant boss's heads. spells.strike(n): one of the four casts at once, a page's counter)
 //   (sounds: her sounds, step-sounds.js, or none: the four casts heard, each timed to leave her hand with its sound's blow,
 //   and the lance: its circle as it opens, its blast as it is let go)
 //   spells.attack(), spells.release()   the attack button down, up: tapped, the four casts; held, the lance; on the run,
@@ -76,7 +78,7 @@ const AIM_CAM = { dist: 4.8, pitch: 0.38, side: 1.6, across: 0.5, far: 9, look: 
 // back, m), and comes down again with the spears; a long rain keeps it a little up for as long. in, out: how fast (1/s)
 const SKY_CAM = { look: 0.72, back: 1.5, under: 1.6, in: 3.4, out: 2.2 };
 
-export function createPlayerSpells({ character: first, comboFx, barrier = null, renderer = null, camera, cam, sounds = null, spearRain = null, rainFx = null, rainSounds = null, hum = null }) {
+export function createPlayerSpells({ character: first, comboFx, barrier = null, renderer = null, camera, cam, sounds = null, spearRain = null, rainFx = null, rainSounds = null, hum = null, targets = null }) {
   let character = first;
   const combo = createMagicCombo({ character, marks: MAGIC_COMBO, fx: comboFx });
   const none = [];
@@ -128,6 +130,7 @@ export function createPlayerSpells({ character: first, comboFx, barrier = null, 
     skyward() { if (sky && !casting()) sky.flick(); },
     release() { combo.release(); },
     roll() { if (!casting()) combo.dodge(); },
+    strike(n) { if (!casting()) combo.strike(n); },      // (a page's counter: one of the four casts at once, magic-combo.js)
     barrier() { if (character.actions[BARRIER_CLIP]) wantBarrier = PRESS; },
     stop() { combo.stop(); if (sky) sky.stop(); castT = -1; wantBarrier = 0; },      // (a rain already thrown up comes down all the same)
     setCharacter(next) {
@@ -138,7 +141,7 @@ export function createPlayerSpells({ character: first, comboFx, barrier = null, 
       hold = handOf();
     },
     step(dt, me, w) {
-      world = { ...w, targets: none };
+      world = { ...w, targets: targets ? targets() : none };
       wantBarrier = Math.max(0, wantBarrier - dt);
       if (casting()) {
         // casting the barrier: she stands where she is until the clip is over; as her hand is up, the dome stands up

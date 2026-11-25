@@ -13,7 +13,9 @@
        at once). None: nothing parries. her(): { feet (Vector3), size (1 at 1.75 m), vel (Vector3, m/s over the ground) }.
        heightAt(x, z): the ground. heard: barrier-reflect-sounds.js' (shot, thud) or none
      moves.onEvent = e => shots.event(e)        its 'charge' and 'shot' (the rest is ignored)
-     every frame: shots.update(dt)
+     every frame: shots.update(dt, slow)        slow: how fast the boss's world goes now (1; less while she has slowed it:
+                                                 parry.html's slow time). What comes at her goes at that pace; what
+                                                 she has thrown back is hers, and goes at her own
      shots.list                                  [{ kind, head, pos, way, speed, back, age, now, ... }] in flight
      shots.soonest()                             the shot that will reach her first, and in how many seconds: { shot, eta }
                                                  (or null): what the parry turns to; eta counts to where the parry takes it
@@ -100,11 +102,11 @@ export function createBossShots({ boss, moves, fx, guard = null, her, heightAt, 
     list.splice(i, 1);
   }
 
-  function update(dt) {
-    if (dt <= 0) { for (const s of list) fx.place(s); return; }
+  function update(dtHer, slow = 1) {
+    if (dtHer <= 0) { for (const s of list) fx.place(s); return; }
     const h = her();
     for (let i = list.length - 1; i >= 0; i--) {
-      const s = list[i], K = BOSS_SHOTS[s.kind];
+      const s = list[i], K = BOSS_SHOTS[s.kind], dt = s.back ? dtHer : dtHer * slow;
       s.age += dt; s.spin += dt * (s.kind === 'seed' ? 24 : 5);
       if (s.back) {
         // thrown back: it finds its head, whatever that head does
@@ -160,7 +162,7 @@ export function createBossShots({ boss, moves, fx, guard = null, her, heightAt, 
       }
       s.pos.copy(p1);
       // how soon it will reach her (where the parry would take it), for its glint and the parry's turn
-      s.eta = Math.max(0, (s.pos.distanceTo(c) - (guard && guard.reach ? guard.reach(s.radius) : 0.9)) / s.speed);
+      s.eta = Math.max(0, (s.pos.distanceTo(c) - (guard && guard.reach ? guard.reach(s.radius) : 0.9)) / (s.speed * slow));      // (in her time)
       s.now = guard && guard.window ? (s.eta <= guard.window ? 1 : 0) : 0;
       fx.place(s);
     }

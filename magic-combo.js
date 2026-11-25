@@ -10,6 +10,10 @@
      combo.attack()                  the attack button goes down (remembered for a moment: a little early still counts)
      combo.release()                 the attack button comes up (it lets a held cast go)
      combo.dodge()                   the roll button
+     combo.strike(n)                 one of the four casts (n: 0..3) begins now, cutting what she is in, aimed at her
+                                     target: a page's counter (parry.html: the finisher at the head she has just parried;
+                                     26 Nov 2026). Remembered as a press is (so one asked for in a blink begins as she is
+                                     there again)
      combo.airShot(me, world)        the attack button in the air (the page's own jump has her; true: the combo has her
                                      now, the page ends that flight): a cast in the air, or over a target the rain.
                                      The button held on becomes the drop (combo.plunge, which a page may also call)
@@ -165,6 +169,7 @@ export function createMagicCombo({ character, marks, fx }) {
   //         level, draw: the lance in her hand, done: what a leap has hit, phase: 'in' | 'hold' }
   let move = null;
   let wantHit = 0, wantRoll = 0, hits = 0, hitsT = 0, down = false, press = 0, mote = 0, airShots = 0, rained = false, fell = false;
+  let wantStrike = -1, strikeT = 0;                    // (a page's counter: which cast, remembered how long)
   const shots = [];
   const hand = new THREE.Vector3(), handWas = new THREE.Vector3(), handVel = new THREE.Vector3();
   const v = new THREE.Vector3(), aim = new THREE.Vector3(), want = new THREE.Vector3();
@@ -366,6 +371,7 @@ export function createMagicCombo({ character, marks, fx }) {
     attack() { wantHit = REMEMBER; down = true; press++; },
     release() { down = false; },
     dodge() { wantRoll = 0.25; },
+    strike(n = 3) { wantStrike = Math.max(0, Math.min(HITS.length - 1, n | 0)); strikeT = REMEMBER; },
     airShot(me, world) {
       if (!has(AIR.L) || !has(AIR.R)) return false;
       drop();
@@ -394,7 +400,7 @@ export function createMagicCombo({ character, marks, fx }) {
       wantHit = wantRoll = 0;
       return true;
     },
-    stop() { drop(); move = null; wantHit = wantRoll = 0; },
+    stop() { drop(); move = null; wantHit = wantRoll = 0; wantStrike = -1; },
     setCharacter(next) { combo.stop(); character = next; hands = handsOf(); handKnown = false; },
     step(dt, me, world) {
       wantHit = Math.max(0, wantHit - dt); wantRoll = Math.max(0, wantRoll - dt);
@@ -451,6 +457,14 @@ export function createMagicCombo({ character, marks, fx }) {
         if (move.target) turnTo(me, Math.atan2(move.target.pos.x - me.pos.x, move.target.pos.z - me.pos.z), 6, dt);
         if (me.pos.y <= g) { me.pos.y = g; begin(SLAM, me, world, 0.05); }
         wantRoll = 0;
+        return true;
+      }
+      // ---- a page's counter (strike): the cast it asks for, at once, whatever she is in (on the ground)
+      if (wantStrike >= 0 && (strikeT -= dt) <= 0) wantStrike = -1;
+      if (wantStrike >= 0 && world.grounded !== false) {
+        const n = wantStrike;
+        wantStrike = -1; wantHit = 0; wantRoll = 0;
+        begin(HITS[n], me, world, FADE.first);
         return true;
       }
       // ---- the roll: at any time but in a roll's own flight (and on the ground: in the air it waits, as her first cast does)

@@ -8,8 +8,13 @@
    the numbers plant-boss.js gives its heads, vines and body (boss.userData) and calls boss.userData.pose(). (How
    much a head can take before it is beaten is the game's to say; so is everything that flies: see the events.)
 
-     const moves = createBossMoves(boss, { snaps })   snaps: standing, its heads now and then dart at her and bite the
-                                                     air (true, as it starts); false: they only watch her
+     const moves = createBossMoves(boss, { snaps, sleep })   snaps: standing, its heads now and then dart at her and
+                                                     bite the air (true, as it starts); false: they only watch her.
+                                                     sleep (since 26 Nov 2026, for the fight where water calms it: the
+                                                     heads are not beaten, they are soothed): a head 'down' falls asleep
+                                                     (it sways, sinks to the ground, its eyes close, it breathes; it does
+                                                     not dry), and all three asleep the plant sleeps ('asleep': it does
+                                                     not wilt). 'rise' wakes it as ever (it goes under and comes up whole)
      every frame: moves.update(dt, player)     player: where she stands (her feet, world, a Vector3)
      moves.play('whip' | 'spit' | 'roots')     a head's blow (BOSS_OWNERS says whose). false if that head is down,
                                                or another blow is under way, or it is dying, dead or coming up
@@ -28,7 +33,7 @@
                                                striking, its blow stops. The last head down: the whole of it dies
      moves.play('die')                         the heads still up go down, one after another, and it dies
      moves.play('rise')                        (it goes under first, if it is up.) It comes up out of the ground, whole
-     moves.state        'idle' (it stands and watches her), a blow's name, 'die', 'dead' or 'rise'
+     moves.state        'idle' (it stands and watches her), a blow's name, 'die', 'dead', 'asleep' (with sleep) or 'rise'
      moves.isDown(head)
      moves.shut         true while the heads are shut away in the bud: they cannot be struck
      moves.open         true while they pant after the bramble: worn out, wide open (how much more a blow then takes is
@@ -46,7 +51,8 @@
          { type: 'shot', move, head, shot }                 it leaves the mouth now, straight at her (shot: which, from
                                                             0: venom has three). What it is and how it flies is the
                                                             game's (boss-shots.js): only its head and the moment are said
-         { type: 'down', head }                             a head is beaten
+         { type: 'down', head }                             a head is beaten (with sleep: it falls asleep)
+         { type: 'asleep' }                                 (with sleep) the last head has fallen asleep: the plant sleeps
          { type: 'shut' | 'bloom', move }                   the bud is shut over the heads; it bursts open (bramble, thicket)
          { type: 'sink', move: 'thicket' }                  the thicket's vines go back into the ground
          { type: 'spit', move: 'poison', head, shot }       a head spits a ball of poison up into the sky (shot: which, from 0)
@@ -231,7 +237,7 @@ const dirAt = a => new THREE.Vector3(Math.sin(a), 0, Math.cos(a));              
 // a soft heavy thing going to where it is sent (w: how quick, z: how damped)
 function spring(s, to, dt, w, z) { s.v += (w * w * (to - s.x) - 2 * z * w * s.v) * dt; s.x += s.v * dt; return s.x; }
 
-export function createBossMoves(boss, { snaps = true } = {}) {
+export function createBossMoves(boss, { snaps = true, sleep = false } = {}) {
   const { heads, vines, body, pose, size } = boss.userData;
   const sp = () => ({ x: 0, v: 0 });
   const S = heads.map(() => ({ yaw: sp(), nod: sp(), tilt: sp(), lx: sp(), ly: sp(), lz: sp(), bx: sp(), by: sp(), bz: sp(), sc: { x: 1, v: 0 } }));
@@ -313,7 +319,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     tell('down', { head: i });
     if (me.state === 'die') return;                                              // (it is dying: they all go)
     if (striking() === i) stopBlow();
-    if (downCount() === 3) { startDying(1.0); return; }
+    if (downCount() === 3) { if (sleep) { me.state = 'asleep'; me.time = 0; ctx.mourn = null; if (me.onEvent) me.onEvent({ type: 'asleep' }); } else startDying(1.0); return; }
     ctx.mourn = { head: i, t: 0 };
   }
   function startDying(wiltFrom) { me.state = 'die'; me.time = 0; ctx.fired = {}; ctx.wiltFrom = wiltFrom; ctx.dieLength = wiltFrom + 3.4; ctx.mourn = null; }
@@ -1046,6 +1052,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     for (const h of heads) {
       const i = h.index, td = ctx.down[i];
       if (td === null || td < 0) continue;
+      if (sleep) { asleep(h, td); continue; }
       const p = P[i], [fx, fz, far] = FALLS[i], k = far / Math.hypot(fx, fz);
       const cry = pulse(td, 0, 0.08, 0.3, 0.45), fall = Math.pow(sstep(0.35, 1.45, td), 1.6), shut = sstep(0.6, 1.6, td);
       p.at = fall < 0.25 ? chest : null; p.yaw = 0;
@@ -1059,6 +1066,28 @@ export function createBossMoves(boss, { snaps = true } = {}) {
       h.wither = 0.7 * sstep(1.0, 2.8, td);
       h.flash = 0.8 * (1 - sstep(0, 0.3, td));
     }
+  }
+  // ---- (sleep) a head soothed: it sways, dazed, its eyes going heavy; it sinks down to the ground as a beaten one falls,
+  // but softly, and lies there asleep: eyes shut, mouth a little open, the hood drooped, breathing slowly. It does not dry
+  function asleep(h, td) {
+    const i = h.index, p = P[i], [fx, fz, far] = FALLS[i], k = far / Math.hypot(fx, fz);
+    const daze = pulse(td, 0, 0.15, 0.55, 0.85), fall = Math.pow(sstep(0.45, 1.75, td), 1.4), shut = sstep(0.2, 1.3, td);
+    const breath = Math.sin(ctx.t * 1.7 + i * 2.1) * sstep(1.6, 2.2, td);
+    p.at = fall < 0.2 ? chest : null; p.yaw = 0;
+    p.lean.set(fx * k * fall + Math.sin(td * 7.5) * 0.18 * daze, lerp(0.15 * daze, -(h.centre.y - 0.9), fall) + 0.05 * breath, fz * k * fall + Math.cos(td * 6.1) * 0.12 * daze);
+    p.bow.set(0, 0.7 * Math.sin(Math.PI * fall), 0);
+    p.nod = lerp(0.05 * Math.sin(td * 6) * daze, 0.25, fall) + 0.03 * breath; p.nodMax = 0.35;
+    p.tilt = (i === L ? 0.55 : -0.55) * fall + 0.25 * Math.sin(td * 5) * daze;
+    p.wave = 0.9 * (1 - fall);
+    p.quick = fall > 0 ? 0.45 : 1.6;
+    p.face = { ...BOSS_HEAD_REST, lid: lerp(0.75, 0.0, shut), slant: lerp(-0.2, -0.45, shut), jaw: lerp(0.55, 0.32 + 0.04 * breath, shut), size: lerp(1.1, 1, shut), flare: lerp(-0.2, -0.9, shut), curve: lerp(-0.3, 0.35, shut), smile: 0, glow: 1 - sstep(0.8, 1.6, td) };
+    h.wither = 0;
+    h.flash = 0.6 * (1 - sstep(0, 0.3, td));
+  }
+  // ---- (sleep) all three asleep: the skirt sinks a little and rises with their breathing
+  function dozes(t) {
+    body.skirt = -0.25 * sstep(0, 1.5, t) + 0.04 * Math.sin(ctx.t * 1.7);
+    body.flash = 0; body.wither = 0; body.shake.set(0, 0, 0);
   }
   // a vine left out (its blow was stopped) draws back into the ground
   function vinesBack(dt) {
@@ -1119,6 +1148,7 @@ export function createBossMoves(boss, { snaps = true } = {}) {
     else if (st === 'ultimate') ultimate(tt);
     else if (st === 'skybeam') skybeam(tt);
     else if (st === 'die') { stance(false); wilt(tt); }
+    else if (st === 'asleep') { stance(false); dozes(tt); }
     else if (st === 'dead') { stance(false); wilt(ctx.dieLength); }
     else if (st === 'rise') rise(tt);
     grieve(); flinches(); beaten();
