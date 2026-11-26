@@ -8,7 +8,8 @@ Whoever works here, Claude, Codex or anyone else: read this first, the newest en
 
 - `main` is what GitHub Pages serves: the game the user plays, on a phone, at https://myadisak175-dotcom.github.io/liora-farm/ (each trial behind its own `?flag`).
 - `backup/main-2026-11-26-farm` is `main` exactly as it stood once the farm went in (`ba64ad6`), kept in case anything goes wrong after it (the user asked for it: "เก็บเมนแยกไว้ก่อน"). To put `main` back as it was there: `git push --force origin backup/main-2026-11-26-farm:main` (only when the user says so: it throws away whatever came after).
-- Work that is not in `main` yet lives on its own branch, merged when the user wants to play it (a pull request, or straight in when they ask for that). As of 26 Nov 2026: `guild-in-village` and `guild-hall` (25 Nov: the guild where the keep stood, its receptionist NPC; behind `main` now, so it needs `main` merged in first). The `agent/*` branches, the dated ones and the older `backup/*` ones, from Aug–Sep 2026, belong to an older version of the game.
+- **How work lands** (the user, 26 Nov 2026: "แยกดีกว่าคะ จะได้แก้ง่ายๆ", then "เข้า main ก็ได้"): each piece of work on a branch of its own, named for it (no slash), merged into `main` through a pull request as soon as it is done, so it is in the game's link at once. One pull request for each piece, so a piece that goes wrong is undone by itself (Revert on its pull request), the rest left standing. Note the branch in the log below.
+- Branches with work not in `main`, as of 26 Nov 2026: `guild-in-village` and `guild-hall` (25 Nov: the guild where the keep stood, its receptionist NPC; behind `main` now, so it needs `main` merged in first). The `agent/*` branches, the dated ones and the older `backup/*` ones, from Aug–Sep 2026, belong to an older version of the game.
 
 ## Working with the user
 
@@ -36,6 +37,8 @@ Whoever works here, Claude, Codex or anyone else: read this first, the newest en
 - Not done yet: crops; anything got for what is cleared; her own move when she casts (she does not turn or raise a hand: only the magic shows where it lands; to be made to the magic jump's standard); the farm in the plan and on the minimap; a try on a real phone.
 
 ## Log (newest first)
+
+- **26 Nov 2026 · Claude · `agents-workflow` → `main`** — How work lands, from now on (Branches, above): a branch and a pull request for each piece, merged at once.
 
 - **26 Nov 2026 · Claude · `main`** — This file (`AGENTS.md`, and `CLAUDE.md` pointing at it) and the backup branch `backup/main-2026-11-26-farm` (`main` at `ba64ad6`). From now on every agent adds its work here.
 - **26 Nov 2026 · Claude · `main` (`ba64ad6`)** — Her farm in the game, `?farm=1` (above). Also `player-input.js`: a quick touch on the stick's side is a tap now, for the whole game (the stick shows a moment; she does not move).
