@@ -92,7 +92,9 @@ const BLANK_WAYS = new THREE.DataTexture(new Uint8Array([255, 0, 0, 255]), 1, 1,
 BLANK_WAYS.needsUpdate = true;
 
 // cliffPaint: a seamless painted picture of rock (a THREE.Texture) to lay on the cliffs in place of the strata, covering
-// cliffTile metres along a cliff and up it. Without it nothing changes.
+// cliffTile metres along a cliff and up it. Without it nothing changes. With cliffPaint.userData.steps the rock is lit as the
+// rocks are (rocks.js, propRockMaterial): a lowish painted sun, the light in a few soft steps by how a face looks to it, the
+// shade a touch cooler (tools/make-cliff-paint.py crisp, ?cliff=crisp).
 // sandPaint: a seamless painted picture of sand (tools/make-path-paint.py sand) to lay on the banks in place of the flat
 // patches of sand, at the soft ways' own size, so the beach and the ways read as one ground. ground: the ground map the
 // grass grows by ({ texture, rect }: stylized-grassfield.js), so no sand shows under a thick meadow: it goes through dry
@@ -123,6 +125,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
   const C = TERRAIN_COLORS;
   const defines = ways ? { WAY_LAND: 1, ...ways.defines } : {};
   if (cliffPaint) defines.CLIFF_PAINT = 1;
+  if (cliffPaint && cliffPaint.userData && cliffPaint.userData.steps) defines.CLIFF_STEPS = 1;
   if (sandPaint) defines.SAND_PAINT = 1;
   if (sandPaint && ground) defines.SAND_GROUND = 1;
   if (grassLook && ground) defines.GRASS_LOOK = 1;
@@ -239,8 +242,21 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
         float dz = 0.0;                                                     // how dead the land is here (only the grass's look knows)
         if (n.y + (j - 0.37) * 0.3 < 0.7) {
           #ifdef CLIFF_PAINT
+            #ifdef CLIFF_STEPS
+            {
+              // the painted rock lit as the rocks are: by how a face looks to a lowish painted sun, in a few soft steps (gentler
+              // than a rock's: a cliff is a wall of it), the brush wobbling a little; the shade a touch cooler, the sky in it
+              float st = dot(n, normalize(vec3(-0.62, 0.62, 0.48))) * 0.5 + 0.5 + (noise2(vWP.xz * 1.4 + vWP.y * 0.9) - 0.5) * 0.03;
+              float k = mix(0.8, 0.9, smoothstep(0.3, 0.38, st));
+              k = mix(k, 0.98, smoothstep(0.5, 0.6, st));
+              k = mix(k, 1.05, smoothstep(0.7, 0.78, st));
+              col = paint * k * (1.0 + 0.06 * smoothstep(0.3, 0.7, n.y));
+              col = mix(col, col * vec3(0.92, 0.96, 1.1), (1.0 - smoothstep(0.4, 0.62, st)) * 0.6);
+            }
+            #else
             // the painted rock: lit a little by the sun, and lighter where a face leans back to the sky (a cliff's shoulder, a ledge's top)
             col = paint * mix(0.88, 1.04, smoothstep(0.3, 0.75, dot(n, normalize(vec3(-0.4, 0.9, 0.5))) * 0.5 + 0.5)) * (1.0 + 0.1 * smoothstep(0.3, 0.7, n.y));
+            #endif
           #else
             float v = uRockOn > 0.5 ? strataTone(vWP, n, vRock.z) + vRock.y : strataTone(vWP, n);
             col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
