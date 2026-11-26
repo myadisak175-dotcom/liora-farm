@@ -9,7 +9,9 @@
   soil.html  —  the farm's tilled ground, by itself (farm-soil.js). One job: see how the beds look in every state, dig and
   water them by hand, before any of it goes into the game. Nothing here goes into the game.
     squares of a metre, dug one at a time; beds of squares side by side are one bed, with no grid to be seen
-    the furrows painted on the ground; dry, wet (drying in patches), magic, cursed (with the curse's thorns on it)
+    the furrows painted on the ground and standing up out of it (ความนูนของร่อง: how high); dry, wet (drying in patches),
+    magic, cursed (with the curse's thorns on it)
+    ?ridge=0.14   the ridges that high (metres) from the start
   Tap a square to use the tool chosen. One finger turns the view, two move it and come nearer.
     ?novivi   without Vivi beside the beds
 -->
@@ -35,7 +37,7 @@
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1",
   "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1",
   "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1vault1",
-  "./farm-soil.js": "./farm-soil.js?v=1"
+  "./farm-soil.js": "./farm-soil.js?v=2"
 } }
 </script>
 </head>
@@ -44,6 +46,7 @@
 <div id="ui">
   <div id="say"></div>
   <div class="bar" id="tools"></div>
+  <div class="bar"><label style="display:flex;align-items:center;gap:8px;background:#4a3a2cd9;border:1px solid #ffffffaa;border-radius:999px;padding:6px 14px;color:#fff;font:700 13px system-ui">ความนูนของร่อง <input id="ridge" type="range" min="0" max="0.22" step="0.01" value="0.1" style="width:min(40vw,180px);accent-color:#b07a3c"> <b id="ridgeVal">10 ซม.</b></label></div>
   <div class="bar">
     <button id="fast">⏩ ให้ดินแห้งเร็ว</button>
     <button id="reset">🔄 แปลงตัวอย่างใหม่</button>
@@ -186,6 +189,10 @@ document.getElementById('fast').onclick = e => {
   say(fast ? 'ดินเปียกแห้งใน 12 วินาที' : 'ดินเปียกแห้งใน 2 นาที (ในเกมจะเป็นหนึ่งวัน)');
 };
 document.getElementById('reset').onclick = () => { sample(); say('วางแปลงตัวอย่างใหม่แล้ว'); };
+const ridgeIn = document.getElementById('ridge');
+const setRidge = h => { soil.ridge = h; document.getElementById('ridgeVal').textContent = Math.round(h * 100) + ' ซม.'; };
+ridgeIn.addEventListener('input', () => setRidge(+ridgeIn.value));
+setRidge(+(Q.get('ridge') || ridgeIn.value)); ridgeIn.value = soil.ridge;      // (?ridge=0.14: that high from the start)
 
 // where a tap meets the ground, and the square there marked for a moment
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();

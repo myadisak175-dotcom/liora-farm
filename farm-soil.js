@@ -7,10 +7,12 @@
 //     round, the boxes are joined with a soft minimum (so an inside corner fills in), and the edge wanders a little, as a
 //     bed dug by hand does. A square comes up from its middle as it is dug. Round a bed the meadow's blades come up short
 //     and thin (the ground map is told where the beds are: the grass stands back from them)
-//   - FURROWS: painted, not modelled. Two ridges to a square, along the farm's x, bending a little: in four flat tones laid
-//     by the light (the trough dark, the side away from the sun in shade, the side toward it lit, the top between), their
-//     edges broken with the ways' own brush (assets/ground/path-paint.webp), clods here and there. They end softly at a
-//     bed's edge. Far off they are one tone, so nothing shimmers
+//   - FURROWS: two ridges to a square, along the farm's x, bending a little, in four flat tones laid by the light (the
+//     trough dark, the side away from the sun in shade, the side toward it lit, the top between), their edges broken with
+//     the ways' own brush (assets/ground/path-paint.webp), clods here and there. They stand up for real (26 Nov 2026:
+//     "ทำให้มันดูนูนๆ ขึ้นมา"): the sheet is lifted into ridges as high as ridge says (a ridge hides the trough behind it
+//     from low down), and a bed stands a little over the meadow with a sloping rim. They end softly at a bed's edge. Far
+//     off the tones are one, so nothing shimmers (the ridges themselves stay)
 //   - WET: darker and richer, drying in patches (not square by square); water glints in the troughs. Watered, it spreads
 //     from the middle of the square; rained on, out from where the rain falls
 //   - MAGIC: deeper, cooler soil with specks in her water's aqua twinkling in it (painted, no light of their own)
@@ -27,6 +29,7 @@
 //   soil.enrich(i, j)  soil.curse(i, j)  soil.lift(i, j)    magic in it / the curse on it / the curse off it
 //   soil.update(dt)                            each frame: drying, the squares coming and going; the picture sent when changed
 //   soil.setSun(dir)                           which side of a ridge is lit
+//   soil.ridge = metres                        how high a ridge stands over its trough (0: flat, painted only)
 //   soil.dryTime                               seconds a wet square takes to dry (a day, in the game: 120 here to see it)
 
 import * as THREE from 'three';
@@ -71,6 +74,9 @@ vec2 bedAt(vec2 lp) {
   if (here >= 0.5 && sd <= 0.0) sd = min(sd, -inner);
   return vec2(sd, here);
 }
+// the furrows' line across a point (in ridges: a whole number at the bottom of each trough), bending a little as dug by hand
+float furrowAt(vec2 xz, vec2 lp) { return lp.y * 2.0 + (noise2(xz * 0.55 + 11.0) - 0.5) * 0.35 + (noise2(xz * 2.2) - 0.5) * 0.06; }
+float bedEdgeAt(vec2 xz, vec2 lp) { return bedAt(lp).x + (noise2(xz * 2.3) - 0.5) * 0.07 + (noise2(xz * 7.0 + 3.0) - 0.5) * 0.025; }
 `;
 
 export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1, heightAt = () => 0, map = null, paint = null, crack = null, colors = SOIL_COLORS } = {}) {
@@ -86,11 +92,12 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
   const api = { dryTime: 120 };
   const id = (i, j) => (i < 0 || j < 0 || i >= cols || j >= rows ? -1 : j * cols + i);
 
-  // ---- the picture on the land: a sheet over the farm, a hair above the ground, a point every quarter metre so it lies on it
-  const W = cols * tile, D = rows * tile, M = 0.5, STEP = 0.25;
-  const nx = Math.ceil((W + 2 * M) / STEP) + 1, nz = Math.ceil((D + 2 * M) / STEP) + 1, pos = new Float32Array(nx * nz * 3), idx = [];
+  // ---- the picture on the land: a sheet over the farm, a hair above the ground: a point every quarter metre along the rows
+  // and every sixteenth across them, so it lies on the land and the ridges can stand up out of it (the vertex shader lifts it)
+  const W = cols * tile, D = rows * tile, M = 0.5, SX = 0.25, SZ = 0.0625;
+  const nx = Math.ceil((W + 2 * M) / SX) + 1, nz = Math.ceil((D + 2 * M) / SZ) + 1, pos = new Float32Array(nx * nz * 3), idx = [];
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const x = x0 - M + i * STEP, z = z0 - M + j * STEP, o = (j * nx + i) * 3;
+    const x = x0 - M + i * SX, z = z0 - M + j * SZ, o = (j * nx + i) * 3;
     pos[o] = x; pos[o + 1] = heightAt(x, z) + 0.02; pos[o + 2] = z;
   }
   for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) { const a = j * nx + i, b = a + nx; idx.push(a, b, a + 1, b, b + 1, a + 1); }
@@ -107,14 +114,25 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
       uTrough: { value: C.trough }, uShade: { value: C.shade }, uBase: { value: C.base }, uLit: { value: C.lit }, uClodL: { value: C.clodLight }, uClodD: { value: C.clodDark },
       uWet: { value: C.wet }, uGlint: { value: C.glint }, uMagicTint: { value: C.magicTint }, uSpeck: { value: C.speck }, uSpeckCore: { value: C.speckCore },
       uStain: { value: C.stain }, uCrack: { value: C.crack }, uCrust: { value: C.crust },
+      uRidgeH: { value: 0.1 }, uBedRaise: { value: 0.035 },
       uTime: shared.uTime, uHaze: shared.uHaze, uHazeNear: shared.uHazeNear, uHazeFar: shared.uHazeFar, uHazeMax: shared.uHazeMax,
     },
     vertexShader: /* glsl */`
-      uniform float uHazeNear, uHazeFar, uHazeMax;
+      ${NOISE}
+      ${GLSL}
+      uniform float uHazeNear, uHazeFar, uHazeMax, uRidgeH, uBedRaise;
       varying vec3 vWP;
       varying float vHaze;
       void main() {
-        vec4 wp = modelMatrix * vec4(position, 1.0); vWP = wp.xyz;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        // the bed stands a little over the meadow, with a sloping rim, and its ridges stand up out of it (as dug: a cursed
+        // square's crust lies flat)
+        vec2 lp = (wp.xz - uSoilRect.xy) * uSoilRect.w;
+        float sd = bedEdgeAt(wp.xz, lp);
+        vec4 s = texture2D(uSoil, lp / uSoilSize);
+        float f = fract(furrowAt(wp.xz, lp)), ridge = 0.5 - 0.5 * cos(f * 6.2832);
+        wp.y += smoothstep(0.03, -0.16, sd) * uBedRaise * max(s.r, s.a) + ridge * uRidgeH * smoothstep(0.03, 0.22, -sd) * clamp(s.r, 0.0, 1.0) * (1.0 - s.a);
+        vWP = wp.xyz;
         vec4 mv = viewMatrix * wp;
         vHaze = uHazeMax * smoothstep(uHazeNear, uHazeFar, length(mv.xyz));
         gl_Position = projectionMatrix * mv;
@@ -128,9 +146,7 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
       void main() {
         vec2 xz = vWP.xz, lp = (xz - uSoilRect.xy) * uSoilRect.w;
         float foot = length(fwidth(xz));                                     // metres a pixel covers
-        vec2 bed = bedAt(lp);
-        // the edge wanders, as a bed dug by hand
-        float sd = bed.x + (noise2(xz * 2.3) - 0.5) * 0.07 + (noise2(xz * 7.0 + 3.0) - 0.5) * 0.025;
+        float sd = bedEdgeAt(xz, lp);                                         // (the edge wanders, as a bed dug by hand)
         if (sd > 0.08) discard;
         vec4 s = texture2D(uSoil, lp / uSoilSize);                         // the squares' states, eased from one to the next
         float n1 = noise2(xz * 1.3), n2 = noise2(xz * 4.1 + 5.0), brush = 1.0;
@@ -139,7 +155,7 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
           brush = dot(pp, vec3(0.3, 0.6, 0.1)) / 0.75;                       // the brush's strokes, as light and dark (the picture's mean is 0.75)
         }
         // FURROWS: two ridges to a square, along x, bending a little; flat tones laid by the light
-        float v = lp.y * 2.0 + (noise2(xz * 0.55 + 11.0) - 0.5) * 0.35 + (noise2(xz * 2.2) - 0.5) * 0.06;
+        float v = furrowAt(xz, lp);
         float f = fract(v), ridge = 0.5 - 0.5 * cos(f * 6.2832), side = -sin(f * 6.2832) * uSoilSun.y;      // (side > 0: this side of the ridge faces the sun)
         float rows_ = smoothstep(0.05, 0.2, -sd) * (1.0 - smoothstep(0.05, 0.16, foot));      // furrows end softly at the edge, and are gone far off
         float tone = mix(0.5, ridge * 0.62 + side * 0.3 + 0.12, rows_) + (brush - 1.0) * 0.5 + (n2 - 0.5) * 0.1;
@@ -191,7 +207,7 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
         col = mix(col, uHaze, vHaze);
         gl_FragColor = vec4(col, 1.0 - smoothstep(-0.03, 0.08, sd));
       }`,
-    transparent: true, depthWrite: false,
+    transparent: true, depthWrite: true,                                   // (writes its depth: a ridge hides the trough behind it, whatever order they are drawn in)
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const mesh = new THREE.Mesh(geo, mat);
@@ -248,6 +264,7 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
   api.curse = (i, j) => { const k = id(i, j); if (k >= 0) { want.cursed[k] = 1; want.magic[k] = 0; mark(k); } };
   api.lift = (i, j) => { const k = id(i, j); if (k >= 0) mark(want.cursed[k] = 0); };
   api.setSun = dir => { const l = Math.hypot(dir.x, dir.z); if (l > 1e-3) sun.set(dir.x / l, dir.z / l); };
+  Object.defineProperty(api, 'ridge', { get: () => mat.uniforms.uRidgeH.value, set: h => { mat.uniforms.uRidgeH.value = Math.max(0, h); } });
 
   // ---- each frame: the squares come and go, the water arrives and dries; the picture is sent when anything changed
   api.update = dt => {
