@@ -36,9 +36,10 @@
 // ?farm=1 (a trial): her farm, south of the road in, a step from where she starts: its ground (farm-soil.js) and what lies
 // on it before it is dug (farm-debris.js), as level.farm; what she does there is farm-tools.js's (index.html).
 
-// ?forest=1 (a trial): a wood's floor under trees that stand close together, the ways' own earth with dry leaves and moss in
-// patches, the grass there thinner and shorter (forest-floor.js: where; stylized-terrain.js, floor: its paint); ?forest=damp:
-// the first set, dark damp earth, kept for a zone of ancient ruins.
+// A wood's floor under trees that stand close together, and wherever it was painted by hand (the path painter's 🍂): the
+// ways' own earth with dry leaves and moss in patches, the grass there thinner and shorter, kept off cliffs and steep slopes
+// (forest-floor.js: where; stylized-terrain.js, floor: its paint). ?forest=damp: the first set, dark damp earth, kept for a
+// zone of ancient ruins; ?forest=0: none.
 //
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
@@ -64,7 +65,7 @@ import { fieldGeometry } from './village-fields.js';
 import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 import { foliageKey, applyFoliage } from './foliage-edits.js';
-import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver, isWay, createPaveField } from './path-edits.js';
+import { pathKey, loadPathOps, settlePathOps, foldPathOps, foldFloorOps, opBox, grassOver, floorOver, isWay, createPaveField } from './path-edits.js';
 import { createMapRim } from './map-rim.js';
 import { joinWestFringe } from './west-fringe.js';
 import { droughtWater, droughtPools, cursedLand } from './drought.js';
@@ -78,7 +79,7 @@ export const HILL_VILLAGE_MAP = {
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
-  forest: {                                       // a wood's floor, two sets (tools/make-forest-paint.py): in the ways' own earth (?forest=1), and dark
+  forest: {                                       // a wood's floor, two sets (tools/make-forest-paint.py): in the ways' own earth (the game's), and dark
     path: './assets/ground/forest-path-paint.webp', // and damp, a jungle's, kept for the ancient ruins (?forest=damp)
     damp: './assets/ground/forest-damp-paint.webp',
   },
@@ -201,7 +202,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return y;
   };
   const toolWays = [...P.paths.map(p => ({ points: p.points.slice(), half: p.half })), ...P.yards.map(([x, z, r]) => ({ points: [[x - 0.3, z], [x + 0.3, z]], half: r }))];      // (a yard: a short way as wide as the yard)
-  const pathOps = [...(P.pathOps || []), ...settlePathOps(pathKey('hillvillage'), P.pathOps, 'hillvillage')].filter(o => o.k === 'grass' || o.pts.length >= 2);      // (those the map has are let go from this browser)
+  const pathOps = [...(P.pathOps || []), ...settlePathOps(pathKey('hillvillage'), P.pathOps, 'hillvillage')].filter(o => !isWay(o) || o.pts.length >= 2);      // (those the map has are let go from this browser)
   // a way that ends out in the margin (the road in) does not stop there: it runs on to the land's edge, and from there the
   // rim takes it into its wood (map-rim.js)
   const waysOut = [];
@@ -600,17 +601,17 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
   const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
-  // THE FOREST FLOOR (a trial, ?forest=1; 26 Nov 2026): under trees that stand close together the ground is a wood's, earth,
-  // dry leaves, moss in patches (forest-floor.js says where; the land paints it, stylized-terrain.js floor; its picture made
-  // by tools/make-forest-paint.py: in the ways' own earth; ?forest=damp: the first set, dark and damp, kept for the ruins),
-  // and the grass there thinner and shorter (laid into the ground map once the land is built, below, so the land's
-  // triangles are as they were). A tree standing on its own keeps its meadow
+  // THE FOREST FLOOR (26 Nov 2026): under trees that stand close together the ground is a wood's, earth, dry leaves, moss in
+  // patches, and wherever the path painter's 🍂 laid it (forest-floor.js says where, off cliffs and steep slopes; the land
+  // paints it, stylized-terrain.js floor; its picture made by tools/make-forest-paint.py: in the ways' own earth; ?forest=damp:
+  // the first set, dark and damp, kept for the ruins; ?forest=0: none), and the grass there thinner and shorter (laid into the
+  // ground map once the land is built, below, so the land's triangles are as they were). A tree standing on its own keeps its meadow
   let floor = null, forestPaint = null;
   const forestSet = new URLSearchParams(location.search).get('forest');
-  if (forestSet !== null) try {
+  if (forestSet !== '0') try {
     const { createForestFloor } = await import('./forest-floor.js');
     const crownOf = p => Math.max(...(CROWN[p.type] || [[0, 2.5]]).map(c => c[1])) * p.scale;      // (its widest tier)
-    floor = createForestFloor({ trees: [...plants.filter(p => p.kind === 'tree'), ...bigTrees.map(b => b.plant)].map(p => [p.x, p.z, crownOf(p)]), rect: landRect });
+    floor = createForestFloor({ trees: [...plants.filter(p => p.kind === 'tree'), ...bigTrees.map(b => b.plant)].map(p => [p.x, p.z, crownOf(p)]), rect: landRect, heightAt: H, painted: foldFloorOps(pathOps) });
     forestPaint = await new THREE.TextureLoader().loadAsync(url(M.forest[forestSet === 'damp' ? 'damp' : 'path']));
     forestPaint.wrapS = forestPaint.wrapT = THREE.RepeatWrapping; forestPaint.anisotropy = 4; forestPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
     console.info('[hill-village] the forest floor:', floor.groves, 'trees stand in groves');
@@ -939,8 +940,11 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
 
   // ------------------------------------------------------------------ painting ways by hand (path-brush.js asks; path-edits.js keeps the strokes)
   // A stroke shows at once: a way is one more of the ways the land lays (ground-paths.js) and the grass under it is laid low in the
-  // ground picture; grass is let back up over whatever way is there. Only the grass's amount is changed now (the ground picture's
-  // colour, the paths' little dip in the land and the map are made again when the scene loads with the strokes saved)
+  // ground picture; grass is let back up over whatever way is there (and a wood's floor painted there goes); a wood's floor (🍂)
+  // goes into the floor's picture (forest-floor.js) and the grass there is let down to what the floor leaves. Only the grass's
+  // amount is changed now (the ground picture's colour, the paths' little dip in the land and the map are made again when the
+  // scene loads with the strokes saved). Grass and a wood's floor are laid in the ground picture as caps (the grass up to so
+  // much, or down to so much), so they can be laid again over themselves, as they are when the sun's shadows are drawn anew
   const { data: mapData, size: MS, radius: MR, center: [MCX, MCZ] } = map;
   const texels = ([x0, x1, z0, z1]) => {
     const s = MS / (2 * MR);
@@ -952,7 +956,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   const stampOp = o => {
     if (isWay(o)) { const pp = wayPaint(o); eachTexel(opBox(o), (a, x, z) => { const q = pp(x, z); if (q) mapData[a] = Math.round(mapData[a] * (1 - q[0]) * (1 - 0.5 * q[2])); }); }
-    else eachTexel(opBox(o), (a, x, z) => { const f = grassOver(o, x, z); if (f > 0) mapData[a] = Math.max(mapData[a], Math.round(255 * f)); });
+    else if (o.k === 'forest') { if (floor) eachTexel(opBox(o), (a, x, z) => { const g = floor.grass(x, z); if (g < 1) mapData[a] = Math.min(mapData[a], Math.round(255 * g)); }); }
+    else eachTexel(opBox(o), (a, x, z) => { const f = grassOver(o, x, z); if (f > 0) mapData[a] = Math.max(mapData[a], Math.round(255 * f * (floor ? floor.grass(x, z) : 1))); });      // (in a wood: as thin as its grass)
   };
   const liveOps = [];                                                      // this visit's strokes (laid again after the sun's shadows are drawn anew)
   const pathEdit = {
@@ -961,15 +966,19 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     apply(op) {                                                            // one stroke, drawn now; gives back its undoing
       const box = opBox(op), [i0, i1, j0, j1] = texels(box), w = i1 - i0 + 1, before = new Uint8Array(w * (j1 - j0 + 1));
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) before[(j - j0) * w + (i - i0)] = mapData[(j * MS + i) * 4 + 3];
-      paved.add(op);                                                       // (first: a way's picture is worked out again with it, stones and all)
+      const forest = op.k === 'forest';
+      if (!forest) paved.add(op);                                          // (first: a way's picture is worked out again with it, stones and all)
       const line = isWay(op) ? paths.add({ points: op.pts, half: op.half }) : null;
-      if (!line) paths.repave(paved.box(op));                              // (grass: no way changes, only the stones under it go)
+      if (!line && !forest) paths.repave(paved.box(op));                  // (grass: no way changes, only the stones under it go)
+      const unfloor = !floor || isWay(op) ? null                           // (the wood's floor: laid, or grass takes it away; first, so the grass is let to what it leaves)
+        : floor.paint(box, forest ? (x, z, v) => Math.max(v, floorOver(op, x, z)) : (x, z, v) => v * (1 - grassOver(op, x, z)));
       stampOp(op); liveOps.push(op);
       map.texture.needsUpdate = true;
       return () => {
         for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) mapData[(j * MS + i) * 4 + 3] = before[(j - j0) * w + (i - i0)];
-        paved.remove(op);
-        if (line) paths.remove(line); else paths.repave(paved.box(op));
+        if (unfloor) unfloor();
+        if (!forest) paved.remove(op);
+        if (line) paths.remove(line); else if (!forest) paths.repave(paved.box(op));
         const k = liveOps.lastIndexOf(op); if (k >= 0) liveOps.splice(k, 1);
         map.texture.needsUpdate = true;
       };
@@ -1054,7 +1063,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     return sand > 0.5 ? 'sand' : earth > 0.5 ? (slope(x, z) > 0.75 ? 'stone' : 'earth') : 'grass';
   };
   return {
-    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, surfaceAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
+    group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, surfaceAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit, forestFloor: floor,
     homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1) || inFarm(x, z, 1),
     farm,                                                                  // her farm (?farm=1): { soil, debris, setSun, rect }, or null

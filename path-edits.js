@@ -1,13 +1,15 @@
 // path-edits.js  —  the ways painted by hand on a map (path-brush.js), as data: kept in this browser until they go into the map.
 //
 // One job: the brush's strokes and what they do to the ground. A stroke is a way (trodden earth, in the look the map's own
-// ways have), paving (flat stones laid in that earth: a way whose middle is paved) or grass (the ground grows over again: a way
-// taken away, the map's own or one painted, and its stones with it). Strokes are kept in the order they were painted, because
-// the last one painted on a spot is what it is: a way painted over grass shows, grass painted over a way hides it, a way
-// painted over paving takes the stones up again (trodden earth), paving painted over a way lays them.
+// ways have), paving (flat stones laid in that earth: a way whose middle is paved), grass (the ground grows over again: a way
+// taken away, the map's own or one painted, and its stones with it, and a wood's floor painted by hand) or a wood's floor
+// (🍂: earth, dry leaves and moss, the grass thinner there: forest-floor.js; the ways go over it). Strokes are kept in the
+// order they were painted, because the last one painted on a spot is what it is: a way painted over grass shows, grass
+// painted over a way hides it, a way painted over paving takes the stones up again (trodden earth), paving painted over a way
+// lays them, grass painted over a wood's floor brings the meadow back.
 //
 //   const key = pathKey('hillvillage');
-//   const ops = loadPathOps(key);                       [{ k: 'way' | 'pave', half, pts: [[x, z], ...] } | { k: 'grass', r, pts }]
+//   const ops = loadPathOps(key);                       [{ k: 'way' | 'pave', half, pts: [[x, z], ...] } | { k: 'grass' | 'forest', r, pts }]
 //   const ops = settlePathOps(key, plan.pathOps, map)   the same, less those the map's tool has taken in (they are let go here)
 //   savePathOps(key, ops)                               (an empty list: nothing kept)
 //   const paint = foldPathOps(basePaint, ops, wayPaint) (x, z) -> [earth, sand, mow] or null: the map's own ways' paint, then each
@@ -18,8 +20,11 @@
 //                                                       pave.add(op) / pave.remove(op) as strokes come and go;
 //                                                       pave.gaps([[x, z, r], ...]) -> boxes that changed: where a plant stands
 //                                                       on the paving, its stones are gone (it grows out of the gap)
+//   const floor = foldFloorOps(ops)                     (x, z) -> 0..1: how much of a spot is a wood's floor painted by hand, by
+//                                                       the strokes in turn (null: none painted)
 //   opBox(op) -> [x0, x1, z0, z1]                       where a stroke can reach
 //   grassOver(op, x, z) -> 0..1                         how much a grass stroke covers that spot
+//   floorOver(op, x, z) -> 0..1                         how much a wood's floor stroke covers that spot
 //   isWay(op)                                           a stroke of earth (a way, or paving: a way with stones in it)
 
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -47,9 +52,10 @@ export function savePathOps(key, ops, map = '') {
   if (ops.length) localStorage.setItem(key, JSON.stringify({ map, v: 1, ops: ops.map(tidy) })); else localStorage.removeItem(key);
 }
 export const isWay = o => o.k === 'way' || o.k === 'pave';
-export const okOp = o => o && (isWay(o) || o.k === 'grass') && Array.isArray(o.pts) && o.pts.length >= 1 && o.pts.every(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
+const isRound = o => o.k === 'grass' || o.k === 'forest';                 // (a stroke as wide as its r: no way of its own)
+export const okOp = o => o && (isWay(o) ? isFinite(o.half) : isRound(o) && isFinite(o.r)) && Array.isArray(o.pts) && o.pts.length >= 1 && o.pts.every(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
 const r2 = v => Math.round(v * 100) / 100;
-export const tidy = o => isWay(o) ? { k: o.k, half: r2(o.half), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) } : { k: 'grass', r: r2(o.r), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) };
+export const tidy = o => isWay(o) ? { k: o.k, half: r2(o.half), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) } : { k: o.k === 'forest' ? 'forest' : 'grass', r: r2(o.r), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) };
 
 export function opBox(o) {
   const reach = isWay(o) ? o.half + 3.6 : o.r + 0.6;
@@ -67,27 +73,33 @@ const toLine = (pts, x, z) => {                                            // ho
   return best;
 };
 export const grassOver = (o, x, z) => 1 - ss(o.r - 0.35, o.r + 0.45, toLine(o.pts, x, z));
+export const floorOver = (o, x, z) => 1 - ss(o.r - 1.2, o.r + 0.2, toLine(o.pts, x, z));      // (soft: the land's paint gives the edge its rag)
 
-export function foldPathOps(basePaint, ops, wayPaint) {
-  if (!ops.length) return basePaint;
-  const list = ops.map(o => ({ o, box: opBox(o), paint: isWay(o) ? wayPaint(o) : null }));
-  // the strokes by squares of the land (4 m), each square's in the order they were painted: a point asks only the strokes
-  // whose reach takes in its square, in the same order as before (going through every stroke for every point of the ground
-  // picture was a good part of the time the map took to load)
-  const G = 4, squares = new Map(), key = (i, j) => (i + 32768) * 65536 + (j + 32768);
+// the strokes by squares of the land (4 m), each square's in the order they were painted: a point asks only the strokes whose
+// reach takes in its square, in the same order as before (going through every stroke for every point of the ground picture
+// was a good part of the time the map took to load)
+const G = 4, sqKey = (i, j) => (i + 32768) * 65536 + (j + 32768);
+const bySquares = list => {
+  const squares = new Map();
   for (const e of list) {
     const [x0, x1, z0, z1] = e.box;
     for (let i = Math.floor(x0 / G); i <= Math.floor(x1 / G); i++) for (let j = Math.floor(z0 / G); j <= Math.floor(z1 / G); j++) {
-      const k = key(i, j); let a = squares.get(k);
+      const k = sqKey(i, j); let a = squares.get(k);
       if (!a) squares.set(k, a = []);
       a.push(e);
     }
   }
+  return (x, z) => squares.get(sqKey(Math.floor(x / G), Math.floor(z / G))) || [];
+};
+
+export function foldPathOps(basePaint, ops, wayPaint) {
+  ops = ops.filter(o => o.k !== 'forest');                                 // (a wood's floor is not the ways' paint: forest-floor.js lays it)
+  if (!ops.length) return basePaint;
+  const near = bySquares(ops.map(o => ({ o, box: opBox(o), paint: isWay(o) ? wayPaint(o) : null })));
   return (x, z) => {
     const p = basePaint(x, z);
     let e = p ? p[0] : 0, s = p ? p[1] : 0, m = p ? p[2] : 0;
-    const here = squares.get(key(Math.floor(x / G), Math.floor(z / G))) || [];
-    for (const { o, box, paint } of here) {
+    for (const { o, box, paint } of near(x, z)) {
       if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) continue;
       if (paint) { const q = paint(x, z); if (q) { e = Math.max(e, q[0]); m = Math.max(m, q[2]); } }
       else { const f = grassOver(o, x, z); if (f > 0) { e *= 1 - f; m *= 1 - f; } }
@@ -96,11 +108,30 @@ export function foldPathOps(basePaint, ops, wayPaint) {
   };
 }
 
+// THE WOOD'S FLOOR painted by hand (🍂): how much of a spot is one, by the strokes in the order they were painted: a floor
+// stroke lays it, grass painted over it takes it away again (ways and paving go over it as they are: the land draws them on
+// top of it). Only the strokes from the first floor stroke on are asked; with none painted, nothing is
+export function foldFloorOps(ops) {
+  const first = ops.findIndex(o => o.k === 'forest');
+  if (first < 0) return null;
+  const near = bySquares(ops.slice(first).filter(isRound).map(o => ({ o, box: opBox(o) })));
+  return (x, z) => {
+    let f = 0;
+    for (const { o, box } of near(x, z)) {
+      if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) continue;
+      if (o.k === 'forest') f = Math.max(f, floorOver(o, x, z));
+      else if (f > 0) f *= 1 - grassOver(o, x, z);
+    }
+    return f;
+  };
+}
+
 // PAVING: how much of a spot is laid with flat stones (0..1), by the strokes in the order they were painted. A paving stroke
 // lays them over its width (a little less: the earth of its way shows round the stones, and the shader lets the last stones go
 // one by one there, ground-paths.js); a way painted over them takes them up again, back to trodden earth; grass over them hides
-// them with the way. Kept by squares of the land, as foldPathOps keeps its strokes, so a point asks only the strokes near it,
-// in the order they were painted; with no paving stroke at all nothing is asked (the land's every point is asked once).
+// them with the way (a wood's floor painted over them leaves them be). Kept by squares of the land, as foldPathOps keeps its
+// strokes, so a point asks only the strokes near it, in the order they were painted; with no paving stroke at all nothing is
+// asked (the land's every point is asked once).
 const paveCover = (o, x, z) => 1 - ss(o.half - Math.min(1.5, o.half * 0.9), o.half + 0.1, toLine(o.pts, x, z));      // (the edge a stone or two wide)
 const earthCover = (o, x, z) => 1 - ss(o.half - 0.35, o.half + 0.35, toLine(o.pts, x, z));
 const paveBox = o => {
@@ -108,16 +139,16 @@ const paveBox = o => {
   return [Math.min(...xs) - reach, Math.max(...xs) + reach, Math.min(...zs) - reach, Math.max(...zs) + reach];
 };
 export function createPaveField(ops = []) {
-  const G = 4, squares = new Map(), key = (i, j) => (i + 32768) * 65536 + (j + 32768), list = [];
+  const squares = new Map(), list = [];
   let paving = 0;                                                          // how many paving strokes there are
   const enroll = (e, on) => {
     const [x0, x1, z0, z1] = e.box;
     for (let i = Math.floor(x0 / G); i <= Math.floor(x1 / G); i++) for (let j = Math.floor(z0 / G); j <= Math.floor(z1 / G); j++) {
-      const k = key(i, j); let a = squares.get(k);
+      const k = sqKey(i, j); let a = squares.get(k);
       if (on) { if (!a) squares.set(k, a = []); a.push(e); } else if (a) { const p = a.lastIndexOf(e); if (p >= 0) a.splice(p, 1); }
     }
   };
-  const add = o => { const e = { o, box: paveBox(o) }; list.push(e); enroll(e, true); if (o.k === 'pave') paving++; return o; };
+  const add = o => { if (o.k === 'forest') return o; const e = { o, box: paveBox(o) }; list.push(e); enroll(e, true); if (o.k === 'pave') paving++; return o; };
   const remove = o => {
     let k = list.length - 1; while (k >= 0 && list[k].o !== o) k--;
     if (k < 0) return;
@@ -128,7 +159,7 @@ export function createPaveField(ops = []) {
   // as its foot (r), so it grows out of the earth between them. Kept by the same squares
   let gapList = [], gapSquares = new Map();
   const gapAt = (x, z) => {
-    const here = gapSquares.get(key(Math.floor(x / G), Math.floor(z / G)));
+    const here = gapSquares.get(sqKey(Math.floor(x / G), Math.floor(z / G)));
     if (!here) return 0;
     let g = 0;
     for (const [gx, gz, r] of here) { const d = Math.hypot(x - gx, z - gz); if (d < r) g = Math.max(g, 1 - ss(r * 0.55, r, d)); }
@@ -139,7 +170,7 @@ export function createPaveField(ops = []) {
     for (const g of [...gapList.filter(g => !now.has(g.join())), ...list.filter(g => !was.has(g.join()))]) changed.push([g[0] - g[2], g[0] + g[2], g[1] - g[2], g[1] + g[2]]);
     gapList = list.map(g => g.slice()); gapSquares = new Map();
     for (const g of gapList) for (let i = Math.floor((g[0] - g[2]) / G); i <= Math.floor((g[0] + g[2]) / G); i++) for (let j = Math.floor((g[1] - g[2]) / G); j <= Math.floor((g[1] + g[2]) / G); j++) {
-      const k = key(i, j); let a = gapSquares.get(k);
+      const k = sqKey(i, j); let a = gapSquares.get(k);
       if (!a) gapSquares.set(k, a = []);
       a.push(g);
     }
@@ -147,7 +178,7 @@ export function createPaveField(ops = []) {
   };
   const laid = (x, z) => {
     if (!paving) return 0;
-    const here = squares.get(key(Math.floor(x / G), Math.floor(z / G)));
+    const here = squares.get(sqKey(Math.floor(x / G), Math.floor(z / G)));
     if (!here) return 0;
     let p = 0;
     for (const { o, box } of here) {

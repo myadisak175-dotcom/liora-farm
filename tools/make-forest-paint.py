@@ -3,7 +3,7 @@
 # Writes a picture 768 x 768, seamless both ways, to be laid about 3.6 m to a repeat (213 px a metre) wherever trees stand
 # close together (stylized-terrain.js, floor: hill-village-level.js asks for it with ?forest=...). Chosen on 26 Nov 2026:
 # earth, dry leaves, moss in patches ("ดินเข้ม ใบไม้แห้ง มอสเป็นหย่อม"). Two sets of it, in LOOKS:
-#   path   assets/ground/forest-path-paint.webp (the game's, ?forest=1): the ways' own earth (make-path-paint.py's colours,
+#   path   assets/ground/forest-path-paint.webp (the game's): the ways' own earth (make-path-paint.py's colours,
 #          a step deeper, as earth is in a wood's shade), so a wood's floor and the ways read as one ground: asked for the
 #          same day ("ชุดที่มันเข้ากับพื้นดินทางเดินของเรา"); its leaves mostly near the earth's own tone, so it is quiet as the ways
 #          are; its moss a few dull patches, near the meadow's green

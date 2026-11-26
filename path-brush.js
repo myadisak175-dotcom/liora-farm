@@ -1,15 +1,18 @@
 // path-brush.js  —  paint the map's ways by hand, in the map itself, on a phone or with a mouse.
 //
 // One job: the brush. A way is painted in the look the map's own ways have (soft trodden earth fading into the grass:
-// ground-paths.js), or paved (flat stones laid in that earth, their edge going one stone at a time into it), or grass is painted
-// back over a way to take it away (the map's own ways too, and stones with it). It shows at once.
+// ground-paths.js), or paved (flat stones laid in that earth, their edge going one stone at a time into it), or a wood's floor
+// is laid (earth, dry leaves and moss, the grass thinner there: forest-floor.js; not on cliffs or steep slopes), or grass is
+// painted back over a way to take it away (the map's own ways too, and stones with it; and a wood's floor painted there). It
+// shows at once.
 //
 //   the camera     looks down at the ground from above: two fingers move it, come nearer or go back, and twist it round
 //                  (the mouse wheel zooms)
 //   one finger     paints along where it goes, from where it touches down to where it lifts
 //   🚶 ทาตามเท้า   the editor steps aside and she is walked about as in the game: the brush follows her feet
-//   🟫 ทาง / 🪨 หินปู / 🌿 หญ้า   a way, paving (a way painted over paving takes its stones up again), or grass over a way;
-//                  เล็ก / กลาง / ใหญ่: how wide
+//   🟫 ทาง / 🪨 หินปู / 🌿 หญ้า / 🍂 พื้นป่า   a way, paving (a way painted over paving takes its stones up again), grass
+//                  over a way (or over a wood's floor painted by hand), or a wood's floor; เล็ก / กลาง / ใหญ่: how wide (a wood's
+//                  floor about twice a way's width: it is laid in patches, not lines)
 //   ↶ ย้อน         back one stroke (of this visit)
 //   💾 บันทึก      keep the strokes (in this browser) and load the map again: the ground's colour under them, the paths' little
 //                  dip in the land and the grass are made again for them (until then only the grass's amount and the way's own
@@ -173,12 +176,12 @@ export function createPathBrush({ level, camera, player = null }) {
   cv.addEventListener('pointercancel', up);
   cv.addEventListener('wheel', e => { cam.dist *= 1 + e.deltaY * 0.0012; }, { passive: true });
   const half = () => SIZES[size][1];
-  const opOf = pts => (kind === 'grass' ? { k: 'grass', r: half() + 0.5, pts } : { k: kind, half: half(), pts });      // a way, paving, or grass
+  const opOf = pts => (kind === 'grass' ? { k: 'grass', r: half() + 0.5, pts } : kind === 'forest' ? { k: 'forest', r: half() * 2 + 0.4, pts } : { k: kind, half: half(), pts });      // a way, paving, grass, or a wood's floor
   const finish = pts => {                                                   // a stroke is down: drawn for real
     if (!pts.length) return;
     if (pts.length === 1) pts = [pts[0], [pts[0][0] + 0.35, pts[0][1] + 0.1]];          // (a touch: a short dab)
     paint(opOf(pts));
-    say(kind === 'way' ? 'ทาทางแล้ว' : kind === 'pave' ? 'ปูหินแล้ว' : 'ทาหญ้าทับแล้ว');
+    say(kind === 'way' ? 'ทาทางแล้ว' : kind === 'pave' ? 'ปูหินแล้ว' : kind === 'forest' ? 'ทาพื้นป่าแล้ว (ทาหญ้าทับเพื่อลบ)' : 'ทาหญ้าทับแล้ว');
   };
 
   // ---- 🚶 the brush follows her: the editor steps aside, a small bar stays; the stroke grows as she walks
@@ -207,9 +210,9 @@ export function createPathBrush({ level, camera, player = null }) {
     }
   };
   const walkUI = () => {
-    walkHint.textContent = kind === 'way' ? '🚶 เดินไปตรงไหน ทางก็ตามไป' : kind === 'pave' ? '🚶 เดินไปตรงไหน หินก็ปูตามไป' : '🚶 เดินไปตรงไหน หญ้าก็ขึ้นทับทาง';
+    walkHint.textContent = kind === 'way' ? '🚶 เดินไปตรงไหน ทางก็ตามไป' : kind === 'pave' ? '🚶 เดินไปตรงไหน หินก็ปูตามไป' : kind === 'forest' ? '🚶 เดินไปตรงไหน พื้นป่าก็ตามไป' : '🚶 เดินไปตรงไหน หญ้าก็ขึ้นทับทาง';
     walkBar.replaceChildren(walkHint, row([
-      btn('🟫 ทาง', () => setKind('way'), kind === 'way' ? 'on' : ''), btn('🪨 หินปู', () => setKind('pave'), kind === 'pave' ? 'on' : ''), btn('🌿 หญ้า', () => setKind('grass'), kind === 'grass' ? 'on' : ''),
+      ...kinds('🌿 หญ้า'),
       ...SIZES.map(([name], i) => btn(name, () => setSize(i), size === i ? 'on' : '')),
       btn('⏹ หยุด', stopWalk, 'go'),
     ]));
@@ -224,6 +227,7 @@ export function createPathBrush({ level, camera, player = null }) {
   const showHint = () => { hint.textContent = said || 'นิ้วเดียวลากเพื่อทา · สองนิ้วเลื่อน ซูม และบิดเพื่อหมุน'; };
 
   // ---- the buttons
+  const kinds = grassName => [['way', '🟫 ทาง'], ['pave', '🪨 หินปู'], ['grass', grassName], ['forest', '🍂 พื้นป่า']].map(([k, name]) => btn(name, () => setKind(k), kind === k ? 'on' : ''));
   const top = () => {
     head.replaceChildren(row([
       btn('✕ ออก', close), btn('↶ ย้อน', undo), btn('🚶 ทาตามเท้า', startWalk),
@@ -235,7 +239,7 @@ export function createPathBrush({ level, camera, player = null }) {
     top();
     const p = stop(document.createElement('div')); p.className = 'panel';
     p.append(
-      row([btn('🟫 ทาง', () => setKind('way'), kind === 'way' ? 'on' : ''), btn('🪨 หินปู', () => setKind('pave'), kind === 'pave' ? 'on' : ''), btn('🌿 หญ้า (ลบทาง)', () => setKind('grass'), kind === 'grass' ? 'on' : '')]),
+      row(kinds('🌿 หญ้า (ลบ)')),
       row(SIZES.map(([name], i) => btn(name, () => setSize(i), size === i ? 'on' : ''))),
     );
     foot.replaceChildren(p);
@@ -272,10 +276,10 @@ export function createPathBrush({ level, camera, player = null }) {
   const draw = () => {
     g.clearRect(0, 0, W, Hh);
     if (!stroke || !stroke.pts.length) return;
-    const pts = stroke.pts, w = half() + (kind === 'grass' ? 0.5 : 0);
+    const pts = stroke.pts, w = kind === 'forest' ? half() * 2 + 0.1 : half() + (kind === 'grass' ? 0.5 : 0);
     const [ax, ay] = toScreen(pts[0][0], pts[0][1]), [bx, by] = toScreen(pts[0][0] + w, pts[0][1]);
     g.lineWidth = Math.max(6, Math.hypot(bx - ax, by - ay) * 2); g.lineCap = g.lineJoin = 'round';
-    g.strokeStyle = kind === 'way' ? 'rgba(214,178,112,0.7)' : kind === 'pave' ? 'rgba(178,168,150,0.75)' : 'rgba(104,186,72,0.7)';
+    g.strokeStyle = kind === 'way' ? 'rgba(214,178,112,0.7)' : kind === 'pave' ? 'rgba(178,168,150,0.75)' : kind === 'forest' ? 'rgba(150,104,52,0.6)' : 'rgba(104,186,72,0.7)';
     g.beginPath();
     pts.forEach(([x, z], i) => { const [sx, sy] = toScreen(x, z); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); });
     if (pts.length === 1) g.lineTo(ax + 0.1, ay);

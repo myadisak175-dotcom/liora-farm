@@ -569,14 +569,14 @@ path_d = path_d.reshape(NZ, NX)
 # the ways painted by hand in the game (path-brush.js: the strokes sent from there are kept in hill-village-paths.json beside the
 # plan): the plan carries them as they are (the game paints them on the ground, the map's picture draws them), and nothing is
 # planted on a painted way (paving is a way with stones laid in it: the same). (Grass painted over a way in the game only hides
-# it: the land under it is left as the way made it.)
+# it: the land under it is left as the way made it. A wood's floor painted, 🍂, is the game's to lay: forest-floor.js.)
 _po_file = OUT / 'hill-village-paths.json'
 PATH_OPS = json.loads(_po_file.read_text())['ops'] if _po_file.exists() else []
 for o_ in PATH_OPS:
     if o_['k'] not in ('way', 'pave') or len(o_['pts']) < 2: continue
     P_ = densify([tuple(p_) for p_ in o_['pts']]); at_, dd_, _ = nearest(P_, o_['half'] + 0.5)
     pd_ = path_d.ravel(); pd_[at_] = np.minimum(pd_[at_], dd_ - o_['half']); path_d = pd_.reshape(NZ, NX)
-if PATH_OPS: print(f'  painted by hand: {sum(o_["k"] == "way" for o_ in PATH_OPS)} ways, {sum(o_["k"] == "pave" for o_ in PATH_OPS)} of paving, {sum(o_["k"] == "grass" for o_ in PATH_OPS)} strokes of grass')
+if PATH_OPS: print(f'  painted by hand: {sum(o_["k"] == "way" for o_ in PATH_OPS)} ways, {sum(o_["k"] == "pave" for o_ in PATH_OPS)} of paving, {sum(o_["k"] == "grass" for o_ in PATH_OPS)} strokes of grass, {sum(o_["k"] == "forest" for o_ in PATH_OPS)} of a wood\'s floor')
 for x, z, r, _ in YARDS: path_d = np.minimum(path_d, np.hypot(WX - x, WZ - z) - r)
 
 # ------------------------------------------------------------------ 5b. the steps of the three cascades, cut into the land
