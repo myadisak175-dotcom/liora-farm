@@ -10,7 +10,9 @@
    then given fewer triangles by tools/simplify-character.mjs: see the README) and <id>.springs.json, her hair and cloth
    that swing. She is drawn and moved as the playable characters are (stylized-character.js, character-springs.js), with
    the same clips: the library's idle and walk (character-anim.js, the game's own) and its talking idle and farm work
-   (npc-anim.js). She walks at the pace of the walk clip's feet, so they do not slide.
+   (npc-anim.js). She walks at the pace of the walk clip's feet, so they do not slide. A model made with its face's
+   expressions (tools/prep-vrm1.py --faces) blinks, smiles when she greets the player and moves her mouth as she talks
+   (npc-face.js); one without keeps the face it was made with.
 
      NPCS          { id: { name, height, lines: { hello, again, bye } } }   who there is, and what she says
      NPC_PLACES    { map: [{ id, day, start }] }                           her day on each map (below), and where Vivi
@@ -18,6 +20,7 @@
      const npcs = await createNpcs({ map, level, scene, camera, player })  a model that will not load is left out
      every frame, after the player has moved: npcs.update(dt)
      npcs.list    [{ id, ch, object, x, z, mode }]      npcs.spot   { x, z, yaw }: where Vivi starts on the trial
+                                                        (by the first of them; ?npc=<id>: by that one)
 
    A day is a list of stops: { to: [x, z], face: yaw, do: [[clip], [clip, seconds, 'look'], ...] }. She walks straight
    to each `to` (so the way between two stops must be clear: she does not find her way round things), turns to `face`,
@@ -33,9 +36,10 @@ import { createSprings } from './character-springs.js';
 import { createSpeechBubbles } from './speech-bubbles.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { CHARACTER_ANIM as NPC_ANIM } from './npc-anim.js';
+import { createNpcFace } from './npc-face.js';
 
 const DIR = 'assets/npcs/';
-const VERSION = '1';                    // bump when the files in assets/npcs/ are remade
+const VERSION = '2';                    // bump when the files in assets/npcs/ are remade
 
 export const NPCS = {
   // the first: a model the user sent (fantasy_girl_01.vrm, 24 Nov 2026). Her lines are stand-ins, for the user to write
@@ -46,6 +50,17 @@ export const NPCS = {
       hello: ['สวัสดีค่ะ!', 'แครอทปีนี้หวานมากเลยนะคะ'],
       again: ['แวะมาอีกแล้วเหรอคะ'],
       bye: ['เดินทางปลอดภัยนะคะ'],
+    },
+  },
+  // the second: the user's own character, made by her in VRoid Studio on her iPad (Yingnui1.vrm, 26 Nov 2026), with her
+  // face's expressions kept. Her lines are stand-ins, for the user to write
+  'yingnui': {
+    name: 'Yingnui',
+    height: 1.58,
+    lines: {
+      hello: ['สวัสดีค่ะ! มาอยู่ใหม่ใช่ไหมคะ', 'ที่ดินตรงนี้รกมานานแล้ว…', 'ถ้าช่วยกันดูแล คงกลับมาสวยแน่ๆ ค่ะ'],
+      again: ['กลับมาอีกแล้ว ดีใจจังเลยค่ะ'],
+      bye: ['ไว้เจอกันนะคะ!'],
     },
   },
 };
@@ -63,6 +78,17 @@ export const NPC_PLACES = {
       { to: [-60.4, 39.1], face: E, do: [['idle', 3.5, 'look']] },                                // at the gate, looking out to the road
     ],
     start: { x: -56.2, z: 39.3, yaw: -E },                                                        // the trial: Vivi outside the gate, looking in down the lane
+  }, {
+    // she looks after the ground by the player's farm (index.html ?farm=1: x -73 to -51, z 78 to 92): up and down its
+    // north edge, by the road in, just outside it (so she is there with the farm or without it), looking it over
+    id: 'yingnui',
+    day: [
+      { to: [-54.5, 76.4], face: 0, do: [['idle', 4, 'look']] },                                   // its east end, looking over it
+      { to: [-61.5, 76.6], face: 0, do: [['crouch', 5], ['idle', 1.5, 'look']] },                    // crouched, looking at the soil
+      { to: [-68.0, 76.8], face: 0, do: [['idle', 3, 'look'], ['crouch', 3.5]] },                    // its west end
+      { to: [-60.0, 75.2], face: S, do: [['idle', 3.5, 'look']] },                                   // turned to the road, looking out
+    ],
+    start: { x: -58.5, z: 70.5, yaw: 0 },                                                         // ?npc=yingnui: Vivi on the road, looking at her
   }],
 };
 
@@ -146,6 +172,7 @@ export async function createNpcs({ map, level, scene, camera, player }) {
     if (npc.ch.state !== 'idle' && npc.ch.state !== 'talk') play(npc, 'idle', 0.5);     // (out of a crouch, or her stride, first)
     speak(npc, npc.greeted && npc.goneFor < AGAIN ? npc.def.lines.again : npc.def.lines.hello);
     npc.greeted = true;
+    if (npc.face) npc.face.greet();
   }
   function backToWork(npc) {
     if (npc.resume === 'act') { npc.mode = 'act'; nextStep(npc); }
@@ -169,7 +196,7 @@ export async function createNpcs({ map, level, scene, camera, player }) {
     const held = new Map();             // each bone her looking turns: its pose as its clip had it
     for (const b of [neck, head, ...eyes]) if (b) held.set(b, b.quaternion.clone());
     const npc = {
-      id: p.id, def: NPCS[p.id], ch, object: ch.object, blob, col, day: p.day, start: p.start,
+      id: p.id, def: NPCS[p.id], ch, object: ch.object, face: createNpcFace(ch.face), blob, col, day: p.day, start: p.start,
       x: first.to[0], z: first.to[1], yaw: first.face, speed: 0,
       mode: 'act', k: 0, j: -1, stepT: 0, once: 0, glance: false, glanceT: 0, glanceAt: [0, 0], resume: 'act',
       near: false, meetDue: false, greeted: false, goneFor: 0, said: [], sayT: 0, talking: false,
@@ -199,7 +226,7 @@ export async function createNpcs({ map, level, scene, camera, player }) {
     feet.set(p.x, p.y ?? H(p.x, p.z), p.z);
     for (const npc of list) {
       const o = npc.object;
-      const far = camera.position.distanceTo(o.position) > FAR_OFF;
+      const far = Math.hypot(camera.position.x - npc.x, camera.position.z - npc.z) > FAR_OFF;      // (by where she is: her model stands at 0 until first placed)
       if (o.visible === far) { o.visible = !far; npc.blob.visible = !far; if (!far) npc.ch.resetSprings(); }      // (back in sight: her hair starts at rest)
       if (far) continue;
       const dx = feet.x - npc.x, dz = feet.z - npc.z, d = Math.hypot(dx, dz), toVivi = Math.atan2(dx, dz);
@@ -227,6 +254,7 @@ export async function createNpcs({ map, level, scene, camera, player }) {
           if ((npc.sayT -= dt) <= 0) {
             const text = npc.said.shift(), lasts = Math.max(1.8, 0.9 + text.length * 0.07);
             bubbles.say(npc.id, text, { lasts });
+            if (npc.face) npc.face.say(text);
             npc.sayT = lasts + 0.25;
             if (!npc.talking) { npc.talking = true; play(npc, 'talk', 0.35); }
           }
@@ -264,6 +292,7 @@ export async function createNpcs({ map, level, scene, camera, player }) {
       L.pitch += (hp - L.pitch) * Math.min(1, dt * 3.5);
       L.eyeYaw += (clamp(yaw - L.yaw, -EYE_YAW, EYE_YAW) - L.eyeYaw) * Math.min(1, dt * 14);
       L.eyePitch += (clamp(pitch - L.pitch, -EYE_PITCH, EYE_PITCH) - L.eyePitch) * Math.min(1, dt * 14);
+      if (npc.face) npc.face.update(dt, talking);
       turn(o, npc.neck, L.yaw * 0.4, L.pitch * 0.4);
       turn(o, npc.head, L.yaw * 0.6, L.pitch * 0.6);
       for (const e of npc.eyes) turn(o, e, L.eyeYaw, L.eyePitch);
@@ -277,10 +306,11 @@ export async function createNpcs({ map, level, scene, camera, player }) {
     });
   }
 
-  const first = list[0];
+  const asked = new URLSearchParams(location.search).get('npc');
+  const first = list.find(m => m.id === asked) || list[0];
   return {
     list, update,
-    // on the trial Vivi starts where she can watch the first of them at her work
+    // on the trial Vivi starts where she can watch the first of them at her work (?npc=<id>: that one)
     spot: first && first.start ? { ...first.start } : null,
     dispose() {
       bubbles.clear();
