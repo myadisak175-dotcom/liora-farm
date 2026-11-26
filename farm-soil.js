@@ -1,6 +1,7 @@
 // farm-soil.js  —  the farm's tilled ground: squares of a metre, dug one at a time (as in Stardew Valley), each tilled or not,
 // wet or dry, given magic, or under the curse. One job: the ground of the beds, as data and as a picture on the land.
-// No tools, no crops, no gameplay: what is done to a square is asked of it here (soil.html does it with buttons for now).
+// No tools, no crops, no gameplay: what is done to a square is asked of it here (soil.html does it with buttons; in the game,
+// ?farm=1, her farm tools: farm-tools.js, on the ground the level lays, hill-village-level.js).
 //
 // How it looks, the game's way (26 Nov 2026, chosen: "ขุดทีละช่องแบบ Stardew", "วาดบนพื้นลายพู่กัน", every state):
 //   - BEDS: squares tilled side by side are one bed. There is no grid to be seen: each square is a box with its corners worn
@@ -31,6 +32,12 @@
 //   soil.setSun(dir)                           which side of a ridge is lit
 //   soil.ridge = metres                        how high a ridge stands over its trough (0: flat, painted only)
 //   soil.dryTime                               seconds a wet square takes to dry (a day, in the game: 120 here to see it)
+//   soil.bedAt(x, z) -> 0..1                   how dug (or cursed) the ground is there: the game's steps sound on earth
+//   soil.restamp()                             the grass stood back from the beds again, after the ground map was made
+//                                              anew (the game's shadows: drawn again as the sun moves, and the grass the
+//                                              map had laid back over the beds)
+//   soil.save() -> [n numbers]  soil.load(list)   what every square is, kept and given back (tilled, magic, cursed, how wet):
+//                                              given back as it was, at once, without the digging seen again
 
 import * as THREE from 'three';
 import { _internal } from './stylized-nature.js';
@@ -232,19 +239,21 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
     }
     return sd;
   };
-  const stampGrass = (i, j) => {
+  // the squares (ia, ja) .. (ib, jb) and a square round them: every texel of the map there worked out again from the grass it
+  // had (kept the first time it is touched: a texel never touched still has it)
+  const stampSquares = (ia, ja, ib, jb) => {
     if (!map) return;
-    const s = MS / (2 * MR), bx0 = x0 + (i - 1) * tile, bz0 = z0 + (j - 1) * tile;
-    const i0 = Math.max(0, Math.floor((bx0 - MCX + MR) * s)), i1 = Math.min(MS - 1, Math.ceil((bx0 + 3 * tile - MCX + MR) * s));
-    const j0 = Math.max(0, Math.floor((bz0 - MCZ + MR) * s)), j1 = Math.min(MS - 1, Math.ceil((bz0 + 3 * tile - MCZ + MR) * s));
+    const s = MS / (2 * MR), bx0 = x0 + (ia - 1) * tile, bz0 = z0 + (ja - 1) * tile, bx1 = x0 + (ib + 2) * tile, bz1 = z0 + (jb + 2) * tile;
+    const i0 = Math.max(0, Math.floor((bx0 - MCX + MR) * s)), i1 = Math.min(MS - 1, Math.ceil((bx1 - MCX + MR) * s));
+    const j0 = Math.max(0, Math.floor((bz0 - MCZ + MR) * s)), j1 = Math.min(MS - 1, Math.ceil((bz1 - MCZ + MR) * s));
     for (let b = j0; b <= j1; b++) for (let a = i0; a <= i1; a++) {
-      const o = (b * MS + a) * 4 + 3, x = MCX - MR + (a + 0.5) / s, z = MCZ - MR + (b + 0.5) / s;
+      const o = (b * MS + a) * 4 + 3, x = MCX - MR + (a + 0.5) / s, z = MCZ - MR + (b + 0.5) / s, d = occ(x, z);
       if (!keep.has(o)) keep.set(o, map.data[o]);
-      const k = ss(-0.04, 0.22, occ(x, z));                              // 0 on the bed .. 1 a hand's breadth off it
-      map.data[o] = Math.round(keep.get(o) * k * (0.55 + 0.45 * ss(0.22, 0.5, occ(x, z))));      // (short and thin first)
+      map.data[o] = Math.round(keep.get(o) * ss(-0.04, 0.22, d) * (0.55 + 0.45 * ss(0.22, 0.5, d)));      // 0 on the bed .. all of it a hand's breadth off it (short and thin first)
     }
     map.texture.needsUpdate = true;
   };
+  const stampGrass = (i, j) => stampSquares(i, j, i, j);
 
   // ---- what is done to a square
   const mark = k => { dirty = true; return k; };
@@ -265,6 +274,19 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
   api.lift = (i, j) => { const k = id(i, j); if (k >= 0) mark(want.cursed[k] = 0); };
   api.setSun = dir => { const l = Math.hypot(dir.x, dir.z); if (l > 1e-3) sun.set(dir.x / l, dir.z / l); };
   Object.defineProperty(api, 'ridge', { get: () => mat.uniforms.uRidgeH.value, set: h => { mat.uniforms.uRidgeH.value = Math.max(0, h); } });
+  api.bedAt = (x, z) => { const q = api.at(x, z); if (!q) return 0; const k = q[1] * cols + q[0]; return Math.max(now.tilled[k], now.cursed[k]); };
+  api.restamp = () => stampSquares(0, 0, cols - 1, rows - 1);
+  // kept: a number a square, its bits tilled, magic, cursed (as they are becoming), then how wet out of 31 (the water on its way: wet)
+  api.save = () => Array.from({ length: n }, (_, k) => (want.tilled[k] > 0.5 ? 1 : 0) | (want.magic[k] > 0.5 ? 2 : 0) | (want.cursed[k] > 0.5 ? 4 : 0) | (Math.round((wetStart[k] >= 0 ? 1 : now.wet[k]) * 31) << 3));
+  api.load = list => {
+    for (let k = 0; k < n; k++) {
+      const b = (list && list[k]) | 0;
+      now.tilled[k] = want.tilled[k] = b & 1; now.magic[k] = want.magic[k] = (b >> 1) & 1; now.cursed[k] = want.cursed[k] = (b >> 2) & 1;
+      now.wet[k] = Math.min(1, (b >> 3) / 31); wetStart[k] = -1;
+    }
+    dirty = true;
+    api.restamp();
+  };
 
   // ---- each frame: the squares come and go, the water arrives and dries; the picture is sent when anything changed
   api.update = dt => {
@@ -280,7 +302,10 @@ export function createFarmSoil({ x0 = 0, z0 = 0, cols = 16, rows = 12, tile = 1,
         wetStart[k] -= dt;
         if (wetStart[k] < 0) { now.wet[k] = Math.min(1, now.wet[k] + dt / 0.5); changed = true; if (now.wet[k] < 1) wetStart[k] = 0; else wetStart[k] = -1; }
       } else if (now.wet[k] > 0) { now.wet[k] = Math.max(0, now.wet[k] - dt / api.dryTime); changed = true; }
-      if (Math.max(now.tilled[k], now.cursed[k]) !== t0) grassAgain.add(k);
+      // the grass told once a square has come (dug, or back to grass): the ground map is a big picture, sent whole each time
+      // it changes, and once is enough (not every frame of the quarter second it takes)
+      const t1 = Math.max(now.tilled[k], now.cursed[k]);
+      if (t1 !== t0 && t1 === Math.max(want.tilled[k], want.cursed[k])) grassAgain.add(k);
     }
     if (!changed) return;
     for (let k = 0; k < n; k++) {

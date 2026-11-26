@@ -33,6 +33,9 @@
 // ?green=1 (a trial): the west fringe healed (west-fringe.js, alive; west-fringe-water.js): nothing dead there, and its dry
 // water is water again, said in the plan's own words before anything is made from it. Not under the curse.
 //
+// ?farm=1 (a trial): her farm, south of the road in, a step from where she starts: its ground (farm-soil.js) and what lies
+// on it before it is dug (farm-debris.js), as level.farm; what she does there is farm-tools.js's (index.html).
+//
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
 import * as THREE from 'three';
@@ -268,6 +271,17 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const waterDepthAt = (x, z, y) => { if (deckAt(x, z, y)) return 0; const b = brookAt(x, z); return b ? Math.max(0, b.level - H(x, z)) : 0; };      // (the player will not walk into water deeper than half a metre: without the decks the river under a bridge stopped her on it)
   const inRect = (f, x, z, pad = 0) => { const c = Math.cos(f.yaw), s = Math.sin(f.yaw), lx = (x - f.x) * c - (z - f.z) * s, lz = (x - f.x) * s + (z - f.z) * c; return Math.abs(lx) < f.w / 2 + pad && Math.abs(lz) < f.d / 2 + pad; };
   const inField = (x, z, pad = 0) => P.fields.some(f => inRect(f, x, z, pad));
+  // HER FARM (a trial, ?farm=1): the ground she will farm, a step from where she starts, south of the road in (A on the map,
+  // 26 Nov 2026: "A ข้างถนนเข้าหมู่บ้าน"; she still starts on the road): 22 squares by 14, a metre each. Its meadow is cut
+  // short (mow, below), nothing of the plan's grows on it (no flowers, ferns or tufts) and nothing else is put on it. The
+  // level lays its ground and the things lying on it (farm-soil.js, farm-debris.js: level.farm); what she does there, and
+  // what lay on it to begin with, is farm-tools.js's (index.html). (Its place is said here, for now: not yet in the plan)
+  const FARM = new URLSearchParams(location.search).has('farm') ? { x0: -73, z0: 78, cols: 22, rows: 14 } : null;
+  const inFarm = (x, z, pad = 0) => !!FARM && x > FARM.x0 - pad && x < FARM.x0 + FARM.cols + pad && z > FARM.z0 - pad && z < FARM.z0 + FARM.rows + pad;
+  const farmMow = (x, z) => {                                              // cut short over the farm, its edge wandering a little (not ruled)
+    const out = Math.max(Math.abs(x - FARM.x0 - FARM.cols / 2) - FARM.cols / 2, Math.abs(z - FARM.z0 - FARM.rows / 2) - FARM.rows / 2) + Math.sin(x * 0.83 + z * 0.21) * 0.35 + Math.sin(z * 1.27 - x * 0.4) * 0.25;
+    return 0.9 * (1 - Math.min(1, Math.max(0, (out + 0.3) / 2)));
+  };
 
   // ------------------------------------------------------------------ the woods, bushes and flowers, where the plan has them
   await onStep('ปลูกต้นไม้');
@@ -566,6 +580,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const pp = pathPaint(x, z);
     if (pp) { earth = Math.max(earth, pp[0]); mow = pp[2]; }               // the ways: trodden earth, short grass beside them
     if (inField(x, z, 0.5)) earth = 1; else if (inField(x, z, 1.6)) mow = Math.max(mow, 0.7);
+    if (inFarm(x, z, 2.5)) mow = Math.max(mow, farmMow(x, z));            // (her farm's grass: short, so what lies on it is seen)
     return [earth, sand, mow];
   };
   const L = new THREE.Vector3(...sun).normalize();
@@ -680,6 +695,18 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   if (landWays) { ways.name = 'paths'; ways.userData.dispose = () => landWays.dispose(); }
   if (pathTex) ways.userData.dispose = (d => () => { d(); pathTex.dispose(); })(ways.userData.dispose);
   group.add(ways);
+  // her farm's ground (?farm=1): its beds, painted with the ways' own brush, the curse's crust with the dead land's earth
+  // (farm-soil.js: the grass of the ground map stands back from them); and what lies on it before it is dug, its rocks in the
+  // cliffs' stone as the village's are (farm-debris.js). Laid on it, and kept, by farm-tools.js
+  let farm = null;
+  if (FARM) {
+    const [{ createFarmSoil }, { createFarmDebris, setDebrisSun }] = await Promise.all([import('./farm-soil.js'), import('./farm-debris.js')]);
+    const soil = createFarmSoil({ ...FARM, heightAt: H, map, paint: pathTex && pathTex.paint, crack: dryPaint });
+    const debris = createFarmDebris({ heightAt: H, rockPaint });
+    soil.setSun(L); setDebrisSun(L);
+    group.add(soil.mesh, debris.object);
+    farm = { soil, debris, setSun: dir => { soil.setSun(dir); setDebrisSun(dir); }, rect: [FARM.x0, FARM.z0, FARM.x0 + FARM.cols, FARM.z0 + FARM.rows] };
+  }
   await onStep('ปลูกหญ้า');
   let grassField = field;                                                  // the land's heights as the grass has them: the boulders' grassy tops raised into them
   if (grassTop.size) {
@@ -727,7 +754,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   const bedOf = (b, clumps, heightAt = H, allow = null) => {                // a bed's low flowers: none on a way (on the paving only in its cracks), in the water, in anything solid (a wall, a trunk, a rock, a bush), or inside a clump
     const reach = b.rad * 1.2, solid = allow ? [] : colliders.filter(([cx, cz, cr]) => Math.hypot(cx - b.x, cz - b.z) < reach * 1.15 + cr + 0.2);
-    const grows = allow || ((fx, fz) => (offWay(fx, fz, 0.12) || paths.inCrack(fx, fz)) && waterDepthAt(fx, fz) === 0 && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08));      // (on the paving: in its cracks, between the slabs)
+    const grows = allow || ((fx, fz) => (offWay(fx, fz, 0.12) || paths.inCrack(fx, fz)) && waterDepthAt(fx, fz) === 0 && !inFarm(fx, fz, 0.3) && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08));      // (on the paving: in its cracks, between the slabs; none on her farm)
     const avoid = clumps.filter(c => Math.hypot(c.x - b.x, c.z - b.z) < reach + 1).map(c => [c.x, c.z, 0.75 * c.scale + 0.1]);
     return createFlowerDrift({ center: [b.x, b.z], radius: reach, seed: b.seed, heightAt, bed: b.bed, allow: grows, avoid });
   };
@@ -750,7 +777,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     }
   };
   const plantCover = (list, only = null) => {
-    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && (offWay(c.x, c.z, 0.1) || paved.laid(c.x, c.z) > 0.3)), squareOf, only);      // (none in the water or on a way; on the paving it grows out of its gap)
+    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && (offWay(c.x, c.z, 0.1) || paved.laid(c.x, c.z) > 0.3) && !inFarm(c.x, c.z, 0.5)), squareOf, only);      // (none in the water or on a way; on the paving it grows out of its gap; none on her farm)
     for (const key of only || by.keys()) {
       uproot(squaresAt, key);
       const here = by.get(key);
@@ -997,13 +1024,15 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const d = deckAt(x, z, y);
     if (d) return d.of;
     if (waterDepthAt(x, z, y) > 0.04) return 'water';
+    if (farm && farm.soil.bedAt(x, z) > 0.5) return 'earth';                // (a bed dug on her farm)
     const [earth, sand] = paint(x, z);
     return sand > 0.5 ? 'sand' : earth > 0.5 ? (slope(x, z) > 0.75 ? 'stone' : 'earth') : 'grass';
   };
   return {
     group, map, field, grass, terrain, heightAt: H, standAt, waterDepthAt, surfaceAt, colliders, crowns, cameraTrunks, spawn: P.spawn, radius: 1e4, walkable, footing, views, placeEdit, pathEdit, foliageEdit,
     homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
-    keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1),
+    keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1) || inFarm(x, z, 1),
+    farm,                                                                  // her farm (?farm=1): { soil, debris, setSun, rect }, or null
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, green, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
     map: url(cursed ? M.mapCursed : green ? M.mapGreen : M.map), mapOverlay,
     horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
@@ -1094,13 +1123,15 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         }
       }
       else water.update(renderer);
+      if (farm) { farm.soil.update(dt); farm.debris.update(dt); }
       const nowT = N._internal.shared.uTime.value;
-      if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
+      if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } if (farm) farm.soil.restamp(); } }      // (the map's grass laid back as it was when the shadows began: the strokes and her farm's beds laid again)
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
     setSun(dir, k = 1) {
       wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k);      // (the trees' crowns are lit by it live)
       if (landWays && landWays.uniforms.uWaySun && Math.hypot(dir.x, dir.z) > 1e-3) landWays.uniforms.uWaySun.value.set(dir.x, dir.z).normalize();      // (the paving's lit edges)
+      if (farm) farm.setSun(dir);                                          // (her farm's ridges, and its wood)
     },
     get sunCast() { return cast; },
     follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },

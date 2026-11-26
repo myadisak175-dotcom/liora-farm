@@ -4,6 +4,8 @@
 //
 //   left side of the screen  : floating joystick (push far = run)        keyboard: WASD / arrows, C = walk
 //   right side of the screen : drag to look around                       mouse: drag, wheel = nearer / further
+//   a quick touch that does not drag, on either side: a tap on the world (onTap: the water, a square of her farm). On the
+//   left side the stick shows for that moment, but she does not move: only a drag moves her
 //   jump, dash buttons (index.html) call player.jump(), player.dash()    keyboard: Space, Shift
 //   attack, roll, barrier buttons (index.html): player.attack() .. release(), player.roll(), player.barrier()
 //                                                                        keyboard: J (held: held), K, B
@@ -24,7 +26,7 @@ export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null,
   onAttack = null, onAttackUp = null, onRoll = null, onBarrier = null, onBlink = null }) {
   const move = new THREE.Vector2();           // the joystick, -1..1
   const keys = new Set();
-  let stickId = null, lookId = null, tapT = 0;
+  let stickId = null, lookId = null, tapT = 0, stickT = 0;
   const stick0 = new THREE.Vector2(), look0 = new THREE.Vector2(), tap0 = new THREE.Vector2();
   const base = ui, knob = ui ? ui.firstElementChild : null;
   const showStick = (on, x = 0, y = 0) => { if (base) { base.style.opacity = on ? 1 : 0; if (on) { base.style.left = x + 'px'; base.style.top = y + 'px'; } } };
@@ -35,7 +37,7 @@ export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null,
     dom.setPointerCapture(e.pointerId);
     const touch = e.pointerType !== 'mouse';
     if (touch && e.clientX < innerWidth * 0.45 && stickId === null) {
-      stickId = e.pointerId; stick0.set(e.clientX, e.clientY); showStick(true, e.clientX, e.clientY); setKnob(0, 0);
+      stickId = e.pointerId; stick0.set(e.clientX, e.clientY); stickT = performance.now(); showStick(true, e.clientX, e.clientY); setKnob(0, 0);
     } else if (lookId === null) { lookId = e.pointerId; look0.set(e.clientX, e.clientY); tap0.set(e.clientX, e.clientY); tapT = performance.now(); }
   });
   dom.addEventListener('pointermove', e => {
@@ -52,7 +54,11 @@ export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null,
     }
   });
   const up = e => {
-    if (e.pointerId === stickId) { stickId = null; move.set(0, 0); showStick(false); }
+    if (e.pointerId === stickId) {
+      stickId = null; move.set(0, 0); showStick(false);
+      // the stick's side too: a quick touch that did not drag is a tap on the world (her farm lies across the whole screen)
+      if (onTap && e.type === 'pointerup' && performance.now() - stickT < 320 && Math.hypot(e.clientX - stick0.x, e.clientY - stick0.y) < 10) onTap(e.clientX, e.clientY);
+    }
     if (e.pointerId === lookId) {
       lookId = null;
       // a quick touch that did not drag is a tap on the world

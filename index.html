@@ -172,7 +172,10 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=68",
+  "./hill-village-level.js": "./hill-village-level.js?v=69",
+  "./farm-soil.js": "./farm-soil.js?v=3",
+  "./farm-debris.js": "./farm-debris.js?v=3",
+  "./farm-tools.js": "./farm-tools.js?v=1",
   "./west-fringe.js": "./west-fringe.js?v=7",
   "./west-fringe-water.js": "./west-fringe-water.js?v=1",
   "./plant-boss.js": "./plant-boss.js?v=3",
@@ -260,7 +263,7 @@
   "./magic-jump-flow-anim.js": "./magic-jump-flow-anim.js?v=2",
   "./magic-jump.js": "./magic-jump.js?v=15",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=6",
-  "./player-input.js": "./player-input.js?v=3",
+  "./player-input.js": "./player-input.js?v=4",
   "./player-camera.js": "./player-camera.js?v=3",
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=3",
@@ -461,9 +464,11 @@ catch (err) {                                                     // the remembe
   hero = await loadPlayable(heroId, PLAYER_ANIM, { height: HERO_HEIGHT });
 }
 const ray = new THREE.Raycaster();
+let farmTools = null;                                // her farm's tools (?farm=1, below)
 const onTap = (cx, cy) => {                          // tap the water: a stone's worth of splash
   if ((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active)) return;     // while editing, a tap belongs to the editor
   ray.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
+  if (farmTools && farmTools.tap(ray.ray.origin, ray.ray.direction)) return;      // (a tool chosen, a square of her farm tapped: the farm's)
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
 if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }      // (the valley finds its own bank)
@@ -544,6 +549,13 @@ if (weighs && player.setWeight) {
 }
 scene.add(player.object);
 level.addUnderwater(player.object);
+// ---- 🌱 her farm (a trial, ?farm=1): south of the road in, a step from where she starts, overgrown to begin with: cleared
+// with magic, dug, watered, rained on, given magic, the curse lifted off it (farm-tools.js: the tools, and the farm kept on
+// this device; ?farm=new: from the start again). Its ground and what lies on it are the level's (level.farm). Made before the
+// clouds' shade is given to the scene's materials (below), so its things have it; its splash is her spells' (or its own)
+if (level.farm) {
+  farmTools = await (await import('./farm-tools.js')).createFarmTools({ farm: level.farm, scene, player, camera, heightAt: level.heightAt, fx: spellKit ? spellKit.comboFx : null });
+}
 // the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
 const jumpBtn = document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
@@ -778,6 +790,7 @@ if (Q.has('curse')) {
 if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrier.fx.object);
 if (spellKit && spellKit.rainFx) scene.add(spellKit.rainFx.object);      // (the spear rain's, in the lance's own light)
 if (blinkKit) scene.add(blinkKit.fx.object);                              // (the blink's, in its own light too)
+if (farmTools && farmTools.fxObject) scene.add(farmTools.fxObject);      // (her farm's splash, when it has its own: no spells)
 
 // ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
 // it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
@@ -946,6 +959,7 @@ const frame = (dt = clock.getDelta()) => {
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
+  if (farmTools) farmTools.update(dt, editing());                         // (her farm's bar: only near the farm, and not while an editor is open)
   if (towers) towers.update(dt, playT);                                   // (the practice towers' bolts, after her: ?towers=1)
   if (npcs) npcs.update(dt);                                              // (after her: they turn to where she now is)
   if (goblin) goblin.update(dt);                                          // (after her too: it looks at where she now is)
@@ -1038,7 +1052,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
-window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, towers, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, towers, farmTools, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
