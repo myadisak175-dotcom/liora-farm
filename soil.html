@@ -6,8 +6,9 @@
 <meta name="theme-color" content="#7fb4e6">
 <title>แปลงดิน — ทดลอง</title>
 <!--
-  soil.html  —  the farm's tilled ground, by itself (farm-soil.js). One job: see how the beds look in every state, dig and
-  water them by hand, before any of it goes into the game. Nothing here goes into the game.
+  soil.html  —  the farm's tilled ground, by itself (farm-soil.js), and what lies on the farm before it can be dug
+  (farm-debris.js: weeds, rocks, branches, stumps, cleared with magic). One job: see how the beds look in every state, clear,
+  dig and water them by hand, before any of it goes into the game. Nothing here goes into the game.
     squares of a metre, dug one at a time; beds of squares side by side are one bed, with no grid to be seen
     the furrows painted on the ground and standing up out of it (ความนูนของร่อง: how high); dry, wet (drying in patches),
     magic, cursed (with the curse's thorns on it)
@@ -37,7 +38,8 @@
   "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1",
   "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1",
   "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1vault1",
-  "./farm-soil.js": "./farm-soil.js?v=2"
+  "./farm-soil.js": "./farm-soil.js?v=2",
+  "./farm-debris.js": "./farm-debris.js?v=2"
 } }
 </script>
 </head>
@@ -50,6 +52,7 @@
   <div class="bar">
     <button id="fast">⏩ ให้ดินแห้งเร็ว</button>
     <button id="reset">🔄 แปลงตัวอย่างใหม่</button>
+    <button id="mess">🌾 ทำให้รกใหม่</button>
   </div>
 </div>
 <script type="module">
@@ -58,7 +61,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as N from './stylized-nature.js';
 import * as G from './stylized-grassfield.js';
 import { createFarmSoil } from './farm-soil.js';
+import { createFarmDebris, setDebrisSun } from './farm-debris.js';
 import { createThornClump } from './thorn-vine.js';
+import { createMagicComboFx } from './magic-combo-fx.js';
 
 const Q = new URLSearchParams(location.search);
 const phone = matchMedia('(pointer: coarse)').matches;
@@ -89,6 +94,16 @@ const heightFn = (x, z) => {                                  // flat where the 
 const field = G.createHeightField({ radius: R, center: [0, 0], cells: 240, heightFn });
 const H = field.heightAt;
 const map = G.createGroundMap({ radius: R, size: 768, seed: 4, heightAt: H, dirt: 0 });
+{                                                             // the farm's grass is short (trodden, cut once): what lies on it can be seen
+  const S = map.size, k = S / (2 * R);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const x = (i + 0.5) / k - R, z = (j + 0.5) / k - R, out = Math.max(Math.abs(x) - 9.5, Math.abs(z) - 6.5);
+    if (out > 2) continue;
+    const o = (j * S + i) * 4 + 3, f = Math.min(1, Math.max(0, out / 2));
+    map.data[o] = Math.round(map.data[o] * (0.5 + 0.5 * f * f * (3 - 2 * f)));
+  }
+  map.texture.needsUpdate = true;
+}
 const terrain = G.createTerrain(field, map, { far: FAR });
 scene.add(terrain);
 const grass = G.createFollowGrass({ map, field, count: phone ? 110000 : 160000, tile: 62, seed: 5, thin: Math.sqrt(200000 / (phone ? 110000 : 160000)), far: FAR });
@@ -101,12 +116,31 @@ const load = async name => {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = THREE.NoColorSpace;
   return t;
 };
-const [paint, crack] = await Promise.all([load('path-paint.webp'), load('dry-paint.webp')]).catch(() => [null, null]);
+const [paint, crack, cliff] = await Promise.all([load('path-paint.webp'), load('dry-paint.webp'), load('cliff-paint.webp')]).catch(() => [null, null, null]);
 const COLS = 18, ROWS = 12, X0 = -9, Z0 = -6;
 const soil = createFarmSoil({ x0: X0, z0: Z0, cols: COLS, rows: ROWS, heightAt: H, map, paint, crack });
 scene.add(soil.mesh);
 const sunDir = new THREE.Vector3(-0.62, 0.62, 0.48).normalize();
-soil.setSun(sunDir);
+soil.setSun(sunDir); setDebrisSun(sunDir);
+
+// what lies on the farm before it can be dug (farm-debris.js), and the clearing magic's splash: the water's own (magic-combo-fx.js)
+const debris = createFarmDebris({ heightAt: H, rockPaint: cliff ? { texture: cliff, tile: [8, 4] } : null });
+scene.add(debris.object);
+const fx = createMagicComboFx(); fx.look('water'); scene.add(fx.object);
+const MESS = [['weed', 0.36], ['pebbles', 0.08], ['stone', 0.07], ['boulder', 0.04], ['branch', 0.1], ['stump', 0.04]];
+let messSeed = 1;
+function mess(all = false) {                                    // the farm overgrown: every square not dug (all: the lower part only, as the page opens)
+  const rng = (s => () => { s = (s * 16807) % 2147483647; return s / 2147483647; })(messSeed++ * 7919 + 11);
+  for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
+    const key = i + ',' + j, st = soil.get(i, j);
+    if (st.tilled > 0.01 || st.cursed > 0.01 || debris.on(key) || (all && j < 6) || (Math.abs(i - 7) <= 1 && Math.abs(j - 8) <= 1)) continue;
+    let r = rng(), kind = null;
+    for (const [k, p] of MESS) { if (r < p) { kind = k; break; } r -= p; }
+    if (!kind) continue;
+    const [x, z] = soil.middle(i, j);
+    debris.put(key, kind, x + (rng() - 0.5) * 0.2, z + (rng() - 0.5) * 0.2, 1 + Math.floor(rng() * 999));
+  }
+}
 
 // the curse's thorns on a cursed square (every other one: a bed of them, not a thicket)
 const thorns = new Map();
@@ -164,6 +198,7 @@ controls.update();
 
 // ---- the tools: tap a square
 const TOOLS = [
+  ['clear', '🪄 เวทเคลียร์', 'แตะของรก (หญ้ารก หิน กิ่งไม้ ตอไม้) เพื่อเคลียร์ด้วยเวทน้ำ ก้อนใหญ่กับตอไม้ต้องหลายครั้ง'],
   ['till', '⛏ ไถ', 'แตะช่องหญ้าเพื่อขุดเป็นดิน'],
   ['water', '💧 รดน้ำ', 'แตะช่องที่ขุดแล้วเพื่อรดน้ำ'],
   ['rain', '🌧 เวทฝน', 'แตะเพื่อให้ฝนตกรอบๆ จุดนั้น ดินจะเปียกลามออกไป'],
@@ -189,6 +224,7 @@ document.getElementById('fast').onclick = e => {
   say(fast ? 'ดินเปียกแห้งใน 12 วินาที' : 'ดินเปียกแห้งใน 2 นาที (ในเกมจะเป็นหนึ่งวัน)');
 };
 document.getElementById('reset').onclick = () => { sample(); say('วางแปลงตัวอย่างใหม่แล้ว'); };
+document.getElementById('mess').onclick = () => { mess(); say('ฟาร์มรกอีกแล้ว ใช้ 🪄 เวทเคลียร์'); };
 const ridgeIn = document.getElementById('ridge');
 const setRidge = h => { soil.ridge = h; document.getElementById('ridgeVal').textContent = Math.round(h * 100) + ' ซม.'; };
 ridgeIn.addEventListener('input', () => setRidge(+ridgeIn.value));
@@ -213,6 +249,14 @@ const apply = (x, z) => {
   if (!at) return say('นอกแปลงทดลอง');
   const [i, j] = at, s = soil.get(i, j), dug = s.tilled > 0.5, cursed = s.cursed > 0.5;
   markSquare(i, j);
+  const key = i + ',' + j, junk = debris.on(key);
+  if (tool === 'clear') {
+    if (!junk) return say(cursed ? 'เถาหนามคำสาปเคลียร์ไม่ได้ ต้อง 🌱 ถอนคำสาป' : 'ช่องนี้ไม่มีของรก');
+    const r = debris.cast(key);
+    fx.burst(new THREE.Vector3(r.x, r.y, r.z), r.size, false, 'water');
+    return say(r.gone ? '' : `อีก ${junk.casts - 1} ครั้ง`);
+  }
+  if (junk && tool !== 'grass') return say('ต้องเคลียร์ของรกก่อน (🪄 เวทเคลียร์)');
   if (tool === 'till') { if (cursed) return say('ช่องนี้ต้องสาป ต้องถอนคำสาปก่อน'); soil.till(i, j); }
   else if (tool === 'water') { if (!dug && !cursed) return say('ต้องขุดก่อนถึงจะรดน้ำได้'); soil.water(i, j); }
   else if (tool === 'rain') soil.rain(x, z, 1.8);
@@ -235,13 +279,16 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (hit) apply(hit.point.x, hit.point.z);
 });
 
-sample();
+sample(); mess(true);
+const messTag = document.createElement('div'); messTag.className = 'tag'; messTag.textContent = 'ฟาร์มรก · ใช้ 🪄 เวทเคลียร์'; document.body.append(messTag);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const clock = new THREE.Clock(), v3 = new THREE.Vector3(), look = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   N.update(dt);
   soil.update(dt);
+  debris.update(dt);
+  fx.update(dt, camera);
   for (const t of thorns.values()) if (t.scale.x < 1) t.scale.setScalar(Math.min(1, t.scale.x + dt * 2.2));      // (up out of the ground)
   if (vivi) vivi.update(dt);
   controls.update();
@@ -255,9 +302,12 @@ renderer.setAnimationLoop(() => {
     el.style.display = on ? '' : 'none';
     if (on) { el.style.left = (v3.x * 0.5 + 0.5) * innerWidth + 'px'; el.style.top = (-v3.y * 0.5 + 0.5) * innerHeight + 'px'; }
   });
+  v3.set(X0 + 12.5, H(X0 + 12.5, Z0 + 6.6) + 0.9, Z0 + 6.6).project(camera);
+  messTag.style.display = v3.z < 1 ? '' : 'none';
+  messTag.style.left = (v3.x * 0.5 + 0.5) * innerWidth + 'px'; messTag.style.top = (-v3.y * 0.5 + 0.5) * innerHeight + 'px';
   renderer.render(scene, camera);
 });
-window.__soil = { soil, scene, camera, controls, grass, apply, sample, set tool(t) { tool = t; drawTools(); } };
+window.__soil = { soil, debris, fx, scene, camera, controls, grass, apply, sample, mess, set tool(t) { tool = t; drawTools(); } };
 </script>
 </body>
 </html>
