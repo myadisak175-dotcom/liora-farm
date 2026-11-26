@@ -654,6 +654,7 @@ export function createFollowGrass({
   far = '#eef5e4', fadeA = null, fadeB = null, thin = 1,        // thin > 1: fewer, wider blades (a lighter carpet that still closes)
   farLod = true, farWidth = 1.7,                                // farWidth: a far tuft's blades are this much wider (three stand for five)
   ring = null, beyond = null,
+  paving = null,                                                // { glsl, uniforms }: flat stones laid in the ways (ground-paths.js, onLand(...).grass): see PAVING
 } = {}) {
   const rng = mulberry32(seed * 733 + 11);
   const nearTile = tile / 2;                                    // the quarter that the tile repeats: the full tufts' own tile
@@ -669,6 +670,7 @@ export function createFollowGrass({
     uRingLook: { value: new THREE.Vector3(ring ? ring.width ?? 1.6 : 1, ring ? ring.spread ?? 3 : 1, ring ? ring.height ?? 1.1 : 1) },      // a ring tuft's blades: so many times as wide, as far apart, as tall
     uCull: { value: typeof location !== 'undefined' && new URLSearchParams(location.search).get('grasscull') === '0' ? 0 : 1 },     // ONLY WHAT IS IN VIEW (?grasscull=0: off)
   };
+  if (paving) Object.assign(uniforms, paving.uniforms);
   if (beyond) Object.assign(uniforms, {
     uBeyond: { value: beyond.sheet }, uBeyondRect: { value: beyond.rect }, uLand: { value: new THREE.Vector4(...beyond.land) },
     uBeyondDeep: { value: rgb(beyond.greens[0]) }, uBeyondMid: { value: rgb(beyond.greens[1]) }, uBeyondSunny: { value: rgb(beyond.greens[2]) }, uBeyondLean: { value: beyond.lean ?? 1.2 },
@@ -676,11 +678,12 @@ export function createFollowGrass({
   });
   const mat = new THREE.ShaderMaterial({
     uniforms,
-    defines: beyond ? { BEYOND: 1 } : {},
+    defines: { ...(beyond ? { BEYOND: 1 } : {}), ...(paving ? { PAVING: 1 } : {}) },
     vertexShader: /* glsl */`
       ${NOISE}
       ${MAP_GLSL}
       ${LOOK_GLSL}
+      ${paving ? paving.glsl : ''}
       attribute vec4 aBlade;     // this blade inside its tuft: offset x, offset z, height factor, turn
       attribute vec2 iCell;      // the tuft's place on the tile
       attribute vec4 iRnd;       // turn (-1..1), height scale, phase (0..1), tint (-1..1)
@@ -763,6 +766,14 @@ export function createFollowGrass({
         #else
           ground = texture2D(uHeight, (xz - uHeightRect.xy) * uHeightRect.z + uHeightRect.w).r;
           m = groundMap(xz);
+        #endif
+        #ifdef PAVING
+          // PAVING (ground-paths.js): where flat stones are laid in a way, none of the tuft's blades stands on a slab, and short
+          // grass comes up between them: each blade is asked where it stands. (Not a ring tuft: that is a whole clump, for afar)
+          if (ringed < 0.5) {
+            float pa = iRnd.x * 3.1416, pca = cos(pa), psa = sin(pa);
+            m = paveGrass(m, xz + vec2(aBlade.x * pca - aBlade.y * psa, aBlade.x * psa + aBlade.y * pca) * uTuft);
+          }
         #endif
         float dry = dryAt(xz);
         m = dryGround(m, xz, dry);                              // (land under the curse: see DRY GROUND)

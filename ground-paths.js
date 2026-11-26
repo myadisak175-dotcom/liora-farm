@@ -281,7 +281,9 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       const d = distances(map), paint = tex && tex.paint ? tex.paint : null;
       const defines = { ...(paint ? { WAY_TEX: 1 } : {}), ...(stone ? { WAY_PAVE: 1 } : {}) };
       const uniforms = { ...softWayUniforms(map, paint, d.tex), ...(stone ? paveUniforms(stone, stoneTile) : {}) };
-      return { glsl: SOFT_WAY_GLSL, defines, uniforms, dispose: () => d.tex.dispose() };
+      // grass: what the grass needs to come up between the slabs (createFollowGrass's paving: { glsl, uniforms }), or null
+      const grass = stone ? { glsl: PAVE_GRASS_GLSL, uniforms: { uWayD: uniforms.uWayD, uWayMap: uniforms.uWayMap, uWayMapRect: uniforms.uWayMapRect, uPaveGrass: uniforms.uPaveGrass, uPaveDirt: { value: rgb(PAVE.dirt) } } } : null;
+      return { glsl: SOFT_WAY_GLSL, defines, uniforms, grass, dispose: () => d.tex.dispose() };
     },
     // PAVING: fn(x, z) -> 0..1, how much of a spot is laid with flat stones (path-edits.js, createPaveField). Set before the
     // ways are drawn (onLand); repave(box): worked out again there (a stroke that changed it without changing a way: grass)
@@ -420,32 +422,22 @@ function pathMaterial(map, tex, distTex) {
   });
 }
 
-// The soft look's paint: earth laid in with a brush (one picture, laid twice at two sizes and turned, so the repeat does not
-// show), paler and creamier down the worn middle, with broad soft patches of deeper tone, browner toward the sides. There is
-// no line at the edge: as the ground map says more grass grows, the earth goes to the colour of dry grass and fades out, so
-// the meadow's own green shows through it and the short grass stands on it. Beside bare ground (a cliff's foot, a beach) it
-// fades out in under a metre. Without the picture: the same, over one flat earth colour. Toward the water it is wet: darker,
-// by how high each point of the ribbon stands above the water (aBank: the level's bankAt, the same measure the banks' sand is
-// wet by, so a way running down onto the beach is wet just where the sand beside it is).
-// THE SOFT LOOK, as one function that both a soft ribbon (softPathMaterial) and the land's own paint (onLand) call: at a point
-// wp of the ground (up: how much the ground there faces up; bank: how high it stands above the water beside it, 10 with none
-// near), the way's colour and how much of it shows (0: none). Needs NOISE before it; WAY_TEX defined when there is a paint.
-const SOFT_WAY_GLSL = /* glsl */`
-uniform sampler2D uWayMap, uWayCast, uWayPaint, uWayD;
-uniform vec3 uWayMapRect, uWayCastTint, uWayEarth, uWayCream, uWayDeep, uWaySide, uWayHay, uWayWet;
-#ifdef WAY_PAVE
-// PAVING: flat stones laid in a way, in the stone the map's cliffs and rocks are painted with (uWayStone: the cliffs' own
-// picture), each slab a flat painted tone of its own, as the rocks' faces are. Irregular slabs about 0.8 m across, their corners
-// worn round and their edges cut by hand; the light catches the edge that faces the sun and the far edge is in shade; earth in
-// the joints, dark, with moss and grass in them here and there. Where the paving ends the stones go one by one, the last ones
-// small and sunk in the earth, then a few lying alone in the way, so there is no line: the way's earth, then the meadow.
-uniform sampler2D uWayStone;
-uniform vec2 uWayStoneTile, uWaySun;      // uWaySun: toward the sun, flat on the ground (the stones' lit edge follows the day)
-uniform vec3 uPaveJoint, uPaveMoss, uPaveMossDark, uPaveFar;
-const float PAVE_S = 0.92;                                                 // metres: a stone's cell, so a slab is about this across
+// THE SLABS of PAVING, as lines of shader of their own: where each slab lies, how far a point is inside it, whether it is there
+// at all. The land's paint lays them (SOFT_WAY_GLSL, PAVING) and the grass comes up between them (pavingForGrass, below): both
+// by these lines, so the blades stand just where the land has its joints. Needs NOISE, and uWayD, uWayMap, uWayMapRect.
+const SLAB_GLSL = /* glsl */`
+const float PAVE_S = 0.6;                                                  // metres: a slab's cell, so a slab is about this across
 vec2 paveJit(vec2 c) { return vec2(hash2(c + vec2(0.3125, 0.0)), hash2(c + vec2(0.0, 0.6875))); }
-// xz: the point; earth: the way's colour there; foot: metres a pixel covers; here: how paved the point is (0..1)
-vec3 paveStones(vec2 xz, vec3 earth, float foot, float here) {
+struct Slab {
+  vec2 mr;       // from the point to the slab's middle, in cells
+  float em;      // metres from the slab's edge (inside the cell), its edge cut by hand
+  float jw;      // half the joint there, metres: the slab begins this far in
+  float show;    // 1: the slab is there
+  float pc;      // how paved the slab's middle is (its edge wandering)
+  vec4 h;        // the slab's own dice: its tone, whether it is there, its turn, its joint
+};
+Slab paveSlab(vec2 xz) {
+  Slab s;
   vec2 p = xz / PAVE_S, ip = floor(p), fp = p - ip;
   // the nearest slab's middle (a jittered grid of cells, one slab in each)
   vec2 mc = ip, mr = vec2(0.0); float md = 8.0;
@@ -463,44 +455,95 @@ vec3 paveStones(vec2 xz, vec3 earth, float foot, float here) {
     float h = max(0.12 - abs(e - d), 0.0) / 0.12;
     e = min(e, d) - h * h * 0.03;
   }
-  vec2 sc = xz + mr * PAVE_S;                                              // the slab's middle
-  float h1 = hash2(mc + vec2(0.125, 0.25)), h2 = hash2(mc + vec2(0.4375, 0.0625)), h3 = hash2(mc + vec2(0.8125, 0.5625)), h4 = hash2(mc + vec2(0.1875, 0.9375));
+  s.mr = mr;
+  s.h = vec4(hash2(mc + vec2(0.125, 0.25)), hash2(mc + vec2(0.4375, 0.0625)), hash2(mc + vec2(0.8125, 0.5625)), hash2(mc + vec2(0.1875, 0.9375)));
   // is the slab there: all of them where the way is paved through; toward the paving's edge fewer (the edge wanders), and
   // smaller and sunk in the earth; a few alone past it. None where the grass has come over the way: a slab is whole or not there
-  vec2 suv = (sc - uWayMapRect.xy) * uWayMapRect.z + 0.5;
-  float pc = texture2D(uWayD, suv).a + (noise2(sc * 0.42 + 3.0) - 0.5) * 0.45;
-  float show = step(h2, smoothstep(0.3, 0.85, pc) * 1.12 + 0.12 * step(0.06, pc) * (1.0 - smoothstep(0.3, 0.6, pc)));
-  show *= step(texture2D(uWayMap, suv).a + (h1 - 0.5) * 0.2, 0.42);
-  float jw = 0.03 + 0.014 * h4 + (1.0 - smoothstep(0.45, 0.95, pc)) * 0.13;       // half the joint (metres): wider round the last slabs
-  float em = e * PAVE_S + (noise2(xz * 5.0 + h3 * 16.0) - 0.5) * 0.04 + (noise2(xz * 13.0 + 2.0) - 0.5) * 0.012;      // (cut by hand)
+  vec2 sc = xz + mr * PAVE_S, suv = (sc - uWayMapRect.xy) * uWayMapRect.z + 0.5;
+  s.pc = texture2D(uWayD, suv).a + (noise2(sc * 0.42 + 3.0) - 0.5) * 0.45;
+  s.show = step(s.h.y, smoothstep(0.3, 0.85, s.pc) * 1.12 + 0.12 * step(0.06, s.pc) * (1.0 - smoothstep(0.3, 0.6, s.pc)));
+  s.show *= step(texture2D(uWayMap, suv).a + (s.h.x - 0.5) * 0.2, 0.42);
+  s.jw = 0.035 + 0.015 * s.h.w + (1.0 - smoothstep(0.45, 0.95, s.pc)) * 0.09;
+  s.em = e * PAVE_S + (noise2(xz * 5.0 + s.h.z * 16.0) - 0.5) * 0.035 + (noise2(xz * 13.0 + 2.0) - 0.5) * 0.01;
+  return s;
+}
+// how much grass comes up at a point of the paving (0..1): in the joints and where a slab is gone, in patches (more toward the
+// paving's edge), none on a slab. here: how paved the point is
+float paveGrassAt(vec2 xz, Slab s, float here) {
+  float onSlab = s.show * smoothstep(s.jw - 0.006, s.jw + 0.012, s.em);
+  float n = noise2(xz * 1.6 + 3.0) * 0.6 + noise2(xz * 4.7) * 0.4, want = mix(0.6, 0.44, 1.0 - smoothstep(0.5, 1.0, here));      // (feet keep the middle of a paving barer)
+  return (1.0 - onSlab) * smoothstep(want - 0.07, want + 0.07, n);
+}`;
+// the meadow's blades between the slabs (pavingForGrass: stylized-grassfield.js takes it as createFollowGrass's paving). m: the
+// ground map at the tuft, at: where the blade stands. On a slab no blade; between the slabs short grass comes up, in patches,
+// in the trodden green of the grass beside the ways, with the map's shadow on it (what the map's bare earth has of it)
+const PAVE_GRASS_GLSL = /* glsl */`
+uniform sampler2D uWayD, uWayMap;
+uniform vec3 uWayMapRect, uPaveGrass, uPaveDirt;
+${SLAB_GLSL}
+vec4 paveGrass(vec4 m, vec2 at) {
+  if (m.a > 0.6) return m;                                                 // (thick meadow: there is no paving under it)
+  float here = texture2D(uWayD, (at - uWayMapRect.xy) * uWayMapRect.z + 0.5).a;
+  if (here < 0.02) return m;
+  Slab s = paveSlab(at);
+  float g = paveGrassAt(at, s, here), onSlab = s.show * smoothstep(s.jw - 0.006, s.jw + 0.012, s.em);
+  vec3 lit = clamp(m.rgb / uPaveDirt, vec3(0.35), vec3(1.2));
+  m.rgb = mix(m.rgb, uPaveGrass * lit, smoothstep(0.0, 0.25, g) * (1.0 - smoothstep(0.35, 0.6, m.a)));
+  m.a = max(m.a, g * 0.36) * (1.0 - onSlab);                              // (short: grass in the cracks, not a meadow)
+  return m;
+}`;
+
+// The soft look's paint: earth laid in with a brush (one picture, laid twice at two sizes and turned, so the repeat does not
+// show), paler and creamier down the worn middle, with broad soft patches of deeper tone, browner toward the sides. There is
+// no line at the edge: as the ground map says more grass grows, the earth goes to the colour of dry grass and fades out, so
+// the meadow's own green shows through it and the short grass stands on it. Beside bare ground (a cliff's foot, a beach) it
+// fades out in under a metre. Without the picture: the same, over one flat earth colour. Toward the water it is wet: darker,
+// by how high each point of the ribbon stands above the water (aBank: the level's bankAt, the same measure the banks' sand is
+// wet by, so a way running down onto the beach is wet just where the sand beside it is).
+// THE SOFT LOOK, as one function that both a soft ribbon (softPathMaterial) and the land's own paint (onLand) call: at a point
+// wp of the ground (up: how much the ground there faces up; bank: how high it stands above the water beside it, 10 with none
+// near), the way's colour and how much of it shows (0: none). Needs NOISE before it; WAY_TEX defined when there is a paint.
+const SOFT_WAY_GLSL = /* glsl */`
+uniform sampler2D uWayMap, uWayCast, uWayPaint, uWayD;
+uniform vec3 uWayMapRect, uWayCastTint, uWayEarth, uWayCream, uWayDeep, uWaySide, uWayHay, uWayWet;
+#ifdef WAY_PAVE
+// PAVING: flat stones laid in a way, in the stone the map's cliffs and rocks are painted with (uWayStone: the cliffs' own
+// picture), each slab a flat painted tone of its own, as the rocks' faces are. Irregular slabs about 0.55 m across (THE SLABS,
+// above), the light catching the edge that faces the sun and the far edge in shade; earth in the joints, and the meadow's own
+// blades coming up through them in patches (the grass: stylized-grassfield.js, PAVING there), the joints under them painted
+// the green of the blades' feet, so from afar too the joints are grassy. Where the paving ends the stones go one by one, the
+// last ones small and sunk in the earth, then a few lying alone in the way, so there is no line: the way's earth, the meadow.
+uniform sampler2D uWayStone;
+uniform vec2 uWayStoneTile, uWaySun;      // uWaySun: toward the sun, flat on the ground (the stones' lit edge follows the day)
+uniform vec3 uPaveJoint, uPaveGrass, uPaveFar;
+${SLAB_GLSL}
+// xz: the point; earth: the way's colour there; foot: metres a pixel covers; here: how paved the point is (0..1)
+vec3 paveStones(vec2 xz, vec3 earth, float foot, float here) {
+  Slab s = paveSlab(xz);
   float aa = max(foot * 0.85, 0.003);
-  float stone = smoothstep(jw - aa, jw + aa, em) * show;
+  float stone = smoothstep(s.jw - aa, s.jw + aa, s.em) * s.show;
   float near_ = 1.0 - smoothstep(0.025, 0.08, foot);                        // the small things, only near enough to be seen
   // the slab: the painted stone laid on it turned its own way (its brush's patches softened: a slab reads as one flat tone), each
   // slab a tone of its own, a few warmer and a few cooler
-  float ang = h3 * 6.2832, cs = cos(ang), sn = sin(ang);
+  vec2 sc = xz + s.mr * PAVE_S;
+  float ang = s.h.z * 6.2832, cs = cos(ang), sn = sin(ang);
   vec2 q = mat2(cs, sn, -sn, cs) * (xz - sc);
   float lod = log2(max(foot * 790.0, 1.0));                               // (its own mip: the picture's texels are about a millimetre here)
-  vec3 st = mix(textureLod(uWayStone, q * uWayStoneTile + vec2(h3 * 5.0, h1 * 3.0), lod).rgb, uPaveFar, 0.4);
-  st *= mix(1.1, 1.28, h1);                                                // (as pale in the sun as the cliffs' lit faces)
-  st *= h4 > 0.8 ? vec3(1.03, 1.0, 0.94) : (h4 < 0.2 ? vec3(0.96, 0.98, 1.02) : vec3(1.0));
+  vec3 st = mix(textureLod(uWayStone, q * uWayStoneTile + vec2(s.h.z * 5.0, s.h.x * 3.0), lod).rgb, uPaveFar, 0.4);
+  st *= mix(1.1, 1.28, s.h.x);                                             // (as pale in the sun as the cliffs' lit faces)
+  st *= s.h.w > 0.8 ? vec3(1.03, 1.0, 0.94) : (s.h.w < 0.2 ? vec3(0.96, 0.98, 1.02) : vec3(1.0));
   // its edge: a thin lit line where it faces the sun, a thin shaded one where it faces away (painted, in one step each)
-  vec2 outw = normalize(-mr + vec2(1e-5));
-  float bevel = (1.0 - smoothstep(jw + 0.022, jw + 0.03 + aa, em)) * near_, face = dot(outw, uWaySun);
+  vec2 outw = normalize(-s.mr + vec2(1e-5));
+  float bevel = (1.0 - smoothstep(s.jw + 0.018, s.jw + 0.026 + aa, s.em)) * near_, face = dot(outw, uWaySun);
   st = mix(st, min(st * 1.1 + 0.03, vec3(1.0)), bevel * smoothstep(0.2, 0.5, face));
   st = mix(st, st * 0.84, bevel * smoothstep(-0.2, -0.5, face));
-  // moss creeping onto it from its edge: on a few slabs, and more toward the paving's edge
-  float mn = noise2(xz * 3.3 + h1 * 16.0) * 0.7 + noise2(xz * 9.0) * 0.3 + ((1.0 - smoothstep(0.5, 1.0, pc)) * 0.16 + step(0.86, h4) * 0.12) - (em - jw) * 1.8;
-  st = mix(st, mix(uPaveMossDark, uPaveMoss, step(0.5, noise2(xz * 7.0 + 4.0))), smoothstep(0.68, 0.71, mn) * near_);
-  // the joints: earth a little darker, with moss and grass in them here and there; toward the paving's edge, where the slabs go,
-  // the way's own earth
-  vec3 joint = earth * uPaveJoint;
-  float jm = noise2(xz * 1.7 + 3.0) * 0.6 + noise2(xz * 5.3) * 0.4;
-  joint = mix(joint, mix(uPaveMossDark, uPaveMoss, step(0.5, noise2(xz * 11.0))), smoothstep(0.56, 0.62, jm));
+  // the joints: earth a little darker, and the green of the grass's feet where the blades come up through them; toward the
+  // paving's edge, where the slabs go, the way's own earth
+  vec3 joint = mix(earth * uPaveJoint, uPaveGrass * 0.72, smoothstep(0.0, 0.3, paveGrassAt(xz, s, here)));
   vec3 under = mix(earth, joint, smoothstep(0.55, 0.95, here));            // (by how paved the point is, not by its slab: no slab's outline shows where it is gone)
   vec3 col = mix(under, st, stone);
   // far off: the slabs and their joints as one tone (no shimmer)
-  return mix(col, mix(under, uPaveFar * mix(1.0, 1.08, h1), smoothstep(0.1, 0.6, here)), smoothstep(0.12, 0.4, foot));
+  return mix(col, mix(under, uPaveFar * mix(1.0, 1.08, s.h.x), smoothstep(0.1, 0.6, here)), smoothstep(0.12, 0.4, foot));
 }
 #endif
 vec4 softWay(vec3 wp, float up, float bank) {
@@ -555,11 +598,15 @@ const softWayUniforms = (map, paint, distTex) => ({
 // the paving's: the map's painted stone and how big a picture of it is laid on a slab (metres across, along), the sun's way flat
 // on the ground (setSun: the stones' lit edge follows the day), what the earth in the joints is multiplied by, the moss (the
 // rocks' own: rocks.js), and the slabs' one tone from afar (the stone picture's own mean, a little lit)
-const PAVE = { joint: [0.8, 0.75, 0.68], moss: '#7b9a42', mossDark: '#5a7a37', far: '#d2bd9b' };
+// the paving's: the map's painted stone and how big a picture of it is laid on a slab (metres across, along), the sun's way flat
+// on the ground (setSun: the stones' lit edge follows the day), what the earth in the joints is multiplied by, the green of the
+// grass between the slabs (the ground map's trodden grass, stylized-grassfield.js GROUND_COLORS.lawn) and the map's bare earth
+// (its dirt: what the grass's shadow is read from), the slabs' one tone from afar (the stone picture's own mean, a little lit)
+const PAVE = { joint: [0.8, 0.75, 0.68], grass: '#93b848', dirt: '#cdb079', far: '#d2bd9b' };
 const paveUniforms = (stone, tile) => ({
   uWayStone: { value: stone }, uWayStoneTile: { value: new THREE.Vector2(1 / tile[0], 1 / tile[1]) },
   uWaySun: { value: new THREE.Vector2(-0.62, 0.48).normalize() },
-  uPaveJoint: { value: new THREE.Vector3(...PAVE.joint) }, uPaveMoss: { value: rgb(PAVE.moss) }, uPaveMossDark: { value: rgb(PAVE.mossDark) }, uPaveFar: { value: rgb(PAVE.far) },
+  uPaveJoint: { value: new THREE.Vector3(...PAVE.joint) }, uPaveGrass: { value: rgb(PAVE.grass) }, uPaveFar: { value: rgb(PAVE.far) },
 });
 
 function softPathMaterial(map, tex, distTex) {

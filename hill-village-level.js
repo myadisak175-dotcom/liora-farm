@@ -687,6 +687,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     map, field: grassField, count: grassCount, tile: 62, seed, thin: Math.sqrt(200000 / grassCount), ...fade,
     ring: { tile: 215, count: Math.round(grassCount * 0.3), width: 1.9, spread: 3.5, height: 1.1, lead: 0.1 },
     beyond: { ...rim.userData.grass, land: landRect, greens: [G.GROUND_COLORS.deep, G.GROUND_COLORS.mid, G.GROUND_COLORS.sunny], lean: 2.2 },
+    paving: landWays ? landWays.grass : null,                              // (the blades come up between the paving's slabs, not on them)
   });
   if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
   console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
