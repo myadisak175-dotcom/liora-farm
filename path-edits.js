@@ -14,7 +14,10 @@
 //                                                       stroke over it in turn (wayPaint(op) -> that one way's own paint function;
 //                                                       a paving stroke is a way to the ground: bare earth under its stones)
 //   const pave = createPaveField(ops)                   pave.at(x, z) -> 0..1: how much of a spot is laid with stones, by the
-//                                                       strokes in turn; pave.add(op) / pave.remove(op) as strokes come and go
+//                                                       strokes in turn, less the gaps; pave.laid(x, z): by the strokes alone;
+//                                                       pave.add(op) / pave.remove(op) as strokes come and go;
+//                                                       pave.gaps([[x, z, r], ...]) -> boxes that changed: where a plant stands
+//                                                       on the paving, its stones are gone (it grows out of the gap)
 //   opBox(op) -> [x0, x1, z0, z1]                       where a stroke can reach
 //   grassOver(op, x, z) -> 0..1                         how much a grass stroke covers that spot
 //   isWay(op)                                           a stroke of earth (a way, or paving: a way with stones in it)
@@ -121,7 +124,28 @@ export function createPaveField(ops = []) {
     enroll(list[k], false); list.splice(k, 1); if (o.k === 'pave') paving--;
   };
   for (const o of ops) add(o);
-  const at = (x, z) => {
+  // GAPS: where a plant stands on the paving (a tuft, a fern, a clump, a bush, a tree) its stones are gone, in a round as wide
+  // as its foot (r), so it grows out of the earth between them. Kept by the same squares
+  let gapList = [], gapSquares = new Map();
+  const gapAt = (x, z) => {
+    const here = gapSquares.get(key(Math.floor(x / G), Math.floor(z / G)));
+    if (!here) return 0;
+    let g = 0;
+    for (const [gx, gz, r] of here) { const d = Math.hypot(x - gx, z - gz); if (d < r) g = Math.max(g, 1 - ss(r * 0.55, r, d)); }
+    return g;
+  };
+  const gaps = list => {
+    const was = new Set(gapList.map(g => g.join())), now = new Set(list.map(g => g.join())), changed = [];
+    for (const g of [...gapList.filter(g => !now.has(g.join())), ...list.filter(g => !was.has(g.join()))]) changed.push([g[0] - g[2], g[0] + g[2], g[1] - g[2], g[1] + g[2]]);
+    gapList = list.map(g => g.slice()); gapSquares = new Map();
+    for (const g of gapList) for (let i = Math.floor((g[0] - g[2]) / G); i <= Math.floor((g[0] + g[2]) / G); i++) for (let j = Math.floor((g[1] - g[2]) / G); j <= Math.floor((g[1] + g[2]) / G); j++) {
+      const k = key(i, j); let a = gapSquares.get(k);
+      if (!a) gapSquares.set(k, a = []);
+      a.push(g);
+    }
+    return changed;
+  };
+  const laid = (x, z) => {
     if (!paving) return 0;
     const here = squares.get(key(Math.floor(x / G), Math.floor(z / G)));
     if (!here) return 0;
@@ -133,5 +157,6 @@ export function createPaveField(ops = []) {
     }
     return p;
   };
-  return { at, add, remove, get paving() { return paving; }, box: paveBox };
+  const at = (x, z) => { const p = laid(x, z); return p > 0 && gapList.length ? p * (1 - gapAt(x, z)) : p; };
+  return { at, laid, add, remove, gaps, get paving() { return paving; }, box: paveBox };
 }

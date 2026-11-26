@@ -323,6 +323,14 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     stands(e); bigTrees.push({ b, plant: e });
   }
   const offWay = (x, z, pad) => { const n = paths.near(x, z); return n.d > n.half + pad; };
+  // a plant standing on the paving grows out of a gap in it: its stones are gone round its foot (path-edits.js, GAPS). The
+  // gaps of the plants as the map has them now; the foliage editor's moves change them (foliageEdit.plant)
+  const gapsOf = F => [
+    ...F.plants.map(p => [p.x, p.z, p.kind === 'tree' ? (TRUNK[p.type] || 0.4) * 1.35 * p.scale + 0.3 : p.type === 'clump' ? 0.38 * p.scale + 0.1 : 0.55 * BUSH_SIZE * p.scale]),
+    ...F.cover.map(c => [c.x, c.z, 0.3 * c.scale + 0.1]),
+    ...bigTrees.map(({ plant: p }) => [p.x, p.z, (TRUNK[p.type] || 0.4) * 1.35 * p.scale + 0.3]),
+  ].filter(([x, z]) => paved.laid(x, z) > 0.02).map(g => g.map(v => Math.round(v * 100) / 100));
+  paved.gaps(gapsOf(grown));
 
   // ------------------------------------------------------------------ the village
   await onStep('สร้างหมู่บ้าน');
@@ -717,9 +725,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (pines.length) obj.add(createFrondPineForest(pines));
     return obj;
   };
-  const bedOf = (b, clumps, heightAt = H, allow = null) => {                // a bed's low flowers: none on a way, in the water, in anything solid (a wall, a trunk, a rock, a bush), or inside a clump
+  const bedOf = (b, clumps, heightAt = H, allow = null) => {                // a bed's low flowers: none on a way (on the paving only in its cracks), in the water, in anything solid (a wall, a trunk, a rock, a bush), or inside a clump
     const reach = b.rad * 1.2, solid = allow ? [] : colliders.filter(([cx, cz, cr]) => Math.hypot(cx - b.x, cz - b.z) < reach * 1.15 + cr + 0.2);
-    const grows = allow || ((fx, fz) => offWay(fx, fz, 0.12) && waterDepthAt(fx, fz) === 0 && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08));
+    const grows = allow || ((fx, fz) => (offWay(fx, fz, 0.12) || paths.inCrack(fx, fz)) && waterDepthAt(fx, fz) === 0 && !solid.some(([cx, cz, cr]) => Math.hypot(cx - fx, cz - fz) < cr + 0.08));      // (on the paving: in its cracks, between the slabs)
     const avoid = clumps.filter(c => Math.hypot(c.x - b.x, c.z - b.z) < reach + 1).map(c => [c.x, c.z, 0.75 * c.scale + 0.1]);
     return createFlowerDrift({ center: [b.x, b.z], radius: reach, seed: b.seed, heightAt, bed: b.bed, allow: grows, avoid });
   };
@@ -742,7 +750,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     }
   };
   const plantCover = (list, only = null) => {
-    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && offWay(c.x, c.z, 0.1)), squareOf, only);      // (none in the water or on a way)
+    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && (offWay(c.x, c.z, 0.1) || paved.laid(c.x, c.z) > 0.3)), squareOf, only);      // (none in the water or on a way; on the paving it grows out of its gap)
     for (const key of only || by.keys()) {
       uproot(squaresAt, key);
       const here = by.get(key);
@@ -966,6 +974,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     rows: () => ({ plants: P.plants.map(r => r.slice()), clumps: (P.clumps || []).map(r => r.slice()), cover: (P.cover || []).map(r => r.slice()) }),
     plant(rows, dirty = null) {                                            // the scene from these rows: all of it, or only the groves and squares named ({ groves, squares }: sets of groveOf's and squareOf's keys)
       const F = entriesOf(rows);
+      for (const box of paved.gaps(gapsOf(F))) paths.repave(box);          // (the paving's gaps where plants now stand)
       plantGroves(F, dirty && dirty.groves); plantCover(F.cover, dirty && dirty.squares);
     },
     sprig(rows, cx, cz) {                                                  // a few rows as a small scene of their own: an Object3D standing at (cx, 0, cz), to be moved and turned

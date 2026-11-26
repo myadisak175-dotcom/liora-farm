@@ -51,6 +51,47 @@ export async function loadPathTextures(style = 'grit') {
   return { sand, dirt, dispose() { sand.dispose(); dirt.dispose(); } };
 }
 
+// THE SLABS in JavaScript: the same sums as SLAB_GLSL below (and as NOISE's hash2 and noise2, stylized-nature.js: whole-number
+// arithmetic, so they come out the same here as on any graphics chip), for what is placed by them: a flower may grow in a joint
+// between the slabs or where a slab is gone, not on one (slabAt, made by createPaths once the ways' picture is made)
+const m289 = x => x - Math.floor((x + 0.5) * (1 / 289)) * 289;
+const perm289 = x => m289(m289(x * 34 + 1) * x);
+const hash2 = (x, y) => perm289(m289(perm289(m289(Math.floor(x * 16 + 0.5))) + m289(Math.floor(y * 16 + 0.5)))) * (1 / 289);
+function noise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const a = m289(ix), b = m289(ix + 1), c = m289(iy), d = m289(iy + 1), h = (u, v) => perm289(m289(perm289(u) + v)) * (1 / 289);
+  const h0 = h(a, c), h1 = h(b, c), h2 = h(a, d), h3 = h(b, d), lo = h0 + (h1 - h0) * fx;
+  return lo + (h2 + (h3 - h2) * fx - lo) * fy;
+}
+const PAVE_S = 0.6;                                                        // (SLAB_GLSL's own)
+// read: (x, z) -> [how paved, how much grass] at a point, as the shader reads its two pictures there
+function slabAt(x, z, read) {
+  const px = x / PAVE_S, pz = z / PAVE_S, ix = Math.floor(px), iz = Math.floor(pz), fx = px - ix, fz = pz - iz;
+  const mid = (cx, cz) => [cx - ix + 0.5 + (hash2(cx + 0.3125, cz) - 0.5) * 0.8 - fx, cz - iz + 0.5 + (hash2(cx, cz + 0.6875) - 0.5) * 0.8 - fz];
+  let mx = ix, mz = iz, rx = 0, rz = 0, md = 8;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const [ax, az] = mid(ix + i, iz + j), d = ax * ax + az * az;
+    if (d < md) { md = d; rx = ax; rz = az; mx = ix + i; mz = iz + j; }
+  }
+  let e = 8;
+  for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) {
+    if (!i && !j) continue;
+    const [ax, az] = mid(mx + i, mz + j), dx = ax - rx, dz = az - rz, L = Math.max(Math.hypot(dx, dz), 1e-4);
+    const d = (0.5 * (rx + ax) * dx + 0.5 * (rz + az) * dz) / L, h = Math.max(0.12 - Math.abs(e - d), 0) / 0.12;
+    e = Math.min(e, d) - h * h * 0.03;
+  }
+  const h0 = hash2(mx + 0.125, mz + 0.25), h1 = hash2(mx + 0.4375, mz + 0.0625), h2 = hash2(mx + 0.8125, mz + 0.5625), h3 = hash2(mx + 0.1875, mz + 0.9375);
+  const sx = x + rx * PAVE_S, sz = z + rz * PAVE_S, [pv, gr] = read(sx, sz);
+  const pc = pv + (noise2(sx * 0.42 + 3, sz * 0.42 + 3) - 0.5) * 0.45;
+  const ss_ = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+  let show = (ss_(0.3, 0.85, pc) * 1.12 + 0.12 * (pc >= 0.06 ? 1 : 0) * (1 - ss_(0.3, 0.6, pc))) >= h1 ? 1 : 0;
+  if (gr + (h0 - 0.5) * 0.2 > 0.42) show = 0;
+  const jw = 0.035 + 0.015 * h3 + (1 - ss_(0.45, 0.95, pc)) * 0.09;
+  const em = e * PAVE_S + (noise2(x * 5 + h2 * 16, z * 5 + h2 * 16) - 0.5) * 0.035 + (noise2(x * 13 + 2, z * 13 + 2) - 0.5) * 0.01;
+  return { em, jw, show };
+}
+
 const WAY_SQUARE = 4;                                                      // metres: the squares near() goes by (see createPaths)
 // the noise a way's paint takes at a point (its edge's wander, its tufts), kept for the last point asked: the ground picture
 // asks every way that reaches a point in turn, at that point, and all of them (of one seed) take the same noise there
@@ -204,7 +245,17 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
       }
       tex.needsUpdate = true;
     };
-    return (dist = { tex, fill, cover, repave });
+    // the two pictures read at a point as the shader reads them (linear between texel middles, clamped at the edge): how paved
+    // (this picture's fourth number) and how much grass grows (the ground map's)
+    const read = (x, z) => {
+      const u = ((x - mx) / (2 * R) + 0.5) * S - 0.5, v = ((z - mz) / (2 * R) + 0.5) * S - 0.5;
+      const i0 = Math.min(S - 1, Math.max(0, Math.floor(u))), j0 = Math.min(S - 1, Math.max(0, Math.floor(v))), i1 = Math.min(S - 1, i0 + 1), j1 = Math.min(S - 1, j0 + 1);
+      const a = Math.min(1, Math.max(0, u - i0)), b = Math.min(1, Math.max(0, v - j0)), md = map.data;
+      const at = (arr, i, j) => arr[(j * S + i) * 4 + 3] / 255;
+      const lerp2 = arr => (at(arr, i0, j0) * (1 - a) + at(arr, i1, j0) * a) * (1 - b) + (at(arr, i0, j1) * (1 - a) + at(arr, i1, j1) * a) * b;
+      return [lerp2(dd), md ? lerp2(md) : 0];
+    };
+    return (dist = { tex, fill, cover, repave, read });
   };
   return {
     near,
@@ -289,6 +340,14 @@ export function createPaths({ paths = [], seed = 1, style = 'grit' } = {}) {
     // ways are drawn (onLand); repave(box): worked out again there (a stroke that changed it without changing a way: grass)
     pave(fn) { paveAt = fn; },
     repave(box) { if (dist) dist.repave(box); },
+    // is (x, z) in the paving's cracks: on paving, in a joint between the slabs or where a slab is gone (not on one). A flower
+    // may grow there (the slabs as the shader lays them: slabAt). False where there is no paving, or before the ways are drawn
+    inCrack(x, z, margin = 0.012) {
+      if (!soft || !dist) return false;
+      if (dist.read(x, z)[0] < 0.02) return false;
+      const s = slabAt(x, z, dist.read);
+      return !s.show || s.em < s.jw - margin;
+    },
     // one more path, after the ribbons are made: it is in near() and paint() from now on, and drawn at once
     add(path) {
       const l = makeLine(path);
