@@ -10,7 +10,9 @@ Serve this directory over HTTP. Open `index.html`. GitHub Pages serves the same 
 
 The game opens on its map, the hill village (the same as `?map=hillvillage`). `?map=valley` opens the first map's valley, which used to be what the plain link opened; the other maps each have their own `?map=` (below).
 
-Touch: left side to move, right side to rotate the camera; tap water to make ripples.
+Touch: left side to move, right side to rotate the camera; a quick touch on either side is a tap: on water it makes ripples (with `?farm=1` and a tool chosen, on a square of her farm it uses the tool).
+
+Working on it with an agent (Claude, Codex …): `AGENTS.md` has the notes they hand on to each other, and the log of who did what.
 
 ## The look of her magic: the basic combo's water is the reference
 
