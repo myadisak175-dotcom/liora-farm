@@ -1,7 +1,7 @@
 // forest-floor.js  —  where the ground is a wood's floor: under trees that stand close together (a grove, a wood), and not
 // under a tree that stands on its own (26 Nov 2026, chosen: "เฉพาะดงไม้ที่ขึ้นชิดกัน"). One job: from where the trees
 // stand, a picture of how much each spot of the land is a wood's floor, for the land's paint to lay its floor by
-// (stylized-terrain.js, floor: dark earth, dry leaves, moss in patches, assets/ground/forest-paint.webp), and the meadow's
+// (stylized-terrain.js, floor: earth, dry leaves, moss in patches, assets/ground/forest-*-paint.webp), and the meadow's
 // grass made thinner and shorter there, though not gone ("บางลง สั้นลง ยังมีบ้าง").
 //
 //   const floor = createForestFloor({ trees: [[x, z, crown], ...], rect: [x0, z0, x1, z1] });   // crown: its crown's radius (m)

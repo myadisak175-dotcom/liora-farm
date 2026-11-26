@@ -1,13 +1,18 @@
 # make-forest-paint.py  —  the forest floor's painted look: the ground under a grove, as the ways' brush would lay it in
 #
-# Writes assets/ground/forest-paint.webp: 768 x 768, seamless both ways, to be laid about 3.6 m to a repeat (213 px a metre)
-# wherever trees stand close together (stylized-terrain.js, floor: hill-village-level.js asks for it with ?forest=1).
-# Chosen on 26 Nov 2026: dark earth, dry leaves, moss in patches ("ดินเข้ม ใบไม้แห้ง มอสเป็นหย่อม"). It is the floor in full
-# light; the game lays the trees' shadows over it, and its edge to the meadow:
-#   1. dark earth: broad drifts of tone and the brush's dabs over them, as the ways' earth is painted (make-path-paint.py),
-#      in deeper, browner colours;
-#   2. moss in patches, a rich green a step deeper than the meadow's, its edge furred, lighter where it is lit, with pale
-#      specks in it;
+# Writes a picture 768 x 768, seamless both ways, to be laid about 3.6 m to a repeat (213 px a metre) wherever trees stand
+# close together (stylized-terrain.js, floor: hill-village-level.js asks for it with ?forest=...). Chosen on 26 Nov 2026:
+# earth, dry leaves, moss in patches ("ดินเข้ม ใบไม้แห้ง มอสเป็นหย่อม"). Two sets of it, in LOOKS:
+#   path   assets/ground/forest-path-paint.webp (the game's, ?forest=1): the ways' own earth (make-path-paint.py's colours,
+#          a step deeper, as earth is in a wood's shade), so a wood's floor and the ways read as one ground: asked for the
+#          same day ("ชุดที่มันเข้ากับพื้นดินทางเดินของเรา"); its leaves mostly near the earth's own tone, so it is quiet as the ways
+#          are; its moss a few dull patches, near the meadow's green
+#   damp   assets/ground/forest-damp-paint.webp (?forest=damp): the first set, dark damp earth and deep moss. Too dark for
+#          the village's woods ("ดินเข้มเกินไป ดูเป็นโซนดิบชื้น"), and kept for a zone of its own: the ancient ruins, a
+#          damp jungle's floor ("แต่ว่าสวย เก็บไว้ใช้ต่อได้ เผื่อทำโซนโบราณสถาน")
+# Each is the floor in full light; the game lays the trees' shadows over it, and its edge to the meadow:
+#   1. earth: broad drifts of tone and the brush's dabs over them, as the ways' earth is painted (make-path-paint.py);
+#   2. moss in patches, its edge furred, lighter where it is lit, with pale specks in it;
 #   3. dry leaves lying every which way, thick in drifts and thin elsewhere (few on the moss), larger than life (12 to 20
 #      cm: so they read as leaves from where the camera is, as the world's own things are drawn): brown, rust and ochre with a
 #      few still green; each a pointed oval folded along its middle, the half that faces the light (the upper left, as the
@@ -15,25 +20,45 @@
 #   4. a few twigs, dark with a lighter top;
 #   5. a little grain of the paper.
 #
-#   python3 tools/make-forest-paint.py            (Termux: pip install numpy scipy pillow)
+#   python3 tools/make-forest-paint.py            (the path set; Termux: pip install numpy scipy pillow)
+#   python3 tools/make-forest-paint.py damp
 #
-# To change the colours: EARTH, LEAVES, MOSS, TWIG. To change how much of each: MOSS_SHARE, LEAF_COUNT, TWIG_COUNT.
+# To change the colours: EARTH, LEAVES, MOSS, TWIG (each look's own, in LOOKS). To change how much of each: MOSS_SHARE,
+# LEAF_COUNT, TWIG_COUNT; how dark a leaf's shadow: SHADOW.
+import sys
 from pathlib import Path
 import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
 N = 768
-OUT = Path(__file__).resolve().parent.parent / 'assets/ground/forest-paint.webp'
-rng = np.random.default_rng(83)
+LOOKS = {
+    'path': dict(                                                     # the ways' own earth, a step deeper in the shade
+        out='forest-path-paint.webp', seed=31,
+        EARTH=('#8f7548', '#a48650', '#b9995e', '#c9aa6c', '#d6b97c'),                     # a hollow's, damp earth, the earth itself, drier, the palest (the ways': #c4a360, #dcc07c)
+        LEAVES=(('#94693f', 0.12), ('#b0744a', 0.12), ('#c49456', 0.24), ('#dbb675', 0.24),   # brown, rust, ochre, tan: most of them near the earth's own tone, so the floor is quiet
+                ('#a8884f', 0.16), ('#7f5c3c', 0.03), ('#9ea85a', 0.06), ('#b4be6c', 0.03)),      # dull gold-brown, dark brown, olive, still green
+        MOSS=('#5b7634', '#67863a', '#759342', '#85a24b', '#98b459'),                      # deep .. lit: dull, near the meadow's own green
+        TWIG=('#6b5236', '#a08460'),                                                       # a twig, and its lit top
+        MOSS_SHARE=0.07, LEAF_COUNT=560, TWIG_COUNT=16, SHADOW=0.22),
+    'damp': dict(                                                     # dark damp earth: a jungle's floor (the ruins)
+        out='forest-damp-paint.webp', seed=83,
+        EARTH=('#3f2e22', '#4e3a2a', '#5d4632', '#6e5439', '#836545'),
+        LEAVES=(('#7a5232', 0.22), ('#94592f', 0.18), ('#ad7a41', 0.2), ('#c79a5c', 0.14),
+                ('#8a6a3a', 0.12), ('#6d4a30', 0.07), ('#86904a', 0.05), ('#9aa457', 0.02)),
+        MOSS=('#36502a', '#435f2e', '#517034', '#62833c', '#789a48'),                      # deeper and duller than the meadow's (it lies in the shade)
+        TWIG=('#4a3726', '#7d624a'),
+        MOSS_SHARE=0.2, LEAF_COUNT=640, TWIG_COUNT=18, SHADOW=0.32),
+}
+look = LOOKS[sys.argv[1] if len(sys.argv) > 1 else 'path']
+OUT = Path(__file__).resolve().parent.parent / 'assets/ground' / look['out']
+rng = np.random.default_rng(look['seed'])
 hexrgb = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], float) / 255
-EARTH = [hexrgb(c) for c in ('#3f2e22', '#4e3a2a', '#5d4632', '#6e5439', '#836545')]       # a hollow's dark, damp earth, the earth itself, drier, the palest
-LEAVES = [(hexrgb(c), w) for c, w in (                                                       # a leaf's colour, and how many of them are it
-    ('#7a5232', 0.22), ('#94592f', 0.18), ('#ad7a41', 0.2), ('#c79a5c', 0.14),            # brown, rust, ochre, tan
-    ('#8a6a3a', 0.12), ('#6d4a30', 0.07), ('#86904a', 0.05), ('#9aa457', 0.02))]          # dull gold-brown, dark brown, olive, still green
-MOSS = [hexrgb(c) for c in ('#36502a', '#435f2e', '#517034', '#62833c', '#789a48')]          # deep in a hollow .. lit: deeper and duller than the meadow's (it lies in the shade)
-TWIG = (hexrgb('#4a3726'), hexrgb('#7d624a'))                                                # a twig, and its lit top
-MOSS_SHARE, LEAF_COUNT, TWIG_COUNT = 0.2, 640, 18
+EARTH = [hexrgb(c) for c in look['EARTH']]
+LEAVES = [(hexrgb(c), w) for c, w in look['LEAVES']]
+MOSS = [hexrgb(c) for c in look['MOSS']]
+TWIG = tuple(hexrgb(c) for c in look['TWIG'])
+MOSS_SHARE, LEAF_COUNT, TWIG_COUNT, SHADOW = look['MOSS_SHARE'], look['LEAF_COUNT'], look['TWIG_COUNT'], look['SHADOW']
 sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 0, 1))
 LIGHT = np.array([-1.0, -1.0]) / np.sqrt(2)                                                 # light from the upper left
 
@@ -72,7 +97,7 @@ def lay(img, idx, colour, a):
     img[idx] = img[idx] * (1 - a) + colour * a
 
 
-# ---- 1. the dark earth: drifts of tone and the brush's dabs, wet into wet (as make-path-paint.py)
+# ---- 1. the earth: drifts of tone and the brush's dabs, wet into wet (as make-path-paint.py)
 t = 0.5 + (periodic(3, 3) - .5) * 0.22
 waver = (periodic(24, 2) - .5) * 0.5
 for _ in range(240):
@@ -104,7 +129,7 @@ laid = 0
 while laid < LEAF_COUNT:
     cx, cy = rng.uniform(0, N), rng.uniform(0, N)
     here = drift[int(cy) % N, int(cx) % N] * (1 - 0.8 * moss[int(cy) % N, int(cx) % N])
-    if rng.random() > 0.06 + 0.94 * sm(0.38, 0.78, here): continue                         # (in drifts: the dark earth shows between them)
+    if rng.random() > 0.06 + 0.94 * sm(0.38, 0.78, here): continue                         # (in drifts: the earth shows between them)
     laid += 1
     L = rng.uniform(26, 44) * (1.3 if rng.random() < 0.12 else 1.0)                          # a leaf's length (px: 12 to 20 cm, a painted world's leaves), now and then a big one
     W = L * rng.uniform(0.5, 0.68); ang = rng.uniform(0, np.pi)
@@ -115,7 +140,7 @@ while laid < LEAF_COUNT:
     u = (dx * c + dy * s) / (L / 2); v = (-dx * s + dy * c) / (W / 2)
     shape = np.abs(v) / np.maximum(np.clip(1 - u * u, 0, 1) ** 0.8, 1e-3)
     sh = (1 - sm(0.7, 1.6, shape)) * (1 - sm(0.9, 1.25, np.abs(u)))
-    img[idx] *= (1 - 0.32 * sh)[..., None]
+    img[idx] *= (1 - SHADOW * sh)[..., None]
     # the leaf: a pointed oval folded along its middle, the half facing the light lighter, its midrib darker
     idx, dx, dy = window(cx, cy, L / 2 + 2)
     u = (dx * c + dy * s) / (L / 2); v = (-dx * s + dy * c) / (W / 2)
