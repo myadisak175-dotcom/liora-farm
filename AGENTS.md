@@ -11,6 +11,16 @@ Whoever works here, Claude, Codex or anyone else: read this first, the newest en
 - **How work lands** (the user, 26 Nov 2026: "แยกดีกว่าคะ จะได้แก้ง่ายๆ", then "เข้า main ก็ได้"): each piece of work on a branch of its own, named for it (no slash), merged into `main` through a pull request as soon as it is done, so it is in the game's link at once. One pull request for each piece, so a piece that goes wrong is undone by itself (Revert on its pull request), the rest left standing. Note the branch in the log below.
 - Branches with work not in `main`, as of 26 Nov 2026: `guild-in-village` and `guild-hall` (25 Nov: the guild where the keep stood, its receptionist NPC; behind `main` now, so it needs `main` merged in first). The `agent/*` branches, the dated ones and the older `backup/*` ones, from Aug–Sep 2026, belong to an older version of the game.
 
+## Not stepping on each other
+
+Two agents can work at once. Git does not let one undo the other by itself (GitHub will not merge a pull request with a conflict), but a conflict settled carelessly can throw away a whole feature. So:
+
+- When you start, add a line to the log: `started: <what>` and your branch. Look at the other lines first: if another agent is in the same files right now, tell the user before you go on.
+- Before you start, and again before you merge: bring `main` into your branch (`git merge origin/main`) and try the game.
+- A conflict: keep both sides. Never take one side of `index.html`, `hill-village-level.js` or `README.md` whole: they hold everyone's work. In the import map give the file a number higher than either side had (the same number on both sides with different files behind it, and phones keep the old one).
+- The map's files (`assets/heightmaps/*`, `assets/maps/*`) are made by `tools/make-hill-village-heightmap.py` and `tools/make-hill-village-map.py`: when both sides changed the tools or the map, run the tools again after the merge.
+- Known now (26 Nov 2026): `guild-in-village` against `main` meets at 7 places, 4 in `index.html` and 3 in `hill-village-level.js`, every one both sides adding lines at the same spot (the import map; the ground's paint, where the farm's cut grass and the guild's trodden earth go; the level's list of what it hands the game; `setSun`; the frame loop). Keep both everywhere; `hill-village-level.js` then `?v=70`, `village-kit.js` `?v=bridge3guild3`; then run the map tools (`main`'s tools lay paving as a way, the guild's map files were made without that). Nothing of the guild touches taps or the left of the screen, and it stands in the village, away from the farm.
+
 ## Working with the user
 
 - Thai, short and plain. They read the game, not the code: say what they will see and where to tap, and give the link.
@@ -37,6 +47,8 @@ Whoever works here, Claude, Codex or anyone else: read this first, the newest en
 - Not done yet: crops; anything got for what is cleared; her own move when she casts (she does not turn or raise a hand: only the magic shows where it lands; to be made to the magic jump's standard); the farm in the plan and on the minimap; a try on a real phone.
 
 ## Log (newest first)
+
+- **26 Nov 2026 · Claude · `agents-no-clash` → `main`** — Not stepping on each other (above): the rules, and where `guild-in-village` meets `main` (a merge tried without touching anything).
 
 - **26 Nov 2026 · Claude · `agents-workflow` → `main`** — How work lands, from now on (Branches, above): a branch and a pull request for each piece, merged at once.
 
