@@ -187,11 +187,14 @@ def paint(MODE):
         for x, z, r, *_ in plan['yards']:
             cx, cy = P(x, z); rr = (r + grow) * K; d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=colour)
     # the ways painted by hand in the game (path-brush.js; kept in hill-village-paths.json and written into the plan as pathOps), in
-    # the order they were painted: a way drawn as the others are, grass by laying the land as it was before the ways back over
+    # the order they were painted: a way drawn as the others are, paving as a way of stone (a way's earth round it), grass by
+    # laying the land as it was before the ways back over
     for o in plan.get('pathOps', []):
         pts = catmull(o['pts']) if len(o['pts']) > 1 else [tuple(o['pts'][0]), (o['pts'][0][0] + 0.3, o['pts'][0][1])]
         if o['k'] == 'way':
             for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way'])): stroke(d, pts, 2 * o['half'] + 2 * grow, colour)
+        elif o['k'] == 'pave':
+            for grow, colour in ((0.3, COL['way_edge']), (0.0, COL['way']), (-0.5, COL['stone'])): stroke(d, pts, max(0.4, 2 * o['half'] + 2 * grow), colour)
         else:
             mask = Image.new('L', canvas.size, 0); stroke(ImageDraw.Draw(mask), pts, 2 * o['r'], 255)
             canvas.paste(before_ways, (0, 0), mask); d = ImageDraw.Draw(canvas)

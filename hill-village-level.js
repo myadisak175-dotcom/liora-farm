@@ -57,7 +57,7 @@ import { fieldGeometry } from './village-fields.js';
 import { createRockKit, sampleKitSurface } from './rocks.js';
 import { placeKey, placeables, applyPlaceEdits, itemsFrom } from './place-edits.js';
 import { foliageKey, applyFoliage } from './foliage-edits.js';
-import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver } from './path-edits.js';
+import { pathKey, loadPathOps, settlePathOps, foldPathOps, opBox, grassOver, isWay, createPaveField } from './path-edits.js';
 import { createMapRim } from './map-rim.js';
 import { joinWestFringe } from './west-fringe.js';
 import { droughtWater, droughtPools, cursedLand } from './drought.js';
@@ -217,7 +217,16 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   // the ways painted by hand (path-brush.js): those the map's tool has taken in (P.pathOps), then those kept in this browser,
   // in the order they were painted (path-edits.js). Each painted way is a way like the others; grass painted over a way hides it
-  const paths = createPaths({ paths: [...toolWays, ...pathOps.filter(o => o.k === 'way').map(o => ({ points: o.pts, half: o.half }))], seed, style: pathStyle });
+  const paths = createPaths({ paths: [...toolWays, ...pathOps.filter(isWay).map(o => ({ points: o.pts, half: o.half }))], seed, style: pathStyle });
+  // PAVING (path-edits.js, createPaveField; drawn by the land with the ways: ground-paths.js): flat stones laid in the ways where a
+  // paving stroke was painted, by the strokes in the order they were painted. ?pave=demo lays stones in the yards the plan marks
+  // as paved (the market round the well, the keep's and the manor's), under all that was painted by hand, to see them by
+  // (over the map's own strokes, which ran ways all over the market, and under this browser's, so that new ones still go over them)
+  const paveDemo = new URLSearchParams(location.search).get('pave') === 'demo'
+    ? P.yards.filter(y => y[3]).map(([x, z, r]) => ({ k: 'pave', half: r - 0.4, pts: [[x - 0.3, z], [x + 0.3, z]] })) : [];
+  const nBaked = pathOps.length - pathOps.filter(o => !(P.pathOps || []).includes(o)).length;      // (the map's strokes come first in pathOps)
+  const paved = createPaveField([...pathOps.slice(0, nBaked), ...paveDemo, ...pathOps.slice(nBaked)]);
+  paths.pave(paved.at);
   const wayPaint = o => o.paint || (o.paint = createPaths({ paths: [{ points: o.pts, half: o.half }], seed, style: pathStyle }).paint);
   const pathPaint = foldPathOps(pathOps.length ? createPaths({ paths: toolWays, seed, style: pathStyle }).paint : paths.paint, pathOps, wayPaint);      // (a yard: a short way as wide as the yard)
   const heightFn = (x, z) => cutting(x, z, inflowCut(x, z, landAt(x, z))) + (Math.abs(x - CX) < HX + 2 ? paths.sink(x, z) : 0);      // (the ways lie a little below the grass)
@@ -580,7 +589,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // painted by hand cost nothing to draw, however many); ?paths=grit: ribbons, as before
   let pathTex = null;
   try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
-  const landWays = pathStyle === 'soft' ? paths.onLand(map, pathTex) : null;
+  const landWays = pathStyle === 'soft' ? paths.onLand(map, pathTex, { stone: cliffPaint }) : null;      // (paving: in the cliffs' own painted stone)
   // the land itself: only the columns of the ground's grid that lie on the land, in pieces (each drawn only when it is in view),
   // in the valley's land paint: grass on the flat, rock on the cliffs, sand by the water (painted, wet toward the water, and
   // going through dry grass into the meadow where the blades stand thick), earth in the fields
@@ -881,7 +890,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn((j * MS + i) * 4 + 3, MCX - MR + (i + 0.5) / MS * span, MCZ - MR + (j + 0.5) / MS * span);
   };
   const stampOp = o => {
-    if (o.k === 'way') { const pp = wayPaint(o); eachTexel(opBox(o), (a, x, z) => { const q = pp(x, z); if (q) mapData[a] = Math.round(mapData[a] * (1 - q[0]) * (1 - 0.5 * q[2])); }); }
+    if (isWay(o)) { const pp = wayPaint(o); eachTexel(opBox(o), (a, x, z) => { const q = pp(x, z); if (q) mapData[a] = Math.round(mapData[a] * (1 - q[0]) * (1 - 0.5 * q[2])); }); }
     else eachTexel(opBox(o), (a, x, z) => { const f = grassOver(o, x, z); if (f > 0) mapData[a] = Math.max(mapData[a], Math.round(255 * f)); });
   };
   const liveOps = [];                                                      // this visit's strokes (laid again after the sun's shadows are drawn anew)
@@ -891,12 +900,15 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     apply(op) {                                                            // one stroke, drawn now; gives back its undoing
       const box = opBox(op), [i0, i1, j0, j1] = texels(box), w = i1 - i0 + 1, before = new Uint8Array(w * (j1 - j0 + 1));
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) before[(j - j0) * w + (i - i0)] = mapData[(j * MS + i) * 4 + 3];
-      const line = op.k === 'way' ? paths.add({ points: op.pts, half: op.half }) : null;
+      paved.add(op);                                                       // (first: a way's picture is worked out again with it, stones and all)
+      const line = isWay(op) ? paths.add({ points: op.pts, half: op.half }) : null;
+      if (!line) paths.repave(paved.box(op));                              // (grass: no way changes, only the stones under it go)
       stampOp(op); liveOps.push(op);
       map.texture.needsUpdate = true;
       return () => {
         for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) mapData[(j * MS + i) * 4 + 3] = before[(j - j0) * w + (i - i0)];
-        if (line) paths.remove(line);
+        paved.remove(op);
+        if (line) paths.remove(line); else paths.repave(paved.box(op));
         const k = liveOps.lastIndexOf(op); if (k >= 0) liveOps.splice(k, 1);
         map.texture.needsUpdate = true;
       };
@@ -1076,7 +1088,10 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } } }
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
-    setSun(dir, k = 1) { wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k); },      // (the trees' crowns are lit by it live)
+    setSun(dir, k = 1) {
+      wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k);      // (the trees' crowns are lit by it live)
+      if (landWays && landWays.uniforms.uWaySun && Math.hypot(dir.x, dir.z) > 1e-3) landWays.uniforms.uWaySun.value.set(dir.x, dir.z).normalize();      // (the paving's lit edges)
+    },
     get sunCast() { return cast; },
     follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };

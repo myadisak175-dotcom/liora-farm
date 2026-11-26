@@ -1,17 +1,23 @@
 // path-edits.js  —  the ways painted by hand on a map (path-brush.js), as data: kept in this browser until they go into the map.
 //
-// One job: the brush's strokes and what they do to the ground. A stroke is either a way (trodden earth, in the look the map's own
-// ways have) or grass (the ground grows over again: a way taken away, the map's own or one painted). Strokes are kept in the
-// order they were painted, because a way painted over grass shows, and grass painted over a way hides it.
+// One job: the brush's strokes and what they do to the ground. A stroke is a way (trodden earth, in the look the map's own
+// ways have), paving (flat stones laid in that earth: a way whose middle is paved) or grass (the ground grows over again: a way
+// taken away, the map's own or one painted, and its stones with it). Strokes are kept in the order they were painted, because
+// the last one painted on a spot is what it is: a way painted over grass shows, grass painted over a way hides it, a way
+// painted over paving takes the stones up again (trodden earth), paving painted over a way lays them.
 //
 //   const key = pathKey('hillvillage');
-//   const ops = loadPathOps(key);                       [{ k: 'way', half, pts: [[x, z], ...] } | { k: 'grass', r, pts }]
+//   const ops = loadPathOps(key);                       [{ k: 'way' | 'pave', half, pts: [[x, z], ...] } | { k: 'grass', r, pts }]
 //   const ops = settlePathOps(key, plan.pathOps, map)   the same, less those the map's tool has taken in (they are let go here)
 //   savePathOps(key, ops)                               (an empty list: nothing kept)
 //   const paint = foldPathOps(basePaint, ops, wayPaint) (x, z) -> [earth, sand, mow] or null: the map's own ways' paint, then each
-//                                                       stroke over it in turn (wayPaint(op) -> that one way's own paint function)
+//                                                       stroke over it in turn (wayPaint(op) -> that one way's own paint function;
+//                                                       a paving stroke is a way to the ground: bare earth under its stones)
+//   const pave = createPaveField(ops)                   pave.at(x, z) -> 0..1: how much of a spot is laid with stones, by the
+//                                                       strokes in turn; pave.add(op) / pave.remove(op) as strokes come and go
 //   opBox(op) -> [x0, x1, z0, z1]                       where a stroke can reach
 //   grassOver(op, x, z) -> 0..1                         how much a grass stroke covers that spot
+//   isWay(op)                                           a stroke of earth (a way, or paving: a way with stones in it)
 
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export const pathKey = map => 'liora.pathEdits.' + map;
@@ -37,12 +43,13 @@ export function settlePathOps(key, mapOps = [], map = '') {
 export function savePathOps(key, ops, map = '') {
   if (ops.length) localStorage.setItem(key, JSON.stringify({ map, v: 1, ops: ops.map(tidy) })); else localStorage.removeItem(key);
 }
-export const okOp = o => o && (o.k === 'way' || o.k === 'grass') && Array.isArray(o.pts) && o.pts.length >= 1 && o.pts.every(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
+export const isWay = o => o.k === 'way' || o.k === 'pave';
+export const okOp = o => o && (isWay(o) || o.k === 'grass') && Array.isArray(o.pts) && o.pts.length >= 1 && o.pts.every(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
 const r2 = v => Math.round(v * 100) / 100;
-export const tidy = o => o.k === 'way' ? { k: 'way', half: r2(o.half), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) } : { k: 'grass', r: r2(o.r), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) };
+export const tidy = o => isWay(o) ? { k: o.k, half: r2(o.half), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) } : { k: 'grass', r: r2(o.r), pts: o.pts.map(p => [r2(p[0]), r2(p[1])]) };
 
 export function opBox(o) {
-  const reach = o.k === 'way' ? o.half + 3.6 : o.r + 0.6;
+  const reach = isWay(o) ? o.half + 3.6 : o.r + 0.6;
   const xs = o.pts.map(p => p[0]), zs = o.pts.map(p => p[1]);
   return [Math.min(...xs) - reach, Math.max(...xs) + reach, Math.min(...zs) - reach, Math.max(...zs) + reach];
 }
@@ -60,7 +67,7 @@ export const grassOver = (o, x, z) => 1 - ss(o.r - 0.35, o.r + 0.45, toLine(o.pt
 
 export function foldPathOps(basePaint, ops, wayPaint) {
   if (!ops.length) return basePaint;
-  const list = ops.map(o => ({ o, box: opBox(o), paint: o.k === 'way' ? wayPaint(o) : null }));
+  const list = ops.map(o => ({ o, box: opBox(o), paint: isWay(o) ? wayPaint(o) : null }));
   // the strokes by squares of the land (4 m), each square's in the order they were painted: a point asks only the strokes
   // whose reach takes in its square, in the same order as before (going through every stroke for every point of the ground
   // picture was a good part of the time the map took to load)
@@ -84,4 +91,47 @@ export function foldPathOps(basePaint, ops, wayPaint) {
     }
     return e > 0.001 || s > 0.001 || m > 0.001 ? [e, s, m] : null;
   };
+}
+
+// PAVING: how much of a spot is laid with flat stones (0..1), by the strokes in the order they were painted. A paving stroke
+// lays them over its width (a little less: the earth of its way shows round the stones, and the shader lets the last stones go
+// one by one there, ground-paths.js); a way painted over them takes them up again, back to trodden earth; grass over them hides
+// them with the way. Kept by squares of the land, as foldPathOps keeps its strokes, so a point asks only the strokes near it,
+// in the order they were painted; with no paving stroke at all nothing is asked (the land's every point is asked once).
+const paveCover = (o, x, z) => 1 - ss(o.half - Math.min(1.5, o.half * 0.9), o.half + 0.1, toLine(o.pts, x, z));      // (the edge a stone or two wide)
+const earthCover = (o, x, z) => 1 - ss(o.half - 0.35, o.half + 0.35, toLine(o.pts, x, z));
+const paveBox = o => {
+  const reach = isWay(o) ? o.half + 0.5 : o.r + 0.6, xs = o.pts.map(p => p[0]), zs = o.pts.map(p => p[1]);
+  return [Math.min(...xs) - reach, Math.max(...xs) + reach, Math.min(...zs) - reach, Math.max(...zs) + reach];
+};
+export function createPaveField(ops = []) {
+  const G = 4, squares = new Map(), key = (i, j) => (i + 32768) * 65536 + (j + 32768), list = [];
+  let paving = 0;                                                          // how many paving strokes there are
+  const enroll = (e, on) => {
+    const [x0, x1, z0, z1] = e.box;
+    for (let i = Math.floor(x0 / G); i <= Math.floor(x1 / G); i++) for (let j = Math.floor(z0 / G); j <= Math.floor(z1 / G); j++) {
+      const k = key(i, j); let a = squares.get(k);
+      if (on) { if (!a) squares.set(k, a = []); a.push(e); } else if (a) { const p = a.lastIndexOf(e); if (p >= 0) a.splice(p, 1); }
+    }
+  };
+  const add = o => { const e = { o, box: paveBox(o) }; list.push(e); enroll(e, true); if (o.k === 'pave') paving++; return o; };
+  const remove = o => {
+    let k = list.length - 1; while (k >= 0 && list[k].o !== o) k--;
+    if (k < 0) return;
+    enroll(list[k], false); list.splice(k, 1); if (o.k === 'pave') paving--;
+  };
+  for (const o of ops) add(o);
+  const at = (x, z) => {
+    if (!paving) return 0;
+    const here = squares.get(key(Math.floor(x / G), Math.floor(z / G)));
+    if (!here) return 0;
+    let p = 0;
+    for (const { o, box } of here) {
+      if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) continue;
+      if (o.k === 'pave') p = Math.max(p, paveCover(o, x, z));
+      else if (p > 0) p *= 1 - (o.k === 'way' ? earthCover(o, x, z) : grassOver(o, x, z));
+    }
+    return p;
+  };
+  return { at, add, remove, get paving() { return paving; }, box: paveBox };
 }
