@@ -16,7 +16,9 @@
 //
 // Materials come from the GLB: alphaMode (OPAQUE / MASK / BLEND), doubleSided and
 // extras { color: [r,g,b,a], shade: [r,g,b], face: bool, queue } written by tools/prep-vroid.py (Vivi: its forerunner, prep_vivi.py).
-// Phone-safe shader: no uniform arrays, no loops.
+// A face with expressions (tools/prep-vrm1.py --faces: a mesh "Face" with morph targets by name) moves with them:
+//   ch.face  { names: [...], set(name, w) }   or null when the model has none (the playable characters have none)
+// Phone-safe shader: no uniform arrays, no loops (three.js's own morph chunks, only where a mesh has morph targets).
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -45,15 +47,19 @@ function celMaterial(src, water, tint) {
     vertexShader: /* glsl */`
       #include <common>
       #include <skinning_pars_vertex>
+      #include <morphtarget_pars_vertex>
       varying vec2 vUv;
       varying vec3 vWN;
       varying float vWY;
       void main() {
         vUv = uv;
         #include <beginnormal_vertex>
+        #include <morphinstance_vertex>
+        #include <morphnormal_vertex>
         #include <skinbase_vertex>
         #include <skinnormal_vertex>
         #include <begin_vertex>
+        #include <morphtarget_vertex>
         #include <skinning_vertex>
         #include <project_vertex>
         vWN = normalize(mat3(modelMatrix) * objectNormal);
@@ -147,7 +153,14 @@ export async function loadCharacter(source, anim) {
   const baseHeight = box.max.y - box.min.y;
   const baseSpeeds = Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c.userData.speed]));
   let springs = null;
+  const faceMeshes = [];                       // (the face is a piece per material, each with the same targets)
+  model.traverse(o => { if (o.isMesh && o.morphTargetDictionary) faceMeshes.push(o); });
+  const face = faceMeshes.length ? {
+    names: Object.keys(faceMeshes[0].morphTargetDictionary),
+    set(name, w) { for (const m of faceMeshes) { const i = m.morphTargetDictionary[name]; if (i !== undefined) m.morphTargetInfluences[i] = w; } },
+  } : null;
   const ch = {
+    face,
     object, model, mixer, actions, height: baseHeight, water, tint: tint.value, baseHeight, hipsHeight, size: 1,
     speeds: { ...baseSpeeds },
     // k times her modelled size (1 = as the GLB is, ~1.41 m). A bigger step covers more ground: the clips' speeds grow with her

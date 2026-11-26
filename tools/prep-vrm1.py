@@ -14,14 +14,21 @@ A VRM 1.0 file differs from the VRoid 0.x ones the game was made with, and this 
   - its springs are VRMC_springBone: written as the game's <id>.springs.json, by bone name, turned with the bones.
 And as tools/prep-vroid.py does: one skin for all of it and the pieces merged into one per material (this one's hair was
 108 meshes, each with a skin of its own: a draw call each); only each material's main picture, made smaller, as WebP;
-the face's blend shapes and the VRM data dropped. Triangles that can never be seen are dropped too: where a cut-out
+the VRM data dropped, and the face's blend shapes but for the expressions asked for (--faces). Triangles that can never be seen are dropped too: where a cut-out
 material's picture is clear over the whole triangle (the body under the clothes).
 
 Usage (from the repo folder):
   python3 tools/prep-vrm1.py IN.vrm OUT.glb OUT.springs.json [--px BIG,SMALL]
     --px   the largest a picture may be, in pixels: skin and clothes, and the rest (face parts, eyes, hair). 1024,512
            (the playable characters' sizes) unless said; an NPC is drawn smaller, and there may be many: 512,512
+    --faces  the file's own expressions to keep, by their VRM names (happy,relaxed,aa,ih,ou,ee,oh,blink): each one
+             morph target, its blend shapes added up as the file binds them, on a mesh of its own ("Face", the face's
+             pieces) with the names in its extras.targetNames (three.js: morphTargetDictionary). None unless said
 Then, for fewer triangles: node tools/simplify-character.mjs OUT.glb OUT.glb --hair 0.4 --cloth 0.75 --skin 0.8
+The second NPC (assets/npcs/yingnui.*), the user's own VRoid Studio character, smiling and talking:
+  python3 tools/prep-vrm1.py Yingnui1.vrm /tmp/npc.glb assets/npcs/yingnui.springs.json --px 512,512 \
+      --faces happy,relaxed,aa,ih,ou,ee,oh,blink
+  node tools/simplify-character.mjs /tmp/npc.glb assets/npcs/yingnui.glb --hair 0.4 --cloth 0.75 --skin 0.8
 The first NPC (assets/npcs/fantasy-girl.*), from the .vrm the user sent:
   python3 tools/prep-vrm1.py fantasy_girl_01.vrm /tmp/npc.glb assets/npcs/fantasy-girl.springs.json --px 512,512
   node tools/simplify-character.mjs /tmp/npc.glb assets/npcs/fantasy-girl.glb --hair 0.4 --cloth 0.75 --skin 0.8
@@ -125,10 +132,13 @@ def clear_triangles(alpha, cutoff, uv, tri):
 
 def main(argv):
     args = [a for a in argv[1:] if not a.startswith("--")]
-    px = (1024, 512)
+    px, faces = (1024, 512), []
     for i, a in enumerate(argv):
         if a == "--px":
             px = tuple(int(x) for x in argv[i + 1].split(","))
+            args.remove(argv[i + 1])
+        if a == "--faces":
+            faces = [x for x in argv[i + 1].split(",") if x]
             args.remove(argv[i + 1])
     if len(args) < 3:
         print(__doc__)
@@ -140,6 +150,16 @@ def main(argv):
         raise ValueError(f"{src}: not a VRM 1.0 file (no VRMC_vrm); a VRM 0.x VRoid file goes through tools/prep-vroid.py")
     nodes = js["nodes"]
     world, parent = world_matrices(nodes)
+
+    # ---- the expressions kept: for each mesh node, each expression's blend shapes and their weights
+    expr = {**vrm.get("expressions", {}).get("preset", {}), **vrm.get("expressions", {}).get("custom", {})}
+    for f in faces:
+        if f not in expr:
+            raise ValueError(f"{src}: no expression \"{f}\" (it has: {', '.join(expr)})")
+    binds = {}                                     # node -> [[(morph index, weight), ...] for each expression in faces]
+    for k, f in enumerate(faces):
+        for b in expr[f].get("morphTargetBinds", []):
+            binds.setdefault(b["node"], [[] for _ in faces])[k].append((b["index"], float(b["weight"])))
     rest = np.array([FLIP @ w[:3, 3] for w in world])           # where every node stands, turned round, in T-pose
 
     # ---- nodes: every node but the meshes', turned no way and scaled not at all; one node for the whole mesh
@@ -197,6 +217,7 @@ def main(argv):
         bind = np.stack([world[j] @ ibm[k] for k, j in enumerate(skin["joints"])])    # bound pose -> T-pose, per joint
         to_slot = np.array([joint_slot[j] for j in skin["joints"]])
         cache = {}
+        morphs = binds.get(ni)                     # this mesh's expressions, if any are kept
         if mesh.get("name", "").startswith("Face"):
             face_materials.update(canon[p["material"]] for p in mesh["primitives"])
         for p in mesh["primitives"]:
@@ -216,8 +237,15 @@ def main(argv):
                     nrm = nrm / np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
                     nrm = nrm @ FLIP.T
                 cache[key] = {"POSITION": pos @ FLIP.T, "NORMAL": nrm, "TEXCOORD_0": uv,
-                              "JOINTS_0": np.where(we > 0, to_slot[jo], 0), "WEIGHTS_0": we}
+                              "JOINTS_0": np.where(we > 0, to_slot[jo], 0), "WEIGHTS_0": we, "M": m[:, :3, :3]}
             full = cache[key]
+            moved = None                           # (vertices, expressions, 3): how far each expression moves each vertex
+            if morphs:
+                moved = np.zeros((len(full["POSITION"]), len(faces), 3))
+                for k, bl in enumerate(morphs):
+                    for mi, wt in bl:
+                        moved[:, k] += wt * accessor(js, binary, p["targets"][mi]["POSITION"]).astype(np.float64)
+                    moved[:, k] = np.einsum("nij,nj->ni", full["M"], moved[:, k]) @ FLIP.T
             tri = accessor(js, binary, p["indices"]).reshape(-1, 3).astype(np.int64)
             mat = canon[p["material"]]
             mask = alpha_mask(mat)
@@ -228,7 +256,9 @@ def main(argv):
             if not len(tri):
                 continue
             used, remap = np.unique(tri.reshape(-1), return_inverse=True)
-            g = groups.setdefault(mat, {k: [] for k in ("POSITION", "NORMAL", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0", "idx")})
+            g = groups.setdefault((mat, bool(morphs)), {k: [] for k in ("POSITION", "NORMAL", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0", "idx", "T")})
+            if morphs:
+                g["T"].append(moved[used])
             base = sum(len(x) for x in g["POSITION"])
             for k in ("POSITION", "NORMAL", "TEXCOORD_0", "JOINTS_0", "WEIGHTS_0"):
                 if full[k] is not None:
@@ -237,9 +267,12 @@ def main(argv):
 
     w = Writer()
     prims = []
-    for mat, g in groups.items():
+    for (mat, has_t), g in groups.items():
         n = sum(len(x) for x in g["POSITION"])
         prim = {"attributes": {}, "material": mat, "mode": 4}
+        if has_t:                                  # the face's pieces: one morph target per expression kept
+            t = np.concatenate(g["T"])
+            prim["targets"] = [{"POSITION": w.accessor(t[:, k], 5126, "VEC3", 34962, minmax=True)} for k in range(len(faces))]
         prim["attributes"]["POSITION"] = w.accessor(np.concatenate(g["POSITION"]), 5126, "VEC3", 34962, minmax=True)
         if g["NORMAL"]:
             prim["attributes"]["NORMAL"] = w.accessor(np.concatenate(g["NORMAL"]), 5126, "VEC3", 34962)
@@ -297,8 +330,15 @@ def main(argv):
         root = parent[root]
     skins = [{"joints": [new_index[j] for j in used_joints], "skeleton": new_index[root],
               "inverseBindMatrices": w.accessor(ibms.transpose(0, 2, 1).reshape(-1, 16), 5126, "MAT4")}]
+    meshes = [{"name": "Body", "primitives": [p for p in prims if "targets" not in p]}]
     out_nodes.append({"name": "Body", "mesh": 0, "skin": 0})
-    scene_nodes = [new_index[i] for i in js["scenes"][js.get("scene", 0)]["nodes"] if i in new_index] + [len(out_nodes) - 1]
+    added = [len(out_nodes) - 1]
+    if any("targets" in p for p in prims):         # the face, with its expressions, a mesh of its own
+        meshes.append({"name": "Face", "primitives": [p for p in prims if "targets" in p], "weights": [0.0] * len(faces),
+                       "extras": {"targetNames": faces}})
+        out_nodes.append({"name": "Face", "mesh": 1, "skin": 0})
+        added.append(len(out_nodes) - 1)
+    scene_nodes = [new_index[i] for i in js["scenes"][js.get("scene", 0)]["nodes"] if i in new_index] + added
 
     meta = vrm.get("meta", {})
     out_js = {
@@ -307,7 +347,7 @@ def main(argv):
                              "license": meta.get("licenseUrl", ""), "avatarPermission": meta.get("avatarPermission", ""),
                              "commercialUsage": meta.get("commercialUsage", ""), "allowRedistribution": meta.get("allowRedistribution"),
                              "modification": meta.get("modification", "")}},
-        "scene": 0, "scenes": [{"nodes": scene_nodes}], "nodes": out_nodes, "meshes": [{"name": "Body", "primitives": prims}],
+        "scene": 0, "scenes": [{"nodes": scene_nodes}], "nodes": out_nodes, "meshes": meshes,
         "skins": skins, "materials": materials, "textures": textures, "images": images,
         "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}],
         "accessors": w.accessors, "bufferViews": w.views, "buffers": [{"byteLength": w.size}],
@@ -325,7 +365,8 @@ def main(argv):
     was = sum(js["accessors"][p["indices"]]["count"] // 3 for m in js["meshes"] for p in m["primitives"])
     print(f"{out}: {os.path.getsize(out) / 1e6:.2f} MB (was {os.path.getsize(src) / 1e6:.1f}), {len(prims)} pieces "
           f"(was {sum(len(m['primitives']) for m in js['meshes'])}), {tris} triangles (was {was}; {dropped} never seen), "
-          f"{len(images)} pictures, {len(used_joints)} bones in its skin")
+          f"{len(images)} pictures, {len(used_joints)} bones in its skin"
+          + (f", {len(faces)} expressions ({', '.join(faces)})" if len(meshes) > 1 else ""))
 
     # ---- springs: as tools/bake-character-springs.py writes them (by bone name), turned with the bones
     sb = js.get("extensions", {}).get("VRMC_springBone")
