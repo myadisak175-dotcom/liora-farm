@@ -114,8 +114,9 @@ BLANK_WAYS.needsUpdate = true;
 // picture and a pixel at a time, so a bed's edge is a line of its own and not the land's triangles' (west-fringe.js makes it).
 // floor (with grassLook): A WOOD'S FLOOR. { map, rect: [x0, z0, 1 / width, 1 / depth], paint }: a picture of how much each
 // spot is under a grove (red: forest-floor.js) and the floor's painted picture (tools/make-forest-paint.py: dark earth, dry
-// leaves, moss in patches). Laid where the picture says, its edge to the meadow ragged, the map's shadows on it, its leaves
-// grey in dead land; under the ways and the sand, which go over it. Without it nothing changes.
+// leaves, moss in patches). Laid where the picture says (read a metre or so to the side: a blob, not a tree's round), its
+// wide edge broken into dabs of the meadow, the map's shadows on it, its leaves grey in dead land; under the ways and the
+// sand, which go over it. Without it nothing changes.
 // ways: the trodden ways laid by the land's own paint (ground-paths.js, P.onLand: { glsl, defines, uniforms }), over whatever
 // the land is painted there, before the haze: the ways cost nothing to draw then, however many are painted by hand.
 function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10], sandPaint = null, ground = null, grassLook = null, ways = null, dryPaint = null, beds = null, floor = null } = {}) {
@@ -297,10 +298,11 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
               // samples of the picture at two sizes, turned, each shown in patches of its own (its repeat not seen, and no
               // leaf seen through another as a blend of them would); the map's shadows on it; in dead land its leaves grey.
               // What grass is left on it stands on it (the ground map: forest-floor.js thin)
-              vec2 fu = (vWP.xz - uFloorRect.xy) * uFloorRect.zw;
+              vec2 fw = vec2(noise2(vWP.xz * 0.17 + 3.0), noise2(vWP.xz * 0.17 + 9.0)) - 0.5;      // (read a metre or so to the side: a blob, not a tree's round)
+              vec2 fu = (vWP.xz + fw * 3.0 - uFloorRect.xy) * uFloorRect.zw;
               float fl = (fu.x > 0.0 && fu.y > 0.0 && fu.x < 1.0 && fu.y < 1.0) ? texture2D(uFloorMap, fu).r : 0.0;
               if (fl > 0.002) {
-                float fe = smoothstep(0.25, 0.75, fl + (noise2(vWP.xz * 0.3 + 11.0) - 0.5) * 0.55 + (noise2(vWP.xz * 1.1) - 0.5) * 0.22);      // (a blob, not a tree's round: its edge wanders by metres)
+                float fe = smoothstep(0.12, 0.85, fl + (noise2(vWP.xz * 0.3 + 11.0) - 0.5) * 0.45 + (noise2(vWP.xz * 1.1) - 0.5) * 0.2);      // (its edge wanders, and is wide)
                 // and at its edge the meadow comes in in dabs, as a brush would leave it: floor where it is deeper than a dappled
                 // threshold, grass where not (all floor well inside, all meadow well out)
                 float dab = noise2(vWP.xz * 3.1 + 5.0) * 0.6 + noise2(vWP.xz * 7.3) * 0.4;
