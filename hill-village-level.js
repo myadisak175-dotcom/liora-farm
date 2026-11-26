@@ -76,7 +76,8 @@ const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
 
 export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
-  cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
+  cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py), and the paving's stone
+  cliffCrisp: './assets/ground/cliff-crisp-paint.webp',      // the same rock a little more stylized, lit in steps (?cliff=crisp: a trial)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
   forest: {                                       // a wood's floor, two sets (tools/make-forest-paint.py): in the ways' own earth (the game's), and dark
@@ -506,11 +507,19 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   const builtThings = thingBuilds.length ? merged(thingBuilds, 'hillVillageThings') : null;
   // the valley's rocks: water-worn stones and pebbles along the river, boulders round the plunge pool and under the cliffs. They
   // are the rock kit's (rocks.js: big, middling and small, chiselled), painted with the cliffs' own brush-painted stone, so they
-  // read as fallen from the cliffs (?cliff=strata: the kit's own pale stone)
-  let cliffPaint = null;
-  if (new URLSearchParams(location.search).get('cliff') !== 'strata') try {
-    cliffPaint = await new THREE.TextureLoader().loadAsync(url(M.cliff));
-    cliffPaint.wrapS = cliffPaint.wrapT = THREE.RepeatWrapping; cliffPaint.anisotropy = 4; cliffPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
+  // read as fallen from the cliffs (?cliff=strata: the kit's own pale stone). ?cliff=crisp (a trial, 26 Nov 2026: "เราชอบสีแบบนี้
+  // แล้ว ปรับได้ไม่ต้องเยอะ ให้ดูเป็น stylize เข้ากับโลกเรา"): the cliffs, the land past the map's edge, the rocks and the farm's
+  // stones in the same rock a little more stylized, the cliffs lit in steps as the rocks are; the paving keeps the first (stonePaint)
+  let cliffPaint = null, stonePaint = null;
+  const cliffSet = new URLSearchParams(location.search).get('cliff');
+  const loadRock = async src => {
+    const t = await new THREE.TextureLoader().loadAsync(url(src));
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
+    return t;
+  };
+  if (cliffSet !== 'strata') try {
+    cliffPaint = stonePaint = await loadRock(M.cliff);
+    if (cliffSet === 'crisp') { cliffPaint = await loadRock(M.cliffCrisp); cliffPaint.userData.steps = true; }      // (steps: the land lights it as the rocks are lit)
   } catch (err) { console.warn('[hill-village] cliff paint', err); }
   const kitRocks = [], rr = mulberry32(seed * 977);
   const wetRocks = [];                                                     // (those in the water: no moss on them)
@@ -636,7 +645,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // painted by hand cost nothing to draw, however many); ?paths=grit: ribbons, as before
   let pathTex = null;
   try { pathTex = await loadPathTextures(pathStyle); } catch (err) { console.warn('[hill-village] path textures', err); }      // without them: the painted look
-  const landWays = pathStyle === 'soft' ? paths.onLand(map, pathTex, { stone: cliffPaint }) : null;      // (paving: in the cliffs' own painted stone)
+  const landWays = pathStyle === 'soft' ? paths.onLand(map, pathTex, { stone: stonePaint }) : null;      // (paving: in the cliffs' own painted stone, the first)
   // the land itself: only the columns of the ground's grid that lie on the land, in pieces (each drawn only when it is in view),
   // in the valley's land paint: grass on the flat, rock on the cliffs, sand by the water (painted, wet toward the water, and
   // going through dry grass into the meadow where the blades stand thick), earth in the fields
@@ -688,6 +697,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     }
     console.info('[hill-village] the land:', drawn, 'triangles of', (cols - 1) * (n - 1) * 2);
     if (cliffPaint) own.push(cliffPaint);
+    if (stonePaint && stonePaint !== cliffPaint) own.push(stonePaint);
     if (sandPaint) own.push(sandPaint);
     if (dryPaint) own.push(dryPaint);
     if (floor) own.push(floor.texture, forestPaint);
