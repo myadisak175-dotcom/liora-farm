@@ -48,6 +48,7 @@ Two agents can work at once. Git does not let one undo the other by itself (GitH
 
 ## Log (newest first)
 
+- **26 Nov 2026 · Claude · `forest-floor-path`** — started: a second set for the wood's floor, in the ways' own earth (the user: the first is too dark, a damp jungle's; kept for an ancient ruins zone).
 - **26 Nov 2026 · Claude · `forest-floor` → `main` (#109)** — A wood's floor under the groves, a trial behind `?forest=1`: dark earth, dry leaves, moss in patches, the grass there thinner and shorter. `forest-floor.js` says where (a tree with two others within 7.5 m: 220 of the map's 550), `stylized-terrain.js` (`floor`) paints it, `tools/make-forest-paint.py` made `assets/ground/forest-paint.webp`; the grass thinned in the ground map once the land is built. Not yet: in the game for good (the user says when), a try on a real phone.
 - **26 Nov 2026 · Claude · `agents-no-clash` → `main`** — Not stepping on each other (above): the rules, and where `guild-in-village` meets `main` (a merge tried without touching anything).
 - **26 Nov 2026 · Claude · `agents-workflow` → `main`** — How work lands, from now on (Branches, above): a branch and a pull request for each piece, merged at once.
