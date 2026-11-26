@@ -296,8 +296,9 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
             {
               // A WOOD'S FLOOR (see floor above): under a grove its earth, leaves and moss, its edge to the meadow ragged. Two
               // samples of the picture at two sizes, turned, each shown in patches of its own (its repeat not seen, and no
-              // leaf seen through another as a blend of them would); the map's shadows on it; in dead land its leaves grey.
-              // What grass is left on it stands on it (the ground map: forest-floor.js thin)
+              // leaf seen through another as a blend of them would); the map's shadows on it; in dead land its leaves grey; none
+              // on steep ground (the picture keeps off it too, forest-floor.js). What grass is left on it stands on it (the
+              // ground map: forest-floor.js thin)
               vec2 fw = vec2(noise2(vWP.xz * 0.17 + 3.0), noise2(vWP.xz * 0.17 + 9.0)) - 0.5;      // (read a metre or so to the side: a blob, not a tree's round)
               vec2 fu = (vWP.xz + fw * 3.0 - uFloorRect.xy) * uFloorRect.zw;
               float fl = (fu.x > 0.0 && fu.y > 0.0 && fu.x < 1.0 && fu.y < 1.0) ? texture2D(uFloorMap, fu).r : 0.0;
@@ -307,6 +308,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
                 // threshold, grass where not (all floor well inside, all meadow well out)
                 float dab = noise2(vWP.xz * 3.1 + 5.0) * 0.6 + noise2(vWP.xz * 7.3) * 0.4;
                 fe = smoothstep(-0.07, 0.07, fe - dab * 0.9 - 0.05);
+                fe *= smoothstep(0.8, 0.9, n.y + (j - 0.37) * 0.1);          // (none where the land leans steep: a cliff's shoulders keep their grass)
                 vec3 f1 = texture2D(uFloorPaint, vWP.xz / 3.6).rgb, f2 = texture2D(uFloorPaint, mat2(0.8, -0.6, 0.6, 0.8) * vWP.xz / 4.4 + 0.37).rgb;
                 vec3 fc = mix(f1, f2, smoothstep(0.44, 0.56, noise2(vWP.xz * 0.21 + 3.0)));
                 fc *= mix(vec3(1.0), vec3(0.62, 0.68, 0.8), shadeD * 0.85);
