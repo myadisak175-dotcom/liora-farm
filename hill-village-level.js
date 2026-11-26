@@ -35,6 +35,9 @@
 //
 // ?farm=1 (a trial): her farm, south of the road in, a step from where she starts: its ground (farm-soil.js) and what lies
 // on it before it is dug (farm-debris.js), as level.farm; what she does there is farm-tools.js's (index.html).
+
+// ?forest=1 (a trial): a wood's floor under trees that stand close together, dark earth, dry leaves and moss in patches,
+// the grass there thinner and shorter (forest-floor.js: where; stylized-terrain.js, floor: its paint).
 //
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
@@ -74,6 +77,7 @@ export const HILL_VILLAGE_MAP = {
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
+  forest: './assets/ground/forest-paint.webp',    // a wood's floor: dark earth, dry leaves, moss in patches (tools/make-forest-paint.py; ?forest=1)
   bare: './assets/heightmaps/hill-village-bare.png',      // where the rain's runnels have worn the grass away, on the land's own grid (the heightmap tool, 7b)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
   mapGreen: './assets/maps/hill-village-map-green.json',      // (the same with the west fringe healed, ?green=1: its land green, its trees in leaf, its water back)
@@ -592,6 +596,19 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
   const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
+  // THE FOREST FLOOR (a trial, ?forest=1; 26 Nov 2026): under trees that stand close together the ground is a wood's, dark
+  // earth, dry leaves, moss in patches (forest-floor.js says where; the land paints it, stylized-terrain.js floor; its picture
+  // made by tools/make-forest-paint.py), and the grass there thinner and shorter (laid into the ground map once the land is
+  // built, below, so the land's triangles are as they were). A tree standing on its own keeps its meadow
+  let floor = null, forestPaint = null;
+  if (new URLSearchParams(location.search).has('forest')) try {
+    const { createForestFloor } = await import('./forest-floor.js');
+    const crownOf = p => Math.max(...(CROWN[p.type] || [[0, 2.5]]).map(c => c[1])) * p.scale;      // (its widest tier)
+    floor = createForestFloor({ trees: [...plants.filter(p => p.kind === 'tree'), ...bigTrees.map(b => b.plant)].map(p => [p.x, p.z, crownOf(p)]), rect: landRect });
+    forestPaint = await new THREE.TextureLoader().loadAsync(url(M.forest));
+    forestPaint.wrapS = forestPaint.wrapT = THREE.RepeatWrapping; forestPaint.anisotropy = 4; forestPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
+    console.info('[hill-village] the forest floor:', floor.groves, 'trees stand in groves');
+  } catch (err) { console.warn('[hill-village] forest floor', err); floor = null; forestPaint = null; }
   // the far meadow is laid in as the grass paints it (the land's own paint, and the rim's: stylized-terrain.js, grassLook)
   const grassLook = { glsl: G.GRASS_LOOK_GLSL, uniforms: G.GRASS_DRY, tip: G.GRASS_TIP, area: map.area, paint: map.paint };
   const fade = { far, fadeA: 1e5, fadeB: 2e5 };      // (the blades do not fade into the far colour toward the land's edge either: the land runs on past it, see the rim below)
@@ -634,7 +651,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     whole.computeVertexNormals(); whole.setIndex(null);
     // the cliffs: rock painted with a brush (tools/make-cliff-paint.py, loaded with the rocks above), in place of the valley's strata
     // (the fringe's dry beds are sand too: handed over as a picture, west.beds, so their edges are the beds' own)
-    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, dryPaint, beds: west.beds, ground: map, grassLook, ways: landWays });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
+    const mat = T._terrain.terrainMaterial(far, [1e5, 1e5], CZ, { cliffPaint, sandPaint, dryPaint, beds: west.beds, ground: map, grassLook, ways: landWays, floor: floor && { map: floor.texture, rect: floor.rect, paint: forestPaint } });      // (no fade into the far colour at the land's edge: the land runs on past it, see the rim below)
     if (P.pit) { mat.uniforms.uDeepOn.value = 1; mat.uniforms.uDeepTop.value = P.pit.shift; }      // down the pit the walls go pale into its mist, then dark (its heights as ?map=pit has them, moved by shift)
     // Its triangles. A cell of the grid is half a metre, and the land was two triangles to every cell, 753 000 in all,
     // meadow and cliff alike. Now a square of cells is drawn whole where the land inside it is flat to 3 cm (coarseGrid,
@@ -666,10 +683,12 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     if (cliffPaint) own.push(cliffPaint);
     if (sandPaint) own.push(sandPaint);
     if (dryPaint) own.push(dryPaint);
+    if (floor) own.push(floor.texture, forestPaint);
     own.push(west.beds.map);
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };
   }
   group.add(terrain);
+  if (floor) floor.thin(map);                                              // (the wood's floor: its grass thinner and shorter, now the land is built)
   // past the land's edge nothing ends: the land runs on into wooded hills, out to the foot of the far hills (map-rim.js). In
   // the land's own last metres, where she never comes, crowns of that wood stand among its trees: not on a way, in the water,
   // on a cliff or in another tree
