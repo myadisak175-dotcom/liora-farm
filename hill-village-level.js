@@ -36,8 +36,9 @@
 // ?farm=1 (a trial): her farm, south of the road in, a step from where she starts: its ground (farm-soil.js) and what lies
 // on it before it is dug (farm-debris.js), as level.farm; what she does there is farm-tools.js's (index.html).
 
-// ?forest=1 (a trial): a wood's floor under trees that stand close together, dark earth, dry leaves and moss in patches,
-// the grass there thinner and shorter (forest-floor.js: where; stylized-terrain.js, floor: its paint).
+// ?forest=1 (a trial): a wood's floor under trees that stand close together, the ways' own earth with dry leaves and moss in
+// patches, the grass there thinner and shorter (forest-floor.js: where; stylized-terrain.js, floor: its paint); ?forest=damp:
+// the first set, dark damp earth, kept for a zone of ancient ruins.
 //
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
@@ -77,7 +78,10 @@ export const HILL_VILLAGE_MAP = {
   cliff: './assets/ground/cliff-paint.webp',      // the cliffs' painted rock (tools/make-cliff-paint.py)
   sand: './assets/ground/sand-paint.webp',        // the banks' painted sand (tools/make-path-paint.py sand: the ways' own brush)
   dry: './assets/ground/dry-paint.webp',          // the dead land's painted dry earth, its cracks in its alpha (tools/make-path-paint.py dry)
-  forest: './assets/ground/forest-paint.webp',    // a wood's floor: dark earth, dry leaves, moss in patches (tools/make-forest-paint.py; ?forest=1)
+  forest: {                                       // a wood's floor, two sets (tools/make-forest-paint.py): in the ways' own earth (?forest=1), and dark
+    path: './assets/ground/forest-path-paint.webp', // and damp, a jungle's, kept for the ancient ruins (?forest=damp)
+    damp: './assets/ground/forest-damp-paint.webp',
+  },
   bare: './assets/heightmaps/hill-village-bare.png',      // where the rain's runnels have worn the grass away, on the land's own grid (the heightmap tool, 7b)
   map: './assets/maps/hill-village-map.json',      // the map's picture and what it covers (tools/make-hill-village-map.py; game-map.js shows it)
   mapGreen: './assets/maps/hill-village-map-green.json',      // (the same with the west fringe healed, ?green=1: its land green, its trees in leaf, its water back)
@@ -596,16 +600,18 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   // (the blades by the beach are rooted in the land's dry grass, not in pale sand: they meet the painted sand's dry-grass edge)
   const map = G.createGroundMap({ radius: FR, center: [CX, CZ], size: 1280, seed, heightAt: H, dirt: 0, shade, bare, press, grow, paint, cast: sunShadows(L.clone()), colors: { sand: T._strata.colors.hay } });
-  // THE FOREST FLOOR (a trial, ?forest=1; 26 Nov 2026): under trees that stand close together the ground is a wood's, dark
-  // earth, dry leaves, moss in patches (forest-floor.js says where; the land paints it, stylized-terrain.js floor; its picture
-  // made by tools/make-forest-paint.py), and the grass there thinner and shorter (laid into the ground map once the land is
-  // built, below, so the land's triangles are as they were). A tree standing on its own keeps its meadow
+  // THE FOREST FLOOR (a trial, ?forest=1; 26 Nov 2026): under trees that stand close together the ground is a wood's, earth,
+  // dry leaves, moss in patches (forest-floor.js says where; the land paints it, stylized-terrain.js floor; its picture made
+  // by tools/make-forest-paint.py: in the ways' own earth; ?forest=damp: the first set, dark and damp, kept for the ruins),
+  // and the grass there thinner and shorter (laid into the ground map once the land is built, below, so the land's
+  // triangles are as they were). A tree standing on its own keeps its meadow
   let floor = null, forestPaint = null;
-  if (new URLSearchParams(location.search).has('forest')) try {
+  const forestSet = new URLSearchParams(location.search).get('forest');
+  if (forestSet !== null) try {
     const { createForestFloor } = await import('./forest-floor.js');
     const crownOf = p => Math.max(...(CROWN[p.type] || [[0, 2.5]]).map(c => c[1])) * p.scale;      // (its widest tier)
     floor = createForestFloor({ trees: [...plants.filter(p => p.kind === 'tree'), ...bigTrees.map(b => b.plant)].map(p => [p.x, p.z, crownOf(p)]), rect: landRect });
-    forestPaint = await new THREE.TextureLoader().loadAsync(url(M.forest));
+    forestPaint = await new THREE.TextureLoader().loadAsync(url(M.forest[forestSet === 'damp' ? 'damp' : 'path']));
     forestPaint.wrapS = forestPaint.wrapT = THREE.RepeatWrapping; forestPaint.anisotropy = 4; forestPaint.colorSpace = THREE.NoColorSpace;      // (the kit shades display colours)
     console.info('[hill-village] the forest floor:', floor.groves, 'trees stand in groves');
   } catch (err) { console.warn('[hill-village] forest floor', err); floor = null; forestPaint = null; }

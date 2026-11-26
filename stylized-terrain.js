@@ -113,7 +113,7 @@ BLANK_WAYS.needsUpdate = true;
 // dry water's beds lie (red) and each bed's own level (green), laid over the land. The land paints sand there, by the
 // picture and a pixel at a time, so a bed's edge is a line of its own and not the land's triangles' (west-fringe.js makes it).
 // floor (with grassLook): A WOOD'S FLOOR. { map, rect: [x0, z0, 1 / width, 1 / depth], paint }: a picture of how much each
-// spot is under a grove (red: forest-floor.js) and the floor's painted picture (tools/make-forest-paint.py: dark earth, dry
+// spot is under a grove (red: forest-floor.js) and the floor's painted picture (tools/make-forest-paint.py: earth, dry
 // leaves, moss in patches). Laid where the picture says (read a metre or so to the side: a blob, not a tree's round), its
 // wide edge broken into dabs of the meadow, the map's shadows on it, its leaves grey in dead land; under the ways and the
 // sand, which go over it. Without it nothing changes.
