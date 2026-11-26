@@ -15,11 +15,11 @@ Whoever works here, Claude, Codex or anyone else: read this first, the newest en
 
 Two agents can work at once. Git does not let one undo the other by itself (GitHub will not merge a pull request with a conflict), but a conflict settled carelessly can throw away a whole feature. So:
 
-- When you start, add a line to the log: `started: <what>` and your branch. Look at the other lines first: if another agent is in the same files right now, tell the user before you go on.
+- When you start, open your pull request at once, as a draft, its title saying what you are doing: the open pull requests are what is being worked on now (`gh api repos/myadisak175-dotcom/liora-farm/pulls`). Look at them first: if another agent is in the same files right now, tell the user before you go on. Its line in the log below goes in with it.
 - Before you start, and again before you merge: bring `main` into your branch (`git merge origin/main`) and try the game.
 - A conflict: keep both sides. Never take one side of `index.html`, `hill-village-level.js` or `README.md` whole: they hold everyone's work. In the import map give the file a number higher than either side had (the same number on both sides with different files behind it, and phones keep the old one).
 - The map's files (`assets/heightmaps/*`, `assets/maps/*`) are made by `tools/make-hill-village-heightmap.py` and `tools/make-hill-village-map.py`: when both sides changed the tools or the map, run the tools again after the merge.
-- Known now (26 Nov 2026): `guild-in-village` against `main` meets at 7 places, 4 in `index.html` and 3 in `hill-village-level.js`, every one both sides adding lines at the same spot (the import map; the ground's paint, where the farm's cut grass and the guild's trodden earth go; the level's list of what it hands the game; `setSun`; the frame loop). Keep both everywhere; `hill-village-level.js` then `?v=70`, `village-kit.js` `?v=bridge3guild3`; then run the map tools (`main`'s tools lay paving as a way, the guild's map files were made without that). Nothing of the guild touches taps or the left of the screen, and it stands in the village, away from the farm.
+- Known now (26 Nov 2026): `guild-in-village` against `main` meets at 7 places, 4 in `index.html` and 3 in `hill-village-level.js`, every one both sides adding lines at the same spot (the import map; the ground's paint, where the farm's cut grass and the guild's trodden earth go; the level's list of what it hands the game; `setSun`; the frame loop). Keep both everywhere; `hill-village-level.js` then a number higher than both sides' (`main` has had 70 since the forest floor: so 71), `village-kit.js` `?v=bridge3guild3`; then run the map tools (`main`'s tools lay paving as a way, the guild's map files were made without that). Nothing of the guild touches taps or the left of the screen, and it stands in the village, away from the farm.
 
 ## Working with the user
 
@@ -48,10 +48,9 @@ Two agents can work at once. Git does not let one undo the other by itself (GitH
 
 ## Log (newest first)
 
+- **26 Nov 2026 · Claude · `forest-floor` → `main` (#109)** — A wood's floor under the groves, a trial behind `?forest=1`: dark earth, dry leaves, moss in patches, the grass there thinner and shorter. `forest-floor.js` says where (a tree with two others within 7.5 m: 220 of the map's 550), `stylized-terrain.js` (`floor`) paints it, `tools/make-forest-paint.py` made `assets/ground/forest-paint.webp`; the grass thinned in the ground map once the land is built. Not yet: in the game for good (the user says when), a try on a real phone.
 - **26 Nov 2026 · Claude · `agents-no-clash` → `main`** — Not stepping on each other (above): the rules, and where `guild-in-village` meets `main` (a merge tried without touching anything).
-
 - **26 Nov 2026 · Claude · `agents-workflow` → `main`** — How work lands, from now on (Branches, above): a branch and a pull request for each piece, merged at once.
-
 - **26 Nov 2026 · Claude · `main`** — This file (`AGENTS.md`, and `CLAUDE.md` pointing at it) and the backup branch `backup/main-2026-11-26-farm` (`main` at `ba64ad6`). From now on every agent adds its work here.
 - **26 Nov 2026 · Claude · `main` (`ba64ad6`)** — Her farm in the game, `?farm=1` (above). Also `player-input.js`: a quick touch on the stick's side is a tap now, for the whole game (the stick shows a moment; she does not move).
 - **26 Nov 2026 · Claude · `main` (`b2409a7`, `55e64f2`, `57d119e`)** — The farm's soil and what lies on it, tried on `soil.html` first.

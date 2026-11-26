@@ -610,6 +610,16 @@ It costs nothing to draw: the stones are laid by the land's own paint with the w
 
 `?pave=demo` lays stones in the yards the plan marks as paved, to look at them without painting: the market round the well, before the keep and before the manor (laid over the map's own painted strokes, which run ways all over the market, and under the strokes kept in this browser).
 
+### A wood's floor under the groves (a trial: `?forest=1`)
+
+Chosen on 26 Nov 2026: only where trees stand close together ("เฉพาะดงไม้ที่ขึ้นชิดกัน"; a tree on its own in the village keeps its meadow and its shadow), dark earth with dry leaves and moss in patches ("ดินเข้ม ใบไม้แห้ง มอสเป็นหย่อม"), the grass there thinner and shorter but not gone ("บางลง สั้นลง ยังมีบ้าง"), tried in the game behind a flag.
+
+- **Where** (`forest-floor.js`): a tree with two others within 7.5 m stands in a grove (220 of the map's 550 trees). Each lays its floor round its foot, full near the trunk and fading out a little past its crown (its widest tier, and 1.2 m more); where a grove's crowns meet theirs add up, so the floor runs on under the whole grove and its edge follows the grove's own. A soft picture of it over the land, a texel every 0.6 m. It goes by where the trees stood as the level was laid out (the plan's, and the foliage editor's kept in this browser): a tree moved while the game runs leaves its floor where it was until the game is opened again.
+- **The grass**: a fifth to nearly a half of it left on the floor, in patches (the ground map's grass, laid in once the land is built, so the land's triangles are as they were; the map keeps it when the sun's shadows are drawn anew).
+- **The paint** (`stylized-terrain.js`, `floor`): laid by the land's own paint where the picture says, the picture read a metre or so to the side (a blob, not a tree's round), its wide edge broken into dabs of the meadow as a brush would leave it; two samples of the picture at two sizes, turned, each shown in patches of its own, so its repeat is not seen and no leaf shows through another; the trees' shadows on it; in dead land its leaves grey. The ways and the sand go over it.
+- **The picture** (`tools/make-forest-paint.py` → `assets/ground/forest-paint.webp`, 768 × 768, seamless, 3.6 m to a repeat): dark earth laid in with the ways' brush, in browner, deeper colours; moss in patches a step deeper and duller than the meadow, furred at the edge, lighter where it faces the light; some 640 dry leaves in drifts, brown, rust and ochre and a few still green, each a pointed oval folded along its middle, the half toward the light lighter, a darker midrib, a soft shadow under it; larger than life (12 to 20 cm) so they read as leaves from where the camera is; a few twigs.
+- **Cost**: nothing more to draw. The land's paint reads one more small picture everywhere, and two more under the groves.
+
 ### The west fringe (`west-fringe.js`)
 
 The land goes on west of the hill village: the countryside the capital forgot, where the game is to begin under its curse. It is part of the map: from the village's road and the empty meadow she walks straight into it. `?curse=1` adds the curse's colours.
