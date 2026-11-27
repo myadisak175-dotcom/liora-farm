@@ -6,7 +6,8 @@
 #
 #   SOURCE_DIR  the renders as the listening page "เสียงทดลอง Liora Farm" has them (made with earshot,
 #               github.com/Leonxlnx/earshot, the tool the user sent; 48 kHz stereo mp3s named for what they are:
-#               stone_door.mp3, fire_whoosh.mp3 ...: the names in SOUNDS, below). They are not kept in the repository.
+#               stone_door.mp3, fire_whoosh.mp3 ...: the names in SOUNDS, below), and her steps on stone rendered with
+#               earshot itself (step_concrete_*.wav: how, below). They are not kept in the repository.
 # (needs ffmpeg with libmp3lame, and numpy.)
 #
 # WHAT IS DONE
@@ -80,6 +81,15 @@ SOUNDS = {
     'knock':  ([('wizard_staff', 0.44, 1.06, 0.60, 120, 3500, 0.002, 0.5, 0.0, 0)], -16),
     'groan':  ([('stone_door', 0.4, 1.5, 0.38, 40, 700, 0.6, 1.4, 0.0, 0)], -20),
 }
+# her steps on the hall's stone (the user: "ขอเสียงเดินบนหิน"; a first set put together from other sounds did not pass,
+# "เสียงเดินไม่ผ่าน"; then "ทำเลยค่ะ earshot"): earshot's own steps on concrete, learned from recordings, rendered as
+#     earshot make "a light soft footstep" --sound step/concrete --n 12 --seed 101 -o c101.wav     (and --seed 202 -o c202.wav)
+# and put in SOURCE_DIR as step_concrete_<take>.wav: the six least alike of their short takes (one step each, a heel and
+# a toe; the long ones scuff). A little softened (over 6.5 kHz down), levelled as her other footfalls are (STEP_LOUD).
+# step-sounds.js plays them where the ground is stone (the boss hall's page gives them to it: own.stone)
+for i, take in enumerate(['c101_4', 'c101_2', 'c202_7', 'c202_9', 'c202_4', 'c101_12']):
+    SOUNDS['step-%d' % (i + 1)] = ([('step_concrete_%s.wav' % take, 0.0, 0.40, 1.0, 70, 6500, 0.001, 0.12, 0.0, 0)], None)
+STEP_LOUD = -31.0         # dB, its loudest 50 ms: as loud as her footfalls in the pack (steps.mp3's tread)
 LOOPS = {
     # the hall's draft: a mountain's high wind, slower, from the oculus above and from the fallen tunnel behind the door
     # (boss-hall-sounds.js puts it in both places)
@@ -142,7 +152,7 @@ def faded(x, fin, fout):
 def build(parts, src_dir, plain=False):
     pieces = []
     for (name, start, secs, rate, hp, lp, fin, fout, at, db) in parts:
-        x = part(os.path.join(src_dir, name + '.mp3'), start, secs, rate, hp, lp)
+        x = part(os.path.join(src_dir, name if name.endswith('.wav') else name + '.mp3'), start, secs, rate, hp, lp)
         if plain: x = untoned(x)
         x = faded(x, fin, fout) * 10 ** (db / 20)
         pieces.append((int(at * SR), x))
@@ -176,9 +186,9 @@ def decoded_peak(mp3):
     return 20 * np.log10(np.abs(np.frombuffer(raw, np.float32)).max() + 1e-12)
 
 
-def loud_db(y, loop):
+def loud_db(y, loop, win=None):
     m = y.mean(axis=1)
-    w = int((0.4 if loop else 0.1) * SR)
+    w = int((win or (0.4 if loop else 0.1)) * SR)
     hop = w // 4
     lv = [rms_db(m[i:i + w]) for i in range(0, max(1, len(m) - w), hop)]
     return float(np.percentile(lv, 95)) if loop else float(max(lv))
@@ -196,7 +206,8 @@ def main():
             y = build(parts, src_dir, name in UNTONED)
             if loop: y = looped(y)
             if name not in STEREO: y = np.repeat(y.mean(axis=1, keepdims=True), 2, axis=1)
-            g = target - loud_db(y, loop)
+            step = name.startswith('step-')
+            g = (STEP_LOUD - loud_db(y, loop, 0.05)) if step else (target - loud_db(y, loop))
             peak = 20 * np.log10(np.abs(y).max() + 1e-12)
             if name in SOFT:
                 y = y * 10 ** (g / 20)
@@ -212,7 +223,7 @@ def main():
                 over = decoded_peak(mp3) - CEILING
                 if over <= 0.05: break
                 y = y * 10 ** (-(over + 0.1) / 20)
-            print('%-8s %6.2f %+7.1f %7.1f %6.1f %5d' % (name, len(y) / SR, g, loud_db(y, loop), decoded_peak(mp3),
+            print('%-8s %6.2f %+7.1f %7.1f %6.1f %5d' % (name, len(y) / SR, g, loud_db(y, loop, 0.05 if step else None), decoded_peak(mp3),
                                                        os.path.getsize(mp3) // 1024))
 
 

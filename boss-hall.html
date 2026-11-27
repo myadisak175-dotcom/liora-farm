@@ -202,7 +202,7 @@
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=4",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
-  "./step-sounds.js": "./step-sounds.js?v=15",
+  "./step-sounds.js": "./step-sounds.js?v=16",
   "./ambience.js": "./ambience.js?v=8",
   "./ambience-places.js": "./ambience-places.js?v=7",
   "./music.js": "./music.js?v=6",
@@ -225,7 +225,7 @@
   "./boss-hall.js": "./boss-hall.js?v=1",
   "./boss-light.js": "./boss-light.js?v=1",
   "./boss-hall-scenes.js": "./boss-hall-scenes.js?v=2",
-  "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=6"
+  "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=7"
 } }
 </script>
 </head>
@@ -243,7 +243,7 @@ import * as N from './stylized-nature.js';
 import { createBossHall } from './boss-hall.js';
 import { createCaveLevel } from './cave-level.js';
 import { createBossScenes } from './boss-hall-scenes.js';
-import { createBossSounds } from './boss-hall-sounds.js';
+import { createBossSounds, MADE as BOSS_MADE } from './boss-hall-sounds.js';
 import { loadPlayable } from './characters.js';
 import { CHARACTER_ANIM } from './character-anim.js';
 import { VAULT_ANIM } from './vault-anim.js';
@@ -302,7 +302,8 @@ const circles = createMagicCircles({ seed: 2 });
 scene.add(circles.object);
 noCave(circles.object);
 const soundVol = Q.has('sound') ? +Q.get('sound') : 1;
-const sounds = soundVol > 0 ? createStepSounds({ level, volume: soundVol }) : null;
+// her steps on the hall's stone are its own (earshot's steps on concrete: tools/make-boss-sounds.py, step-1 .. 6), not the game's footfall
+const sounds = soundVol > 0 ? createStepSounds({ level, volume: soundVol, own: { stone: [1, 2, 3, 4, 5, 6].map(i => `boss/step-${i}.mp3?v=${BOSS_MADE}`) } }) : null;
 const heard = sounds ? createBossSounds({ context: () => sounds.context, volume: soundVol, hall: hall.layout, made: Q.get('sfx') === 'old' }) : null;
 const spellKit = { comboFx: createMagicComboFx(), renderer, spearRain: createSpearRain, rainFx: createSpearRainFx() };
 if (sounds) {
