@@ -49,6 +49,8 @@ Two agents can work at once. Git does not let one undo the other by itself (GitH
 
 ## Log (newest first)
 
+- **27 Nov 2026 · Codex · `willow-fishing-motion` (#130)** — The isolated fishing trial now uses Vivi’s planted-foot casting, hook set, left-hand winding and catch lift. The bamboo follows her right palm and bends after the stroke. Canvas devices show 184 frames of the same rig. Checked the hand contacts and foot positions through the sequence and simulated catches at 24/30/60/120 Hz. Physical phone playback remains unverified.
+
 - **27 Nov 2026 · Codex · `fishing-trial` (#116)** — `fishing-trial/` is a standalone pier with Vivi’s library throw and idle, a bite window, hold/release reeling, five fish and a browser-local catch journal. The trial has its own entry point and save key. A physical phone playtest is still open.
 
 - **27 Nov 2026 · Claude · `measure-results` → `main`** — Her `?measure=1` numbers (README, *Her numbers*): the iPhone 17 Pro draws a whole frame in 13–16 ms and played 58.8 fps at สวย; her Samsung 37–53 ms, 42.7 fps on average (held up by how much is drawn: 2.1–3.5 M triangles, 200–590 draws a frame; not by pixels). So the iPhone's picture drops were the old tuner's (gone, #128). Advised: iPhone สวย 60, Samsung สวย 30. Left, if asked: fewer triangles for the Samsung; the sound's cost on the iPhone in its first half minute (a frame 18 ms with it, 14 without).

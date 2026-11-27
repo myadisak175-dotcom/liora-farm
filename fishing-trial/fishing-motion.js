@@ -45,7 +45,7 @@ const castKeys = [
   [.705,through], [.83,[.46,1.125,.092,.33,.092,.063,.207,.235,0]], [CAST_TIME,rest]
 ];
 const hookKeys = [[0,rest],[.07,[.38,.99,.1,.35,.055,.092,.16,.07,0]],[.255,hook],[.48,[.20,1.225,.145,.98,-.067,.083,-.12,-.125,0]]];
-const landKeys = [[0,[.22,1.19,.13,.89,-.05,.075,-.11,-.10,0]],[.17,[.34,1.035,.14,.54,.045,.16,.2,.08,0]],[.49,[.07,1.49,.19,1.48,-.105,.065,-.18,-.23,0]],[.71,[.08,1.44,.168,1.35,-.067,.027,-.12,-.205,0]],[LAND_TIME,trophy]];
+const landKeys = [[0,[.22,1.19,.13,.89,-.05,.075,-.11,-.10,0]],[.17,[.34,1.035,.14,.54,.045,.16,.2,.08,0]],[.49,[.025,1.445,.16,1.48,-.105,.065,-.18,-.23,0]],[.71,[.08,1.44,.168,1.35,-.067,.027,-.12,-.205,0]],[LAND_TIME,trophy]];
 export function poseAt(name, time) {
   const take=takes[name];
   const t=take.loop ? ((time%take.duration)+take.duration)%take.duration : Math.max(0,Math.min(time,take.duration));
@@ -56,10 +56,10 @@ export function poseAt(name, time) {
   else if(name==='land') v=sample(landKeys,t);
   else if(name==='reel') {
     const pump=.5-.5*Math.cos(wave);
-    v=[.238+.058*pump,1.215-.077*pump,.148,.99-.18*pump,-.068+.035*pump,.080+.025*pump,-.11+.095*pump,-.115+.08*breath,wave];
+    v=[.22+.038*pump,1.235-.064*pump,.148,.99-.18*pump,-.068+.035*pump,.080+.025*pump,-.11+.095*pump,-.115+.08*breath,wave];
   } else if(name==='brace') {
     const tug=.5-.5*Math.cos(wave);
-    v=[.235+.077*tug,1.21-.102*tug,.145,.95-.24*tug,-.064-.047*tug,.088+.045*tug,-.12-.092*tug,-.115-.061*tug,0];
+    v=[.157+.020*tug,1.235-.052*tug,.145,.95-.24*tug,-.055-.03*tug,.088+.045*tug,-.105-.065*tug,-.115-.061*tug,0];
   } else {
     v=(name==='caught'?trophy:rest).slice();
     v[1]+=.010*breath; v[3]+=.023*breath; v[5]+=.006*breath;
@@ -69,9 +69,9 @@ export function poseAt(name, time) {
 }
 
 export function createMotionPlayer() {
-  let name='idle', clock=0, age=1, fade=.16, previous=null, previousTime=0;
+  let name='idle', clock=0, age=1, fade=.16, previous=null, previousTime=0, startPose=null, lastPose=null, revision=0;
   function change(next, duration) {
-    previous=name; previousTime=clock; name=next; clock=0; age=0; fade=duration;
+    previous=name; previousTime=clock; startPose=lastPose; name=next; clock=0; age=0; fade=duration; revision++;
   }
   return function step(state,dt) {
     const p=state.phase;
@@ -88,13 +88,20 @@ export function createMotionPlayer() {
     const u=Math.min(1,age/fade), blend=u*u*(3-2*u);
     const curr=poseAt(name,clock);
     if(previous && blend<1) {
-      const old=poseAt(previous,previousTime);
+      const old=startPose || poseAt(previous,previousTime);
       for(const f of fields) {
         if(f==='crank') {
           const d=curr[f]-old[f];curr[f]=old[f]+Math.atan2(Math.sin(d),Math.cos(d))*blend;
         } else curr[f]=old[f]+(curr[f]-old[f])*blend;
       }
     } else previous=null;
-    return {name,time:clock,previous,previousTime,blend,pose:curr};
+    lastPose=curr;
+    return {name,time:clock,previous,previousTime,blend,revision,pose:curr};
   };
+}
+export const actorFrame={width:176,height:240,worldHeight:1.89,centerX:.11,top:1.77};
+export function actorBox(view) {
+  const {width,height,worldHeight,centerX,top}=actorFrame;
+  const worldWidth=worldHeight*width/height, pixels=view.s/1.65;
+  return {left:view.x+(centerX-worldWidth/2)*pixels,top:view.y-top*pixels,width:worldWidth*pixels,height:worldHeight*pixels};
 }
