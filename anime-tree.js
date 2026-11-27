@@ -415,6 +415,10 @@ function clusterMask(style) {
 // shaders
 // --------------------------------------------------------------------------
 const LEAF_VS = /* glsl */`
+// (the depth pass and the colour pass are two programs made from this: invariant, so a compiler works a card's place out
+// alike in both, to the last bit. Safari on an iPhone did not: a card could come out a hair further in the colour pass than
+// in the depth pass, fail it, and leave its patch of crown see-through for a frame or two: see LEAF PREPASS)
+invariant gl_Position;
 ${NATURE_VCOMMON}
 uniform vec3 uSun;
 uniform vec4 uWalker;     // her feet (world) + how far round her low leaves part (stylized-nature's setWalker)
@@ -571,6 +575,11 @@ void main() {
 //, so the leaf shader runs about once a pixel. The picture is the same. The depth pass is each leaf mesh's
 // child (the same cards, the same cells and counts from lod), drawn before all else that is solid (renderOrder -1), so
 // the ground and grass behind the crowns are skipped too. ?leafpre=0: as before, one pass.
+// The two passes must agree on where a card is, to the last bit (27 Nov 2026: on an iPhone patches of crown went
+// see-through for a frame or two, the colour pass failing where the depth pass had written): LEAF_VS declares gl_Position
+// invariant, and the depth pass lies 8 of the depth buffer's least steps behind, not 2 (a margin for what rounding is left:
+// a few millimetres at thirty metres, so the leaves a hair behind the nearest, which the colour pass draws too, still look
+// as they did).
 const LEAF_PREPASS = !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('leafpre') === '0');
 const LEAF_DEPTH_FS = /* glsl */`
 ${LEAF_COVER}
@@ -587,7 +596,7 @@ function withPrepass(mesh) {
   if (!d) {
     // (the colour pass draws a hair nearer than the depth it tests against: polygonOffset on this one)
     d = new THREE.ShaderMaterial({ uniforms: m.uniforms, defines: m.defines, vertexShader: LEAF_VS, fragmentShader: LEAF_DEPTH_FS,
-      alphaToCoverage: true, side: THREE.DoubleSide, colorWrite: false, polygonOffset: true, polygonOffsetFactor: 0, polygonOffsetUnits: 2 });
+      alphaToCoverage: true, side: THREE.DoubleSide, colorWrite: false, polygonOffset: true, polygonOffsetFactor: 0, polygonOffsetUnits: 8 });
     depthMats.set(m, d);
   }
   const dm = new THREE.Mesh(mesh.geometry, d);
