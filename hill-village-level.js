@@ -1232,7 +1232,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       const nowT = N._internal.shared.uTime.value;
       map.send(renderer);                                                  // (the sun's new shadows, a strip a frame: stylized-grassfield.js, SENT A STRIP AT A TIME)
       if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); if (!map.sending) map.texture.needsUpdate = true; } if (farm) farm.soil.restamp(); } }      // (the map's grass laid back as it was when the shadows began: the strokes and her farm's beds laid again, before the strips that carry them go)
-      else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
+      // (the sun moved: its shadows cast anew. Not while it is down: there are none to see then (k 0), and they were cast
+      // over and over all night long, from below the ground, each a long one; at dawn the light coming back casts them)
+      else if (nowT - lastCast > 4 && ((castSun.angleTo(wantSun) > 0.075 && Math.max(castK, wantK) > 0.02) || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
     setSun(dir, k = 1) {
       wantSun.copy(dir); wantK = k; cast.k = Math.min(1, k * 1.2); setAnimeSun(dir); setFrondPineSun(dir); setFlowerSun(dir); setGroundCoverSun(dir); rim.userData.setSun(dir, cast.k);      // (the trees' crowns are lit by it live)
