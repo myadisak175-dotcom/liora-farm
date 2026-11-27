@@ -274,6 +274,7 @@
   "./ambience.js": "./ambience.js?v=8",
   "./ambience-places.js": "./ambience-places.js?v=7",
   "./music.js": "./music.js?v=6",
+  "./frame-measure.js": "./frame-measure.js?v=1",
   "./sound-settings.js": "./sound-settings.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
@@ -381,7 +382,9 @@ import { createCurseWeather } from './curse-weather.js';
 import { createTunerPanel } from './tuner-panel.js';
 
 const HAZE = '#cde6f2';
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+// (?aa=0: without antialiasing, ?gpu=default: powerPreference 'default': to compare, frame-measure.js does)
+const renderer = new THREE.WebGLRenderer({ antialias: new URLSearchParams(location.search).get('aa') !== '0', alpha: false,
+  powerPreference: new URLSearchParams(location.search).get('gpu') === 'default' ? 'default' : 'high-performance' });
 // ---- one colour space for the screen and for the pictures drawn off it (27 Nov 2026, iPhone: "กระตุกมาก"). three.js gives
 // a material drawn both on the screen (sRGB) and into a picture (linear: the mirror on the water, what is seen through it,
 // her shadow's picture) a program for each, and each time it goes from one to the other looks its program up again (a big
@@ -432,6 +435,7 @@ N.setHaze({ color: HAZE, near: 45, far: 230, max: 0.6 });
 await onStep('วาดท้องฟ้า');
 const Q = new URLSearchParams(location.search);          // ?grass=120000 to force a blade count, ?still=1 to render on demand (tests), ?sky=1024 panorama width
 if (Q.has('dev')) document.body.classList.add('dev');      // ?dev=1: the testing buttons on screen too
+const measuring = Q.has('measure');                        // ?measure=1: what each part of the picture costs on this phone (frame-measure.js, at the end)
 const skyW = +Q.get('sky') || (fastMode ? 1024 : IOS ? 1536 : 2560);
 let sky = createVolumetricSky({ seed: 5, horizon: HAZE, width: skyW, height: skyW / 4 });
 if (!await sky.userData.prewarm(renderer)) { sky.userData.dispose(); sky = Sky.createPaintedSky({ seed: 8, size: 0.85 }); }      // a phone that cannot run the cloud shader keeps the painted sky
@@ -853,6 +857,7 @@ const mayGiveBack = () => played >= holdUntil;
 // tries 60 again (the place she is in may be lighter): kept, it stays; not, back to 30 at once, and the next try waits
 // twice as long (30 s, then 1, 2, 4, at most 5 minutes)
 function tune(dt, raw = dt) {
+  if (measuring) return;                             // (frame-measure.js times the frames: nothing changed under it)
   fpsN++; fpsT += dt; warm += dt; played += dt; wall += raw; gaps.push(dt);
   if (raw > (pace === 30 ? 0.045 : 0.05)) hitches.push([played, raw]);
   if (fpsT < 1) return;
@@ -1117,7 +1122,7 @@ const animate = t => {
 };
 const syncVisibility = () => {
   clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; lastTick = -1;
-  renderer.setAnimationLoop(!document.hidden && !Q.get('still') ? animate : null);
+  renderer.setAnimationLoop(!document.hidden && !Q.get('still') && !measuring ? animate : null);      // (measuring: frame-measure.js draws the frames)
 };
 document.addEventListener('visibilitychange', syncVisibility);
 addEventListener('pageshow', syncVisibility);
@@ -1144,6 +1149,7 @@ syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
+if (measuring) (await import('./frame-measure.js')).createFrameMeasure({ frame, renderer, scene, camera, level, player, sky, charShadow, setDPR, dpr: () => renderDPR, sounds });
 window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, towers, farmTools, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
