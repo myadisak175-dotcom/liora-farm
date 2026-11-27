@@ -7,7 +7,12 @@
 #   SOURCE_DIR  the renders as the listening page "เสียงทดลอง Liora Farm" has them (made with earshot,
 #               github.com/Leonxlnx/earshot, the tool the user sent; 48 kHz stereo mp3s named for what they are:
 #               stone_door.mp3, fire_whoosh.mp3 ...: the names in SOUNDS, below), and her steps on stone rendered with
-#               earshot itself (step_concrete_*.wav: how, below). They are not kept in the repository.
+#               earshot itself (step_concrete_*.wav: how, below), and a few more rendered with it on 28 Nov 2026:
+#                 earshot make boom/deep --sound boom/deep --n 3 --seed 9 -o boom_deep.wav              (boom_deep_1.wav)
+#                 earshot make gas_stove/ignite --sound gas_stove/ignite --n 4 --seed 7 -o gas_stove_ignite.wav  (_2)
+#                 earshot make shine/match --sound shine/match --n 2 --seed 5 -o shine_match.wav        (shine_match_1.wav)
+#                 earshot make braam/swell --sound braam/swell --n 2 --seed 8 -o braam_swell.wav        (braam_swell_1.wav)
+#               They are not kept in the repository.
 # (needs ffmpeg with libmp3lame, and numpy.)
 #
 # WHAT IS DONE
@@ -64,9 +69,22 @@ SOUNDS = {
                 ('rocks_tumbling', 0.0, 3.3, 0.80, 150, 3000, 0.3, 1.5, 0.5, -11),
                 ('dragon_fire', 0.3, 2.5, 0.65, 60, 1600, 0.3, 1.4, 0.35, -12),
                 ('whale_call', 1.3, 3.7, 0.55, 40, 1200, 1.5, 2.0, 0.6, -6)], -10),
-    # a statue's eyes lighting: a sword's ring on a shield, from the strike on, lower (each a little lower again, in
-    # boss-hall-sounds.js)
-    'eye':    ([('sword_on_shield', 0.17, 0.93, 0.80, 150, 2500, 0.002, 0.35, 0.0, 0)], -18),  # (dark: a bright ring whistled)
+    # a statue opening its eyes ("อยากได้เสียงตอนรูปปั้นลืมตา"): a deep thud (earshot's boom/deep, its swell cut off,
+    # slower) and a dark ring of steel (a sword on a shield, from the strike on) over it; each a little lower again, in
+    # boss-hall-sounds.js, from that statue's eyes
+    'eye':    ([('boom_deep_1.wav', 0.085, 0.245, 0.70, 35, 1500, 0.002, 0.15, 0.0, 0),
+                ('sword_on_shield', 0.17, 0.93, 0.80, 150, 2500, 0.002, 0.35, 0.02, -5)], -15),
+    # ... and as the first of them opens, a low brass swell under them all, rising and holding (earshot's braam/swell, D2,
+    # darkened), heard all round
+    'braam':  ([('braam_swell_1.wav', 0.0, 5.0, 1.0, 40, 2200, 0.05, 1.6, 0.0, 0)], -17),
+    # the fires catching on a beat as the door opens ("อยากได้เสียงไฟลุกเป็นจังหวะอะ ตอนเปิดประตู"): the beat all round, a
+    # deep thud the same each time (earshot's boom/deep, its swell cut off, slower), and each fire's flame catching where
+    # it is: a gas flame catching (earshot's gas_stove/ignite, from the instant it catches, its igniter's clicks and the
+    # hiss after it left out), a match's flare over it and a dull thump under it
+    'beat':   ([('boom_deep_1.wav', 0.085, 0.245, 0.75, 35, 1200, 0.002, 0.15, 0.0, 0)], -14),
+    'ignite': ([('gas_stove_ignite_2.wav', 0.195, 0.36, 0.85, 150, 7000, 0.002, 0.25, 0.012, 0),
+                ('shine_match_1.wav', 0.005, 0.28, 0.90, 400, 7000, 0.002, 0.15, 0.02, -8),
+                ('punch_body', 0.03, 0.37, 0.55, 40, 350, 0.002, 0.25, 0.0, -6)], -14),
     # a heart beating under it all, once the statues are awake: a giant's step (heel and toe: lub, dub), very slow
     'heart':  ([('giant_footsteps', 0.0, 0.55, 0.55, 40, 400, 0.002, 0.25, 0.0, 0)], -14),
     # water dripping into pools somewhere in the dark (the hall's air, now and then, each from a place of its own): tiny

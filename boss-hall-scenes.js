@@ -7,9 +7,10 @@
      scenes.state                                // 'closed', 'opening', 'open', 'waking', 'awake'
 
    The door (she walks up to it, within 7 m, from the vestibule): she is held where she stands; the camera comes down low
-   beside her and looks up at the door; its runes wake, its bar gives, the two leaves grind open; then the fires catch, pair by
-   pair, from the door to the throne (hall.fx.front runs north), the runes down the way and round the pillars with them, while
-   the camera rises behind her and looks down the nave; then it is hers again. About 7.5 s.
+   beside her and looks up at the door; its runes wake, its bar gives, the two leaves grind open; then the fires catch on a beat
+   ("อยากได้เสียงไฟลุกเป็นจังหวะ"), pair by pair, from the door to the throne (hall.fx.front steps north, BEAT s a step: the
+   fires a few metres apart catch on the same one; heard.ignite(fires, k, n) on each), the runes down the way and round the
+   pillars with them, while the camera rises behind her and looks down the nave; then it is hers again. About 7.5 s.
    The statues (the door open, she steps into the rune circle): she is held; a boom, the circle flares; the fires flare and
    turn red; the camera goes low behind her toward the throne, then round the circle and up, as the statues' eyes light one
    after another from the throne's side; the throne's runes burn. Then a drone and a heart beating under it. About 6 s.
@@ -21,9 +22,17 @@ import * as THREE from 'three';
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const easeIO = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const span = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
+const BEAT = 0.42;            // s from one beat of the fires catching to the next
+const FIRST = 2.4;            // s into the door's scene, the first beat
 
 export function createBossScenes({ hall, player, level, camera, heard = null, onScene = () => {} }) {
   const L = hall.layout, fx = hall.fx, D = L.door;
+  // the fires in the order they catch, as beats: from the door north; those within 2.5 m of a beat's first catch with it
+  const beats = [];
+  for (const f of L.fires.filter(f => f.kind !== 'door').sort((a, b) => b.z - a.z)) {
+    const g = beats[beats.length - 1];
+    if (g && g.top - f.z < 2.5) { g.fires.push(f); g.low = Math.min(g.low, f.z); } else beats.push({ top: f.z, low: f.z, fires: [f] });
+  }
   const C = new THREE.Vector2(L.circle.c[0], L.circle.c[1]);
   const throne = new THREE.Vector3(L.throne.x, L.throne.y + 4.5, L.throne.z);
   let state = 'closed', scene = null;
@@ -84,16 +93,13 @@ export function createBossScenes({ hall, player, level, camera, heard = null, on
   function holdHer() {
     if (Math.hypot(player.position.x - hold.x, player.position.z - hold.z) > 0.03) player.teleport(hold.x, hold.z, hold.h);
   }
-  function fireCaught(prev, next) {                        // the fires the front passed this frame: each heard as it catches
-    if (!heard) return;
-    for (const f of L.fires) {
-      if (f.kind === 'door') continue;
-      const at = f.z + 2.0;
-      if (prev > at && next <= at) {
-        const d = Math.hypot(f.x - hold.x, f.z - hold.z);
-        heard.whoosh(Math.max(-1, Math.min(1, f.x / 6)), 1.4 / (1 + d * 0.08), f);
-      }
-    }
+  // the front on the beat: at each beat it sweeps through that beat's fires in 0.12 s (each catches with its burst, the
+  // hall.js shader's), then waits short of the next beat's
+  function frontAt(t) {
+    if (t < FIRST) return 999;
+    const k = Math.min(beats.length - 1, Math.floor((t - FIRST) / BEAT)), g = beats[k], next = beats[k + 1];
+    const from = g.top + 1.5, to = next ? Math.max(g.low - 4, next.top + 1.5) : g.low - 4;
+    return from + (to - from) * ease(span(t - FIRST - k * BEAT, 0, 0.12));
   }
 
   function doorScene(dt) {
@@ -107,9 +113,8 @@ export function createBossScenes({ hall, player, level, camera, heard = null, on
     // the leaves: a jolt as the bar gives, then the long slow swing
     const o = span(t, 1.0, 4.0);
     fx.door = 0.04 * ease(span(t, 0.85, 1.05)) + 0.96 * easeIO(o);
-    const prev = fx.front;
-    fx.front = t < 2.4 ? 999 : (D.wall[1] + 1.5) - (t - 2.4) * 18;
-    fireCaught(prev === 999 ? D.wall[1] + 2 : prev, fx.front);
+    fx.front = frontAt(t);
+    beats.forEach((g, k) => once('beat' + k, FIRST + k * BEAT, () => heard && heard.ignite(g.fires, k, beats.length)));
     // the camera: low beside her looking up at the door; in a little; then up behind her, down the nave; then hers
     const S = s.shots;
     if (t < 0.9) mix(fromPlayer, S.low, easeIO(span(t, 0, 0.9)), outP, outQ);

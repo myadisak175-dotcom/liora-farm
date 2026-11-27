@@ -6,12 +6,16 @@
      heard.hum()           the door's runes waking (a magic portal's swell, slow and low)           } all four from
      heard.clunk()         its bar giving way (a dungeon door's iron latch)                         } the door
      heard.rumble(s)       the leaves grinding open, s seconds (a giant stone door); heard.thud() } itself
-     heard.whoosh(pan, g, f)  a fire catching: พรึ่บ! from fire f (of hall.fires; without f: pan -1 left .. 1 right, g how
-                           near): all at once, a thump and the flame, no whoosh
+     heard.ignite(fires, k, n)  the k-th of n beats of the fires catching as the door opens (fires: those catching on it):
+                           the beat, a deep thud, all round and the same each time (the last a little harder), and each
+                           fire's flame catching from where it is ("อยากได้เสียงไฟลุกเป็นจังหวะ"; earshot's gas flame)
+     heard.whoosh(pan, g, f)  a fire catching by itself: พรึ่บ! from fire f (of hall.fires; without f: pan -1 left .. 1
+                           right, g how near): all at once, a thump and the flame, no whoosh
      heard.boom()          the circle under her feet waking, the fires turning red: low, echoing, of stone (a heavy hit, the
                            hall's stone groaning, the mountain rumbling, a moan from the deep), and stones falling round the
                            dome, each from where it falls
-     heard.shing(i)        a statue's eyes lighting (i: its order), from its eyes: a ring of steel, each a little lower
+     heard.shing(i)        a statue opening its eyes (i: its order), from its eyes: a deep thud and a dark ring of steel,
+                           each a little lower; with the first, a low brass swell under them all (earshot's braam)
      heard.air(on)         the hall's air, always (from her first touch): the cave all round (water running somewhere under
                            the rock, a waterfall heard through the stone), its mass (a deep pressure), its draft from the
                            oculus above and the fallen tunnel behind the door; now and then water dripping into pools,
@@ -31,11 +35,11 @@
    the hall had them first (WebAudio: hum, clunk ...); { made: true } (the page's ?sfx=old) makes every one so, and none of
    the placed ones.
    ========================================================================== */
-const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'boom', 'eye', 'heart', 'drip1', 'drip2', 'pebbles1', 'pebbles2', 'knock', 'groan'];
+const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'beat', 'ignite', 'boom', 'eye', 'braam', 'heart', 'drip1', 'drip2', 'pebbles1', 'pebbles2', 'knock', 'groan'];
 const LOOPS = ['air', 'room', 'cave', 'crackle', 'drone'];
 const FILES = [...ONCE, ...LOOPS];
 const DOOR = [0, 4.5, 22];            // where the door's sounds come from (its middle, a man's height and more up)
-export const MADE = 7;                // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old;
+export const MADE = 8;                // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old;
                                       // the page asks for her steps on stone, boss/step-N.mp3, with it too)
 
 export function createBossSounds({ context, volume = 1, hall = null, fires = null, made = false, base = './assets/audio/boss/' } = {}) {
@@ -324,6 +328,18 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
     }
     if (!play('fire', { rate: rnd(0.93, 1.07), level: 1.25 * m, pan, wet: 0.45, lp: 1800 + 6200 * m })) madeWhoosh(clamp(pan, -1, 1), k);
   }
+  function ignite(group, k = 0, n = 1) {
+    if (!ready()) return;
+    if (!placed() || !buf.ignite || !buf.beat) {            // (as before: each fire's own burst)
+      for (const f of group) whoosh(clamp(f.x / 6, -1, 1), 1.4 / (1 + Math.hypot(f.x - ear.x, f.z - ear.z) * 0.08), f);
+      return;
+    }
+    play('beat', { level: k === n - 1 ? 1.35 : 1.0, wet: 0.7 });
+    for (const f of group) {
+      const d = Math.hypot(f.x - ear.x, f.y - ear.y, f.z - ear.z);
+      playAt('ignite', f.x, f.y + 0.8, f.z, { rate: rnd(0.95, 1.05), level: 2.0, ref: 4, wet: 0.5, lp: 1800 + 6200 * clamp(1 - d / 45, 0, 1) });
+    }
+  }
   function boom() {
     if (!ready()) return;
     if (!play('boom', { level: 1.0, wet: 1.2 })) return madeBoom();
@@ -338,6 +354,7 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
   }
   function shing(i = 0) {
     if (!ready()) return;
+    if (i === 0 && placed() && buf.braam) play('braam', { level: 0.9, wet: 0.9 });
     const s = STATUES.find(v => v.order === i);
     if (s && s.eyes && placed() && buf.eye) {
       const e = s.eyes, x = (e[0][0] + e[1][0]) / 2, y = (e[0][1] + e[1][1]) / 2, z = (e[0][2] + e[1][2]) / 2;
@@ -432,7 +449,7 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
   }
 
   return {
-    hum, clunk, rumble, thud, whoosh, boom, shing, air, dread,
+    hum, clunk, rumble, thud, whoosh, ignite, boom, shing, air, dread,
     update(dt, at, fx, cam) {
       if (!ctx || !ready()) return;
       if (placed() && (cam || at)) hearFrom(cam, at);
