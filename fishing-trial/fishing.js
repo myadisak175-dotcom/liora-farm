@@ -1,4 +1,6 @@
 // The lake's fishing loop. Drive it with press(), release() and update(dt) from any scene.
+import { CAST_TIME, LAND_TIME } from './fishing-motion.js?v=2';
+
 export const FISH = [
   { id: 'silver', name: 'ปลาซิวเงิน', color: '#729a9c', fin: '#9ca088', belly: '#e9e5c2', pattern: 'stripe', min: 10, max: 22, weight: 32, strength: .82 },
   { id: 'perch', name: 'ปลาคอนใบหลิว', color: '#7f9e5d', fin: '#d7884f', belly: '#e6d6a0', pattern: 'bars', min: 18, max: 33, weight: 27, strength: 1 },
@@ -50,7 +52,7 @@ export function createFishing({ random = Math.random, onChange = () => {}, onCat
     dt = Math.min(dt, .1);
     state.age += dt;
     switch (state.phase) {
-      case 'cast': if (state.age >= 1.15) enter('wait'); break;
+      case 'cast': if (state.age >= CAST_TIME) enter('wait'); break;
       case 'wait': if (state.age >= waitTime) enter('bite'); break;
       case 'bite': if (state.age >= 2.4) miss('ปลาคายเหยื่อแล้ว'); break;
       case 'reel': {
@@ -67,7 +69,7 @@ export function createFishing({ random = Math.random, onChange = () => {}, onCat
         break;
       }
       case 'land':
-        if (state.age >= .85) {
+        if (state.age >= LAND_TIME) {
           const record = { id: state.fish.id, length: state.length };
           enter('caught');
           onCatch(record);

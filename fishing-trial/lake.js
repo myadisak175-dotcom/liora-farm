@@ -1,6 +1,6 @@
 // Mobile/keyboard input, catch records and the local game clock.
-import {createFishing,FISH} from './fishing.js';
-import {createScenery} from './scenery.js';
+import {createFishing,FISH} from './fishing.js?v=2';
+import {createScenery} from './scenery.js?v=2';
 import {fishPlate} from './fish-art.js';
 const $=id=>document.getElementById(id);
 const icons={
@@ -64,7 +64,7 @@ window.addEventListener('keydown',e=>{if(book.open||e.repeat||keyboard)return;co
 window.addEventListener('keyup',e=>{if(e.code==='Space'&&keyboard){e.preventDefault();keyboard=false;fishing.release();}});
 function clearInput(){keyboard=false;pointer=null;fishing.release();}
 window.addEventListener('blur',clearInput);document.addEventListener('visibilitychange',clearInput);
-const modelCanvas=$('avatar');import('./angler.js').then(m=>m.loadAngler(modelCanvas)).then(ch=>{scenery.attach(ch);modelCanvas.dataset.ready='true';}).catch(err=>{modelCanvas.hidden=true;console.warn('Using illustrated angler',err.message);});
+const modelCanvas=$('avatar');import('./angler.js?v=2').then(m=>m.loadAngler(modelCanvas)).then(ch=>{scenery.attach(ch);modelCanvas.dataset.ready='true';}).catch(err=>{modelCanvas.hidden=true;scenery.prepareSprites();console.info('Using rendered Vivi poses',err.message);});
 window.addEventListener('resize',()=>scenery.resize());
 let last=performance.now(),elapsed=0,display='';
 function tick(now){const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden&&!book.open){elapsed+=dt;fishing.update(dt);const s=fishing.state;scenery.update(s,elapsed,dt);
