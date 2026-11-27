@@ -172,7 +172,7 @@ export function createFrameMeasure({ frame, renderer, scene, camera, level, play
     }
     save(R);
     say('โหลดใหม่ ลองแบบไม่ลบรอยหยัก…');
-    location.href = location.pathname + '?measure=2&aa=0';
+    location.replace(location.pathname + '?measure=2&aa=0');      // (replace: the page before is not kept to go back to, nor its memory)
   }
   async function quick(name, then) {
     const R = load();
@@ -257,7 +257,7 @@ export function createFrameMeasure({ frame, renderer, scene, camera, level, play
   done.then(async () => {
     try {
       if (stage === 'show') card(load());
-      else if (stage === '2') await quick('aa0', () => { say('โหลดใหม่ ลองอีกแบบ…'); location.href = location.pathname + '?measure=3&gpu=default'; });
+      else if (stage === '2') await quick('aa0', () => { say('โหลดใหม่ ลองอีกแบบ…'); location.replace(location.pathname + '?measure=3&gpu=default'); });
       else if (stage === '3') await quick('gpu', card);
       else await full();
     } catch (err) { console.warn('[measure]', err); say('วัดไม่สำเร็จ: ' + (err && err.message || err)); }
