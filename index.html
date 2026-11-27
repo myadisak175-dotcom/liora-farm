@@ -795,19 +795,29 @@ if (blinkKit) scene.add(blinkKit.fx.object);                              // (th
 if (farmTools && farmTools.fxObject) scene.add(farmTools.fxObject);      // (her farm's splash, when it has its own: no spells)
 
 // ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
-// it given back when there is room. What is given back and at once proves too much (the pace drops again within seconds)
+// it given back when there is room. It goes by the typical frame of each second (the middle one, its frames in order of how
+// long they took), not by their average: a hitch now and then (a shader made, a picture sent to the GPU) is not the phone
+// being slow, and on an iPhone it used to take the picture a step coarser and the grass a step thinner each time (27 Nov
+// 2026: "ภาพค่อยๆ เบลอ หญ้าบางลง"). The hitches are counted for the readout (?dev=1): how many in the last minute, the
+// longest. What is given back and at once proves too much (the pace drops again within seconds)
 // is not tried again for a while: without that the picture went coarse and fine, and the grass thin and thick, over and
 // over wherever the phone was near its limit.
 const fpsEl = document.getElementById('fps');
+const gaps = [];                                     // (this second's frames, how long each took)
+let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms, the last minute's)
 let fpsN = 0, fpsT = 0, warm = 0, good = 0, played = 0, gaveBackAt = -1e9, holdUntil = 0, dprDue = false, mirrorWas = -1;      // (played: seconds of play the tuner has seen; mirrorWas: the mirror's quality before the tuner first lowered it)
 const setDPR = v => { renderDPR = v; dprDue = true; };      // (the picture's size changes as the next frame begins: changed after a frame is drawn, the screen would show one empty frame, a blink)
 const tookAway = () => { if (played - gaveBackAt < 8) holdUntil = played + 45; };
 const gaveBack = () => { gaveBackAt = played; };
 const mayGiveBack = () => played >= holdUntil;
-function tune(dt) {
-  fpsN++; fpsT += dt; warm += dt; played += dt;
+function tune(dt, raw = dt) {
+  fpsN++; fpsT += dt; warm += dt; played += dt; gaps.push(dt);
+  if (raw > 0.05) hitches.push([played, raw]);
   if (fpsT < 1) return;
-  const fps = fpsN / fpsT; fpsN = 0; fpsT = 0;
+  gaps.sort((a, b) => a - b);
+  const fps = 1 / Math.max(gaps[gaps.length >> 1], 1e-3), mean = fpsN / fpsT;      // (fps: the typical frame's pace; mean: the average's, as shown)
+  fpsN = 0; fpsT = 0; gaps.length = 0;
+  hitches = hitches.filter(h => played - h[0] < 60);
   const g = level.grass.userData, slow = fps < targetFPS * 0.78, easy = fps > targetFPS * 0.93;
   if (warm > 4) {
     if (slow && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; }
@@ -825,7 +835,8 @@ function tune(dt) {
     }
     else good = 0;
   }
-  fpsEl.textContent = Math.round(fps) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality];
+  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
+    + ' · กระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '');
 }
 
 // ---- the scene editor: fix the ways and the plants by hand (only where the level can be edited)
@@ -952,7 +963,8 @@ let moved = false;
 // an editor is open (the scene's, the rocks', move-things, the path brush): its own camera, and its own pace (below)
 const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active));
 const frame = (dt = clock.getDelta()) => {
-  dt = Math.min(Math.max(dt, 0), 0.05);
+  const raw = Math.max(dt, 0);                       // (how long the frame really took: the tuner counts the hitches)
+  dt = Math.min(raw, 0.05);
   const real = dt;                                   // (the world's time is stopped a moment by a blow on the barrier: above)
   if (stopLater && playT >= stopLater.at) { stopT = Math.max(stopT, stopLater.s); stopLater = null; }
   if (stopT > 0) { stopT -= dt; dt *= 0.05; }
@@ -1026,7 +1038,7 @@ const frame = (dt = clock.getDelta()) => {
   }
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
-  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; } else tune(real);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
+  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; } else tune(real, raw);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
@@ -1045,11 +1057,30 @@ const animate = t => {
   lastFrameAt = t; frame();
 };
 const syncVisibility = () => {
-  clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0;
+  clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0;
   renderer.setAnimationLoop(!document.hidden && !Q.get('still') ? animate : null);
 };
 document.addEventListener('visibilitychange', syncVisibility);
 addEventListener('pageshow', syncVisibility);
+// ---- warmed up before she plays (27 Nov 2026: on an iPhone the game stuttered now and then): every shader the scene's
+// things need is made now, behind the loading screen, and every picture they wear is sent to the GPU now, not the first time
+// each comes into view (by the falls, at her first attack, her first barrier, her first jump: on Safari each one a freeze,
+// as it makes a shader all at once). Headless, before: 27 shaders and 33 pictures made after loading; after: 8 shaders (the
+// things that are only made when they are first needed). compileAsync lets a browser that can make shaders side by side
+// (Chrome) do so; Safari makes them one after another, a few seconds more of the loading screen.
+stepEl.textContent = 'เตรียมภาพ…';
+await new Promise(r => requestAnimationFrame(r));                     // (the step shown first)
+try {
+  if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera);
+  const pictures = new Set(), take = v => { if (v && v.isTexture) pictures.add(v); else if (Array.isArray(v)) v.forEach(take); };
+  scene.traverse(o => {
+    for (const m of [].concat(o.material || [])) {
+      for (const k in m) if (k !== 'uniforms') take(m[k]);
+      if (m.uniforms) for (const k in m.uniforms) take(m.uniforms[k] && m.uniforms[k].value);
+    }
+  });
+  for (const t of pictures) if (!t.isRenderTargetTexture) renderer.initTexture(t);
+} catch (err) { console.warn('[warm-up]', err); }
 syncVisibility();
 barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
