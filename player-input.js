@@ -32,10 +32,23 @@ export function createPlayerInput({ dom, ui = null, onTap = null, onJump = null,
   const showStick = (on, x = 0, y = 0) => { if (base) { base.style.opacity = on ? 1 : 0; if (on) { base.style.left = x + 'px'; base.style.top = y + 'px'; } } };
   const setKnob = (dx, dy) => { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; };
 
+  // ---- a finger whose lifting was never heard (27 Nov 2026, iPhone: "บางครั้งปุ่มเดินก็ค้างเอง"): iOS can take a touch
+  // away without a word (a banner, a swipe in from the edge, the page put away), and the stick went on walking her the
+  // way it last pointed, a new finger on its side turning the camera instead. Its capture lost, the page put away or its
+  // window losing the focus: the stick and the look let go. And a new finger on the stick's side, while the stick still
+  // holds one whose capture is gone, takes the stick over
+  const letStick = () => { if (stickId !== null) { stickId = null; move.set(0, 0); showStick(false); } };
+  const letGo = () => { letStick(); lookId = null; };
+  dom.addEventListener('lostpointercapture', e => { if (e.pointerId === stickId) letStick(); if (e.pointerId === lookId) lookId = null; });
+  addEventListener('blur', letGo);
+  addEventListener('pagehide', letGo);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) letGo(); });
+
   // ---- touch: one finger on each half of the screen
   dom.addEventListener('pointerdown', e => {
     dom.setPointerCapture(e.pointerId);
     const touch = e.pointerType !== 'mouse';
+    if (touch && e.clientX < innerWidth * 0.45 && stickId !== null && !dom.hasPointerCapture(stickId)) letStick();      // (lifted unheard)
     if (touch && e.clientX < innerWidth * 0.45 && stickId === null) {
       stickId = e.pointerId; stick0.set(e.clientX, e.clientY); stickT = performance.now(); showStick(true, e.clientX, e.clientY); setKnob(0, 0);
     } else if (lookId === null) { lookId = e.pointerId; look0.set(e.clientX, e.clientY); tap0.set(e.clientX, e.clientY); tapT = performance.now(); }
