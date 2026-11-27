@@ -20,30 +20,26 @@
   #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
     background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
   /* jump: under the right thumb, in the joystick's colours */
-  #jumpBtn, #dashBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
     z-index: 4; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
     color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
     -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
-  #jumpBtn svg, #dashBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
-  #jumpBtn.down, #dashBtn.down { background: rgba(255, 255, 255, .5); }
-  #jumpBtn[hidden], #dashBtn[hidden] { display: none; }
-  /* dash: beside the jump, a little smaller */
-  #dashBtn { right: calc(max(24px, env(safe-area-inset-right) + 14px) + 76px); width: 56px; height: 56px; }
-  /* her spells (player-spells.js; ?spell=0: without): the attack button under the right thumb, where the jump was; the
-     jump over the dash beside it; the roll and the barrier further in. All of them low: the buttons down the right edge
-     (the world's, the sound's) come down to some 100 px over the bottom of a phone on its side */
-  #atkBtn, #rollBtn, #barrierBtn { position: fixed; z-index: 4; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
+  #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
+  #jumpBtn[hidden] { display: none; }
+  /* her spells (player-spells.js; ?spell=0: without): the attack button under the right thumb, where the jump was. Since
+     27 Nov 2026 (no dash, roll or barrier: "เอาบาเรียออก เอา พุ่ง ออก ... เอา กลิ้งออก") the buttons are one row along the
+     bottom, the user's choice ("แถวล่างแถวเดียว"): วาร์ป · กระโดด · โจมตี, each centred on the attack's middle. All of
+     them low: the buttons down the right edge (the world's, the sound's) come down to some 70 px over the bottom of the
+     user's phone on its side */
+  #atkBtn { position: fixed; z-index: 4; right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px));
+    width: 78px; height: 78px; border-radius: 50%; border: 2px solid rgba(190, 235, 255, .9); background: rgba(116, 207, 255, .32);
     color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
     -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
-  #atkBtn svg, #rollBtn svg, #barrierBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
-  #atkBtn.down, #rollBtn.down, #barrierBtn.down { background: rgba(255, 255, 255, .5); }
-  #atkBtn[hidden], #rollBtn[hidden], #barrierBtn[hidden] { display: none; }
-  #atkBtn { right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 78px; height: 78px;
-    background: rgba(116, 207, 255, .32); border-color: rgba(190, 235, 255, .9); }
-  #atkBtn svg { width: 26px; height: 26px; }
+  #atkBtn svg { width: 26px; height: 26px; margin-bottom: -6px; }
   #atkBtn.down { background: rgba(170, 225, 255, .55); }
-  body.spells #dashBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 96px); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 52px; height: 52px; }
-  body.spells #jumpBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 92px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 60px); width: 60px; height: 60px; }
+  #atkBtn[hidden] { display: none; }
+  body.spells #jumpBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 90px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 9px); width: 60px; height: 60px; }
   /* the spear rain (spear-rain.js; ?rain=0: without): while she holds the lance the attack button's finger slid up off it
      throws the lance into the sky. Its badge comes up over the attack button for as long (low: between it and the buttons
      down the right edge on a phone on its side); it may be tapped too. --near: how far the finger has come up to it (0..1) */
@@ -56,14 +52,9 @@
   #rainBtn[hidden] { display: none; }
   #rainBtn svg { width: 14px; height: 9px; margin-right: 3px; vertical-align: 1px; animation: rainNudge .7s ease-in-out infinite; }
   @keyframes rainNudge { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-2px); } }
-  #rollBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px)); width: 56px; height: 56px; }
-  #barrierBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 66px); width: 56px; height: 56px;
-    background: rgba(111, 203, 255, .26); }
-  #barrierBtn.wait { opacity: .45; }
-  /* her blink (blink.js; ?blink=0: without): วาร์ป, in its own cyan. Without the spells, beside the dash; with them, over the
-     barrier (on a phone on its side the world's button reaches in over the jump's column), and on a phone upright over
-     the attack (there the jump's column is where a warp stone's button comes up) */
-  #blinkBtn { position: fixed; z-index: 4; right: calc(max(24px, env(safe-area-inset-right) + 14px) + 140px); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  /* her blink (blink.js; ?blink=0: without): วาร์ป, in its own cyan. Without the spells, beside the jump; with them, beside
+     the jump in the row along the bottom (above), the furthest in */
+  #blinkBtn { position: fixed; z-index: 4; right: calc(max(24px, env(safe-area-inset-right) + 14px) + 76px); bottom: max(20px, calc(env(safe-area-inset-bottom) + 14px));
     width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(214, 252, 255, .95); background: rgba(95, 230, 232, .3); color: #fff;
     font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; box-shadow: 0 0 12px rgba(95, 230, 232, .55); transition: opacity .1s; }
@@ -71,8 +62,7 @@
   #blinkBtn.down { background: rgba(170, 248, 250, .55); }
   #blinkBtn.wait { opacity: .5; box-shadow: none; }
   #blinkBtn[hidden] { display: none; }
-  body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 132px); }
-  @media (orientation: portrait) { body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 11px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 124px); } }
+  body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 11px); }
   #fps { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 8px; font-size: 11px; color: rgba(39, 52, 26, .75);
     background: rgba(255, 255, 255, .62); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
   #style { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 34px; font: inherit; font-size: 12px; color: #fff;
@@ -117,8 +107,6 @@
   body:not(.dev) #timeRun { top:156px; }
   body:not(.dev) #fullscreen { top:198px; }
   /* ?curse=1: the curse trial's button, under full screen */
-  #towerBar { position: fixed; left: max(10px, env(safe-area-inset-left)); z-index: 4; display: flex; gap: 6px; }
-  #towerBar button { border: 1px solid #ffffffaa; border-radius: 999px; padding: 7px 11px; background: #5a2b55d9; color: #fff; font: 700 12px system-ui; touch-action: manipulation; }
   #curseBtn { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 264px; z-index: 4; font: inherit; font-size: 12px; color: #fff;
     background: rgba(70, 56, 92, .85); border: 0; padding: 9px 13px; border-radius: 999px; touch-action: manipulation; transform: translateY(env(safe-area-inset-top)); }
   body:not(.dev) #curseBtn { top: 240px; }
@@ -237,7 +225,7 @@
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
   "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2gc1",
-  "./player-moves.js": "./player-moves.js?v=32",
+  "./player-moves.js": "./player-moves.js?v=33",
   "./blink.js": "./blink.js?v=2",
   "./blink-fx.js": "./blink-fx.js?v=1",
   "./blink-sounds.js": "./blink-sounds.js?v=2",
@@ -251,12 +239,6 @@
   "./magic-combo.js": "./magic-combo.js?v=8",
   "./magic-combo-fx.js": "./magic-combo-fx.js?v=8",
   "./magic-combo-game-anim.js": "./magic-combo-game-anim.js?v=1",
-  "./barrier-fx.js": "./barrier-fx.js?v=2",
-  "./barrier-anim.js": "./barrier-anim.js?v=1",
-  "./barrier-reflect.js": "./barrier-reflect.js?v=6",
-  "./barrier-reflect-fx.js": "./barrier-reflect-fx.js?v=6",
-  "./barrier-reflect-sounds.js": "./barrier-reflect-sounds.js?v=2",
-  "./practice-towers.js": "./practice-towers.js?v=1",
   "./player-vault.js": "./player-vault.js?v=2",
   "./player-climb-top.js": "./player-climb-top.js?v=2",
   "./climb-top-anim.js": "./climb-top-anim.js?v=1",
@@ -456,15 +438,16 @@ if (level.horizon && level.horizon.layers) {             // a map with far hills
 // their landing (magic-jump-flow-anim.js: magic-jump.js, step 'flow') and her way over a cliff's top (climb-top-anim.js:
 // player-climb-top.js)
 // and her spells' (player-spells.js, since 22 Nov 2026; ?spell=0: without, and nothing of them is loaded): the magic
-// combo's moves on the ground (magic-combo-game-anim.js: magic-combo.js) and the barrier's cast (barrier-anim.js: its
-// clip 'barrier' only; its idle is the library's, as hers is). Not with the old walker (?move=0)
+// combo's moves on the ground (magic-combo-game-anim.js: magic-combo.js). Not with the old walker (?move=0). (The barrier's
+// cast, barrier-anim.js, is not in the game since 27 Nov 2026: "เอาบาเรียออก"; it is on its own pages, barrier.html and
+// barrier-reflect.html)
 const spellsOn = Q.get('spell') !== '0' && Q.get('move') !== '0';
-const [COMBO_ANIM, BARRIER_ANIM] = spellsOn ? (await Promise.all([import('./magic-combo-game-anim.js'), import('./barrier-anim.js')])).map(m => m.CHARACTER_ANIM) : [null, null];
+const COMBO_ANIM = spellsOn ? (await import('./magic-combo-game-anim.js')).CHARACTER_ANIM : null;
 // ... and the spear rain's (since 23 Nov 2026; ?rain=0: without, and nothing of it is loaded): the lance hurled up into the
 // sky, mc_sky, made here out of the combo's own lance throw (spear-rain-anim.js)
 const rainOn = spellsOn && Q.get('rain') !== '0';
 const SKY_CLIP = rainOn ? (await import('./spear-rain-anim.js')).skyThrowClip(COMBO_ANIM) : null;
-const SPELL_CLIPS = spellsOn ? { ...COMBO_ANIM.clips, barrier: BARRIER_ANIM.clips.barrier, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}) } : {};
+const SPELL_CLIPS = spellsOn ? { ...COMBO_ANIM.clips, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}) } : {};
 // ... and her blink's (since 24 Nov 2026; ?blink=0: without, and nothing of it is loaded): her stop after it, blink_stop
 // (blink-stop-anim.js: Mixamo's Run To Stop, posed for her). Not with the old walker (?move=0) either
 const blinkOn = Q.get('blink') !== '0' && Q.get('move') !== '0';
@@ -492,7 +475,8 @@ const onTap = (cx, cy) => {                          // tap the water: a stone's
   level.tapWater(ray.ray.origin, ray.ray.direction);
 };
 if (Q.get('view') === 'water' && MAP !== 'valley') { level.spawn = { x: 17.5, z: -1, yaw: Math.PI / 2 }; }      // (the valley finds its own bank)
-// the player with the moves (player-moves.js: off a cliff's top, climbing, swimming, dash). ?move=0: the old walker
+// the player with the moves (player-moves.js: off a cliff's top, climbing, swimming; her run gathering speed by itself, in
+// the dash's place since 27 Nov 2026: "พุ่ง มันคือวิ่งเร็ว ทำให้ตัวละครค่อยๆ เพิ่มความเร็วแทน"). ?move=0: the old walker
 // (player.js) instead, to compare (it was the game's player until the moves were put in its place)
 const createPlayer = Q.get('move') === '0' ? createWalker : (await import('./player-moves.js')).createPlayer;
 // the magic jump's circles (magic-circle-fx.js): the jump (player-moves.js, magic-jump.js) says where they open; drawn here,
@@ -524,15 +508,13 @@ const music = sounds && Q.get('music') !== '0' ? (await import('./music.js')).cr
 // time. The music at 0 is the music off (as the 🎵 button that was here)
 const soundSettings = sounds ? (await import('./sound-settings.js')).createSoundSettings({ sounds, air, music, base: soundVol }) : null;
 // ---- ✨ her spells (player-spells.js says what she casts and when; player-moves.js where she may go meanwhile): the light
-// of the magic combo (magic-combo-fx.js) and the barrier (since 25 Nov 2026 the one that throws a blow back, in the old one's
-// place, her move the old one's: barrier-reflect.js its rules, barrier-reflect-fx.js what is seen, barrier-reflect-sounds.js
-// the sound of the clip it was made after, on the AudioContext her steps woke), drawn in the scene. They are put in it once
-// the cloud shadows and the curse have done their work on its materials (below): the light keeps its own
+// of the magic combo (magic-combo-fx.js), drawn in the scene. It is put in it once the cloud shadows and the curse have done
+// their work on its materials (below): the light keeps its own. (No barrier since 27 Nov 2026: "เอาบาเรียออก". It was
+// the one that throws a blow back, barrier-reflect.js, with its practice towers behind ?towers=1; both are on its own page,
+// barrier-reflect.html)
 const spellKit = spellsOn ? await (async () => {
-  const [{ createMagicComboFx }, { createReflectBarrier }, { createReflectBarrierFx }, { createReflectBarrierSounds }] = await Promise.all([import('./magic-combo-fx.js'), import('./barrier-reflect.js'), import('./barrier-reflect-fx.js'), import('./barrier-reflect-sounds.js')]);
-  const fx = createReflectBarrierFx({ heightAt: level.heightAt });
-  const heard = sounds ? createReflectBarrierSounds({ context: () => sounds.context, volume: sounds.volume }) : null;
-  const kit = { comboFx: createMagicComboFx(), barrier: { fx, heard, rules: createReflectBarrier({ fx, heard, heightAt: level.heightAt }) }, renderer };
+  const { createMagicComboFx } = await import('./magic-combo-fx.js');
+  const kit = { comboFx: createMagicComboFx(), renderer };
   // the spear rain (spear-rain.js: the move; spear-rain-fx.js: the lance going up, the seal, the spears;
   // spear-rain-sounds.js: its sound) and the hum
   // of the lance's circle while it is held (charge-hum.js; ?hum=0: without): heard on the AudioContext her steps woke
@@ -557,7 +539,9 @@ const blinkKit = BLINK_MODS ? (() => {
   const heard = sounds ? createBlinkSounds({ context: () => sounds.context, volume: sounds.volume }) : null;
   return { fx, heard, blink: createBlink({ fx, heard, stop: BLINK_STOP }) };
 })() : null;
-const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds, spells: spellKit, blink: blinkKit ? blinkKit.blink : null });
+// (ramp: kept running she gathers speed up to a sprint's pace by herself; dash: false, roll: false: neither, nor their
+// buttons, since 27 Nov 2026, and no barrier is given her: "เอาบาเรียออก เอา พุ่ง ออก ... เอา กลิ้งออก")
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), onTap, circles, weight: weighs && Q.get('weight') !== '0', sounds, spells: spellKit, blink: blinkKit ? blinkKit.blink : null, ramp: true, dash: false, roll: false });
 if (blinkKit) blinkKit.fx.prepare(hero);                 // (her meshes read now, for her afterimages, not as she first blinks)
 if (weighs && player.setWeight) {
   const btn = document.createElement('button');
@@ -580,16 +564,8 @@ if (level.farm) {
 const jumpBtn = document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
-// the dash button, beside it (only the player with the moves can dash: not with ?move=0). Shift does the same on a keyboard
-let dashBtn = null, dashLabel = null, climbing = false;
-if (player.dash) {
-  dashBtn = document.createElement('button'); dashBtn.id = 'dashBtn'; dashBtn.type = 'button'; dashBtn.setAttribute('aria-label', 'พุ่ง');
-  dashBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M13 6l6 6-6 6"/></svg><br><i style="font-style:normal">พุ่ง</i></span>';
-  dashLabel = dashBtn.querySelector('i');
-  jumpBtn.after(dashBtn);
-  dashBtn.addEventListener('pointerdown', e => { e.preventDefault(); dashBtn.classList.add('down'); player.dash(); });
-  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dashBtn.addEventListener(ev, () => dashBtn.classList.remove('down'));
-}
+// (no dash button since 27 Nov 2026: her run gathers speed by itself. On a rock face it was ปล่อย, letting her go: the
+// user chose no button for that, "ไม่ต้องมีปุ่ม": the jump with the stick pulled away kicks her off the rock, as it did)
 // the blink's button, วาร์ป (none with ?blink=0): pressed, not clicked; dimmed until it may be pressed again. E or L on a
 // keyboard (player-input.js)
 let blinkBtn = null;
@@ -600,8 +576,10 @@ if (blinkKit) {
   blinkBtn.addEventListener('pointerdown', e => { e.preventDefault(); blinkBtn.classList.add('down'); player.blink(); });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) blinkBtn.addEventListener(ev, () => blinkBtn.classList.remove('down'));
 }
-// her spells' buttons (player-spells.js): โจมตี (tapped: four casts; held: the lance, thrown as it is let go; on the run: the
-// leap), กลิ้ง (the roll; โจมตี in it: the rising cast), บาเรีย (the barrier). J, K, B on a keyboard (player-input.js)
+// her spells' button (player-spells.js): โจมตี (tapped: four casts; held: the lance, thrown as it is let go; on the run: the
+// leap). J on a keyboard (player-input.js). (Without กลิ้ง, the roll, and บาเรีย, the barrier, since 27 Nov 2026: "เอา
+// กลิ้งออก", "เอาบาเรียออก". The rising cast came out of the roll; a cast out of the blink is to take its place, later:
+// "วาร์ปแล้วร่ายเวททันทีที่โผล่")
 const spellBtns = [];
 if (spellKit && player.attack) {
   document.body.classList.add('spells');
@@ -613,8 +591,6 @@ if (spellKit && player.attack) {
     document.body.append(b); spellBtns.push(b);
     return b;
   };
-  make('barrierBtn', 'บาเรีย', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 18 0"/><path d="M1.5 19h21"/><path d="M12 7.5c1.5 1.9 2.3 3.1 2.3 4.2a2.3 2.3 0 0 1-4.6 0c0-1.1.8-2.3 2.3-4.2z"/></svg>', () => player.barrier());
-  make('rollBtn', 'กลิ้ง', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 4v5h-5"/></svg>', () => player.roll());
   make('atkBtn', 'โจมตี', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg>', () => player.attack(), () => player.release());
   // the spear rain (ฝนหอก): while the attack button is down its finger may slide up off it; past FLICK px the lance she
   // holds is thrown into the sky (remembered a moment, so a quick press and slide throws it up as soon as she has it). The
@@ -639,7 +615,7 @@ if (spellKit && player.attack) {
     document.body.append(badge); spellBtns.push(badge);
   }
 }
-const barrierBtn = document.getElementById('barrierBtn'), rainBtn = document.getElementById('rainBtn');
+const rainBtn = document.getElementById('rainBtn');
 // her real shadow on the ground, thrown by the sun. The round blob under her feet takes over at night, when nothing casts one.
 const charShadow = createCharacterShadow({ character: hero, heightAt: level.heightAt, shade: level.map && level.map.cast ? { texture: level.map.cast, rect: level.map.rect } : null });
 scene.add(charShadow.object);
@@ -807,7 +783,7 @@ if (Q.has('curse')) {
   curse.changed();                                       // the values remembered from last time
 }
 // her spells' light and water (above): into the scene now that its materials have been given the clouds' shade and the curse
-if (spellKit) scene.add(spellKit.comboFx.object, spellKit.barrier.fx.object);
+if (spellKit) scene.add(spellKit.comboFx.object);
 if (spellKit && spellKit.rainFx) scene.add(spellKit.rainFx.object);      // (the spear rain's, in the lance's own light)
 if (blinkKit) scene.add(blinkKit.fx.object);                              // (the blink's, in its own light too)
 if (farmTools && farmTools.fxObject) scene.add(farmTools.fxObject);      // (her farm's splash, when it has its own: no spells)
@@ -975,48 +951,8 @@ const warpUI = createWarpUI({ level, player });
 const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;
 if (farHills && level.horizon) { farHills.position.set(level.horizon.center[0], 0, level.horizon.center[1]); farHills.scale.setScalar(level.horizon.scale); }      // a long map: the far hills stand round its middle, further out
 
-// ---- 🛡 the barrier's weight, as on its trial page (barrier-reflect.html): the world stops for an instant as a blow lands on
-// it (0.05 s; one taken while it charges, 0.03) and as it bursts (0.08 s, once its ball of light is big and white: 0.05 s of
-// play after), and the camera jolts (player-spells.js). Its burst throws each blow back at whoever threw it: nothing in the
-// game throws one at her yet but the practice towers (below)
-let stopT = 0, stopLater = null, playT = 0, towers = null;
-const viewPx = new THREE.Vector2();
-const hitStop = (s, after = 0) => { if (after > 0) stopLater = { at: playT + after, s }; else stopT = Math.max(stopT, s); };
-if (spellKit) {
-  const rules = spellKit.barrier.rules;
-  rules.onStrike = ({ first }) => { hitStop(first ? 0.05 : 0.03); player.spells.jolt(first ? 0.9 : 0.7); };
-  rules.onReflect = ({ at, blows }) => { if (towers) towers.thrownBack({ at, blows }); hitStop(0.08, 0.05); player.spells.jolt(1.4); };
-}
-// ---- 🎯 ?towers=1 (a trial): three practice towers (practice-towers.js, as on the barrier's trial page: a crystal that throws
-// a bolt at her when asked; here it floats by itself, with no stone post to walk into) round where she is, to try the barrier
-// in the game. 🎯 the one most in view throws (F on a keyboard), 🎯×3 all three (G); away from them (25 m on), they stand
-// round her again where she is. Without it nothing of it is loaded
-if (spellKit && Q.has('towers') && Q.get('towers') !== '0') {
-  const { createPracticeTowers } = await import('./practice-towers.js');
-  const bar = spellKit.barrier;
-  towers = createPracticeTowers({ heightAt: level.heightAt, fx: bar.fx, barrier: bar.rules, heard: bar.heard, her: () => ({ feet: player.position, size: hero.height / 1.75 }), post: false });
-  const ahead = () => { const f = new THREE.Vector3(); camera.getWorldDirection(f); return Math.atan2(f.x, f.z); };
-  const round = () => { if (towers.near(player.position) > 25) towers.placeAround(player.position, ahead()); };
-  towers.placeAround(player.position, player.heading);
-  towers.onHit = () => player.spells.jolt(0.8);
-  scene.add(towers.object);
-  const box = document.createElement('div'); box.id = 'towerBar';
-  const add = (label, act) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); round(); act(); });
-    box.append(b);
-  };
-  add('🎯 ยิงใส่', () => towers.fireOne(camera));
-  add('🎯×3', () => towers.fireAll());
-  document.body.append(box);
-  const under = document.getElementById('charBtn');
-  box.style.top = `${Math.round((under ? under.getBoundingClientRect().bottom : 150) + 8)}px`;
-  addEventListener('keydown', e => {
-    if (e.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || document.body).tagName)) return;
-    if (e.code === 'KeyF') { round(); towers.fireOne(camera); }
-    if (e.code === 'KeyG') { round(); towers.fireAll(); }
-  });
-}
+// (the barrier's weight, the world stopped an instant as a blow landed on it, and its practice towers, ?towers=1, went out
+// of the game with it on 27 Nov 2026: "เอาบาเรียออก". They are on its own page, barrier-reflect.html)
 
 const clock = new THREE.Clock();
 let moved = false;
@@ -1025,16 +961,11 @@ const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && r
 const frame = (dt = clock.getDelta()) => {
   const raw = Math.max(dt, 0);                       // (how long the frame really took: the tuner counts the hitches)
   dt = Math.min(raw, 0.05);
-  const real = dt;                                   // (the world's time is stopped a moment by a blow on the barrier: above)
-  if (stopLater && playT >= stopLater.at) { stopT = Math.max(stopT, stopLater.s); stopLater = null; }
-  if (stopT > 0) { stopT -= dt; dt *= 0.05; }
-  playT += dt;
   if (dprDue) { dprDue = false; renderer.setPixelRatio(renderDPR); fit(); }
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
   if (farmTools) farmTools.update(dt, editing());                         // (her farm's bar: only near the farm, and not while an editor is open)
-  if (towers) towers.update(dt, playT);                                   // (the practice towers' bolts, after her: ?towers=1)
   if (npcs) npcs.update(dt);                                              // (after her: they turn to where she now is)
   if (goblin) goblin.update(dt);                                          // (after her too: it looks at where she now is)
   circles.setNight(!!tod && tod.daylight < 0.3);                          // (by night their light is let shine more)
@@ -1048,23 +979,15 @@ const frame = (dt = clock.getDelta()) => {
     if (blinkBtn) blinkBtn.classList.toggle('wait', !blinkKit.blink.ready);      // (not again yet)
   }
   if (spellKit) {
-    // her spells (drawn by the player, player-spells.js): the combo's light and the barrier's shine more by night; the
-    // barrier's lines are drawn as fine as the picture is (it is made coarser when the phone struggles); it is heard as
-    // loud as her own sounds are set
-    const day = tod ? tod.daylight : 1, bar = spellKit.barrier;
+    // her spells (drawn by the player, player-spells.js): the combo's light shines more by night
+    const day = tod ? tod.daylight : 1;
     spellKit.comboFx.setNight(day < 0.3);
     if (spellKit.rainFx) spellKit.rainFx.setNight(day < 0.3);
-    bar.fx.setNight(day < 0.3);
-    if (bar.fx.busy) bar.fx.setView(renderer.getDrawingBufferSize(viewPx).y);
-    if (bar.heard && sounds && bar.heard.volume !== sounds.volume) bar.heard.volume = sounds.volume;
-    if (barrierBtn) barrierBtn.classList.toggle('wait', player.spells.barrierWait);      // (not again until it has gone)
     if (rainBtn) rainBtn.classList.toggle('on', player.spells.skyReady);                   // (she holds the lance: it may be thrown up)
   }
   if (jumpBtn.hidden !== editing()) jumpBtn.hidden = editing();          // an editor owns the screen: no jumping
   for (const b of spellBtns) if (b.hidden !== editing()) b.hidden = editing();
-  if (dashBtn && dashBtn.hidden !== editing()) dashBtn.hidden = editing();
   if (blinkBtn && blinkBtn.hidden !== editing()) blinkBtn.hidden = editing();
-  if (dashBtn && dashLabel && (player.mode === 'climb') !== climbing) { climbing = !climbing; dashLabel.textContent = climbing ? 'ปล่อย' : 'พุ่ง'; }      // (on a rock face the dash button lets go)
   if (sceneEditor && sceneEditor.active) sceneEditor.apply(camera);      // the scene editor looks straight down instead
   const rockEditing = rockEditor && rockEditor.active;
   if (rockEditing) rockEditor.apply(camera);                              // the rock editor's camera flies free of her
@@ -1098,7 +1021,7 @@ const frame = (dt = clock.getDelta()) => {
   }
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
-  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; } else tune(real, raw);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
+  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; } else tune(dt, raw);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
@@ -1150,7 +1073,7 @@ barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
 if (measuring) (await import('./frame-measure.js')).createFrameMeasure({ frame, renderer, scene, camera, level, player, sky, charShadow, setDPR, dpr: () => renderDPR, sounds });
-window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, towers, farmTools, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, farmTools, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
