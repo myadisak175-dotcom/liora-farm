@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0a151a">
+<title>โถงป่าใต้ดิน</title>
+<!--
+  cave-hall.html  —  the forest hall of the dungeon under the waterfall cliff (room ③ of the plan), to see how pretty a cave
+  can be in this game before the whole dungeon is built: a beauty test. Walk round it with Vivi; the forest sprite floats at
+  her shoulder and is the cave's light where she goes. The hall: cave-hall.js (baked by tools/make-cave-hall.py); its light
+  on the plants and on her: cave-light.js. The buttons on the right jump to views worth looking from.
+  One job: show the hall. No monsters, no puzzles yet (the plan has them: they come once the look is right).
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a151a; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+    font: 700 16px system-ui; color: #f2fbff; text-shadow: 0 1px 6px #000c; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.85; margin-top: 3px; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #9fe9ff66; border-radius: 999px; padding: 7px 11px; background: #0c2730cc; color: #eafcff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #bar button.on { background: #1d5a63e6; border-color: #b8f6ffcc; }
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .12); border: 2px solid rgba(190, 245, 255, .55); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(225, 252, 255, .7); }
+  #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+    z-index: 4; width: 68px; height: 68px; border-radius: 50%; border: 2px solid rgba(190, 245, 255, .6); background: rgba(20, 60, 70, .45);
+    color: #eafcff; font: 600 12px system-ui, sans-serif; touch-action: none; display: grid; place-items: center; padding: 0; -webkit-tap-highlight-color: transparent; }
+  #jumpBtn.down { background: rgba(120, 220, 235, .45); }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 104px; text-align: center; pointer-events: none;
+    font: 500 12px system-ui; color: #dff8ff; opacity: .85; text-shadow: 0 1px 4px #000c; }
+  #wait { position: fixed; inset: 0; display: grid; place-items: center; background: #0a151a; color: #cdf3ff; font: 600 15px system-ui; z-index: 9; text-align: center; }
+  #wait small { display: block; opacity: .7; font-weight: 500; margin-top: 6px; }
+  @media (max-width: 640px) { #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); } #name small { display: none; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="name">โถงป่าใต้ดิน<small>ห้องทดลองความสวย · ดันเจี้ยนหลังผาน้ำตก ห้อง ③</small></div>
+<div id="bar">
+  <button data-view="0">📍 ระเบียงทางเข้า</button>
+  <button data-view="1">🌳 ใต้แสง</button>
+  <button data-view="2">💧 ริมสระ</button>
+  <button data-view="3">⛰ ลานฝั่งตะวันออก</button>
+  <button data-view="4">⬆ มองขึ้นเพดาน</button>
+  <button id="lamp" class="on">✨ แสงสไปรต์</button>
+</div>
+<div id="stick"><i></i></div>
+<button id="jumpBtn" type="button" aria-label="กระโดด">กระโดด</button>
+<div id="hint">แตะซ้ายค้างไว้เพื่อเดิน · ลากขวาเพื่อหมุนกล้อง · ถ่างสองนิ้วซูม</div>
+<div id="wait">กำลังโหลดถ้ำ…<small id="step"></small></div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import { createCaveHall } from './cave-hall.js';
+import { loadPlayable } from './characters.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { createPlayerInput } from './player-input.js';
+import { createFollowCamera } from './player-camera.js';
+import { createSpriteCompanion } from './sprite-companion.js';
+import { updateAnimals } from './stylized-animals.js';
+
+const Q = new URLSearchParams(location.search);
+const phone = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: Q.has('shot') });
+// as the game (index.html): the kit's shaders write their colours as they are (raw sRGB); three's own get the conversion back
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+THREE.ShaderChunk.colorspace_fragment = 'gl_FragColor = sRGBTransferOETF( gl_FragColor );';
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, +Q.get('dpr') || 1.5));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.12, 220);
+const fit = () => {
+  camera.aspect = innerWidth / innerHeight; camera.fov = camera.aspect < 1 ? 70 : 55; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+};
+addEventListener('resize', fit); fit();
+const stepEl = document.getElementById('step');
+const onStep = async (t) => { stepEl.textContent = t + '…'; await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); };
+
+// ---- the hall
+const hall = await createCaveHall({ onStep });
+scene.add(hall.group);
+scene.background = new THREE.Color(hall.look.sky);        // (only seen through the crack in the roof)
+const L = hall.layout;
+
+// ---- her (Vivi), walking and running as in the game
+await onStep('ปลุก Vivi');
+const TUNED = 1.412, WALK0 = 1.2, RUN0 = 3.39;
+const hero = await loadPlayable('vivi', CHARACTER_ANIM, { height: 1.75 });
+const root = new THREE.Group(); root.name = 'player'; scene.add(root);
+root.add(hero.object);
+hero.play('idle', 0);
+const me = { position: new THREE.Vector3(), heading: L.spawn.yaw, vy: 0, air: false, landT: -1 };
+const startY = hall.floorAt(L.spawn.x, L.spawn.z);
+me.position.set(L.spawn.x, startY, L.spawn.z);
+// the sprite: it goes everywhere with her (sprite-companion.js), and here it is the light
+await onStep('ปลุกสไปรต์');
+const spriteLevel = {
+  heightAt: (x, z) => { const f = hall.floorAt(x, z); return f === null ? me.position.y : f; },
+  colliders: hall.colliders,
+};
+const sprite = await createSpriteCompanion({ level: spriteLevel, scene, player: { get position() { return me.position; }, get heading() { return me.heading; } } });
+sprite.shadow.visible = false;                              // (it is the light: no shadow under it)
+sprite.object.traverse((o) => { for (const m of [].concat(o.material || [])) { m.userData = m.userData || {}; m.userData.noCave = true; } });
+const body = sprite.object.getObjectByName('body') || sprite.object;
+// its glow: a soft warm halo round it
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,240,205,0.85)'); gr.addColorStop(0.25, 'rgba(255,226,170,0.35)'); gr.addColorStop(1, 'rgba(255,210,150,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; return t;
+})();
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+halo.material.userData.noCave = true;
+halo.scale.setScalar(1.7); halo.renderOrder = 6;
+scene.add(halo);
+let lampOn = true;
+
+// ---- the cave's light on everything (once all is in the scene), then every shader made before she is shown
+await onStep('จุดแสงในถ้ำ');
+const patched = hall.light.apply(scene);
+const spritePos = new THREE.Vector3();
+const lampAt = () => { body.getWorldPosition(spritePos); spritePos.y += 0.25; hall.light.setSprite(spritePos, lampOn); halo.position.copy(spritePos); halo.visible = lampOn; };
+
+// ---- the camera: the game's (player-camera.js), kept under the roof and out of the rock
+const cam = createFollowCamera({ camera, level: { heightAt: hall.heightAt, crowns: hall.crowns, cameraTrunks: hall.trunks } });
+cam.setView(L.views[0].yaw, L.views[0].pitch, L.views[0].dist);
+const look = new THREE.Vector3(), ray = new THREE.Vector3();
+function keepCameraInAir() {
+  look.set(me.position.x, me.position.y + hero.height * 0.82, me.position.z);
+  ray.subVectors(camera.position, look);
+  const len = ray.length();
+  if (len < 1e-3) return;
+  ray.divideScalar(len);
+  let ok = len;
+  for (let t = 0.25; t <= len; t += 0.2) {
+    const x = look.x + ray.x * t, y = look.y + ray.y * t, z = look.z + ray.z * t;
+    const f = hall.floorAt(x, z), c = hall.ceilAt(x, z);
+    if (f === null || y < f + 0.3 || (c !== null && y > c - 0.4)) { ok = Math.max(0.35, t - 0.3); break; }
+  }
+  if (ok < len) { camera.position.copy(look).addScaledVector(ray, ok); camera.lookAt(look); }
+}
+
+// ---- the stick and the buttons
+const stickV = new THREE.Vector2();
+let jumpWanted = 0;
+const input = createPlayerInput({
+  dom: renderer.domElement, ui: document.getElementById('stick'),
+  onJump: () => { jumpWanted = 0.2; }, onLook: (y, p) => { heldView = null; cam.turn(y, p); }, onZoom: (d) => cam.zoom(d),
+});
+const jumpBtn = document.getElementById('jumpBtn');
+jumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); jumpBtn.classList.add('down'); jumpWanted = 0.2; });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
+function goTo(i) {
+  const v = L.views[i];
+  const f = hall.floorAt(v.x, v.z);
+  if (f === null) return;
+  me.position.set(v.x, f, v.z); me.heading = v.heading; me.vy = 0; me.air = false; speed = 0;
+  hero.play('idle', 0);
+  cam.setView(v.yaw, v.pitch, v.dist);
+  heldView = v.free || null;                     // (a view held still: looking up at the roof, until she moves or the view is dragged)
+}
+for (const b of document.querySelectorAll('#bar [data-view]')) b.onclick = () => goTo(+b.dataset.view);
+const lampBtn = document.getElementById('lamp');
+lampBtn.onclick = () => { lampOn = !lampOn; lampBtn.classList.toggle('on', lampOn); };
+
+// ---- where she can be: a floor under her, the roof high enough, not a step too high, not the deep of the pool
+const P = hall.pool;
+function standAt(x, z, fromY) {
+  const f = hall.floorAt(x, z);
+  if (f === null) return null;
+  const c = hall.ceilAt(x, z);
+  if (c !== null && c - f < 2.1) return null;
+  if (f - fromY > 0.62) return null;
+  if (Math.hypot(x - P.c[0], z - P.c[1]) < P.r + 1.5 && f < P.level - 0.32) return null;
+  return f;
+}
+function pushOut(p) {
+  const r0 = 0.28;
+  for (const [x, z, r] of hall.colliders) {
+    const ox = p.x - x, oz = p.z - z, R = r + r0, d2 = ox * ox + oz * oz;
+    if (d2 < R * R && d2 > 1e-8) { const d = Math.sqrt(d2); p.x = x + ox / d * R; p.z = z + oz / d * R; }
+  }
+}
+let speed = 0;
+const tmp = new THREE.Vector3();
+function step(dt) {
+  dt = Math.min(dt, 0.05);
+  const k = hero.height / TUNED, WALK = WALK0 * k, RUN = RUN0 * k;
+  let amount = input.stick(stickV);
+  if (window.caveTrial.stick) { stickV.set(...window.caveTrial.stick); amount = Math.min(1, stickV.length()); }
+  const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = -fz, rz = fx;
+  let wx = rx * stickV.x - fx * stickV.y, wz = rz * stickV.x - fz * stickV.y;
+  const wl = Math.hypot(wx, wz);
+  if (wl > 1e-4) { wx /= wl; wz /= wl; }
+  const pushing = amount > 0.12;
+  if (pushing) heldView = null;
+  let target = 0;
+  if (pushing) {
+    target = amount > 0.72 ? RUN : WALK * Math.max(0.6, amount / 0.72);
+    const want = Math.atan2(wx, wz);
+    me.heading += Math.atan2(Math.sin(want - me.heading), Math.cos(want - me.heading)) * Math.min(1, dt * 11);
+  }
+  speed += (target - speed) * Math.min(1, dt * (target > speed ? 7 : 10));
+  // across the ground (sliding along what stops her)
+  const hx = Math.sin(me.heading) * speed * dt, hz = Math.cos(me.heading) * speed * dt;
+  const y0 = me.position.y;
+  let f = standAt(me.position.x + hx, me.position.z + hz, y0);
+  if (f !== null) { me.position.x += hx; me.position.z += hz; }
+  else if ((f = standAt(me.position.x + hx, me.position.z, y0)) !== null) me.position.x += hx;
+  else if ((f = standAt(me.position.x, me.position.z + hz, y0)) !== null) me.position.z += hz;
+  else speed *= 0.5;
+  tmp.copy(me.position); pushOut(tmp);
+  if (standAt(tmp.x, tmp.z, y0) !== null) { me.position.x = tmp.x; me.position.z = tmp.z; }
+  const ground = hall.floorAt(me.position.x, me.position.z) ?? y0;
+  // a little jump; off an edge she falls
+  jumpWanted = Math.max(0, jumpWanted - dt);
+  if (!me.air && jumpWanted > 0) { me.air = true; me.vy = 6.0; jumpWanted = 0; hero.play('jump_air', 0.12); }
+  if (!me.air && ground < me.position.y - 0.45) { me.air = true; me.vy = 0; hero.play('jump_air', 0.25); }
+  if (me.air) {
+    me.vy -= 22 * dt;
+    me.position.y += me.vy * dt;
+    const c = hall.ceilAt(me.position.x, me.position.z);
+    if (c !== null && me.position.y + hero.height > c - 0.1) { me.position.y = c - 0.1 - hero.height; me.vy = Math.min(me.vy, 0); }
+    if (me.position.y <= ground) { me.position.y = ground; me.air = false; me.vy = 0; me.landT = 0.35; hero.play('jump_land', 0.1, false); hero.actions.jump_land.time = 0.25; }
+  } else {
+    me.position.y += (ground - me.position.y) * Math.min(1, dt * 16);
+  }
+  if (!me.air) {
+    if (me.landT > 0) me.landT -= dt;
+    else {
+      const st = speed < 0.25 ? 'idle' : speed < (WALK + RUN) * 0.5 ? 'walk' : 'run';
+      if (hero.state !== st) hero.play(st, st === 'idle' ? 0.3 : 0.2);
+      hero.setRate(st === 'idle' ? 1 : Math.min(1.9, Math.max(0.7, speed / (hero.speeds[st] || 1))));
+    }
+  }
+  hero.update(dt);
+  root.position.copy(me.position);
+  hero.object.position.set(0, 0, 0);
+  hero.object.rotation.set(0, me.heading, 0);
+  root.updateMatrixWorld(true);
+  hero.holdSprings(1, 1);
+  hero.updateSprings(dt);
+  N.setWalker(me.position, 0.55);
+  updateAnimals(dt);
+  hall.update(dt, camera);
+  cam.update(dt, { pos: me.position, aimY: me.position.y, height: hero.height, k, steady: !me.air });
+  keepCameraInAir();
+  lampAt();
+}
+let fixedCam = null, heldView = null;
+function draw() {
+  if (!fixedCam && heldView) { camera.position.set(heldView[0], heldView[1], heldView[2]); camera.lookAt(heldView[3], heldView[4], heldView[5]); }
+  if (fixedCam) { camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]); camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]); }
+  renderer.render(scene, camera);
+}
+
+// for a test (or the console)
+window.caveTrial = {
+  ready: false, held: false, stick: null, me, cam, camera, renderer, scene, hall, hero, patched,
+  run(seconds, { fps = 30, show = true } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) step(1 / fps); if (show) draw(); },
+  view(i) { goTo(i); },
+  place(x, z, heading = 0) { const f = hall.floorAt(x, z); me.position.set(x, f ?? 0, z); me.heading = heading; speed = 0; me.air = false; hero.play('idle', 0); },
+  look(yaw, pitch, dist) { cam.setView(yaw, pitch, dist); },
+  fix(...v) { fixedCam = v.length ? v : null; },
+  lamp(on) { lampOn = on; lampBtn.classList.toggle('on', on); },
+  draw, info() { return renderer.info.render; },
+};
+
+// ---- warm up every shader before she is shown, then go
+await onStep('เตรียมภาพ');
+step(1 / 60);
+try { await renderer.compileAsync(scene, camera); } catch (e) { renderer.compile(scene, camera); }
+document.getElementById('wait').remove();
+window.caveTrial.ready = true;
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.caveTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
