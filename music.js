@@ -32,6 +32,13 @@
 // context, which her first touch woke. One part fades into the next over the second they share, where the two are the same
 // music (a plain crossfade: no dip, no swell). The list and the first part of each piece are fetched at once (fetching
 // needs no touch), so the first piece begins a moment after her first touch. A piece not cut into parts is played whole.
+//
+// HEARD IN SILENT MODE while the music is on (27 Nov 2026): it asks the phone to play the page as a player
+// (navigator.audioSession.type 'playback'). Sound played only from an AudioContext is taken by Safari for a game's clicks
+// ('auto' comes to 'ambient'): an iPhone in silent mode silences it, and it mixes with another app's music. The <audio>
+// element the music came from before made the page a player, heard in silent mode, the air and her steps with it; played
+// from the context, all of it went silent there. With the music off it is left to Safari ('auto'), as it was before:
+// the air and her steps silent in silent mode, and mixed with another app's music. Safari on iOS 17 and later.
 
 const FILES = new URL('./assets/audio/', import.meta.url);
 const LEVEL = 1.6;                 // the music's loudness, at volume 1 (the pieces are levelled to the air's loops, then this). 0.5 at first: too
@@ -54,6 +61,10 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
   let heard = 0;                   // 0..1: how much a piece is heard now (as it fades in and out), for under
   let then = -1;                   // the AudioContext's clock at the last update: the waits go by it, not by the frames
                                    // (a page whose frames come slowly would make them minutes longer)
+
+  // the page heard as a player while the music is on, in silent mode too (HEARD IN SILENT MODE, above); off, left to Safari
+  const asPlayer = yes => { try { if (navigator.audioSession) navigator.audioSession.type = yes ? 'playback' : 'auto'; } catch (err) { /* (a browser without it) */ } };
+  asPlayer(on);
 
   // what a piece is played from: its parts, or (not cut) the whole of it as one part
   const partsOf = t => (t.parts && t.parts.length ? { files: t.parts, hop: t.hop, over: t.over } : { files: [t.file], hop: t.secs, over: 0 });
@@ -151,6 +162,7 @@ export function createMusic({ context, volume = 1, first = FIRST } = {}) {
     get under() { return UNDER * heard; },
     set on(v) {
       on = !!v;
+      asPlayer(on);
       if (!on && playing && ctx && fade) fadeOut(OFF_FADE);
       if (on && !playing) wait = Math.min(wait, 2);      // (on again: a piece soon)
     },
