@@ -161,6 +161,18 @@ export function createCharacterShadow({
 
   const sun = new THREE.Vector3(), centre = new THREE.Vector3(), up = new THREE.Vector3(), clear = new THREE.Color();
   const laid = { x: NaN, z: NaN, sx: NaN, sz: NaN, len: NaN };
+  // the parts of a VRoid face that lie on it or in it (eyes, brows, lashes, eye lines, the inside of the mouth): her outline
+  // is the same without them, and the picture is drawn every frame, so they are left out of it (9 of Vivi's 16 parts). Found
+  // once for each character, by their materials' names; a model named otherwise keeps all its parts
+  const INSIDE = /_EYE$|FaceMouth|FaceEyeline|FaceEyelash|FaceBrow/;
+  let insideOf = null, insideList = [];
+  const shown = [];
+  const within = root => {
+    if (insideOf === root) return insideList;
+    insideOf = root; insideList = [];
+    root.traverse(o => { if (o.isMesh && o.visible && !Array.isArray(o.material) && INSIDE.test(o.material.name || '')) insideList.push(o); });
+    return insideList;
+  };
 
   // lay the patch over the ground: from behind her feet, along the shadow, as far as it can reach
   function lay(feet, sx, sz, len) {
@@ -208,7 +220,10 @@ export function createCharacterShadow({
       renderer.setRenderTarget(target);
       renderer.setClearColor(0x000000, 0);
       renderer.autoClear = true;
+      const inside = within(body);
+      for (let i = 0; i < inside.length; i++) { shown[i] = inside[i].visible; inside[i].visible = false; }      // (her eyes, brows, lashes, mouth: inside her outline, so out of the picture)
       renderer.render(body, eye);
+      for (let i = 0; i < inside.length; i++) inside[i].visible = shown[i];
       renderer.setRenderTarget(was);
       renderer.setClearColor(clear, wasAlpha);
       renderer.autoClear = wasAuto;

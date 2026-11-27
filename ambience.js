@@ -25,6 +25,12 @@
 // nothing, its first loop first, so it is heard as soon as that one is in. A layer not heard for FORGET seconds is let
 // go of (decoded, a loop is some megabytes), and fetched again if it comes back.
 //
+// STAGGERED (27 Nov 2026, iPhone: "เล่นไปประมาณ 30 วิแรกกระตุก"). Her first touch wakes all the sound at once: her steps, the
+// music, and every layer heard where she stands, each with all its loops (two of wind, two of birds, four of the grass she
+// runs through ...): some 60 MB decoded in the first half minute, on a phone that is drawing the game meanwhile. A layer's
+// first loop is all it needs to be heard (its others take their turns after it, some 18 s on), so its others are fetched
+// LATER seconds apart, after it.
+//
 // A LOOP THAT DOES NOT SEEM TO LOOP. Each loop was made so its end meets its start, but an MP3 comes back from some
 // decoders with a moment of silence at each end, which would be heard every 20 s. So a loop is not played round: each
 // playing of it fades in over CROSS seconds as the one before fades out (equal power: no dip, no swell), and where a
@@ -48,6 +54,7 @@ const CROSS = 2.0;             // s: one playing of a loop fades into the next o
 const AHEAD = 1.0;             // s: the next playing is set this long before it is due
 const EASE = 0.35;             // s: a layer's loudness follows what is asked with this time constant
 const FORGET = 60;             // s: a layer not heard this long is let go of
+const LATER = 6;               // s: a layer's other loops are fetched this far apart, after its first (STAGGERED)
 const N = 64, FADE_IN = new Float32Array(N), FADE_OUT = new Float32Array(N);
 for (let i = 0; i < N; i++) { FADE_IN[i] = Math.sin(0.5 * Math.PI * i / (N - 1)); FADE_OUT[i] = Math.cos(0.5 * Math.PI * i / (N - 1)); }
 
@@ -63,7 +70,10 @@ export function createAmbience({ context, volume = 1 } = {}) {
   const decode = bytes => new Promise((yes, no) => { const p = ctx.decodeAudioData(bytes, yes, no); if (p && p.then) p.then(yes, no); });
   async function load(L) {
     L.loading = true;
-    for (const loop of meta.layers[L.name] || []) {
+    const list = meta.layers[L.name] || [];
+    for (let k = 0; k < list.length; k++) {
+      const loop = list[k];
+      if (k > 0) await new Promise(r => setTimeout(r, LATER * 1000));      // (its others later: STAGGERED, above)
       try {
         const r = await fetch(new URL(loop.file, FILES));
         if (!r.ok) throw new Error(`${loop.file}: ${r.status}`);
