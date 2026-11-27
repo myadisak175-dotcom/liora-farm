@@ -167,6 +167,7 @@
   "./farm-debris.js": "./farm-debris.js?v=3",
   "./farm-tools.js": "./farm-tools.js?v=2",
   "./old-farm.js": "./old-farm.js?v=1",
+  "./sky-islands.js": "./sky-islands.js?v=1",
   "./west-fringe.js": "./west-fringe.js?v=7",
   "./west-fringe-water.js": "./west-fringe-water.js?v=1",
   "./plant-boss.js": "./plant-boss.js?v=3",
@@ -642,6 +643,13 @@ const bossTrial = Q.has('boss') && MAP === 'hillvillage'
 const spriteTrial = Q.has('sprite') && Q.get('sprite') !== '0' && MAP === 'hillvillage'
   ? await (await import('./sprite-trial.js')).createSpriteTrial({ level, scene, feet: () => player.position })
   : null;
+// ---- ☁️ ?islands=1 (a trial): floating islands in the hill village's sky, seen from the village (sky-islands.js: one mesh,
+// grassy tops with trees and houses, rock hanging under them, little rocks adrift, all slowly bobbing). Made here for the same
+// reason as the boss. Without it nothing of the trial is loaded
+const skyIslands = Q.has('islands') && Q.get('islands') !== '0' && MAP === 'hillvillage'
+  ? (await import('./sky-islands.js')).createSkyIslands()
+  : null;
+if (skyIslands) { scene.add(skyIslands.object); player.setView(level.spawn.yaw - Math.PI, -0.15); }      // (and the look tilted up a little to begin with: they are in the sky)
 // ---- 🌱 the forest sprite (สไปรต์ป่า) that goes with her, on every map (sprite-companion.js): it floats at her shoulder, catches up,
 // jumps when she does, is glad now and then, and is beside her again after a warp. ?sprite=0 leaves it out. Should its model
 // not load, the game goes on without it
@@ -986,6 +994,7 @@ const frame = (dt = clock.getDelta()) => {
     player.blob.material.opacity = 1 - 0.65 * Math.min(1, Math.max(0, k));      // by day only a faint touch of dark where her feet meet the ground
   }
   if (sky.userData.update) sky.userData.update(renderer, dt);
+  if (skyIslands) skyIslands.update(dt);                                  // (?islands=1: their slow bobbing)
   if (tod) tod.update(dt);
   if (shadows) shadows.update();
   if (curse) curse.update(renderer);
