@@ -86,7 +86,8 @@
 // It needs the level to say what the ground is like: level.footing(x, z, y) -> 'ground' | 'cliff' | 'water' | 'wall' | 'out'
 // (the hill village). On a map that cannot say, cliffs and deep water stay walls (level.confine, as in player.js) and there
 // is no climbing or swimming; the rest works the same. standAt, footing and waterDepthAt are asked with her height (y), which
-// tells a bridge's deck from the bed under it.
+// tells a bridge's deck from the bed under it. A map with a roof over it (a cave: cave-level.js) says where it is,
+// level.ceilAt(x, z, y): in the air her head stops under it (the hill village has none, and nothing of this is done there).
 //
 // Her height (character.height, against Vivi's 1.412 m as modelled, the height every number here is given at) scales what
 // goes with her body, whoever is playing, as in player.js.
@@ -141,6 +142,7 @@ const SWIM0 = 2.1;                            // m/s swimming (2.6 at 1.75 m)
 const STROKE_AT = 0.1;                        // s into her swim clip (Swim_Fwd_Loop, 1.33 s): her arms sweep out together from here (heard: a stroke)
 const TREAD_AT = [0.4, 2.07];                 // s into her treading clip (Swim_Idle_Loop, 3.33 s; her arms go gently all the way round it): a soft stroke, twice round it
 const SWIM_IN0 = 0.847, SWIM_OUT0 = 0.77;     // water this deep carries her (1.05 m at 1.75 m: where footing says 'water'); shallower than this she stands again (0.95)
+const ROOF_HEAD0 = 1.5;                       // m from her feet to the top of her head and hair, in the air (1.86 at 1.75 m): under a roof (level.ceilAt)
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const ease = (rate, dt) => 1 - Math.exp(-rate * dt);
 const smooth = u => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
@@ -925,6 +927,12 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
       const floor = deep ? ground + depth - 0.2 * k : ground, was = air.vy, jumps = air.tier;
       me.heading = heading;
       const down = air.step(dt, me, airStick, floor, !deep);
+      // a roof over her (a cave's: level.ceilAt(x, z, y), the rock's underside over that spot; a map without one has none):
+      // her head stops under it, and she comes down from there (magic-jump.js bump: her rise taken off)
+      if (level.ceilAt) {
+        const roof = level.ceilAt(pos.x, pos.z, pos.y) - ROOF_HEAD0 * k;
+        if (pos.y > roof) { pos.y = Math.max(roof, ground); air.bump(pos.y); }
+      }
       if (sounds) {
         // heard: her feet leaving the ground (the take-off's crouch over); a kick off a circle in the air (the flight's next
         // jump); a circle opening under her in the air (at the press: she is held on it until her kick)

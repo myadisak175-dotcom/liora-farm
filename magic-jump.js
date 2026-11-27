@@ -23,6 +23,7 @@
                                      ground) and up, turning round to face away from it (the mocap's, mj_wall); three
                                      jumps left. false: her clips have no mj_wall (nothing done)
      air.press(me, stick)            the jump button in the air: the next one, if she has one left (false: none)
+     air.bump(y)                     a roof over her (player-moves.js: a cave's): no higher than y, and on her way down
      air.end()                       the flight is over some other way (she took hold of a rock, swims, was put back): no
                                      landing; her body eases out of it into whatever plays next
      every frame she is in the air (air.active), after she has been moved across the ground:
@@ -848,6 +849,14 @@ export function createMagicJump({ character, circles, mocap = false, step = fals
         pad = circles.open(v.set(me.pos.x + me.vel.x * STEP.reach, padY - 0.02, me.pos.z + me.vel.z * STEP.reach), tier + 1, { ground: false, size: k, step: true }) || true;
       }
       return true;
+    },
+    // a roof over her (player-moves.js: a cave's, level.ceilAt): she is no higher than y, and on her way down from there
+    // (her rise taken off; a circle she is coming down onto, or stands on, no higher than y either)
+    bump(y) {
+      if (!active) return;
+      if (vy > 0) vy = 0;
+      if (pad && padY > y) padY = y;
+      if (reachFrom > y) reachFrom = y;
     },
     end() {
       if (!active) return;
