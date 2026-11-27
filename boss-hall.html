@@ -224,8 +224,8 @@
   "./cave-light.js": "./cave-light.js?v=1",
   "./boss-hall.js": "./boss-hall.js?v=1",
   "./boss-light.js": "./boss-light.js?v=1",
-  "./boss-hall-scenes.js": "./boss-hall-scenes.js?v=1",
-  "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=2"
+  "./boss-hall-scenes.js": "./boss-hall-scenes.js?v=2",
+  "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=3"
 } }
 </script>
 </head>
@@ -303,7 +303,7 @@ scene.add(circles.object);
 noCave(circles.object);
 const soundVol = Q.has('sound') ? +Q.get('sound') : 1;
 const sounds = soundVol > 0 ? createStepSounds({ level, volume: soundVol }) : null;
-const heard = sounds ? createBossSounds({ context: () => sounds.context, volume: soundVol, fires: hall.layout.fires, made: Q.get('sfx') === 'old' }) : null;
+const heard = sounds ? createBossSounds({ context: () => sounds.context, volume: soundVol, hall: hall.layout, made: Q.get('sfx') === 'old' }) : null;
 const spellKit = { comboFx: createMagicComboFx(), renderer, spearRain: createSpearRain, rainFx: createSpearRainFx() };
 if (sounds) {
   spellKit.rainSounds = createSpearRainSounds({ context: () => sounds.context, volume: sounds.volume });
@@ -460,7 +460,7 @@ function step(dt) {
   if (!held) keepCameraInAir();
   hall.update(dt, camera, renderer);
   lampAt();
-  if (heard) heard.update(dt, player.position, hall.fx);
+  if (heard) heard.update(dt, player.position, hall.fx, camera);
 }
 let fixedCam = null;
 function draw() {
