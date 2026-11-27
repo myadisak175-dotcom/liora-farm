@@ -34,7 +34,7 @@ const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'boom', 'eye', 'heart', '
 const LOOPS = ['air', 'room', 'crackle', 'drone'];
 const FILES = [...ONCE, ...LOOPS];
 const DOOR = [0, 4.5, 22];            // where the door's sounds come from (its middle, a man's height and more up)
-const MADE = 3;                       // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old)
+const MADE = 4;                       // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old)
 
 export function createBossSounds({ context, volume = 1, hall = null, fires = null, made = false, base = './assets/audio/boss/' } = {}) {
   const FIRES = fires || (hall && hall.fires) || [], STATUES = (hall && hall.statues) || [];
@@ -413,7 +413,7 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
     if (t >= next.drip && (buf.drip1 || buf.drip2)) {
       const p = somewhere(3, 24);
       if (p) playAt(Math.random() < 0.5 && buf.drip1 ? 'drip1' : (buf.drip2 ? 'drip2' : 'drip1'), p[0], 0.1, p[1],
-        { rate: rnd(0.7, 1.2), level: rnd(1.2, 2.0), ref: 2.5, wet: 0.9, lp: 5000 });
+        { rate: rnd(0.8, 1.1), level: rnd(1.2, 2.0), ref: 2.5, wet: 0.3, lp: 2200 });   // (dry: a drop rung on in the echo whistled)
       next.drip = t + rnd(1.8, 5.5);
     }
     if (t >= next.stone && buf.pebbles1 && buf.pebbles2 && buf.knock) {

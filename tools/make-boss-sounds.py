@@ -39,7 +39,7 @@ XFADE = 1.5               # s: a loop's end laid over its start
 # name: (its parts [(render, from s, seconds, rate, hp Hz, lp Hz, fade in s, fade out s, at s, gain dB)], LOUD dB)
 SOUNDS = {
     # the door's runes waking: a magic portal opening, slow and low (its swell, the first of its pulses)
-    'hum':    ([('magic_portal', 0.0, 2.4, 0.70, 90, 3000, 0.25, 0.9, 0.0, 0)], -20),
+    'hum':    ([('magic_portal', 0.0, 2.4, 0.70, 90, 1600, 0.25, 0.9, 0.0, 0)], -20),     # (its high tones whistled)
     # its bar giving way: the iron latch of a dungeon door, two clanks, slow and heavy
     'clunk':  ([('dungeon_door', 0.0, 0.42, 0.70, 70, 5000, 0.0, 0.15, 0.0, 0)], -13),
     # the leaves grinding open: a giant stone door grinding, slower (3.2 s: the scene's swing is 3.1 s)
@@ -61,12 +61,12 @@ SOUNDS = {
                 ('whale_call', 1.3, 3.7, 0.55, 40, 1200, 1.5, 2.0, 0.6, -6)], -10),
     # a statue's eyes lighting: a sword's ring on a shield, from the strike on, lower (each a little lower again, in
     # boss-hall-sounds.js)
-    'eye':    ([('sword_on_shield', 0.17, 0.93, 0.80, 150, 6000, 0.002, 0.35, 0.0, 0)], -18),
+    'eye':    ([('sword_on_shield', 0.17, 0.93, 0.80, 150, 2500, 0.002, 0.35, 0.0, 0)], -18),  # (dark: a bright ring whistled)
     # a heart beating under it all, once the statues are awake: a giant's step (heel and toe: lub, dub), very slow
     'heart':  ([('giant_footsteps', 0.0, 0.55, 0.55, 40, 400, 0.002, 0.25, 0.0, 0)], -14),
     # water dripping somewhere in the dark (the hall's air, now and then, each from a place of its own)
-    'drip1':  ([('drip_plink', 0.0, 0.3, 0.85, 200, 8000, 0.0, 0.08, 0.0, 0)], -22),
-    'drip2':  ([('drip_bloop', 0.0, 0.4, 0.85, 200, 8000, 0.0, 0.1, 0.0, 0)], -22),
+    'drip1':  ([('drip_plink', 0.0, 0.3, 0.70, 200, 2500, 0.0, 0.08, 0.0, 0)], -22),
+    'drip2':  ([('drip_bloop', 0.0, 0.4, 0.70, 200, 2500, 0.0, 0.1, 0.0, 0)], -22),
     # far off in the dark, now and then: small stones falling (a rockfall's patter), a stone knocking on the floor and
     # ringing (a wizard's staff on stone, slow), the stone itself groaning somewhere (the door's grind, very slow), and the
     # air going by through the hall (a deep low whoosh, slower: a ghost's passing was tried first, and moaned like a
@@ -80,7 +80,7 @@ SOUNDS = {
 LOOPS = {
     # the hall's draft: a mountain's high wind, slower, from the oculus above and from the fallen tunnel behind the door
     # (boss-hall-sounds.js puts it in both places)
-    'air':     ([('wind_mountain', 0.0, 12.0, 0.75, 150, 3000, 0.0, 0.0, 0.0, 0)], -28),
+    'air':     ([('wind_mountain', 0.0, 12.0, 0.75, 80, 800, 0.0, 0.0, 0.0, 0)], -30),
     # the hall's own mass, all round: deep water's rush, very slow and dull, a pressure more than a sound
     'room':    ([('underwater_deep', 0.0, 12.0, 0.55, 35, 220, 0.0, 0.0, 0.0, 0)], -30),
     # a fire burning: a campfire's crackle, darker (each lit fire near her has one of its own, from where it is)
@@ -89,8 +89,9 @@ LOOPS = {
     'drone':   ([('whale_call', 1.3, 5.7, 0.55, 40, 1200, 0.0, 0.0, 0.0, 0)], -24),
 }
 STEREO = {'room', 'drone', 'boom', 'grind', 'hum', 'crackle'}
-UNTONED = {'air', 'room', 'groan', 'sigh'}   # their held pitches taken out (untoned): the hall's air whistled and moaned
-                          # like a dog howling (the user: "เหมือนมีเสียงหมาหอนแปลกๆ")
+UNTONED = {'air', 'room', 'groan', 'sigh', 'knock'}   # their held pitches taken out (untoned): the hall's air whistled
+                          # and moaned like a dog howling (the user: "เหมือนมีเสียงหมาหอนแปลกๆ", then "ไม่เอาเสียงหวีด":
+                          # no whistling at all; so the knock's ring too, the draft only its low, the drops lower and dull)
 SOFT = {'crackle': -6.0}  # brought to its level and its peaks then rounded off toward this (dB; the fire's pops stood 30 dB
                           # over its roar)
 
