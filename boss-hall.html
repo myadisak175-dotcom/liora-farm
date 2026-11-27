@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#020306">
+<title>ห้องบัลลังก์ใต้ดิน</title>
+<!--
+  boss-hall.html  —  the boss's hall at the end of the dungeon under the waterfall cliff (room ⑤ of the plan), a trial page.
+  The user, 28 Nov 2026: "อยากให้มีห้องบอสแบบ solo leveling"; asked, she chose the dark throne room (a giant door, tall pillars
+  down both sides, cold blue fire, the throne at the end) and the round temple of giant statues whose eyes light when the boss
+  wakes, both ("1+2"); the room first and the door's opening scene, the boss later ("ทำห้องก่อน บอสทีหลัง"). Our own hall:
+  the mood only, nothing of the story's places or people. Once the dungeon is one map (loaded once as she walks in: "โหลด
+  ครั้งเดียวตอนเดินเข้าดีกว่า"), this is its last room.
+  She plays as in the game: the game's player (player-moves.js), its touch screen, its buttons and spells, the forest sprite at
+  her shoulder. Walk up to the door: it opens (boss-hall-scenes.js) and the fires catch down the nave to the throne. Step into
+  the rune circle in the round hall: the statues wake (their eyes, one after another), the fires turn red. The buttons on the
+  right put her before the door (all as it was), in the nave or the round hall (the door open), or on the dais.
+  The hall: boss-hall.js (baked by tools/make-boss-hall.py), its light on her: boss-light.js, her level in it: cave-level.js
+  (the forest hall's, the same way), its sounds: boss-hall-sounds.js. ?sound=0: no sound.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #020306; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; touch-action: none; }
+  #name { position: fixed; left: calc(14px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); max-width: calc(50vw - 64px); pointer-events: none;
+    font: 700 16px system-ui; color: #f2fbff; text-shadow: 0 1px 6px #000c; }
+  #name small { display: block; font: 500 12px system-ui; opacity: 0.85; margin-top: 3px; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar button { border: 1px solid #9fc8ff66; border-radius: 999px; padding: 7px 11px; background: #0b1424cc; color: #eafcff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
+  #bar button.on { background: #1d5a63e6; border-color: #b8f6ffcc; }
+  /* the stick and the buttons: the game's own (index.html) */
+  #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
+  #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+    z-index: 4; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
+  #atkBtn { position: fixed; z-index: 4; right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px));
+    width: 78px; height: 78px; border-radius: 50%; border: 2px solid rgba(190, 235, 255, .9); background: rgba(116, 207, 255, .32);
+    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #atkBtn svg { width: 26px; height: 26px; margin-bottom: -6px; }
+  #atkBtn.down { background: rgba(170, 225, 255, .55); }
+  body.spells #jumpBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 90px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 9px); width: 60px; height: 60px; }
+  #rainBtn { position: fixed; z-index: 4; right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 83px); width: 78px; height: 32px;
+    border-radius: 16px; border: 2px solid rgba(214, 252, 255, .95); background: rgba(98, 235, 245, .42); color: #fff; font: 600 12px system-ui, sans-serif;
+    text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    display: grid; place-items: center; padding: 0; box-shadow: 0 0 calc(8px + 18px * var(--near, 0)) rgba(98, 235, 245, .9);
+    opacity: 0; pointer-events: none; transform: translateY(18px) scale(.7); transition: opacity .16s, transform .16s; }
+  #rainBtn.on { opacity: 1; pointer-events: auto; transform: translateY(calc(-4px * var(--near, 0))) scale(calc(1 + .15 * var(--near, 0))); }
+  #rainBtn svg { width: 14px; height: 9px; margin-right: 3px; vertical-align: 1px; animation: rainNudge .7s ease-in-out infinite; }
+  @keyframes rainNudge { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-2px); } }
+  #blinkBtn { position: fixed; z-index: 4; right: calc(max(24px, env(safe-area-inset-right) + 14px) + 76px); bottom: max(20px, calc(env(safe-area-inset-bottom) + 14px));
+    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(214, 252, 255, .95); background: rgba(95, 230, 232, .3); color: #fff;
+    font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; box-shadow: 0 0 12px rgba(95, 230, 232, .55); transition: opacity .1s; }
+  #blinkBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #blinkBtn.down { background: rgba(170, 248, 250, .55); }
+  #blinkBtn.wait { opacity: .5; box-shadow: none; }
+  body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 11px); }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 250px 0 24px; text-align: center; pointer-events: none;
+    font: 500 12px system-ui; color: #dff8ff; opacity: .85; text-shadow: 0 1px 4px #000c; }
+  #wait { position: fixed; inset: 0; display: grid; place-items: center; background: #020306; color: #cdf3ff; font: 600 15px system-ui; z-index: 9; text-align: center; }
+  #wait small { display: block; opacity: .7; font-weight: 500; margin-top: 6px; }
+  /* a scene: black bars in, the buttons out of the way */
+  .bars { position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 7; pointer-events: none; transition: height .6s ease; }
+  #barTop { top: 0; } #barBot { bottom: 0; }
+  body.scene .bars { height: 11vh; }
+  #veil { position: fixed; inset: 0; z-index: 6; display: none; }
+  body.scene #veil { display: block; }
+  body.scene #bar, body.scene #jumpBtn, body.scene #atkBtn, body.scene #blinkBtn, body.scene #rainBtn, body.scene #hint, body.scene #name { opacity: 0; pointer-events: none; transition: opacity .4s; }
+  #bar, #jumpBtn, #atkBtn, #blinkBtn, #hint, #name { transition: opacity .4s; }
+  @media (max-width: 640px) { #name small { display: none; } #hint { display: none; } }
+  @media (max-height: 520px) {                       /* a phone on its side: the buttons down the right edge, smaller */
+    #bar { gap: 4px; top: calc(6px + env(safe-area-inset-top)); }
+    #bar button { padding: 5px 9px; font-size: 11px; }
+    #name { font-size: 14px; }
+    #name small { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "./anime-cells.js": "./anime-cells.js?v=sim1",
+  "./water-droplets.js": "./water-droplets.js?v=crown6",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./stylized-nature.js": "./stylized-nature.js?v=dry4",
+  "./anime-tree.js": "./anime-tree.js?v=dry5inv1fall1",
+  "./frond-pine.js": "./frond-pine.js?v=brush1dry1",
+  "./meadow-flowers.js": "./meadow-flowers.js?v=dry1",
+  "./ground-cover.js": "./ground-cover.js?v=brush1dry1",
+  "./rocks.js": "./rocks.js?v=paint2",
+  "./ground-paths.js": "./ground-paths.js?v=soft6wet1land1fast2pave3",
+  "./rocks-level.js": "./rocks-level.js?v=16",
+  "./rock-world.js": "./rock-world.js?v=2",
+  "./abyss-rocks.js": "./abyss-rocks.js?v=2",
+  "./abyss-rocks-layout.js": "./abyss-rocks-layout.js?v=1",
+  "./blockout-level.js": "./blockout-level.js?v=5",
+  "./pit-level.js": "./pit-level.js?v=6",
+  "./village-level.js": "./village-level.js?v=4",
+  "./hill-village-level.js": "./hill-village-level.js?v=76",
+  "./east-ruins.js": "./east-ruins.js?v=1",
+  "./forest-floor.js": "./forest-floor.js?v=2",
+  "./farm-soil.js": "./farm-soil.js?v=3",
+  "./farm-debris.js": "./farm-debris.js?v=3",
+  "./farm-tools.js": "./farm-tools.js?v=2",
+  "./old-farm.js": "./old-farm.js?v=1",
+  "./sky-islands.js": "./sky-islands.js?v=1",
+  "./west-fringe.js": "./west-fringe.js?v=7",
+  "./west-fringe-water.js": "./west-fringe-water.js?v=1",
+  "./plant-boss.js": "./plant-boss.js?v=3",
+  "./plant-boss-moves.js": "./plant-boss-moves.js?v=2",
+  "./plant-boss-talk.js": "./plant-boss-talk.js?v=2",
+  "./plant-boss-banter.js": "./plant-boss-banter.js?v=2",
+  "./speech-bubbles.js": "./speech-bubbles.js?v=1",
+  "./plant-boss-turn.js": "./plant-boss-turn.js?v=1",
+  "./boss-trial.js": "./boss-trial.js?v=4",
+  "./sprite-trial.js": "./sprite-trial.js?v=1",
+  "./sprite-companion.js": "./sprite-companion.js?v=1",
+  "./npc.js": "./npc.js?v=3",
+  "./npc-face.js": "./npc-face.js?v=1",
+  "./npc-anim.js": "./npc-anim.js?v=2",
+  "./goblin-trial.js": "./goblin-trial.js?v=1",
+  "./goblin-anim.js": "./goblin-anim.js?v=1",
+  "./village-kit.js": "./village-kit.js?v=bridge3hole1",
+  "./map-rim.js": "./map-rim.js?v=4",
+  "./path-brush.js": "./path-brush.js?v=3",
+  "./path-edits.js": "./path-edits.js?v=6",
+  "./place-editor.js": "./place-editor.js?v=1",
+  "./foliage-editor.js": "./foliage-editor.js?v=2",
+  "./foliage-edits.js": "./foliage-edits.js?v=4",
+  "./place-edits.js": "./place-edits.js?v=2",
+  "./land-water.js": "./land-water.js?v=11",
+  "./blockout-layout.js": "./blockout-layout.js?v=1",
+  "./terrain-blocks.js": "./terrain-blocks.js?v=1",
+  "./rock-editor.js": "./rock-editor.js?v=3",
+  "./rocks-layout.js": "./rocks-layout.js?v=2",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1look1bways1dry3floor2lite1",
+  "./stylized-sky.js": "./stylized-sky.js?v=alps1",
+  "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
+  "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1strip1lite1",
+  "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1face2",
+  "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
+  "./character-springs.js": "./character-springs.js?v=2",
+  "./character-anim.js": "./character-anim.js?v=ual2sprint1roll1climb3swim1vault1",
+  "./characters.js": "./characters.js?v=1",
+  "./character-picker.js": "./character-picker.js?v=1",
+  "./meadow-level.js": "./meadow-level.js?v=rocks1t4",
+  "./stylized-water.js": "./stylized-water.js?v=wake5shore2wade1murk1",
+  "./water-tuner.js": "./water-tuner.js?v=cone2puff1w2anime1",
+  "./sky-tuner.js": "./sky-tuner.js?v=foamphysics1",
+  "./cloud-shadows.js": "./cloud-shadows.js?v=tod3",
+  "./time-of-day.js": "./time-of-day.js?v=tod4",
+  "./tuner-panel.js": "./tuner-panel.js?v=foamphysics1",
+  "./hills-level.js": "./hills-level.js?v=rocks1t4",
+  "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1t4",
+  "./depths-level.js": "./depths-level.js?v=2j1rocks1t4",
+  "./teleport-menu.js": "./teleport-menu.js?v=19",
+  "./game-map.js": "./game-map.js?v=2",
+  "./warp-ui.js": "./warp-ui.js?v=2j1",
+  "./valley-edits.js": "./valley-edits.js?v=1",
+  "./scene-editor.js": "./scene-editor.js?v=2",
+  "./stylized-waterfall.js": "./stylized-waterfall.js?v=lip2anime1",
+  "./abyss-shape.js": "./abyss-shape.js?v=8",
+  "./abyss-scene.js": "./abyss-scene.js?v=7",
+  "./abyss-depths.js": "./abyss-depths.js?v=3j2",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2gc1",
+  "./player-moves.js": "./player-moves.js?v=34",
+  "./blink.js": "./blink.js?v=2",
+  "./blink-fx.js": "./blink-fx.js?v=1",
+  "./blink-sounds.js": "./blink-sounds.js?v=2",
+  "./blink-stop-anim.js": "./blink-stop-anim.js?v=1",
+  "./player-spells.js": "./player-spells.js?v=7",
+  "./spear-rain.js": "./spear-rain.js?v=1",
+  "./spear-rain-fx.js": "./spear-rain-fx.js?v=3",
+  "./spear-rain-anim.js": "./spear-rain-anim.js?v=1",
+  "./spear-rain-sounds.js": "./spear-rain-sounds.js?v=1",
+  "./charge-hum.js": "./charge-hum.js?v=1",
+  "./magic-combo.js": "./magic-combo.js?v=8",
+  "./magic-combo-fx.js": "./magic-combo-fx.js?v=8",
+  "./magic-combo-game-anim.js": "./magic-combo-game-anim.js?v=1",
+  "./player-vault.js": "./player-vault.js?v=2",
+  "./player-climb-top.js": "./player-climb-top.js?v=2",
+  "./climb-top-anim.js": "./climb-top-anim.js?v=1",
+  "./vault-anim.js": "./vault-anim.js?v=1",
+  "./magic-jump-mocap-anim.js": "./magic-jump-mocap-anim.js?v=4",
+  "./magic-jump-flow-anim.js": "./magic-jump-flow-anim.js?v=2",
+  "./magic-jump.js": "./magic-jump.js?v=16",
+  "./magic-circle-fx.js": "./magic-circle-fx.js?v=6",
+  "./player-input.js": "./player-input.js?v=5",
+  "./player-camera.js": "./player-camera.js?v=4",
+  "./player-climb.js": "./player-climb.js?v=2",
+  "./player-hurdle.js": "./player-hurdle.js?v=4",
+  "./player-footsteps.js": "./player-footsteps.js?v=3",
+  "./step-sounds.js": "./step-sounds.js?v=15",
+  "./ambience.js": "./ambience.js?v=8",
+  "./ambience-places.js": "./ambience-places.js?v=7",
+  "./music.js": "./music.js?v=6",
+  "./frame-measure.js": "./frame-measure.js?v=2",
+  "./sound-settings.js": "./sound-settings.js?v=2",
+  "./picture-settings.js": "./picture-settings.js?v=1",
+  "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
+  "./stylized-guild.js": "./stylized-guild.js?v=1",
+  "./stylized-props.js": "./stylized-props.js?v=sails1",
+  "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
+  "./character-shadow.js": "./character-shadow.js?v=shadow2swap1face1",
+  "./curse.js": "./curse.js?v=3",
+  "./world-switch.js": "./world-switch.js?v=2",
+  "./curse-weather.js": "./curse-weather.js?v=3",
+  "./drought.js": "./drought.js?v=3",
+  "./dark-mist.js": "./dark-mist.js?v=2",
+  "./cave-hall.js": "./cave-hall.js?v=2",
+  "./cave-level.js": "./cave-level.js?v=1",
+  "./cave-light.js": "./cave-light.js?v=1",
+  "./boss-hall.js": "./boss-hall.js?v=1",
+  "./boss-light.js": "./boss-light.js?v=1",
+  "./boss-hall-scenes.js": "./boss-hall-scenes.js?v=1",
+  "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=1"
+} }
+</script>
+</head>
+<body>
+<div id="name">ห้องบัลลังก์ใต้ดิน<small>ห้องบอส · ดันเจี้ยนหลังผาน้ำตก ห้อง ⑤</small></div>
+<div id="bar"></div>
+<div id="stick"><i></i></div>
+<button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
+<div id="hint">เดินไปที่ประตู · เข้าไปยืนในวงเวทกลางห้องวงกลม · ซ้าย: เดิน วิ่ง · ขวา: หมุนกล้อง</div>
+<div class="bars" id="barTop"></div><div class="bars" id="barBot"></div><div id="veil"></div>
+<div id="wait">กำลังโหลดห้องบอส…<small id="step"></small></div>
+<script type="module">
+import * as THREE from 'three';
+import * as N from './stylized-nature.js';
+import { createBossHall } from './boss-hall.js';
+import { createCaveLevel } from './cave-level.js';
+import { createBossScenes } from './boss-hall-scenes.js';
+import { createBossSounds } from './boss-hall-sounds.js';
+import { loadPlayable } from './characters.js';
+import { CHARACTER_ANIM } from './character-anim.js';
+import { VAULT_ANIM } from './vault-anim.js';
+import { CHARACTER_ANIM as MOCAP_ANIM } from './magic-jump-mocap-anim.js';
+import { CHARACTER_ANIM as FLOW_ANIM } from './magic-jump-flow-anim.js';
+import { CLIMB_TOP_ANIM } from './climb-top-anim.js';
+import { createPlayer } from './player-moves.js';
+import { createMagicCircles } from './magic-circle-fx.js';
+import { createStepSounds } from './step-sounds.js';
+import { createSpriteCompanion } from './sprite-companion.js';
+import { updateAnimals } from './stylized-animals.js';
+import { CHARACTER_ANIM as COMBO_ANIM } from './magic-combo-game-anim.js';
+import { skyThrowClip } from './spear-rain-anim.js';
+import { createMagicComboFx } from './magic-combo-fx.js';
+import { createSpearRain } from './spear-rain.js';
+import { createSpearRainFx } from './spear-rain-fx.js';
+import { createSpearRainSounds } from './spear-rain-sounds.js';
+import { createChargeHum } from './charge-hum.js';
+import { createBlink } from './blink.js';
+import { createBlinkFx } from './blink-fx.js';
+import { createBlinkSounds } from './blink-sounds.js';
+import { BLINK_STOP, CHARACTER_ANIM as BLINK_ANIM } from './blink-stop-anim.js';
+
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: Q.has('shot') });
+// as the game (index.html): the kit's shaders write their colours as they are (raw sRGB); three's own get the conversion back
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+THREE.ShaderChunk.colorspace_fragment = 'gl_FragColor = sRGBTransferOETF( gl_FragColor );';
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, +Q.get('dpr') || 1.5));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.12, 260);
+const fit = () => {
+  camera.aspect = innerWidth / innerHeight; camera.fov = camera.aspect < 1 ? 70 : 55; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+};
+addEventListener('resize', fit); fit();
+const stepEl = document.getElementById('step');
+const onStep = async (t) => { stepEl.textContent = t + '…'; await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); };
+const noCave = (root) => root.traverse((o) => { for (const m of [].concat(o.material || [])) { m.userData = m.userData || {}; m.userData.noCave = true; } });
+
+// ---- the hall, and the level she plays in it (the forest hall's level, the same way: its floor and roof map)
+const hall = await createBossHall({ onStep });
+scene.add(hall.group);
+scene.background = new THREE.Color(hall.look.background);
+const level = createCaveLevel(hall);
+
+// ---- her (Vivi), with the game's moves and their clips (as cave-hall.html and index.html)
+await onStep('ปลุก Vivi');
+const SKY_CLIP = skyThrowClip(COMBO_ANIM);
+const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips,
+  ...COMBO_ANIM.clips, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}), ...BLINK_ANIM.clips } };
+const hero = await loadPlayable('vivi', PLAYER_ANIM, { height: 1.75 });
+const circles = createMagicCircles({ seed: 2 });
+scene.add(circles.object);
+noCave(circles.object);
+const soundVol = Q.has('sound') ? +Q.get('sound') : 1;
+const sounds = soundVol > 0 ? createStepSounds({ level, volume: soundVol }) : null;
+const heard = sounds ? createBossSounds({ context: () => sounds.context, volume: soundVol }) : null;
+const spellKit = { comboFx: createMagicComboFx(), renderer, spearRain: createSpearRain, rainFx: createSpearRainFx() };
+if (sounds) {
+  spellKit.rainSounds = createSpearRainSounds({ context: () => sounds.context, volume: sounds.volume });
+  spellKit.hum = createChargeHum({ context: () => sounds.context, volume: sounds.volume });
+}
+const blinkFx = createBlinkFx();
+const blink = createBlink({ fx: blinkFx, heard: sounds ? createBlinkSounds({ context: () => sounds.context, volume: sounds.volume }) : null, stop: BLINK_STOP });
+for (const fx of [spellKit.comboFx, spellKit.rainFx, blinkFx, circles]) { if (fx.setNight) fx.setNight(true); }
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, spells: spellKit, blink, ramp: true, dash: false, roll: false });
+blinkFx.prepare(hero);
+scene.add(player.object, spellKit.comboFx.object, spellKit.rainFx.object, blinkFx.object);
+noCave(player.blob); noCave(spellKit.comboFx.object); noCave(spellKit.rainFx.object); noCave(blinkFx.object);
+// the buttons, as the game's: วาร์ป · กระโดด · โจมตี in a row along the bottom; ฝนหอก over the attack while she holds the lance
+document.body.classList.add('spells');
+const jumpBtn = document.getElementById('jumpBtn');
+jumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
+const blinkBtn = document.createElement('button'); blinkBtn.id = 'blinkBtn'; blinkBtn.type = 'button'; blinkBtn.setAttribute('aria-label', 'วาร์ป');
+blinkBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="9" cy="12" r="1.6"/><path d="M13 5.5l6.5 6.5-6.5 6.5"/><path d="M19.5 12h-6"/><path d="M15.5 3.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" stroke-width="1.2"/></svg><br>วาร์ป</span>';
+document.body.append(blinkBtn);
+blinkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); blinkBtn.classList.add('down'); player.blink(); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) blinkBtn.addEventListener(ev, () => blinkBtn.classList.remove('down'));
+const atkBtn = document.createElement('button'); atkBtn.id = 'atkBtn'; atkBtn.type = 'button'; atkBtn.setAttribute('aria-label', 'โจมตี');
+atkBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg><br>โจมตี</span>';
+atkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); atkBtn.setPointerCapture(e.pointerId); atkBtn.classList.add('down'); player.attack(); });
+for (const ev of ['pointerup', 'pointercancel']) atkBtn.addEventListener(ev, () => { atkBtn.classList.remove('down'); player.release(); });
+document.body.append(atkBtn);
+// the spear rain (ฝนหอก): while the attack button is down its finger may slide up off it; past FLICK px the lance she holds
+// is thrown into the sky. The badge over the button shows where to slide to while she holds the lance; it may be tapped too
+const rainBtn = document.createElement('button'); rainBtn.id = 'rainBtn'; rainBtn.type = 'button'; rainBtn.setAttribute('aria-label', 'ฝนหอก');
+rainBtn.innerHTML = '<span><svg viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l10-8 10 8"/></svg>ฝนหอก</span>';
+{
+  const FLICK = 52, near = (v) => rainBtn.style.setProperty('--near', Math.max(0, Math.min(1, v)).toFixed(2));
+  let finger = null, from = 0, gone = false;
+  atkBtn.addEventListener('pointerdown', (e) => { finger = e.pointerId; from = e.clientY; gone = false; near(0); });
+  atkBtn.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== finger || gone) return;
+    const up = from - e.clientY;
+    near(up / FLICK);
+    if (up >= FLICK) { gone = true; player.spells.skyward(); }
+  });
+  for (const ev of ['pointerup', 'pointercancel']) atkBtn.addEventListener(ev, (e) => { if (e.pointerId === finger) { finger = null; near(0); } });
+  rainBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); player.spells.skyward(); });
+  addEventListener('keydown', (e) => { if (e.code === 'KeyR' && !e.repeat) player.spells.skyward(); });
+}
+document.body.append(rainBtn);
+
+// the sprite: it goes everywhere with her (sprite-companion.js), a small warm light of its own in here
+await onStep('ปลุกสไปรต์');
+const sprite = await createSpriteCompanion({ level: { heightAt: (x, z) => level.standAt(x, z), colliders: level.colliders }, scene, player });
+sprite.shadow.visible = false;
+noCave(sprite.object);
+const body = sprite.object.getObjectByName('body') || sprite.object;
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,240,205,0.85)'); gr.addColorStop(0.25, 'rgba(255,226,170,0.35)'); gr.addColorStop(1, 'rgba(255,210,150,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; return t;
+})();
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+halo.material.userData.noCave = true;
+halo.scale.setScalar(1.5); halo.renderOrder = 6;
+scene.add(halo);
+let lampOn = true;
+
+// ---- the hall's light on her, the sprite's plants, the spells' world (once all is in the scene)
+await onStep('จุดแสงในห้อง');
+const patched = hall.light.apply(scene);
+const spritePos = new THREE.Vector3();
+const lampAt = () => { body.getWorldPosition(spritePos); spritePos.y += 0.25; hall.light.setSprite(spritePos, lampOn); halo.position.copy(spritePos); halo.visible = lampOn; };
+
+// ---- her camera is the game's (inside the player); in here it is also kept under the roof and out of the stone: brought in
+// along its line to her where that line meets either (as in the forest hall)
+const look = new THREE.Vector3(), ray = new THREE.Vector3();
+function keepCameraInAir() {
+  look.set(player.position.x, player.position.y + hero.height * 0.82, player.position.z);
+  ray.subVectors(camera.position, look);
+  const len = ray.length();
+  if (len < 1e-3) return;
+  ray.divideScalar(len);
+  let ok = len;
+  for (let t = 0.25; t <= len; t += 0.2) {
+    const x = look.x + ray.x * t, y = look.y + ray.y * t, z = look.z + ray.z * t;
+    if (y < level.heightAt(x, z) + 0.3 || y > level.ceilAt(x, z) - 0.4) { ok = Math.max(0.35, t - 0.3); break; }
+  }
+  if (ok < len) camera.position.copy(look).addScaledVector(ray, ok);
+}
+
+// ---- the scenes: the door opening, the statues waking (boss-hall-scenes.js)
+const scenes = createBossScenes({ hall, player, level, camera, heard, onScene: (name) => document.body.classList.toggle('scene', !!name) });
+
+// ---- the buttons: before the door (all as it was), the nave, the round hall (the door open), the dais; the sprite's light
+const bar = document.getElementById('bar');
+const ICON = ['🚪', '🔥', '🗿', '👑'];
+const MODE = ['closed', 'open', 'open', null];
+level.places.forEach((p, i) => {
+  const b = document.createElement('button'); b.type = 'button';
+  b.textContent = `${ICON[i] || '📍'} ${p.name}`;
+  b.onclick = () => {
+    const m = MODE[i] || (scenes.state === 'awake' ? 'awake' : 'open');
+    scenes.reset(m === 'open' && i === 2 ? 'open' : m);
+    player.teleport(p.x, p.z, p.heading);
+  };
+  bar.append(b);
+});
+const lampBtn = document.createElement('button'); lampBtn.type = 'button'; lampBtn.className = 'on'; lampBtn.textContent = '💡 แสงสไปรต์';
+lampBtn.onclick = () => { lampOn = !lampOn; lampBtn.classList.toggle('on', lampOn); };
+bar.append(lampBtn);
+// the hall's own low air from her first touch (the AudioContext is made then)
+if (heard) addEventListener('pointerdown', () => setTimeout(() => heard.air(true), 50), { once: true });
+
+// ---- a frame
+function step(dt) {
+  dt = Math.min(dt, 0.05);
+  player.update(dt);
+  N.setWalker(player.position, 0.55);
+  updateAnimals(dt);
+  circles.update(dt, camera);
+  blinkFx.update(dt, camera);
+  blinkBtn.classList.toggle('wait', !blink.ready);
+  rainBtn.classList.toggle('on', !!player.spells.skyReady);
+  const held = scenes.update(dt);
+  if (!held) keepCameraInAir();
+  hall.update(dt, camera, renderer);
+  lampAt();
+  if (heard) heard.update(dt);
+}
+let fixedCam = null;
+function draw() {
+  if (fixedCam) { camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]); camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]); }
+  renderer.render(scene, camera);
+}
+
+// for a test (or the console): run(s) steps the game without drawing (then draws once); keys('KeyW', true) holds a key
+window.bossTrial = {
+  ready: false, held: false, player, level, hall, scenes, hero, camera, renderer, scene, patched, sounds, heard, spellKit, blink,
+  run(seconds, { fps = 30, show = true, each = null } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) { step(1 / fps); if (each) each(); } if (show) draw(); },
+  place(i) { const p = level.places[i]; player.teleport(p.x, p.z, p.heading); },
+  keys(code, down) { dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code })); },
+  fix(...v) { fixedCam = v.length ? v : null; },
+  lamp(on) { lampOn = on; lampBtn.classList.toggle('on', on); },
+  draw, info() { return renderer.info.render; },
+};
+
+// ---- warm up every shader before she is shown, then go
+await onStep('เตรียมภาพ');
+step(1 / 60);
+try { await renderer.compileAsync(scene, camera); } catch (e) { renderer.compile(scene, camera); }
+document.getElementById('wait').remove();
+window.bossTrial.ready = true;
+let then = performance.now(), shown = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - shown < 1000 / 61) return;
+  shown = now;
+  const dt = (now - then) / 1000; then = now;
+  if (window.bossTrial.held) return;
+  step(dt);
+  draw();
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
