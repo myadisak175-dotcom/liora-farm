@@ -21,9 +21,12 @@
 # The west fringe (tools/make-west-fringe-heightmap.py) is part of the map: its land is joined on here as the game joins it
 # (west-fringe.js), its ways, dry water and ruins drawn, and the plants that stand on it drawn as the dead trees they are.
 #
-#   python3 tools/make-hill-village-map.py east      the map with the east lake joined on too (?east=1, a trial: east-ruins.js),
-#                                                   as hill-village-map-east.webp + .json and hill-village-map-east-cursed (the
-#                                                   lake's basin dry under the curse: the game paints the pools that are left)
+#   python3 tools/make-hill-village-map.py east      the map with the east lake joined on too, the game's map since 28 Nov 2026
+#                                                   (east-ruins.js), as hill-village-map-east.webp + .json and
+#                                                   hill-village-map-east-cursed (the lake's basin dry under the curse: the game
+#                                                   paints the pools that are left); ... east green: with the west fringe healed
+#                                                   too (?green=1), hill-village-map-east-green. Without east: the maps of the
+#                                                   land without the lake (?east=0)
 #
 # To change its look: PPM (pixels to a metre), MARGIN (how much land is shown beyond where she can walk), COL.
 import json, math, sys

@@ -1,4 +1,4 @@
-# make-east-ruins-heightmap.py  —  the east lake and its ruins: the land past the hill village's east edge (?east=1)
+# make-east-ruins-heightmap.py  —  the east lake and its ruins: the land past the hill village's east edge (in the game)
 #
 # The hill village's land (assets/heightmaps/hill-village.bin) ends at x = 80 for her: past it was a margin of wooded hills she
 # never walked on. This tool makes the land that goes on to the east of that edge, 90 m more to walk on, as a heightmap of
@@ -51,7 +51,7 @@
 #         east-ruins.bin   the same as raw 16-bit numbers, little-endian (what the game reads)
 #         east-ruins.json  where the land lies, the water (the lake, the streams and their falls, the outflow), the floors,
 #                          the ways, the plants and the places
-# The game joins this land to the village's as it loads (east-ruins.js), behind ?east=1.
+# The game joins this land to the village's as it loads (east-ruins.js): since 28 Nov 2026 always (?east=0: without it).
 # Places are metres, as in the village's plan: x east, z south. A yaw: 0 faces south (+z), pi/2 east.
 import json, math, sys
 from pathlib import Path
