@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#143a36">
+<title>บึงหลิว · ตกปลาที่ Loria Farm</title>
+<link rel="preload" as="image" href="./willow-lake.webp"><link rel="preload" as="image" href="./poses/idle.png"><link rel="stylesheet" href="./lake.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head>
+<body>
+<main id="lake" aria-label="เกมตกปลาบึงหลิว">
+<canvas id="scenery" aria-hidden="true"></canvas><canvas id="avatar" aria-hidden="true"></canvas><canvas id="tackle" aria-hidden="true"></canvas>
+<header>
+<div class="location"><div class="brand"><span></span>LORIA FARM</div><h1>บึงหลิว</h1><div class="english">Willow Lake</div></div>
+<nav><button id="sound" class="round" aria-label="ปิดเสียง" aria-pressed="true"></button><button class="journalButton" id="openBook"><i data-icon="book"></i><span>สมุดปลา</span><b id="speciesCount">0/5</b></button></nav>
+</header>
+<div id="biteFlag" hidden>!<small>ปลากินเบ็ด</small></div>
+<div id="feedback" role="status" aria-live="polite"></div>
+<div class="bottom">
+<aside class="equipment"><div class="gearIcon"><i data-icon="rod"></i></div><div><small>อุปกรณ์ตกปลา</small><strong>คันเบ็ดไม้ไผ่</strong></div></aside>
+<section class="controls" aria-label="ควบคุมเบ็ด">
+<div class="stateInfo"><span class="eyebrow" id="phaseName">พร้อมตกปลา</span><p id="hint">แตะเพื่อเหวี่ยงเบ็ดลงบึง</p></div>
+<div id="meters" hidden><label>ระยะดึงปลา <span id="distance"></span></label><div class="track"><div id="progressBar"></div></div><label>ความตึงสาย <span id="stress"></span></label><div class="track tension"><div id="tensionBar"></div></div></div>
+<button id="action" class="action"><i data-icon="cast"></i><span>เหวี่ยงเบ็ด</span></button>
+<button class="retrieve" id="retrieve" hidden>เก็บสาย</button>
+</section></div>
+</main>
+<dialog id="book"><div class="bookHead"><div><small>LORIA FARM</small><h2>สมุดบันทึกปลา</h2></div><button id="closeBook" class="close" aria-label="ปิดสมุด">×</button></div><p id="bookSummary"></p><div id="entries"></div></dialog>
+<script type="module" src="./lake.js?v=2"></script>
+</body></html>
