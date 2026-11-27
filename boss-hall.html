@@ -2,7 +2,10 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ห้องบอส">
 <meta name="theme-color" content="#020306">
 <title>ห้องบัลลังก์ใต้ดิน</title>
 <!--
@@ -74,6 +77,7 @@
   body.scene #veil { display: block; }
   body.scene #bar, body.scene #jumpBtn, body.scene #atkBtn, body.scene #blinkBtn, body.scene #rainBtn, body.scene #hint, body.scene #name { opacity: 0; pointer-events: none; transition: opacity .4s; }
   #bar, #jumpBtn, #atkBtn, #blinkBtn, #hint, #name { transition: opacity .4s; }
+  html:fullscreen, html:-webkit-full-screen { width: 100%; height: 100%; }
   @media (max-width: 640px) { #name small { display: none; } #hint { display: none; } }
   @media (max-height: 520px) {                       /* a phone on its side: the buttons down the right edge, smaller */
     #bar { gap: 4px; top: calc(6px + env(safe-area-inset-top)); }
@@ -408,6 +412,36 @@ level.places.forEach((p, i) => {
 const lampBtn = document.createElement('button'); lampBtn.type = 'button'; lampBtn.className = 'on'; lampBtn.textContent = '💡 แสงสไปรต์';
 lampBtn.onclick = () => { lampOn = !lampOn; lampBtn.classList.toggle('on', lampOn); };
 bar.append(lampBtn);
+// full screen, as the game's (index.html): the Fullscreen API where the browser has it (Android, iPad); an iPhone has none
+// for a page, so there it says how to put the page on the home screen, from where it opens as an app, full screen
+const fullBtn = document.createElement('button'); fullBtn.type = 'button'; fullBtn.id = 'fullscreen';
+{
+  const active = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const sync = () => {
+    fullBtn.textContent = active() ? '⛶ ออกจากเต็มจอ' : '⛶ เต็มจอ';
+    fullBtn.setAttribute('aria-pressed', String(!!active()));
+    fullBtn.setAttribute('aria-label', active() ? 'ออกจากโหมดเต็มจอ' : 'เปิดโหมดเต็มจอ');
+    dispatchEvent(new Event('resize'));
+  };
+  fullBtn.onclick = async () => {
+    try {
+      if (active()) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+      } else {
+        const root = document.documentElement;
+        const enter = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (!enter) { alert('บน iPhone: เปิดหน้านี้ใน Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม แล้วเปิดจากไอคอน "ห้องบอส" จะเล่นเต็มจอแบบแอป หมุนจอได้ทั้งแนวตั้งและแนวนอน'); return; }
+        await enter.call(root);
+      }
+    } catch (e) { fullBtn.textContent = 'แตะเพื่อลองเต็มจออีกครั้ง'; }
+  };
+  sync();
+  if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) fullBtn.hidden = true;     // (opened from the home screen: full screen already)
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+}
+bar.append(fullBtn);
 // the hall's own low air from her first touch (the AudioContext is made then)
 if (heard) addEventListener('pointerdown', () => setTimeout(() => heard.air(true), 50), { once: true });
 
