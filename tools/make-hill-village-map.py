@@ -75,8 +75,9 @@ if EAST:                                                              # the east
     kb = [w['id'] for w in plan['waters']].index(EP['water']['outflow']['into'])
     plan['inflows'] = [f for f in plan.get('inflows', []) if not (f['stretch'] == kb and f['rows'][0][0] > ESEAM)]
     plan['brooks'][kb] = [[x, z, plan['brooks'][kb][0][2], hw] for x, z, _, hw in EP['water']['outflow']['rows']] + plan['brooks'][kb]
-    plan['brooks'].append(EP['water']['stream']['rows'])            # (the lake is not a line of water: it is painted as the land under its level, below)
-    plan['falls'].append(dict(EP['water']['fall'], **{'from': len(plan['brooks']) - 1}))
+    k0 = len(plan['brooks'])                                         # its streams, each over its fall into the lake (the lake is not a line of water: it is painted as the land under its level, below)
+    for st in EP['water'].get('streams') or [EP['water']['stream']]: plan['brooks'].append(st['rows'])
+    for f in EP['water'].get('falls') or [dict(EP['water']['fall'], stream=0)]: plan['falls'].append(dict(f, **{'from': k0 + f['stream']}))
     plan['plants'] = [p for p in plan['plants'] if p[1] <= ESEAM] + [p for p in EP['plants']]
 X0, X1, Z0, Z1 = min(q[0] for q in PLAYS) - MARGIN, max(q[1] for q in PLAYS) + MARGIN, min(q[2] for q in PLAYS) - MARGIN, max(q[3] for q in PLAYS) + MARGIN
 W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
