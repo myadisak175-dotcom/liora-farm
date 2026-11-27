@@ -821,6 +821,14 @@ const gaps = [];                                     // (this second's frames, h
 let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms (at 30: 45 ms, a frame missed), the last minute's)
 let fpsN = 0, fpsT = 0, warm = 0, good = 0, played = 0, gaveBackAt = -1e9, holdUntil = 0, dprDue = false, mirrorWas = -1;      // (played: seconds of play the tuner has seen; mirrorWas: the mirror's quality before the tuner first lowered it)
 let at30 = -1e9, tried60 = -1e9, wait60 = 30;        // (when the pace went down to 30; when 60 was last tried again; how long to keep 30 before trying)
+// PATIENT WITH THE PICTURE (27 Nov 2026, iPhone: "ภาพสวย 20 วิแรก ... ผ่านไปหนึ่งนาทีลดคุณภาพ", the phone not even warm).
+// After her first touch the page wakes its sound: her steps, the air's loops, the music, fetched and decoded, some 60 MB
+// of it in the first half minute; and whatever else is first done then. A phone is slow for those seconds and then is not,
+// but the tuner took each slow second for a slow phone and took the picture down (and gave it back only slowly). Now it
+// takes nothing from the picture in the first SETTLE seconds of play (the pace may still go to 30), and after that only
+// once it has been slow for SLOW_RUN seconds running
+const SETTLE = 45, SLOW_RUN = 3;
+let slowRun = 0, wall = 0;                           // (seconds slow, running; seconds of play by the clock, however slow the frames)
 // THE SCREEN'S OWN FRAME (27 Nov 2026). A frame is drawn on the first of the screen's frames at least a pace's gap after the
 // last (animate, below): on a 60 Hz screen every one of them, on 120 Hz every second (60), but on 90 Hz, which many Android
 // phones have, every second too: 45, the most a pace of 60 can be there. The tuner took that 45 for a phone too slow for 60
@@ -845,7 +853,7 @@ const mayGiveBack = () => played >= holdUntil;
 // tries 60 again (the place she is in may be lighter): kept, it stays; not, back to 30 at once, and the next try waits
 // twice as long (30 s, then 1, 2, 4, at most 5 minutes)
 function tune(dt, raw = dt) {
-  fpsN++; fpsT += dt; warm += dt; played += dt; gaps.push(dt);
+  fpsN++; fpsT += dt; warm += dt; played += dt; wall += raw; gaps.push(dt);
   if (raw > (pace === 30 ? 0.045 : 0.05)) hitches.push([played, raw]);
   if (fpsT < 1) return;
   gaps.sort((a, b) => a - b);
@@ -858,6 +866,8 @@ function tune(dt, raw = dt) {
   fpsN = 0; fpsT = 0; gaps.length = 0;
   hitches = hitches.filter(h => played - h[0] < 60);
   const g = level.grass.userData, slow = fps < cap * 0.78, easy = fps > cap * 0.93;
+  slowRun = slow ? slowRun + 1 : 0;
+  const lower = slow && slowRun >= SLOW_RUN && wall > SETTLE;      // (the picture taken down: PATIENT WITH THE PICTURE, above)
   const whole = renderDPR >= maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1) && (mirrorWas < 0 || level.optics.quality >= mirrorWas);
   if (warm > 4 || (pace > 30 && played - tried60 < 4 && warm > 2)) {      // (60 tried again: told sooner whether it is kept)
     if ((slow || uneven) && pace > 30 && !paceFixed) {
@@ -865,15 +875,15 @@ function tune(dt, raw = dt) {
       pace = 30; at30 = played; warm = 2; good = 0;
     }
     else if (pace === 30 && !paceFixed && whole && easy && played - at30 > wait60 && played - tried60 > wait60) { pace = targetFPS; tried60 = played; warm = 0; good = 0; }
-    else if (slow && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; }
+    else if (lower && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; slowRun = 0; }
     else if (easy && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
       if (mayGiveBack() && ++good >= 4) { setDPR(Math.min(maxDPR, renderDPR + 0.125)); gaveBack(); warm = 2; good = 0; }
     }
     // still too slow: the clouds redrawn less often (the cheapest saving), then the mirror on the water, only then thinner grass
-    else if (slow && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); tookAway(); warm = 2; good = 0; }
-    else if (slow && level.optics.quality > 0) { if (mirrorWas < 0) mirrorWas = level.optics.quality; level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); tookAway(); warm = 2; good = 0; }
-    else if (slow && g.density > 0.3) { g.setDensity(g.density * 0.8); tookAway(); good = 0; }
-    else if (easy && g.density < 1) { if (mayGiveBack() && ++good >= 3) { g.setDensity(g.density * 1.12); gaveBack(); good = 0; } }
+    else if (lower && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); tookAway(); warm = 2; good = 0; slowRun = 0; }
+    else if (lower && level.optics.quality > 0) { if (mirrorWas < 0) mirrorWas = level.optics.quality; level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); tookAway(); warm = 2; good = 0; slowRun = 0; }
+    else if (lower && g.density > 0.3) { g.setDensity(g.density - 0.125); tookAway(); good = 0; slowRun = 0; }
+    else if (easy && g.density < 1) { if (mayGiveBack() && ++good >= 3) { g.setDensity(g.density + 0.125); gaveBack(); good = 0; } }      // (an eighth at a time: the grass keeps whole eighths, and a twelfth more of half was never another eighth: from half down it never came back, nor did anything after it)
     else if (easy && sky.userData.rate < 1) { if (mayGiveBack() && ++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); gaveBack(); good = 0; } }
     else if (easy && level.optics.quality < mirrorWas) {      // last of all (the picture is whole again by now): the mirror on the water, which used to stay off for good once it had been lowered
       if (mayGiveBack() && ++good >= 5) { level.optics.setQuality(level.optics.quality + 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); gaveBack(); warm = 2; good = 0; }
