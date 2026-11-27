@@ -14,33 +14,65 @@
   piece, "เพลงเดิมของเกมไปก่อน"); the forest sprite floats at her shoulder and is the cave's light where she goes.
   The hall: cave-hall.js (baked by tools/make-cave-hall.py); her level in it: cave-level.js; its light on the plants and on
   her: cave-light.js. The buttons on the right put her on each level.
+  Then the same night: the map, as the hill village's ("ทำแผนที่แบบ hill village ก่อนได้ไหม จะได้เห็นว่าเดินไปไหน"): game-map.js
+  as the game has it (the small round map at the top that follows her, the whole map on a tap, a pin on every level), on a
+  picture painted by tools/make-cave-map.py; and her skills, as the game has them ("ขอปุ่มสกิลด้วยค่ะ"): วาร์ป · กระโดด ·
+  โจมตี in a row along the bottom (tapped: four casts; held: the lance, let go: thrown; slid up while held: ฝนหอก), their
+  light shining as it does by night (it is dark in here).
   ?sound=0: no sound; ?music=0: her steps without the music. No monsters, no puzzles yet (the plan has them).
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0a151a; font-family: system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
   canvas { display: block; touch-action: none; }
-  #name { position: fixed; left: 0; right: 0; top: calc(8px + env(safe-area-inset-top)); text-align: center; pointer-events: none;
+  #name { position: fixed; left: calc(14px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); max-width: calc(50vw - 64px); pointer-events: none;
     font: 700 16px system-ui; color: #f2fbff; text-shadow: 0 1px 6px #000c; }
   #name small { display: block; font: 500 12px system-ui; opacity: 0.85; margin-top: 3px; }
   #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
   #bar button { border: 1px solid #9fe9ff66; border-radius: 999px; padding: 7px 11px; background: #0c2730cc; color: #eafcff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
   #bar button.on { background: #1d5a63e6; border-color: #b8f6ffcc; }
+  /* the stick and the buttons: the game's own (index.html) */
   #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none; opacity: 0;
-    background: rgba(255, 255, 255, .12); border: 2px solid rgba(190, 245, 255, .55); transition: opacity .12s; }
-  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(225, 252, 255, .7); }
+    background: rgba(255, 255, 255, .2); border: 2px solid rgba(255, 255, 255, .6); transition: opacity .12s; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255, 255, 255, .82); box-shadow: 0 2px 8px rgba(40, 60, 30, .25); }
   #jumpBtn { position: fixed; right: max(24px, calc(env(safe-area-inset-right) + 14px)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
-    z-index: 4; width: 74px; height: 74px; border-radius: 50%; border: 2px solid rgba(190, 245, 255, .6); background: rgba(20, 60, 70, .45);
-    color: #eafcff; font: 600 12px system-ui, sans-serif; touch-action: none; display: grid; place-items: center; padding: 0; -webkit-tap-highlight-color: transparent; }
-  #jumpBtn.down { background: rgba(120, 220, 235, .45); }
-  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 110px; text-align: center; pointer-events: none;
+    z-index: 4; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .24);
+    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #jumpBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #jumpBtn.down { background: rgba(255, 255, 255, .5); }
+  #atkBtn { position: fixed; z-index: 4; right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: max(12px, calc(env(safe-area-inset-bottom) + 6px));
+    width: 78px; height: 78px; border-radius: 50%; border: 2px solid rgba(190, 235, 255, .9); background: rgba(116, 207, 255, .32);
+    color: #fff; font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(40, 60, 30, .6); touch-action: none; user-select: none;
+    -webkit-user-select: none; -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; }
+  #atkBtn svg { width: 26px; height: 26px; margin-bottom: -6px; }
+  #atkBtn.down { background: rgba(170, 225, 255, .55); }
+  body.spells #jumpBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 90px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 9px); width: 60px; height: 60px; }
+  #rainBtn { position: fixed; z-index: 4; right: max(18px, calc(env(safe-area-inset-right) + 10px)); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 83px); width: 78px; height: 32px;
+    border-radius: 16px; border: 2px solid rgba(214, 252, 255, .95); background: rgba(98, 235, 245, .42); color: #fff; font: 600 12px system-ui, sans-serif;
+    text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    display: grid; place-items: center; padding: 0; box-shadow: 0 0 calc(8px + 18px * var(--near, 0)) rgba(98, 235, 245, .9);
+    opacity: 0; pointer-events: none; transform: translateY(18px) scale(.7); transition: opacity .16s, transform .16s; }
+  #rainBtn.on { opacity: 1; pointer-events: auto; transform: translateY(calc(-4px * var(--near, 0))) scale(calc(1 + .15 * var(--near, 0))); }
+  #rainBtn svg { width: 14px; height: 9px; margin-right: 3px; vertical-align: 1px; animation: rainNudge .7s ease-in-out infinite; }
+  @keyframes rainNudge { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-2px); } }
+  #blinkBtn { position: fixed; z-index: 4; right: calc(max(24px, env(safe-area-inset-right) + 14px) + 76px); bottom: max(20px, calc(env(safe-area-inset-bottom) + 14px));
+    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(214, 252, 255, .95); background: rgba(95, 230, 232, .3); color: #fff;
+    font: 600 12px system-ui, sans-serif; text-shadow: 0 1px 3px rgba(20, 60, 80, .7); touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; display: grid; place-items: center; padding: 0; box-shadow: 0 0 12px rgba(95, 230, 232, .55); transition: opacity .1s; }
+  #blinkBtn svg { width: 22px; height: 22px; margin-bottom: -6px; }
+  #blinkBtn.down { background: rgba(170, 248, 250, .55); }
+  #blinkBtn.wait { opacity: .5; box-shadow: none; }
+  body.spells #blinkBtn { right: calc(max(18px, env(safe-area-inset-right) + 10px) + 162px); bottom: calc(max(12px, env(safe-area-inset-bottom) + 6px) + 11px); }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 0 250px 0 24px; text-align: center; pointer-events: none;
     font: 500 12px system-ui; color: #dff8ff; opacity: .85; text-shadow: 0 1px 4px #000c; }
   #wait { position: fixed; inset: 0; display: grid; place-items: center; background: #0a151a; color: #cdf3ff; font: 600 15px system-ui; z-index: 9; text-align: center; }
   #wait small { display: block; opacity: .7; font-weight: 500; margin-top: 6px; }
-  @media (max-width: 640px) { #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); } #name small { display: none; } }
-  @media (max-height: 520px) {                       /* a phone on its side: the buttons up top in a row */
-    #bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 64vw; gap: 4px; top: calc(6px + env(safe-area-inset-top)); }
+  @media (max-width: 640px) { #name small { display: none; } #hint { display: none; } }
+  @media (max-height: 520px) {                       /* a phone on its side: the buttons down the right edge, smaller */
+    #bar { gap: 4px; top: calc(6px + env(safe-area-inset-top)); }
     #bar button { padding: 5px 9px; font-size: 11px; }
-    #name { text-align: left; padding-left: calc(14px + env(safe-area-inset-left)); }
+    #name { font-size: 14px; }
     #name small { display: none; }
   }
 </style>
@@ -186,8 +218,8 @@
 <div id="name">โถงป่าใต้ดิน<small>ไต่ขึ้นสู่แสง · ดันเจี้ยนหลังผาน้ำตก ห้อง ③</small></div>
 <div id="bar"></div>
 <div id="stick"><i></i></div>
-<button id="jumpBtn" type="button" aria-label="กระโดด">กระโดด</button>
-<div id="hint">ซ้าย: เดิน วิ่ง · ขวา: หมุนกล้อง · เดินชนผา: ปีน · กระโดดซ้ำกลางอากาศ: 4 ชั้น</div>
+<button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
+<div id="hint">ซ้าย: เดิน วิ่ง · ขวา: หมุนกล้อง · เดินชนผา: ปีน · กระโดดซ้ำกลางอากาศ: 4 ชั้น · แตะแผนที่: ดูทั้งโถง</div>
 <div id="wait">กำลังโหลดถ้ำ…<small id="step"></small></div>
 <script type="module">
 import * as THREE from 'three';
@@ -206,6 +238,18 @@ import { createStepSounds } from './step-sounds.js';
 import { createMusic } from './music.js';
 import { createSpriteCompanion } from './sprite-companion.js';
 import { updateAnimals } from './stylized-animals.js';
+import { createGameMap } from './game-map.js';
+import { CHARACTER_ANIM as COMBO_ANIM } from './magic-combo-game-anim.js';
+import { skyThrowClip } from './spear-rain-anim.js';
+import { createMagicComboFx } from './magic-combo-fx.js';
+import { createSpearRain } from './spear-rain.js';
+import { createSpearRainFx } from './spear-rain-fx.js';
+import { createSpearRainSounds } from './spear-rain-sounds.js';
+import { createChargeHum } from './charge-hum.js';
+import { createBlink } from './blink.js';
+import { createBlinkFx } from './blink-fx.js';
+import { createBlinkSounds } from './blink-sounds.js';
+import { BLINK_STOP, CHARACTER_ANIM as BLINK_ANIM } from './blink-stop-anim.js';
 
 const Q = new URLSearchParams(location.search);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: Q.has('shot') });
@@ -233,9 +277,12 @@ scene.background = new THREE.Color(hall.look.sky);        // (only seen through 
 const level = createCaveLevel(hall);
 
 // ---- her (Vivi), with the game's moves and their clips (as index.html: the vault, the magic jump's take-off and landing
-// and its moves in the air, her way over a cliff's top)
+// and its moves in the air, her way over a cliff's top; her spells' moves on the ground, the lance hurled up for the spear
+// rain, her stop after a blink)
 await onStep('ปลุก Vivi');
-const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips } };
+const SKY_CLIP = skyThrowClip(COMBO_ANIM);
+const PLAYER_ANIM = { ...CHARACTER_ANIM, clips: { ...CHARACTER_ANIM.clips, ...VAULT_ANIM.clips, ...MOCAP_ANIM.clips, ...FLOW_ANIM.clips, ...CLIMB_TOP_ANIM.clips,
+  ...COMBO_ANIM.clips, ...(SKY_CLIP ? { mc_sky: SKY_CLIP } : {}), ...BLINK_ANIM.clips } };
 const hero = await loadPlayable('vivi', PLAYER_ANIM, { height: 1.75 });
 const circles = createMagicCircles({ seed: 2 });            // the magic jump's circles: their own light
 scene.add(circles.object);
@@ -244,12 +291,54 @@ noCave(circles.object);
 const soundVol = Q.has('sound') ? +Q.get('sound') : 1;
 const sounds = soundVol > 0 ? createStepSounds({ level, volume: soundVol }) : null;
 const music = sounds && Q.get('music') !== '0' ? createMusic({ context: () => sounds.context, volume: soundVol }) : null;
-const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, ramp: true, dash: false, roll: false });
-scene.add(player.object);
-noCave(player.blob);
+// her skills, as the game has them (index.html): the magic combo and its light, the spear rain (its light, its sound, the
+// lance's hum), the blink (its light, its sound, her stop). Their light is their own, and in here it shines as it does by night
+const spellKit = { comboFx: createMagicComboFx(), renderer, spearRain: createSpearRain, rainFx: createSpearRainFx() };
+if (sounds) {
+  spellKit.rainSounds = createSpearRainSounds({ context: () => sounds.context, volume: sounds.volume });
+  spellKit.hum = createChargeHum({ context: () => sounds.context, volume: sounds.volume });
+}
+const blinkFx = createBlinkFx();
+const blink = createBlink({ fx: blinkFx, heard: sounds ? createBlinkSounds({ context: () => sounds.context, volume: sounds.volume }) : null, stop: BLINK_STOP });
+for (const fx of [spellKit.comboFx, spellKit.rainFx, blinkFx, circles]) { if (fx.setNight) fx.setNight(true); }
+const player = createPlayer({ character: hero, level, camera, dom: renderer.domElement, ui: document.getElementById('stick'), circles, sounds, spells: spellKit, blink, ramp: true, dash: false, roll: false });
+blinkFx.prepare(hero);                                       // (her meshes read now, for her afterimages, not as she first blinks)
+scene.add(player.object, spellKit.comboFx.object, spellKit.rainFx.object, blinkFx.object);
+noCave(player.blob); noCave(spellKit.comboFx.object); noCave(spellKit.rainFx.object); noCave(blinkFx.object);
+// the buttons, as the game's: วาร์ป · กระโดด · โจมตี in a row along the bottom; ฝนหอก over the attack while she holds the lance
+document.body.classList.add('spells');
 const jumpBtn = document.getElementById('jumpBtn');
 jumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); jumpBtn.classList.add('down'); player.jump(); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) jumpBtn.addEventListener(ev, () => jumpBtn.classList.remove('down'));
+const blinkBtn = document.createElement('button'); blinkBtn.id = 'blinkBtn'; blinkBtn.type = 'button'; blinkBtn.setAttribute('aria-label', 'วาร์ป');
+blinkBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="9" cy="12" r="1.6"/><path d="M13 5.5l6.5 6.5-6.5 6.5"/><path d="M19.5 12h-6"/><path d="M15.5 3.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" stroke-width="1.2"/></svg><br>วาร์ป</span>';
+document.body.append(blinkBtn);
+blinkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); blinkBtn.classList.add('down'); player.blink(); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) blinkBtn.addEventListener(ev, () => blinkBtn.classList.remove('down'));
+const atkBtn = document.createElement('button'); atkBtn.id = 'atkBtn'; atkBtn.type = 'button'; atkBtn.setAttribute('aria-label', 'โจมตี');
+atkBtn.innerHTML = '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/><path d="M19 17l.7 2 .2.1 2 .7-2 .7-.9 2.2-.7-2.2-2-.7 2-.7z"/></svg><br>โจมตี</span>';
+atkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); atkBtn.setPointerCapture(e.pointerId); atkBtn.classList.add('down'); player.attack(); });
+for (const ev of ['pointerup', 'pointercancel']) atkBtn.addEventListener(ev, () => { atkBtn.classList.remove('down'); player.release(); });
+document.body.append(atkBtn);
+// the spear rain (ฝนหอก): while the attack button is down its finger may slide up off it; past FLICK px the lance she holds
+// is thrown into the sky. The badge over the button shows where to slide to while she holds the lance; it may be tapped too
+const rainBtn = document.createElement('button'); rainBtn.id = 'rainBtn'; rainBtn.type = 'button'; rainBtn.setAttribute('aria-label', 'ฝนหอก');
+rainBtn.innerHTML = '<span><svg viewBox="0 0 28 14" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l10-8 10 8"/></svg>ฝนหอก</span>';
+{
+  const FLICK = 52, near = (v) => rainBtn.style.setProperty('--near', Math.max(0, Math.min(1, v)).toFixed(2));
+  let finger = null, from = 0, gone = false;
+  atkBtn.addEventListener('pointerdown', (e) => { finger = e.pointerId; from = e.clientY; gone = false; near(0); });
+  atkBtn.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== finger || gone) return;
+    const up = from - e.clientY;
+    near(up / FLICK);
+    if (up >= FLICK) { gone = true; player.spells.skyward(); }
+  });
+  for (const ev of ['pointerup', 'pointercancel']) atkBtn.addEventListener(ev, (e) => { if (e.pointerId === finger) { finger = null; near(0); } });
+  rainBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); player.spells.skyward(); });
+  addEventListener('keydown', (e) => { if (e.code === 'KeyR' && !e.repeat) player.spells.skyward(); });
+}
+document.body.append(rainBtn);
 
 // the sprite: it goes everywhere with her (sprite-companion.js), and here it is the light
 await onStep('ปลุกสไปรต์');
@@ -307,6 +396,12 @@ const lampBtn = document.createElement('button'); lampBtn.type = 'button'; lampB
 lampBtn.onclick = () => { lampOn = !lampOn; lampBtn.classList.toggle('on', lampOn); };
 bar.append(lampBtn);
 
+// ---- 🗺 the map, as the hill village's (game-map.js): a small round one at the top that follows her; a tap on it opens the
+// whole hall, a pin on every level, and ไปที่นี่ takes her there
+const ICONS = { 'ทางเข้า': '📍', 'พื้นป่า': '🌳', 'ชั้นหิน': '🪨', 'ระเบียง': '⛰', 'หิ้งสูง': '✨' };
+const gameMap = await createGameMap({ url: './assets/maps/cave-hall-map.json', player,
+  places: level.places.map((p, i) => ({ key: 'cave' + i, label: `${ICONS[p.name] || '📍'} ${p.name}`, x: p.x, z: p.z, yaw: p.heading })) });
+
 // ---- a frame
 function step(dt) {
   dt = Math.min(dt, 0.05);
@@ -314,9 +409,13 @@ function step(dt) {
   N.setWalker(player.position, 0.55);                        // (the ferns and the grass part round her)
   updateAnimals(dt);                                         // (the sprite)
   circles.update(dt, camera);
+  blinkFx.update(dt, camera);
+  blinkBtn.classList.toggle('wait', !blink.ready);           // (not again yet)
+  rainBtn.classList.toggle('on', !!player.spells.skyReady);  // (she holds the lance: it may be thrown up)
   hall.update(dt, camera);
   keepCameraInAir();
   lampAt();
+  gameMap.update();
   if (music) music.update(dt, { when: 'day', drowned: 0 });
 }
 let fixedCam = null;
@@ -327,7 +426,7 @@ function draw() {
 
 // for a test (or the console): run(s) steps the game without drawing (then draws once); keys('KeyW', true) holds a key
 window.caveTrial = {
-  ready: false, held: false, player, level, hall, hero, camera, renderer, scene, patched, sounds, music,
+  ready: false, held: false, player, level, hall, hero, camera, renderer, scene, patched, sounds, music, gameMap, spellKit, blink,
   run(seconds, { fps = 30, show = true, each = null } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) { step(1 / fps); if (each) each(); } if (show) draw(); },
   place(i) { const p = level.places[i]; player.teleport(p.x, p.z, p.heading); },
   keys(code, down) { dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code })); },
