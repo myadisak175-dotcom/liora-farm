@@ -25,8 +25,8 @@ const SQUARE = 0.5;               // she comes at it within 60 degrees of square
 
 export function findHurdle(colliders, x, z, y, dx, dz, k, near, out) {
   const body = BODY0 * k, spans = [];
-  for (const c of colliders) {
-    const [cx, cz, cr, lo, hi] = c;
+  for (let i = 0; i < colliders.length; i++) {      // (read by index, not taken apart as [cx, cz, ...]: that made garbage for every one of them, every frame)
+    const c = colliders[i], cx = c[0], cz = c[1], cr = c[2], lo = c[3], hi = c[4];
     if (lo !== undefined && (y < lo || (hi !== undefined && y > hi))) continue;      // (not there at her height)
     const R = cr + body, ox = x - cx, oz = z - cz;
     const b = ox * dx + oz * dz, q = ox * ox + oz * oz - R * R, disc = b * b - q;

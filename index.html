@@ -172,7 +172,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=72",
+  "./hill-village-level.js": "./hill-village-level.js?v=73",
   "./forest-floor.js": "./forest-floor.js?v=2",
   "./farm-soil.js": "./farm-soil.js?v=3",
   "./farm-debris.js": "./farm-debris.js?v=3",
@@ -210,7 +210,7 @@
   "./stylized-sky.js": "./stylized-sky.js?v=alps1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1strip1",
   "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1face2",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./character-springs.js": "./character-springs.js?v=2",
@@ -236,8 +236,8 @@
   "./abyss-shape.js": "./abyss-shape.js?v=8",
   "./abyss-scene.js": "./abyss-scene.js?v=7",
   "./abyss-depths.js": "./abyss-depths.js?v=3j2",
-  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2",
-  "./player-moves.js": "./player-moves.js?v=31",
+  "./player.js": "./player.js?v=stand1wade1size1edge2jump1spring1swap1view1under2gc1",
+  "./player-moves.js": "./player-moves.js?v=32",
   "./blink.js": "./blink.js?v=2",
   "./blink-fx.js": "./blink-fx.js?v=1",
   "./blink-sounds.js": "./blink-sounds.js?v=2",
@@ -266,9 +266,9 @@
   "./magic-jump.js": "./magic-jump.js?v=15",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=6",
   "./player-input.js": "./player-input.js?v=4",
-  "./player-camera.js": "./player-camera.js?v=3",
+  "./player-camera.js": "./player-camera.js?v=4",
   "./player-climb.js": "./player-climb.js?v=2",
-  "./player-hurdle.js": "./player-hurdle.js?v=3",
+  "./player-hurdle.js": "./player-hurdle.js?v=4",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
   "./step-sounds.js": "./step-sounds.js?v=15",
   "./ambience.js": "./ambience.js?v=7",
@@ -279,7 +279,7 @@
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
   "./legacy-wood-props.js": "./legacy-wood-props.js?v=woodpaint1",
-  "./character-shadow.js": "./character-shadow.js?v=shadow2swap1",
+  "./character-shadow.js": "./character-shadow.js?v=shadow2swap1face1",
   "./curse.js": "./curse.js?v=3",
   "./world-switch.js": "./world-switch.js?v=2",
   "./curse-weather.js": "./curse-weather.js?v=3",
@@ -382,10 +382,24 @@ import { createTunerPanel } from './tuner-panel.js';
 
 const HAZE = '#cde6f2';
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+// ---- one colour space for the screen and for the pictures drawn off it (27 Nov 2026, iPhone: "กระตุกมาก"). three.js gives
+// a material drawn both on the screen (sRGB) and into a picture (linear: the mirror on the water, what is seen through it,
+// her shadow's picture) a program for each, and each time it goes from one to the other looks its program up again (a big
+// object and a long key made every time): by the water some 300 times a frame, 400 KB of garbage a frame (headless), on
+// Safari time and garbage collection, both seen as stutter. The game's own shaders write their colours as they are (raw
+// sRGB values) and never used the conversion; three's own materials (the blob under her feet, the sprite's shadow, the
+// falls' spray) are given it back in the one line of theirs that did it, so on the screen everything looks as it did
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+THREE.ShaderChunk.colorspace_fragment = 'gl_FragColor = sRGBTransferOETF( gl_FragColor );';
 // Bound Retina render cost; recover resolution gradually when the device has headroom.
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const fastMode = new URLSearchParams(location.search).get('fps') === '120';
+const fpsAsked = new URLSearchParams(location.search).get('fps');
+const fastMode = fpsAsked === '120';
 const targetFPS = fastMode ? 120 : 60;
+// the pace frames are drawn at: 60, or a steady 30 on a phone that cannot keep 60 (the tuner, below). ?fps=30: always 30;
+// ?fps=60: always 60, to compare (as it was before 27 Nov 2026); ?fps=120: always 120
+let pace = fpsAsked === '30' ? 30 : targetFPS;
+const paceFixed = fpsAsked === '30' || fpsAsked === '60' || fastMode;
 const maxDPR = Math.min(devicePixelRatio || 1, +new URLSearchParams(location.search).get('dpr') || (fastMode ? 1.25 : 1.5));      // a phone's own resolution is far more pixels than a painted look needs; ?dpr=2 to compare
 let renderDPR = IOS ? Math.min(maxDPR, 1.5) : maxDPR;
 renderer.setPixelRatio(renderDPR);
@@ -804,23 +818,40 @@ if (farmTools && farmTools.fxObject) scene.add(farmTools.fxObject);      // (her
 // over wherever the phone was near its limit.
 const fpsEl = document.getElementById('fps');
 const gaps = [];                                     // (this second's frames, how long each took)
-let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms, the last minute's)
+let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms (at 30: 45 ms, a frame missed), the last minute's)
 let fpsN = 0, fpsT = 0, warm = 0, good = 0, played = 0, gaveBackAt = -1e9, holdUntil = 0, dprDue = false, mirrorWas = -1;      // (played: seconds of play the tuner has seen; mirrorWas: the mirror's quality before the tuner first lowered it)
+let at30 = -1e9, tried60 = -1e9, wait60 = 30;        // (when the pace went down to 30; when 60 was last tried again; how long to keep 30 before trying)
 const setDPR = v => { renderDPR = v; dprDue = true; };      // (the picture's size changes as the next frame begins: changed after a frame is drawn, the screen would show one empty frame, a blink)
 const tookAway = () => { if (played - gaveBackAt < 8) holdUntil = played + 45; };
 const gaveBack = () => { gaveBackAt = played; };
 const mayGiveBack = () => played >= holdUntil;
+// NOT 60, THEN A STEADY 30 (27 Nov 2026: on the user's iPhone and iPad "กระตุกมาก", at 32 fps with the picture, the
+// clouds, the mirror and the grass all taken down as far as they go). A phone that cannot draw a frame in 16 ms drew them
+// at 16, 33 and 50 ms as each happened to fit: the eye sees that unevenness as stutter, more than it sees 30 itself. So the
+// first thing the tuner does when 60 is not kept is to draw every other frame of the screen's, a steady 33 ms, with the
+// picture whole; what it took away before (a coarser picture, cheaper clouds and mirror, thinner grass) it takes away only
+// if 30 is not kept either, and gives back as soon as 30 is kept with room. With everything whole and 30 kept for a while it
+// tries 60 again (the place she is in may be lighter): kept, it stays; not, back to 30 at once, and the next try waits
+// twice as long (30 s, then 1, 2, 4, at most 5 minutes)
 function tune(dt, raw = dt) {
   fpsN++; fpsT += dt; warm += dt; played += dt; gaps.push(dt);
-  if (raw > 0.05) hitches.push([played, raw]);
+  if (raw > (pace === 30 ? 0.045 : 0.05)) hitches.push([played, raw]);
   if (fpsT < 1) return;
   gaps.sort((a, b) => a - b);
   const fps = 1 / Math.max(gaps[gaps.length >> 1], 1e-3), mean = fpsN / fpsT;      // (fps: the typical frame's pace; mean: the average's, as shown)
+  let late = 0; for (const d of gaps) if (d > 1.75 / pace) late++;
+  const uneven = late > gaps.length * 0.2;           // (a fifth of the frames late by a whole frame of theirs (a 60 Hz screen's frame), though the typical one may be on time)
   fpsN = 0; fpsT = 0; gaps.length = 0;
   hitches = hitches.filter(h => played - h[0] < 60);
-  const g = level.grass.userData, slow = fps < targetFPS * 0.78, easy = fps > targetFPS * 0.93;
-  if (warm > 4) {
-    if (slow && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; }
+  const g = level.grass.userData, slow = fps < pace * 0.78, easy = fps > pace * 0.93;
+  const whole = renderDPR >= maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1) && (mirrorWas < 0 || level.optics.quality >= mirrorWas);
+  if (warm > 4 || (pace > 30 && played - tried60 < 4 && warm > 2)) {      // (60 tried again: told sooner whether it is kept)
+    if ((slow || uneven) && pace > 30 && !paceFixed) {
+      if (played - tried60 < 8) wait60 = Math.min(300, wait60 * 2); else wait60 = 30;      // (60 tried again and not kept: the next try waits longer)
+      pace = 30; at30 = played; warm = 2; good = 0;
+    }
+    else if (pace === 30 && !paceFixed && whole && easy && played - at30 > wait60 && played - tried60 > wait60) { pace = targetFPS; tried60 = played; warm = 0; good = 0; }
+    else if (slow && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; }
     else if (easy && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
       if (mayGiveBack() && ++good >= 4) { setDPR(Math.min(maxDPR, renderDPR + 0.125)); gaveBack(); warm = 2; good = 0; }
     }
@@ -835,7 +866,7 @@ function tune(dt, raw = dt) {
     }
     else good = 0;
   }
-  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
+  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ล็อก 30)' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
     + ' · กระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '');
 }
 
@@ -1043,7 +1074,8 @@ const frame = (dt = clock.getDelta()) => {
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
 // phone turns into heat, not into anything the eye needs here: frames that come too soon are skipped (?fps=120 keeps them all).
-const frameGap = 1000 / targetFPS - 2;               // ms between frames; the 2 forgives a tick that arrives a hair early
+// At a pace of 30 (the tuner, above: a phone that cannot keep 60) every other one of the screen's is drawn, evenly
+const frameGap = () => 1000 / pace - 2;              // ms between frames; the 2 forgives a tick that arrives a hair early
 let lastFrameAt = -1e9;
 // In an editor the view looks down on far more ground than a walk does, and nothing in it has to move smoothly: 30 frames a
 // second while a finger is on the screen (and a moment after), 15 when it is left alone. Half and a quarter of the work, so of
@@ -1052,7 +1084,7 @@ const EDIT_GAP = 1000 / 30 - 2, EDIT_IDLE_GAP = 1000 / 15 - 2, EDIT_LINGER = 120
 let touchedAt = -1e9;
 for (const type of ['pointerdown', 'pointermove', 'wheel']) addEventListener(type, () => { touchedAt = performance.now(); }, { capture: true, passive: true });
 const animate = t => {
-  const gap = editing() ? (performance.now() - touchedAt < EDIT_LINGER ? EDIT_GAP : EDIT_IDLE_GAP) : frameGap;
+  const gap = editing() ? (performance.now() - touchedAt < EDIT_LINGER ? EDIT_GAP : EDIT_IDLE_GAP) : frameGap();
   if (t - lastFrameAt < gap) return;
   lastFrameAt = t; frame();
 };

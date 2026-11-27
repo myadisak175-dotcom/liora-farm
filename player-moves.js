@@ -255,7 +255,9 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
 
   // ---- solid things: tree trunks, rocks, houses, the edge of the map (she slides along them, in the air too)
   function solids(p, k) {
-    for (const [cx, cz, cr, lo, hi, top] of level.colliders) {
+    const list = level.colliders;
+    for (let i = 0; i < list.length; i++) {      // (read by index, not taken apart as [cx, cz, ...]: that made garbage for every one of them, every frame)
+      const c = list[i], cx = c[0], cz = c[1], cr = c[2], lo = c[3], hi = c[4], top = c[5];
       if (lo !== undefined && (pos.y < lo || (hi !== undefined && pos.y > hi))) continue;      // (one only at some heights: a bridge's parapets are not there for her under it)
       // a low thing she can go over (one with a top: a parapet, a fence, a barrel): in the air with her feet over its top,
       // she flies over it (it stood up to the sky before, and four jumps could not get her over a bridge's side)

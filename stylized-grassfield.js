@@ -195,9 +195,40 @@ export function createGroundMap({
       job.q = end;
       if (performance.now() - t0 > ms) return false;
     }
-    cov.set(nc); data.set(stage); texture.needsUpdate = true; castTex.needsUpdate = true;
+    cov.set(nc); data.set(stage);
+    if (!sendInStrips()) { texture.needsUpdate = true; castTex.needsUpdate = true; }
     job = null;
     return true;
+  };
+  // SENT A STRIP AT A TIME. The new shadows used to go to the GPU whole, both pictures at once (at 1280 a side 6.5 MB of
+  // colour and 1.6 MB of shadow), on the frame they were done: with the clock running some every 9 seconds, and on an
+  // iPhone a freeze each time (27 Nov 2026: "บนไอโฟน ไอแพด กระตุกมาก"). A level that calls send(renderer) every frame has
+  // them sent STRIP rows a frame instead: the new shadows come in across the map from one edge to the other in half a
+  // second, the sun having moved a few degrees. Without send (or before the pictures were first sent whole) as before.
+  // A picture sent whole meanwhile (texture.needsUpdate: a stroke of the path brush, her farm's beds) carried the new
+  // shadows with it: its strips stop there. sending: strips are still on their way
+  const STRIP = 80;
+  let sendR = null, strips = null;
+  const sentWhole = t => { const p = sendR.properties.get(t); return !!p.__webglTexture && p.__version === t.version; };
+  const sendInStrips = () => {
+    if (!sendR || !sentWhole(texture) || !sentWhole(castTex)) return false;
+    strips = { row: 0, of: [{ t: texture, bytes: 4, v: texture.version }, { t: castTex, bytes: 1, v: castTex.version }] };
+    return true;
+  };
+  const send = renderer => {
+    sendR = renderer;
+    if (!strips) return;
+    const gl = renderer.getContext(), y0 = strips.row, y1 = Math.min(size, y0 + STRIP);
+    for (const s of strips.of) {
+      if (s.t.version !== s.v) continue;                                         // (sent whole meanwhile)
+      renderer.state.bindTexture(gl.TEXTURE_2D, renderer.properties.get(s.t).__webglTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, s.bytes === 4 ? 4 : 1);
+      gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0); gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y0, size, y1 - y0, s.bytes === 4 ? gl.RGBA : gl.RED, gl.UNSIGNED_BYTE, s.t.image.data, y0 * size * s.bytes);
+    }
+    strips.row = y1;
+    if (y1 >= size) strips = null;
   };
   let lawnTexture = null, lawnAt = null;
   if (lawn) {
@@ -210,7 +241,7 @@ export function createGroundMap({
     };
   }
   // area: where the live grass currently is (centre x, centre z, tile size; 0 = no follow-grass). Ground and grass share it.
-  return { texture, cast: castTex, castTint, beginCast, stepCast, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, lawnTexture, lawnAt, dispose() { texture.dispose(); castTex.dispose(); if (lawnTexture) lawnTexture.dispose(); } };
+  return { texture, cast: castTex, castTint, beginCast, stepCast, send, get sending() { return !!strips; }, data, size, radius, center: [cx, cz], rect: new THREE.Vector3(cx, cz, 1 / span), area: new THREE.Vector3(0, 0, 0), paint: { value: 0 }, grassAt, lawnTexture, lawnAt, dispose() { texture.dispose(); castTex.dispose(); if (lawnTexture) lawnTexture.dispose(); } };
 }
 
 // GLSL shared by ground and blades: where to look in the map

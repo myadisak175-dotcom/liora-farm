@@ -1159,7 +1159,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       else water.update(renderer);
       if (farm) { farm.soil.update(dt); farm.debris.update(dt); }
       const nowT = N._internal.shared.uTime.value;
-      if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); map.texture.needsUpdate = true; } if (farm) farm.soil.restamp(); } }      // (the map's grass laid back as it was when the shadows began: the strokes and her farm's beds laid again)
+      map.send(renderer);                                                  // (the sun's new shadows, a strip a frame: stylized-grassfield.js, SENT A STRIP AT A TIME)
+      if (castBusy) { if (map.stepCast(2.5)) { castBusy = false; lastCast = nowT; cast.dir.copy(castSun); if (liveOps.length) { liveOps.forEach(stampOp); if (!map.sending) map.texture.needsUpdate = true; } if (farm) farm.soil.restamp(); } }      // (the map's grass laid back as it was when the shadows began: the strokes and her farm's beds laid again, before the strips that carry them go)
       else if (nowT - lastCast > 4 && (castSun.angleTo(wantSun) > 0.075 || Math.abs(castK - wantK) > 0.12)) { castSun.copy(wantSun); castK = wantK; castBusy = true; map.beginCast(sunShadows(castSun), castK); }
     },
     setSun(dir, k = 1) {
