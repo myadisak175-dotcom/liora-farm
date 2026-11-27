@@ -840,27 +840,107 @@ let fpsN = 0, fpsT = 0, played = 0;                  // (played: seconds of play
 let tick = 1000 / 60, tickMin = Infinity;
 const tickSeen = [];
 // (28 Nov 2026: on the iPhone 60 after a reload, ~20 after some minutes of play, 60 again after a reload or the screen off;
-// headless nothing grows. Two more things to tell, with ?dev=1 only:) GPU: how long after a frame is handed over the GPU
-// has done it (a fence after the frame's last drawing, looked at every few milliseconds: if this grows with the gaps, the
-// chip itself is slower; if not, something after it holds the frames). เล่น: minutes since the page loaded, and what is
-// held on the GPU (three.js's geometries and pictures), to see what, if anything, grows while she plays
-const gpuT = [], gpuQ = [], gl2 = renderer.getContext(), gpuWatch = Q.has('dev') && !!gl2.fenceSync && !measuring;
-let gpuPolling = false;
-const gpuPoll = () => {
+// headless nothing grows: eight minutes of the game's own loop, its GL calls counted, its timers, what it keeps. So, with
+// ?dev=1 only, the game itself tells which of the places a frame can be held is the one, in one picture of the readout:)
+//   GPU n ms      how long after a frame is handed over the GPU has done it (a fence after the frame's last drawing)
+//   ส่งภาพ n ms   how long the page stays held after its own work for a frame, handing the picture on (a message posted as
+//                 the frame's work ends is only heard once the browser is free again)
+//   Safari        SAFARI'S OWN BRAKE. In Low Power Mode, or when iOS says the device's thermal state is serious, Safari
+//                 lines a page's repeating timers up on a grid of 30 ms (WebKit: Page::updateDOMTimerAlignmentInterval,
+//                 DOMTimer::defaultAlignmentIntervalInLowPowerOrThermallyMitigatedMode; 4 ms otherwise), so a page can
+//                 tell: a timer of 4 ms, sixteen times, every quarter minute. ปกติ: its ticks came 4 ms apart. เบรก: 30
+//                 apart, on that grid. When the page is too busy for either to show, the frames are held a moment and
+//                 it is tried again
+//   ชิป n ms (ดีสุด m) ×r   THE CHIP'S OWN SPEED: one fixed piece of GPU work, the same every time (a square of 256 drawn K
+//                 times over with a loop in every pixel; K found once, so that it takes some 24 ms on this device, and
+//                 kept with the shortest time ever seen: localStorage liora.chip), timed every quarter minute from when
+//                 the GPU has done what came before it. r times its best: the chip does the same work that much slower
+//   เล่น n นาที · geo · tex · ตกที่ m นาที   minutes since the page loaded, what three.js holds on the GPU, and the minute
+//                 the frames first fell (under 0.6 of the pace for five seconds running)
+const gpuT = [], sendT = [], gpuQ = [], gl2 = renderer.getContext(), devWatch = Q.has('dev') && !measuring, gpuWatch = devWatch && !!gl2.fenceSync;
+let gpuPolling = false, gpuDoneAt = 0, fenceKind = 'f', sendAt = 0, holdUntil = 0, held = false;
+const gpuLook = () => {
+  let same = false;                                                            // (two done between one look and the next: the second's own time is not known)
   while (gpuQ.length) {
-    const [s, t] = gpuQ[0];
+    const [s, t, kind] = gpuQ[0];
     if (gl2.getSyncParameter(s, gl2.SYNC_STATUS) !== gl2.SIGNALED) break;
-    gpuT.push(performance.now() - t); gl2.deleteSync(s); gpuQ.shift();
+    const now = performance.now();
+    if (kind === 'p') chip.done(same ? -1 : now - Math.max(t, gpuDoneAt)); else if (kind === 'f') gpuT.push(now - t);      // ('x': the frame drawn behind a test of the chip: not counted)
+    gpuDoneAt = now; same = true; gl2.deleteSync(s); gpuQ.shift();
   }
-  gpuPolling = gpuQ.length > 0;
-  if (gpuPolling) setTimeout(gpuPoll, 1);
+  if (chip) chip.stale();
 };
-const gpuFence = () => {
+const gpuPoll = () => { gpuLook(); gpuPolling = gpuQ.length > 0; if (gpuPolling) setTimeout(gpuPoll, 4); };      // (every 4 ms: each look asks the GPU's process)
+const gpuFence = (kind = 'f') => {
   if (!gpuWatch) return;
-  if (gpuQ.length > 8) gl2.deleteSync(gpuQ.shift()[0]);                       // (none left waiting for ever)
-  gpuQ.push([gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0), performance.now()]); gl2.flush();
-  if (!gpuPolling) { gpuPolling = true; setTimeout(gpuPoll, 1); }
+  if (gpuQ.length > 8) { const old = gpuQ.shift(); gl2.deleteSync(old[0]); if (old[2] === 'p') chip.done(NaN); }      // (none left waiting for ever)
+  gpuQ.push([gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0), performance.now(), kind]); gl2.flush();
+  if (!gpuPolling) { gpuPolling = true; setTimeout(gpuPoll, 4); }
 };
+const sendCh = devWatch && typeof MessageChannel !== 'undefined' ? new MessageChannel() : null;
+if (sendCh) sendCh.port1.onmessage = e => {
+  if (e.data === 0 && sendAt) { sendT.push(performance.now() - sendAt); sendAt = 0; }
+  if (gpuWatch) gpuLook();
+  if (chip && chip.busy) sendCh.port2.postMessage(1);                          // (a test of the chip under way: looked at again and again until it is done)
+};
+const chip = gpuWatch ? (() => {
+  const KEY = 'liora.chip', rt = new THREE.WebGLRenderTarget(256, 256, { depthBuffer: false });
+  const geo = new THREE.InstancedBufferGeometry().copy(new THREE.PlaneGeometry(2, 2));
+  const quad = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+    depthTest: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending,      // (laid one over another, each one worked out: none can be skipped as hidden)
+    vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: 'void main() { vec2 p = gl_FragCoord.xy * 0.013; float a = 0.0; for (int i = 0; i < 64; i++) { p = vec2(sin(p.x * 1.7 + p.y), cos(p.y * 1.3 - p.x)) + 0.01 * float(i); a += p.x * p.y; } gl_FragColor = vec4(vec3(fract(a) * 0.002), 1.0); }',
+  }));
+  quad.frustumCulled = false;
+  const sc = new THREE.Scene(), cam = new THREE.Camera(); sc.add(quad);
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (err) { /* (none kept) */ }
+  let K = saved.k > 0 ? saved.k : 4, best = saved.k > 0 && saved.best > 0 ? saved.best : Infinity, settled = saved.k > 0;
+  let last = 0, warm = false, busy = false, began = 0, nextAt = performance.now() + 4000;
+  return {
+    get text() { return last ? `ชิป ${Math.round(last)} ms (ดีสุด ${Math.round(best)}) ×${(last / best).toFixed(1)}` : 'ชิป …'; },
+    get busy() { return busy; },
+    tick() {
+      if (busy || performance.now() < nextAt) return;
+      busy = true; began = performance.now(); geo.instanceCount = K;
+      const target = renderer.getRenderTarget();
+      renderer.setRenderTarget(rt); renderer.render(sc, cam); renderer.setRenderTarget(target);
+      gpuFence('p'); fenceKind = 'x';
+      if (sendCh) sendCh.port2.postMessage(1);
+    },
+    stale() { if (busy && performance.now() - began > 3000) this.done(NaN); },      // (never heard of again: let go)
+    done(ms) {
+      busy = false; nextAt = performance.now() + 15000;
+      if (Number.isNaN(ms)) return;
+      if (!warm) { warm = true; nextAt = performance.now() + 500; return; }      // (the first: its shader was made in it)
+      if (!settled) {
+        if (ms < 24 && K < 4096) { K *= 2; nextAt = performance.now() + 500; return; }
+        settled = true; best = Infinity;
+      }
+      if (ms < 0) return;
+      last = ms; best = Math.min(best, ms);
+      try { localStorage.setItem(KEY, JSON.stringify({ k: K, best })); } catch (err) { /* (not kept) */ }
+    },
+  };
+})() : null;
+let brake = 'Safari …', brakeBusy = false, brakeAt = -1e9;
+const brakeTest = clean => {
+  brakeBusy = true;
+  const at = [], id = setInterval(() => {
+    at.push(performance.now());
+    if (at.length < 16) return;
+    clearInterval(id); holdUntil = 0;
+    const gaps = []; for (let i = 8; i < at.length; i++) gaps.push(at[i] - at[i - 1]);      // (a repeating timer is lined up from its sixth firing on)
+    // (on the grid no two firings running can come within 26 ms: a late one may be followed 5 ms on by one on time, never by two)
+    let two = Infinity; for (let i = 1; i < gaps.length; i++) two = Math.min(two, gaps[i] + gaps[i - 1]);
+    const onGrid = gaps.every(g => g > 24 && Math.abs(g - 30 * Math.round(g / 30)) <= 3);
+    if (two < 26) brake = `Safari ปกติ (${Math.round(two / 2)} ms)`;
+    else if (onGrid) brake = 'Safari เบรก: ร้อน/ประหยัดแบต (30 ms)';
+    else if (!clean) { holdUntil = performance.now() + 700; return brakeTest(true); }      // (too busy to tell: once more, the frames held meanwhile)
+    else brake = `Safari ? (${Math.round(two / 2)} ms)`;
+    brakeBusy = false;
+  }, 4);
+};
+let fellAt = 0, lowRun = 0;
 const loadedAt = performance.now();
 function tune(dt, raw = dt) {
   if (measuring) return;                             // (frame-measure.js times the frames itself)
@@ -874,16 +954,22 @@ function tune(dt, raw = dt) {
   hitches = hitches.filter(h => played - h[0] < 60);
   const mid = a => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return Math.round(b[b.length >> 1]); };
   const most = a => (a.length ? Math.round(Math.max(...a)) : 0);
-  const parts = `งาน ${mid(workT)} ms (สูงสุด ${most(workT)}) · วาด ${mid(drawT)} ms` + (gpuWatch ? ` · GPU ${gpuT.length ? mid(gpuT) : '?'} ms` : ''), gapMid = mid(gapT);
-  gapT.length = 0; workT.length = 0; drawT.length = 0; gpuT.length = 0;
-  const mem = renderer.info.memory;
+  const parts = `งาน ${mid(workT)} ms (สูงสุด ${most(workT)}) · วาด ${mid(drawT)} ms` + (devWatch ? `\nGPU ${gpuT.length ? mid(gpuT) : '?'} ms · ส่งภาพ ${sendT.length ? mid(sendT) : '?'} ms` : ''), gapMid = mid(gapT);
+  gapT.length = 0; workT.length = 0; drawT.length = 0; gpuT.length = 0; sendT.length = 0;
+  const mem = renderer.info.memory, nowT = performance.now();
+  if (devWatch) {
+    lowRun = mean < 0.6 * pace ? lowRun + 1 : 0;
+    if (!fellAt && lowRun >= 5) fellAt = (nowT - loadedAt) / 60000;
+    if (!brakeBusy && nowT - brakeAt > 15000 && nowT - loadedAt > 3000) { brakeAt = nowT; brakeTest(false); }
+  }
   const g = level.grass.userData;
   fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ตั้ง 30)' : '') + ' · จอ ' + (Number.isFinite(tick) ? Math.round(1000 / tick) : '?') + 'Hz · ห่าง ' + gapMid + ' ms'
     + '\n' + parts
     + '\n' + drawn[0] + ' draw · ' + (drawn[1] / 1e6).toFixed(1) + 'M สามเหลี่ยม'
     + '\nภาพ ' + Math.round(renderDPR / prettyDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
     + '\nกระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '')
-    + '\nเล่น ' + ((performance.now() - loadedAt) / 60000).toFixed(1) + ' นาที · ' + mem.geometries + ' geo · ' + mem.textures + ' tex';
+    + '\nเล่น ' + ((nowT - loadedAt) / 60000).toFixed(1) + ' นาที · ' + mem.geometries + ' geo · ' + mem.textures + ' tex' + (fellAt ? ' · ตกที่ ' + fellAt.toFixed(1) + ' นาที' : '')
+    + (devWatch ? '\n' + brake + (chip ? '\n' + chip.text : '') : '');
 }
 
 // ---- the scene editor: fix the ways and the plants by hand (only where the level can be edited)
@@ -1035,7 +1121,7 @@ const frame = (dt = clock.getDelta()) => {
   const d0 = performance.now();
   renderer.render(scene, camera);
   drawT.push(performance.now() - d0);
-  gpuFence();                                                                    // (?dev=1: when the GPU has done this frame, for the readout)
+  gpuFence(fenceKind); fenceKind = 'f';                                          // (?dev=1: when the GPU has done this frame, for the readout)
   drawn = [renderer.info.render.calls, renderer.info.render.triangles]; if (!measuring) renderer.info.reset();      // (every pass of the frame: autoReset is off, below; ?measure counts its own)
   if (editing()) { fpsN = 0; fpsT = 0; rawT = 0; gapT.length = 0; workT.length = 0; drawT.length = 0; } else tune(dt, raw);      // (an editor draws fewer frames on purpose: not counted)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
@@ -1055,11 +1141,18 @@ let lastTick = -1;
 const animate = t => {
   if (lastTick >= 0 && t - lastTick > 4) tickMin = Math.min(tickMin, t - lastTick);      // (the screen's frame: THE SCREEN'S OWN FRAME, above)
   lastTick = t;
+  if (devWatch) {                                                              // (?dev=1: SAFARI'S OWN BRAKE being looked for, the frames held a moment; the hold is not counted as a hitch)
+    if (gpuWatch) gpuLook();
+    if (performance.now() < holdUntil) { held = true; return; }
+    if (held) { held = false; clock.getDelta(); lastFrameAt = -1e9; }
+  }
   const gap = editing() ? (performance.now() - touchedAt < EDIT_LINGER ? EDIT_GAP : EDIT_IDLE_GAP) : frameGap();
   if (t - lastFrameAt < gap) return;
   if (lastFrameAt > 0) gapT.push(t - lastFrameAt);
   lastFrameAt = t;
+  if (chip && !editing()) chip.tick();                                         // (?dev=1: THE CHIP'S OWN SPEED, every quarter minute)
   const c0 = performance.now(); frame(); workT.push(performance.now() - c0);
+  if (sendCh) { sendAt = performance.now(); sendCh.port2.postMessage(0); }     // (?dev=1: heard when the browser is free again: ส่งภาพ)
 };
 const syncVisibility = () => {
   clock.getDelta(); fpsN = 0; fpsT = 0; rawT = 0; lastTick = -1; lastFrameAt = -1e9; gapT.length = 0;
