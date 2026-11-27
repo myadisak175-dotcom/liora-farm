@@ -14,6 +14,8 @@
 
    A house: w metres across (4, 6 or 8), l metres along its ridge (4 .. 14, the sizes the kit has roofs for), ridge along
    its own z, gables at +z ("front") and -z, eaves at +x and -x. y = 0 is the foot of the walls.
+   roofHole: { x, z, rx, rz } in its spec leaves the tiles out over an ellipse of the roof as seen from above (an old house's
+   roof fallen in; the hero's cottage, old-farm.js).
    houseFootprint(spec) gives [w, l] with the eaves' and steps' room, for colliders and bare ground.
 
    look: 'kit' (the kit's own painted pictures) or 'flat' (each face one flat colour taken from them, like the restyled props).
@@ -65,20 +67,39 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
     return d;
   };
 
+  // a piece's geometry without the triangles whose middle drop(x, y, z) names (its own frame); every corner of its own
+  const without = (geometry, drop) => {
+    const g = geometry.index ? geometry.toNonIndexed() : geometry.clone(), pos = g.attributes.position, keep = [];
+    for (let t = 0; t < pos.count; t += 3) {
+      const x = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3, y = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3, z = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3;
+      if (!drop(x, y, z)) keep.push(t);
+    }
+    const out = new THREE.BufferGeometry();
+    for (const [name, a] of Object.entries(g.attributes)) {
+      const n = a.itemSize, src = a.array, dst = new src.constructor(keep.length * 3 * n);
+      keep.forEach((t, k) => dst.set(src.subarray(t * n, (t + 3) * n), k * 3 * n));
+      out.setAttribute(name, new THREE.BufferAttribute(dst, n));
+    }
+    out.setIndex(Array.from({ length: keep.length * 3 }, (_, k) => k));    // (indexed, as the other pieces are: they are merged together)
+    g.dispose();
+    return out;
+  };
+
   function builder() {
     const parts = new Map();                                               // picture key -> geometries, already where they stand
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), root = new THREE.Matrix4();
-    const put = (name, m) => {
+    const put = (name, m, drop = null) => {
       const prims = pieces.get(name);
       if (!prims) { console.warn('[kit] no piece', name); return; }
-      for (const p of prims) { const g = p.geometry.clone().applyMatrix4(m); if (!parts.has(p.key)) parts.set(p.key, []); parts.get(p.key).push(g); }
+      for (const p of prims) { const g = (drop ? without(p.geometry, drop) : p.geometry.clone()).applyMatrix4(m); if (!parts.has(p.key)) parts.set(p.key, []); parts.get(p.key).push(g); }
     };
-    // a piece at x, y, z (in the frame set by root), turned yaw about the vertical
-    const local = (name, x, y, z, yaw = 0, sx = 1) => put(name, M.compose(new THREE.Vector3(x, y, z), Q.setFromAxisAngle(UP, yaw), new THREE.Vector3(sx, 1, 1)).premultiply(root));
+    // a piece at x, y, z (in the frame set by root), turned yaw about the vertical; drop(x, y, z): the triangles whose middle
+    // (in the piece's own frame) it names are left out (a hole in a roof)
+    const local = (name, x, y, z, yaw = 0, sx = 1, drop = null) => put(name, M.compose(new THREE.Vector3(x, y, z), Q.setFromAxisAngle(UP, yaw), new THREE.Vector3(sx, 1, 1)).premultiply(root), drop);
     const at = (x, y, z, yaw) => root.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(UP, yaw), new THREE.Vector3(1, 1, 1));
 
     function house(spec, x = 0, y = 0, z = 0, yaw = 0) {
-      const { w = 4, l = 6, floors = 1, wall = 'plaster', upper = 'plaster', door = 'front', doorAt = null, seed = 1, chimney = true, dormer = false, shutters = true, windows = 0.6, tower = false } = spec;
+      const { w = 4, l = 6, floors = 1, wall = 'plaster', upper = 'plaster', door = 'front', doorAt = null, seed = 1, chimney = true, dormer = false, shutters = true, windows = 0.6, tower = false, roofHole = null } = spec;
       const r = mulberry(seed * 7919 + 13), pick = a => a[Math.floor(r() * a.length)];
       at(x, y, z, yaw);
       const nx = w / 2, nz = l / 2, hw = w / 2, hl = l / 2;
@@ -112,7 +133,9 @@ export async function loadVillageKit(url = new URL('./assets/models/village-kit.
       const top = floors * 3;
       if (tower) local('Roof_Tower_RoundTiles', 0, top, 0, 0);
       else {
-        local(`Roof_RoundTiles_${w}x${l}`, 0, top, 0, 0);
+        // roofHole { x, z, rx, rz }: tiles fallen in, an ellipse of the roof as seen from above (metres from the house's middle)
+        const hole = roofHole ? (px, py, pz) => ((px - roofHole.x) / roofHole.rx) ** 2 + ((pz - roofHole.z) / roofHole.rz) ** 2 < 1 : null;
+        local(`Roof_RoundTiles_${w}x${l}`, 0, top, 0, 0, 1, hole);
         local(`Roof_Front_Brick${w}`, 0, top, hl, 0); local(`Roof_Front_Brick${w}`, 0, top, -hl, Math.PI);
         // how high the roof's tiles lie above the walls' top, x metres from the ridge
         const R = ROOF_SHAPE[w], roofY = ax => R.ridge - (R.ridge - R.eave) * Math.min(1, Math.abs(ax) / R.out);

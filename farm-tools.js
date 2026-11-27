@@ -65,7 +65,11 @@ const CSS = `
 `;
 const rngOf = s => () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
 
-export async function createFarmTools({ farm, scene, player, camera = null, heightAt, fx = null, day = DAY } = {}) {
+// The farm as it begins can be told (the hero's old farm, old-farm.js): saveKey, kept under a name of its own; fresh, from the
+// start again; beds ['i,j', ...] dug to begin with; clear ['i,j', ...] nothing lying on them; blocked { 'i,j': what she is
+// told }, squares no tool is used on (nothing lying on them either)
+export async function createFarmTools({ farm, scene, player, camera = null, heightAt, fx = null, day = DAY, saveKey = KEY, fresh = null, beds = [], clear = [], blocked = {} } = {}) {
+  const dug = new Set(beds), bare = new Set([...clear, ...Object.keys(blocked)]);
   const { soil, debris, rect } = farm;
   const v = new THREE.Vector3();
   soil.dryTime = day;
@@ -78,7 +82,7 @@ export async function createFarmTools({ farm, scene, player, camera = null, heig
     const rng = rngOf(SEED);
     for (let j = 0; j < soil.rows; j++) for (let i = 0; i < soil.cols; i++) {
       let r = rng(); const jx = rng() - 0.5, jz = rng() - 0.5, seed = 1 + Math.floor(rng() * 999), key = i + ',' + j;
-      if (CLEAR(i, j) || CURSED.includes(key)) continue;
+      if (CLEAR(i, j) || CURSED.includes(key) || bare.has(key) || dug.has(key)) continue;
       let kind = null;
       for (const [k, p] of KINDS) { if (r < p) { kind = k; break; } r -= p; }
       if (!kind) continue;
@@ -89,14 +93,14 @@ export async function createFarmTools({ farm, scene, player, camera = null, heig
   // ... and as she left it, if she has been here before (?farm=new: from the start again)
   let kept = null;
   try {
-    if (new URLSearchParams(location.search).get('farm') === 'new') localStorage.removeItem(KEY);
-    else { const k = JSON.parse(localStorage.getItem(KEY)); if (k && k.v === 1 && Array.isArray(k.soil) && k.left) kept = k; }
+    if (fresh ?? new URLSearchParams(location.search).get('farm') === 'new') localStorage.removeItem(saveKey);
+    else { const k = JSON.parse(localStorage.getItem(saveKey)); if (k && k.v === 1 && Array.isArray(k.soil) && k.left) kept = k; }
   } catch (e) { /* nothing kept: from the start */ }
   for (const [key, kind, x, z, seed] of START) if (!kept || key in kept.left) debris.put(key, kind, x, z, seed, kept ? kept.left[key] : undefined);
   if (kept) soil.load(kept.soil);
-  else soil.load(Array.from({ length: soil.cols * soil.rows }, (_, k) => (CURSED.includes((k % soil.cols) + ',' + Math.floor(k / soil.cols)) ? 4 : 0)));
+  else soil.load(Array.from({ length: soil.cols * soil.rows }, (_, k) => { const key = (k % soil.cols) + ',' + Math.floor(k / soil.cols); return CURSED.includes(key) ? 4 : dug.has(key) ? 1 : 0; }));
   const save = () => {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, soil: soil.save(), left: Object.fromEntries(debris.keys().map(k => [k, debris.on(k).casts])) })); }
+    try { localStorage.setItem(saveKey, JSON.stringify({ v: 1, soil: soil.save(), left: Object.fromEntries(debris.keys().map(k => [k, debris.on(k).casts])) })); }
     catch (e) { /* not kept: a private window, or full */ }
   };
   let saveIn = -1, saveClock = 0;
@@ -172,6 +176,7 @@ export async function createFarmTools({ farm, scene, player, camera = null, heig
   // ... and of the two (the thing the finger was on first, the ground behind it), the square the tool chosen can be used on:
   // lifting the curse, the cursed square behind a weed; digging, the clear square behind a stone (else the nearer, to be told why)
   const fits = (i, j) => {
+    if (blocked[i + ',' + j]) return false;
     const s = soil.get(i, j), junk = !!debris.on(i + ',' + j), dug = s.tilled > 0.5, cursed = s.cursed > 0.5;
     return tool === 'clear' ? junk : tool === 'till' ? !junk && !cursed && !dug : tool === 'water' ? !junk && (dug || cursed)
       : tool === 'magic' ? !junk && dug && !cursed : tool === 'lift' ? cursed : true;
@@ -183,6 +188,7 @@ export async function createFarmTools({ farm, scene, player, camera = null, heig
     if (Math.hypot(mx - me.x, mz - me.z) > REACH) return say('ไกลไป เข้าไปใกล้อีกหน่อย');
     const s = soil.get(i, j), dug = s.tilled > 0.5, cursed = s.cursed > 0.5, key = i + ',' + j, junk = debris.on(key);
     mark(i, j);
+    if (blocked[key] && tool !== 'rain') return say(blocked[key], 2.4);
     if (tool === 'clear') {
       if (!junk) return say(cursed ? 'เถาหนามคำสาปเคลียร์ไม่ได้ ต้องใช้ 🌱 ถอนคำสาป' : 'ช่องนี้ไม่มีของรก');
       const r = debris.cast(key);
