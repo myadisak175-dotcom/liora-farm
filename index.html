@@ -821,6 +821,17 @@ const gaps = [];                                     // (this second's frames, h
 let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms (at 30: 45 ms, a frame missed), the last minute's)
 let fpsN = 0, fpsT = 0, warm = 0, good = 0, played = 0, gaveBackAt = -1e9, holdUntil = 0, dprDue = false, mirrorWas = -1;      // (played: seconds of play the tuner has seen; mirrorWas: the mirror's quality before the tuner first lowered it)
 let at30 = -1e9, tried60 = -1e9, wait60 = 30;        // (when the pace went down to 30; when 60 was last tried again; how long to keep 30 before trying)
+// THE SCREEN'S OWN FRAME (27 Nov 2026). A frame is drawn on the first of the screen's frames at least a pace's gap after the
+// last (animate, below): on a 60 Hz screen every one of them, on 120 Hz every second (60), but on 90 Hz, which many Android
+// phones have, every second too: 45, the most a pace of 60 can be there. The tuner took that 45 for a phone too slow for 60
+// and, before the steady 30, lowered the picture, the clouds, the mirror and the grass as far as they go however strong the
+// phone; with it, it held 30. So it now judges a pace by what it can be on this screen (cap): 45 on 90 Hz, 48 on 144.
+// tick: the screen's frame, the shortest gap seen between two of its frames in the last few seconds (the browser calls
+// animate on every one, drawn or not), never taken as longer than 60's: a screen slowed to 30 (Low Power Mode) is
+// treated as before
+let tick = 1000 / 60, tickMin = Infinity;
+const tickSeen = [];
+const capOf = p => 1000 / (Math.ceil((1000 / p - 2) / tick - 1e-3) * tick);      // (frames a second a pace p comes to on this screen)
 const setDPR = v => { renderDPR = v; dprDue = true; };      // (the picture's size changes as the next frame begins: changed after a frame is drawn, the screen would show one empty frame, a blink)
 const tookAway = () => { if (played - gaveBackAt < 8) holdUntil = played + 45; };
 const gaveBack = () => { gaveBackAt = played; };
@@ -839,11 +850,14 @@ function tune(dt, raw = dt) {
   if (fpsT < 1) return;
   gaps.sort((a, b) => a - b);
   const fps = 1 / Math.max(gaps[gaps.length >> 1], 1e-3), mean = fpsN / fpsT;      // (fps: the typical frame's pace; mean: the average's, as shown)
-  let late = 0; for (const d of gaps) if (d > 1.75 / pace) late++;
-  const uneven = late > gaps.length * 0.2;           // (a fifth of the frames late by a whole frame of theirs (a 60 Hz screen's frame), though the typical one may be on time)
+  tickSeen.push(tickMin); tickMin = Infinity; if (tickSeen.length > 5) tickSeen.shift();
+  tick = Math.min(1000 / 60, ...tickSeen);           // (the screen's frame, THE SCREEN'S OWN FRAME above)
+  const cap = capOf(pace);                           // (what the pace comes to on this screen: 60 or 45, 30)
+  let late = 0; for (const d of gaps) if (d > 1.75 / cap) late++;
+  const uneven = late > gaps.length * 0.2;           // (a fifth of the frames late by a whole frame of theirs, though the typical one may be on time)
   fpsN = 0; fpsT = 0; gaps.length = 0;
   hitches = hitches.filter(h => played - h[0] < 60);
-  const g = level.grass.userData, slow = fps < pace * 0.78, easy = fps > pace * 0.93;
+  const g = level.grass.userData, slow = fps < cap * 0.78, easy = fps > cap * 0.93;
   const whole = renderDPR >= maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1) && (mirrorWas < 0 || level.optics.quality >= mirrorWas);
   if (warm > 4 || (pace > 30 && played - tried60 < 4 && warm > 2)) {      // (60 tried again: told sooner whether it is kept)
     if ((slow || uneven) && pace > 30 && !paceFixed) {
@@ -866,7 +880,7 @@ function tune(dt, raw = dt) {
     }
     else good = 0;
   }
-  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ล็อก 30)' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
+  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ล็อก 30)' : '') + (tick < 15 ? ' · จอ ' + Math.round(1000 / tick) + 'Hz' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
     + ' · กระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '');
 }
 
@@ -1083,13 +1097,16 @@ let lastFrameAt = -1e9;
 const EDIT_GAP = 1000 / 30 - 2, EDIT_IDLE_GAP = 1000 / 15 - 2, EDIT_LINGER = 1200;
 let touchedAt = -1e9;
 for (const type of ['pointerdown', 'pointermove', 'wheel']) addEventListener(type, () => { touchedAt = performance.now(); }, { capture: true, passive: true });
+let lastTick = -1;
 const animate = t => {
+  if (lastTick >= 0 && t - lastTick > 4) tickMin = Math.min(tickMin, t - lastTick);      // (the screen's frame: THE SCREEN'S OWN FRAME, above)
+  lastTick = t;
   const gap = editing() ? (performance.now() - touchedAt < EDIT_LINGER ? EDIT_GAP : EDIT_IDLE_GAP) : frameGap();
   if (t - lastFrameAt < gap) return;
   lastFrameAt = t; frame();
 };
 const syncVisibility = () => {
-  clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0;
+  clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; lastTick = -1;
   renderer.setAnimationLoop(!document.hidden && !Q.get('still') ? animate : null);
 };
 document.addEventListener('visibilitychange', syncVisibility);
