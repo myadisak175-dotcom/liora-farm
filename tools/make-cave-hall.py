@@ -7,21 +7,33 @@
 #   assets/caves/cave-hall.bin   the mesh (positions, normals, baked light), the floor and ceiling she walks between, and a
 #                                coarse 3D picture of the light in the air (for the plants and for her: cave-light.js)
 #   assets/caves/cave-hall.json  where things are: crystals, mushrooms, trees, the trees hanging from the roof, the pool, the
-#                                shaft of light, the views; and where in the .bin each part is
+#                                shaft of light, the places she can be put at; and where in the .bin each part is
 #
 # The hall (metres; x east, z south, y up; 0 = the forest floor):
 #   a dome ~64 x 48 m, walls ~11 m, ~24 m at its crown, a crack through the roof the sun comes in at (a shaft onto a great tree);
 #   west: a balcony 6 m up (the way in from the crystal passage, a tunnel stub), a ramp down along the south wall;
-#   east: a terrace 8 m up (the way on, a tunnel stub), a ramp up along the north wall;
-#   north-west: a rock shelf 3.5 m up on stepping stones; south-east: a shelf 5 m up (only the magic jump will reach it);
 #   a pool under the crack's east end, fed by a thin fall of water from the crack; two columns floor to roof; fang stalactites;
-#   stalagmites and boulders on the floor.
+#   stalagmites and boulders on the floor; a shelf 5 m up in the south-east.
+# Made to be played (28 Nov 2026: "แต่จะเล่นยังไง ... ไม่มีให้ไต่ กระโดดสี่ชั้น วิ่ง"; chosen: "ไต่ขึ้นสู่แสง"): four levels
+# going up along the north and east walls, the way on at the top. Each level's face is one she climbs (the game's climbing: a
+# face is a steep step in the floor, never an overhang), and some are taken by the magic jump (4.4 m up in all):
+#   0     the forest floor (the run: 40 m of it);
+#   3.5   the rock tier along the north wall, up three stones (a jump each) or by its face;
+#   7     the balcony in the north-east, from the tier up two pillars standing on it, or by the face between them;
+#   11    the arm: a ridge of rock from the east wall reaching toward the shaft of light, its top a way west to its tip beside
+#         the light (a notch across it near the tip, to be jumped); up its 4 m face from the balcony, or straight up its 11 m
+#         face from the pool's shore; at its root, in the east wall, the way on (a tunnel stub, crystals across it).
+# The floor's paint (moss, earth, sand, fallen leaves) and the plants go by the land's own rules, as the world above's do:
+# moss where nothing else is; earth on the ways she walks and at the feet of the faces; sand round the pool; leaves under
+# the trees; trees on the forest floor, more of them toward the light, off the ways, the faces and the shore; bushes at the
+# feet of the walls and faces; ferns in the shade, at the trees' feet and along the walls; grass tufts only where the sun falls.
 #
-# Run: python3 tools/make-cave-hall.py            (needs numpy, scipy, scikit-image; ~1 minute)
+# Run: python3 tools/make-cave-hall.py            (needs numpy, scipy, scikit-image, matplotlib; ~1 minute)
 import json, math, os, struct, sys, time
 import numpy as np
 from scipy import ndimage as ndi
 from skimage import measure
+from matplotlib.path import Path as MPath
 
 T0 = time.time()
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -127,13 +139,25 @@ CRACK = dict(c=(4.0, -3.0), a=4.4, b=1.8, ang=math.radians(25), y=17.0)   # the 
 CRACK_TOP = 34.0
 SHAFT_FOOT = (CRACK['c'][0] - SUN[0] / SUN[1] * 24.0, CRACK['c'][1] - SUN[2] / SUN[1] * 24.0)   # where the shaft reaches the floor
 POOL = dict(c=(9.6, -1.2), r=4.6, level=-0.35, floor=-1.15)
-BALCONY = dict(x=-21.5, h=6.0, z=(-13.0, 13.0))
-TERRACE = dict(x=21.5, h=8.0, z=(-15.0, 9.0))
+BALCONY = dict(x=-21.5, h=6.0, z=(-12.0, 13.0), more=1.5)                # the way in: its ends run `more` m on into the walls
 RAMP_W = [(-24.5, 12.0), (-19.0, 16.4), (-13.0, 19.2), (-8.5, 20.0)]     # balcony (6 m) down to the floor
-RAMP_E = [(2.0, -18.6), (9.0, -18.6), (15.8, -16.9), (22.4, -12.6)]       # the floor up to the terrace (8 m), clear of the wall's bulges
-SHELF_NW = dict(c=(-13.5, -17.5), r=(6.0, 3.6), h=3.5)                    # the shelf on stepping stones
-STEPS_NW = [(-4.2, -9.6), (-5.4, -11.2), (-6.9, -12.6), (-8.4, -13.8), (-9.8, -15.2), (-10.8, -16.4)]
 SHELF_SE = dict(c=(16.5, 15.5), r=(5.2, 3.0), h=5.0)
+# the four levels (see the top): each a plateau inside its outline, its edge wandering a little, its face steep
+TIER1 = dict(h=3.5, pts=[(-19.5, -30), (-19.5, -15.2), (-15.5, -15.9), (-9.5, -15.2), (-3.5, -16.3), (1.5, -15.7), (5.4, -16.6), (6.8, -30)])
+TIER2 = dict(h=7.0, pts=[(6.8, -30), (6.8, -16.9), (9.0, -15.4), (12.5, -14.6), (18.0, -14.4), (24.5, -14.6), (34, -15.0), (34, -30)])
+ARM = dict(h=11.0, pts=[(34, -15.0), (24.5, -14.6), (18.0, -14.4), (14.6, -13.4), (11.6, -12.2), (8.6, -10.9), (6.2, -9.5), (5.4, -7.9),
+                        (6.6, -6.6), (9.4, -7.2), (13.2, -8.4), (18.0, -8.2), (23.5, -6.9), (34, -5.6)])
+NOTCH = dict(c=(10.9, -9.6), axis=(-0.94, 0.33), w=1.15, depth=3.4)       # cut across the arm near its tip: half as wide as w at its foot
+STONES = [(-12.6, -10.8, 1.0, 1.15), (-14.9, -12.1, 1.95, 1.05), (-17.0, -13.4, 2.8, 1.0)]     # x, z, top, radius: up to the tier
+PILLARS = [(2.6, -18.6, 4.6, 0.95), (4.4, -20.3, 5.8, 0.9)]                                    # standing on the tier, up to the balcony
+# the ways she walks: earth underfoot (on the levels' tops only worn, WAY_TOP of it), and kept clear of plants
+WAYS = [[(-8.5, 20.0), (-7.0, 13.0), (-9.5, 5.0), (-11.5, -3.0), (-12.6, -9.6)],              # the ramp's foot to the stones
+        [(-9.5, 5.0), (-3.0, 2.5), (2.6, 2.8), (4.8, 2.2)],                                    # a branch to the pool's west shore
+        [(-6.5, -8.5), (0.0, -9.6), (5.6, -9.4), (8.0, -6.2)]]                                 # along the arm's foot to the shore
+WAYS_TOP = [[(-16.8, -17.2), (-8.0, -18.4), (0.0, -18.6), (2.6, -18.6)],                       # the tier
+            [(8.2, -18.6), (14.0, -17.6), (20.0, -16.4)],                                      # the balcony
+            [(26.5, -10.3), (19.0, -11.0), (13.4, -10.5)], [(9.4, -9.0), (6.8, -8.1)]]         # the arm's top (the notch between)
+WAY_TOP = 0.45
 COLUMNS = [(-15.0, 7.0, 2.5), (18.0, 6.5, 2.1)]                          # x, z, radius at floor and roof
 GREAT_TREE = (SHAFT_FOOT[0] - 0.4, SHAFT_FOOT[1] + 0.6)
 
@@ -142,33 +166,47 @@ def wob2(px, pz, f, s, amp):
     return amp * (fbm3(px * f, pz * f, 0.0 * px + 3.7, s) - 0.5) * 2
 
 
+def poly_sd(px, pz, pts):
+    """signed distance to a closed outline (m): > 0 inside"""
+    best = np.full(np.shape(px), 1e9)
+    for a, b in zip(pts, pts[1:] + pts[:1]):
+        best = np.minimum(best, seg2(px, pz, a[0], a[1], b[0], b[1])[0])
+    inside = MPath(pts).contains_points(np.stack([np.ravel(px), np.ravel(pz)], 1)).reshape(np.shape(px))
+    return np.where(inside, best, -best)
+
+
 def floor_at(px, pz):
     """the floor's height (before the walls, columns and rocks are laid over it)"""
     F = 0.32 * (fbm3(px * 0.07, pz * 0.07, 1.3 + 0 * px, 5) - 0.5) * 2 + 0.25 * (fbm3(px * 0.3, pz * 0.3, 2.1 + 0 * px, 6) - 0.5)
     # the pool: a bowl under the crack's east end
     r = np.hypot(px - POOL['c'][0], pz - POOL['c'][1]) + wob2(px, pz, 0.35, 8, 0.6)
-    F = F + (POOL['floor'] - F) * sstep(POOL['r'] + 1.2, POOL['r'] - 0.8, r)
-    # the balcony (west) and the terrace (east): plateaus with steep faces
+    F = F + (POOL['floor'] - F) * sstep(POOL['r'] + 1.8, POOL['r'] - 1.2, r)        # (gentle: she wades in, it is no face)
+    # the balcony (west): a plateau with steep faces
     eb = (BALCONY['x'] + wob2(px, pz, 0.12, 9, 1.4)) - px                   # > 0 on the balcony
-    eb = np.minimum(eb, np.minimum(pz - BALCONY['z'][0], BALCONY['z'][1] - pz) + 6.0)
+    eb = np.minimum(eb, np.minimum(pz - BALCONY['z'][0], BALCONY['z'][1] - pz) + BALCONY['more'])
     F = F + (BALCONY['h'] - F) * sstep(-0.35, 0.35, eb)
-    et = px - (TERRACE['x'] + wob2(px, pz, 0.12, 10, 1.4))
-    et = np.minimum(et, np.minimum(pz - TERRACE['z'][0], TERRACE['z'][1] - pz) + 6.0)
-    F = F + (TERRACE['h'] - F) * sstep(-0.35, 0.35, et)
-    # the ramps: raised ways along the walls
-    for pts, h0, h1 in ((RAMP_W, BALCONY['h'], 0.0), (RAMP_E, 0.0, TERRACE['h'])):
-        d, t = poly2(px, pz, pts)
-        hr = h0 + (h1 - h0) * sstep(0.0, 1.0, t) * 0.25 + (h1 - h0) * t * 0.75
-        m = sstep(2.2, 1.6, d)
-        F = np.maximum(F, F + (hr - F) * m)
-    # the shelves
-    for sh in (SHELF_NW, SHELF_SE):
-        e = 1.0 - np.hypot((px - sh['c'][0]) / sh['r'][0], (pz - sh['c'][1]) / sh['r'][1]) + wob2(px, pz, 0.3, 11, 0.12)
-        F = np.maximum(F, F + (sh['h'] - F) * sstep(-0.04, 0.06, e))
-    # stepping stones up to the NW shelf (0.55 m apiece: she can walk up them)
-    for i, (sx, sz) in enumerate(STEPS_NW):
-        e = 1.25 - np.hypot(px - sx, pz - sz)
-        F = np.maximum(F, F + ((i + 1) * 0.55 - F) * sstep(-0.12, 0.12, e))
+    # the ramp down from it, along the south wall
+    d, t = poly2(px, pz, RAMP_W)
+    hr = BALCONY['h'] * (1 - sstep(0.0, 1.0, t) * 0.25 - t * 0.75)
+    F = np.maximum(F, F + (hr - F) * sstep(2.2, 1.6, d))
+    # the shelf in the south-east
+    e = 1.0 - np.hypot((px - SHELF_SE['c'][0]) / SHELF_SE['r'][0], (pz - SHELF_SE['c'][1]) / SHELF_SE['r'][1]) + wob2(px, pz, 0.3, 11, 0.12)
+    F = np.maximum(F, F + (SHELF_SE['h'] - F) * sstep(-0.04, 0.06, e))
+    # the levels: the tier, the balcony, the arm (its notch near the tip)
+    for T, s in ((TIER1, 12), (TIER2, 13)):
+        e = poly_sd(px, pz, T['pts']) + wob2(px, pz, 0.22, s, 0.7)
+        F = np.maximum(F, F + (T['h'] - F) * sstep(-0.3, 0.3, e))
+    e = poly_sd(px, pz, ARM['pts']) + wob2(px, pz, 0.22, 14, 0.6)
+    ax, az = NOTCH['axis']; n = math.hypot(ax, az)
+    along = ((px - NOTCH['c'][0]) * ax + (pz - NOTCH['c'][1]) * az) / n
+    ha = ARM['h'] - NOTCH['depth'] * sstep(NOTCH['w'], NOTCH['w'] * 0.45, np.abs(along))
+    F = np.maximum(F, F + (ha - F) * sstep(-0.3, 0.3, e))
+    # the stones up to the tier, the pillars on it up to the balcony: rocks, not drums (their outlines lumpy, their tops
+    # tilted a little and uneven)
+    for (sx, sz, h, r), s in zip(STONES + PILLARS, range(20, 40)):
+        e = r - np.hypot(px - sx, pz - sz) + wob2(px, pz, 0.9, s, 0.32) + wob2(px, pz, 2.2, s + 40, 0.08)
+        top = h + wob2(px, pz, 0.7, s + 60, 0.12) + ((px - sx) * math.cos(s) + (pz - sz) * math.sin(s)) * 0.06
+        F = np.maximum(F, F + (top - F) * sstep(-0.14, 0.14, e))
     return F
 
 
@@ -177,6 +215,23 @@ Xg, Yg, Zg = np.meshgrid(xs, ys, zs, indexing='ij')
 Xg, Yg, Zg = Xg.astype(np.float64), Yg.astype(np.float64), Zg.astype(np.float64)
 F2 = floor_at(Xg[:, 0, :], Zg[:, 0, :])                      # (NX, NZ)
 log('floor')
+# what the floor's own shape says about each spot (per column, as F2): the faces (steps steep enough that she climbs them,
+# as the game's player-moves.js has it: a slope of 0.9), how far each spot is from one, and from the ways
+GX, GZ = Xg[:, 0, :], Zg[:, 0, :]
+_gx, _gz = np.gradient(F2, H)
+FACE = np.hypot(_gx, _gz) >= 0.9
+FACE_D = ndi.distance_transform_edt(~FACE) * H                          # m to the nearest face
+FOOT = (ndi.maximum_filter(F2, size=int(2 * 1.6 / H) + 1) - F2) > 1.2  # below a face (its foot), not on its top
+WAY_D = np.min([poly2(GX, GZ, w)[0] for w in WAYS], axis=0)
+TOP_D = np.min([poly2(GX, GZ, w)[0] for w in WAYS_TOP], axis=0)
+
+
+def grid_at(A, x, z):
+    i, k = int(round((x - X0) / H)), int(round((z - Z0) / H))
+    return A[min(max(i, 0), NX - 1), min(max(k, 0), NZ - 1)]
+
+
+log('faces', int(FACE.sum()), 'columns')
 # a warped copy of space: the walls wander
 w1 = fbm3(Xg * 0.035 + 11, Yg * 0.035, Zg * 0.035, 21) - 0.5
 w2 = fbm3(Xg * 0.035, Yg * 0.035 + 47, Zg * 0.035, 22) - 0.5
@@ -209,9 +264,9 @@ Sc = (np.hypot(ux2 / (ca * grow), uz2 / (cb * grow)) - 1.0) * cb + (fbm3(Xg * 0.
 Sc = np.where(Yg > CRACK['y'] - 3, Sc, 50.0)
 S = smin(S, Sc, 2.4)
 log('crack')
-# tunnel stubs: the way in (west, from the balcony) and the way on (east, from the terrace)
+# tunnel stubs: the way in (west, from the balcony) and the way on (east, at the arm's root)
 TUNNELS = [dict(pts=[(-27.5, 8.8, 1.0), (-32.0, 9.0, 0.2), (-35.5, 9.2, 3.4)], floor=6.0, r=3.0),
-           dict(pts=[(26.5, 10.8, -4.0), (31.0, 11.0, -5.0), (34.5, 11.2, -1.8)], floor=8.0, r=3.0)]
+           dict(pts=[(27.5, 13.4, -10.2), (31.5, 13.6, -10.8), (35.0, 13.8, -8.6)], floor=11.0, r=2.7)]
 for tn in TUNNELS:
     d = np.full(Xg.shape, 1e9)
     for a, b in zip(tn['pts'][:-1], tn['pts'][1:]):
@@ -284,12 +339,12 @@ for i, (x, z, L, R) in enumerate(fangs):
     roof = roof_at(x, z)
     add_cone(S, x, z, roof + 2.0, roof - L, R, 80 + i)
 # stalagmites and boulders on the floor (out of the ways)
-MITES = [(-24.0, -15.0, 3.6, 1.3), (-27.0, -7.5, 2.4, 1.0), (13.5, 17.5, 2.6, 1.0), (25.5, 13.0, 3.2, 1.2), (-9.0, 13.5, 2.2, 1.0),
-         (5.0, 17.0, 1.6, 0.8), (27.5, -11.0, 2.0, 0.9), (-18.0, -4.0, 1.4, 0.7)]
+MITES = [(-24.0, -15.0, 3.6, 1.3), (-27.0, -7.5, 2.4, 1.0), (13.5, 17.5, 2.6, 1.0), (25.5, 13.0, 3.2, 1.2), (-12.5, 14.5, 2.2, 1.0),
+         (5.0, 17.0, 1.6, 0.8), (27.0, 4.0, 2.0, 0.9), (-18.0, -4.0, 1.4, 0.7)]
 for i, (x, z, Hm, R) in enumerate(MITES):
     fl = floor_here(x, z)
     add_cone(S, x, z, fl - 1.0, fl + Hm, R, 120 + i)
-BOULDERS = [(-11.0, 16.0, 1.6), (21.0, -17.5, 1.3), (14.0, 1.5, 1.2), (-19.5, 9.5, 1.4), (6.0, -15.0, 1.1), (-6.0, -18.5, 1.2)]
+BOULDERS = [(-11.0, 16.0, 1.6), (22.5, -19.0, 1.3), (14.0, 1.5, 1.2), (-19.5, 9.5, 1.4), (6.0, -14.6, 1.1), (-6.0, -20.6, 1.2)]
 for i, (x, z, r) in enumerate(BOULDERS):
     fl = floor_here(x, z)
     i0, i1 = np.searchsorted(xs, x - r - 2), np.searchsorted(xs, x + r + 2)
@@ -406,15 +461,17 @@ def far_from(p, lst, d):
     return all((p[0] - q['p'][0]) ** 2 + (p[1] - q['p'][1]) ** 2 + (p[2] - q['p'][2]) ** 2 > d * d for q in lst)
 
 
-def in_way(x, z):
-    """on a way she walks: the ramps, the stones, round the great tree's foot, the balcony's and the terrace's edges"""
-    for pts in (RAMP_W, RAMP_E):
-        d, _ = poly2(np.array([x]), np.array([z]), pts)
-        if d[0] < 2.3:
-            return True
-    if any(math.hypot(x - sx, z - sz) < 1.6 for sx, sz in STEPS_NW):
+def in_way(x, z, face=1.4, tree=5.5):
+    """where nothing may stand: a way she walks (the ramp, the ways, the stones and pillars), round the great tree's foot
+    (within `tree` m), and a face she climbs, within `face` m of its foot or its top"""
+    d, _ = poly2(np.array([x]), np.array([z]), RAMP_W)
+    if d[0] < 2.3 or grid_at(WAY_D, x, z) < 1.9 or grid_at(TOP_D, x, z) < 1.4 or grid_at(FACE_D, x, z) < face:
         return True
-    if math.hypot(x - GREAT_TREE[0], z - GREAT_TREE[1]) < 5.5:
+    if any(math.hypot(x - sx, z - sz) < r + 0.8 for sx, sz, _, r in STONES + PILLARS):
+        return True
+    if any(math.hypot(x - tn['pts'][0][0], z - tn['pts'][0][2]) < 3.5 for tn in TUNNELS):       # (the ways in and on, at their mouths)
+        return True
+    if math.hypot(x - GREAT_TREE[0], z - GREAT_TREE[1]) < tree:
         return True
     return False
 
@@ -424,6 +481,8 @@ for i in cand_wall:
     if len([c for c in crystals if c['kind'] == 'wall']) >= 30:
         break
     p, n = verts[i], N[i]
+    if grid_at(FACE_D, p[0], p[2]) < 1.6:          # (not on a face she climbs)
+        continue
     bias = 0.55 + 0.25 * (p[2] < 0) + 0.25 * (p[0] < -10) + 0.35 * (abs(p[0]) > 24)
     if rng.random() > bias:
         continue
@@ -457,11 +516,21 @@ while len([c for c in crystals if c['kind'] == 'float']) < 9 and tries < 4000:
         continue
     if math.hypot(x - SHAFT_FOOT[0], z - SHAFT_FOOT[1]) < 7:
         continue
+    if grid_at(FACE_D, x, z) < 3.5 or y - floor_here(x, z) < 3.0:      # (not in her way up a face, nor over a level's edge)
+        continue
     p = [x, y, z]
     if not far_from(p, crystals, 7.0):
         continue
     crystals.append(dict(kind='float', p=[float(v) for v in p], n=[0.0, 1.0, 0.0], size=float(rng.uniform(0.45, 0.8)),
                          col=str(rng.choice(['cyan', 'white', 'teal'])), count=1, seed=int(rng.integers(1, 9999))))
+# the ways in and on, closed for now (the rooms beyond are not made yet): big crystals across each tunnel, a little way in
+GATES = []
+for tn in TUNNELS:
+    (ax, ay, az), (bx, by, bz) = tn['pts'][0], tn['pts'][1]
+    gx_, gz_ = ax + (bx - ax) * 0.8, az + (bz - az) * 0.8
+    crystals.append(dict(kind='floor', p=[float(gx_), float(tn['floor']), float(gz_)], n=[0.0, 1.0, 0.0], size=2.0, col='white', count=10,
+                         seed=int(rng.integers(1, 9999))))
+    GATES.append([round(float(gx_), 2), round(float(gz_), 2), 1.8])
 log('crystals', len(crystals))
 
 shrooms = []
@@ -606,35 +675,68 @@ vol8[..., :3] = np.clip(vt[..., :3] / LSCALE * 255 + 0.5, 0, 255)
 vol8[..., 3] = np.clip(vt[..., 3] * 255 + 0.5, 0, 255)
 log('volume baked')
 
-# ---------------------------------------------------------------- the forest: trees on the floor, trees hanging from the roof, ferns and tufts
+# ---------------------------------------------------------------- the forest, by the land's own rules (as the world above's)
 FG = lambda x, z: floor_here(x, z)
+fl_ok = ~np.isnan(floorY)
+
+
+def rock_gap(x, f, z, lift):
+    """how far the nearest rock is from a spot `lift` m over the floor there (a wall, a column, the rock of a face)"""
+    return -sample(np.array([x]), np.array([f + lift]), np.array([z]))[0]
+
+
+def flat_here(i, k, rad=3, most=0.9):
+    patch = floorY[max(i - rad, 0):min(i + rad + 1, NX), max(k - rad, 0):min(k + rad + 1, NZ)]
+    return not np.isnan(patch).any() and np.nanmax(patch) - np.nanmin(patch) <= most
+
+
+def free_spot(x, z, need=1.0, low=None, high=None):
+    """a spot of floor she could stand on (on any level, or one between low and high m), flat round it, clear of rock by
+    `need` m (measured high enough over the floor that the floor itself is not the nearest rock), off the pool"""
+    i, k = int(round((x - X0) / H)), int(round((z - Z0) / H))
+    if not (0 <= i < NX and 0 <= k < NZ) or not fl_ok[i, k]:
+        return False
+    f = floorY[i, k]
+    if (low is not None and f < low) or (high is not None and f > high):
+        return False
+    if ceilY[i, k] - f < 3.0 or not flat_here(i, k):
+        return False
+    if rock_gap(x, f, z, max(1.6, need + 0.6)) < need:
+        return False
+    return math.hypot(x - POOL['c'][0], z - POOL['c'][1]) >= POOL['r'] + 1.2
 
 
 def free_floor(x, z, need=1.0):
-    """a spot on the hall's floor (not a ramp, shelf, step or the pool), clear of walls by `need` m"""
-    i, k = int(round((x - X0) / H)), int(round((z - Z0) / H))
-    if not (0 <= i < NX and 0 <= k < NZ) or np.isnan(floorY[i, k]):
-        return False
-    f = floorY[i, k]
-    if f > 1.2 or f < -0.4:
-        return False
-    ii0, ii1, kk0, kk1 = max(i - 3, 0), min(i + 4, NX), max(k - 3, 0), min(k + 4, NZ)
-    patch = floorY[ii0:ii1, kk0:kk1]
-    if np.isnan(patch).any() or np.nanmax(patch) - np.nanmin(patch) > 0.9:
-        return False
-    d = -sample(np.array([x]), np.array([f + 3.6]), np.array([z]))[0]      # (high enough that the floor itself is not the nearest rock)
-    if d < need:
-        return False
-    if math.hypot(x - POOL['c'][0], z - POOL['c'][1]) < POOL['r'] + 1.2:
-        return False
-    return True
+    """a spot on the forest floor (not on a level, a stone or in the pool)"""
+    return free_spot(x, z, need, -0.4, 1.2)
 
 
-trees = [dict(kind='tree', type='broadleaf', seed=7, x=GREAT_TREE[0], z=GREAT_TREE[1], scale=1.55, great=True)]
-# views kept open: no tree or bush on the line from where a view stands to what it looks at (the great tree, the pool)
-VIEW_UNDER = (GREAT_TREE[0] + 6.0, GREAT_TREE[1] + 7.0)
-VIEW_POOL = (POOL['c'][0] - 3.5, POOL['c'][1] + 6.6)
-CLEAR_LINES = [[VIEW_UNDER, GREAT_TREE], [VIEW_POOL, POOL['c']]]
+def by_wall(x, z, within):
+    """a wall, a column or a face's rock within `within` m (measured 3.6 m up, where the floor is not the nearest rock)"""
+    f = floor_here(x, z)
+    return rock_gap(x, f, z, 3.6) < within
+
+
+# where the sun falls on the floor (through the crack): what the trees lean toward, and the only place the grass grows
+ii, kk = np.where(fl_ok)
+Pf = np.stack([xs[ii], floorY[ii, kk] + 0.15, zs[kk]], 1)
+SUNF = np.zeros((NX, NZ), np.float32)
+SUNF[ii, kk] = soft_shadow(Pf, SUN, tmax=(CRACK_TOP - Pf[:, 1]) / SUN[1] + 1.0, k=3.0, steps=110)
+SUNF = ndi.gaussian_filter(SUNF, 2.0)
+SUNF /= max(float(SUNF.max()), 1e-6)                    # (the shaft's own soft edge, as a share of its middle's light)
+log('sun on the floor:', int((SUNF > 0.3).sum() * H * H), 'm2')
+
+# the places (the page's buttons; the first is where she begins): where she stands, the way she faces
+PLACES = [
+    dict(name='ทางเข้า', x=-25.6, z=1.2, heading=math.pi / 2),
+    dict(name='พื้นป่า', x=-10.2, z=-5.8, heading=math.atan2(-4.7, -6.3)),
+    dict(name='ชั้นหิน', x=-5.0, z=-18.9, heading=math.pi / 2),
+    dict(name='ระเบียง', x=12.5, z=-18.4, heading=math.atan2(1.0, 1.1)),
+    dict(name='หิ้งสูง', x=7.3, z=-8.5, heading=math.atan2(-6.2, 4.4)),
+]
+# views kept open: no tree or bush on the line from the balcony's edge to the great tree and to the arm's tip (the hall as she
+# comes in), nor from the forest floor's place to the stones
+CLEAR_LINES = [[(-21.0, 1.2), GREAT_TREE], [(-21.0, 1.2), (8.0, -8.0)], [(-10.2, -5.8), (-14.9, -12.1)]]
 
 
 def in_view(x, z, r=3.6):
@@ -643,28 +745,50 @@ def in_view(x, z, r=3.6):
 
 def by_pool(x, z, r):
     return math.hypot(x - POOL['c'][0], z - POOL['c'][1]) < r
+
+
+trees = [dict(kind='tree', type='broadleaf', seed=7, x=GREAT_TREE[0], z=GREAT_TREE[1], scale=1.55, great=True)]
 TYPES = ['broadleaf', 'oak', 'birch', 'sapling', 'broadleaf', 'oak']
+# trees: on the forest floor, flat, 3 m clear of the walls and 5.5 m of the faces (her camera, behind her as she climbs one,
+# stays out of their crowns), off the ways and the shore; more toward the light
 tries = 0
-while len(trees) < 12 and tries < 6000:
+while len(trees) < 14 and tries < 20000:
     tries += 1
-    r, a = rng.uniform(6.5, 19), rng.uniform(0, 6.283)
+    r, a = rng.uniform(6.5, 23), rng.uniform(0, 6.283)
     x, z = GREAT_TREE[0] + r * math.cos(a) * 1.25, GREAT_TREE[1] + r * math.sin(a)
-    if not free_floor(x, z, 3.0) or in_way(x, z):
+    if rng.random() > 0.4 + 0.6 * math.exp(-(r / 15.0) ** 2):
+        continue
+    if not free_floor(x, z, 3.0) or in_way(x, z, 5.5):
         continue
     if math.hypot(x - GREAT_TREE[0], z - GREAT_TREE[1]) < 7.5 or in_view(x, z) or by_pool(x, z, 8.5):
         continue
-    if any(math.hypot(x - t['x'], z - t['z']) < 6.0 for t in trees):
+    if any(math.hypot(x - t['x'], z - t['z']) < 5.2 for t in trees):
         continue
     if any(math.hypot(x - cx, z - cz) < r0 + 3.5 for cx, cz, r0 in COLUMNS):
         continue
     typ = TYPES[len(trees) % len(TYPES)]
     trees.append(dict(kind='tree', type=typ, seed=int(rng.integers(1, 999)), x=float(x), z=float(z),
                       scale=float(rng.uniform(0.75, 1.05) if typ != 'sapling' else rng.uniform(0.9, 1.2))))
+# a few saplings up on the levels, against the wall (two on the tier, one on the balcony)
+for lo, hi, n in ((3.0, 4.2, 2), (6.5, 7.6, 1)):
+    got = tries = 0
+    while got < n and tries < 4000:
+        tries += 1
+        x, z = rng.uniform(-20, 26), rng.uniform(-23, -13)
+        if not free_spot(x, z, 1.4, lo, hi) or in_way(x, z, 2.4) or not by_wall(x, z, 3.0):
+            continue
+        if any(math.hypot(x - t['x'], z - t['z']) < 6.0 for t in trees):
+            continue
+        trees.append(dict(kind='tree', type='sapling', seed=int(rng.integers(1, 999)), x=float(x), z=float(z), scale=float(rng.uniform(0.85, 1.05))))
+        got += 1
+# bushes: at the feet of the walls, the columns and the faces, on any level; off the ways, the views and the shore
 tries = 0
-while len([t for t in trees if t['kind'] == 'bush']) < 14 and tries < 6000:
+while len([t for t in trees if t['kind'] == 'bush']) < 18 and tries < 9000:
     tries += 1
-    x, z = rng.uniform(-22, 20), rng.uniform(-17, 19)
-    if not free_floor(x, z, 1.2) or in_way(x, z) or in_view(x, z, 2.4) or by_pool(x, z, 6.0):
+    x, z = rng.uniform(-26, 28), rng.uniform(-23, 21)
+    if not free_spot(x, z, 0.9) or in_way(x, z, 1.6) or in_view(x, z, 2.4) or by_pool(x, z, 6.0):
+        continue
+    if not (by_wall(x, z, 3.0) or (grid_at(FOOT, x, z) and grid_at(FACE_D, x, z) < 3.4)):
         continue
     if any(math.hypot(x - t['x'], z - t['z']) < (3.2 if t['kind'] == 'bush' else 3.0) for t in trees):
         continue
@@ -714,23 +838,85 @@ for i in range(9):
     j = hit[0]
     rim.append(dict(x=float(xs_[j]), y=float(yy[j]) + 0.35, z=float(zs_[j]), seed=int(rng.integers(1, 999)), scale=float(rng.uniform(1.2, 1.7))))
 log('trees', len(trees), 'hanging', len(hanging), 'rim', len(rim))
+# ferns in the shade (at the trees' feet, along the walls), grass tufts only where the sun falls; none on the ways, the faces,
+# the shore
 cover = []
-tries = 0
-while len(cover) < 150 and tries < 20000:
-    tries += 1
-    x, z = rng.uniform(-28, 28), rng.uniform(-21, 21)
-    if not free_floor(x, z, 0.4) or in_way(x, z):
-        continue
+
+
+def cover_ok(x, z, kind):
+    if not free_spot(x, z, 0.4) or in_way(x, z, 1.2, 1.8 if kind == 'tuft' else 5.5) or by_pool(x, z, POOL['r'] + 2.2):
+        return False
     if any(math.hypot(x - t['x'], z - t['z']) < (1.2 if t['kind'] == 'bush' else 1.0) for t in trees):
-        continue
-    if any(math.hypot(x - c['x'], z - c['z']) < 1.15 for c in cover):
-        continue
-    # tufts where the light falls, ferns in the shade
-    i, k = int(round((x - X0) / H)), int(round((z - Z0) / H))
-    lit = math.exp(-((x - SHAFT_FOOT[0]) ** 2 + (z - SHAFT_FOOT[1]) ** 2) / (2 * 9.0 ** 2))
-    kind = 'tuft' if rng.random() < 0.15 + 0.75 * lit else 'fern'
-    cover.append(dict(kind=kind, x=float(x), z=float(z), y=FG(x, z), seed=int(rng.integers(1, 9999)), scale=float(rng.uniform(0.85, 1.3))))
-log('cover', len(cover))
+        return False
+    if any(math.hypot(x - c['x'], z - c['z']) < 1.1 for c in cover):
+        return False
+    s = grid_at(SUNF, x, z)
+    return s > 0.14 if kind == 'tuft' else s < 0.08
+
+
+def colony(kind, cx, cz, n, spread):
+    for _ in range(n):
+        x, z = cx + rng.normal(0, spread), cz + rng.normal(0, spread)
+        if cover_ok(x, z, kind):
+            cover.append(dict(kind=kind, x=float(x), z=float(z), y=FG(x, z), seed=int(rng.integers(1, 9999)), scale=float(rng.uniform(0.85, 1.3))))
+
+
+for t in trees:
+    if t['kind'] == 'tree' and not t.get('great') and rng.random() < 0.6:
+        colony('fern', t['x'], t['z'], int(rng.integers(4, 9)), 1.9)
+tries = 0
+while len([c for c in cover if c['kind'] == 'fern']) < 105 and tries < 4000:
+    tries += 1
+    x, z = rng.uniform(-28, 28), rng.uniform(-23, 21)
+    if free_spot(x, z, 0.4) and by_wall(x, z, 2.6) and grid_at(SUNF, x, z) < 0.06:
+        colony('fern', x, z, int(rng.integers(3, 7)), 1.4)
+tries = 0
+while len([c for c in cover if c['kind'] == 'tuft']) < 42 and tries < 4000:
+    tries += 1
+    x, z = rng.uniform(-28, 28), rng.uniform(-23, 21)
+    if grid_at(SUNF, x, z) > 0.3:
+        colony('tuft', x, z, int(rng.integers(5, 10)), 1.6)
+log('cover', len(cover), 'ferns', len([c for c in cover if c['kind'] == 'fern']), 'tufts', len([c for c in cover if c['kind'] == 'tuft']))
+
+# ---------------------------------------------------------------- the floor's paint: earth, sand, fallen leaves (moss where none of them is)
+noise2 = lambda f, s: fbm3(GX * f, GZ * f, 0 * GX + 7.7, s)
+rough = 0.75 + 0.5 * noise2(0.6, 91)
+dirt = sstep(1.9, 1.0, WAY_D) * (0.78 + 0.22 * noise2(1.3, 92))                      # the ways she walks
+dirt = np.maximum(dirt, WAY_TOP * sstep(1.4, 0.7, TOP_D))                             # worn along the levels' tops
+dirt = np.maximum(dirt, (FOOT & (FACE_D < 1.7)) * sstep(1.7, 0.6, FACE_D) * 0.7 * rough)      # what has fallen at a face's foot
+pr = np.hypot(GX - POOL['c'][0], GZ - POOL['c'][1]) + wob2(GX, GZ, 0.5, 93, 0.7)
+sand = sstep(POOL['r'] + 2.6, POOL['r'] + 1.2, pr)                                     # the pool's shore and its bed
+sand = np.maximum(sand, sstep(-0.05, -0.35, F2) * sstep(14.0, 9.0, pr) * 0.8)          # low hollows near the water
+litter = np.zeros_like(GX)
+for t in trees:
+    R = (3.4 if t['kind'] == 'tree' else 1.3) * t['scale'] * (1.25 if t.get('great') else 1.0)
+    d = np.hypot(GX - t['x'], GZ - t['z']) + wob2(GX, GZ, 0.7, 94, 0.6)
+    litter = np.maximum(litter, sstep(R, R * 0.45, d) * (0.9 if t['kind'] == 'tree' else 0.5))
+sand = np.clip(sand, 0, 1)
+dirt = np.clip(dirt, 0, 1) * (1 - sand)
+litter = np.clip(litter * rough, 0, 1) * (1 - sand) * (1 - dirt)
+bare = sstep(0.7, 0.2, FACE_D)                                                        # the faces and their edges: rock
+PAINT = np.stack([dirt, sand, litter, bare], -1).astype(np.float32)                    # (NX, NZ, 4)
+# what is no floor of hers (for her level, cave-level.js): where rock stands over the floor as it was laid out (the walls'
+# feet, which lean in over the hall: climbed, they would take her into the roof; the columns, the boulders, the
+# stalagmites), and the ways in and on past their crystals
+WALL = np.isnan(floorY) | (np.nan_to_num(floorY, nan=99.0) - F2 > 0.5)
+for tn, (gx_, gz_, _) in zip(TUNNELS, GATES):
+    (ax, ay, az), (bx, by, bz) = tn['pts'][0], tn['pts'][1]
+    ux, uz = bx - ax, bz - az; ul = math.hypot(ux, uz); ux, uz = ux / ul, uz / ul
+    along = (GX - gx_) * ux + (GZ - gz_) * uz
+    across = np.abs(-(GX - gx_) * uz + (GZ - gz_) * ux)
+    WALL |= (along > -0.2) & (across < tn['r'] + 2.0)
+# at the mesh: on the floor (what faces up, at the column's floor), the paint of the spot; nothing elsewhere
+pi_, pk_ = (V[:, 0] - X0) / H, (V[:, 2] - Z0) / H
+pv = np.stack([ndi.map_coordinates(PAINT[..., c], [pi_, pk_], order=1, mode='nearest') for c in range(3)], 1)
+fv = ndi.map_coordinates(np.nan_to_num(floorY, nan=-99.0), [pi_, pk_], order=0, mode='nearest')
+onfloor = (np.abs(V[:, 1] - fv) < 0.7) & (N[:, 1] > 0.5)
+pv[~onfloor] = 0
+paint8 = np.concatenate([np.clip(pv * 255 + 0.5, 0, 255), (onfloor * 255.0)[:, None]], 1).astype(np.uint8)
+paintG = np.clip(PAINT * 255 + 0.5, 0, 255).astype(np.uint8)                          # per column: what is underfoot (her steps' sounds)
+paintG[..., 3] = np.where(WALL, 255, np.where(bare > 0.5, 128, 0))                     # (and in the last: 0 soil, 128 bare rock, 255 no floor of hers)
+log('paint: earth', int((dirt > 0.5).sum() * H * H), 'm2, sand', int((sand > 0.5).sum() * H * H), 'm2, leaves', int((litter > 0.5).sum() * H * H), 'm2')
 
 # ---------------------------------------------------------------- write
 V32 = verts.astype(np.float32)
@@ -751,11 +937,13 @@ def put(arr):
 
 
 header = {
+    # paint: per vertex, Uint8 x 4: earth, sand, fallen leaves (moss where none of them is), and 255 on the floor (0 elsewhere)
     'mesh': {'vertices': int(len(V32)), 'indices': int(I32.size),
-             'pos': put(V32), 'nrm': put(nrm8), 'light': put(light8), 'info': put(info8), 'idx': put(I32)},
-    # floor[ix * nz + iz] (Int16 cm; -32768: no air there): x0 + ix * cell, z0 + iz * cell
+             'pos': put(V32), 'nrm': put(nrm8), 'light': put(light8), 'info': put(info8), 'paint': put(paint8), 'idx': put(I32)},
+    # floor[ix * nz + iz] (Int16 cm; -32768: no air there): x0 + ix * cell, z0 + iz * cell; paint[(ix * nz + iz) * 4 + c]
+    # (Uint8: earth, sand, fallen leaves, and 0 soil / 128 bare rock / 255 no floor of hers: a wall's foot, a rock, a way closed)
     'floor': {'nx': int(NX), 'nz': int(NZ), 'x0': X0, 'z0': Z0, 'cell': H,
-              'floor': put(np.ascontiguousarray(fl16)), 'ceil': put(np.ascontiguousarray(ce16))},
+              'floor': put(np.ascontiguousarray(fl16)), 'ceil': put(np.ascontiguousarray(ce16)), 'paint': put(np.ascontiguousarray(paintG))},
     'volume': {'nx': int(VNX), 'ny': int(VNY), 'nz': int(VNZ), 'x0': VX0, 'y0': VY0, 'z0': VZ0, 'cell': VC, 'data': put(vol8)},
     'lightScale': LSCALE,
 }
@@ -771,17 +959,11 @@ layout = {
     'trickle': {'top': [8.3, 22.0, -1.0], 'bottom': [POOL['c'][0] - 0.4, POOL['level'], POOL['c'][1] + 0.1]},
     'crystals': crystals, 'shrooms': shrooms, 'trees': trees, 'hanging': hanging, 'rim': rim, 'cover': cover, 'fangs': fang_tips,
     'columns': [list(c) for c in COLUMNS],
-    'spawn': {'x': -25.6, 'z': 1.2, 'yaw': math.pi / 2},
-    'views': [
-        {'name': 'ระเบียงทางเข้า', 'x': -25.6, 'z': 1.2, 'yaw': -math.pi / 2, 'pitch': 0.12, 'dist': 4.6, 'heading': math.pi / 2},
-        {'name': 'ใต้แสง', 'x': GREAT_TREE[0] + 6.0, 'z': GREAT_TREE[1] + 7.0, 'yaw': 0.71, 'pitch': 0.04, 'dist': 5.2, 'heading': -2.43,
-         'free': [9.0, 2.0, 8.0, GREAT_TREE[0], 8.5, GREAT_TREE[1]]},
-        {'name': 'ริมสระ', 'x': POOL['c'][0] - 3.5, 'z': POOL['c'][1] + 6.6, 'yaw': -0.49, 'pitch': 0.14, 'dist': 4.6, 'heading': 2.65},
-        {'name': 'ลานฝั่งตะวันออก', 'x': 25.5, 'z': -3.0, 'yaw': math.pi / 2, 'pitch': 0.16, 'dist': 5.0, 'heading': -math.pi / 2},
-        # looking up from the great tree's foot at the crack, the shaft and the trees that hang from the roof (a camera held still)
-        {'name': 'มองขึ้นเพดาน', 'x': 11.6, 'z': -7.6, 'yaw': 0.9, 'pitch': 0.1, 'dist': 4.0, 'heading': -2.3,
-         'free': [13.0, 1.4, -9.0, CRACK['c'][0] + 1.4, 21.0, CRACK['c'][1] + 0.5]},
-    ],
+    'spawn': {'x': PLACES[0]['x'], 'z': PLACES[0]['z'], 'yaw': PLACES[0]['heading']},
+    # the places she can be put at (the page's buttons): where she stands, the way she faces, how high that level is
+    'places': [dict(p, y=round(floor_here(p['x'], p['z']), 2)) for p in PLACES],
+    'levels': {'tier': TIER1['h'], 'balcony': TIER2['h'], 'arm': ARM['h']},
+    'gates': GATES,                                       # x, z, radius: the crystals across the ways in and on (she stops at them)
     'bounds': [X0, Y0, Z0, X1, Y1, Z1],
 }
 json.dump(layout, open(os.path.join(OUT, 'cave-hall.json'), 'w'), ensure_ascii=False, separators=(',', ':'))

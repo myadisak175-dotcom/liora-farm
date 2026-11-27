@@ -7,6 +7,8 @@
 #          a step deeper, as earth is in a wood's shade), so a wood's floor and the ways read as one ground: asked for the
 #          same day ("ชุดที่มันเข้ากับพื้นดินทางเดินของเรา"); its leaves mostly near the earth's own tone, so it is quiet as the ways
 #          are; its moss a few dull patches, near the meadow's green
+#   moss   assets/ground/cave-moss-paint.webp: a cave's floor (the dungeon's forest hall, cave-hall.js; 28 Nov 2026: "หญ้า
+#          อาจจะให้ขึ้นเป็นมอส"): moss over nearly all of it, the dark earth between its cushions, a few leaves
 #   damp   assets/ground/forest-damp-paint.webp (?forest=damp): the first set, dark damp earth and deep moss. Too dark for
 #          the village's woods ("ดินเข้มเกินไป ดูเป็นโซนดิบชื้น"), and kept for a zone of its own: the ancient ruins, a
 #          damp jungle's floor ("แต่ว่าสวย เก็บไว้ใช้ต่อได้ เผื่อทำโซนโบราณสถาน")
@@ -22,6 +24,7 @@
 #
 #   python3 tools/make-forest-paint.py            (the path set; Termux: pip install numpy scipy pillow)
 #   python3 tools/make-forest-paint.py damp
+#   python3 tools/make-forest-paint.py moss
 #
 # To change the colours: EARTH, LEAVES, MOSS, TWIG (each look's own, in LOOKS). To change how much of each: MOSS_SHARE,
 # LEAF_COUNT, TWIG_COUNT; how dark a leaf's shadow: SHADOW.
@@ -41,6 +44,13 @@ LOOKS = {
         MOSS=('#5b7634', '#67863a', '#759342', '#85a24b', '#98b459'),                      # deep .. lit: dull, near the meadow's own green
         TWIG=('#6b5236', '#a08460'),                                                       # a twig, and its lit top
         MOSS_SHARE=0.07, LEAF_COUNT=560, TWIG_COUNT=16, SHADOW=0.22),
+    'moss': dict(                                                     # a cave's floor: moss over nearly all of it (cave-hall.js)
+        out='cave-moss-paint.webp', seed=57,
+        EARTH=('#2f2a20', '#3a3326', '#463d2c', '#544833', '#62553c'),                     # damp dark earth where the moss leaves it
+        LEAVES=(('#7a5a36', 0.3), ('#8f6a3e', 0.3), ('#6a4c30', 0.25), ('#7e8a48', 0.15)),
+        MOSS=('#2f4a22', '#3d5c28', '#4c6f2e', '#5f8536', '#7a9e44'),                      # deep .. lit: a cushion's tones, its tops catching the light
+        TWIG=('#3d2f22', '#6a5640'),
+        MOSS_SHARE=0.84, LEAF_COUNT=40, TWIG_COUNT=4, SHADOW=0.3),
     'damp': dict(                                                     # dark damp earth: a jungle's floor (the ruins)
         out='forest-damp-paint.webp', seed=83,
         EARTH=('#3f2e22', '#4e3a2a', '#5d4632', '#6e5439', '#836545'),

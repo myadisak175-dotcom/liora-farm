@@ -1,18 +1,20 @@
 /* ==========================================================================
-   cave-hall.js  —  the forest hall, room ③ of the dungeon under the waterfall cliff (a beauty test: cave-hall.html)
+   cave-hall.js  —  the forest hall, room ③ of the dungeon under the waterfall cliff (cave-hall.html: played in since 28 Nov
+   2026, its four levels up to the light; the level she walks is cave-level.js, made from what this hands it)
 
      const hall = await createCaveHall({ onStep })
      scene.add(hall.group); ...; hall.light.apply(scene)     // the cave's light on the plants and on her (cave-light.js)
      every frame: hall.update(dt, camera)                    // water, dust, mist, crystals' pulse, the plants' wind
-     hall.floorAt(x, z) / hall.ceilAt(x, z)                  // where she can stand, and the roof over it (null: rock)
-     hall.heightAt(x, z)                                     // for the follow camera: the floor, or far up inside the rock
+     hall.floorMap                                           // the floor and the roof over every spot, what lies there
+                                                             // (nx, nz, x0, z0, cell; fl, ce: Int16 cm, -32768 rock; paint)
      hall.crowns, hall.trunks, hall.colliders, hall.layout
 
    One job: build the hall from what tools/make-cave-hall.py baked (assets/caves/cave-hall.bin + .json):
      the rock      one mesh, its light baked into it (the shaft, the crack's sky, the light thrown back off the sunlit floor,
                    the crystals); painted with the game's own pictures (the cliffs' brush-painted rock on the walls and the
-                   roof, the damp forest floor underfoot, moss where the light reaches); the cave's dark air over it, thicker
-                   low down; the sprite's light (cave-light.js' uniforms) added where she goes
+                   roof; underfoot moss, and over it earth on the ways and at the faces' feet, sand round the pool, fallen
+                   leaves under the trees, as the bake's paint says; moss on the rock's ledges where the light reaches); the
+                   cave's dark air over it, thicker low down; the sprite's light (cave-light.js' uniforms) added where she goes
      crystals      clusters on the walls and the floor, and some floating free (as the Chasm's lumenspar), glowing teal, each
                    with its own soft halo (no bloom: a phone would pay for that in every frame)
      mushrooms     small glowing caps in clumps along the walls and round the columns
@@ -30,7 +32,8 @@ import { createCaveLight } from './cave-light.js';
 
 export const CAVE_LOOK = {
   fog: '#10242d', fogDensity: 0.018, mist: '#1e3a41', mistHeight: 1.8, rim: '#33626f',
-  moss: '#4f6b2a', rockTint: [0.84, 0.89, 0.95], sky: '#d8ecff',
+  rockTint: [0.84, 0.89, 0.95], sky: '#d8ecff',
+  earthTint: [0.72, 0.74, 0.8], sandTint: [0.62, 0.64, 0.7],      // the ways' earth and sand, as they are in the cave's damp
   shaft: '#fff0c4', shaftStrength: 0.5,
   crystal: { teal: '#47f0d8', cyan: '#62d8ff', white: '#c6f4ff' },
   shroom: '#b58cff',
@@ -49,41 +52,57 @@ function mulberry(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = 
 const ROCK_VS = /* glsl */`
 attribute vec4 aLight;
 attribute vec4 aInfo;
+attribute vec4 aPaint;
 uniform float uScale;
 varying vec3 vW, vN, vL;
-varying vec4 vI;
+varying vec4 vI, vP;
 varying float vD;
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
   vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal);
-  vL = aLight.rgb * uScale; vI = aInfo;
+  vL = aLight.rgb * uScale; vI = aInfo; vP = aPaint;
   vec4 mv = viewMatrix * w;
   vD = length(mv.xyz);
   gl_Position = projectionMatrix * mv;
 }`;
 const ROCK_FS = /* glsl */`
-uniform sampler2D uCliff, uGround;
+uniform sampler2D uCliff, uMossT, uEarth, uSand, uLeaves;
 uniform vec2 uCliffTile;
-uniform float uGroundTile;
-uniform vec3 uMoss, uTint, uFogCol, uMistCol, uRim;
+uniform vec4 uFloorTile;         // repeats a metre: the moss, the earth, the sand, the fallen leaves
+uniform vec3 uEarthTint, uSandTint, uTint, uFogCol, uMistCol, uRim;
 uniform vec3 uFog;               // density, mist height, mist strength
 uniform vec4 uSprPos;
 uniform vec3 uSprCol;
 varying vec3 vW, vN, vL;
-varying vec4 vI;
+varying vec4 vI, vP;
 varying float vD;
 void main() {
   vec3 n = normalize(vN);
   vec2 pw = pow(abs(n.xz), vec2(4.0)); pw /= max(pw.x + pw.y, 1e-4);
   vec3 wall = texture2D(uCliff, vW.zy * uCliffTile).rgb * pw.x + texture2D(uCliff, vW.xy * uCliffTile).rgb * pw.y;
+  // near her (a face she climbs is seen up close): the same rock at a finer size over it, so it is not a smooth wall
+  float near = 1.0 - smoothstep(7.0, 18.0, vD);
+  if (near > 0.0) {
+    vec3 fine = texture2D(uCliff, vW.zy * uCliffTile * 3.7 + 0.53).rgb * pw.x + texture2D(uCliff, vW.xy * uCliffTile * 3.7 + 0.53).rgb * pw.y;
+    wall = mix(wall, wall * (0.55 + 0.9 * fine), 0.55 * near);
+  }
   vec3 roof = texture2D(uCliff, vW.xz * uCliffTile.x * 1.4 + 0.37).rgb;
-  vec3 ground = texture2D(uGround, vW.xz * uGroundTile).rgb;
+  vec3 moss = texture2D(uMossT, vW.xz * uFloorTile.x).rgb;
   float up = smoothstep(0.5, 0.86, n.y), down = smoothstep(-0.3, -0.7, n.y);
+  // underfoot: moss, and over it what the bake's paint says lies there (earth, sand, fallen leaves), their edges ragged
+  // by the moss's own tones, as a brush would leave them
+  vec3 ground = moss;
+  if (up > 0.002 && vP.a > 0.5) {
+    float rag = (dot(moss, vec3(0.3, 0.59, 0.11)) - 0.33) * 1.8;
+    float e = smoothstep(0.32, 0.62, vP.r + rag * 0.3), s = smoothstep(0.32, 0.62, vP.g + rag * 0.2), l = smoothstep(0.28, 0.58, vP.b + rag * 0.35);
+    if (e > 0.0) ground = mix(ground, texture2D(uEarth, vW.xz * uFloorTile.y).rgb * uEarthTint, e);
+    if (l > 0.0) ground = mix(ground, texture2D(uLeaves, vW.xz * uFloorTile.w + 0.31).rgb, l);
+    if (s > 0.0) ground = mix(ground, texture2D(uSand, vW.xz * uFloorTile.z).rgb * uSandTint, s);
+  }
   vec3 alb = mix(wall * uTint, ground, up);
   alb = mix(alb, roof * uTint * 0.92, down);
-  // moss where the light reaches what faces up (and a little on the ledges of the strata)
-  float moss = vI.g * (0.7 + 0.3 * ground.g / max(ground.r, 0.05));
-  alb = mix(alb, uMoss * (0.8 + 0.4 * ground.r), clamp(moss, 0.0, 0.92));
+  // moss on the rock's ledges where the light reaches what faces up (the floor's own moss)
+  alb = mix(alb, moss, clamp(vI.g * (1.0 - up * vP.a) * 0.95, 0.0, 0.9));
   alb *= 1.0 - vI.b * 0.3;                                   // wet by the pool
   // the light: baked, and the sprite's
   vec3 L = vL;
@@ -361,11 +380,14 @@ function mergeGeometries(list) {
 
 export async function createCaveHall({ base = './assets/caves/cave-hall', ground = './assets/ground/', look = CAVE_LOOK, onStep = async () => {} } = {}) {
   await onStep('อ่านแผนผังถ้ำ');
-  const [L, bin, cliff, floorTex] = await Promise.all([
+  const [L, bin, cliff, mossTex, earthTex, sandTex, leavesTex] = await Promise.all([
     fetch(base + '.json').then((r) => r.json()),
     fetch(base + '.bin').then((r) => r.arrayBuffer()),
     loadTex(ground + 'cliff-paint.webp'),
-    loadTex(ground + 'forest-damp-paint.webp'),
+    loadTex(ground + 'cave-moss-paint.webp'),           // (tools/make-forest-paint.py moss)
+    loadTex(ground + 'path-dirt.webp'),                 // the ways' own earth and sand (ground-paths.js'), darker in here
+    loadTex(ground + 'path-sand.webp'),
+    loadTex(ground + 'forest-damp-paint.webp'),         // fallen leaves under the trees (the damp forest floor kept for this)
   ]);
   const B = L.bin, group = new THREE.Group();
   group.name = 'cave-hall';
@@ -381,14 +403,17 @@ export async function createCaveHall({ base = './assets/caves/cave-hall', ground
   g.setAttribute('normal', new THREE.InterleavedBufferAttribute(new THREE.InterleavedBuffer(new Int8Array(bin, M.nrm, M.vertices * 4), 4), 3, 0, true));
   g.setAttribute('aLight', new THREE.BufferAttribute(new Uint8Array(bin, M.light, M.vertices * 4), 4, true));
   g.setAttribute('aInfo', new THREE.BufferAttribute(new Uint8Array(bin, M.info, M.vertices * 4), 4, true));
+  g.setAttribute('aPaint', new THREE.BufferAttribute(new Uint8Array(bin, M.paint, M.vertices * 4), 4, true));
   g.setIndex(new THREE.BufferAttribute(new Uint32Array(bin, M.idx, M.indices), 1));
   g.computeBoundingSphere();
   const rockMat = new THREE.ShaderMaterial({
     vertexShader: ROCK_VS, fragmentShader: ROCK_FS,
     uniforms: {
-      uScale: { value: B.lightScale }, uCliff: { value: cliff }, uGround: { value: floorTex },
-      uCliffTile: { value: new THREE.Vector2(1 / 20, 1 / 10) }, uGroundTile: { value: 1 / 5 },
-      uMoss: { value: hex3(look.moss) }, uTint: { value: new THREE.Vector3(...look.rockTint) },
+      uScale: { value: B.lightScale }, uCliff: { value: cliff },
+      uMossT: { value: mossTex }, uEarth: { value: earthTex }, uSand: { value: sandTex }, uLeaves: { value: leavesTex },
+      uCliffTile: { value: new THREE.Vector2(1 / 20, 1 / 10) }, uFloorTile: { value: new THREE.Vector4(1 / 3.6, 1 / 2.6, 1 / 2.3, 1 / 3.6) },
+      uEarthTint: { value: new THREE.Vector3(...look.earthTint) }, uSandTint: { value: new THREE.Vector3(...look.sandTint) },
+      uTint: { value: new THREE.Vector3(...look.rockTint) },
       uFogCol: { value: fogCol }, uMistCol: { value: hex3(look.mist) }, uRim: { value: hex3(look.rim) },
       uFog: { value: new THREE.Vector3(look.fogDensity, look.mistHeight, 0.35) },
       uSprPos: U.uSprPos, uSprCol: U.uSprCol,
@@ -605,7 +630,7 @@ export async function createCaveHall({ base = './assets/caves/cave-hall', ground
   group.add(forest);
   // a sample of each kind, to know how big its crown is (for the camera, which keeps out of the leaves)
   const crownOf = {};
-  for (const type of new Set(L.trees.filter((t) => t.kind !== 'bush').map((t) => t.type))) {
+  for (const type of new Set([...L.trees.filter((t) => t.kind !== 'bush').map((t) => t.type), ...L.hanging.map((h) => h.type)])) {
     const sample = createAnimeTree({ type, seed: 1, falling: false });
     const box = new THREE.Box3().setFromObject(sample), sz = box.getSize(new THREE.Vector3());
     crownOf[type] = { y: box.min.y + sz.y * 0.68, r: Math.max(sz.x, sz.z) * 0.42 };
@@ -628,6 +653,8 @@ export async function createCaveHall({ base = './assets/caves/cave-hall', ground
     tr.scale.setScalar(h.scale);
     tr.name = 'hanging-tree';
     group.add(tr);
+    const c = crownOf[h.type];
+    if (c) crowns.push([h.x, h.roof - c.y * h.scale, h.z, c.r * h.scale]);      // (the camera keeps out of these leaves too)
   }
   // green hanging over the crack's edge, in the sun
   for (const h of L.rim || []) {
@@ -643,33 +670,29 @@ export async function createCaveHall({ base = './assets/caves/cave-hall', ground
   cover.name = 'cave-cover';
   group.add(cover);
 
-  // ---- where she can stand
-  const F = B.floor, fl = new Int16Array(bin, F.floor, F.nx * F.nz), ce = new Int16Array(bin, F.ceil, F.nx * F.nz);
-  const NONE = -32768;
-  const at = (arr, x, z) => {
-    const fx = (x - F.x0) / F.cell, fz = (z - F.z0) / F.cell;
-    const i = Math.floor(fx), j = Math.floor(fz);
-    if (i < 0 || j < 0 || i >= F.nx - 1 || j >= F.nz - 1) return null;
-    const a = arr[i * F.nz + j], b = arr[(i + 1) * F.nz + j], c = arr[i * F.nz + j + 1], d = arr[(i + 1) * F.nz + j + 1];
-    if (a === NONE || b === NONE || c === NONE || d === NONE) {
-      const u = fx - i, v = fz - j, near = [[a, u + v], [b, 1 - u + v], [c, u + 1 - v], [d, 2 - u - v]].filter((e) => e[0] !== NONE).sort((p, q2) => p[1] - q2[1]);
-      return near.length && near[0][1] < 0.9 ? near[0][0] / 100 : null;
-    }
-    const u = fx - i, v = fz - j;
-    return ((a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v) / 100;
+  // ---- the floor and the roof over every spot, and what lies there (cave-level.js makes her level of it)
+  const F = B.floor;
+  const floorMap = {
+    nx: F.nx, nz: F.nz, x0: F.x0, z0: F.z0, cell: F.cell,
+    fl: new Int16Array(bin, F.floor, F.nx * F.nz), ce: new Int16Array(bin, F.ceil, F.nx * F.nz), paint: new Uint8Array(bin, F.paint, F.nx * F.nz * 4),
   };
-  const floorAt = (x, z) => at(fl, x, z), ceilAt = (x, z) => at(ce, x, z);
-  const heightAt = (x, z) => { const f = floorAt(x, z); return f === null ? 60 : f; };
 
   let clock = 0;
+  const inShaft = new THREE.Vector3();
   return {
-    group, light, layout: L, rock, crowns, trunks, colliders, floorAt, ceilAt, heightAt,
+    group, light, layout: L, rock, crowns, trunks, colliders, floorMap,
     sun: SUN, pool: P, look, fogColor: fogCol,
     update(dt, camera) {
       clock += dt;
       time.value = clock;
       N.update(dt);
       floatAt(dt, clock);
+      // the camera inside the shaft of light (she plays in it now, and her camera follows her through it): the beam let
+      // down, or the whole view would be washed in its colour
+      inShaft.copy(camera.position); shaft.worldToLocal(inShaft);
+      const r = Math.hypot(inShaft.x, inShaft.z) / (1 + 0.3 * Math.min(1, Math.max(0, 1 - inShaft.y)));
+      const inside = inShaft.y > -0.05 && inShaft.y < 1.05 ? 1 - THREE.MathUtils.smoothstep(r, 0.7, 1.25) : 0;
+      shaftMat.uniforms.uStrength.value = look.shaftStrength * (1 - 0.85 * inside);
     },
   };
 }
