@@ -85,10 +85,12 @@ SOUNDS = {
 # "เสียงเดินไม่ผ่าน"; then "ทำเลยค่ะ earshot"): earshot's own steps on concrete, learned from recordings, rendered as
 #     earshot make "a light soft footstep" --sound step/concrete --n 12 --seed 101 -o c101.wav     (and --seed 202 -o c202.wav)
 # and put in SOURCE_DIR as step_concrete_<take>.wav: the six least alike of their short takes (one step each, a heel and
-# a toe; the long ones scuff). A little softened (over 6.5 kHz down), levelled as her other footfalls are (STEP_LOUD).
+# a toe; the long ones scuff). Only the heel and the toe kept: each take scraped on after them (a third small sound at
+# ~0.15 s and a tail to 0.3 s), and the user wanted that long part cut ("เสียงยาวมัน ยังไม่ได้ตัดออกดีกว่า"): 0.13 s,
+# its last 45 ms faded. A little softened (over 6.5 kHz down), levelled as her other footfalls are (STEP_LOUD).
 # step-sounds.js plays them where the ground is stone (the boss hall's page gives them to it: own.stone)
 for i, take in enumerate(['c101_4', 'c101_2', 'c202_7', 'c202_9', 'c202_4', 'c101_12']):
-    SOUNDS['step-%d' % (i + 1)] = ([('step_concrete_%s.wav' % take, 0.0, 0.40, 1.0, 70, 6500, 0.001, 0.12, 0.0, 0)], None)
+    SOUNDS['step-%d' % (i + 1)] = ([('step_concrete_%s.wav' % take, 0.0, 0.13, 1.0, 70, 6500, 0.001, 0.045, 0.0, 0)], None)
 STEP_LOUD = -31.0         # dB, its loudest 50 ms: as loud as her footfalls in the pack (steps.mp3's tread)
 LOOPS = {
     # the hall's draft: a mountain's high wind, slower, from the oculus above and from the fallen tunnel behind the door

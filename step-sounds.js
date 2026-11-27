@@ -225,7 +225,8 @@ const SPACE = {                                // how much of each sound goes in
   jump: 0.4, air: 0.4, launch: 0.4,            // (the jump's bursts after the second clip: off the ground, in the air, its last)
   gate: 0.4, throw: 0.3,                       // (the lance's circle and its blast: the clip's own sound has a room in it already)
   whoosh: 0.15, swish: 0.1, flutter: 0.1, gust: 0.1, settle: 0.08, land: 0.08, thump: 0.08,
-  stone: 0.3,                                  // (a page's own steps on stone, own.stone: a hall of stone answers them)
+  stone: 0.08,                                 // (a page's own steps on stone, own.stone: a little more than her other steps; at 0.3
+                                               // each rang on, "เสียงยาว")
   splash: 0.12, plunge: 0.12, plop: 0.12, stroke: 0.1, wade: 0.08, wetrun: 0.08,
 };
 const SPACE_REST = 0.05;                       // her steps and the rest: a breath of it, so they are in the same place
