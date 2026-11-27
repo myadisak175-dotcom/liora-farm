@@ -127,18 +127,29 @@ export function createGroundMap({
   // The shapes are rasterised in slices so a new sun position can be baked in the background (see beginCast / stepCast).
   const dapN = 128, dap = new Uint8Array(dapN * dapN);                         // light falling through leaves in patches: made once
   for (let j = 0; j < dapN; j++) for (let i = 0; i < dapN; i++) dap[j * dapN + i] = 255 * sstep(0.3, 0.7, fbm3(i / dapN * 14, 7.7, j / dapN * 14, S + 29, 2));
+  // (each row only where the shape lies on it, not its whole square: with the sun low a shadow is a long thin ellipse, its
+  // square many times its size, and a cast took ten times as long at dusk as at noon. The same pixels, as before)
   const rasterShape = (cov, [x, z, a, b, ux, uz, st = 1, dp = 0]) => {
+    if (!(a > 0 && b > 0)) return;
     const r = Math.max(a, b);
     const i0 = Math.max(0, Math.floor((x - r - cx + radius) / span * size)), i1 = Math.min(size - 1, Math.ceil((x + r - cx + radius) / span * size));
     const j0 = Math.max(0, Math.floor((z - r - cz + radius) / span * size)), j1 = Math.min(size - 1, Math.ceil((z + r - cz + radius) / span * size));
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const px = cx - radius + (i + 0.5) / size * span, pz = cz - radius + (j + 0.5) / size * span;
-      const dx = px - x, dz = pz - z, u = (dx * ux + dz * uz) / a, v = (-dx * uz + dz * ux) / b, d = Math.hypot(u, v);
+    const ea = ux * ux / (a * a) + uz * uz / (b * b), eb = 2 * ux * uz * (1 / (a * a) - 1 / (b * b)), ec = uz * uz / (a * a) + ux * ux / (b * b);
+    for (let j = j0; j <= j1; j++) {
+      const pz = cz - radius + (j + 0.5) / size * span, dz = pz - z;
+      const eB = eb * dz, eC = ec * dz * dz - 1, disc = eB * eB - 4 * ea * eC;      // (on this row the ellipse runs from dx lo to hi: ea dx² + eB dx + eC < 0)
+      if (disc < 0) continue;
+      const sq = Math.sqrt(disc), lo = (-eB - sq) / (2 * ea), hi = (-eB + sq) / (2 * ea);
+      const ia = Math.max(i0, Math.floor((x + lo - cx + radius) / span * size - 0.5) - 1), ib = Math.min(i1, Math.ceil((x + hi - cx + radius) / span * size - 0.5) + 1);
+      for (let i = ia; i <= ib; i++) {
+      const px = cx - radius + (i + 0.5) / size * span;
+      const dx = px - x, u = (dx * ux + dz * uz) / a, v = (-dx * uz + dz * ux) / b, d = Math.hypot(u, v);
       if (d >= 1) continue;
       let k = (1 - sstep(0.62, 1, d)) * st;
       if (dp > 0) k *= 1 - dp * (1 - dap[(Math.floor(pz * 2.2) & (dapN - 1)) * dapN + (Math.floor(px * 2.2) & (dapN - 1))] / 255);
       const o = j * size + i, c = Math.round(k * 255);
       if (c > cov[o]) cov[o] = c;
+      }
     }
   };
   stamp(grow, (o, d) => {                                                      // grass after all: the grass's own colour
@@ -177,8 +188,14 @@ export function createGroundMap({
   };
   // a new set of shadows (the sun moved): beginCast(list, k) starts it, stepCast(ms) works on it for a few milliseconds
   // per frame and returns true on the frame the new shadows go live
-  let job = null;
-  const beginCast = (list, k = 1) => { job = { list, i: 0, q: 0, cov: new Uint8Array(size * size), stage: data.slice(), k }; };
+  // (its two working pictures made once and kept: they were made anew for every cast, 8 MB at 1280 a side every few seconds
+  // with the clock running, for the phone to clear away)
+  let job = null, jobCov = null, jobStage = null;
+  const beginCast = (list, k = 1) => {
+    if (!jobCov) { jobCov = new Uint8Array(size * size); jobStage = new Uint8Array(data.length); }
+    jobCov.fill(0); jobStage.set(data);
+    job = { list, i: 0, q: 0, cov: jobCov, stage: jobStage, k };
+  };
   const stepCast = (ms = 3) => {
     if (!job) return false;
     const t0 = performance.now();
