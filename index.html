@@ -275,7 +275,8 @@
   "./ambience-places.js": "./ambience-places.js?v=7",
   "./music.js": "./music.js?v=6",
   "./frame-measure.js": "./frame-measure.js?v=1",
-  "./sound-settings.js": "./sound-settings.js?v=1",
+  "./sound-settings.js": "./sound-settings.js?v=2",
+  "./picture-settings.js": "./picture-settings.js?v=1",
   "./stylized-buildings.js": "./stylized-buildings.js?v=bridge1guild1fence1",
   "./stylized-guild.js": "./stylized-guild.js?v=1",
   "./stylized-props.js": "./stylized-props.js?v=sails1",
@@ -399,12 +400,13 @@ const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform 
 const fpsAsked = new URLSearchParams(location.search).get('fps');
 const fastMode = fpsAsked === '120';
 const targetFPS = fastMode ? 120 : 60;
-// the pace frames are drawn at: 60, or a steady 30 on a phone that cannot keep 60 (the tuner, below). ?fps=30: always 30;
-// ?fps=60: always 60, to compare (as it was before 27 Nov 2026); ?fps=120: always 120
+// the pace frames are drawn at: 60, or a steady 30, as the player sets it (picture-settings.js, below). ?fps=30, ?fps=60,
+// ?fps=120: that, whatever is set
 let pace = fpsAsked === '30' ? 30 : targetFPS;
 const paceFixed = fpsAsked === '30' || fpsAsked === '60' || fastMode;
 const maxDPR = Math.min(devicePixelRatio || 1, +new URLSearchParams(location.search).get('dpr') || (fastMode ? 1.25 : 1.5));      // a phone's own resolution is far more pixels than a painted look needs; ?dpr=2 to compare
 let renderDPR = IOS ? Math.min(maxDPR, 1.5) : maxDPR;
+const prettyDPR = renderDPR;                         // (the picture's resolution set to สวย; ลื่น: 1.0, applyPicture below)
 renderer.setPixelRatio(renderDPR);
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
@@ -520,9 +522,11 @@ const air = sounds && Q.get('air') !== '0' ? (await import('./ambience-places.js
 // air about her; by the hour (music.js; assets/audio/music.json says which piece fits when). While a piece plays the air is
 // let down; by a waterfall the music is. ?music=0: without it, and nothing of it is loaded. With ?sound=0 neither
 const music = sounds && Q.get('music') !== '0' ? (await import('./music.js')).createMusic({ context: () => sounds.context, volume: soundVol }) : null;
-// ---- 🔊 the sound settings (sound-settings.js): sliders for all of it, the music, the air, her own sounds; kept for the next
-// time. The music at 0 is the music off (as the 🎵 button that was here)
-const soundSettings = sounds ? (await import('./sound-settings.js')).createSoundSettings({ sounds, air, music, base: soundVol }) : null;
+// ---- ⚙️ the settings (sound-settings.js holds the card): the picture (picture-settings.js: สวย / ลื่น, 60 / 30; applied below,
+// applyPicture), then sliders for all of the sound, the music, the air, her own sounds; kept for the next time. The music
+// at 0 is the music off (as the 🎵 button that was here). With ?sound=0 no card: the picture as it was last set
+const pictureSettings = (await import('./picture-settings.js')).createPictureSettings({ apply: v => applyPicture(v) });
+const soundSettings = sounds ? (await import('./sound-settings.js')).createSoundSettings({ sounds, air, music, base: soundVol, more: pictureSettings.section }) : null;
 // ---- ✨ her spells (player-spells.js says what she casts and when; player-moves.js where she may go meanwhile): the light
 // of the magic combo (magic-combo-fx.js) and the barrier (since 25 Nov 2026 the one that throws a blow back, in the old one's
 // place, her move the old one's: barrier-reflect.js its rules, barrier-reflect-fx.js what is seen, barrier-reflect-sounds.js
@@ -812,90 +816,48 @@ if (spellKit && spellKit.rainFx) scene.add(spellKit.rainFx.object);      // (the
 if (blinkKit) scene.add(blinkKit.fx.object);                              // (the blink's, in its own light too)
 if (farmTools && farmTools.fxObject) scene.add(farmTools.fxObject);      // (her farm's splash, when it has its own: no spells)
 
-// ---- keep it smooth: when the phone struggles, a coarser picture, then cheaper clouds and mirror, then thinner grass; all of
-// it given back when there is room. It goes by the typical frame of each second (the middle one, its frames in order of how
-// long they took), not by their average: a hitch now and then (a shader made, a picture sent to the GPU) is not the phone
-// being slow, and on an iPhone it used to take the picture a step coarser and the grass a step thinner each time (27 Nov
-// 2026: "ภาพค่อยๆ เบลอ หญ้าบางลง"). The hitches are counted for the readout (?dev=1): how many in the last minute, the
-// longest. What is given back and at once proves too much (the pace drops again within seconds)
-// is not tried again for a while: without that the picture went coarse and fine, and the grass thin and thick, over and
-// over wherever the phone was near its limit.
+// ---- the picture as the player sets it (picture-settings.js, in the ⚙️ settings card): สวย or ลื่น, 60 or 30 frames a
+// second; the game never changes it by itself (27 Nov 2026). Until then a tuner here took the picture down when the phone
+// struggled (a coarser picture, the clouds redrawn less often, a smaller mirror, thinner grass, a steady 30) and gave it
+// back when there was room: on the user's iPhone it did so over and over ("ยังลดคุณภาพอยู่ เฟรมเรทก็ไม่นิ่ง งงมาก"), and she
+// chose to set it herself ("ให้เลือกเองในตั้งค่า"). ลื่น is the tuner's own levers, pulled part way: the picture at 1.0 (not
+// 1.5), half the grass, the clouds redrawn half as often, the mirror on the water the small one. ?fps= still sets the pace
+const setDPR = v => { renderDPR = v; dprDue = true; };      // (the picture's size changes as the next frame begins: changed after a frame is drawn, the screen would show one empty frame, a blink)
+let dprDue = false;
+const mirrorBest = level.optics.quality;             // (as the water's own settings left it: the full mirror, unless set otherwise there)
+function applyPicture({ look, fps }) {
+  const smooth = look === 'smooth', g = level.grass.userData;
+  const dpr = smooth ? Math.min(prettyDPR, 1) : prettyDPR;
+  if (dpr !== renderDPR) setDPR(dpr);
+  if (g.setDensity) g.setDensity(smooth ? 0.5 : 1);
+  if (sky.userData.setRate) sky.userData.setRate(smooth ? 0.5 : 1);
+  const q = smooth ? Math.min(mirrorBest, 1) : mirrorBest;
+  if (level.optics.quality !== q) { level.optics.setQuality(q); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); }
+  if (!paceFixed) pace = fps;
+}
+if (pictureSettings && !measuring) pictureSettings.apply();      // (now, before the warm-up: the shaders made and the pictures sent are the ones it draws with. ?measure: the picture at its best, whatever is set)
+
+// ---- the frames as they come, for the readout (?dev=1): how many a second, and the hitches (frames longer than 50 ms; at 30,
+// 45 ms: a frame missed), how many in the last minute and the longest. Nothing is changed by them
 const fpsEl = document.getElementById('fps');
-const gaps = [];                                     // (this second's frames, how long each took)
-let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms (at 30: 45 ms, a frame missed), the last minute's)
-let fpsN = 0, fpsT = 0, warm = 0, good = 0, played = 0, gaveBackAt = -1e9, holdUntil = 0, dprDue = false, mirrorWas = -1;      // (played: seconds of play the tuner has seen; mirrorWas: the mirror's quality before the tuner first lowered it)
-let at30 = -1e9, tried60 = -1e9, wait60 = 30;        // (when the pace went down to 30; when 60 was last tried again; how long to keep 30 before trying)
-// PATIENT WITH THE PICTURE (27 Nov 2026, iPhone: "ภาพสวย 20 วิแรก ... ผ่านไปหนึ่งนาทีลดคุณภาพ", the phone not even warm).
-// After her first touch the page wakes its sound: her steps, the air's loops, the music, fetched and decoded, some 60 MB
-// of it in the first half minute; and whatever else is first done then. A phone is slow for those seconds and then is not,
-// but the tuner took each slow second for a slow phone and took the picture down (and gave it back only slowly). Now it
-// takes nothing from the picture in the first SETTLE seconds of play (the pace may still go to 30), and after that only
-// once it has been slow for SLOW_RUN seconds running
-const SETTLE = 45, SLOW_RUN = 3;
-let slowRun = 0, wall = 0;                           // (seconds slow, running; seconds of play by the clock, however slow the frames)
-// THE SCREEN'S OWN FRAME (27 Nov 2026). A frame is drawn on the first of the screen's frames at least a pace's gap after the
-// last (animate, below): on a 60 Hz screen every one of them, on 120 Hz every second (60), but on 90 Hz, which many Android
-// phones have, every second too: 45, the most a pace of 60 can be there. The tuner took that 45 for a phone too slow for 60
-// and, before the steady 30, lowered the picture, the clouds, the mirror and the grass as far as they go however strong the
-// phone; with it, it held 30. So it now judges a pace by what it can be on this screen (cap): 45 on 90 Hz, 48 on 144.
-// tick: the screen's frame, the shortest gap seen between two of its frames in the last few seconds (the browser calls
-// animate on every one, drawn or not), never taken as longer than 60's: a screen slowed to 30 (Low Power Mode) is
-// treated as before
+let hitches = [];                                    // ([when, how long] of each frame longer than 50 ms (at 30: 45 ms), the last minute's)
+let fpsN = 0, fpsT = 0, played = 0;                  // (played: seconds of play counted)
+// the screen's own frame, for the readout (จอ 90Hz): the shortest gap seen between two of its frames in the last few
+// seconds (the browser calls animate on every one, drawn or not)
 let tick = 1000 / 60, tickMin = Infinity;
 const tickSeen = [];
-const capOf = p => 1000 / (Math.ceil((1000 / p - 2) / tick - 1e-3) * tick);      // (frames a second a pace p comes to on this screen)
-const setDPR = v => { renderDPR = v; dprDue = true; };      // (the picture's size changes as the next frame begins: changed after a frame is drawn, the screen would show one empty frame, a blink)
-const tookAway = () => { if (played - gaveBackAt < 8) holdUntil = played + 45; };
-const gaveBack = () => { gaveBackAt = played; };
-const mayGiveBack = () => played >= holdUntil;
-// NOT 60, THEN A STEADY 30 (27 Nov 2026: on the user's iPhone and iPad "กระตุกมาก", at 32 fps with the picture, the
-// clouds, the mirror and the grass all taken down as far as they go). A phone that cannot draw a frame in 16 ms drew them
-// at 16, 33 and 50 ms as each happened to fit: the eye sees that unevenness as stutter, more than it sees 30 itself. So the
-// first thing the tuner does when 60 is not kept is to draw every other frame of the screen's, a steady 33 ms, with the
-// picture whole; what it took away before (a coarser picture, cheaper clouds and mirror, thinner grass) it takes away only
-// if 30 is not kept either, and gives back as soon as 30 is kept with room. With everything whole and 30 kept for a while it
-// tries 60 again (the place she is in may be lighter): kept, it stays; not, back to 30 at once, and the next try waits
-// twice as long (30 s, then 1, 2, 4, at most 5 minutes)
 function tune(dt, raw = dt) {
-  if (measuring) return;                             // (frame-measure.js times the frames: nothing changed under it)
-  fpsN++; fpsT += dt; warm += dt; played += dt; wall += raw; gaps.push(dt);
+  if (measuring) return;                             // (frame-measure.js times the frames itself)
+  fpsN++; fpsT += dt; played += dt;
   if (raw > (pace === 30 ? 0.045 : 0.05)) hitches.push([played, raw]);
   if (fpsT < 1) return;
-  gaps.sort((a, b) => a - b);
-  const fps = 1 / Math.max(gaps[gaps.length >> 1], 1e-3), mean = fpsN / fpsT;      // (fps: the typical frame's pace; mean: the average's, as shown)
+  const mean = fpsN / fpsT;
   tickSeen.push(tickMin); tickMin = Infinity; if (tickSeen.length > 5) tickSeen.shift();
-  tick = Math.min(1000 / 60, ...tickSeen);           // (the screen's frame, THE SCREEN'S OWN FRAME above)
-  const cap = capOf(pace);                           // (what the pace comes to on this screen: 60 or 45, 30)
-  let late = 0; for (const d of gaps) if (d > 1.75 / cap) late++;
-  const uneven = late > gaps.length * 0.2;           // (a fifth of the frames late by a whole frame of theirs, though the typical one may be on time)
-  fpsN = 0; fpsT = 0; gaps.length = 0;
+  tick = Math.min(1000 / 60, ...tickSeen);
+  fpsN = 0; fpsT = 0;
   hitches = hitches.filter(h => played - h[0] < 60);
-  const g = level.grass.userData, slow = fps < cap * 0.78, easy = fps > cap * 0.93;
-  slowRun = slow ? slowRun + 1 : 0;
-  const lower = slow && slowRun >= SLOW_RUN && wall > SETTLE;      // (the picture taken down: PATIENT WITH THE PICTURE, above)
-  const whole = renderDPR >= maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1) && (mirrorWas < 0 || level.optics.quality >= mirrorWas);
-  if (warm > 4 || (pace > 30 && played - tried60 < 4 && warm > 2)) {      // (60 tried again: told sooner whether it is kept)
-    if ((slow || uneven) && pace > 30 && !paceFixed) {
-      if (played - tried60 < 8) wait60 = Math.min(300, wait60 * 2); else wait60 = 30;      // (60 tried again and not kept: the next try waits longer)
-      pace = 30; at30 = played; warm = 2; good = 0;
-    }
-    else if (pace === 30 && !paceFixed && whole && easy && played - at30 > wait60 && played - tried60 > wait60) { pace = targetFPS; tried60 = played; warm = 0; good = 0; }
-    else if (lower && renderDPR > 1) { setDPR(Math.max(1, renderDPR - 0.125)); tookAway(); warm = 2; good = 0; slowRun = 0; }
-    else if (easy && renderDPR < maxDPR && g.density >= 0.99 && (!sky.userData.rate || sky.userData.rate >= 1)) {
-      if (mayGiveBack() && ++good >= 4) { setDPR(Math.min(maxDPR, renderDPR + 0.125)); gaveBack(); warm = 2; good = 0; }
-    }
-    // still too slow: the clouds redrawn less often (the cheapest saving), then the mirror on the water, only then thinner grass
-    else if (lower && sky.userData.rate > 0.3) { sky.userData.setRate(sky.userData.rate * 0.5); tookAway(); warm = 2; good = 0; slowRun = 0; }
-    else if (lower && level.optics.quality > 0) { if (mirrorWas < 0) mirrorWas = level.optics.quality; level.optics.setQuality(level.optics.quality - 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); tookAway(); warm = 2; good = 0; slowRun = 0; }
-    else if (lower && g.density > 0.3) { g.setDensity(g.density - 0.125); tookAway(); good = 0; slowRun = 0; }
-    else if (easy && g.density < 1) { if (mayGiveBack() && ++good >= 3) { g.setDensity(g.density + 0.125); gaveBack(); good = 0; } }      // (an eighth at a time: the grass keeps whole eighths, and a twelfth more of half was never another eighth: from half down it never came back, nor did anything after it)
-    else if (easy && sky.userData.rate < 1) { if (mayGiveBack() && ++good >= 5) { sky.userData.setRate(sky.userData.rate * 2); gaveBack(); good = 0; } }
-    else if (easy && level.optics.quality < mirrorWas) {      // last of all (the picture is whole again by now): the mirror on the water, which used to stay off for good once it had been lowered
-      if (mayGiveBack() && ++good >= 5) { level.optics.setQuality(level.optics.quality + 1); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); gaveBack(); warm = 2; good = 0; }
-    }
-    else good = 0;
-  }
-  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ล็อก 30)' : '') + (tick < 15 ? ' · จอ ' + Math.round(1000 / tick) + 'Hz' : '') + ' · ภาพ ' + Math.round(renderDPR / maxDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
+  const g = level.grass.userData;
+  fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ตั้ง 30)' : '') + (tick < 15 ? ' · จอ ' + Math.round(1000 / tick) + 'Hz' : '') + ' · ภาพ ' + Math.round(renderDPR / prettyDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
     + ' · กระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '');
 }
 
@@ -1098,12 +1060,12 @@ const frame = (dt = clock.getDelta()) => {
   }
   level.update(renderer, dt, scene, camera);
   renderer.render(scene, camera);
-  if (editing()) { fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; } else tune(real, raw);      // (an editor draws fewer frames on purpose: that is not the phone struggling)
+  if (editing()) { fpsN = 0; fpsT = 0; } else tune(real, raw);      // (an editor draws fewer frames on purpose: not counted)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
 // phone turns into heat, not into anything the eye needs here: frames that come too soon are skipped (?fps=120 keeps them all).
-// At a pace of 30 (the tuner, above: a phone that cannot keep 60) every other one of the screen's is drawn, evenly
+// At a pace of 30 (the player's choice, above) every other one of the screen's is drawn, evenly
 const frameGap = () => 1000 / pace - 2;              // ms between frames; the 2 forgives a tick that arrives a hair early
 let lastFrameAt = -1e9;
 // In an editor the view looks down on far more ground than a walk does, and nothing in it has to move smoothly: 30 frames a
@@ -1121,7 +1083,7 @@ const animate = t => {
   lastFrameAt = t; frame();
 };
 const syncVisibility = () => {
-  clock.getDelta(); fpsN = 0; fpsT = 0; warm = 0; good = 0; gaps.length = 0; lastTick = -1;
+  clock.getDelta(); fpsN = 0; fpsT = 0; lastTick = -1;
   renderer.setAnimationLoop(!document.hidden && !Q.get('still') && !measuring ? animate : null);      // (measuring: frame-measure.js draws the frames)
 };
 document.addEventListener('visibilitychange', syncVisibility);
@@ -1150,7 +1112,7 @@ barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
 if (measuring) (await import('./frame-measure.js')).createFrameMeasure({ frame, renderer, scene, camera, level, player, sky, charShadow, setDPR, dpr: () => renderDPR, sounds });
-window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, towers, farmTools, sounds, air, music, soundSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, towers, farmTools, sounds, air, music, soundSettings, pictureSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
