@@ -298,7 +298,13 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   // short (mow, below), nothing of the plan's grows on it (no flowers, ferns or tufts) and nothing else is put on it. The
   // level lays its ground and the things lying on it (farm-soil.js, farm-debris.js: level.farm); what she does there, and
   // what lay on it to begin with, is farm-tools.js's (index.html). (Its place is said here, for now: not yet in the plan)
-  const FARM = new URLSearchParams(location.search).has('farm') ? { x0: -73, z0: 78, cols: 22, rows: 14 } : null;
+  // THE HERO'S OLD FARM (a trial, ?oldfarm=1, which brings her farm with it): what he left round it, a hundred years on
+  // (old-farm.js: his cottage, its roof fallen in, a broken fence, two old beds, his well and shed, a scarecrow, the last
+  // seed's mound); she starts by the seed. Built with the houses below; its farm begins as old-farm.js says (index.html)
+  const OLD_FARM = (q => q.has('oldfarm') && q.get('oldfarm') !== '0')(new URLSearchParams(location.search));
+  const FARM = new URLSearchParams(location.search).has('farm') || OLD_FARM ? { x0: -73, z0: 78, cols: 22, rows: 14 } : null;
+  const oldFarm = OLD_FARM ? (await import('./old-farm.js')).createOldFarm({ farm: FARM, heightAt: H }) : null;
+  if (oldFarm) { P.spawn = oldFarm.spawn; P.views.start = [oldFarm.spawn.x, oldFarm.spawn.z, oldFarm.spawn.yaw]; }
   const inFarm = (x, z, pad = 0) => !!FARM && x > FARM.x0 - pad && x < FARM.x0 + FARM.cols + pad && z > FARM.z0 - pad && z < FARM.z0 + FARM.rows + pad;
   const farmMow = (x, z) => {                                              // cut short over the farm, its edge wandering a little (not ruled)
     const out = Math.max(Math.abs(x - FARM.x0 - FARM.cols / 2) - FARM.cols / 2, Math.abs(z - FARM.z0 - FARM.rows / 2) - FARM.rows / 2) + Math.sin(x * 0.83 + z * 0.21) * 0.35 + Math.sin(z * 1.27 - x * 0.4) * 0.25;
@@ -508,6 +514,19 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     const obj = createAnimeForest([plant]); obj.name = 'greatTree';
     group.add(obj); leafLods.push(obj.userData.lod);
     addThing(b.id, b, (x, z) => ({ y: H(x, z) - 0.05, deep: 0 }), null, { obj, y0: plant.y + 0.05 });
+  }
+  // the hero's old farm (?oldfarm=1): his cottage, a kit house as the village's are (its roof fallen in, its footing, and
+  // what old-farm.js puts with it), and the rest of what he left, merged with what is built
+  if (oldFarm) {
+    const c = oldFarm.cottage, { w, l } = c.spec, hs = corners(c.x, c.z, w, l, c.yaw), hi = Math.max(...hs), deep = hi - Math.min(...hs), y = hi + 0.03;
+    kb.house(c.spec, c.x, y, c.z, c.yaw);
+    const K = BD.kit(c.spec.seed || 1);
+    K.box(0, -deep - 1.2, 0, w + 0.5, deep + 1.26, l + 0.5, C.stoneDark);
+    builds.push(BD.place(K.done(), c.x, y, c.z, c.yaw));
+    c.extras(kb, builds, c.x, y, c.z, c.yaw);
+    solid(c.x, c.z, w + 0.5, l + 0.5, c.yaw, 3 + w * 0.45 + 1);
+    builds.push(...oldFarm.geometries);
+    colliders.push(...oldFarm.colliders); bare.push(...oldFarm.bare); casters.push(...oldFarm.casters);
   }
   // the things, each where it stands, merged with the rest
   const thingBuilds = [];
@@ -823,7 +842,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     }
   };
   const plantCover = (list, only = null) => {
-    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && (offWay(c.x, c.z, 0.1) || paved.laid(c.x, c.z) > 0.3) && !inFarm(c.x, c.z, 0.5)), squareOf, only);      // (none in the water or on a way; on the paving it grows out of its gap; none on her farm)
+    const offOld = (x, z) => !oldFarm || !oldFarm.keepOff.some(([kx, kz, kr]) => Math.hypot(x - kx, z - kz) < kr);      // (nor through the hero's cottage, well and shed: ?oldfarm=1)
+    const by = sorted(list.filter(c => waterDepthAt(c.x, c.z) === 0 && (offWay(c.x, c.z, 0.1) || paved.laid(c.x, c.z) > 0.3) && !inFarm(c.x, c.z, 0.5) && offOld(c.x, c.z)), squareOf, only);      // (none in the water or on a way; on the paving it grows out of its gap; none on her farm)
     for (const key of only || by.keys()) {
       uproot(squaresAt, key);
       const here = by.get(key);
@@ -1087,6 +1107,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     homes: [...P.buildings.filter(b => b.kind === 'house' || b.kind === 'well').map(b => [b.x, b.z]), ...(P.props || []).filter(p => p[0] === 'stall').map(p => [p[1], p[2]])],      // (the village's houses and stalls: where the curse's mist stands, curse-weather.js)
     keepClear: (x, z) => slope(x, z) > 0.6 || paths.near(x, z).d < 2.5 || inField(x, z, 1) || inFarm(x, z, 1),
     farm,                                                                  // her farm (?farm=1): { soil, debris, setSun, rect }, or null
+    oldFarm,                                                               // the hero's old farm round it (?oldfarm=1: old-farm.js; .tools for farm-tools.js), or null
     name: 'หมู่บ้านบนเขา หุบเขา และชายขอบตะวันตก (heightmap)', stats: { trees: plants.length, groves: groves.length, look, green, water: water.report, drought: drought && drought.report, pools: pools.length, mist: darkMist ? darkMist.sources : 0 },
     map: url(east ? (cursed ? M.mapEastCursed : M.mapEast) : cursed ? M.mapCursed : green ? M.mapGreen : M.map), mapOverlay,
     horizon: { center: [CX, CZ], scale: horizonR / 170, layers: M.alps },      // the far hills (stylized-sky.js: the nearest ring is 170 m out): moved out to where the rim's wooded hills end
