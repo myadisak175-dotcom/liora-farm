@@ -15,6 +15,7 @@
 #      9 m tall, so its stone, its iron and its fire are heavy), less what lies under hp and over lp (Hz; four poles
 #      each). Nothing much is kept under ~60 Hz: a phone's speaker gives nothing there, and a deep sound is heard on one
 #      by what it has between 150 and 600 Hz.
+#   1b. The hall's air (UNTONED) has its held pitches taken out: a wind's whistle, slowed, is a howl.
 #   2. faded in and out (fade: s at its start, s at its end), laid where it starts in the sound (at, s) at its gain
 #      (dB), mixed.
 #   3. A loop (LOOPS) has its last XFADE seconds laid over its first, so its end meets its start; boss-hall-sounds.js
@@ -24,7 +25,8 @@
 #      has its peaks rounded off instead). The mp3 is decoded again and, if its peak came out over CEILING, made again
 #      that much quieter.
 #   5. Made small: MP3, mono (STEREO keeps both sides) at MONO_RATE, stereo at STEREO_RATE.
-#   How loud each plays, from where in the hall, and how far into its echo is boss-hall-sounds.js's.
+#   How loud each plays, from where in the hall, and how far into its echo is boss-hall-sounds.js's (raise its MADE when
+#   the files are made again: they are fetched with ?v=MADE, and phones keep the old ones otherwise).
 
 import sys, os, subprocess
 import numpy as np
@@ -67,25 +69,28 @@ SOUNDS = {
     'drip2':  ([('drip_bloop', 0.0, 0.4, 0.85, 200, 8000, 0.0, 0.1, 0.0, 0)], -22),
     # far off in the dark, now and then: small stones falling (a rockfall's patter), a stone knocking on the floor and
     # ringing (a wizard's staff on stone, slow), the stone itself groaning somewhere (the door's grind, very slow), and the
-    # air sighing through the hall (a ghost passing, slow), which boss-hall-sounds.js moves from one side to the other
+    # air going by through the hall (a deep low whoosh, slower: a ghost's passing was tried first, and moaned like a
+    # voice), which boss-hall-sounds.js moves from one side to the other
     'pebbles1': ([('rocks_tumbling', 0.15, 1.25, 0.85, 200, 4000, 0.02, 0.4, 0.0, 0)], -18),
     'pebbles2': ([('rocks_tumbling', 1.75, 1.15, 0.75, 200, 4000, 0.02, 0.4, 0.0, 0)], -18),
     'knock':  ([('wizard_staff', 0.44, 1.06, 0.60, 120, 3500, 0.002, 0.5, 0.0, 0)], -16),
-    'groan':  ([('stone_door', 0.4, 1.5, 0.38, 40, 1000, 0.6, 1.4, 0.0, 0)], -20),
-    'sigh':   ([('ghost_passing', 0.2, 3.8, 0.70, 120, 2200, 1.0, 1.8, 0.0, 0)], -24),
+    'groan':  ([('stone_door', 0.4, 1.5, 0.38, 40, 700, 0.6, 1.4, 0.0, 0)], -20),
+    'sigh':   ([('whoosh_low', 0.0, 2.5, 0.60, 80, 1500, 0.8, 1.5, 0.0, 0)], -24),
 }
 LOOPS = {
     # the hall's draft: a mountain's high wind, slower, from the oculus above and from the fallen tunnel behind the door
     # (boss-hall-sounds.js puts it in both places)
     'air':     ([('wind_mountain', 0.0, 12.0, 0.75, 150, 3000, 0.0, 0.0, 0.0, 0)], -28),
     # the hall's own mass, all round: deep water's rush, very slow and dull, a pressure more than a sound
-    'room':    ([('underwater_deep', 0.0, 12.0, 0.55, 35, 300, 0.0, 0.0, 0.0, 0)], -30),
+    'room':    ([('underwater_deep', 0.0, 12.0, 0.55, 35, 220, 0.0, 0.0, 0.0, 0)], -30),
     # a fire burning: a campfire's crackle, darker (each lit fire near her has one of its own, from where it is)
     'crackle': ([('fire_camp', 0.0, 12.0, 0.92, 70, 3500, 0.0, 0.0, 0.0, 0)], -26),
     # the dread once the statues are awake: a whale's call far under water, very slow and low, a living drone
     'drone':   ([('whale_call', 1.3, 5.7, 0.55, 40, 1200, 0.0, 0.0, 0.0, 0)], -24),
 }
 STEREO = {'room', 'drone', 'boom', 'grind', 'hum', 'crackle'}
+UNTONED = {'air', 'room', 'groan', 'sigh'}   # their held pitches taken out (untoned): the hall's air whistled and moaned
+                          # like a dog howling (the user: "เหมือนมีเสียงหมาหอนแปลกๆ")
 SOFT = {'crackle': -6.0}  # brought to its level and its peaks then rounded off toward this (dB; the fire's pops stood 30 dB
                           # over its roar)
 
@@ -98,6 +103,25 @@ def part(src, start, secs, rate, hp, lp):
     return np.frombuffer(raw, np.float32).reshape(-1, 2).astype(np.float64)
 
 
+def untoned(x, width=180.0):
+    """x with its held pitches taken out: in each 85 ms its spectrum's peaks cut down to the middle of what is round
+    them (width Hz), the phase kept. A wind's whistles, a stone's whine, a moan: what the ear takes for a voice or a
+    howl; what is left is the same air, as loud at each pitch and in each moment, but noise"""
+    from scipy.signal import stft, istft
+    from scipy.ndimage import median_filter
+    n = 4096
+    out = np.zeros_like(x)
+    for c in range(x.shape[1]):
+        f, t, Z = stft(x[:, c], fs=SR, nperseg=n, noverlap=n - n // 4)
+        mag = np.abs(Z)
+        k = max(3, int(round(width / (SR / n))) | 1)
+        mid = median_filter(mag, size=(k, 1), mode='nearest')
+        Z = Z * (np.minimum(mag, mid) / np.maximum(mag, 1e-12))
+        _, y = istft(Z, fs=SR, nperseg=n, noverlap=n - n // 4)
+        out[:, c] = y[:len(x)] if len(y) >= len(x) else np.pad(y, (0, len(x) - len(y)))
+    return out
+
+
 def faded(x, fin, fout):
     n = len(x)
     a, b = int(fin * SR), int(fout * SR)
@@ -107,10 +131,12 @@ def faded(x, fin, fout):
     return x * g[:, None]
 
 
-def build(parts, src_dir):
+def build(parts, src_dir, plain=False):
     pieces = []
     for (name, start, secs, rate, hp, lp, fin, fout, at, db) in parts:
-        x = faded(part(os.path.join(src_dir, name + '.mp3'), start, secs, rate, hp, lp), fin, fout) * 10 ** (db / 20)
+        x = part(os.path.join(src_dir, name + '.mp3'), start, secs, rate, hp, lp)
+        if plain: x = untoned(x)
+        x = faded(x, fin, fout) * 10 ** (db / 20)
         pieces.append((int(at * SR), x))
     n = max(o + len(x) for o, x in pieces)
     y = np.zeros((n, 2))
@@ -159,7 +185,7 @@ def main():
     print('%-8s %6s %7s %7s %6s %5s' % ('sound', 'secs', 'gain', 'loud', 'peak', 'kB'))
     for table, loop in ((SOUNDS, False), (LOOPS, True)):
         for name, (parts, target) in table.items():
-            y = build(parts, src_dir)
+            y = build(parts, src_dir, name in UNTONED)
             if loop: y = looped(y)
             if name not in STEREO: y = np.repeat(y.mean(axis=1, keepdims=True), 2, axis=1)
             g = target - loud_db(y, loop)

@@ -34,6 +34,7 @@ const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'boom', 'eye', 'heart', '
 const LOOPS = ['air', 'room', 'crackle', 'drone'];
 const FILES = [...ONCE, ...LOOPS];
 const DOOR = [0, 4.5, 22];            // where the door's sounds come from (its middle, a man's height and more up)
+const MADE = 3;                       // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old)
 
 export function createBossSounds({ context, volume = 1, hall = null, fires = null, made = false, base = './assets/audio/boss/' } = {}) {
   const FIRES = fires || (hall && hall.fires) || [], STATUES = (hall && hall.statues) || [];
@@ -45,7 +46,7 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
   const next = { drip: 0, stone: 0, groan: 0, sigh: 0 };
   const ear = { x: 0, y: 1.6, z: 30 };
   const raw = {}, buf = {};
-  if (!made) for (const n of FILES) raw[n] = fetch(base + n + '.mp3').then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+  if (!made) for (const n of FILES) raw[n] = fetch(base + n + '.mp3?v=' + MADE).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
 
   function noise(c, seconds, kind) {
     const n = Math.floor(c.sampleRate * seconds), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
