@@ -46,8 +46,12 @@ SOUNDS = {
     'grind':  ([('stone_door', 0.0, 2.15, 0.68, 60, 4000, 0.15, 0.6, 0.0, 0)], -16),
     # ... and meeting the walls: the same door's thud as it lands
     'thud':   ([('stone_door', 2.56, 1.24, 0.80, 55, 3500, 0.005, 0.45, 0.0, 0)], -11),
-    # a fire catching: a burst of flame, a little larger
-    'fire':   ([('fire_whoosh', 0.0, 1.7, 0.85, 80, 7000, 0.01, 0.5, 0.0, 0)], -16),
+    # a fire catching: พรึ่บ! all at once, not a whoosh (the user: "อยากได้เสียงพรึ่บ!! ไม่เอาเสียง whoose"): a dull thump
+    # (a punch, very slow and dark), a dragon's fire from the instant it lights (its build cut off), the air of one wing
+    # beat under it; all three on the same instant
+    'fire':   ([('punch_body', 0.03, 0.37, 0.55, 40, 350, 0.002, 0.25, 0.0, -4),
+                ('dragon_fire', 0.11, 0.45, 0.85, 80, 6000, 0.002, 0.42, 0.025, 0),
+                ('dragon_wings', 0.23, 0.19, 0.70, 100, 2500, 0.002, 0.12, 0.007, -8)], -14),
     # the circle waking under her feet, the fires turning red: low, echoing, awful, of stone (the user: "อยากให้เป็น ก้อง
     # ต่ำ น่าเกรงขาม มีเสียงหินด้วยยิ่งดี"): air drawn in to a heavy hit and a giant's footfall under it; then the hall's
     # stone groaning (the stone door, very slow), the mountain rumbling (an avalanche, slow and dull), stones and dust
@@ -64,23 +68,26 @@ SOUNDS = {
     'eye':    ([('sword_on_shield', 0.17, 0.93, 0.80, 150, 2500, 0.002, 0.35, 0.0, 0)], -18),  # (dark: a bright ring whistled)
     # a heart beating under it all, once the statues are awake: a giant's step (heel and toe: lub, dub), very slow
     'heart':  ([('giant_footsteps', 0.0, 0.55, 0.55, 40, 400, 0.002, 0.25, 0.0, 0)], -14),
-    # water dripping somewhere in the dark (the hall's air, now and then, each from a place of its own)
-    'drip1':  ([('drip_plink', 0.0, 0.3, 0.70, 200, 2500, 0.0, 0.08, 0.0, 0)], -22),
-    'drip2':  ([('drip_bloop', 0.0, 0.4, 0.70, 200, 2500, 0.0, 0.1, 0.0, 0)], -22),
-    # far off in the dark, now and then: small stones falling (a rockfall's patter), a stone knocking on the floor and
-    # ringing (a wizard's staff on stone, slow), the stone itself groaning somewhere (the door's grind, very slow), and the
-    # air going by through the hall (a deep low whoosh, slower: a ghost's passing was tried first, and moaned like a
-    # voice), which boss-hall-sounds.js moves from one side to the other
+    # water dripping into pools somewhere in the dark (the hall's air, now and then, each from a place of its own): tiny
+    # splashes, real ones (the drops first made were pure tones, and rang on in the echo like a whistle)
+    'drip1':  ([('splash_plunge_small', 0.0, 0.5, 0.85, 300, 5000, 0.002, 0.15, 0.0, 0)], -20),
+    'drip2':  ([('splash_plunge', 0.0, 0.6, 0.80, 250, 4500, 0.002, 0.2, 0.0, 0)], -20),
+    # far off in the dark, now and then: small stones falling (a rockfall's patter), a stone knocking on the floor (a
+    # wizard's staff on stone, slow), the stone itself groaning somewhere (the door's grind, very slow). (The air going by,
+    # a ghost's passing and then a low whoosh, is gone: the one moaned like a voice, and no whooshes, the user said.)
     'pebbles1': ([('rocks_tumbling', 0.15, 1.25, 0.85, 200, 4000, 0.02, 0.4, 0.0, 0)], -18),
     'pebbles2': ([('rocks_tumbling', 1.75, 1.15, 0.75, 200, 4000, 0.02, 0.4, 0.0, 0)], -18),
     'knock':  ([('wizard_staff', 0.44, 1.06, 0.60, 120, 3500, 0.002, 0.5, 0.0, 0)], -16),
     'groan':  ([('stone_door', 0.4, 1.5, 0.38, 40, 700, 0.6, 1.4, 0.0, 0)], -20),
-    'sigh':   ([('whoosh_low', 0.0, 2.5, 0.60, 80, 1500, 0.8, 1.5, 0.0, 0)], -24),
 }
 LOOPS = {
     # the hall's draft: a mountain's high wind, slower, from the oculus above and from the fallen tunnel behind the door
     # (boss-hall-sounds.js puts it in both places)
     'air':     ([('wind_mountain', 0.0, 12.0, 0.75, 80, 800, 0.0, 0.0, 0.0, 0)], -30),
+    # the cave (the user: "เอาเสียงถ้ำอะ มีไหม"): water running somewhere under the rock (a stream over stones, slower,
+    # dull, far) and a waterfall heard through the stone (very dull: the dungeon is under the waterfall cliff), all round
+    'cave':    ([('stream_brook', 0.0, 9.8, 0.80, 120, 1000, 0.0, 0.0, 0.0, 0),
+                 ('waterfall', 0.0, 9.8, 0.80, 40, 350, 0.0, 0.0, 0.0, -2)], -32),
     # the hall's own mass, all round: deep water's rush, very slow and dull, a pressure more than a sound
     'room':    ([('underwater_deep', 0.0, 12.0, 0.55, 35, 220, 0.0, 0.0, 0.0, 0)], -30),
     # a fire burning: a campfire's crackle, darker (each lit fire near her has one of its own, from where it is)
@@ -88,8 +95,8 @@ LOOPS = {
     # the dread once the statues are awake: a whale's call far under water, very slow and low, a living drone
     'drone':   ([('whale_call', 1.3, 5.7, 0.55, 40, 1200, 0.0, 0.0, 0.0, 0)], -24),
 }
-STEREO = {'room', 'drone', 'boom', 'grind', 'hum', 'crackle'}
-UNTONED = {'air', 'room', 'groan', 'sigh', 'knock'}   # their held pitches taken out (untoned): the hall's air whistled
+STEREO = {'room', 'cave', 'drone', 'boom', 'grind', 'hum', 'crackle'}
+UNTONED = {'air', 'room', 'cave', 'groan', 'knock'}   # their held pitches taken out (untoned): the hall's air whistled
                           # and moaned like a dog howling (the user: "เหมือนมีเสียงหมาหอนแปลกๆ", then "ไม่เอาเสียงหวีด":
                           # no whistling at all; so the knock's ring too, the draft only its low, the drops lower and dull)
 SOFT = {'crackle': -6.0}  # brought to its level and its peaks then rounded off toward this (dB; the fire's pops stood 30 dB

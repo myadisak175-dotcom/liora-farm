@@ -6,16 +6,17 @@
      heard.hum()           the door's runes waking (a magic portal's swell, slow and low)           } all four from
      heard.clunk()         its bar giving way (a dungeon door's iron latch)                         } the door
      heard.rumble(s)       the leaves grinding open, s seconds (a giant stone door); heard.thud() } itself
-     heard.whoosh(pan, g, f)  a fire catching: a burst of flame from fire f (of hall.fires; without f: pan -1 left ..
-                           1 right, g how near)
+     heard.whoosh(pan, g, f)  a fire catching: พรึ่บ! from fire f (of hall.fires; without f: pan -1 left .. 1 right, g how
+                           near): all at once, a thump and the flame, no whoosh
      heard.boom()          the circle under her feet waking, the fires turning red: low, echoing, of stone (a heavy hit, the
                            hall's stone groaning, the mountain rumbling, a moan from the deep), and stones falling round the
                            dome, each from where it falls
      heard.shing(i)        a statue's eyes lighting (i: its order), from its eyes: a ring of steel, each a little lower
-     heard.air(on)         the hall's air, always (from her first touch): its mass all round (a deep pressure), its draft from
-                           the oculus above and the fallen tunnel behind the door; now and then water dripping, small stones
-                           falling far off, a stone knocking, the stone groaning, the air sighing through the hall, each
-                           from a place of its own round her; and every lit fire near her crackling where it burns
+     heard.air(on)         the hall's air, always (from her first touch): the cave all round (water running somewhere under
+                           the rock, a waterfall heard through the stone), its mass (a deep pressure), its draft from the
+                           oculus above and the fallen tunnel behind the door; now and then water dripping into pools,
+                           small stones falling far off, a stone knocking, the stone groaning, each from a place of its own
+                           round her; and every lit fire near her crackling where it burns
      heard.dread(on)       once the statues are awake: a dark living drone (a whale's call, very slow) and a heart under it
      heard.update(dt, at, fx, cam)  every frame; at: where she is; fx: the hall's (which fires are lit, their flare);
                            cam: the camera, which is where the hall is heard from (its position and quaternion)
@@ -30,11 +31,11 @@
    the hall had them first (WebAudio: hum, clunk ...); { made: true } (the page's ?sfx=old) makes every one so, and none of
    the placed ones.
    ========================================================================== */
-const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'boom', 'eye', 'heart', 'drip1', 'drip2', 'pebbles1', 'pebbles2', 'knock', 'groan', 'sigh'];
-const LOOPS = ['air', 'room', 'crackle', 'drone'];
+const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'boom', 'eye', 'heart', 'drip1', 'drip2', 'pebbles1', 'pebbles2', 'knock', 'groan'];
+const LOOPS = ['air', 'room', 'cave', 'crackle', 'drone'];
 const FILES = [...ONCE, ...LOOPS];
 const DOOR = [0, 4.5, 22];            // where the door's sounds come from (its middle, a man's height and more up)
-const MADE = 4;                       // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old)
+const MADE = 5;                       // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old)
 
 export function createBossSounds({ context, volume = 1, hall = null, fires = null, made = false, base = './assets/audio/boss/' } = {}) {
   const FIRES = fires || (hall && hall.fires) || [], STATUES = (hall && hall.statues) || [];
@@ -43,7 +44,7 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
   let ctx = null, out = null, send = null, white = null, brown = null;
   let airNodes = null, dreadNodes = null, heartOn = false, nextBeat = 0, airWanted = false;
   const voices = new Map();                         // a lit fire near her: its crackle
-  const next = { drip: 0, stone: 0, groan: 0, sigh: 0 };
+  const next = { drip: 0, stone: 0, groan: 0 };
   const ear = { x: 0, y: 1.6, z: 30 };
   const raw = {}, buf = {};
   if (!made) for (const n of FILES) raw[n] = fetch(base + n + '.mp3?v=' + MADE).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
@@ -317,10 +318,10 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
     const k = clamp(near, 0.12, 1), m = Math.max(0.25, k);        // (a far fire is still heard catching: darker, not lost)
     if (f && placed() && buf.fire) {
       const d = Math.hypot(f.x - ear.x, f.y - ear.y, f.z - ear.z);
-      playAt('fire', f.x, f.y + 0.8, f.z, { rate: rnd(0.9, 1.12), level: 2.2, ref: 4, wet: 0.55, lp: 1500 + 6500 * clamp(1 - d / 45, 0, 1) });
+      playAt('fire', f.x, f.y + 0.8, f.z, { rate: rnd(0.93, 1.07), level: 2.2, ref: 4, wet: 0.5, lp: 1800 + 6200 * clamp(1 - d / 45, 0, 1) });
       return;
     }
-    if (!play('fire', { rate: rnd(0.9, 1.12), level: 1.25 * m, pan, wet: 0.45, lp: 1500 + 6500 * m })) madeWhoosh(clamp(pan, -1, 1), k);
+    if (!play('fire', { rate: rnd(0.93, 1.07), level: 1.25 * m, pan, wet: 0.45, lp: 1800 + 6200 * m })) madeWhoosh(clamp(pan, -1, 1), k);
   }
   function boom() {
     if (!ready()) return;
@@ -370,13 +371,13 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
   function startLoops() {
     const gone = n => made || !raw[n];
     if (airWanted && !airNodes) {
-      if (buf.air && buf.room && placed()) {
-        const room = loop('room', 0), up = loopAt('air', OC[0], OC[1], OC[2], 9, 0.25, 0, 0),
+      if (buf.air && buf.room && buf.cave && placed()) {
+        const room = loop('room', 0), cave = loop('cave', 0.25), up = loopAt('air', OC[0], OC[1], OC[2], 9, 0.25, 0, 0),
           back = loopAt('air', 0, 3, 41, 6, 0.2, 900, 0.5);
-        fadeTo(room.g, 0.9, 3); fadeTo(up.g, 1.0, 3); fadeTo(back.g, 0.8, 3);
-        airNodes = { gs: [room.g, up.g, back.g], stop: at => [room, up, back].forEach(l => l.s.stop(at)) };
+        fadeTo(room.g, 0.9, 3); fadeTo(cave.g, 1.0, 3); fadeTo(up.g, 1.0, 3); fadeTo(back.g, 0.8, 3);
+        airNodes = { gs: [room.g, cave.g, up.g, back.g], stop: at => [room, cave, up, back].forEach(l => l.s.stop(at)) };
         const t = ctx.currentTime;
-        next.drip = t + rnd(1.5, 4); next.stone = t + rnd(5, 12); next.groan = t + rnd(18, 35); next.sigh = t + rnd(25, 50);
+        next.drip = t + rnd(1, 3); next.stone = t + rnd(5, 12); next.groan = t + rnd(18, 35);
       } else if (buf.air && (made || !ctx.createPanner)) {
         const l = loop('air', 0.3); fadeTo(l.g, 0.8, 3); airNodes = { gs: [l.g], stop: at => l.s.stop(at) };
       } else if (gone('air')) airNodes = madeAir();
@@ -413,8 +414,8 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
     if (t >= next.drip && (buf.drip1 || buf.drip2)) {
       const p = somewhere(3, 24);
       if (p) playAt(Math.random() < 0.5 && buf.drip1 ? 'drip1' : (buf.drip2 ? 'drip2' : 'drip1'), p[0], 0.1, p[1],
-        { rate: rnd(0.8, 1.1), level: rnd(1.2, 2.0), ref: 2.5, wet: 0.3, lp: 2200 });   // (dry: a drop rung on in the echo whistled)
-      next.drip = t + rnd(1.8, 5.5);
+        { rate: rnd(0.8, 1.05), level: rnd(0.9, 1.6), ref: 2.5, wet: 0.65, lp: 5000 });   // (a splash: its echo does not whistle)
+      next.drip = t + rnd(1.5, 4.5);
     }
     if (t >= next.stone && buf.pebbles1 && buf.pebbles2 && buf.knock) {
       const p = somewhere(16, 40);
@@ -426,19 +427,6 @@ export function createBossSounds({ context, volume = 1, hall = null, fires = nul
       const p = somewhere(25, 50);
       if (p) playAt('groan', p[0], 0, p[1], { rate: rnd(0.85, 1.05), level: 1.4, ref: 8, wet: 1.2, lp: 900 });
       next.groan = t + rnd(30, 60);
-    }
-    if (t >= next.sigh && buf.sigh) {
-      const a = somewhere(16, 24);
-      if (a) {
-        const v = playAt('sigh', a[0], 6, a[1], { rate: rnd(0.85, 1.05), level: 1.2, ref: 8, wet: 0.8 });
-        const p = v && v.p, dur = buf.sigh.duration;
-        if (p && p.positionX) {                     // it goes by: across to the other side of her
-          p.positionX.setValueAtTime(a[0], t); p.positionZ.setValueAtTime(a[1], t);
-          p.positionX.linearRampToValueAtTime(2 * ear.x - a[0], t + dur);
-          p.positionZ.linearRampToValueAtTime(2 * ear.z - a[1], t + dur);
-        }
-      }
-      next.sigh = t + rnd(55, 110);
     }
   }
 
