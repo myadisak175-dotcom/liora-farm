@@ -91,7 +91,7 @@ export function createBossScenes({ hall, player, level, camera, heard = null, on
       const at = f.z + 2.0;
       if (prev > at && next <= at) {
         const d = Math.hypot(f.x - hold.x, f.z - hold.z);
-        heard.whoosh(Math.max(-1, Math.min(1, f.x / 6)), 1.4 / (1 + d * 0.08));
+        heard.whoosh(Math.max(-1, Math.min(1, f.x / 6)), 1.4 / (1 + d * 0.08), f);
       }
     }
   }
