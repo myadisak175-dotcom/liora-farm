@@ -1,5 +1,6 @@
 /* ==========================================================================
-   east-ruins.js  —  the east lake and its ruins joined onto the hill village's land (?east=1, a trial)
+   east-ruins.js  —  the east lake and its ruins joined onto the hill village's land (in the game since 28 Nov 2026; ?east=0:
+   the land without it)
 
      const east = await joinEastRuins({ raw, plan, url });      // as the level reads its land, after the west fringe (west-fringe.js)
      east.raw            the land's numbers with the east land's columns put in past the seam (plan.land says how wide it is now)
