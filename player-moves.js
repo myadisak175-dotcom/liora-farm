@@ -8,6 +8,9 @@
 //   every frame: player.update(dt)          player.jump(), player.dash(): the buttons (Space, Shift on a keyboard)
 //   with spells: { comboFx, barrier, renderer } (player-spells.js): player.attack(), player.release(), player.roll(),
 //   player.barrier(): the attack button down and up, the roll button, the barrier button (J, K, B on a keyboard)
+//   The game (since 27 Nov 2026: "เอาบาเรียออก เอา พุ่ง ออก ... เอา กลิ้งออก"): createPlayer({ ramp: true, dash: false,
+//   roll: false }) and no barrier given: her run gathers speed by itself, and there is no dash, roll or barrier. A page
+//   of its own may still give them
 //
 // The point of the moves: she gets about the land without going round. What she can do that the walker cannot:
 //   - jump: the magic jump (magic-jump.js). The jump button is the first jump, off a magic circle that opens on the ground;
@@ -18,7 +21,8 @@
 //     she is not thrown off a height by brushing its edge; a jump or a dash goes at once), falls, and lands at its foot, on
 //     the ground or in the water. Where she comes down on the cliff's face she slides down it.
 //   - climb. Pushing at a face for a moment she takes hold of it and climbs: the stick towards the rock is up, away from it
-//     down, across it along. The jump button is a leap over the rock, the dash button lets go (she slides down). When her
+//     down, across it along. The jump button is a leap over the rock, the dash button lets go (she slides down; the game
+//     has no dash button: there the jump with the stick pulled away, the kick off the rock, gets her off it). When her
 //     hands reach the top she climbs over it (player-climb-top.js: Mixamo's Climbing To Top, fitted to the rock); a ledge
 //     lower than her reach is taken straight from the ground, the same move begun part way in. Sliding or
 //     falling down a face, pushing at it takes hold again. In the air (a jump, a flight), pushed at a face that stands
@@ -30,9 +34,11 @@
 //     left hand planted on the top, her right foot on it, a leap off it onto her front foot and on into her run (player-
 //     hurdle.js finds it; player-vault.js fits the vault, a motion capture, to it). The stick let go as she lands, she comes
 //     down into a landing and stops; over a bridge's parapet she falls into the river. The jump button by one is the magic jump, not the vault.
-//   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running.
+//   - dash: a burst of speed the way the stick points, then a sprint for as long as she keeps running. (Not in the game
+//     since 27 Nov 2026: her run gathers speed by itself there, the ramp below.)
 //   - cast (since 22 Nov 2026; player-spells.js says what and when): the magic combo's moves on the ground (four casts, the
-//     lance held and thrown, the leap off a run, the roll and the rising cast out of it) and the barrier. While one
+//     lance held and thrown, the leap off a run, the roll and the rising cast out of it) and the barrier (the game has
+//     neither the roll nor the barrier since 27 Nov 2026: createPlayer({ roll: false }), and no barrier given). While one
 //     has her (mode 'cast') her clips are its and it moves her where a move takes her (a turn, the roll, the leap); here
 //     she is kept out of things and on ground she may stand on: at a cliff's brink or deep water she stops, she does not
 //     go over. On the ground only (not in the air, on a face, swimming or deep in the water); the casts in the air are
@@ -44,10 +50,12 @@
 //     as the spells. While it has her (mode 'guard') her clips are its, it turns her to what comes and lets her run die
 //     away under her; here she is kept out of things and on ground she may stand on, as in a spell. A blink cuts it short
 //     once it is no longer hot
-//   - her run gathering speed by itself (a trial since 26 Nov 2026, parry.html: createPlayer({ ramp: true }); "dash มันคือ
-//     วิ่งเร็ว ควรใส่ลงท่าวิ่งธรรมดา แล้วเพิ่มความเร็วเอา"): kept running RAMP.after s she gathers speed, over RAMP.rise s,
+//   - her run gathering speed by itself (in the game since 27 Nov 2026, in the dash's place: "พุ่ง มันคือวิ่งเร็ว ทำให้
+//     ตัวละครค่อยๆ เพิ่มความเร็วแทน"; tried first on parry.html, 26 Nov: "dash มันคือวิ่งเร็ว ควรใส่ลงท่าวิ่งธรรมดา แล้ว
+//     เพิ่มความเร็วเอา"; createPlayer({ ramp: true })): kept running RAMP.after s she gathers speed, over RAMP.rise s,
 //     up to the sprint's pace (as after the dash); eased off a moment, she is back to her run. createPlayer({ dash: false }):
-//     the dash button does nothing on the ground (on a face it still lets go)
+//     the dash button does nothing on the ground (on a face it still lets go). createPlayer({ roll: false }): no roll (the
+//     roll button and K do nothing)
 //   - blink (in the game since 24 Nov 2026, the วาร์ป button, E or L; ?blink=0: none. A page gives it: createPlayer({ blink })
 //     and player.blink(); blink.html tries it alone): she is gone, and there again a few metres on, the way the stick points (blink.js says where
 //     and when, blink-fx.js and blink-sounds.js what is seen and heard). On the ground only, as the dash; while it has her
@@ -146,7 +154,8 @@ const NO_CIRCLES = { open() {} };
 // spells: what her spells draw with (player-spells.js): { comboFx, barrier, renderer }, or none (no spells)
 // blink: the blink (blink.js' createBlink), or none (no blink: the game)
 // guard: her parry (parry.js' createParry), or none. ramp: her run gathers speed by itself. dash: false: no dash on the ground
-export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null, blink = null, guard = null, ramp = false, dash: dashes = true }) {
+// roll: false: no roll (with spells)
+export function createPlayer({ character: firstCharacter, level, camera, dom, ui = null, onTap = null, circles = NO_CIRCLES, weight: weighs = false, sounds = null, spells: spellKit = null, blink = null, guard = null, ramp = false, dash: dashes = true, roll: rolls = true }) {
   let character = firstCharacter;             // who is playing: player.setCharacter swaps her for another
   // the level, asked at her height (see above): where her feet are, how deep the water is, where its surface is, and what
   // the ground is like (null: this map cannot say). A steep bank under the water is ground to her: she wades down it
@@ -224,7 +233,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     onJump: () => { jumpWanted = JUMP_BUFFER; }, onDash: () => { dashWanted = JUMP_BUFFER; },
     onLook: (yaw, pitch) => { if (!spells || !spells.aiming) cam.turn(yaw, pitch); }, onZoom: d => { if (!spells || !spells.aiming) cam.zoom(d); },      // (holding the lance, the camera is the lance's)
     onAttack: spells ? () => spells.attack() : null, onAttackUp: spells ? () => spells.release() : null,
-    onRoll: spells ? () => spells.roll() : null, onBarrier: spells ? () => spells.barrier() : null,
+    onRoll: spells && rolls ? () => spells.roll() : null, onBarrier: spells ? () => spells.barrier() : null,
     onBlink: blink ? () => { blinkWanted = JUMP_BUFFER; blinkAim = null; } : null,
   });
   const steps = createFootsteps(level, sounds);
@@ -1074,7 +1083,7 @@ export function createPlayer({ character: firstCharacter, level, camera, dom, ui
     get spells() { return spells; },
     attack() { if (spells) spells.attack(); },
     release() { if (spells) spells.release(); },
-    roll() { if (spells) spells.roll(); },
+    roll() { if (spells && rolls) spells.roll(); },
     barrier() { if (spells) spells.barrier(); },
     // another character takes her place, mid-stride or mid-air: same spot, same heading, same speed
     setCharacter(next) {
