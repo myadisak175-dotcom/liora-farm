@@ -779,8 +779,8 @@ layout = {
         {'name': 'ริมสระ', 'x': POOL['c'][0] - 3.5, 'z': POOL['c'][1] + 6.6, 'yaw': -0.49, 'pitch': 0.14, 'dist': 4.6, 'heading': 2.65},
         {'name': 'ลานฝั่งตะวันออก', 'x': 25.5, 'z': -3.0, 'yaw': math.pi / 2, 'pitch': 0.16, 'dist': 5.0, 'heading': -math.pi / 2},
         # looking up from the great tree's foot at the crack, the shaft and the trees that hang from the roof (a camera held still)
-        {'name': 'มองขึ้นเพดาน', 'x': 9.6, 'z': 6.6, 'yaw': 0.6, 'pitch': 0.1, 'dist': 4.0, 'heading': -2.6,
-         'free': [12.0, 1.4, 9.0, CRACK['c'][0] + 1.4, 21.0, CRACK['c'][1] + 0.5]},
+        {'name': 'มองขึ้นเพดาน', 'x': 11.6, 'z': -7.6, 'yaw': 0.9, 'pitch': 0.1, 'dist': 4.0, 'heading': -2.3,
+         'free': [13.0, 1.4, -9.0, CRACK['c'][0] + 1.4, 21.0, CRACK['c'][1] + 0.5]},
     ],
     'bounds': [X0, Y0, Z0, X1, Y1, Z1],
 }
