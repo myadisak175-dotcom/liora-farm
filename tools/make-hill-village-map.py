@@ -21,6 +21,10 @@
 # The west fringe (tools/make-west-fringe-heightmap.py) is part of the map: its land is joined on here as the game joins it
 # (west-fringe.js), its ways, dry water and ruins drawn, and the plants that stand on it drawn as the dead trees they are.
 #
+#   python3 tools/make-hill-village-map.py east      the map with the east lake joined on too (?east=1, a trial: east-ruins.js),
+#                                                   as hill-village-map-east.webp + .json and hill-village-map-east-cursed (the
+#                                                   lake's basin dry under the curse: the game paints the pools that are left)
+#
 # To change its look: PPM (pixels to a metre), MARGIN (how much land is shown beyond where she can walk), COL.
 import json, math, sys
 from pathlib import Path
@@ -60,6 +64,20 @@ if WEST:                                                              # the two 
         if p['id'] == 'road_in': p['points'] = [q for q in p['points'] if q[0] >= SEAM - 1e-6]
     plan['paths'] += [{'id': 'wf_' + w['id'], 'half': w['half'], 'points': [q for q in w['points'] if q[0] > WL['x0'] + 0.5]} for w in FR['ways']]
     plan['inflows'] = [f for f in plan.get('inflows', []) if not (f['rows'][0][0] < SEAM - 0.5 and f['rows'][0][1] > WL['z0'])]
+EAST = 'east' in sys.argv[1:] and (SRC / 'east-ruins.json').exists(); EP = None
+if EAST:                                                              # the east lake's land joined on past the seam, and the plan changed, as east-ruins.js does it
+    EP = json.loads((SRC / 'east-ruins.json').read_text()); EL = EP['land']; ESEAM = EP['joins']['seam_x']
+    HE = np.fromfile(SRC / 'east-ruins.bin', '<u2').reshape(EL['nz'], EL['nx']) / 65535 * EL['range'] + EL['base']
+    iseam, eseam = int(round((ESEAM - L['x0']) / L['cell'])), int(round((ESEAM - EL['x0']) / L['cell']))
+    H = np.concatenate([H[:, :iseam + 1], HE[:, eseam + 1:]], axis=1); L = dict(L, nx=H.shape[1])
+    PLAYS.append([ESEAM - 3, EL['play'][1], EL['play'][2], EL['play'][3]])
+    plan['paths'] += [{'id': 'ea_' + w['id'], 'half': w['half'], 'points': w['points']} for w in EP['ways']]
+    kb = [w['id'] for w in plan['waters']].index(EP['water']['outflow']['into'])
+    plan['inflows'] = [f for f in plan.get('inflows', []) if not (f['stretch'] == kb and f['rows'][0][0] > ESEAM)]
+    plan['brooks'][kb] = [[x, z, plan['brooks'][kb][0][2], hw] for x, z, _, hw in EP['water']['outflow']['rows']] + plan['brooks'][kb]
+    plan['brooks'].append(EP['water']['stream']['rows'])            # (the lake is not a line of water: it is painted as the land under its level, below)
+    plan['falls'].append(dict(EP['water']['fall'], **{'from': len(plan['brooks']) - 1}))
+    plan['plants'] = [p for p in plan['plants'] if p[1] <= ESEAM] + [p for p in EP['plants']]
 X0, X1, Z0, Z1 = min(q[0] for q in PLAYS) - MARGIN, max(q[1] for q in PLAYS) + MARGIN, min(q[2] for q in PLAYS) - MARGIN, max(q[3] for q in PLAYS) + MARGIN
 W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
 
@@ -71,7 +89,7 @@ W, Hh = int(round((X1 - X0) * PPM)), int(round((Z1 - Z0) * PPM))
 # the village's brook, hill-village-map-green.webp + .json.
 def paint(MODE):
     CURSED, GREEN = MODE == 'cursed', MODE == 'green' and WEST
-    NAME = 'hill-village-map' + ('-' + MODE if MODE else '')
+    NAME = 'hill-village-map' + ('-east' if EAST else '') + ('-' + MODE if MODE else '')
     # ---- 1, 2. the land, painted point by point
     px = X0 + (np.arange(W * SS) + 0.5) / (PPM * SS); pz = Z0 + (np.arange(Hh * SS) + 0.5) / (PPM * SS)
     gi, gj = np.meshgrid((px - L['x0']) / L['cell'], (pz - L['z0']) / L['cell'])
@@ -164,6 +182,20 @@ def paint(MODE):
             ex, ez, eh = bed['points'][-1][:3]
             gap, rows = min(((math.hypot(r[0][0] - ex, r[0][1] - ez), r) for r in waters), key=lambda t: t[0])
             if gap < 8: beds.append([(ex, ez, eh * 0.8)] + [(q[0], q[1], q[3] * 0.9) for q in rows[:4]])
+    lake = None
+    if EAST:                                                              # the east lake: the land under its level, joined to its middle (as land-water.js floods it)
+        Lk = EP['water']['lake']; bx0, bx1, bz0, bz1 = Lk['box']
+        ia, ib, ja, jb = int((bx0 - X0) * K), int((bx1 - X0) * K), int((bz0 - Z0) * K), int((bz1 - Z0) * K)
+        lab, _ = ndi.label(h[ja:jb, ia:ib] < Lk['level'] - 0.02)
+        keep = {lab[int((z - Z0) * K) - ja, int((x - X0) * K) - ia] for x, z, *_ in Lk['rows'][::6]} - {0}
+        basin = np.isin(lab, list(keep))
+        lake = []
+        for grow, colour in (((0.3, '#8c7a58'), (0.0, '#d4c39a')) if CURSED else ((0.35, COL['water_edge']), (0.0, COL['water']), (-7.0, COL['water_mid']))):
+            n = int(round(abs(grow) * K)); m = ndi.binary_dilation(basin, iterations=n) if grow > 0 else ndi.binary_erosion(basin, iterations=n) if grow < 0 else basin
+            lake.append((Image.fromarray((m * 255).astype(np.uint8)), (ia, ja), colour))
+        if CURSED:
+            for mask, at, colour in lake: canvas.paste(colour, at, mask)
+            d = ImageDraw.Draw(canvas)
     for grow, colour in ((0.3, '#8c7a58'), (0.0, '#d4c39a')):
         for bed in beds:
             for a, b in zip(bed, bed[1:]): stroke(d, [a[:2], b[:2]], a[2] + b[2] + 2 * grow, colour)
@@ -174,6 +206,7 @@ def paint(MODE):
             for rows in waters:
                 for a, b in zip(rows, rows[1:]): stroke(d, [a[:2], b[:2]], (a[3] + b[3]) * part + 2 * grow, colour)
             if full: mask, at, colour = full[k]; canvas.paste(colour, at, mask); d = ImageDraw.Draw(canvas)
+            if lake: mask, at, colour = lake[k]; canvas.paste(colour, at, mask); d = ImageDraw.Draw(canvas)
         for f in falls:
             c, s = math.cos(f['yaw']), math.sin(f['yaw']); half = f['width'] / 2
             stroke(d, [(f['x'] - c * half, f['z'] + s * half), (f['x'] + c * half, f['z'] - s * half)], 0.9, COL['foam'])
@@ -276,6 +309,15 @@ def paint(MODE):
             a = q['r'] * 0.62; d.line([P(q['x'] - a, q['z'] - a), P(q['x'] + a, q['z'] - a), P(q['x'] + a, q['z'] + a), P(q['x'] - a, q['z'] + a * 0.2)], fill='#8d8270', width=max(1, int(0.45 * K)), joint='curve')
         cx, cy = P(FR['well']['x'], FR['well']['z']); r = 1.2 * K
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.2 * K))); d.ellipse([cx - r * 0.5, cy - r * 0.5, cx + r * 0.5, cy + r * 0.5], fill=COL['water'] if GREEN else '#4a4038')
+    if EAST:                                                              # the east lake's floors: where the ruins and the temple will stand, and the round platform
+        Fl = EP['floors']
+        for q in Fl['ruins']:
+            pts = box(q['x'], q['z'], q['w'], q['d'], q['yaw'])
+            d.polygon(pts, fill='#cfc4ad'); d.line([pts[0], pts[1], pts[2], pts[3]], fill='#8d8270', width=max(1, int(0.45 * K)), joint='curve')
+        for k in ('temple', 'yard'):
+            q = Fl[k]; d.polygon(box(q['x'], q['z'], q['w'], q['d'], q.get('yaw', 0)), fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.3 * K)))
+        q = Fl['platform']; cx, cy = P(q['x'], q['z']); r = q['r'] * K
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COL['stone'], outline=COL['stone_edge'], width=max(1, int(0.3 * K)))
     for b in plan['buildings']:
         if b['kind'] == 'tree' and CURSED:                                # the great tree, dead
             r = 2.6 * b.get('scale', 2) * 0.85
@@ -294,4 +336,4 @@ def paint(MODE):
 
 
 MODES = {'normal': '', 'cursed': 'cursed', 'green': 'green'}
-for MODE in [MODES[a] for a in sys.argv[1:] if a in MODES] or list(MODES.values()): paint(MODE)
+for MODE in [MODES[a] for a in sys.argv[1:] if a in MODES] or ([MODES['normal'], MODES['cursed']] if EAST else list(MODES.values())): paint(MODE)
