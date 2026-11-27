@@ -657,6 +657,9 @@ function farTuftGeometry() {
 // together (its next few in the pool) must stand together: so each pool is in order of place on its tile (a Z-order
 // curve), within eighths of the pool (setDensity keeps whole eighths: the thinning stays even, and a near tuft and its
 // far tuft are kept or dropped together). The picture is the same. ?grasscull=0: as before, every tuft in full.
+// And a tuft where no blade grows (the ground's map says so: a way, sand, a field, the water) stands zero high, each of its
+// blades a line on the ground that draws nothing: it is folded away too, once the map is read, before the rest (27 Nov
+// 2026, for the phone that heats). The same picture.
 //
 // PAST THE LAND (beyond: { sheet, rect, land, greens, lean, shade, shadeRect, shadeTint, shadeK }; nothing without it): the
 // map and the heights speak for the land only (land: x0, z0, x1, z1). Where the land runs on past that (map-rim.js) the
@@ -806,6 +809,9 @@ export function createFollowGrass({
             m = paveGrass(m, xz + vec2(aBlade.x * pca - aBlade.y * psa, aBlade.x * psa + aBlade.y * pca) * uTuft);
           }
         #endif
+        // no blade grows here: the tuft would stand zero high (h below: the dry ground only lessens m.a), so it is folded away
+        // now, before the rest (ONLY WHAT IS IN VIEW)
+        if (uCull > 0.5 && m.a <= mix(0.1, 0.5, ringed)) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
         float dry = dryAt(xz);
         m = dryGround(m, xz, dry);                              // (land under the curse: see DRY GROUND)
         float cn = clumpAt(xz);

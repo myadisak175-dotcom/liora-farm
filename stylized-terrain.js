@@ -246,10 +246,20 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
             col = v > 0.72 ? uR0 : (v > 0.56 ? uR1 : (v > 0.4 ? uR2 : uR3));
           #endif
         } else {
+          #ifdef GRASS_LOOK
+          // (the flat greens are seen only under the standing blades, under: further off the meadow's own paint, below, is laid
+          // over them whole, so there they are not worked out. The same picture, three noises a pixel fewer for most of the land)
+          float under = uGrassArea.z > 0.0 ? 1.0 - smoothstep(uGrassArea.z * 0.26, uGrassArea.z * 0.42, length(vWP.xz - uGrassArea.xy)) : 0.0;
+          col = vec3(0.0);
+          if (under > 0.0) {
+          #endif
           float s = noise2(vWP.xz * 0.08) * 0.6 + noise2(vWP.xz * 0.3) * 0.3 + noise2(vWP.xz * 1.6) * 0.1;
           float lit = dot(n, normalize(vec3(-0.3, 1.0, 0.35)));
           float g = s * 0.6 + (lit - 0.9) * 2.6 + 0.2;
           col = g > 0.6 ? uG3 : (g > 0.45 ? uG2 : (g > 0.3 ? uG1 : uG0));
+          #ifdef GRASS_LOOK
+          }
+          #endif
           #ifdef GRASS_LOOK
           {
             // the meadow as its grass paints it (see grassLook above): everywhere but under the standing blades
@@ -272,7 +282,6 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
             vec3 afar = mix(gm.rgb, tipColor(gm.rgb, uGrassTip, dz), (0.3 + 0.5 * cn) * gm.a);
             // (a field of blades seen from afar is its tall tufts' tips, a tone lighter than the tuft at their feet: + 0.05, and a little light)
             afar = mix(afar, mix(gm.rgb, dabColor(gm.rgb, uGrassTip, cn * 0.45 + strokeAt(vWP.xz) * 0.55 + 0.05, dz) * 1.035, gm.a), uGrassPaint);
-            float under = uGrassArea.z > 0.0 ? 1.0 - smoothstep(uGrassArea.z * 0.26, uGrassArea.z * 0.42, length(vWP.xz - uGrassArea.xy)) : 0.0;
             if (dz > 0.0) col = mix(col, gm.rgb * 0.8, dz);                 // (under the standing blades: dry ground there too, not the land's green)
             col = mix(afar, col, under);
             #ifdef DRY_PAINT
@@ -338,6 +347,9 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
               }
             }
             #endif
+            // (the rag below moves sb by 0.16 at the most, and from 0.8 there is no sand: so higher up than 0.97 none is worked
+            // out at all, nor read. The same picture, four noises a pixel fewer away from the water)
+            if (bk < 0.97) {
             float sb = bk + (noise2(vWP.xz * 0.9) - 0.5) * 0.24 + (noise2(vWP.xz * 3.1 + 5.0) - 0.5) * 0.08;    // ragged, but soft
             float sand = 1.0 - smoothstep(0.48, 0.80, sb);                  // the beach, until the land rises out of the water's reach
             #ifdef SAND_GROUND
@@ -369,6 +381,7 @@ function terrainMaterial(far, half, zc, { cliffPaint = null, cliffTile = [20, 10
                 #endif
               }
               col = mix(col, sc, sand);
+            }
             }
           #else
             if (b < 0.62) col = b < 0.16 ? uB2 : (noise2(vWP.xz * 0.35) > 0.55 ? uB0 : uB1);   // sand beach, wet at the water
