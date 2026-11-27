@@ -393,6 +393,7 @@ renderer.setPixelRatio(renderDPR);
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
+scene.matrixAutoUpdate = false;      // (it never moves: hill-village-level.js, STILL. Each thing that moves still works its own place out)
 scene.background = new THREE.Color(HAZE);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.12, 1400);
 const fit = () => {

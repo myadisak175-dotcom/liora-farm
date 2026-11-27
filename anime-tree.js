@@ -111,12 +111,15 @@ const WOOD_MID = 40, WOOD_FAR = OLD_WOOD ? Infinity : 100;
 // thinner than a pixel), then none: far off a dead tree is its stem and limbs. And none is drawn where the land is alive
 // (BARE_FROM: how dry it must be, anywhere under a cell's trees; the bark shader draws them out from there).
 const BARE_NEAR = 22, BARE_MID = 48, BARE_FROM = 0.12;
-const FAR_ON = [8, 13, 16, 48];
+// (z..w: from 12 to 36, not 16 to 48, since 27 Nov 2026, for the phone that heats: hill-village-level.js, FAR, LIGHTER;
+// ?far=full: as it was)
+const FAR_FULL = typeof location !== 'undefined' && new URLSearchParams(location.search).get('far') === 'full';
+const FAR_ON = FAR_FULL ? [8, 13, 16, 48] : [8, 13, 12, 36];
 const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
 // a forest kept in cells drops its falling leaves only while one of its plants in view is within this (metres per unit of
 // its size, as above): further off a falling leaf is smaller than a dot of the screen (27 Nov 2026, for the phone that
-// heats: "ลดรายละเอียดที่อยู่ไกล"; ?far=full: from any distance, as it was)
-const FALL_NEAR = typeof location !== 'undefined' && new URLSearchParams(location.search).get('far') === 'full' ? Infinity : 30;
+// heats: hill-village-level.js, FAR, LIGHTER; ?far=full: from any distance, as it was)
+const FALL_NEAR = FAR_FULL ? Infinity : 30;
 export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
 
 // BRUSH: the leaves as a brush lays them, as the grass's painterly look lays the meadow (stylized-grassfield.js). Two things

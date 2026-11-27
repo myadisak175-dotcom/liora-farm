@@ -41,18 +41,19 @@
 // (forest-floor.js: where; stylized-terrain.js, floor: its paint). ?forest=damp: the first set, dark damp earth, kept for a
 // zone of ancient ruins; ?forest=0: none.
 //
-// FAR, LIGHTER (27 Nov 2026, for the iPhone that heats and drops its frames after a few minutes: "ลดรายละเอียดที่อยู่ไกล
-// ... ใกล้ตัวละครสวยเท่าเดิม"). What is far off and too small to tell is drawn less, round her nothing changes:
-//   - the grass: three in four of the far tufts, half the ring's, each blade as much wider (stylized-grassfield.js, FEWER
-//     FAR OFF); a tuft where no blade grows is folded away before its heavy part (the same picture)
+// FAR, LIGHTER (27 Nov 2026: the user's iPhone heats in play and drops its frames after a few minutes; offered to have what
+// is far off drawn less and what is near her as it was, she said "ทำค่ะ"). What is far off and too small to tell is drawn
+// less, round her nothing changes:
 //   - the ferns and tufts (ground cover): thinner from 32 m (a half), from 55 m (a quarter), none past 85 m; the beds of
 //     flowers none past 85 m (they were 110)
-//   - falling leaves only from a grove within some 35 m (anime-tree.js, lod)
+//   - a far crown's leaf cards fewer from nearer: the share drawn falls from 12 m (for the tree's size) to 36 m, where it
+//     fell from 16 m to 48 m; falling leaves only from a grove within some 30 m (anime-tree.js, FAR_ON, FALL_NEAR)
 //   - in the water's mirror no ferns, tufts or flowers further off than 20 m
 //   - the water's ripples (the simulation round her) only worked out when some water is within 45 m of her: further off
 //     there is none in its square to show them
-// The land's paint skips what is never seen (stylized-terrain.js: the same picture), and the clouds' picture is made anew
-// half as often (index.html, applyPicture). ?far=full: all of it as it was, to compare.
+// The land's paint and the grass skip what is never seen (stylized-terrain.js, stylized-grassfield.js: the same picture),
+// what never moves has its place worked out once (STILL, below), and the clouds' picture is made anew half as often
+// (index.html, applyPicture). ?far=full: all that is drawn as it was, to compare.
 //
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
@@ -125,6 +126,17 @@ const ROCK_R = { boulder: 1.0, stones: 0.8, river: 0.7, pebbles: 0 };      // (h
 export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCount = 150000, sun = [-0.45, 0.62, 0.64], onStep = async () => {} } = {}) {
   const M = HILL_VILLAGE_MAP, look = new URLSearchParams(location.search).get('look') === 'flat' ? 'flat' : 'kit';
   const group = new THREE.Group(); group.name = 'hill-village';
+  // STILL: what never moves once it is built has its place worked out once, not again every frame (three.js does so for
+  // every thing in the scene that does not say otherwise, some 2700 here: a fifth of the page's own work for a frame, for
+  // nothing). The level's own group, and the woods, the beds of flowers, the ferns and tufts and the land; what moves (the
+  // falls' spray, the wheel, the sails ...) still is, each by itself (index.html: the scene does not move either)
+  group.matrixAutoUpdate = false;
+  const still = o => {
+    o.traverse(c => { c.updateMatrix(); c.matrixAutoUpdate = false; });
+    const own = o.updateMatrixWorld;                                       // (nor gone through each frame: only while it is new, or once moved by hand)
+    o.updateMatrixWorld = function (force) { if (force || this.matrixWorldNeedsUpdate) own.call(this, true); };
+    return o;
+  };
   const url = p => new URL(p, import.meta.url).href;
 
   // ------------------------------------------------------------------ the land: read from the picture
@@ -708,7 +720,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     own.push(west.beds.map);
     terrain.userData = { kind: 'terrain', dispose() { own.forEach(o => o.dispose()); } };
   }
-  group.add(terrain);
+  group.add(still(terrain));
   if (floor) floor.thin(map);                                              // (the wood's floor: its grass thinner and shorter, now the land is built)
   // past the land's edge nothing ends: the land runs on into wooded hills, out to the foot of the far hills (map-rim.js). In
   // the land's own last metres, where she never comes, crowns of that wood stand among its trees: not on a way, in the water,
@@ -765,7 +777,6 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     paving: landWays ? landWays.grass : null,                              // (the blades come up between the paving's slabs, not on them)
   });
   if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
-  if (!FAR_FULL) grass.userData.setFarKeep(0.75, 0.5);                     // FEWER FAR OFF: three in four far tufts, half the ring, wider (see FAR, above)
   console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
   group.add(grass);
   // the woods (anime-tree.js, and the pines of frond-pine.js), in groves, with the beds of flowers that lie in each; and the
@@ -813,7 +824,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         const far = b.rad * 1.38 + 0.5;                                    // (from further off than 85 m a bed of flowers is too small to see: FAR, LIGHTER; it was 110)
         recs.push({ obj: bedOf(b, clumps), far: FAR_FULL ? 110 : 85, small: true, box: new THREE.Box3(v3g.set(b.x - far, b.y - 2, b.z - far).clone(), v3g.set(b.x + far, b.y + 3, b.z + far).clone()) });
       }
-      for (const rec of recs) { group.add(rec.obj); inView.push(rec); }
+      for (const rec of recs) { group.add(still(rec.obj)); inView.push(rec); }
       if (recs.length) grovesAt.set(key, recs);
     }
   };
@@ -826,7 +837,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       const box = new THREE.Box3(), obj = createGroundCover(here);
       for (const c of here) { box.expandByPoint(v3g.set(c.x - 1.6, c.y - 0.5, c.z - 1.6)); box.expandByPoint(v3g.set(c.x + 1.6, c.y + 2, c.z + 1.6)); }
       const rec = { obj, box, far: FAR_FULL ? 95 : 85, thin: obj.userData.thin, small: true };
-      group.add(obj); inView.push(rec); squaresAt.set(key, [rec]);
+      group.add(still(obj)); inView.push(rec); squaresAt.set(key, [rec]);
     }
   };
   plantGroves(grown); plantCover(grown.cover);
