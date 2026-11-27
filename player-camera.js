@@ -21,6 +21,7 @@ import * as THREE from 'three';
 import { cameraTrunkFraction } from './player.js';      // (a trunk between her and the camera: the same clip)
 
 const PITCH_MIN = -0.22, PITCH_MAX = 1.05;
+const NONE = [];
 
 export function createFollowCamera({ camera, level }) {
   let yaw = 0, pitch = 0.17, dist = 4.3;      // what the player has chosen
@@ -42,7 +43,9 @@ export function createFollowCamera({ camera, level }) {
       // under the canopy instead of diving into the leaves
       const dx = Math.sin(yaw) * cp, dy = sp, dz = Math.cos(yaw) * cp;
       let far = camD;
-      for (const [cx, cy, cz, cr] of level.crowns || []) {
+      const crowns = level.crowns || NONE;
+      for (let i = 0; i < crowns.length; i++) {      // (read by index, not taken apart as [cx, cy, cz, cr]: that made garbage for every crown, every frame)
+        const cw = crowns[i], cx = cw[0], cy = cw[1], cz = cw[2], cr = cw[3];
         const ox = look.x - cx, oy = look.y - cy, oz = look.z - cz, r = cr + 0.5;
         if (Math.abs(ox) > r + camD || Math.abs(oz) > r + camD) continue;
         const b = ox * dx + oy * dy + oz * dz, c = ox * ox + oy * oy + oz * oz - r * r;

@@ -27,7 +27,9 @@ export function cameraTrunkFraction(from, to, trunks, padding = 0.3) {
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
   const a = dx * dx + dz * dz;
   let fraction = 1;
-  for (const [cx, cz, radius, bottom, top] of trunks || []) {
+  const n = trunks ? trunks.length : 0;
+  for (let i = 0; i < n; i++) {               // (read by index, not taken apart as [cx, cz, ...]: that made garbage for every trunk, twice a frame)
+    const tr = trunks[i], cx = tr[0], cz = tr[1], radius = tr[2], bottom = tr[3], top = tr[4];
     const ox = from.x - cx, oz = from.z - cz, r = radius + padding;
     const b = ox * dx + oz * dz, c = ox * ox + oz * oz - r * r;
     let enter = 0, exit = fraction;
