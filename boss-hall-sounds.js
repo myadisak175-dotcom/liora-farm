@@ -35,8 +35,7 @@ const ONCE = ['hum', 'clunk', 'grind', 'thud', 'fire', 'boom', 'eye', 'heart', '
 const LOOPS = ['air', 'room', 'cave', 'crackle', 'drone'];
 const FILES = [...ONCE, ...LOOPS];
 const DOOR = [0, 4.5, 22];            // where the door's sounds come from (its middle, a man's height and more up)
-export const MADE = 6;                // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old;
-                                      // the page asks for her steps on stone, boss/step-N.mp3, with it too)
+const MADE = 5;                       // raised whenever tools/make-boss-sounds.py makes the files again (phones keep the old)
 
 export function createBossSounds({ context, volume = 1, hall = null, fires = null, made = false, base = './assets/audio/boss/' } = {}) {
   const FIRES = fires || (hall && hall.fires) || [], STATUES = (hall && hall.statues) || [];

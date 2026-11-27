@@ -2,10 +2,6 @@
 // Her steps heard (in the game; ?sound=0: without it, and this file is not loaded). The first sound the game has.
 //
 //   const sounds = createStepSounds({ level, volume });      // volume: 0..2 (1: as made)
-//   createStepSounds({ level, volume, own: { stone: ['boss/step-1.mp3', ...] } })   a page's own takes for a ground (files
-//                                                        under assets/audio/): there her steps are those, not the pack's
-//                                                        footfall (the boss hall's stone: "ขอเสียงเดินบนหิน"). Without own,
-//                                                        nothing changes
 //   createPlayer({ ..., sounds })                              // player-moves.js says when and where; this file says what is heard
 //     sounds.step(x, z, y, { pace, depth, in })          a foot comes down (player-footsteps.js: in seconds from now; it says
 //                                                        which foot too, side: not used, this set's takes are not a foot's own)
@@ -225,7 +221,6 @@ const SPACE = {                                // how much of each sound goes in
   jump: 0.4, air: 0.4, launch: 0.4,            // (the jump's bursts after the second clip: off the ground, in the air, its last)
   gate: 0.4, throw: 0.3,                       // (the lance's circle and its blast: the clip's own sound has a room in it already)
   whoosh: 0.15, swish: 0.1, flutter: 0.1, gust: 0.1, settle: 0.08, land: 0.08, thump: 0.08,
-  stone: 0.3,                                  // (a page's own steps on stone, own.stone: a hall of stone answers them)
   splash: 0.12, plunge: 0.12, plop: 0.12, stroke: 0.1, wade: 0.08, wetrun: 0.08,
 };
 const SPACE_REST = 0.05;                       // her steps and the rest: a breath of it, so they are in the same place
@@ -233,7 +228,7 @@ const STEP_PAN = 0.12;                         // her steps: her left foot this 
 const CAST_PAN = { 1: 0.2, 2: -0.2, 3: 0, 4: 0 };      // her casts: the swing to one side, the swing back to the other; the turn, the finisher in the middle
 const WHOOSH_PAN = 0.2, CIRCLE_PAN = 0.1;      // at most, either way, at random
 
-export function createStepSounds({ level, volume = 1, own = {} } = {}) {
+export function createStepSounds({ level, volume = 1 } = {}) {
   let ctx = null, out = null, room = null, foot = 1, buffer = null, bytes = null, meta = null, shift = 0, failed = null;
   let lastAt = -1, wind = null, note = -1, circles = 0, shimmer = null, blast = null, vol = Math.min(2, Math.max(0, volume));      // (shimmer: the lance's circle's sound, while it is heard; blast: its blast, and when its blow comes)
   const alone = {}, aloneBytes = {}, aloneAttack = {};      // her sounds of their own (ALONE): their buffers once decoded (and each one's attack: s
@@ -250,7 +245,7 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
   // her sounds of their own, and the wind (fetched as the air about her fetches it: the same file, from the browser's cache
   // if it has it). Without them nothing else changes
   const more = Promise.all([
-    ...Object.entries({ ...ALONE, ...own }).flatMap(([name, files]) => files.map(f => fetch(new URL(f, FILES), fresh).then(r => (r.ok ? r.arrayBuffer() : null))
+    ...Object.entries(ALONE).flatMap(([name, files]) => files.map(f => fetch(new URL(f, FILES), fresh).then(r => (r.ok ? r.arrayBuffer() : null))
       .then(b => { if (b) (aloneBytes[name] || (aloneBytes[name] = [])).push(b); }).catch(err => console.warn('[step sounds]', f, err)))),
     fetch(new URL(RUSH_FILE, FILES)).then(r => (r.ok ? r.arrayBuffer() : null)).then(b => { rushBytes = b; }).catch(err => console.warn('[step sounds]', RUSH_FILE, err)),
   ]);
@@ -403,8 +398,7 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
   function still(secs, from = 0) { fade(shimmer, secs, from); shimmer = null; }
   const ready = () => !!(ctx && buffer && ctx.state === 'running');
   const has = set => !!(meta.sets[set] && meta.sets[set].length);
-  const groundName = (x, z, y, depth) => (depth > WET ? 'water' : level && level.surfaceAt ? level.surfaceAt(x, z, y) : 'grass');
-  const groundAt = (x, z, y, depth) => { const g = GROUND[groundName(x, z, y, depth)]; return g === undefined ? GROUND.grass : g; };      // (a ground not in the table: grass)
+  const groundAt = (x, z, y, depth) => { const g = GROUND[depth > WET ? 'water' : level && level.surfaceAt ? level.surfaceAt(x, z, y) : 'grass']; return g === undefined ? GROUND.grass : g; };      // (a ground not in the table: grass)
   const footfall = ground => ground.water ? 'wade' : ground.grass ? 'step' : 'tread';
   const vary = () => 1 - VARY_GAIN * Math.random();
   const about = rate => rate * (1 + VARY_RATE * (Math.random() * 2 - 1));
@@ -413,7 +407,7 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
   const lag = () => Math.min(0.15, ctx.outputLatency || ctx.baseLatency || 0);
 
   return {
-    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, circle: alone.circle ? alone.circle.length : 0, own: Object.fromEntries(Object.keys(own).map(n => [n, alone[n] ? alone[n].length : 0])), room: !!room, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
+    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, circle: alone.circle ? alone.circle.length : 0, room: !!room, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
     get volume() { return vol; },
     get context() { return ctx; },      // (the AudioContext, once the first touch has made it: the air about her plays on it too, ambience.js)
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (out) out.gain.value = MASTER * vol; },
@@ -427,13 +421,6 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
       const ground = groundAt(x, z, y, depth);
       if (!ground) return;
       const loud = pace <= 1 ? WALK_GAIN + (1 - WALK_GAIN) * Math.max(0, pace) : 1 + (SPRINT_GAIN - 1) * Math.min(1, (pace - 1) / 0.6);
-      const gname = groundName(x, z, y, depth);
-      if (own[gname] && alone[gname] && alone[gname].length) {      // a page's own takes for this ground (own): one of them, its attack on her foot
-        const i = pickAlone(gname), rate = about(1);
-        foot = -foot;
-        playAlone(gname, ground.gain * loud * vary() * FEET, rate, i, when - (aloneAttack[gname][i] || 0) / rate, foot * STEP_PAN);
-        return;
-      }
       const deep = ground.water ? Math.min(1, depth / WADE_DEEP) : 0;
       const running = pace >= RUN_FROM;      // (a run's own takes, where there are any: else the walk's, louder)
       const set = ground.water ? (running && has('wetrun') ? 'wetrun' : 'wade') : !ground.grass ? 'tread' : running && has('run') ? 'run' : 'step';

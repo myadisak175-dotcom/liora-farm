@@ -80,20 +80,6 @@ SOUNDS = {
     'knock':  ([('wizard_staff', 0.44, 1.06, 0.60, 120, 3500, 0.002, 0.5, 0.0, 0)], -16),
     'groan':  ([('stone_door', 0.4, 1.5, 0.38, 40, 700, 0.6, 1.4, 0.0, 0)], -20),
 }
-# her steps on the hall's stone (the user: "ขอเสียงเดินบนหิน"; the set has no steps on stone of its own, so each is put
-# together): a heel's click (a wizard's staff knocking on stone, its ring taken out, played fast: small and hard), a
-# little grit under it (the first of a step on gravel, only its highs) and the foot's weight (a punch, fast and dull).
-# Six takes, each its own click, grit and pitch, so no two steps running are alike. step-sounds.js plays them where the
-# ground is stone (the boss hall's page gives them to it: own.stone), levelled as her other footfalls are (STEP_LOUD)
-HEEL = {1: ('wizard_staff', 0.455, 0.165), 2: ('wizard_staff', 0.010, 0.16)}       # one knock; a knock and its bounce (heel, toe)
-GRIT = [0.0, 0.72, 1.30, 2.07]                                                     # where each of step_pebbles' steps begins
-for i, (heel, rate, grit, gdb) in enumerate([(1, 1.70, 0, -16), (1, 1.85, 1, -17), (2, 1.75, 2, -16),
-                                             (2, 1.60, 3, -17), (1, 1.55, 2, -18), (2, 1.90, 0, -18)]):
-    src, start, secs = HEEL[heel]
-    SOUNDS['step-%d' % (i + 1)] = ([(src, start, secs, rate, 250, 7000, 0.001, 0.06, 0.0, 0),
-                                    ('step_pebbles', GRIT[grit], 0.16, 1.0, 1800, 7000, 0.003, 0.08, 0.004, gdb),
-                                    ('punch_body', 0.035, 0.22, 1.6, 60, 700, 0.002, 0.08, 0.0, -12)], None)
-STEP_LOUD = -31.0         # dB, its loudest 50 ms: as loud as her footfalls in the pack (steps.mp3's tread)
 LOOPS = {
     # the hall's draft: a mountain's high wind, slower, from the oculus above and from the fallen tunnel behind the door
     # (boss-hall-sounds.js puts it in both places)
@@ -110,7 +96,7 @@ LOOPS = {
     'drone':   ([('whale_call', 1.3, 5.7, 0.55, 40, 1200, 0.0, 0.0, 0.0, 0)], -24),
 }
 STEREO = {'room', 'cave', 'drone', 'boom', 'grind', 'hum', 'crackle'}
-UNTONED = {'air', 'room', 'cave', 'groan', 'knock'} | {'step-%d' % i for i in range(1, 7)}   # their held pitches taken out (untoned): the hall's air whistled
+UNTONED = {'air', 'room', 'cave', 'groan', 'knock'}   # their held pitches taken out (untoned): the hall's air whistled
                           # and moaned like a dog howling (the user: "เหมือนมีเสียงหมาหอนแปลกๆ", then "ไม่เอาเสียงหวีด":
                           # no whistling at all; so the knock's ring too, the draft only its low, the drops lower and dull)
 SOFT = {'crackle': -6.0}  # brought to its level and its peaks then rounded off toward this (dB; the fire's pops stood 30 dB
@@ -131,9 +117,7 @@ def untoned(x, width=180.0):
     howl; what is left is the same air, as loud at each pitch and in each moment, but noise"""
     from scipy.signal import stft, istft
     from scipy.ndimage import median_filter
-    keep = len(x)
-    n = 4096 if len(x) >= 4 * 4096 else 1024        # (a short sound, a step's click: a shorter window)
-    if len(x) < 2 * n: x = np.pad(x, ((0, 2 * n - len(x)), (0, 0)))
+    n = 4096
     out = np.zeros_like(x)
     for c in range(x.shape[1]):
         f, t, Z = stft(x[:, c], fs=SR, nperseg=n, noverlap=n - n // 4)
@@ -143,7 +127,7 @@ def untoned(x, width=180.0):
         Z = Z * (np.minimum(mag, mid) / np.maximum(mag, 1e-12))
         _, y = istft(Z, fs=SR, nperseg=n, noverlap=n - n // 4)
         out[:, c] = y[:len(x)] if len(y) >= len(x) else np.pad(y, (0, len(x) - len(y)))
-    return out[:keep]
+    return out
 
 
 def faded(x, fin, fout):
@@ -192,9 +176,9 @@ def decoded_peak(mp3):
     return 20 * np.log10(np.abs(np.frombuffer(raw, np.float32)).max() + 1e-12)
 
 
-def loud_db(y, loop, win=None):
+def loud_db(y, loop):
     m = y.mean(axis=1)
-    w = int((win or (0.4 if loop else 0.1)) * SR)
+    w = int((0.4 if loop else 0.1) * SR)
     hop = w // 4
     lv = [rms_db(m[i:i + w]) for i in range(0, max(1, len(m) - w), hop)]
     return float(np.percentile(lv, 95)) if loop else float(max(lv))
@@ -212,8 +196,7 @@ def main():
             y = build(parts, src_dir, name in UNTONED)
             if loop: y = looped(y)
             if name not in STEREO: y = np.repeat(y.mean(axis=1, keepdims=True), 2, axis=1)
-            step = name.startswith('step-')
-            g = (STEP_LOUD - loud_db(y, loop, 0.05)) if step else (target - loud_db(y, loop))
+            g = target - loud_db(y, loop)
             peak = 20 * np.log10(np.abs(y).max() + 1e-12)
             if name in SOFT:
                 y = y * 10 ** (g / 20)
@@ -229,7 +212,7 @@ def main():
                 over = decoded_peak(mp3) - CEILING
                 if over <= 0.05: break
                 y = y * 10 ** (-(over + 0.1) / 20)
-            print('%-8s %6.2f %+7.1f %7.1f %6.1f %5d' % (name, len(y) / SR, g, loud_db(y, loop, 0.05 if step else None), decoded_peak(mp3),
+            print('%-8s %6.2f %+7.1f %7.1f %6.1f %5d' % (name, len(y) / SR, g, loud_db(y, loop), decoded_peak(mp3),
                                                        os.path.getsize(mp3) // 1024))
 
 
