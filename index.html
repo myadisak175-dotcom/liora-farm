@@ -160,11 +160,13 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=74",
+  "./hill-village-level.js": "./hill-village-level.js?v=76",
+  "./east-ruins.js": "./east-ruins.js?v=1",
   "./forest-floor.js": "./forest-floor.js?v=2",
   "./farm-soil.js": "./farm-soil.js?v=3",
   "./farm-debris.js": "./farm-debris.js?v=3",
-  "./farm-tools.js": "./farm-tools.js?v=1",
+  "./farm-tools.js": "./farm-tools.js?v=2",
+  "./old-farm.js": "./old-farm.js?v=1",
   "./west-fringe.js": "./west-fringe.js?v=7",
   "./west-fringe-water.js": "./west-fringe-water.js?v=1",
   "./plant-boss.js": "./plant-boss.js?v=3",
@@ -181,7 +183,7 @@
   "./npc-anim.js": "./npc-anim.js?v=2",
   "./goblin-trial.js": "./goblin-trial.js?v=1",
   "./goblin-anim.js": "./goblin-anim.js?v=1",
-  "./village-kit.js": "./village-kit.js?v=bridge3",
+  "./village-kit.js": "./village-kit.js?v=bridge3hole1",
   "./map-rim.js": "./map-rim.js?v=4",
   "./path-brush.js": "./path-brush.js?v=3",
   "./path-edits.js": "./path-edits.js?v=6",
@@ -215,7 +217,7 @@
   "./hills-level.js": "./hills-level.js?v=rocks1t4",
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1t4",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1t4",
-  "./teleport-menu.js": "./teleport-menu.js?v=18",
+  "./teleport-menu.js": "./teleport-menu.js?v=19",
   "./game-map.js": "./game-map.js?v=2",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
@@ -563,7 +565,7 @@ level.addUnderwater(player.object);
 // this device; ?farm=new: from the start again). Its ground and what lies on it are the level's (level.farm). Made before the
 // clouds' shade is given to the scene's materials (below), so its things have it; its splash is her spells' (or its own)
 if (level.farm) {
-  farmTools = await (await import('./farm-tools.js')).createFarmTools({ farm: level.farm, scene, player, camera, heightAt: level.heightAt, fx: spellKit ? spellKit.comboFx : null });
+  farmTools = await (await import('./farm-tools.js')).createFarmTools({ farm: level.farm, scene, player, camera, heightAt: level.heightAt, fx: spellKit ? spellKit.comboFx : null, ...(level.oldFarm ? level.oldFarm.tools : {}) });      // (?oldfarm=1: the hero's old farm begins it: its old beds dug, its own save)
 }
 // the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
 const jumpBtn = document.getElementById('jumpBtn');
