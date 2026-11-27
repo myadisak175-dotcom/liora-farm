@@ -147,7 +147,7 @@
   "./water-droplets.js": "./water-droplets.js?v=crown6",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
   "./stylized-nature.js": "./stylized-nature.js?v=dry4",
-  "./anime-tree.js": "./anime-tree.js?v=dry5inv1",
+  "./anime-tree.js": "./anime-tree.js?v=dry5inv1fall1",
   "./frond-pine.js": "./frond-pine.js?v=brush1dry1",
   "./meadow-flowers.js": "./meadow-flowers.js?v=dry1",
   "./ground-cover.js": "./ground-cover.js?v=brush1dry1",
@@ -160,7 +160,7 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=75",
+  "./hill-village-level.js": "./hill-village-level.js?v=76",
   "./east-ruins.js": "./east-ruins.js?v=1",
   "./forest-floor.js": "./forest-floor.js?v=2",
   "./farm-soil.js": "./farm-soil.js?v=3",
@@ -196,11 +196,11 @@
   "./terrain-blocks.js": "./terrain-blocks.js?v=1",
   "./rock-editor.js": "./rock-editor.js?v=3",
   "./rocks-layout.js": "./rocks-layout.js?v=2",
-  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1look1bways1dry3floor2",
+  "./stylized-terrain.js": "./stylized-terrain.js?v=rocks1o1p2sand1look1bways1dry3floor2lite1",
   "./stylized-sky.js": "./stylized-sky.js?v=alps1",
   "./volumetric-sky.js": "./volumetric-sky.js?v=tod3",
   "./stylized-animals.js": "./stylized-animals.js?v=foamphysics1",
-  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1strip1",
+  "./stylized-grassfield.js": "./stylized-grassfield.js?v=ring1dry1gust1pave1strip1lite1",
   "./stylized-character.js": "./stylized-character.js?v=wade1size1once1spring1unit1hold1face2",
   "@pixiv/three-vrm-springbone": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-springbone@3.5.5/lib/three-vrm-springbone.module.min.js",
   "./character-springs.js": "./character-springs.js?v=2",
@@ -395,6 +395,7 @@ renderer.setPixelRatio(renderDPR);
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
+scene.matrixAutoUpdate = false;      // (it never moves: hill-village-level.js, STILL. Each thing that moves still works its own place out)
 scene.background = new THREE.Color(HAZE);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.12, 1400);
 const fit = () => {
@@ -808,7 +809,7 @@ function applyPicture({ look, fps }) {
   const dpr = smooth ? Math.min(prettyDPR, 1) : prettyDPR;
   if (dpr !== renderDPR) setDPR(dpr);
   if (g.setDensity) g.setDensity(smooth ? 0.5 : 1);
-  if (sky.userData.setRate) sky.userData.setRate(smooth ? 0.5 : 1);
+  if (sky.userData.setRate) sky.userData.setRate((smooth ? 0.5 : 1) * (Q.get('far') === 'full' ? 1 : 0.5));      // (the clouds' picture made anew every 2 s at สวย, not 1: the sky is the furthest thing of all; ?far=full: as it was. hill-village-level.js, FAR, LIGHTER)
   const q = smooth ? Math.min(mirrorBest, 1) : mirrorBest;
   if (level.optics.quality !== q) { level.optics.setQuality(q); if (tunerPanel.repaintMirror) tunerPanel.repaintMirror(); }
   if (!paceFixed) pace = fps;
