@@ -113,6 +113,10 @@ const WOOD_MID = 40, WOOD_FAR = OLD_WOOD ? Infinity : 100;
 const BARE_NEAR = 22, BARE_MID = 48, BARE_FROM = 0.12;
 const FAR_ON = [8, 13, 16, 48];
 const FAR_LEAVES = { value: new THREE.Vector4(...FAR_ON) }, FAR_KEEP = { value: new THREE.Vector2(0.22, 1.25) };
+// a forest kept in cells drops its falling leaves only while one of its plants in view is within this (metres per unit of
+// its size, as above): further off a falling leaf is smaller than a dot of the screen (27 Nov 2026, for the phone that
+// heats: "ลดรายละเอียดที่อยู่ไกล"; ?far=full: from any distance, as it was)
+const FALL_NEAR = typeof location !== 'undefined' && new URLSearchParams(location.search).get('far') === 'full' ? Infinity : 30;
 export function setAnimeFarLeaves(on = true) { if (on) FAR_LEAVES.value.set(...FAR_ON); else FAR_LEAVES.value.set(1e6, 2e6, 1e6, 2e6); }
 
 // BRUSH: the leaves as a brush lays them, as the grass's painterly look lays the meadow (stylized-grassfield.js). Two things
@@ -1266,7 +1270,8 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
     add(geo, materials(b.palette, b.mask).leaf, 'anime_leaves'); cards += own.length;
     leaves.push({ mesh: withPrepass(group.children[group.children.length - 1]), geo, own, T: b.T, dry: 0 });
   }
-  for (const [palette, f] of Object.entries(fallB)) if (f.S.length) add(fallGeometry(f), materials(palette).fall, 'anime_falling');
+  const falls = [];                                                    // the falling leaves' meshes (see FALL_NEAR)
+  for (const [palette, f] of Object.entries(fallB)) if (f.S.length) { add(fallGeometry(f), materials(palette).fall, 'anime_falling'); falls.push(group.children[group.children.length - 1]); }
   group.name = 'anime_forest';
   const eyeHere = new THREE.Vector3(), ball = new THREE.Sphere();
   // DEAD LAND. Where the land is dry a plant's leaves are gone, all of them or some (DRYNESS: which, by each card's own
@@ -1328,6 +1333,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
         if (w.bare) w.bare.visible = all;
         if (w.bareMid) w.bareMid.visible = some;
       }
+      let fallSpan = eye ? Infinity : 0;                             // (the falling leaves: by the nearest plant in view, FALL_NEAR)
       for (const { mesh, geo, own, T, dry } of leaves) {
         let span = eye ? Infinity : 0, seen = !eye || !frustum;      // how far off its nearest plant is, for its size; is any of its plants in view
         for (let i = 0; i < T.length; i += 5) {
@@ -1341,6 +1347,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
         }
         mesh.visible = seen;
         if (!seen) continue;
+        fallSpan = Math.min(fallSpan, span);
         const t = Math.min(1, Math.max(0, (span - far.z) / (far.w - far.z))), few = t * t * (3 - 2 * t);
         let last = 1 + (keep - 1) * few + 0.08;      // a card whose number is under this may still show
         if (eye && dry > 0.002) {                                    // (on dry land: the cards that still have leaves there, see DEAD LAND)
@@ -1352,6 +1359,7 @@ export function createAnimeForest(list, { cell = 0 } = {}) {      // cell: metre
         while (lo < hi) { const m = (lo + hi) >> 1; if (own[m] < last) lo = m + 1; else hi = m; }
         geo.instanceCount = Math.max(1, lo);
       }
+      for (const f of falls) f.visible = fallSpan <= FALL_NEAR;
     },
     get drawn() { return leaves.reduce((n, l) => n + (l.mesh.visible ? l.geo.instanceCount : 0), 0); },      // cards drawn now
     dispose() { owned.forEach(o => o.dispose()); },

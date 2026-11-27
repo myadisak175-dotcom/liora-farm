@@ -657,6 +657,16 @@ function farTuftGeometry() {
 // together (its next few in the pool) must stand together: so each pool is in order of place on its tile (a Z-order
 // curve), within eighths of the pool (setDensity keeps whole eighths: the thinning stays even, and a near tuft and its
 // far tuft are kept or dropped together). The picture is the same. ?grasscull=0: as before, every tuft in full.
+// And a tuft where no blade grows (the ground's map says so: a way, sand, a field, the water) stands zero high, each of its
+// blades a line on the ground that draws nothing: it is folded away too, once the map is read, before the rest. The same
+// picture.
+//
+// FEWER FAR OFF (setFarKeep(far, ring); 27 Nov 2026, for the phone that heats: "ลดรายละเอียดที่อยู่ไกล"): of the tufts
+// drawn, only the share far has its far tuft drawn, and the ring only the share ring of its own, each in whole eighths
+// of its pool; the blades of those that are drawn are as much wider, so the carpet is as closed. A near tuft whose far
+// tuft is not drawn sinks away as it turns (between uMorph's x and y), so nothing is seen to go where the far ones begin;
+// round her every tuft is drawn as before. Which near tufts: by their place in the near pool (its first eighths are
+// kept), as the far pool's first eighths are their four copies. setFarKeep(1, 1): all of them, as it was.
 //
 // PAST THE LAND (beyond: { sheet, rect, land, greens, lean, shade, shadeRect, shadeTint, shadeK }; nothing without it): the
 // map and the heights speak for the land only (land: x0, z0, x1, z1). Where the land runs on past that (map-rim.js) the
@@ -700,6 +710,7 @@ export function createFollowGrass({
     uRing: { value: new THREE.Vector3(map.center[0], map.center[1], ring ? ring.tile : 0) },   // the ring's tile: centre x, z, size
     uRingLook: { value: new THREE.Vector3(ring ? ring.width ?? 1.6 : 1, ring ? ring.spread ?? 3 : 1, ring ? ring.height ?? 1.1 : 1) },      // a ring tuft's blades: so many times as wide, as far apart, as tall
     uCull: { value: typeof location !== 'undefined' && new URLSearchParams(location.search).get('grasscull') === '0' ? 0 : 1 },     // ONLY WHAT IS IN VIEW (?grasscull=0: off)
+    uFarKeep: { value: new THREE.Vector3(1e9, 1, 1) },      // FEWER FAR OFF: x the near tufts from this one on have no far tuft; y how much wider a far blade is for it, z a ring blade
   };
   if (paving) Object.assign(uniforms, paving.uniforms);
   if (beyond) Object.assign(uniforms, {
@@ -738,6 +749,7 @@ export function createFollowGrass({
       uniform vec3 uTip;
       uniform vec4 uWalker;      // x, y, z of whoever walks through the grass, w = radius
       uniform float uCull;       // 1: a tuft out of view is folded away before its heavy part (ONLY WHAT IS IN VIEW)
+      uniform vec3 uFarKeep;     // FEWER FAR OFF: x the near tufts from this one on have no far tuft; y a far blade's widening for it, z a ring blade's
       uniform float uHazeNear, uHazeFar, uHazeMax;
       varying vec3 vRoot;        // the dark between the roots
       varying vec3 vMid;         // ground colour
@@ -806,6 +818,9 @@ export function createFollowGrass({
             m = paveGrass(m, xz + vec2(aBlade.x * pca - aBlade.y * psa, aBlade.x * psa + aBlade.y * pca) * uTuft);
           }
         #endif
+        // no blade grows here: the tuft would stand zero high (h below: the dry ground only lessens m.a), so it is folded away
+        // now, before the rest (ONLY WHAT IS IN VIEW)
+        if (uCull > 0.5 && m.a <= mix(0.1, 0.5, ringed)) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
         float dry = dryAt(xz);
         m = dryGround(m, xz, dry);                              // (land under the curse: see DRY GROUND)
         float cn = clumpAt(xz);
@@ -819,6 +834,8 @@ export function createFollowGrass({
         float dist = length(toC.xz);
         h *= smoothstep(0.35, 1.2, length(toC));                // blades right in front of the lens sink away
         h *= 1.0 - aSpare * turned;                             // the two blades a far tuft has not: gone by the time it has turned
+        // FEWER FAR OFF: a near tuft whose far tuft is not drawn sinks away as it turns
+        if (aLod > 1.5 && aLod < 2.5 && float(gl_InstanceID) >= uFarKeep.x) h *= 1.0 - turned;
         vec2 toCam = toC.xz / max(dist, 0.001);
         // face the camera, every blade turned a little differently
         float a = iRnd.x * 0.6 + aBlade.w * 0.75;
@@ -838,6 +855,7 @@ export function createFollowGrass({
         float y = position.y;
         float w = uThin * uBlade.x * (0.8 + 0.4 * fract(iRnd.z * 7.0)) * (1.0 + dist * 0.035) * (1.0 + 0.4 * uPaint);     // far blades wider: thin blades would shimmer
         w *= mix(1.0, uNear.w, turned) * mix(1.0, uRingLook.x, ringed);      // a far tuft: three blades stand for five; a ring tuft: for a whole clump
+        w *= ringed > 0.5 ? uFarKeep.z : aLod > 0.5 ? mix(1.0, uFarKeep.y, turned) : 1.0;      // (FEWER FAR OFF: as much wider as fewer are drawn)
         // the leaf's waist (y = 0.5) comes in onto the straight line from foot to tip as the tuft turns: turned, the leaf IS the flat triangle
         float waist = (1.0 - abs(y - 0.5) * 2.0) * turned;
         vec3 p = root;
@@ -948,7 +966,17 @@ export function createFollowGrass({
     ringMesh.frustumCulled = false;
     mesh.add(ringMesh);
   }
-  let density = 1;
+  let density = 1, farKeep = 1, ringKeep = 1;
+  // how many of each pool are drawn: the near pool by the density; of its tufts, the far pool the copies of the first
+  // eighths farKeep says, the ring its own first eighths (FEWER FAR OFF), their blades as much wider
+  const counts = () => {
+    const D = Math.round(density * 8), F = Math.max(1, Math.round(D * farKeep)), L = Math.ceil(close.n * F / 8);
+    gNear.instanceCount = Math.round(close.n * density);                    // (the same tufts in both pools: see the pools above)
+    gAll.instanceCount = gNear.instanceCount * 4;
+    gFar.instanceCount = L * 4;
+    uniforms.uFarKeep.value.set(F < D ? L : 1e9, Math.sqrt(D / F), 1);
+    if (gRing) { const R = Math.max(1, Math.round(D * ringKeep)); gRing.instanceCount = Math.ceil(ringN * R / 8); uniforms.uFarKeep.value.z = Math.sqrt(D / R); }
+  };
   mesh.userData = {
     kind: 'followGrass', tufts: wide.n, blades: wide.n * 5, nearTufts: close.n, ringTufts: ringN,
     // centre the tile a little ahead of the walker, in the direction the camera looks, so most blades are on screen
@@ -963,12 +991,14 @@ export function createFollowGrass({
     // draw only part of the pool (0.25..1, in whole eighths: see ONLY WHAT IS IN VIEW); the blades that remain get wider so the carpet stays closed
     setDensity(d) {
       density = Math.min(1, Math.max(0.25, Math.round(d * 8) / 8));
-      gNear.instanceCount = Math.round(close.n * density);                    // (the same tufts in both pools: see the pools above)
-      gAll.instanceCount = gFar.instanceCount = gNear.instanceCount * 4;
-      if (gRing) gRing.instanceCount = Math.round(ringN * density);
+      counts();
       uniforms.uThin.value = thin / Math.sqrt(density);
     },
     get density() { return density; },
+    // FEWER FAR OFF: the share of the tufts drawn whose far tuft is drawn too, and the share of the ring's (each 0..1, kept
+    // in whole eighths of what the density draws); 1, 1: all of them
+    setFarKeep(far = 1, ring = 1) { farKeep = Math.min(1, Math.max(0.125, far)); ringKeep = Math.min(1, Math.max(0.125, ring)); counts(); },
+    get farKeep() { return [farKeep, ringKeep]; },
     // near and far (true), or every tuft in full as it was (false): to compare, on the device
     setFarLod(on) { mesh.geometry = on ? gFar : gAll; nearMesh.visible = !!on; },
     get farLod() { return nearMesh.visible; },

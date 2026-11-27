@@ -41,6 +41,19 @@
 // (forest-floor.js: where; stylized-terrain.js, floor: its paint). ?forest=damp: the first set, dark damp earth, kept for a
 // zone of ancient ruins; ?forest=0: none.
 //
+// FAR, LIGHTER (27 Nov 2026, for the iPhone that heats and drops its frames after a few minutes: "ลดรายละเอียดที่อยู่ไกล
+// ... ใกล้ตัวละครสวยเท่าเดิม"). What is far off and too small to tell is drawn less, round her nothing changes:
+//   - the grass: three in four of the far tufts, half the ring's, each blade as much wider (stylized-grassfield.js, FEWER
+//     FAR OFF); a tuft where no blade grows is folded away before its heavy part (the same picture)
+//   - the ferns and tufts (ground cover): thinner from 32 m (a half), from 55 m (a quarter), none past 85 m; the beds of
+//     flowers none past 85 m (they were 110)
+//   - falling leaves only from a grove within some 35 m (anime-tree.js, lod)
+//   - in the water's mirror no ferns, tufts or flowers further off than 20 m
+//   - the water's ripples (the simulation round her) only worked out when some water is within 45 m of her: further off
+//     there is none in its square to show them
+// The land's paint skips what is never seen (stylized-terrain.js: the same picture), and the clouds' picture is made anew
+// half as often (index.html, applyPicture). ?far=full: all of it as it was, to compare.
+//
 //   const level = await buildHillVillageLevel({ far, sun, grassCount, onStep });     // the same shape as the other levels
 
 import * as THREE from 'three';
@@ -73,6 +86,7 @@ import { createDarkMist } from './dark-mist.js';
 
 const { mulberry32 } = N._internal;
 const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const FAR_FULL = typeof location !== 'undefined' && new URLSearchParams(location.search).get('far') === 'full';      // FAR, LIGHTER (above): ?far=full, all as it was
 
 export const HILL_VILLAGE_MAP = {
   land: './assets/heightmaps/hill-village.bin', plan: './assets/heightmaps/hill-village.json', windmill: './assets/models/windmill.glb',
@@ -751,6 +765,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
     paving: landWays ? landWays.grass : null,                              // (the blades come up between the paving's slabs, not on them)
   });
   if (grassField !== field) grass.userData.dispose = (d => () => { if (d) d(); grassField.texture.dispose(); })(grass.userData.dispose);
+  if (!FAR_FULL) grass.userData.setFarKeep(0.75, 0.5);                     // FEWER FAR OFF: three in four far tufts, half the ring, wider (see FAR, above)
   console.info('[hill-village] grass on the boulders\' tops:', grow.length, 'spots,', grassTop.size, 'points of the land raised for it');
   group.add(grass);
   // the woods (anime-tree.js, and the pines of frond-pine.js), in groves, with the beds of flowers that lie in each; and the
@@ -795,8 +810,8 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         const wood = woodOf(list), rec = { obj: wood, box, lod: wood.userData.lod }; groves.push(rec); recs.push(rec);
       }
       for (const b of beds.get(key) || []) {
-        const far = b.rad * 1.38 + 0.5;                                    // (from further off than 110 m a bed of flowers is too small to see)
-        recs.push({ obj: bedOf(b, clumps), far: 110, box: new THREE.Box3(v3g.set(b.x - far, b.y - 2, b.z - far).clone(), v3g.set(b.x + far, b.y + 3, b.z + far).clone()) });
+        const far = b.rad * 1.38 + 0.5;                                    // (from further off than 85 m a bed of flowers is too small to see: FAR, LIGHTER; it was 110)
+        recs.push({ obj: bedOf(b, clumps), far: FAR_FULL ? 110 : 85, small: true, box: new THREE.Box3(v3g.set(b.x - far, b.y - 2, b.z - far).clone(), v3g.set(b.x + far, b.y + 3, b.z + far).clone()) });
       }
       for (const rec of recs) { group.add(rec.obj); inView.push(rec); }
       if (recs.length) grovesAt.set(key, recs);
@@ -810,7 +825,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (!here) continue;
       const box = new THREE.Box3(), obj = createGroundCover(here);
       for (const c of here) { box.expandByPoint(v3g.set(c.x - 1.6, c.y - 0.5, c.z - 1.6)); box.expandByPoint(v3g.set(c.x + 1.6, c.y + 2, c.z + 1.6)); }
-      const rec = { obj, box, far: 95, thin: obj.userData.thin };
+      const rec = { obj, box, far: FAR_FULL ? 95 : 85, thin: obj.userData.thin, small: true };
       group.add(obj); inView.push(rec); squaresAt.set(key, [rec]);
     }
   };
@@ -872,6 +887,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
   };
   const hidden = [...water.surfaces, grass, droplets.points, rim], stretches = water.stretches;      // (not drawn into the water's own pictures: the rim is too far off to be mirrored)
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), camWorld = new THREE.Vector3();
+  const herAt = new THREE.Vector3(P.spawn.x, H(P.spawn.x, P.spawn.z), P.spawn.z);      // (where she was last followed: the water's ripples are worked out round her)
   let frameNo = 0;
 
   // ------------------------------------------------------------------ where she may walk; the sun; what the game asks of a level
@@ -1123,7 +1139,9 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       }
     },
     update(renderer, dt, scene = null, camera = null) {
-      sim.step(renderer, dt);
+      // the water's ripples: only when some water lies within 45 m of her (FAR, LIGHTER: they are worked out in a square of
+      // 48 m round her, and further off there is none in it to show them)
+      if (FAR_FULL || !camera || stretches.some(s => s.near(herAt) < 45)) sim.step(renderer, dt);
       droplets.update(renderer);
       if (mill) mill.update(dt);
       if (camera) { rocks.userData.update(camera); wet.userData.update(camera); }      // (each rock as finely as its distance calls for)
@@ -1139,7 +1157,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
         for (const g of inView) {
           const d = g.far ? g.box.distanceToPoint(camWorld) : 0;
           g.obj.visible = frustum.intersectsBox(g.box) && (!g.far || d < g.far);
-          if (g.thin && g.obj.visible) g.thin(d < 38 ? 1 : d < 65 ? 0.6 : 0.35);
+          if (g.thin && g.obj.visible) g.thin(FAR_FULL ? (d < 38 ? 1 : d < 65 ? 0.6 : 0.35) : d < 32 ? 1 : d < 55 ? 0.5 : 0.25);      // (FAR, LIGHTER)
           if (g.lod && g.obj.visible) { if (leafLodOff) g.lod(null); else g.lod(camWorld, frustum, mirrorY); }      // a grove's leaves: only the cells in view, only the cards that still show from here
         }
         for (const lod of leafLods) { if (leafLodOff) lod(null); else lod(camWorld, frustum, mirrorY); }
@@ -1152,6 +1170,7 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
           if (optics.setLevel) optics.setLevel(level);
           const out = hidden.slice();
           for (const g of groves) if (g.obj.visible && g.box.distanceToPoint(camWorld) > 70) out.push(g.obj);
+          if (!FAR_FULL) for (const g of inView) if (g.small && g.obj.visible && g.box.distanceToPoint(camWorld) > 20) out.push(g.obj);      // (nor ferns, tufts or flowers further off than 20 m: FAR, LIGHTER)
           for (const o of water.small) out.push(o);                           // (nor the spray and billows at the falls' feet: too small to tell in a mirror)
           optics.render(renderer, scene, camera, out, doThrough, doMirror);
         }
@@ -1169,6 +1188,6 @@ export async function buildHillVillageLevel({ seed = 7, far = '#cde6f2', grassCo
       if (farm) farm.setSun(dir);                                          // (her farm's ridges, and its wood)
     },
     get sunCast() { return cast; },
-    follow(pos, lookDir) { grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
+    follow(pos, lookDir) { herAt.copy(pos); grass.userData.follow(pos, lookDir); N.setWalker(pos); W.WATER_WAKE.track(pos.x, pos.z, waterDepthAt(pos.x, pos.z)); sim.focus(pos.x, pos.z); },
   };
 }
