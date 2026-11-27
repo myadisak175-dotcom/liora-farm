@@ -16,18 +16,19 @@
 #                   beach along the village's plain
 #   the highland    the north-east: rock in ledges stacked one over another (4.6 m each), from the lake's east cliff up to
 #                   38 m in the margin; the plateau (21 m) and the shelf (10 m) of the village go on east under it. Out of its
-#                   east cliff a buttress stands into the lake, the 23 m ledge carried out to the water's edge
+#                   east cliff a buttress stands into the lake, a 32 m ledge carried out to the water's edge
 #   the falls       four streams go over into the lake, each in one drop, from four heights (the user: "ทำน้ำตกไหลลงทะเลสาบ
 #                   หลายๆ สาย"; she chose four round the cliffs, all to be seen from the west shore):
-#                     the big one   out of a gorge in the highland into the lake's north-east bay (16 m). It comes in from
-#                                   beyond the land's edge, round a bend that hides where
-#                     the buttress  off the buttress's front (20 m, the tallest, a narrow ribbon), from a spring at the foot
-#                                   of a crag on its top
-#                     the cliff     off the first ledge of the east cliff (11 m), from a spring at the foot of the ledge over it
-#                     the shelf     off the shelf where the ruins are, east of them (7 m), from a spring at the plateau's foot
-#                   A spring is water coming out at the foot of a face, where one layer of rock sits on another. Each stream
-#                   runs across its ledge in a bed of its own and goes over a sill into a hollow it has worn into the cliff
-#                   under it: the lake comes in to the cliff's foot there, so the fall lands on the water
+#                     the big one   out of a gorge in the highland into the lake's north-east bay (16 m)
+#                     the buttress  out of a cut in the buttress's front (20 m, the tallest, a narrow ribbon)
+#                     the cliff     out of a cut in the east cliff (11 m)
+#                     the shelf     off the shelf where the ruins are, east of them (7 m): its stream comes out of the
+#                                   highland's foot onto the shelf and runs across it
+#                   Each stream comes down a ravine of its own from beyond the land's edge, level, between steep broken
+#                   walls, round a bend behind a crag in the margin that hides where it comes from (the user, of springs on
+#                   the open ledge: "น้ำดูไม่มีที่มาที่ไปเลย"; she chose ravines like the big one's). Each goes over a sill
+#                   into a hollow it has worn into the cliff under it: the lake comes in to the cliff's foot there, so the
+#                   fall lands on the water
 #   the edges       no edge of rock runs on smooth or straight (the user: "แก้เรื่องขอบผาเหลี่ยมเป็นรอยหยัก"): every ledge's,
 #                   the shelf's, the plateau's, the bluff's, the buttress's and the water's edge under the cliffs is broken,
 #                   in bays and spurs a few metres across, gullies cut in to a point, and finer breaks on those (jagged)
@@ -126,33 +127,35 @@ calm = sm(83, 98, WX)
 WARP = ((noise(28, 3) * 9 + noise(8, 2) * 2.4) * calm, (noise(28, 3) * 9 + noise(8, 2) * 2.4) * calm)
 
 
-def edge_noise(amp):
+def edge_noise(amp, r=None):
     """how far an edge of rock is pushed out (+) or cut in (-), as a field over the land: read only along an edge (broken),
     where it makes the edge's outline. Bays and spurs a few metres long, teeth between them, a fine break on those, and now
     and then a gully cut in to a point. Each call its own: the edges of two things are not broken alike"""
-    wander = 2 * noise(7.0, 2, r=jr)
-    t = 2 * noise(2.8, 1, r=jr); teeth = np.sign(t) * np.abs(t) ** 0.6
-    fine = 2 * noise(1.4, 1, r=jr)
-    gully = sm(0.13, 0.0, np.abs(noise(6.0, 1, r=jr))) * sm(-0.05, 0.12, noise(16.0, 1, r=jr))
+    r = r or jr
+    wander = 2 * noise(7.0, 2, r=r)
+    t = 2 * noise(2.8, 1, r=r); teeth = np.sign(t) * np.abs(t) ** 0.6
+    fine = 2 * noise(1.4, 1, r=r)
+    gully = sm(0.13, 0.0, np.abs(noise(6.0, 1, r=r))) * sm(-0.05, 0.12, noise(16.0, 1, r=r))
     return amp * (0.45 * wander + 0.4 * teeth + 0.14 * fine - 1.1 * gully) * calm
 
 
-def broken(sd, amp, by=1.0):
+def broken(sd, amp, by=1.0, r=None):
     """an edge (sd: metres inside it, + , or outside, -) broken as rock breaks: every place moved as the nearest point of the
     edge is (so the edge itself moves by edge_noise, along it as sharply as that is, and never folds over itself). by: how
     much of it, at each place (0: the edge as it was)"""
-    E = edge_noise(amp) * by
+    E = edge_noise(amp, r) * by
     line = np.abs(sd) < CELL * 0.75
     _, (j, i) = ndi.distance_transform_edt(~line, return_indices=True)
     return sd + E[j, i]
 
 
-def jagged(amp, big=6.5):
+def jagged(amp, big=6.5, r=None):
     """metres an edge is pushed out (+) or drawn in (-) at each place, smooth across: for edges drawn as masks after (the
     hollows' walls)"""
-    wander = 2 * noise(big, 2, r=jr)
-    gully = 2 * np.abs(2 * noise(big * 0.85, 2, r=jr)) - 1
-    fine = 2 * noise(big * 0.38, 1, r=jr)
+    r = r or jr
+    wander = 2 * noise(big, 2, r=r)
+    gully = 2 * np.abs(2 * noise(big * 0.85, 2, r=r)) - 1
+    fine = 2 * noise(big * 0.38, 1, r=r)
     return amp * (0.5 * wander + 0.45 * (gully - gully.mean()) + 0.22 * fine) * calm
 
 
@@ -197,13 +200,42 @@ aA = (WX - LIP[0]) * OA[0] + (WZ - LIP[1]) * OA[1]            # metres in front 
 Eg = jagged(1.6)
 gw = 21.5 + 0.12 * Dg + 2.0 * np.exp(-(Dg / 9.0) ** 2) - 3.0 * sm(9.0, 14.0, Dg - Eg)
 raw = np.where(broken(14.0 - Dg, 2.0) > 0, raw + (np.maximum(raw, gw) - raw) * sm(3.4, 0.6, aA + 0.6 * Eg), raw)      # (their outer edge broken as the ledges' are)
-# the buttress: a block of the highland standing out into the lake from its east cliff, the 23 m ledge carried out to the
-# water's edge (the tallest fall goes off its front); a crag on its top, at the foot of which the spring comes out
+# the buttress: a block of the highland standing out into the lake from its east cliff, a 32 m ledge carried out to the
+# water's edge; the tallest fall comes out of a cut in it (its ravine, below), at 23 m
 BUTTRESS = [(151.0, 99.8), (158, 98.8), (166, 99.2), (173.5, 98.6), (179, 100.5), (179.5, 110.5), (171, 111.4), (161, 110.6), (153.5, 111.0), (150.6, 107.5)]
 kb = sm(-1.4, 1.4, signed(mask_of(BUTTRESS, None, 2, jag=1.6)))
-raw = raw + (np.maximum(raw, 24.7) - raw) * kb
-CRAG_C = (168.6, 104.6)
+raw = raw + (np.maximum(raw, 33.4) - raw) * kb
+CRAG_C = (186.0, 103.0)                                       # (the crag where the buttress fall's ravine bends away, in the margin)
 raw += 7.0 * sm(-1.0, 1.2, broken(3.4 - np.hypot(WX - CRAG_C[0], WZ - CRAG_C[1]), 1.0))
+# the three other streams come out of the high ground as the big one does: each down a narrow ravine of its own, level, that
+# bends away behind a crag in the margin, so where it comes from is never seen (the user, of their first streams, which
+# began on the open ledge: "น้ำดูไม่มีที่มาที่ไปเลย"; asked, she chose "ไหลออกจากซอกเขาแบบสายใหญ่"). Each: its level; its
+# line, from beyond the land's edge to over the lake; where its walls and its cut end (to: its sill, or its mouth where it
+# comes out onto the shelf); how high its walls stand over its floor, and how far out from its line (none where the land
+# stands high enough); the crag at its bend; where its water begins (past the bend). Their own dice: the rest as it was
+vr = np.random.default_rng(6262)
+RAVINES = {
+    'ea_stream_c': dict(level=22.6, to=(153.4, 105.6), wall=10.4, reach=8.0, crag=None, begin=(192.0, 116.4),
+                        line=[(203.0, 121.5), (196.5, 119.0), (190.0, 115.2), (184.5, 110.6), (178.5, 106.8), (171.5, 105.3), (164.5, 105.2), (158.0, 105.5), (153.4, 105.6), (147.5, 105.5)]),
+    'ea_stream_b': dict(level=13.9, to=(151.4, 88.3), wall=11.5, reach=8.0, crag=(191.0, 83.0, 4.0, 8.0), begin=(192.5, 70.3),
+                        line=[(203.0, 61.5), (196.5, 66.5), (190.5, 72.2), (185.0, 78.6), (178.5, 84.0), (171.0, 87.0), (163.5, 88.2), (157.0, 88.5), (151.4, 88.3), (146.5, 88.2)]),
+    'ea_stream_d': dict(level=9.43, to=(148.5, -8.0), wall=0.0, reach=8.0, crag=(157.0, -41.0, 4.0, 8.0), begin=(173.0, -40.2), shelf=True,
+                        line=[(203.0, -57.0), (195.0, -52.5), (186.5, -47.0), (177.5, -42.0), (168.5, -38.5), (160.5, -33.5), (155.0, -26.0), (151.5, -17.5), (148.5, -8.0),
+                              (146.0, 0.5), (143.5, 9.5), (142.0, 18.5), (141.6, 26.0), (141.3, 33.5), (141.0, 40.0)]),
+}
+for rv in RAVINES.values():
+    Q, s_ = WS.densify(WS.chaikin(rv['line'], 2), 0.4)
+    _, D, I = LAND.near_line(Q, 32.0)
+    at = lambda p: float(s_[np.argmin(np.hypot(Q[:, 0] - p[0], Q[:, 1] - p[1]))])
+    rv.update(Q=Q, s=s_, D=D, I=I, s_to=at(rv['to']), s_begin=at(rv['begin']))
+    if rv['wall'] > 0:                                        # (its walls: the land raised round its line, up to its sill, their outer edge broken)
+        R = rv['reach']; floor_v = rv['level'] + 0.4
+        tgt = floor_v + rv['wall'] - 2.5 * sm(R - 4.0, R, D)
+        up = sm(rv['s_to'] + 1.5, rv['s_to'] - 0.5, s_[I])
+        raw = np.where(broken(R - D, 1.6, r=vr) > 0, raw + (np.maximum(raw, tgt) - raw) * up, raw)
+    if rv['crag']:
+        cx, cz, cr, ch = rv['crag']
+        raw += ch * sm(-1.0, 1.2, broken(cr - np.hypot(WX - cx, WZ - cz), 1.0, r=vr))
 raw = np.maximum(raw, foot)
 step = STEP * (1 + 0.32 * noise(55, 2))                       # ledges of different heights, here three metres, there six
 RISE = 0.15                                                   # each ledge's face: this much of a step's run (steep)
@@ -228,6 +260,11 @@ Ec = jagged(1.2)
 wall = floor_g + np.maximum(0, Dg - half - Ec) * (2.6 + 0.8 * noise(7))
 gorge_cut = np.where(Dg < 30, wall, 1e6)
 H = np.where(aA < 0.3 + 0.4 * Ec, np.minimum(H, gorge_cut), H)      # the gorge, cut through the ledges behind the lip
+for rv in RAVINES.values():                                   # and the other ravines: a level floor, steep broken walls; to their sill (or mouth)
+    Q, D, I, s_ = rv['Q'], rv['D'], rv['I'], rv['s']
+    half_r = (2.3 + 0.6 * WS.wave(vr, len(Q), 0.4, 11.0))[I]
+    wall_r = rv['level'] + 0.4 + np.maximum(0, D - half_r - jagged(0.9, r=vr)) * (3.4 + 0.9 * noise(7, r=vr))
+    H = np.where((D < 30) & (s_[I] <= rv['s_to'] + 0.3), np.minimum(H, wall_r), H)
 
 LAKE = [  # the lake's shore as drawn (it wanders, and under the cliffs it is broken: 5)
     (98, 38.5), (104, 35.6), (110, 36.8), (114, 40.5), (118, 37.0), (124, 35.4), (131, 37.8), (139, 36.4), (149.5, 38.4), (155.5, 40.0), (157.6, 42.0),
@@ -242,23 +279,22 @@ over_lake = ndi.binary_dilation(mask_of(LAKE, None, 3), iterations=int(round(1.0
 # it leaves it, the stream's level a little under the ledge's top along the way
 FALLS = [
     dict(id='ea_stream', lip=LIP, level=FEED, half=2.45, deep=0.42, gorge=True, hollow=(float(wg[-1]), 0.3), pool=(1.6, 4.6)),      # (half: at its lip, spread out wide before it goes over)
-    dict(id='ea_stream_c', guide=[(169.0, 104.7), (164.0, 104.9), (160.0, 105.4), (155.0, 105.6), (148.0, 105.4)], top=23.6, half=1.15, deep=0.3, hollow=(1.4, 0.32), pool=(1.3, 2.6)),
-    dict(id='ea_stream_b', guide=[(161.0, 88.0), (157.0, 88.3), (153.6, 88.4), (147.5, 88.2)], top=14.3, half=0.95, deep=0.32, hollow=(1.75, 0.38), pool=(1.3, 2.6)),
-    dict(id='ea_stream_d', guide=[(142.4, -20.0), (142.0, -8.0), (140.2, 1.0), (139.4, 9.0), (140.9, 17.0), (142.2, 24.0), (141.4, 30.0), (141.0, 40.0)], top=9.8, half=1.0, deep=0.34, hollow=(1.8, 0.38), pool=(1.3, 2.6), wander=1.1),
+    dict(id='ea_stream_c', half=1.15, deep=0.3, hollow=(1.4, 0.32), pool=(1.3, 2.6)),
+    dict(id='ea_stream_b', half=0.95, deep=0.32, hollow=(1.75, 0.38), pool=(1.3, 2.6)),
+    dict(id='ea_stream_d', half=1.0, deep=0.34, hollow=(1.8, 0.38), pool=(1.3, 2.6), wander=0.6),
 ]
 for f in FALLS:
     if f.get('gorge'):
         f['dir'] = OA; f['pts'] = None; continue
-    G, gs = WS.densify(f['guide'], 0.2)
-    g = np.where(LAND.sample(over_lake.astype(float), G) > 0.5, LV, LAND.sample(ndi.gaussian_filter(H, 0.6 / CELL), G))
-    out = np.flatnonzero(g < f['top'] + 0.9); a = int(out[0])     # out of the face, onto the ledge
-    off = np.flatnonzero(g[a:] < f['top'] - 1.6); b = a + int(off[0]) - 1      # and off its edge
-    sp = G[min(a + 3, b)]; lp = G[b]
-    f['lip'] = (float(lp[0]), float(lp[1])); f['spring'] = (float(sp[0]), float(sp[1]))
-    f['level'] = round(float(np.percentile(g[a:b + 1], 20)) - 0.36, 2)
-    f['dir'] = unit(G[max(a, b - 8)], G[min(len(G) - 1, b + 4)])
-    k = np.flatnonzero((gs > gs[a]) & (gs < gs[b]))[::max(1, int(3.0 / 0.2))]      # (its way across: a point every three metres)
-    f['pts'] = [f['spring']] + [(float(G[i, 0]), float(G[i, 1])) for i in k[1:]] + [f['lip'], (f['lip'][0] + f['dir'][0] * 0.5, f['lip'][1] + f['dir'][1] * 0.5)]
+    rv = RAVINES[f['id']]; Q, s_ = rv['Q'], rv['s']; f['level'] = rv['level']
+    a = int(np.argmin(np.abs(s_ - rv['s_begin'])))
+    g = np.where(LAND.sample(over_lake.astype(float), Q) > 0.5, LV, LAND.sample(ndi.gaussian_filter(H, 0.6 / CELL), Q))
+    off = np.flatnonzero(g[a:] < f['level'] - 1.2); b = a + int(off[0]) - 1      # where it goes over: the land falls away under its line
+    lp = Q[b]; f['lip'] = (float(lp[0]), float(lp[1]))
+    f['dir'] = unit(Q[max(a, b - 8)], Q[min(len(Q) - 1, b + 4)])
+    k = np.flatnonzero((s_ > s_[a]) & (s_ < s_[b] - 1.0))[::max(1, int(3.0 / 0.4))]      # (its way: a point every three metres)
+    f['pts'] = [(float(Q[a, 0]), float(Q[a, 1]))] + [(float(Q[i, 0]), float(Q[i, 1])) for i in k[1:]] + [f['lip'], (f['lip'][0] + f['dir'][0] * 0.5, f['lip'][1] + f['dir'][1] * 0.5)]
+    f['spring'] = f['pts'][0]
 for f in FALLS:                                               # each fall's own frame: a, metres in front of its sill; b, across
     o = f['dir']; L = f['lip']
     f['a'] = (WX - L[0]) * o[0] + (WZ - L[1]) * o[1]
@@ -372,7 +408,9 @@ for n_, f in enumerate(FALLS[1:]):                            # the other stream
     Q, s = WS.bed_line(fr, f['pts'], f.get('wander', 0.3), hold=[(f['lip'][0], f['lip'][1], 3.0)], corners=2)
     banks(f, Q)
     C, m, w, dep, _ = WS.channel(LAND, fr, Q, s, np.full(len(Q), f['level']), f['half'], f['deep'], falls=(), reach=5.0)
-    H = np.where(m & (f['a'] < 0.6), np.minimum(H, C), H)
+    rv = RAVINES[f['id']]; _, Dq, Iq = LAND.near_line(Q, 5.0)
+    walled = (rv['s'][rv['I']] <= rv['s_to'] + 0.3) & (rv['D'] < 8.0)      # (between a ravine's walls only its bed is cut: its banks would lay the walls back)
+    H = np.where(m & (f['a'] < 0.6) & (~walled | (C < f['level'] + 0.4)), np.minimum(H, C), H)
     f.update(Q=Q, s=s, w=w, m=m)
 streams_m = np.any([f['m'] for f in FALLS], axis=0)
 
@@ -431,6 +469,7 @@ for wid, half, pts in WAYS:
 keep = lake | (np.hypot(WX - 146, WZ - 175) < 22) | (WX < SEAM + 8)      # (not in the lake, on the temple's floors, nor by the seam)
 for (x, z, w, d_, yaw) in RUINS: keep |= (np.abs(WX - x) < w / 2 + 3) & (np.abs(WZ - z) < d_ / 2 + 3)
 keep |= streams_m | mo
+for rv in RAVINES.values(): keep |= (rv['D'] < 4.0) & (rv['s'][rv['I']] <= rv['s_to'] + 0.3)      # (nor down a ravine's floor)
 for f in FALLS: keep |= (np.hypot(WX - f['lip'][0], WZ - f['lip'][1]) < 4.0)      # (nor at a fall's sill: its water goes over there, the rain's with it)
 for wid, half, pts in WAYS:
     Q, _ = WS.densify(pts, 0.5); m, D, _ = LAND.near_line(Q, half + 2.5); keep |= m
@@ -465,6 +504,7 @@ for k, (x, z, _) in GO.items():
 prng = np.random.default_rng(4513)
 slope = LAND.slope(ndi.gaussian_filter(H, 1.0))
 streams_pts = np.vstack([f['Q'] for f in FALLS])
+ravine_pts = np.vstack([rv['Q'][rv['s'] <= rv['s_to']] for rv in RAVINES.values()])      # (and the ravines' floors, dry or not)
 def ok(x, z, r=1.2, flat=0.45):
     if not (PLAY[0] + 1 < x < X1 - 4 and Z0 + 6 < z < Z0 + (NZ - 1) * CELL - 6): return False
     i, j = int(round((x - X0) / CELL)), int(round((z - Z0) / CELL))
@@ -475,6 +515,7 @@ def ok(x, z, r=1.2, flat=0.45):
         Q, _ = WS.densify(pts, 0.5)
         if np.min(np.hypot(Q[:, 0] - x, Q[:, 1] - z)) < half + r: return False
     if np.min(np.hypot(streams_pts[:, 0] - x, streams_pts[:, 1] - z)) < 3 + r or np.min(np.hypot(Qo[:, 0] - x, Qo[:, 1] - z)) < 3 + r: return False
+    if np.min(np.hypot(ravine_pts[:, 0] - x, ravine_pts[:, 1] - z)) < 4 + r: return False
     for gx, gz, gyaw in GO.values():                          # (nothing grows where she starts, nor in the first metres of the way she looks)
         if math.hypot(x - gx, z - gz) < 6 + r: return False
         ax, az = x - gx, z - gz; al = ax * math.sin(gyaw) + az * math.cos(gyaw)
