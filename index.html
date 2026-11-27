@@ -839,6 +839,29 @@ let fpsN = 0, fpsT = 0, played = 0;                  // (played: seconds of play
 // seconds (the browser calls animate on every one, drawn or not)
 let tick = 1000 / 60, tickMin = Infinity;
 const tickSeen = [];
+// (28 Nov 2026: on the iPhone 60 after a reload, ~20 after some minutes of play, 60 again after a reload or the screen off;
+// headless nothing grows. Two more things to tell, with ?dev=1 only:) GPU: how long after a frame is handed over the GPU
+// has done it (a fence after the frame's last drawing, looked at every few milliseconds: if this grows with the gaps, the
+// chip itself is slower; if not, something after it holds the frames). เล่น: minutes since the page loaded, and what is
+// held on the GPU (three.js's geometries and pictures), to see what, if anything, grows while she plays
+const gpuT = [], gpuQ = [], gl2 = renderer.getContext(), gpuWatch = Q.has('dev') && !!gl2.fenceSync && !measuring;
+let gpuPolling = false;
+const gpuPoll = () => {
+  while (gpuQ.length) {
+    const [s, t] = gpuQ[0];
+    if (gl2.getSyncParameter(s, gl2.SYNC_STATUS) !== gl2.SIGNALED) break;
+    gpuT.push(performance.now() - t); gl2.deleteSync(s); gpuQ.shift();
+  }
+  gpuPolling = gpuQ.length > 0;
+  if (gpuPolling) setTimeout(gpuPoll, 1);
+};
+const gpuFence = () => {
+  if (!gpuWatch) return;
+  if (gpuQ.length > 8) gl2.deleteSync(gpuQ.shift()[0]);                       // (none left waiting for ever)
+  gpuQ.push([gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0), performance.now()]); gl2.flush();
+  if (!gpuPolling) { gpuPolling = true; setTimeout(gpuPoll, 1); }
+};
+const loadedAt = performance.now();
 function tune(dt, raw = dt) {
   if (measuring) return;                             // (frame-measure.js times the frames itself)
   fpsN++; fpsT += dt; rawT += raw; played += dt;
@@ -851,14 +874,16 @@ function tune(dt, raw = dt) {
   hitches = hitches.filter(h => played - h[0] < 60);
   const mid = a => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return Math.round(b[b.length >> 1]); };
   const most = a => (a.length ? Math.round(Math.max(...a)) : 0);
-  const parts = `งาน ${mid(workT)} ms (สูงสุด ${most(workT)}) · วาด ${mid(drawT)} ms`, gapMid = mid(gapT);
-  gapT.length = 0; workT.length = 0; drawT.length = 0;
+  const parts = `งาน ${mid(workT)} ms (สูงสุด ${most(workT)}) · วาด ${mid(drawT)} ms` + (gpuWatch ? ` · GPU ${gpuT.length ? mid(gpuT) : '?'} ms` : ''), gapMid = mid(gapT);
+  gapT.length = 0; workT.length = 0; drawT.length = 0; gpuT.length = 0;
+  const mem = renderer.info.memory;
   const g = level.grass.userData;
   fpsEl.textContent = Math.round(mean) + ' fps' + (fastMode ? ' / เป้าหมาย 120' : pace === 30 ? ' (ตั้ง 30)' : '') + ' · จอ ' + (Number.isFinite(tick) ? Math.round(1000 / tick) : '?') + 'Hz · ห่าง ' + gapMid + ' ms'
     + '\n' + parts
     + '\n' + drawn[0] + ' draw · ' + (drawn[1] / 1e6).toFixed(1) + 'M สามเหลี่ยม'
     + '\nภาพ ' + Math.round(renderDPR / prettyDPR * 100) + '% · หญ้า ' + Math.round(g.density * 100) + '% · เงาน้ำ ' + ['ปิด', 'ประหยัด', 'เต็ม'][level.optics.quality]
-    + '\nกระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '');
+    + '\nกระตุก ' + hitches.length + '/นาที' + (hitches.length ? ' (นานสุด ' + Math.round(Math.max(...hitches.map(h => h[1])) * 1000) + ' ms)' : '')
+    + '\nเล่น ' + ((performance.now() - loadedAt) / 60000).toFixed(1) + ' นาที · ' + mem.geometries + ' geo · ' + mem.textures + ' tex';
 }
 
 // ---- the scene editor: fix the ways and the plants by hand (only where the level can be edited)
@@ -1010,6 +1035,7 @@ const frame = (dt = clock.getDelta()) => {
   const d0 = performance.now();
   renderer.render(scene, camera);
   drawT.push(performance.now() - d0);
+  gpuFence();                                                                    // (?dev=1: when the GPU has done this frame, for the readout)
   drawn = [renderer.info.render.calls, renderer.info.render.triangles]; if (!measuring) renderer.info.reset();      // (every pass of the frame: autoReset is off, below; ?measure counts its own)
   if (editing()) { fpsN = 0; fpsT = 0; rawT = 0; gapT.length = 0; workT.length = 0; drawT.length = 0; } else tune(dt, raw);      // (an editor draws fewer frames on purpose: not counted)
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
