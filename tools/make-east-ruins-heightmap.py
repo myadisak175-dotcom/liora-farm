@@ -16,17 +16,18 @@
 #                   beach along the village's plain
 #   the highland    the north-east: rock in ledges stacked one over another (4.6 m each), from the lake's east cliff up to
 #                   38 m in the margin; the plateau (21 m) and the shelf (10 m) of the village go on east under it. Out of its
-#                   east cliff a buttress stands into the lake, a 32 m ledge carried out to the water's edge
+#                   east cliff a buttress stands into the lake, the 23 m ledge carried out to the water's edge
 #   the falls       four streams go over into the lake, each in one drop, from four heights (the user: "ทำน้ำตกไหลลงทะเลสาบ
 #                   หลายๆ สาย"; she chose four round the cliffs, all to be seen from the west shore):
 #                     the big one   out of a gorge in the highland into the lake's north-east bay (16 m)
-#                     the buttress  out of a cut in the buttress's front (20 m, the tallest, a narrow ribbon)
-#                     the cliff     out of a cut in the east cliff (11 m)
-#                     the shelf     off the shelf where the ruins are, east of them (7 m): its stream comes out of the
-#                                   highland's foot onto the shelf and runs across it
+#                     the buttress  off the buttress's front (20 m, the tallest, a narrow ribbon)
+#                     the cliff     off the first ledge of the east cliff (11 m)
+#                     the shelf     off the shelf where the ruins are, east of them (7 m)
 #                   Each stream comes down a ravine of its own from beyond the land's edge, level, between steep broken
 #                   walls, round a bend behind a crag in the margin that hides where it comes from (the user, of springs on
-#                   the open ledge: "น้ำดูไม่มีที่มาที่ไปเลย"; she chose ravines like the big one's). Each goes over a sill
+#                   the open ledge: "น้ำดูไม่มีที่มาที่ไปเลย"; she chose ravines like the big one's). The three new ones
+#                   come out of a cleft in the rock behind their ledge (a ledge up: the buttress's back, the cliff's second
+#                   ledge, the highland's foot) and cross the ledge to its edge, which stays whole. Each goes over a sill
 #                   into a hollow it has worn into the cliff under it: the lake comes in to the cliff's foot there, so the
 #                   fall lands on the water
 #   the edges       no edge of rock runs on smooth or straight (the user: "แก้เรื่องขอบผาเหลี่ยมเป็นรอยหยัก"): every ledge's,
@@ -200,24 +201,26 @@ aA = (WX - LIP[0]) * OA[0] + (WZ - LIP[1]) * OA[1]            # metres in front 
 Eg = jagged(1.6)
 gw = 21.5 + 0.12 * Dg + 2.0 * np.exp(-(Dg / 9.0) ** 2) - 3.0 * sm(9.0, 14.0, Dg - Eg)
 raw = np.where(broken(14.0 - Dg, 2.0) > 0, raw + (np.maximum(raw, gw) - raw) * sm(3.4, 0.6, aA + 0.6 * Eg), raw)      # (their outer edge broken as the ledges' are)
-# the buttress: a block of the highland standing out into the lake from its east cliff, a 32 m ledge carried out to the
-# water's edge; the tallest fall comes out of a cut in it (its ravine, below), at 23 m
+# the buttress: a block of the highland standing out into the lake from its east cliff, the 23 m ledge carried out to the
+# water's edge; its back half a step higher (the cleft its stream comes out of, below), its front the tallest fall's
 BUTTRESS = [(151.0, 99.8), (158, 98.8), (166, 99.2), (173.5, 98.6), (179, 100.5), (179.5, 110.5), (171, 111.4), (161, 110.6), (153.5, 111.0), (150.6, 107.5)]
 kb = sm(-1.4, 1.4, signed(mask_of(BUTTRESS, None, 2, jag=1.6)))
-raw = raw + (np.maximum(raw, 33.4) - raw) * kb
+raw = raw + (np.maximum(raw, 24.7) - raw) * kb
 CRAG_C = (186.0, 103.0)                                       # (the crag where the buttress fall's ravine bends away, in the margin)
 raw += 7.0 * sm(-1.0, 1.2, broken(3.4 - np.hypot(WX - CRAG_C[0], WZ - CRAG_C[1]), 1.0))
 # the three other streams come out of the high ground as the big one does: each down a narrow ravine of its own, level, that
 # bends away behind a crag in the margin, so where it comes from is never seen (the user, of their first streams, which
-# began on the open ledge: "น้ำดูไม่มีที่มาที่ไปเลย"; asked, she chose "ไหลออกจากซอกเขาแบบสายใหญ่"). Each: its level; its
-# line, from beyond the land's edge to over the lake; where its walls and its cut end (to: its sill, or its mouth where it
-# comes out onto the shelf); how high its walls stand over its floor, and how far out from its line (none where the land
-# stands high enough); the crag at its bend; where its water begins (past the bend). Their own dice: the rest as it was
+# began on the open ledge: "น้ำดูไม่มีที่มาที่ไปเลย"; asked, she chose "ไหลออกจากซอกเขาแบบสายใหญ่"). Each ravine ends where
+# its stream comes out onto its ledge, short of the cliff's edge, and the stream crosses the ledge to go over: the cliff's
+# edge by the lake stays whole (cut through to the lips they were slots in it: "ตัดหน้าผา ตลกอะ"; she chose them set back).
+# Each: its level; its line, from beyond the land's edge to over the lake; where its walls and its cut end (to: its mouth);
+# how high its walls stand over its floor, and how far out from its line (none where the land stands high enough); the
+# crag at its bend; where its water begins (past the bend). Their own dice: the rest as it was
 vr = np.random.default_rng(6262)
 RAVINES = {
-    'ea_stream_c': dict(level=22.6, to=(153.4, 105.6), wall=10.4, reach=8.0, crag=None, begin=(192.0, 116.4),
+    'ea_stream_c': dict(level=22.6, to=(166.0, 105.2), wall=8.6, reach=18.0, crag=None, begin=(192.0, 116.4),
                         line=[(203.0, 121.5), (196.5, 119.0), (190.0, 115.2), (184.5, 110.6), (178.5, 106.8), (171.5, 105.3), (164.5, 105.2), (158.0, 105.5), (153.4, 105.6), (147.5, 105.5)]),
-    'ea_stream_b': dict(level=13.9, to=(151.4, 88.3), wall=11.5, reach=8.0, crag=(191.0, 83.0, 4.0, 8.0), begin=(192.5, 70.3),
+    'ea_stream_b': dict(level=13.9, to=(157.5, 88.5), wall=0.0, reach=8.0, crag=(191.0, 83.0, 4.0, 8.0), begin=(192.5, 70.3),
                         line=[(203.0, 61.5), (196.5, 66.5), (190.5, 72.2), (185.0, 78.6), (178.5, 84.0), (171.0, 87.0), (163.5, 88.2), (157.0, 88.5), (151.4, 88.3), (146.5, 88.2)]),
     'ea_stream_d': dict(level=9.43, to=(148.5, -8.0), wall=0.0, reach=8.0, crag=(157.0, -41.0, 4.0, 8.0), begin=(173.0, -40.2), shelf=True,
                         line=[(203.0, -57.0), (195.0, -52.5), (186.5, -47.0), (177.5, -42.0), (168.5, -38.5), (160.5, -33.5), (155.0, -26.0), (151.5, -17.5), (148.5, -8.0),
@@ -230,8 +233,8 @@ for rv in RAVINES.values():
     rv.update(Q=Q, s=s_, D=D, I=I, s_to=at(rv['to']), s_begin=at(rv['begin']))
     if rv['wall'] > 0:                                        # (its walls: the land raised round its line, up to its sill, their outer edge broken)
         R = rv['reach']; floor_v = rv['level'] + 0.4
-        tgt = floor_v + rv['wall'] - 2.5 * sm(R - 4.0, R, D)
-        up = sm(rv['s_to'] + 1.5, rv['s_to'] - 0.5, s_[I])
+        tgt = floor_v + rv['wall'] - 0.55 * np.maximum(0, D - 4.5)      # (the rock round it falls away in ledges, not in a wall)
+        up = sm(-1.0, 1.0, broken(rv['s_to'] - s_[I], 1.4, r=vr))      # (up to its mouth, the face there broken as the ledges' are)
         raw = np.where(broken(R - D, 1.6, r=vr) > 0, raw + (np.maximum(raw, tgt) - raw) * up, raw)
     if rv['crag']:
         cx, cz, cr, ch = rv['crag']
