@@ -3,9 +3,10 @@
 // games do). A button under the world's button opens a small panel of four sliders; what is set is heard at once and kept
 // for the next time (localStorage 'loria.sound').
 //
-//   createSoundSettings({ sounds, air, music, base })
+//   createSoundSettings({ sounds, air, music, base, more })
 //     sounds: step-sounds.js; air: ambience-places.js; music: music.js (air and music may be null: ?air=0, ?music=0);
-//     base: how loud the page asked for all of it (?sound=), 1 if it asked nothing
+//     base: how loud the page asked for all of it (?sound=), 1 if it asked nothing; more: rows of other settings, put in
+//     the card above the sound's (the picture's, picture-settings.js): the card and its button are then ⚙️ ตั้งค่า
 //   → { values, open(), close(), button, panel }      (values: { all, music, air, her }, each 0..100)
 //
 //   เสียงรวม       all of it
@@ -41,11 +42,12 @@ const STYLE = `
   #soundPanel .row { display: grid; grid-template-columns: 6.6em 1fr 3em; align-items: center; gap: 8px; min-height: 42px; }
   #soundPanel input[type=range] { width: 100%; height: 32px; margin: 0; accent-color: #5d8a3a; touch-action: none; }
   #soundPanel output { text-align: right; font-variant-numeric: tabular-nums; }
+  #soundPanel hr { border: 0; border-top: 1px solid rgba(39, 52, 26, .15); margin: 2px 0 4px; }
   #soundPanel .reset { margin-top: 8px; border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(39, 52, 26, .12);
     color: inherit; font: inherit; font-size: 13px; touch-action: manipulation; }
 `;
 
-export function createSoundSettings({ sounds = null, air = null, music = null, base = 1 } = {}) {
+export function createSoundSettings({ sounds = null, air = null, music = null, base = 1, more = null } = {}) {
   const values = { all: 100, music: 100, air: 100, her: 100 };
   try {
     const kept = JSON.parse(localStorage.getItem(KEY) || 'null');
@@ -64,11 +66,12 @@ export function createSoundSettings({ sounds = null, air = null, music = null, b
 
   // ---- the panel: a card over a dimmed screen (a tap on the dimmed part, ✕, or Escape closes it)
   const panel = document.createElement('div'); panel.id = 'soundPanel'; panel.hidden = true;
-  const card = document.createElement('div'); card.className = 'card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', 'ตั้งค่าเสียง');
+  const card = document.createElement('div'); card.className = 'card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', more ? 'ตั้งค่า' : 'ตั้งค่าเสียง');
   const head = document.createElement('div'); head.className = 'head';
-  const title = document.createElement('b'); title.textContent = '🔊 ตั้งค่าเสียง';
+  const title = document.createElement('b'); title.textContent = more ? '⚙️ ตั้งค่า' : '🔊 ตั้งค่าเสียง';
   const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.textContent = '✕'; x.setAttribute('aria-label', 'ปิด');
   head.append(title, x); card.append(head);
+  if (more) card.append(more, document.createElement('hr'));
 
   const rows = {};
   for (const [k, name] of ROWS) {
@@ -81,7 +84,7 @@ export function createSoundSettings({ sounds = null, air = null, music = null, b
     r.addEventListener('input', () => { values[k] = clamp(r.value); apply(); save(); });
     row.append(t, r, o); card.append(row); rows[k] = { r, o };
   }
-  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'reset'; reset.textContent = 'ค่าเริ่มต้น';
+  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'reset'; reset.textContent = more ? 'เสียงค่าเริ่มต้น' : 'ค่าเริ่มต้น';
   reset.onclick = () => { for (const k of Object.keys(values)) values[k] = 100; apply(); save(); };
   card.append(reset); panel.append(card);
 
@@ -97,7 +100,7 @@ export function createSoundSettings({ sounds = null, air = null, music = null, b
     }
     for (const [k, { r, o }] of Object.entries(rows)) { r.value = String(values[k]); o.textContent = values[k] + '%'; }
     const quiet = values.all === 0;
-    button.textContent = quiet ? '🔇 เสียง' : '🔊 เสียง';
+    button.textContent = more ? (quiet ? '⚙️ ตั้งค่า 🔇' : '⚙️ ตั้งค่า') : quiet ? '🔇 เสียง' : '🔊 เสียง';
     button.classList.toggle('off', quiet);
   }
 
