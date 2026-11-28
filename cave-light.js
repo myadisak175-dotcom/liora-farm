@@ -4,6 +4,9 @@
      const light = createCaveLight({ volume, scale })      // volume: { data (Uint8, RGBA), nx, ny, nz, x0, y0, z0, cell }
      light.apply(root)                                     // once everything is in the scene (as cloud-shadows' apply)
      light.setSprite(position, on)                         // every frame: where the sprite's light is (the one light that moves)
+     light.on = false                                      // what it patched drawn as if it never had been (out of the cave:
+                                                           // the game's dungeon, dungeon-in-game.js, lights her with it only
+                                                           // while she is in there); true again: lit by it (as it begins)
      light.uniforms                                        // shared by every material it has patched (and by the rock's own)
 
    Out of doors every plant is lit by the sun and the hour (cloud-shadows.js multiplies every material by the hour's light).
@@ -27,8 +30,10 @@ uniform vec3 uCaveBox0, uCaveBoxS;        // the picture's corner (world) and 1 
 uniform float uCaveScale;
 uniform vec4 uSprPos;                     // xyz: the sprite's light, w: its reach (0: off)
 uniform vec3 uSprCol;
+uniform float uCaveOn;                    // 1: lit by the cave; 0: as if it were not patched (light.on)
 varying vec3 vCave;
 vec3 caveAt(vec3 viewPos) {
+  if (uCaveOn < 0.5) return vec3(1.0);                                 // (the same for every vertex drawn: nothing read)
   vec3 w = cameraPosition + viewPos * mat3(viewMatrix);                 // back from view space to the world
   vec3 c = texture(uCaveVol, clamp((w - uCaveBox0) * uCaveBoxS, 0.0, 1.0)).rgb * uCaveScale;
   float d = distance(w, uSprPos.xyz) / max(uSprPos.w, 1e-3);
@@ -95,6 +100,7 @@ export function createCaveLight({ volume, scale = 4, sprite = '#ffe2b0', reach =
     uCaveScale: { value: scale },
     uSprPos: { value: new THREE.Vector4(0, -999, 0, reach) },
     uSprCol: { value: new THREE.Vector3(col.r, col.g, col.b).multiplyScalar(strength) },
+    uCaveOn: { value: 1 },
   };
   const done = new Set();
   return {
@@ -112,6 +118,8 @@ export function createCaveLight({ volume, scale = 4, sprite = '#ffe2b0', reach =
       return n;
     },
     setSprite(p, on = true) { uniforms.uSprPos.value.set(p.x, p.y, p.z, on ? reach : 0); },
+    get on() { return uniforms.uCaveOn.value > 0.5; },
+    set on(v) { uniforms.uCaveOn.value = v ? 1 : 0; },
     get reach() { return reach; },
     dispose() { tex.dispose(); },
   };

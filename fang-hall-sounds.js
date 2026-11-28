@@ -1,8 +1,11 @@
 /* ==========================================================================
    fang-hall-sounds.js  —  what is heard in the fang hall and its way in from behind the big fall (dungeon.html)
 
-     const heard = createFangSounds({ context: () => sounds.context, volume, hall })    // hall: fang-hall.js'
-     heard.air(on)            from her first touch: the fall behind the curtain, and the cave's own water all round
+     const heard = createFangSounds({ context: () => sounds.context, volume, hall })    // hall: fang-hall.js' (or its plan
+                              alone, { frame, layout }: the game makes these before the room, so the files are on their way)
+     heard.air(on)            from her first touch: the fall behind the curtain, and the cave's own water all round; off: they
+                              die away (the game: she has gone out of the dungeon)
+     heard.volume = v         as loud as the game's air about her is set (its settings' slider)
      heard.drip(x, y, z)      a drop landing in the pool (fang-hall.js' onDrip), from where it lands
      heard.update(dt, cam)    every frame: heard from the camera (its position and quaternion)
      heard.drowned            how much the fall takes of what is heard, 0..1 (music.js goes down by it)
@@ -22,7 +25,7 @@ const FILES = { fall1: 'ambience/fall-1.mp3', fall2: 'ambience/fall-2.mp3', cave
 export function createFangSounds({ context, volume = 1, hall, base = './assets/audio/' } = {}) {
   const Fr = hall.frame, IN = Fr.in, M = Fr.mouth, C = hall.layout.curtain;
   const foot = C.rows[C.rows.length - 1];
-  let ctx = null, out = null, send = null, on = false, nodes = null, drowned = 0;
+  let ctx = null, out = null, send = null, on = false, nodes = null, drowned = 0, vol = Math.min(2, Math.max(0, volume));
   const raw = {}, buf = {};
   for (const [k, f] of Object.entries(FILES)) raw[k] = fetch(base + f).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -57,7 +60,7 @@ export function createFangSounds({ context, volume = 1, hall, base = './assets/a
     if (!c) return null;
     if (c !== ctx) {
       ctx = c; nodes = null;
-      out = ctx.createGain(); out.gain.value = Math.min(2, Math.max(0, volume)) * 0.9;
+      out = ctx.createGain(); out.gain.value = vol * 0.9;
       const lim = ctx.createDynamicsCompressor();
       lim.threshold.value = -8; lim.knee.value = 4; lim.ratio.value = 8; lim.attack.value = 0.003; lim.release.value = 0.3;
       out.connect(lim); lim.connect(ctx.destination);
@@ -106,7 +109,20 @@ export function createFangSounds({ context, volume = 1, hall, base = './assets/a
     return [vx + q.w * tx + (q.y * tz - q.z * ty), vy + q.w * ty + (q.z * tx - q.x * tz), vz + q.w * tz + (q.x * ty - q.y * tx)];
   }
   return {
-    air(want) { on = want; if (on && ready()) start(); },
+    air(want) {
+      on = !!want;
+      if (on) { if (ready()) start(); return; }
+      if (!nodes || !ctx) return;
+      const t = ctx.currentTime, gone = nodes; nodes = null;                // (each loop dies away, then stops)
+      for (const v of [gone.f1, gone.f2, gone.cave]) { v.g.gain.cancelScheduledValues(t); v.g.gain.setTargetAtTime(0, t, 0.2); try { v.s.stop(t + 1.2); } catch (e) { /* (stopped) */ } }
+    },
+    get volume() { return vol; },
+    set volume(v) {
+      v = Math.min(2, Math.max(0, +v || 0));
+      if (Math.abs(v - vol) < 1e-3) return;
+      vol = v;
+      if (out) out.gain.setTargetAtTime(vol * 0.9, ctx.currentTime, 0.1);
+    },
     drip(x, y, z) {
       if (!ready() || !ctx.createPanner) return;
       const b = buf[Math.random() < 0.5 ? 'drip1' : 'drip2'];
@@ -119,7 +135,7 @@ export function createFangSounds({ context, volume = 1, hall, base = './assets/a
     },
     get drowned() { return drowned; },
     update(dt, cam) {
-      if (!ctx || !on) return;
+      if (!on || !ready()) return;                                          // (the game's AudioContext may come later: her first touch)
       if (!nodes) start();
       const L = ctx.listener, p = cam.position, q = cam.quaternion, f = rot(q, 0, 0, -1), u = rot(q, 0, 1, 0);
       if (L.positionX) {

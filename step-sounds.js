@@ -6,6 +6,8 @@
 //                                                        under assets/audio/): there her steps are those, not the pack's
 //                                                        footfall (the boss hall's stone: "ขอเสียงเดินบนหิน"). Without own,
 //                                                        nothing changes
+//     sounds.own(map)                                    the same, from now on (null: none); the game's dungeon has the boss
+//                                                        hall's stone while she is in it (dungeon-in-game.js)
 //   createPlayer({ ..., sounds })                              // player-moves.js says when and where; this file says what is heard
 //     sounds.step(x, z, y, { pace, depth, in })          a foot comes down (player-footsteps.js: in seconds from now; it says
 //                                                        which foot too, side: not used, this set's takes are not a foot's own)
@@ -239,6 +241,8 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
   let lastAt = -1, wind = null, note = -1, circles = 0, shimmer = null, blast = null, vol = Math.min(2, Math.max(0, volume));      // (shimmer: the lance's circle's sound, while it is heard; blast: its blast, and when its blow comes)
   const alone = {}, aloneBytes = {}, aloneAttack = {};      // her sounds of their own (ALONE): their buffers once decoded (and each one's attack: s
                                                             // to where it first reaches half its loudest), their bytes until then
+  let owned = own;                                          // a page's own takes for a ground, in use now (own; sounds.own(map) changes it)
+  const asked = new Set(Object.keys(own));                  // (the grounds whose own takes have been fetched)
   let rushBuf = null, rushBytes = null, rush = null;      // the wind past her: its buffer; what is playing of it
   const last = {}, stats = { steps: 0, circles: 0, catches: 0, leaps: 0, lands: 0, dashes: 0, vaults: 0, splashes: 0, strokes: 0, whooshes: 0, casts: 0, lances: 0, rush: 0, played: 0, dropped: 0, late: 0 };      // (late: steps told too late to begin their take its attack early)
 
@@ -414,10 +418,28 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
   const lag = () => Math.min(0.15, ctx.outputLatency || ctx.baseLatency || 0);
 
   return {
-    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, circle: alone.circle ? alone.circle.length : 0, own: Object.fromEntries(Object.keys(own).map(n => [n, alone[n] ? alone[n].length : 0])), room: !!room, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
+    get stats() { return { ...stats, state: ctx ? ctx.state : 'asleep', ready: ready(), wind: !!rushBuf, whoosh: alone.whoosh ? alone.whoosh.length : 0, circle: alone.circle ? alone.circle.length : 0, own: Object.fromEntries(Object.keys(owned).map(n => [n, alone[n] ? alone[n].length : 0])), room: !!room, shift, lag: ctx ? lag() : 0, failed: failed ? String(failed) : null }; },
     get volume() { return vol; },
     get context() { return ctx; },      // (the AudioContext, once the first touch has made it: the air about her plays on it too, ambience.js)
     set volume(v) { vol = Math.min(2, Math.max(0, +v || 0)); if (out) out.gain.value = MASTER * vol; },
+    // from now on a page's own takes for a ground, as own (the game's dungeon, dungeon-in-game.js: the boss hall's stone in
+    // there; null as she comes out: the pack's again). Takes not had yet are fetched, and decoded once there is an
+    // AudioContext; until they are, a step on that ground is the pack's
+    own(map = null) {
+      owned = map || {};
+      for (const [name, files] of Object.entries(owned)) {
+        if (asked.has(name)) continue;
+        asked.add(name);
+        Promise.all(files.map(f => fetch(new URL(f, FILES), fresh).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null))).then(async list => {
+          const got = list.filter(Boolean);
+          if (!ctx) { (aloneBytes[name] || (aloneBytes[name] = [])).push(...got); return; }      // (decoded with the rest at her first touch: decode)
+          for (const b of got) try {
+            const buf = await decodeData(b);
+            (alone[name] || (alone[name] = [])).push(buf); (aloneAttack[name] || (aloneAttack[name] = [])).push(attackOf(buf));
+          } catch (err) { console.warn('[step sounds]', name, err); }
+        });
+      }
+    },
 
     step(x, z, y, { pace = 0, depth = 0, in: ahead = 0 } = {}) {
       stats.steps++;
@@ -429,7 +451,7 @@ export function createStepSounds({ level, volume = 1, own = {} } = {}) {
       if (!ground) return;
       const loud = pace <= 1 ? WALK_GAIN + (1 - WALK_GAIN) * Math.max(0, pace) : 1 + (SPRINT_GAIN - 1) * Math.min(1, (pace - 1) / 0.6);
       const gname = groundName(x, z, y, depth);
-      if (own[gname] && alone[gname] && alone[gname].length) {      // a page's own takes for this ground (own): one of them, its attack on her foot
+      if (owned[gname] && alone[gname] && alone[gname].length) {      // a page's own takes for this ground (own): one of them, its attack on her foot
         const i = pickAlone(gname), rate = about(1);
         foot = -foot;
         playAlone(gname, ground.gain * loud * vary() * FEET, rate, i, when - (aloneAttack[gname][i] || 0) / rate, foot * STEP_PAN);

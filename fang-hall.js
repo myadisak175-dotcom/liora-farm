@@ -4,11 +4,16 @@
 
      const hall = await createFangHall({ onStep, onDrip })
      scene.add(hall.group); ...; hall.light.apply(scene)     // the cave's light on the ferns and on her (cave-light.js)
+     const files = fetchFangHall()                           // its files, fetched ahead (the game, as she nears the falls:
+     createFangHall({ files, globals: false })               // dungeon-in-game.js); globals false: the haze and the ferns'
+                                                             // light (shared with the whole game) left as they are: hall.haze,
+                                                             // hall.sun say what they are in here (the page sets them itself)
      every frame: hall.update(dt, camera)                    // the falling water, its light, the glowworms, the drips
      hall.floorMap, hall.colliders, hall.crowns, hall.trunks, hall.layout   (as cave-hall.js': cave-level.js reads them)
      hall.inward(x, z)      how far in from the mouth a spot is (m; < 0 out on the ledge behind the falling water)
      hall.curtainAt(y)      how far in the fall's line is at a height (it hangs further out lower down): her camera keeps
                             this side of it
+     hall.setPixelRatio(r)  the renderer's pixel ratio changed (the glowworms are sized in pixels)
      onDrip(x, y, z)        a drop landing in the pool (the page's sounds)
 
    One job: build the room from what tools/make-fang-hall.py baked (assets/caves/fang-hall.bin + .json):
@@ -533,16 +538,21 @@ function shroomGeometry() {
   return mergeGeometries([stem.toNonIndexed(), cap.toNonIndexed()]);
 }
 
-export async function createFangHall({ base = './assets/caves/fang-hall', ground = './assets/ground/', look = FANG_LOOK, onStep = async () => {}, onDrip = null, pixelRatio = Math.min(2, devicePixelRatio || 1) } = {}) {
-  await onStep('อ่านแผนผังถ้ำ');
-  const [L, bin, cliff, mossTex, earthTex, sandTex] = await Promise.all([
-    fetch(base + '.json').then((r) => r.json()),
-    fetch(base + '.bin').then((r) => r.arrayBuffer()),
+// what the room is built from: its bake (the plan, the meshes, the light) and the game's pictures it is painted with
+export function fetchFangHall({ base = './assets/caves/fang-hall', ground = './assets/ground/' } = {}) {
+  return Promise.all([
+    fetch(base + '.json').then((r) => { if (!r.ok) throw new Error(base + '.json: ' + r.status); return r.json(); }),
+    fetch(base + '.bin').then((r) => { if (!r.ok) throw new Error(base + '.bin: ' + r.status); return r.arrayBuffer(); }),
     loadTex(ground + 'cliff-paint.webp'),
     loadTex(ground + 'cave-moss-paint.webp'),
     loadTex(ground + 'path-dirt.webp'),
     loadTex(ground + 'path-sand.webp'),
   ]);
+}
+
+export async function createFangHall({ base = './assets/caves/fang-hall', ground = './assets/ground/', files = null, globals = true, look = FANG_LOOK, onStep = async () => {}, onDrip = null, pixelRatio = Math.min(2, devicePixelRatio || 1) } = {}) {
+  await onStep('อ่านแผนผังถ้ำ');
+  const [L, bin, cliff, mossTex, earthTex, sandTex] = await (files || fetchFangHall({ base, ground }));
   const B = L.bin, group = new THREE.Group();
   group.name = 'fang-hall';
   const light = createCaveLight({ volume: { ...B.volume, data: new Uint8Array(bin, B.volume.data, B.volume.nx * B.volume.ny * B.volume.nz * 4) }, scale: B.lightScale });
@@ -849,11 +859,20 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
   // ---- ferns where the daylight reaches
   await onStep('ปลูกเฟิร์นปากถ้ำ');
   const toward = new THREE.Vector3(-IN.x, 0.7, -IN.y).normalize();
-  setGroundCoverSun(toward);
-  N.setHaze({ color: look.fog, near: 8, far: 70, max: 0.7 });
+  const haze = { color: look.fog, near: 8, far: 70, max: 0.7 };
+  if (globals) { setGroundCoverSun(toward); N.setHaze(haze); }      // (shared with all the ferns and plants there are: in the game, set only while she is in here)
   if (L.cover && L.cover.length) {
     const cover = createGroundCover(L.cover.map((c) => ({ kind: c.kind, x: c.x, y: c.y, z: c.z, seed: c.seed, scale: c.scale })));
     cover.name = 'cave-cover';
+    // a material of their own, the ferns' one copied (its uniforms shared: the time, the wind, the sun): the cave's light is
+    // laid on it (cave-light.js), not on the one every fern of the game is drawn with (in the game, those of the village)
+    const own = new Map();
+    cover.traverse((o) => {
+      const m = o.material;
+      if (!m || !m.isShaderMaterial) return;
+      if (!own.has(m)) { const u = m.uniforms; m.uniforms = {}; const c = m.clone(); m.uniforms = u; c.uniforms = { ...u }; own.set(m, c); }
+      o.material = own.get(m);
+    });
     group.add(cover);
   }
 
@@ -876,7 +895,8 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
   const landed = drips.map(() => -1);
   return {
     group, light, layout: L, rock, colliders, floorMap, crowns: [], trunks: [],
-    pool: P, look, fogColor: fogCol, frame: Fr, inward, curtainAt,
+    pool: P, look, fogColor: fogCol, frame: Fr, inward, curtainAt, haze, sun: toward,
+    setPixelRatio(r) { pix.value = 52 * r; },          // (the glowworms and the drops are sized in pixels: the game's picture setting can change it)
     update(dt, camera) {
       clock += dt;
       time.value = clock;

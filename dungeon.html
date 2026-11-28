@@ -19,9 +19,9 @@
   big fall's lip); her level in it: cave-level.js (as the forest hall's); its light on the ferns and on her: cave-light.js;
   its sounds: fang-hall-sounds.js. Vivi plays as in the game (as cave-hall.html: the game's player, touch screen, skills,
   music; the sprite is the light where she goes); the map is game-map.js on tools/make-cave-map.py's picture.
-  In and out: the game's ?cave=1 (cave-mouth.js) opens this page as she walks into the dark behind the fall (?from=village:
-  she is just inside the mouth, facing in); walking back out onto the ledge, the village again (history.back, or the
-  village loaded with ?cave=1&view=cavemouth when this page was opened by itself).
+  In and out: the game's ?cave=1 has this room in the game itself (dungeon-in-game.js: loaded into the village's page, so
+  going in and out is quick); this page is the room by itself. ?from=village: she begins just inside the mouth, facing in;
+  walking back out onto the ledge, the village (loaded with ?cave=1&view=cavemouth: on the ledge behind the fall).
   ?sound=0: no sound; ?music=0: no music.
 -->
 <style>
@@ -159,7 +159,7 @@
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1t4",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1t4",
   "./teleport-menu.js": "./teleport-menu.js?v=19",
-  "./game-map.js": "./game-map.js?v=2",
+  "./game-map.js": "./game-map.js?v=3",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
@@ -195,7 +195,7 @@
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=4",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
-  "./step-sounds.js": "./step-sounds.js?v=17",
+  "./step-sounds.js": "./step-sounds.js?v=18",
   "./ambience.js": "./ambience.js?v=8",
   "./ambience-places.js": "./ambience-places.js?v=7",
   "./music.js": "./music.js?v=6",
@@ -214,9 +214,9 @@
   "./dark-mist.js": "./dark-mist.js?v=2",
   "./cave-hall.js": "./cave-hall.js?v=2",
   "./cave-level.js": "./cave-level.js?v=1",
-  "./cave-light.js": "./cave-light.js?v=1",
-  "./fang-hall.js": "./fang-hall.js?v=1",
-  "./fang-hall-sounds.js": "./fang-hall-sounds.js?v=1",
+  "./cave-light.js": "./cave-light.js?v=2",
+  "./fang-hall.js": "./fang-hall.js?v=2",
+  "./fang-hall-sounds.js": "./fang-hall-sounds.js?v=2",
   "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=8"
 } }
 </script>
@@ -433,12 +433,9 @@ bar.append(fullBtn);
 // the room's sounds from her first touch (the AudioContext is made then)
 if (heard) addEventListener('pointerdown', () => setTimeout(() => heard.air(true), 50), { once: true });
 
-// ---- the way in and out, behind the big fall (the village's ?cave=1: cave-mouth.js): from the village she is just inside the
-// mouth, facing in; walking back out onto the ledge (past the curtain's exit line) the screen goes black and she is in the
-// village again, on the ledge, facing out: the village page as it was if the browser kept it (history.back), else loaded
-// again (it reads liora.cave.out and puts her there). Opened by itself (not from the village), out is the village with the
-// trial on, at the ledge
-const IN_KEY = 'liora.cave', OUT_KEY = 'liora.cave.out';
+// ---- the way in and out, behind the big fall: ?from=village, she is just inside the mouth, facing in; walking back out onto
+// the ledge (past the curtain's exit line) the screen goes black and the village is loaded, with her on the ledge facing out
+// (the game's ?cave=1 has the room in its own page now: dungeon-in-game.js)
 const FR = hall.frame, LW = hall.layout.curtain.ledge, WM = (LW[0] + LW[1]) / 2;
 const at = (s, w) => [FR.mouth[0] + FR.in[0] * s + FR.right[0] * w, FR.mouth[2] + FR.in[1] * s + FR.right[1] * w];
 const inside = () => { const [x, z] = at(1.4, WM); player.teleport(x, z, Math.atan2(FR.in[0], FR.in[1])); };
@@ -452,15 +449,7 @@ function goOut() {
   if (leaving) return;
   leaving = true;
   veil.style.opacity = '1';
-  let back = null;
-  try { sessionStorage.setItem(OUT_KEY, '1'); back = JSON.parse(sessionStorage.getItem(IN_KEY) || 'null'); } catch (e) { /* not kept */ }
-  const village = back && back.back ? back.back : './index.html?cave=1&view=cavemouth';
-  setTimeout(() => {
-    if (back && history.length > 1) {
-      history.back();
-      setTimeout(() => { location.href = village; }, 2500);          // (no page to go back to after all)
-    } else location.href = village;
-  }, 650);
+  setTimeout(() => { location.href = './index.html?cave=1&view=cavemouth'; }, 650);
 }
 addEventListener('pageshow', (e) => { if (e.persisted) { veil.style.opacity = '0'; leaving = false; inside(); } });
 const outLine = hall.layout.curtain.exit;

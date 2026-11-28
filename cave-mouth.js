@@ -3,28 +3,41 @@
 
      const mouth = await createCaveMouth({ level })      // before the player is made: the ledge is the level's ground there
      scene.add(mouth.group)                              // before shadows.apply and the warm-up (it takes the hour's light)
-     mouth.back()           once she is placed: true when she has just come out of the cave (then put her at mouth.spot)
-     every frame: mouth.update(dt, player)               // walking into the dark: the dungeon opens (dungeon.html)
-     level.views.cavemouth  on the ledge, facing out (?view=cavemouth)
+     every frame: mouth.update(dt, player)               // as she comes near the fall: mouth.onNear(); walking into the dark
+                                                         // behind it: mouth.onEnter() (the game's dungeon: dungeon-in-game.js)
+     mouth.use(cave)        she is in the dungeon: the level she plays on is the cave's (cave-level.js); use(null): the
+                            village's again
+     mouth.floating         the level as what floats beside her sees it (the sprite: createSpriteCompanion): the floor under
+                            it, in the cave too (where the level's own heightAt counts the rock as far up, for her camera)
+     mouth.spot             on the ledge, facing out: where she is as she comes back out
+     level.views.cavemouth  the same (?view=cavemouth)
 
    The land parts the big fall into three strands, with ribs of rock between them (land-water.js); behind the middle one,
    between two ribs, there is now a ledge of rock a little over the plunge pool, and in the cliff behind it the dark of a
    cave. She gets there through the falling water: swimming into the ledge's edge she climbs out onto it (the game's own
-   climb out of the water, as up any bank). Walking into the dark, the screen goes black and the dungeon is opened
-   (dungeon.html ?from=village: she is just inside its mouth, facing in). Coming back out of it (the dungeon sends her
-   back), she is on the ledge facing out: the page as it was, if the browser kept it (history.back), else loaded again and
-   put there (sessionStorage liora.cave.out).
+   climb out of the water, as up any bank). Walking into the dark, the dungeon is entered: in the game itself, its room
+   loaded into the page beside the village (dungeon-in-game.js; it begins to load as she comes near the fall, NEAR), so
+   going in is a moment's dark and coming out is at once, the village never left. (Until 28 Nov 2026 the dungeon was a page
+   of its own, dungeon.html, and the village was loaded again as she came out: some 20 s, "นานมาก ... โหลดข้อมูลที่จำเป็น
+   ก็พอ". That page is still there, the room by itself.)
+   While she is in there every question the player, her steps, her camera and the sprite ask of the level is the cave's:
+   the functions this file put in the level's place answer from it (the player keeps them from when it was made), and the
+   rest it is asked as it goes (her walls, the roof over her, the edge of the map, the water's rings) is swapped for the
+   cave's, and back.
    The ledge and the cave are where the dungeon's own bake has them (assets/caves/fang-hall.json: its frame, the ledge
    between the ribs, its height): the way in and out is the same spot in both.
    ========================================================================== */
 import * as THREE from 'three';
 import { propRockMaterial } from './rocks.js';
 
-const IN_AT = -0.45;         // m in from the mouth's foot: she is in the dark there (the dungeon opens)
+const IN_AT = -0.45;         // m in from the mouth's foot: she is in the dark there (the dungeon is entered)
 const OUT_AT = -1.05;        // where she stands coming out, facing out
 const S0 = -1.95, S1 = 0.3;  // the ledge, out from the cliff (its outer edge) and in under it
 const BAND = 0.4;            // m past its outer edge: a face from the water up to it (she climbs out by it)
-const OUT_KEY = 'liora.cave.out', IN_KEY = 'liora.cave';
+const NEAR = 60;             // m from the mouth: the dungeon begins to load (onNear)
+// what the player asks of the level as it goes (player-moves.js), swapped for the cave's while she is in it (the water's
+// rings: none, the cave's pool keeps its own)
+const SWAP = ['confine', 'ceilAt', 'ripple', 'colliders', 'cameraTrunks', 'crowns', 'radius'];
 
 const MOUTH_VS = /* glsl */`
 varying vec2 vUv;
@@ -40,7 +53,7 @@ void main() {
   gl_FragColor = vec4(col, inside);
 }`;
 
-export async function createCaveMouth({ level, base = './assets/caves/fang-hall', dungeon = './dungeon.html', ground = './assets/ground/' } = {}) {
+export async function createCaveMouth({ level, base = './assets/caves/fang-hall', ground = './assets/ground/' } = {}) {
   const L = await fetch(base + '.json').then((r) => r.json());
   const F = L.frame, M = F.mouth, D = F.in, R = F.right, TOP = M[1], LAKE = L.curtain.lake;
   const [W0, W1] = L.curtain.ledge, WM = (W0 + W1) / 2;
@@ -50,19 +63,30 @@ export async function createCaveMouth({ level, base = './assets/caves/fang-hall'
   // the face from the water up to the ledge's outer edge: its height falling from the ledge's to just under the water's
   const faceAt = (s, w) => (s > S0 - BAND && s <= S0 && w > W0 && w < W1 ? TOP - (S0 - s) / BAND * (TOP - LAKE + 0.12) : null);
 
-  // ---- the level: the ledge is ground (stone underfoot), out of the water; its edge a face, as a bank's
+  // ---- the level: the ledge is ground (stone underfoot), out of the water; its edge a face, as a bank's. And while she is
+  // in the dungeon (inside: the cave's level), all of it the cave's
+  let inside = null, held = null;
   const was = { standAt: level.standAt || level.heightAt, heightAt: level.heightAt, footing: level.footing, waterDepthAt: level.waterDepthAt, surfaceAt: level.surfaceAt };
   const here = (x, z) => { const [s, w] = sw(x, z); return onLedge(s, w) ? TOP : faceAt(s, w); };
-  level.standAt = (x, z, y) => { const h = here(x, z); return h === null ? was.standAt(x, z, y) : h; };
-  level.heightAt = (x, z) => { const h = here(x, z); return h === null ? was.heightAt(x, z) : h; };
-  level.waterDepthAt = (x, z, y) => { const h = here(x, z); return h === null ? was.waterDepthAt(x, z, y) : Math.max(0, LAKE - h); };
+  level.standAt = (x, z, y) => { if (inside) return inside.standAt(x, z, y); const h = here(x, z); return h === null ? was.standAt(x, z, y) : h; };
+  level.heightAt = (x, z) => { if (inside) return inside.heightAt(x, z); const h = here(x, z); return h === null ? was.heightAt(x, z) : h; };
+  level.waterDepthAt = (x, z, y) => { if (inside) return inside.waterDepthAt(x, z, y); const h = here(x, z); return h === null ? was.waterDepthAt(x, z, y) : Math.max(0, LAKE - h); };
   if (was.footing) level.footing = (x, z, y) => {
+    if (inside) return inside.footing(x, z, y);
     const [s, w] = sw(x, z);
     if (onLedge(s, w)) return 'ground';
     if (faceAt(s, w) !== null) return 'cliff';
     return was.footing(x, z, y);
   };
-  if (was.surfaceAt) level.surfaceAt = (x, z, y) => (here(x, z) === null ? was.surfaceAt(x, z, y) : 'stone');
+  if (was.surfaceAt) level.surfaceAt = (x, z, y) => (inside ? inside.surfaceAt(x, z, y) : here(x, z) === null ? was.surfaceAt(x, z, y) : 'stone');
+  // what floats beside her (the sprite) keeps over the floor: in the cave the floor's own height, never the rock's (which
+  // the cave's heightAt counts as far up, so her camera comes in before a wall)
+  const floating = {
+    heightAt: (x, z) => (inside ? inside.standAt(x, z) : level.heightAt(x, z)),
+    waterDepthAt: (x, z, y) => level.waterDepthAt(x, z, y),
+    get colliders() { return level.colliders; },
+    addUnderwater: (o) => { if (level.addUnderwater) level.addUnderwater(o); },
+  };
   const yawOut = Math.atan2(-D[0], -D[1]);
   const [sx, sz] = xz(OUT_AT, WM);
   const spot = { x: sx, z: sz, yaw: yawOut };
@@ -133,41 +157,28 @@ export async function createCaveMouth({ level, base = './assets/caves/fang-hall'
   // underwater layer (the land, the rocks, her)
   if (level.addUnderwater) level.addUnderwater(group);
 
-  // ---- into the dark: the screen goes black, the dungeon opens; and back
-  const veil = document.createElement('div');
-  veil.style.cssText = 'position:fixed;inset:0;background:#05080a;opacity:0;pointer-events:none;transition:opacity .6s;z-index:60;display:grid;place-items:center;color:#cfeff2;font:600 15px system-ui';
-  veil.textContent = 'เข้าถ้ำ…';
-  document.body.append(veil);
-  let leaving = false, armed = true;
-  function enter() {
-    if (leaving) return;
-    leaving = true;
-    try { sessionStorage.setItem(IN_KEY, JSON.stringify({ back: location.pathname + location.search })); } catch (e) { /* not kept */ }
-    veil.style.opacity = '1';
-    setTimeout(() => { location.href = dungeon + '?from=village'; }, 650);
-  }
-  // back from the cave with the page as it was (the browser kept it): she stands in the dark where she went in; out onto the ledge
-  let pending = null;
-  addEventListener('pageshow', (e) => {
-    if (!e.persisted) return;
-    veil.style.opacity = '0'; leaving = false; armed = false;
-    try { if (sessionStorage.getItem(OUT_KEY) === '1') { sessionStorage.removeItem(OUT_KEY); pending = spot; } } catch (err) { /* nothing kept */ }
-  });
-  return {
-    group, spot, ledge, mouth,
-    back() {
-      let out = false;
-      try { out = sessionStorage.getItem(OUT_KEY) === '1'; sessionStorage.removeItem(OUT_KEY); } catch (e) { /* nothing kept */ }
-      if (out) armed = false;
-      return out;
+  // ---- near the fall, and into the dark (armed again once she has stepped out of it: coming back out she is put out of it)
+  let near = false, armed = true;
+  const api = {
+    group, spot, ledge, mouth, floating,
+    onNear: null, onEnter: null,
+    get inside() { return !!inside; },
+    use(cave) {
+      cave = cave || null;
+      if (cave === inside) return;
+      if (inside) { for (const k of SWAP) { if (held[k] === undefined) delete level[k]; else level[k] = held[k]; } held = null; }
+      inside = cave;
+      if (inside) { held = {}; for (const k of SWAP) { held[k] = level[k]; level[k] = k === 'ripple' ? null : inside[k]; } }
+      armed = false;
     },
     update(dt, player) {
-      if (pending) { player.teleport(pending.x, pending.z, pending.yaw); pending = null; }
+      if (inside) return;
       const p = player.position, [s, w] = sw(p.x, p.z);
-      const inside = onLedge(s, w) && s > IN_AT;
-      if (!inside) { armed = true; return; }
-      if (armed && !leaving && (player.mode === 'ground' || player.mode === undefined)) enter();
+      if (!near && Math.hypot(s, w) < NEAR) { near = true; if (api.onNear) api.onNear(); }
+      if (!(onLedge(s, w) && s > IN_AT)) { armed = true; return; }
+      if (armed && (player.mode === 'ground' || player.mode === undefined)) { armed = false; if (api.onEnter) api.onEnter(); }
     },
-    dispose() { lg.dispose(); mouth.geometry.dispose(); mouthMat.dispose(); veil.remove(); },
+    dispose() { lg.dispose(); mouth.geometry.dispose(); mouthMat.dispose(); },
   };
+  return api;
 }
