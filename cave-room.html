@@ -15,8 +15,10 @@
   of the room's places (at its own height: a room has floors over one another).
   The test room (its first piece: ground, laid stone, light): a hall with the way in; a round well with a stair of laid
   stone winding a turn and a half down round it, over itself; a bridge across the well; a tunnel from the well's floor under
-  the hall to a lower chamber; a nook whose plan is a picture drawn by hand. No water, mist or things yet (the kit's next
-  pieces), no map.
+  the hall to a lower chamber; a nook whose plan is a picture drawn by hand. Its land (the kit's second piece): floors that
+  roll and rise into the walls' feet; in the hall two tiers of ledges to climb with a slope up to the first, a mound, a
+  hollow, boulders; in the lower chamber a knob drawn as a picture of heights; two mouths where other rooms would join.
+  No water, mist or things yet (the kit's next pieces), no map.
   ?sound=0: no sound.
 -->
 <style>
@@ -25,7 +27,8 @@
   #name { position: fixed; left: calc(14px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); max-width: calc(50vw - 64px); pointer-events: none;
     font: 700 16px system-ui; color: #f2fbff; text-shadow: 0 1px 6px #000c; }
   #name small { display: block; font: 500 12px system-ui; opacity: 0.85; margin-top: 3px; }
-  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+  #bar { position: fixed; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); display: flex; flex-flow: column wrap-reverse; align-items: flex-end; gap: 6px; z-index: 3;
+    max-height: calc(100% - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }      /* (a room of many places: a second column, never over the jump button) */
   #bar button { border: 1px solid #9fe9ff66; border-radius: 999px; padding: 7px 11px; background: #0c2730cc; color: #eafcff; font: 700 12px system-ui; touch-action: manipulation; text-align: left; }
   #bar button.on { background: #1d5a63e6; border-color: #b8f6ffcc; }
   /* the stick and the jump button: the game's own (index.html) */
@@ -196,7 +199,7 @@
 </script>
 </head>
 <body>
-<div id="name"><span id="title">ห้องของระบบถ้ำ</span><small>ระบบถ้ำกลาง · ชิ้นแรก: พื้น หิน แสง</small></div>
+<div id="name"><span id="title">ห้องของระบบถ้ำ</span><small>ระบบถ้ำกลาง · พื้น หิน แสง · terrain</small></div>
 <div id="bar"></div>
 <div id="stick"><i></i></div>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>

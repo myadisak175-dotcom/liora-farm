@@ -12,10 +12,22 @@
 # where she begins. Nothing here knows any one room. (The three rooms made before the kit, tools/make-cave-hall.py,
 # make-fang-hall.py, make-boss-hall.py, each with its own drawing code, are as they were: to be made anew on the kit.)
 #
+# ONE UNDERGROUND. Every room is described in the same frame (the game's own: metres, x east, z south, y up), so rooms lie
+# beside and under one another as they are written, and the land's roll is the underground's, not a room's (WORLD_SEED:
+# the same ground on both sides of a way between two rooms). Where a room is to meet the next it names a MOUTH: there
+# its floor is level and its walls are as drawn, to the centimetre, so the next room, baked by itself, fits.
+#
 # THE DESCRIPTION (metres; x east, z south, y up; angles in degrees, 0 toward +x, turning toward +z):
 #   "title": "..."                       its name, as the page shows it
 #   "bounds": [x0, y0, z0, x1, y1, z1]   the block of rock the room is cut in        "cell": 0.4 (the grid)
-#   "rough": 0.45, "seed": 7             how far natural rock wanders from its drawn lines (walls and roofs: never floors)
+#   "rough": 0.45, "seed": 7             how far natural rock wanders from its drawn lines (walls and roofs)
+#   "land": "rolling"                    THE LAND BY RULE: how every natural floor of the room lies. A word from LANDS (below:
+#                                         "flat", "rolling": the caves' own, "rough"), or { "kind": "rolling", "relief": 0.2 }
+#                                         to change one figure: relief (m: how far the floor rolls up and down), skirt (m: how
+#                                         far it rises into the walls' feet), skirt_wide (m: from how far out). Any air piece
+#                                         may carry its own "land". Held level along ways of stone and at mouths, flatter
+#                                         along painted ways
+#   "mouths": [ { "name": "...", "at": [x, y, z], "toward": angle, "wide": w, "high": h } ]   where the next room joins
 #   "air": [ ... ]                       taken out of the rock, in order:
 #     { "hall":   { "at": [x, z], "r": [rx, rz], "turn": 0, "floor": y, "roof": y, "walls": h } }    a round or long hall under a dome
 #     { "tunnel": { "path": [[x, y, z], ...], "wide": w, "high": h } }                     a passage along a line, its floor through the points
@@ -34,6 +46,21 @@
 #                                         she walks the slope under them (her feet within half a rise of a step's top)
 #     { "pillar": { "at": [x, z], "r": r, "from": y, "to": y, "built": true } }
 #     { "block":  { "box": [x0, y0, z0, x1, y1, z1], "built": true } }
+#   "terrain": [ ... ]                   THE LAND BY HAND: pieces laid, in order, on a storey's ground as it is by then (after
+#                                         the air, before the stone: a way cuts through them). "floor": the height of the
+#                                         storey each lies on (the piece finds the real ground near it, rolls and all):
+#     { "mound":   { "at": [x, z], "r": r | [rx, rz], "high": h, "floor": y } }            a rise she walks over
+#     { "hollow":  { "at": [x, z], "r": r | [rx, rz], "deep": d, "floor": y } }            a dip (a pool's bed, later)
+#     { "slope":   { "path": [[x, y, z], ...], "wide": w, "fall": 1.3, "floor": y } }      a ramp of rock up along a line, its
+#                                         sides falling away as scree (fall: how steeply)
+#     { "ledge":   { "outline": [[x, z], ...] | "plan": "file.png" + "at" + "size", "floor": y, "top": y, "broken": 0.5,
+#                    "lean": 0.12 } }     a shelf of rock with a face she climbs, its edge broken (m), its face leaning back
+#                                         (m a metre of height); one on another: tiers. Keep a pillar or a boulder 1.5 m or
+#                                         more from an edge she is to climb or step off (a face that near rock is a wall to her)
+#     { "boulder": { "at": [x, z], "r": r | [rx, ry, rz], "floor": y, "sunk": 0.3, "lumpy": 0.35 } }   a great stone, part in the ground
+#     { "heights": { "picture": "file.png", "at": [x, z], "size": [w, d], "floor": y, "low": 0, "high": h } }
+#                                         DRAWN BY HAND: a grey picture laid on the ground, black "low", white "high" (m over
+#                                         the ground as it is; under 0 it digs)
 #   "lights": [ { "lamp": { "at": [x, y, z], "colour": "blue" | "warm" | "teal" | "white" | [r, g, b], "reach": 8, "power": 1 } } ]
 #   "ambient": [r, g, b]                 the dark's own light
 #   "look": { "built": [r, g, b], "fog": "#0a1420", ... }      the room's own colours (cave-ground.js, GROUND_LOOK: any of them)
@@ -49,12 +76,17 @@
 #   floor    the floor map with SPANS (cave-level.js' header): every column's stretches of air a metre high or more, their
 #            floors, roofs and paint (r earth, g sand, b moss, a 150: stone slabs underfoot), "layers" of them
 #   volume   the light in the air, 1 m cells (cave-light.js: on her and on plants)
+# and NAME.json says the room's "land" and its "mouths", as they were written.
+#
+# TO ADD TO THE LAND: a new word for a room's land is a line in LANDS; a new piece is a function in TERRAIN (it reads the
+# ground with ground_at and lays or takes rock with put_rock / take_rock), a line in this header, and what it promises in
+# tools/check-cave-level.mjs (PIECES).
 
 import json, math, os, sys
 import numpy as np
 from scipy import ndimage as ndi
 from skimage import measure
-from PIL import Image
+from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -92,6 +124,24 @@ def fbm(px, py, pz, seed, period, octaves=3):
 
 WOB = ROUGH * fbm(GX, GY, GZ, SEED, 3.2)             # a wall's wander (m)
 WOB2 = ROUGH * 0.8 * fbm(GX, GY, GZ, SEED + 50, 2.6)  # a roof's
+# the mouths: where the next room joins. Round each the rock is as drawn (no wander), so two rooms baked apart meet
+MOUTHS = D.get('mouths', [])
+for m in MOUTHS:
+    mx, my, mz = m['at']; w, h = m.get('wide', 3.2), m.get('high', 3.2)
+    t = np.clip((np.sqrt((GX - mx) ** 2 + (GY - (my + h / 2)) ** 2 + (GZ - mz) ** 2) - max(w, h) / 2 - 0.4) / 2.2, 0, 1)
+    t = (t * t * (3 - 2 * t)).astype(np.float32)
+    WOB *= t; WOB2 *= t
+# the underground's own land: its roll at every column, the same whichever room is baked (two rooms meet on one ground)
+WORLD_SEED = 1128
+X2, Z2 = GX[:, 0, :], GZ[:, 0, :]                                             # the columns, seen from above: (NX, 1), (1, NZ)
+RELN = np.clip(1.6 * fbm(GX, GY[:, :1, :] * 0, GZ, WORLD_SEED, 6.0), -1, 1)   # the roll, -1..1: (NX, 1, NZ)
+EDGE = np.clip(1.7 * fbm(GX, GY[:, :1, :] * 0, GZ, WORLD_SEED + 7, 2.6), -1, 1)[:, 0, :]      # how a ledge's edge breaks: (NX, NZ)
+LANDS = {                     # a room's land by a word (add one here and every room may ask for it)
+    'flat':    {'relief': 0.0,  'skirt': 0.0,  'skirt_wide': 1.0},
+    'rolling': {'relief': 0.14, 'skirt': 0.45, 'skirt_wide': 2.4},           # the caves' own: floors that roll a little and rise into the walls' feet
+    'rough':   {'relief': 0.30, 'skirt': 0.80, 'skirt_wide': 3.0},
+}
+BIG = 1e3
 
 
 # ---------------------------------------------------------------- the pieces: each a distance, < 0 inside it
@@ -132,6 +182,47 @@ def helix_path(h):
              cz + r * math.sin(math.radians(a0 + (a1 - a0) * i / (n - 1)))] for i in range(n)]
 
 
+# ---------------------------------------------------------------- the land by rule: every natural floor's own lie
+def held(path, wide, soft=1.6, round_ends=True):
+    # 0 on a line's own floor (within half its width, at about its height), 1 away from it: the land is held level there
+    out = np.ones((NX, NY, NZ), np.float32)
+    for a, b, d, f, own in way_parts(path, GX, GZ, round_ends):
+        t = np.clip((np.where(own, d, BIG) - wide / 2 - 0.2) / soft, 0, 1)
+        v = np.clip((np.abs(GY - f) - 1.5) / 1.5, 0, 1)                   # (only the storey it is on)
+        out = np.minimum(out, np.maximum(t * t * (3 - 2 * t), v))
+    return out
+
+
+EASE = np.ones((NX, NY, NZ), np.float32)
+for piece in D.get('stone', []):
+    (kind, s), = piece.items()
+    if kind == 'way':
+        EASE = np.minimum(EASE, held(s['path'] if 'path' in s else helix_path(s['helix']), s['wide'], round_ends=False))
+for piece in D.get('paint', []):
+    (kind, s), = piece.items()
+    EASE = np.minimum(EASE, 0.35 + 0.65 * held(s['path'], s['wide']))      # (a trodden way: flatter, not flat)
+for m in MOUTHS:
+    t = np.clip((np.hypot(GX - m['at'][0], GZ - m['at'][2]) - m.get('wide', 3.2) / 2) / 2.5, 0, 1)
+    EASE = np.minimum(EASE, np.maximum(t * t * (3 - 2 * t), np.clip((np.abs(GY - m['at'][1]) - 1.5) / 1.5, 0, 1)))
+
+
+def land_of(s):
+    v = s.get('land', D.get('land', 'rolling'))
+    v = {'kind': v} if isinstance(v, str) else dict(v)
+    kind = v.pop('kind', 'rolling')
+    if kind not in LANDS:
+        raise SystemExit(f'no such land: {kind} (LANDS has: {", ".join(LANDS)})')
+    return {**LANDS[kind], **v}
+
+
+def ground(s, inside, wide=None):
+    # how far over its drawn floor a piece's ground lies: the land's roll, and its rise toward the walls (inside: how far
+    # from them a column is), held level where the land is held
+    L = land_of(s)
+    w = L['skirt_wide'] if wide is None else min(L['skirt_wide'], wide)
+    return (L['relief'] * RELN + L['skirt'] * np.clip(1 - inside / max(w, 1e-3), 0, 1) ** 2) * EASE
+
+
 def hall_sd(s):
     cx, cz = s['at']; rx, rz = s['r']; t = math.radians(s.get('turn', 0))
     dx, dz = GX - cx, GZ - cz
@@ -139,7 +230,7 @@ def hall_sd(s):
     e = np.sqrt((u / rx) ** 2 + (v / rz) ** 2)
     fl, top = s['floor'], s['roof']; walls = s.get('walls', 0.4 * (top - fl))
     roof = fl + walls + (top - fl - walls) * np.sqrt(np.clip(1 - e * e, 0, 1))
-    return np.maximum(np.maximum((e - 1) * min(rx, rz) + WOB, fl - GY), GY - roof + WOB2)
+    return np.maximum(np.maximum((e - 1) * min(rx, rz) + WOB, fl + ground(s, (1 - e) * min(rx, rz)) - GY), GY - roof + WOB2)
 
 
 def tunnel_sd(s):
@@ -147,14 +238,14 @@ def tunnel_sd(s):
     for a, b, d, f, own in way_parts(s['path'], GX, GZ):
         d = np.where(own, d, 1e3)
         roof = f + s['high'] * (1 - 0.3 * np.clip(d / (s['wide'] / 2), 0, 1) ** 2)
-        sd = np.maximum(np.maximum(d - s['wide'] / 2 + WOB * 0.6, f - GY), GY - roof + WOB2 * 0.5)
+        sd = np.maximum(np.maximum(d - s['wide'] / 2 + WOB * 0.6, f + ground(s, s['wide'] / 2 - d, s['wide'] * 0.3) - GY), GY - roof + WOB2 * 0.5)
         out = sd if out is None else np.minimum(out, sd)
     return out
 
 
 def shaft_sd(s):
-    cx, cz = s['at']
-    return np.maximum(np.maximum(np.hypot(GX - cx, GZ - cz) - s['r'] + WOB, s['floor'] - GY), GY - s['roof'] + WOB2)
+    cx, cz = s['at']; d = np.hypot(GX - cx, GZ - cz)
+    return np.maximum(np.maximum(d - s['r'] + WOB, s['floor'] + ground(s, s['r'] - d) - GY), GY - s['roof'] + WOB2)
 
 
 def picture_on_grid(file, at, size):
@@ -173,8 +264,8 @@ def picture_sd(s):
     lo, hi = s.get('low', 0.0), s.get('high', 1.0)
     height = lambda v: (np.float32(v) if not isinstance(v, str) else lo + (hi - lo) * picture_on_grid(v, at, size))
     fl, roof = height(s['floor']), height(s['roof'])
-    fl = fl[:, None, :] if isinstance(fl, np.ndarray) else fl
-    roof = roof[:, None, :] if isinstance(roof, np.ndarray) else roof
+    fl = fl[:, None, :] if isinstance(fl, np.ndarray) and fl.ndim == 2 else fl + ground(s, -lat[:, None, :])       # (a drawn floor lies as drawn)
+    roof = roof[:, None, :] if isinstance(roof, np.ndarray) and roof.ndim == 2 else roof
     return np.maximum(np.maximum(lat[:, None, :] + WOB * 0.5, fl - GY), GY - roof + WOB2 * 0.5)
 
 
@@ -186,6 +277,110 @@ F = np.full((NX, NY, NZ), 50.0, np.float32)
 for piece in D['air']:
     (kind, s), = piece.items()
     F = np.minimum(F, AIR[kind](s))
+
+
+# ---------------------------------------------------------------- the land by hand: pieces laid on a storey's ground as it is
+def ground_at(floor, down=1.2, up=1.2):
+    # the ground of the storey drawn at `floor`: at every column the height where rock meets the air over it (the highest
+    # within reach of the drawn floor; nan: none there)
+    lo = max(0, int(math.floor((floor - down - Y0) / CELL))); hi = min(NY - 2, int(math.ceil((floor + up - Y0) / CELL)))
+    G = np.full((NX, NZ), np.nan, np.float32)
+    for l in range(lo, hi + 1):
+        a, b = F[:, l, :], F[:, l + 1, :]
+        G = np.where((a > 0) & (b <= 0), Y0 + (l + a / np.maximum(a - b, 1e-6)) * CELL, G)
+    return G
+
+
+def put_rock(h, floor, side=None, under=2.0):
+    # rock laid up to the heights h (over the columns; -BIG: none) on the storey at `floor`, and `under` below it (so it
+    # stands on what is there); side: how far inside the piece's own edge every point is (m), for a piece with a face
+    global F
+    body = np.minimum(h[:, None, :] - GY, GY - (floor - under))
+    F = np.maximum(F, body if side is None else np.minimum(body, side))
+
+
+def take_rock(h, floor, where):
+    # the ground dug down to the heights h where `where` (the storey's own ground only)
+    global F
+    F = np.minimum(F, np.where(where[:, None, :] & (GY < floor + 1.0), h[:, None, :] - GY, BIG))
+
+
+def bell(s):
+    # a round or long patch seen from above: 1 at its middle, 0 at its rim, level at both
+    cx, cz = s['at']; r = s['r']; rx, rz = r if isinstance(r, list) else (r, r)
+    e = np.hypot((X2 - cx) / rx, (Z2 - cz) / rz)
+    return np.cos(np.clip(e, 0, 1) * math.pi) * 0.5 + 0.5, e < 1
+
+
+def mound(s):
+    G = ground_at(s['floor']); b, on = bell(s); on &= ~np.isnan(G)
+    put_rock(np.where(on, G + s['high'] * b, -BIG), s['floor'])
+
+
+def hollow(s):
+    G = ground_at(s['floor']); b, on = bell(s); on &= ~np.isnan(G)
+    take_rock(np.where(on, G - s['deep'] * b, BIG), s['floor'], on)
+
+
+def slope(s):
+    G = ground_at(s['floor'], up=max(p[1] for p in s['path']) - s['floor'] + 0.8)
+    h = np.full((NX, NZ), -BIG, np.float32)
+    for a, b, d, f, own in way_parts(s['path'], X2, Z2):
+        h = np.maximum(h, np.where(own, f - s.get('fall', 1.3) * np.maximum(0, d - s['wide'] / 2), -BIG))
+    put_rock(np.where(~np.isnan(G) & (h > G + 0.02), h, -BIG), s['floor'])
+
+
+def inside_of(s):
+    # how far inside a drawn edge every column is (m; under 0: outside): an "outline" of points, or a "plan" picture (white inside)
+    if 'outline' in s:
+        ss = 4
+        im = Image.new('L', (NX * ss, NZ * ss), 0)
+        ImageDraw.Draw(im).polygon([(((x - X0) / CELL + 0.5) * ss, ((z - Z0) / CELL + 0.5) * ss) for x, z in s['outline']], fill=255)
+        m = np.asarray(im).T > 127
+        d = (ndi.distance_transform_edt(m) - ndi.distance_transform_edt(~m)) / ss * CELL
+        return d[ss // 2::ss, ss // 2::ss].astype(np.float32)
+    m = picture_on_grid(s['plan'], s['at'], s['size']) > 0.5
+    return ((ndi.distance_transform_edt(m) - ndi.distance_transform_edt(~m)) * CELL).astype(np.float32)
+
+
+def ledge(s):
+    top = s['top'] + 0.5 * land_of(s)['relief'] * RELN[:, 0, :]
+    # its face: the drawn edge broken along itself, wandering as the walls do, leaning back a little toward its top
+    side = (inside_of(s) + s.get('broken', 0.5) * EDGE)[:, None, :] + 0.6 * WOB - s.get('lean', 0.12) * np.maximum(GY - s['floor'], 0)
+    put_rock(top, s['floor'], side=side, under=s.get('under', 2.0))
+
+
+LUMP = []
+
+
+def boulder(s):
+    global F
+    if not LUMP:
+        LUMP.append(fbm(GX, GY, GZ, WORLD_SEED + 3, 1.9))
+    cx, cz = s['at']; r = s['r']; rx, ry, rz = r if isinstance(r, list) else (r, r, r)
+    G = ground_at(s['floor'])
+    g = G[int(round((cx - X0) / CELL)), int(round((cz - Z0) / CELL))]
+    cy = (s['floor'] if np.isnan(g) else float(g)) + ry * (1 - 2 * s.get('sunk', 0.3))
+    e = np.sqrt(((GX - cx) / rx) ** 2 + ((GY - cy) / ry) ** 2 + ((GZ - cz) / rz) ** 2)
+    F = np.maximum(F, -((e - 1) + s.get('lumpy', 0.35) * LUMP[0]) * min(rx, ry, rz))
+
+
+def heights(s):
+    at, size = s['at'], s['size']
+    off = s.get('low', 0.0) + (s.get('high', 1.0) - s.get('low', 0.0)) * ndi.gaussian_filter(picture_on_grid(s['picture'], at, size), 0.7)
+    G = ground_at(s['floor'])
+    on = (X2 >= at[0]) & (X2 <= at[0] + size[0]) & (Z2 >= at[1]) & (Z2 <= at[1] + size[1]) & ~np.isnan(G)
+    put_rock(np.where(on & (off > 0.02), G + off, -BIG), s['floor'])
+    take_rock(np.where(on & (off < -0.02), G + off, BIG), s['floor'], on & (off < -0.02))
+
+
+TERRAIN = {'mound': mound, 'hollow': hollow, 'slope': slope, 'ledge': ledge, 'boulder': boulder, 'heights': heights}
+for piece in D.get('terrain', []):
+    (kind, s), = piece.items()
+    if kind not in TERRAIN:
+        raise SystemExit(f'no such terrain: {kind} (TERRAIN has: {", ".join(TERRAIN)})')
+    TERRAIN[kind](s)
+
 BUILT = np.zeros((NX, NY, NZ), np.float32)
 UNDER = 0.1                   # m: under its steps a slope's own stone lies this much lower (the steps cover it)
 STEPPED = []                  # the ways with steps: (path, wide, rise)
@@ -452,7 +647,7 @@ out = {
     'kit': 1, 'name': NAME, 'title': D.get('title', NAME), 'about': D.get('about', '') + ' (made by tools/make-cave-room.py from tools/cave-rooms/' + NAME + '.json; read by cave-room.js)',
     'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE},
     'bounds': [X0, Y0, Z0, X1, Y1, Z1], 'ambient': [float(v) for v in AMBIENT], 'lamps': LAMPS, 'pools': D.get('pools', []),
-    'look': D.get('look', {}),
+    'look': D.get('look', {}), 'land': D.get('land', 'rolling'), 'mouths': MOUTHS,
     'spawn': stand(D['spawn']), 'places': [stand(p) for p in D.get('places', [])],
 }
 os.makedirs(os.path.join(ROOT, 'assets', 'caves'), exist_ok=True)

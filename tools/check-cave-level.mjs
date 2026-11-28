@@ -7,7 +7,9 @@
 //      itself, a tunnel under a floor (with a pit down into it, a dead end, a pool on each floor).
 //   3. Her camera in all of them: never through a floor, a roof or a wall.
 //   4. The kit's rooms (tools/make-cave-room.py): every place of a room stands on ground at its own height, every way of
-//      stone in its description is walked from end to end with her feet on its line, her camera at every place's height.
+//      stone in its description is walked from end to end with her feet on its line, her camera at every place's height;
+//      every piece of its land does what its kind promises (PIECES, below: a new kind of piece gets its line there), and
+//      she stands level at every mouth.
 // Run it after changing cave-level.js, and after baking a room (one of the first three: its name is in ROOMS; a room of
 // the kit: add its name to KIT).
 
@@ -250,6 +252,50 @@ const about = (a, b, e = 0.02) => Math.abs(a - b) <= e;
 // every place stands on ground at its own height; every way of stone in the description can be walked from end to end
 // (a bridge, a stair winding over itself), her feet on its line; her camera at every place's height
 const KIT = ['test'];
+// what each kind of piece of the land promises (tools/make-cave-room.py, TERRAIN): (its description, the level) -> [kept, in words]
+const walked = (L, path, ends = 0.6) => {
+  const runs = [0]; for (let i = 1; i < path.length; i++) runs.push(runs[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][2] - path[i - 1][2]));
+  let n = 0, off = 0, worst = 0;
+  for (let u = ends, i = 1; u <= runs[runs.length - 1] - ends; u += 0.2) {
+    while (runs[i] < u) i++;
+    const t = (u - runs[i - 1]) / Math.max(runs[i] - runs[i - 1], 1e-6), x = path[i - 1][0] + (path[i][0] - path[i - 1][0]) * t, y = path[i - 1][1] + (path[i][1] - path[i - 1][1]) * t, z = path[i - 1][2] + (path[i][2] - path[i - 1][2]) * t;
+    const h = L.standAt(x, z, y); n++; worst = Math.max(worst, Math.abs(h - y));
+    if (L.footing(x, z, y) !== 'ground' || Math.abs(h - y) > 0.4) off++;
+  }
+  return [n > 0 && off === 0, `${n} spots along it, her feet within ${worst.toFixed(2)} m of its line`];
+};
+const inOutline = (o, x, z) => { let c = false; for (let i = 0, j = o.length - 1; i < o.length; j = i++) if ((o[i][1] > z) !== (o[j][1] > z) && x < (o[j][0] - o[i][0]) * (z - o[i][1]) / (o[j][1] - o[i][1]) + o[i][0]) c = !c; return c; };
+const PIECES = {
+  mound: (s, L) => { const y = s.floor + s.high, h = L.standAt(s.at[0], s.at[1], y); return [L.footing(s.at[0], s.at[1], y) === 'ground' && Math.abs(h - y) < 0.35, `its top at ${h.toFixed(2)} (drawn ${y.toFixed(2)}), walked over`]; },
+  hollow: (s, L) => { const y = s.floor - s.deep, h = L.standAt(s.at[0], s.at[1], y); return [L.footing(s.at[0], s.at[1], y) === 'ground' && Math.abs(h - y) < 0.35, `its bed at ${h.toFixed(2)} (drawn ${y.toFixed(2)}), walked into`]; },
+  slope: (s, L) => walked(L, s.path),
+  ledge: (s, L) => {
+    if (!s.outline) return [true, 'drawn as a picture: not walked here'];
+    const xs = s.outline.map((p) => p[0]), zs = s.outline.map((p) => p[1]);
+    let top = 0, face = 0;
+    for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.4) for (let z = Math.min(...zs); z <= Math.max(...zs); z += 0.4) {
+      if (inOutline(s.outline, x, z) && L.footing(x, z, s.top) === 'ground' && Math.abs(L.standAt(x, z, s.top) - s.top) < 0.35) top++;
+    }
+    for (let i = 0; i < s.outline.length; i++) {
+      const a = s.outline[i], b = s.outline[(i + 1) % s.outline.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let u = 0; u < len; u += 0.3) if (L.footing(a[0] + (b[0] - a[0]) * u / len, a[1] + (b[1] - a[1]) * u / len, s.floor + 0.1) === 'cliff') face++;
+    }
+    return [top >= 6 && face >= 3, `${(top * 0.16).toFixed(0)} m2 of top to stand on at ${s.top}, a face she may climb along ${(face * 0.3).toFixed(0)} m of its edge`];
+  },
+  boulder: (s, L) => {
+    const [rx, ry, rz] = Array.isArray(s.r) ? s.r : [s.r, s.r, s.r], h = L.standAt(s.at[0], s.at[1], s.floor + 2 * ry + 1);
+    let stops = 0;                                                       // (round its flank, at the floor's height: a face or a wall, not ground)
+    for (let k = 0; k < 12; k++) if (L.footing(s.at[0] + 0.85 * rx * Math.cos(k * Math.PI / 6), s.at[1] + 0.85 * rz * Math.sin(k * Math.PI / 6), s.floor) !== 'ground') stops++;
+    return [h > s.floor + 0.6 * ry && stops >= 8, `it stands ${(Math.min(h, s.floor + 2 * ry) - s.floor).toFixed(1)} m over the floor, its flank stops her on ${stops} sides of 12`];
+  },
+  heights: (s, L) => {
+    const lo = s.low || 0, hi = s.high === undefined ? 1 : s.high; let most = -9, least = 9;
+    for (let x = s.at[0]; x <= s.at[0] + s.size[0]; x += 0.4) for (let z = s.at[1]; z <= s.at[1] + s.size[1]; z += 0.4) {
+      const h = L.standAt(x, z, s.floor + Math.max(hi, 0) + 0.3) - s.floor; if (h < 30) { most = Math.max(most, h); least = Math.min(least, h); }
+    }
+    return [(hi <= 0 || most > 0.6 * hi) && (lo >= 0 || least < 0.6 * lo), `the ground under its picture from ${least.toFixed(2)} to ${most.toFixed(2)} m over the floor (drawn ${lo} to ${hi})`];
+  },
+};
 for (const name of KIT) {
   const hall = loadRoom(name), level = createCaveLevel(hall), L = hall.layout;
   const D = JSON.parse(readFileSync(join(ROOT, 'tools/cave-rooms', name + '.json'), 'utf8'));
@@ -273,6 +319,16 @@ for (const name of KIT) {
       if (f !== 'ground' || Math.abs(h - y) > 0.3) { off++; if (!first) first = `${f} at ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)} (floor ${h.toFixed(2)})`; }
     }
     check(`${name}: way ${n + 1} (${w.helix ? 'winding' : 'straight'}, ${len.toFixed(0)} m) is walked end to end`, off === 0 && steps > 0, `${steps} spots, her feet within ${worst.toFixed(2)} m of its line${first ? '; first off: ' + first : ''}`);
+  });
+  (D.terrain || []).forEach((piece, n) => {
+    const [kind, d] = Object.entries(piece)[0];
+    if (!PIECES[kind]) { check(`${name}: land ${n + 1} (${kind})`, false, 'no line for this kind in PIECES'); return; }
+    const [kept, words] = PIECES[kind](d, level);
+    check(`${name}: land ${n + 1}, a ${kind}`, kept, words);
+  });
+  (D.mouths || []).forEach((m) => {
+    const a = (m.toward || 0) * Math.PI / 180, x = m.at[0] - 1.2 * Math.cos(a), z = m.at[2] - 1.2 * Math.sin(a), h = level.standAt(x, z, m.at[1]);
+    check(`${name}: mouth "${m.name}"`, level.footing(x, z, m.at[1]) === 'ground' && Math.abs(h - m.at[1]) < 0.1, `she stands level in it, at ${h.toFixed(2)} (drawn ${m.at[1]})`);
   });
   cameraCheck(name, hall, level, [...new Set(L.places.map((p) => p.y))]);
 }
