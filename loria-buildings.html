@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>สิ่งก่อสร้างของ Loria</title>
+<style>
+/* loria-buildings.html — the buildings of Loria made by hand (loria-buildings.js), each on its own piece of ground: all
+   together, or one at a time to turn round (a page to look at them before any goes into the game) */
+html, body { margin: 0; height: 100%; overflow: hidden; background: #cde6f2; font: 600 14px system-ui, sans-serif; color: #16324a; touch-action: none; }
+canvas { display: block; width: 100%; height: 100%; }
+#bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 10px max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-bottom)); pointer-events: none; }
+button { font: inherit; color: #16324a; border: 0; background: rgba(255, 255, 255, 0.9); box-shadow: 0 2px 8px rgba(22, 50, 74, 0.18); pointer-events: auto; cursor: pointer; }
+button:focus-visible { outline: 3px solid #3f6fa8; }
+#bar button { min-height: 44px; min-width: 52px; padding: 0 16px; border-radius: 22px; }
+#bar .on { background: #3f6fa8; color: #fff; }
+#title { position: fixed; left: 0; right: 0; top: 0; padding: max(10px, env(safe-area-inset-top)) 14px 8px; text-align: center; pointer-events: none; text-shadow: 0 1px 2px #fff, 0 0 6px #fff; }
+#title b { font-size: 18px; display: block; }
+#title span { font-weight: 500; font-size: 13px; display: block; max-width: 34em; margin: 2px auto 0; text-wrap: balance; }
+#labels button { position: fixed; transform: translate(-50%, 0); min-height: 32px; padding: 0 12px; border-radius: 16px; font-size: 13px; white-space: nowrap; }
+#load { position: fixed; inset: 0; display: grid; place-items: center; font-size: 16px; }
+.clean #bar, .clean #title, .clean #labels { display: none; }
+</style>
+</head>
+<body>
+<div id="title"><b id="name">สิ่งก่อสร้างของ Loria</b><span id="info">กำลังโหลดชิ้นส่วน…</span></div>
+<div id="labels"></div>
+<div id="load">กำลังโหลดชิ้นส่วน…</div>
+<div id="bar">
+  <button id="prev" aria-label="หลังก่อน">◀</button>
+  <button id="all">ทั้งหมด</button>
+  <button id="next" aria-label="หลังถัดไป">▶</button>
+  <button id="spin" aria-pressed="true">หมุนเอง</button>
+</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./kit-houses.js": "./kit-houses.js?v=houses5",
+  "./loria-buildings.js": "./loria-buildings.js?v=2"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { loadKitHouses } from './kit-houses.js';
+import { BUILDINGS, buildingDesign } from './loria-buildings.js';
+
+const Q = new URLSearchParams(location.search);
+if (Q.has('clean')) document.body.classList.add('clean');
+const $ = id => document.getElementById(id);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#cde6f2');
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 700);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = 1.45; controls.minDistance = 5; controls.maxDistance = 260; controls.autoRotateSpeed = 1.3;
+
+// the green (flat colours, as the game's far land), a way before each row, trodden ground under each building
+scene.add(new THREE.Mesh(new THREE.CircleGeometry(320, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#8cc45a' })));
+const padMat = new THREE.MeshBasicMaterial({ color: '#d8c391' }), wayMat = new THREE.MeshBasicMaterial({ color: '#e2cf9f' });
+const ways = new THREE.Group(); scene.add(ways);
+// a flat piece of ground w by l, its corners rounded
+function patch(w, l, r) {
+  const s = new THREE.Shape(), x = w / 2, z = l / 2;
+  s.moveTo(-x + r, -z); s.lineTo(x - r, -z); s.quadraticCurveTo(x, -z, x, -z + r); s.lineTo(x, z - r); s.quadraticCurveTo(x, z, x - r, z);
+  s.lineTo(-x + r, z); s.quadraticCurveTo(-x, z, -x, z - r); s.lineTo(-x, -z + r); s.quadraticCurveTo(-x, -z, -x + r, -z);
+  return new THREE.ShapeGeometry(s, 6).rotateX(-Math.PI / 2);
+}
+
+const kit = await loadKitHouses();
+$('load').remove();
+
+// every building built once, at the middle of its own piece of ground (`foot`: the ground the level will make flat for it)
+const labelBox = $('labels');
+const lots = BUILDINGS.map((def, i) => {
+  const b = kit.builder(); b.house(buildingDesign(def.id), 0, 0, 0, 0);
+  const house = b.build({ look: 'kit' }), [x0, z0, x1, z1] = def.foot, g = new THREE.Group();
+  const pad = new THREE.Mesh(patch(x1 - x0 + 1.8, z1 - z0 + 1.8, 1.4), padMat); pad.position.set((x0 + x1) / 2, 0.02, (z0 + z1) / 2);
+  g.add(house, pad); scene.add(g);
+  const el = document.createElement('button'); el.textContent = def.name; el.onclick = () => view(i); labelBox.appendChild(el);
+  return { def, g, el, top: kit.measure(buildingDesign(def.id)).top, x0, z0, x1, z1, triangles: house.userData.triangles };
+});
+
+// where each stands when all are shown: the large ones behind, the small ones in front; two across on a phone held upright
+const WIDE = [['longhouse', 'smithy', 'inn', 'barn'], ['cottage', 'house', 'shop', 'pen']];
+const TALL = [['inn', 'barn'], ['longhouse', 'smithy'], ['house', 'shop'], ['cottage', 'pen']];
+const GAPX = 19, GAPZ = 22;
+function lay() {
+  const rows = camera.aspect < 0.9 ? TALL : WIDE, seen = new Set();
+  ways.clear();
+  rows.forEach((row, r) => {
+    const z = (r - (rows.length - 1) / 2) * GAPZ;
+    row.forEach((id, c) => { const lot = lots.find(l => l.def.id === id); if (lot) { lot.g.position.set((c - (row.length - 1) / 2) * GAPX - (lot.x0 + lot.x1) / 2, 0, z); seen.add(lot); } });
+    const way = new THREE.Mesh(new THREE.PlaneGeometry(row.length * GAPX + 6, 2.4).rotateX(-Math.PI / 2), wayMat); way.position.set(0, 0.012, z + 9.2); ways.add(way);
+  });
+  // a building added later and not yet given a place stands in a row of its own at the front
+  lots.filter(l => !seen.has(l)).forEach((lot, k, a) => lot.g.position.set((k - (a.length - 1) / 2) * GAPX, 0, (rows.length + 1) / 2 * GAPZ));
+}
+
+// the camera drawn back along a line of sight until every one of `pts` is on the screen, clear of the title and the buttons
+const v = new THREE.Vector3();
+function fit(centre, pts, yaw, elev) {
+  const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev));
+  const clean = Q.has('clean'), up = clean ? 0.94 : 1 - 156 / innerHeight, down = clean ? 0.94 : 1 - 150 / innerHeight;       // (the title's 78 px and the buttons' 75, of a screen two units high)
+  for (let d = 6; d < 600; d *= 1.04) {
+    camera.position.copy(centre).addScaledVector(dir, d); camera.lookAt(centre); camera.updateMatrixWorld();
+    if (pts.every(p => { v.copy(p).project(camera); return Math.abs(v.x) < 0.93 && v.y < up && v.y > -down; })) break;
+  }
+  controls.target.copy(centre);
+}
+let focus = -1, auto = !Q.has('still') && !Q.has('clean');
+function view(i) {
+  focus = i;
+  lots.forEach((lot, k) => { lot.g.visible = i < 0 || i === k; });
+  ways.visible = i < 0;
+  $('all').classList.toggle('on', i < 0);
+  controls.autoRotate = auto && i >= 0;
+  if (i < 0) {
+    const box = new THREE.Box3(), pts = [];
+    for (const lot of lots) for (const x of [lot.x0, lot.x1]) for (const z of [lot.z0, lot.z1]) for (const y of [0, lot.top]) { const p = new THREE.Vector3(lot.g.position.x + x, y, lot.g.position.z + z); pts.push(p); box.expandByPoint(p); }
+    const c = box.getCenter(new THREE.Vector3()); c.y = 2;
+    const tall = camera.aspect < 0.9;
+    fit(c, pts, +(Q.get('yaw') || (tall ? -0.12 : -0.34)), +(Q.get('elev') || (tall ? 0.84 : 0.56)));
+    $('name').textContent = 'สิ่งก่อสร้างของ Loria';
+    $('info').textContent = `${lots.length} แบบ ประกอบด้วยมือทีละหลัง · แตะชื่อเพื่อดูทีละหลัง`;
+    return;
+  }
+  // one building: far enough that it stays on the screen all the way round
+  const lot = lots[i], cx = lot.g.position.x + (lot.x0 + lot.x1) / 2, cz = lot.g.position.z + (lot.z0 + lot.z1) / 2;
+  const r = Math.hypot(lot.x1 - lot.x0, lot.z1 - lot.z0) / 2 * 0.96, pts = [];
+  for (let a = 0; a < 12; a++) for (const y of [0, lot.top]) pts.push(new THREE.Vector3(cx + Math.cos(a * Math.PI / 6) * r * (y ? 0.86 : 1), y, cz + Math.sin(a * Math.PI / 6) * r * (y ? 0.86 : 1)));
+  fit(new THREE.Vector3(cx, lot.top * 0.42, cz), pts, +(Q.get('yaw') || 0.62), +(Q.get('elev') || 0.34));
+  $('name').textContent = lot.def.name;
+  $('info').textContent = `${lot.def.about} · พื้นที่วาง ${Math.round(lot.x1 - lot.x0)}×${Math.round(lot.z1 - lot.z0)} ม.`;
+}
+function spin(on) { auto = on; controls.autoRotate = on && focus >= 0; $('spin').classList.toggle('on', on); $('spin').setAttribute('aria-pressed', on); }
+$('prev').onclick = () => view(focus <= 0 ? lots.length - 1 : focus - 1);
+$('next').onclick = () => view(focus >= lots.length - 1 ? 0 : focus + 1);
+$('all').onclick = () => view(-1);
+$('spin').onclick = () => spin(!auto);
+controls.addEventListener('start', () => { if (controls.autoRotate) spin(false); });     // her own finger on it: it stops turning by itself
+
+camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+lay();
+spin(auto);
+view(Math.max(-1, BUILDINGS.findIndex(b => b.id === Q.get('b'))));
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); lay(); view(focus); });
+window.__view = i => { view(i); controls.update(); };
+window.__info = { buildings: lots.map(l => [l.def.id, Math.round(l.triangles)]) };
+
+function frame() {
+  controls.update();
+  renderer.render(scene, camera);
+  for (const lot of lots) {                                                // each building's name before it, to be tapped (when all are shown)
+    v.set(lot.g.position.x + (lot.x0 + lot.x1) / 2, 0, lot.g.position.z + lot.z1 + 1.6).project(camera);
+    const on = focus < 0 && v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+    lot.el.style.display = on ? '' : 'none';
+    if (on) { lot.el.style.left = (v.x * 0.5 + 0.5) * innerWidth + 'px'; lot.el.style.top = (-v.y * 0.5 + 0.5) * innerHeight + 'px'; }
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+window.__ready = true;
+</script>
+</body>
+</html>
