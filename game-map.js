@@ -103,7 +103,7 @@ export async function createGameMap({ url, player, places = [], onGo = null, ove
     picked = p; card.classList.toggle('on', !!p);
     if (p) cardName.textContent = p.label;
   };
-  go.onclick = e => { e.stopPropagation(); if (!picked) return; const p = picked; player.teleport(p.x, p.z, p.yaw); close(); if (onGo) onGo(p.key); };
+  go.onclick = e => { e.stopPropagation(); if (!picked) return; const p = picked; player.teleport(p.x, p.z, p.yaw, p.y); close(); if (onGo) onGo(p.key); };
 
   // the whole map's view: the picture at scale k, its corner at (ox, oy) on the screen
   let k = 0.6, ox = 0, oy = 0;

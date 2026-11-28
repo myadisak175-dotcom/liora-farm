@@ -122,7 +122,7 @@ export function createDungeonInGame({ renderer, camera, village, player, mouth, 
     if (sprite) noCave(sprite.object);
     // the room's map, in the village's place while she is in here
     caveMap = await createGameMap({ url: MAP, player,
-      places: level.places.map((p, i) => ({ key: 'fang' + i, label: `${ICON[p.name] || '📍'} ${p.name}`, x: p.x, z: p.z, yaw: p.heading })) });
+      places: level.places.map((p, i) => ({ key: 'fang' + i, label: `${ICON[p.name] || '📍'} ${p.name}`, x: p.x, z: p.z, yaw: p.heading, y: p.y })) });
     caveMap.hidden = true;
     built = true;                                            // (only now: a build that failed half way is begun again next time)
     took.build = performance.now() - t0;
@@ -168,7 +168,7 @@ export function createDungeonInGame({ renderer, camera, village, player, mouth, 
     if (player.blob) player.blob.material.opacity = 1;                       // (as by night)
     hall.setPixelRatio(ratio = renderer.getPixelRatio());
     const F = FR(), LW = hall.layout.curtain.ledge, w = (LW[0] + LW[1]) / 2;
-    player.teleport(F.mouth[0] + F.in[0] * IN_AT + F.right[0] * w, F.mouth[2] + F.in[1] * IN_AT + F.right[1] * w, Math.atan2(F.in[0], F.in[1]));
+    player.teleport(F.mouth[0] + F.in[0] * IN_AT + F.right[0] * w, F.mouth[2] + F.in[1] * IN_AT + F.right[1] * w, Math.atan2(F.in[0], F.in[1]), F.mouth[1]);      // (at the mouth's own height: a room may have floors over one another)
     if (sounds && sounds.own && STONE) sounds.own({ stone: STONE });
     if (heard) heard.air(true);
     if (map) map.hidden = true;
