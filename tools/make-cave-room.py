@@ -33,6 +33,12 @@
 #                                         a cave where things grow: turf in the light, moss round it, fallen leaves in the
 #                                         dim; "ruins": old paving, broken, leaves blown to the walls' feet, moss). Any air
 #                                         piece may carry its own "ground" (a chamber that is a grove in a room of bare caves)
+#   "grass": "green"                     THE GRASS: it grows by itself from the ground that grows it (GROUNDS' "grows": turf,
+#                                         thick; so paint turf where grass is wanted, and a way of earth through it is a way
+#                                         through the grass), never in water, on steep ground or on laid stone. The word is its
+#                                         kind, from cave-grass.js' GRASSES ("green", "pale", "glow"); "none": no grass in this
+#                                         room; or { "kind": "green", "thick": 1.0, "tall": 1.0 } to change how thick it stands
+#                                         and how tall
 #   "mouths": [ { "name": "...", "at": [x, y, z], "toward": angle, "wide": w, "high": h } ]   where the next room joins
 #   "air": [ ... ]                       taken out of the rock, in order:
 #     { "hall":   { "at": [x, z], "r": [rx, rz], "turn": 0, "floor": y, "roof": y, "walls": h } }    a round or long hall under a dome
@@ -106,14 +112,18 @@
 #   floor    the floor map with SPANS (cave-level.js' header): every column's stretches of air a metre high or more, their
 #            floors and roofs, "layers" of them; and, in a room with water, the water's surface over each span ("water":
 #            cm; -32768: none): what she wades and swims in. What lies on each span: "kinds" lists the kinds of ground
-#            this room has (name, picture, tile: metres a repeat, tint, ragged, and "at": which byte holds how much of
-#            it lies there: 0..2 "paint"'s r, g, b; 3..6 "paint2"'s r, g, b, a, written only when a room has more than
-#            three kinds); "paint"'s a is 150 on laid stone; "step" (a byte a span, into "steps") is what is underfoot
+#            this room has (name, picture, tile: metres a repeat, tint, ragged, grows, mean: its picture's own mean
+#            colour, and "at": which byte holds how much of it lies there: 0..2 "paint"'s r, g, b; 3..6 "paint2"'s r, g,
+#            b, a, written only when a room has more than three kinds); "paint"'s a is 150 on laid stone; "step" (a byte a span, into "steps") is what is underfoot
 #            there, for her steps
 #   water    the water as one mesh (cave-water.js draws it): its surface (every water that meets at one height is one
 #            sheet, cut to its shore per pixel by its depth), then the falls, then the foam at their feet ("parts"):
 #            position, info (depth under it in m, under 0 past the shore; the flow's x and z in m/s), uv (a fall: across,
 #            metres fallen; a foot: angle, how far out), the light baked on it
+#   grass    the grass as tufts (cave-grass.js draws them): each one's foot on the rock (root), its own dice (rnd: turn,
+#            how tall / 2, phase, tint), how the ground slopes there in x and in z (lie), the light baked on it (light).
+#            Its colour and how tall it stands at its patch's edge are NOT baked: cave-grass.js reads the ground itself at
+#            every tuft's foot (the very paint and pictures cave-ground.js draws), as the meadow's grass reads its ground
 #   volume   the light in the air, 1 m cells (cave-light.js: on her and on plants)
 # and NAME.json says the room's "land", its "water" and its "mouths" (each with the "stream" that ends in it, if one does),
 # and its "falls" (lip, foot, width: for what is heard and thrown up there, later).
@@ -125,7 +135,9 @@
 # TO ADD TO THE GROUND: a new kind is a line in GROUNDS and its picture in assets/ground/ (painted by tools/make-path-paint.py
 # or tools/make-forest-paint.py: a new look there); a new word for a room's ground is a function in RULES (it reads a
 # span's FACTS: the light on it, its tilt, how near a face's foot, how near water). cave-ground.js draws whatever kinds a
-# room has: nothing to add there.
+# room has: nothing to add there. TO ADD TO WHAT GROWS: a ground that grows grass says so in GROUNDS ("grows": how thick);
+# a new look of grass is a line in cave-grass.js' GRASSES; anything else scattered over the floors by rule (ferns, stones,
+# mushrooms: the kit's next pieces) is laid with scatter(), as the grass is.
 
 import json, math, os, sys
 import numpy as np
@@ -190,12 +202,12 @@ GROUNDS = {                   # what may lie on a natural floor, in the order it
     # here, with its picture, and every room may ask for it. picture: in assets/ground/; tile: metres a repeat; tint: its
     # colour under the cave's light (a word: the room's look of that name); grey: the picture is read for its light and
     # dark only (divided by this, its mean); ragged: how far its edge follows the stone under it; step: what her steps
-    # sound like on it (step-sounds.js' grounds)
+    # sound like on it (step-sounds.js' grounds); grows: how thick grass stands on it (0..1; left out: none)
     'gravel': dict(picture='cave-gravel-paint.webp', tile=2.4,  tint=[1.0, 1.02, 1.1],     ragged=0.3,  step='earth'),
     'paving': dict(picture='boss-slabs-paint.webp',  tile=2.38, tint='built', grey=0.187,  ragged=0.12, step='stone'),
     'leaves': dict(picture='forest-damp-paint.webp', tile=3.6,  tint=[1.0, 1.0, 1.0],      ragged=0.35, step='grass'),
     'moss':   dict(picture='cave-moss-paint.webp',   tile=3.6,  tint=[1.0, 1.0, 1.0],      ragged=0.35, step='grass'),
-    'turf':   dict(picture='cave-turf-paint.webp',   tile=3.6,  tint=[0.86, 0.9, 0.86],    ragged=0.35, step='grass'),
+    'turf':   dict(picture='cave-turf-paint.webp',   tile=3.6,  tint=[0.86, 0.9, 0.86],    ragged=0.35, step='grass', grows=1.0),
     'earth':  dict(picture='path-dirt.webp',         tile=2.6,  tint=[0.66, 0.68, 0.76],   ragged=0.3,  step='earth'),
     'sand':   dict(picture='path-sand.webp',         tile=2.3,  tint=[0.6, 0.63, 0.7],     ragged=0.2,  step='sand'),
 }
@@ -629,11 +641,19 @@ for path, wide, rise in STEPPED:
     step_along = np.concatenate([step_along, np.array(A, np.float32)]); step_is = np.concatenate([step_is, np.ones(len(V), np.float32)])
     tone = np.concatenate([tone, np.array(Tn, np.float32)])
     nsteps += len(V) // 16
-open_to = np.ones(len(verts), np.float32)            # how open to the room a point is (corners and cracks: less)
-for d, w in ((0.5, 0.5), (1.1, 0.3), (2.2, 0.2)):
-    open_to -= w * np.clip((d + at_field(F, verts + normals * d)) / d, 0, 1)
-open_to = np.clip(open_to, 0.15, 1)
-light = AMBIENT[None, :] * (0.35 + 0.65 * open_to)[:, None] + lamp_light(verts, normals) * (0.5 + 0.5 * open_to)[:, None]
+
+
+def light_on(P, Nn):
+    # the light on points of the rock's face (Nn: their normals): how open to the room each is (corners and cracks: less),
+    # the dark's own light by that, and the lamps' -> (light, open)
+    op = np.ones(len(P), np.float32)
+    for d, w in ((0.5, 0.5), (1.1, 0.3), (2.2, 0.2)):
+        op -= w * np.clip((d + at_field(F, P + Nn * d)) / d, 0, 1)
+    op = np.clip(op, 0.15, 1)
+    return AMBIENT[None, :] * (0.35 + 0.65 * op)[:, None] + lamp_light(P, Nn) * (0.5 + 0.5 * op)[:, None], op
+
+
+light, open_to = light_on(verts, normals)
 built = np.maximum(np.clip(at_field(BUILT, verts - normals * 0.1), 0, 1), step_is)
 log(f'mesh: {len(verts)} points, {len(faces)} triangles ({nsteps} steps); light up to {light.max():.2f}')
 
@@ -826,6 +846,7 @@ def cave_ground(f):
     return {
         'gravel': gravel,
         'moss': np.clip((f['lum'] - 0.16) * 3.2 + f['rag'] * 0.25 + f['damp'] * 0.55, 0, 1) * (1 - 0.85 * gravel),           # where a lamp's light falls, and on a water's banks; not on loose stones
+        'turf': np.clip((f['lum'] - 0.44) * 4.0 + f['rag'] * 0.3, 0, 1) * f['level'] * (1 - gravel),                         # right under a strong lamp (grass grows from it)
         'sand': f['shore'],
     }
 
@@ -895,7 +916,8 @@ if len(pts):
     slab = at_field(BUILT, pts - up * 0.15) > 0.5
     # ---- every span's facts
     rag = fbm(pts[:, 0], pts[:, 1] * 0, pts[:, 2], WORLD_SEED + 9, 1.7, 2)
-    grad = np.stack([at_field(c, pts) for c in np.gradient(ndi.gaussian_filter(F, 0.8), CELL)], 1)
+    GRAD = np.gradient(ndi.gaussian_filter(F, 0.8), CELL)                 # which way the rock rises, smoothed (what grows reads it too)
+    grad = np.stack([at_field(c, pts) for c in GRAD], 1)
     tilt = np.degrees(np.arccos(np.clip(-grad[:, 1] / (np.linalg.norm(grad, axis=1) + 1e-6), -1, 1)))
     clear = np.full(len(pts), 9.0, np.float32)                            # the air a metre up, 0.8 m out every way: how far from rock
     for an in np.arange(8) * math.pi / 4:
@@ -937,8 +959,10 @@ if len(pts):
     for ch, name in enumerate(used):
         g = GROUNDS[name]
         (paint if ch < 3 else paint2)[where, ch if ch < 3 else ch - 3] = np.where(slab, 0, np.clip(amt[name], 0, 1) * 255)
+        mean = np.asarray(Image.open(os.path.join(ROOT, 'assets', 'ground', g['picture'])).convert('RGB'), np.float32).reshape(-1, 3).mean(0) / 255
         KINDS.append({'name': name, 'picture': g['picture'], 'tile': g['tile'], 'tint': g['tint'], **({'grey': g['grey']} if 'grey' in g else {}),
-                      'ragged': g['ragged'], 'step': g['step'], 'at': ch})
+                      'ragged': g['ragged'], 'step': g['step'], **({'grows': g['grows']} if g.get('grows') else {}),
+                      'mean': [round(float(v), 4) for v in mean], 'at': ch})
         on = (amt[name] > 0.5) & ~slab
         top[on] = STEPS.index(g['step']); topk[on] = ch
     paint[where, 3] = np.where(slab, 150, 0)
@@ -946,6 +970,69 @@ if len(pts):
     nat = max(int((~slab).sum()), 1)
     log(f"ground ({', '.join(said)}): " + ', '.join([f"{k['name']} {100 * (topk == k['at']).sum() / nat:.0f} %" for k in KINDS] + [f"bare stone {100 * ((topk < 0) & ~slab).sum() / nat:.0f} %"]))
 log(f'floor: {NX} x {NZ} columns, up to {K} spans a column ({len(pts)} spans)')
+
+# ---------------------------------------------------------------- what grows on the floors: scattered by rule
+def rand01(a, b, c, salt):
+    # a number 0..1 for a spot (three whole numbers) and a purpose: the same wherever and whenever it is asked
+    x = (a.astype(np.int64) * 73856093) ^ (b.astype(np.int64) * 19349663) ^ (c.astype(np.int64) * 83492791) ^ np.int64(salt * 2654435761)
+    x = x.astype(np.uint64)
+    x ^= x >> np.uint64(33); x *= np.uint64(0xff51afd7ed558ccd); x ^= x >> np.uint64(33); x *= np.uint64(0xc4ceb9fe1a85ec53); x ^= x >> np.uint64(33)
+    return ((x >> np.uint64(11)).astype(np.float64) / float(1 << 53)).astype(np.float32)
+
+
+def scatter(thick, per_m2, salt):
+    # things scattered over the floors: on every span `thick` (0..1 and over) of `per_m2` a square metre, each at a spot of
+    # its own in the span's cell, by the cell's place in the underground (so a room baked again grows them where they
+    # were), dropped onto the rock as it is there (one that finds no floor of its span under it, at a ledge's edge, is left out).
+    # -> their points (n, 3), each one's span (into pts), each one's own dice (n, 4; 0..1)
+    gi, gj, gy = (np.round(pts[:, a] / u).astype(np.int64) for a, u in ((0, CELL / 2), (2, CELL / 2), (1, 1.4)))
+    n = np.floor(thick * per_m2 * CELL * CELL + rand01(gi, gj, gy, salt)).astype(np.int64)
+    span = np.repeat(np.arange(len(pts)), n)
+    c = np.arange(len(span)) - np.repeat(np.cumsum(n) - n, n)             # (which of its span's each is)
+    dice = np.stack([rand01(gi[span], gj[span], gy[span] * 64 + c, salt + 1 + d) for d in range(6)], 1)
+    P = pts[span].copy()
+    P[:, 0] += (dice[:, 0] - 0.5) * CELL; P[:, 2] += (dice[:, 1] - 0.5) * CELL
+    e = np.array([0, 0.1, 0], np.float32)
+    for _ in range(3):
+        rise = (at_field(F, P - e) - at_field(F, P + e)) / 0.2
+        P[:, 1] += np.clip(at_field(F, P) / np.maximum(rise, 0.3), -0.2, 0.2)
+    ok = (np.abs(at_field(F, P)) < 0.02) & (np.abs(P[:, 1] - pts[span, 1]) < 0.25)     # (on rock, and on its own span's floor: not down a face beside it)
+    return P[ok], span[ok], dice[ok, 2:]
+
+
+GRASS = D.get('grass', 'green')
+GRASS = {'kind': GRASS} if isinstance(GRASS, str) else dict(GRASS)
+TUFTS = 40.0                  # tufts of grass a square metre where it stands thickest
+grass = None
+if len(pts) and GRASS.get('kind', 'green') != 'none':
+    # WHERE its tufts stand: on every span where a ground that grows grass shows (how much of each kind shows: what the
+    # kinds laid over it leave of it, as cave-ground.js lays a kind in: none under 0.32 of it, all of it past 0.62), not
+    # in water (thin at its very edge), not on steep ground, not on laid stone. As thick as that ground grows it wherever
+    # a third of the ground or more is such ground; thinner only toward the patch's very edge. How TALL each stands
+    # there, and its colour, the drawing reads from the ground itself (cave-grass.js): nothing of that is decided here
+    seen = {}; left = np.ones(len(pts), np.float32)
+    for name in reversed(list(GROUNDS)):
+        t = np.clip((amt[name] - 0.32) / 0.3, 0, 1); t = t * t * (3 - 2 * t)
+        seen[name] = t * left; left = left * (1 - t)
+    grown = [name for name in GROUNDS if GROUNDS[name].get('grows')]
+    thick = sum(GROUNDS[name]['grows'] * np.clip(seen[name] / 0.35, 0, 1) for name in grown) * GRASS.get('thick', 1.0)
+    thick = thick * np.where(np.isnan(wet_by), 1.0, np.clip((-wet_by - 0.03) / 0.12, 0, 1)) * np.clip((38 - f['tilt']) / 10, 0, 1) * ~slab
+    P, span, dice = scatter(thick, TUFTS, 31)
+    if len(P):
+        # each tuft's own height: taller in clumps
+        clump = fbm(P[:, 0], P[:, 1] * 0, P[:, 2], WORLD_SEED + 13, 1.6, 2)
+        tall = np.clip((0.66 + 0.9 * clump) * (0.8 + 0.4 * dice[:, 0]) * GRASS.get('tall', 1.0), 0.2, 2.0)
+        # the rock's own face there: its light (as the rock under it is lit), and how it slopes (a tuft's blades stand a
+        # hand apart)
+        N = -np.stack([at_field(c, P) for c in GRAD], 1); N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-6
+        lit, _ = light_on(P, N.astype(np.float32))
+        lean = np.clip(-N[:, [0, 2]] / np.maximum(N[:, 1:2], 0.3), -1, 1)
+        rnd8 = np.zeros((len(P), 4), np.uint8); lie8 = np.zeros((len(P), 4), np.uint8); lit8 = np.zeros((len(P), 4), np.uint8)
+        rnd8[:, 0] = dice[:, 1] * 255; rnd8[:, 1] = tall / 2 * 255; rnd8[:, 2] = dice[:, 2] * 255; rnd8[:, 3] = dice[:, 3] * 255
+        lie8[:, :2] = (lean * 0.5 + 0.5) * 255
+        lit8[:, :3] = np.clip(lit / LIGHT_SCALE * 255, 0, 255); lit8[:, 3] = 255
+        grass = (P.astype(np.float32), rnd8, lie8, lit8)
+        log(f"grass ({GRASS.get('kind', 'green')}): {len(P)} tufts on {(thick > 0.5).sum() * CELL * CELL:.0f} m2 ({', '.join(grown)})")
 
 # ---------------------------------------------------------------- the light in the air: 1 m cells
 VC = 1.0
@@ -983,6 +1070,9 @@ if WT:
     wl8 = np.zeros((len(wv), 4), np.uint8); wl8[:, :3] = np.clip(wl / LIGHT_SCALE * 255, 0, 255); wl8[:, 3] = 255
     water = {'vertices': int(len(wv)), 'indices': int(len(WT) * 3), 'pos': put(wv), 'info': put(np.array(WI, np.float32)), 'uv': put(np.array(WUV, np.float32)),
              'light': put(wl8), 'idx': put(np.array(WT, np.uint32).reshape(-1)), 'parts': parts}
+grown = None
+if grass:
+    grown = {'tufts': int(len(grass[0])), 'root': put(grass[0]), 'rnd': put(grass[1]), 'lie': put(grass[2]), 'light': put(grass[3])}
 volume = {'nx': VNX, 'ny': VNY, 'nz': VNZ, 'x0': X0, 'y0': Y0, 'z0': Z0, 'cell': VC, 'data': put(vol8)}
 
 
@@ -992,9 +1082,9 @@ def stand(p):
 
 out = {
     'kit': 1, 'name': NAME, 'title': D.get('title', NAME), 'about': D.get('about', '') + ' (made by tools/make-cave-room.py from tools/cave-rooms/' + NAME + '.json; read by cave-room.js)',
-    'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE, **({'water': water} if water else {})},
+    'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE, **({'water': water} if water else {}), **({'grass': grown} if grown else {})},
     'bounds': [X0, Y0, Z0, X1, Y1, Z1], 'ambient': [float(v) for v in AMBIENT], 'lamps': LAMPS,
-    'water': D.get('water', 'clear'), 'falls': [{'lip': list(a), 'foot': list(b), 'wide': w} for a, b, w, _ in FALLS],
+    'water': D.get('water', 'clear'), 'grass': GRASS.get('kind', 'green'), 'falls': [{'lip': list(a), 'foot': list(b), 'wide': w} for a, b, w, _ in FALLS],
     'look': D.get('look', {}), 'land': D.get('land', 'rolling'), 'ground': D.get('ground', 'cave'), 'mouths': MOUTHS,
     'spawn': stand(D['spawn']), 'places': [stand(p) for p in D.get('places', [])],
 }

@@ -195,14 +195,15 @@
   "./curse-weather.js": "./curse-weather.js?v=3",
   "./drought.js": "./drought.js?v=3",
   "./dark-mist.js": "./dark-mist.js?v=2",
-  "./cave-room.js": "./cave-room.js?v=3",
-  "./cave-ground.js": "./cave-ground.js?v=2",
-  "./cave-water.js": "./cave-water.js?v=1"
+  "./cave-room.js": "./cave-room.js?v=4",
+  "./cave-ground.js": "./cave-ground.js?v=3",
+  "./cave-water.js": "./cave-water.js?v=1",
+  "./cave-grass.js": "./cave-grass.js?v=1"
 } }
 </script>
 </head>
 <body>
-<div id="name"><span id="title">ห้องของระบบถ้ำ</span><small>ระบบถ้ำกลาง · พื้น หิน แสง · terrain · น้ำ</small></div>
+<div id="name"><span id="title">ห้องของระบบถ้ำ</span><small>ระบบถ้ำกลาง · พื้น หิน แสง · terrain · น้ำ · หญ้า</small></div>
 <div id="bar"></div>
 <div id="stick"><i></i></div>
 <button id="jumpBtn" type="button" aria-label="กระโดด"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg><br>กระโดด</span></button>
@@ -313,7 +314,7 @@ function step(dt) {
   player.update(dt);
   updateAnimals(dt);                                         // (the sprite)
   circles.update(dt, camera);
-  room.update(dt, camera);
+  room.update(dt, camera, player.position);
   lampAt();
 }
 let fixedCam = null;

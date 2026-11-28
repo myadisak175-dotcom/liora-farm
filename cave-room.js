@@ -4,9 +4,10 @@
      const room = await createCaveRoom({ name: 'test' })        // assets/caves/test.bin + .json
      scene.add(room.group); ...; room.light.apply(scene)        // the cave's light on her and on plants (cave-light.js)
      const level = createCaveLevel(room)                        // her level in it (cave-level.js): floors over one another too
-     every frame: room.update(dt, camera)
+     every frame: room.update(dt, camera, walker)               // walker: her position (the grass at her feet parts)
      room.floorMap, room.layout (spawn, places, lamps, mouths, falls), room.colliders, room.crowns, room.trunks, room.look
      room.water (null in a dry room), room.ripple (the level hands her steps in the water to it)
+     room.grass (null where none grows)
 
    As the hill village is laid out by one file from one description, so is every room of the caves from here on (the
    user: "ตอนนี้ต้องวางระบบไว้ก่อน เหมือนที่เราวางระบบ heightmap hill village"): a room is its description
@@ -14,9 +15,10 @@
      cave-ground.js   its rock, its laid stone, what lies on its floors: whatever kinds of ground the bake lists
                       (floors over one another too)
      cave-water.js    its water: pools, streams, falls
+     cave-grass.js    its grass: the tufts the bake scattered, reading the ground they stand on (as the meadow's does)
      cave-light.js    its light on her and on plants (a picture of the air)
      cave-level.js    where she may stand, climb, wade, swim; her camera
-     (to come, the kit's next pieces: its grass; its air and things — mist by storey, lamps that wake, crystals,
+     (to come, the kit's next pieces: its air and things — mist by storey, lamps that wake, ferns, crystals,
      mushrooms, fangs, ruins' pieces; its map with a picture a storey)
    This file itself: reads the bake, makes the rock's mesh, and shows where each lamp hangs (a soft light in the air:
    the lamps' light on the rock is baked). The three rooms made before the kit (fang-hall.js, cave-hall.js, boss-hall.js)
@@ -26,6 +28,7 @@ import * as THREE from 'three';
 import { createCaveLight } from './cave-light.js';
 import { createCaveGround, GROUND_LOOK } from './cave-ground.js';
 import { createCaveWater } from './cave-water.js';
+import { createCaveGrass } from './cave-grass.js';
 
 export const ROOM_LOOK = { ...GROUND_LOOK };
 
@@ -75,6 +78,14 @@ export async function createCaveRoom({ name = 'test', base = './assets/caves/', 
     group.add(water.object);
   }
 
+  // ---- the grass: the tufts the bake scattered; it reads the ground itself for its colour and its patches' edges
+  let grass = null;
+  if (B.grass && B.grass.tufts) {
+    await onStep('ปลูกหญ้า');
+    grass = createCaveGrass({ bin, grass: B.grass, ground: floorPaint, scale: B.lightScale, sprite: light.uniforms, kind: L.grass || 'green', fog: floorPaint.fogColor, fogDensity: look.fogDensity });
+    group.add(grass.object);
+  }
+
   // ---- the lamps: a soft light in the air where each hangs (what they throw on the rock is baked)
   await onStep('จุดโคม');
   const lamps = L.lamps || [];
@@ -97,11 +108,16 @@ export async function createCaveRoom({ name = 'test', base = './assets/caves/', 
 
   let clock = 0;
   return {
-    group, light, layout: L, rock, glow, water, floorMap, colliders: (L.colliders || []).map((c) => c.slice()), crowns: [], trunks: [],
+    group, light, layout: L, rock, glow, water, grass, floorMap, colliders: (L.colliders || []).map((c) => c.slice()), crowns: [], trunks: [],
     look, fogColor: floorPaint.fogColor, name: L.name,
-    stats: { vertices: M.vertices, triangles: M.indices / 3, layers: floorMap.layers, lamps: lamps.length, water: B.water ? B.water.indices / 3 : 0, ground: floorPaint.kinds },
+    stats: { vertices: M.vertices, triangles: M.indices / 3, layers: floorMap.layers, lamps: lamps.length, water: B.water ? B.water.indices / 3 : 0, ground: floorPaint.kinds, grass: grass ? grass.stats.tufts : 0 },
     ...(water ? { ripple: (x, y, z, strength, radius, mode) => water.ripple(x, y, z, strength, radius, mode) } : {}),
-    update(dt) { clock += dt; if (glow) glow.material.size = 1.5 + 0.08 * Math.sin(clock * 1.7); if (water) water.update(dt); },
-    dispose() { g.dispose(); floorPaint.dispose(); light.dispose(); if (water) water.dispose(); if (glow) { glow.geometry.dispose(); glow.material.map.dispose(); glow.material.dispose(); } },
+    update(dt, camera, walker) {
+      clock += dt;
+      if (glow) glow.material.size = 1.5 + 0.08 * Math.sin(clock * 1.7);
+      if (water) water.update(dt);
+      if (grass) { grass.update(dt); if (walker) grass.setWalker(walker); }
+    },
+    dispose() { g.dispose(); floorPaint.dispose(); light.dispose(); if (water) water.dispose(); if (grass) grass.dispose(); if (glow) { glow.geometry.dispose(); glow.material.map.dispose(); glow.material.dispose(); } },
   };
 }

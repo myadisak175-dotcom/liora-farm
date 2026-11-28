@@ -1,12 +1,13 @@
 {
  "title": "ห้องทดสอบระบบถ้ำ",
- "about": "The kit's test room: every piece the kit knows, once, to try it on (not a room of the game). A hall with the way in; a round well 10.5 m deep beside it with a built stair winding a turn and a half down round it, over itself; a built bridge across the well to an alcove; under the hall a tunnel from the well's floor to a lower chamber; a nook drawn as a picture; pillars, lamps. Its land: floors that roll and rise into the walls' feet; in the hall two tiers of ledges with a slope up to the first, a mound, a hollow, two boulders; in the lower chamber a drawn picture of heights; two mouths (the way in, the way on). Its ground: the room's by rule the caves' own (moss in the light, gravel at the feet of faces, sand by the water), the drawn nook's a ruin's (old paving, broken), the lower chamber's a grove's (turf under its lamp, moss, leaves in the dim); by hand two earth ways, a gravel way to the lower mouth, turf on the first ledge's top and, from a drawn picture, on the mound, leaves in an outline round the west boulder, a round of bare stone between the pillars.",
+ "about": "The kit's test room: every piece the kit knows, once, to try it on (not a room of the game). A hall with the way in; a round well 10.5 m deep beside it with a built stair winding a turn and a half down round it, over itself; a built bridge across the well to an alcove; under the hall a tunnel from the well's floor to a lower chamber; a nook drawn as a picture; pillars, lamps. Its land: floors that roll and rise into the walls' feet; in the hall two tiers of ledges with a slope up to the first, a mound, a hollow, two boulders; in the lower chamber a drawn picture of heights; two mouths (the way in, the way on). Its ground: the room's by rule the caves' own (moss in the light, gravel at the feet of faces, sand by the water), the drawn nook's a ruin's (old paving, broken), the lower chamber's a grove's (turf under its lamp, moss, leaves in the dim); by hand two earth ways, a gravel way to the lower mouth, turf on the first ledge's top and, from a drawn picture, on the mound, leaves in an outline round the west boulder, a round of bare stone between the pillars. Its grass: green, growing by itself wherever turf lies (under the strong lamps, on the ledge, on the mound, in the grove chamber, with the earth way through it).",
  "cell": 0.4,
  "bounds": [-1, -13.6, -1, 46.2, 13.2, 37],
  "rough": 0.45,
  "seed": 11,
  "land": "rolling",
  "ground": "cave",
+ "grass": "green",
  "water": "clear",
  "mouths": [
   {"name": "ทางเข้า", "at": [14, 0, 35.6], "toward": 90, "wide": 3.4, "high": 3.4},
