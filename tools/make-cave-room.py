@@ -61,12 +61,27 @@
 #     { "heights": { "picture": "file.png", "at": [x, z], "size": [w, d], "floor": y, "low": 0, "high": h } }
 #                                         DRAWN BY HAND: a grey picture laid on the ground, black "low", white "high" (m over
 #                                         the ground as it is; under 0 it digs)
+#   "water": "clear"                     THE WATER'S KIND: a word from cave-water.js' WATERS ("clear", "dark", "glow")
+#   "waterways": [ ... ]                 THE WATER, laid where the land can hold it (their beds are dug after the terrain and
+#                                         before the stone; the water itself is laid once all the rock is as it will be):
+#     { "pool":   { "at": [x, z], "level": y } }                                           still water at a height: it fills
+#                                         the ground lower than its level round the spot, as far as the land holds it (so it
+#                                         takes a hollow's own shape). The tool stops if the spot is dry or the water would
+#                                         run off an edge
+#     { "stream": { "path": [[x, y, z], ...], "wide": w, "deep": 0.25, "bank": 0.7 } }     running water along a line, y its
+#                                         surface: a bed is dug under it (deep in its middle, level with the water at its
+#                                         sides, banks eased into the ground over `bank`), it flows down the line, faster
+#                                         where steeper. A stretch falling steeper than 1 in 1 is a FALL: water through the
+#                                         air from the stretch's first point (the lip) to its last (the foot, which must be
+#                                         on water). End a stream in a pool at the pool's own level and the two are one
+#                                         water. A stream ending at a mouth is handed on with it (the next room's begins there)
+#                                         Under 1.05 m she wades, over it she swims. A way of stone across a stream dams it
+#                                         unless it is a bridge (its underside over the water); a painted way fords it
 #   "lights": [ { "lamp": { "at": [x, y, z], "colour": "blue" | "warm" | "teal" | "white" | [r, g, b], "reach": 8, "power": 1 } } ]
 #   "ambient": [r, g, b]                 the dark's own light
 #   "look": { "built": [r, g, b], "fog": "#0a1420", ... }      the room's own colours (cave-ground.js, GROUND_LOOK: any of them)
 #   "paint": [ { "earth": { "path": [[x, y, z], ...], "wide": w } }, { "sand": { ... } } ]   what lies on natural floors (moss comes
 #                                         by itself where a lamp's light falls)
-#   "pools": [ { "c": [x, z], "r": r, "level": y } ]      (handed on as they are: the water is the kit's next piece)
 #   "spawn": { "x", "y", "z", "yaw" }, "places": [ { "name", "x", "y", "z", "heading" } ]
 #
 # WHAT IS BAKED (NAME.json's "bin" says where each lies in NAME.bin):
@@ -74,13 +89,21 @@
 #            it (rgb: the lamps, with their shadows, and the dark's own light, less in corners; a: a step's own tone, 128 none),
 #            info (r: built stone; g: how open to the room; b: on a step, from its back, 0, to its edge, 255; a: 255 a step)
 #   floor    the floor map with SPANS (cave-level.js' header): every column's stretches of air a metre high or more, their
-#            floors, roofs and paint (r earth, g sand, b moss, a 150: stone slabs underfoot), "layers" of them
+#            floors, roofs and paint (r earth, g sand, b moss, a 150: stone slabs underfoot), "layers" of them; and, in a
+#            room with water, the water's surface over each span ("water": cm; -32768: none): what she wades and swims in.
+#            Sand comes by itself on a water's bed and shore, more moss on its banks
+#   water    the water as one mesh (cave-water.js draws it): its surface (every water that meets at one height is one
+#            sheet, cut to its shore per pixel by its depth), then the falls, then the foam at their feet ("parts"):
+#            position, info (depth under it in m, under 0 past the shore; the flow's x and z in m/s), uv (a fall: across,
+#            metres fallen; a foot: angle, how far out), the light baked on it
 #   volume   the light in the air, 1 m cells (cave-light.js: on her and on plants)
-# and NAME.json says the room's "land" and its "mouths", as they were written.
+# and NAME.json says the room's "land", its "water" and its "mouths" (each with the "stream" that ends in it, if one does),
+# and its "falls" (lip, foot, width: for what is heard and thrown up there, later).
 #
 # TO ADD TO THE LAND: a new word for a room's land is a line in LANDS; a new piece is a function in TERRAIN (it reads the
 # ground with ground_at and lays or takes rock with put_rock / take_rock), a line in this header, and what it promises in
-# tools/check-cave-level.mjs (PIECES).
+# tools/check-cave-level.mjs (PIECES). TO ADD TO THE WATER: a new kind of water is a line in cave-water.js' WATERS; a new
+# waterway is a function in BEDS (if it digs) and in WATERWAYS (it lays its surface with lay), and its promise in PIECES.
 
 import json, math, os, sys
 import numpy as np
@@ -381,6 +404,37 @@ for piece in D.get('terrain', []):
         raise SystemExit(f'no such terrain: {kind} (TERRAIN has: {", ".join(TERRAIN)})')
     TERRAIN[kind](s)
 
+
+
+# ---------------------------------------------------------------- the waterways: their beds (dug now; the water is laid later)
+STEEP = 1.0                   # a stream's stretch falling steeper than this (1 in 1) is a fall
+
+
+def falling(a, b):
+    return a[1] - b[1] > max(0.5, STEEP * math.hypot(b[0] - a[0], b[2] - a[2]))
+
+
+def stream_bed(s):
+    w, deep, bank = s['wide'], s.get('deep', 0.25), s.get('bank', 0.7)
+    for a, b, d, f, own in way_parts(s['path'], X2, Z2):
+        if falling(a, b):
+            continue
+        mid = (a[1] + b[1]) / 2
+        G = ground_at(mid, down=1.6, up=1.6)
+        on = own & (d < w / 2 + bank) & ~np.isnan(G)
+        t = np.clip((d - w / 2) / bank, 0, 1); t = t * t * (3 - 2 * t)
+        # its bed: deepest in the middle, level with the water at its sides; then its banks, eased into the ground as it is
+        bed = np.where(d < w / 2, f - deep * (np.cos(np.clip(d / (w / 2), 0, 1) * math.pi) * 0.5 + 0.5), f + 0.04 + (G - f - 0.04) * t)
+        put_rock(np.where(on & (bed > G + 0.01), bed, -BIG), mid)
+        take_rock(np.where(on & (bed < G - 0.01), bed, BIG), mid, on & (bed < G - 0.01))
+
+
+BEDS = {'stream': stream_bed}
+for piece in D.get('waterways', []):
+    (kind, s), = piece.items()
+    if kind in BEDS:
+        BEDS[kind](s)
+
 BUILT = np.zeros((NX, NY, NZ), np.float32)
 UNDER = 0.1                   # m: under its steps a slope's own stone lies this much lower (the steps cover it)
 STEPPED = []                  # the ways with steps: (path, wide, rise)
@@ -583,6 +637,142 @@ for path, wide, rise in STEPPED:
         pts[on, 1] += UNDER + rise / 2
         raised |= on
 fl_map[where[raised]] = np.round(pts[raised, 1] * 100).astype(np.int16)
+
+
+# ---------------------------------------------------------------- the water: laid where the rock, as it now is, holds it
+def ground_under(W, reach=4.0):
+    # under a water's surface W (over the columns; nan: none): the ground it lies on (the highest within reach under it, or
+    # just over it: a bank), and whether a column without such ground is rock at the water's height (a wall it runs into;
+    # else it is air: an edge it would run off)
+    G = np.full((NX, NZ), np.nan, np.float32)
+    for l in range(NY - 1):
+        a, b = F[:, l, :], F[:, l + 1, :]
+        y = Y0 + (l + a / np.maximum(a - b, 1e-6)) * CELL
+        G = np.where((a > 0) & (b <= 0) & (y <= W + 0.5) & (y >= W - reach), y, G)
+    li = np.clip(np.round((np.nan_to_num(W, nan=Y0) - Y0) / CELL), 0, NY - 1).astype(int)
+    return G, np.take_along_axis(F, li[:, None, :], axis=1)[:, 0, :] > 0
+
+
+SHEETS = []                   # every water that meets at one height is one sheet: { W: its surface over the columns, flow }
+FALLS = []                    # (lip, foot, width, the way it was running)
+
+
+def lay(W, flow=None):
+    for S in SHEETS:
+        both = ~np.isnan(S['W']) & ~np.isnan(W)
+        if both.any() and np.abs(S['W'][both] - W[both]).min() < 0.15:
+            S['W'] = np.fmax(S['W'], W)
+            if flow is not None:
+                S['flow'] += flow
+            return
+    SHEETS.append({'W': W, 'flow': np.zeros((NX, NZ, 2), np.float32) if flow is None else flow})
+
+
+def pool_water(s):
+    level = float(s['level'])
+    G, wall = ground_under(np.full((NX, NZ), level, np.float32))
+    wet = G < level - 0.005
+    i, j = int(round((s['at'][0] - X0) / CELL)), int(round((s['at'][1] - Z0) / CELL))
+    if not wet[i, j]:
+        raise SystemExit(f"the pool at {s['at']} lies on dry ground (the ground there is at {G[i, j]:.2f}, its level {level}): dig a hollow there, or raise its level")
+    lab, _ = ndi.label(wet)
+    body = lab == lab[i, j]
+    off = ndi.binary_dilation(np.isnan(G) & ~wall) & body        # (beside air with no ground under it: an edge)
+    if off.any():
+        a, b = np.argwhere(off)[0]
+        raise SystemExit(f"the pool at {s['at']} is not held: at its level ({level}) it runs off an edge at {X0 + a * CELL:.1f}, {Z0 + b * CELL:.1f}: lower its level, or raise the ground there")
+    lay(np.where(ndi.binary_dilation(body, iterations=2), level, np.nan).astype(np.float32))
+    log(f"  a pool at {s['at']}: {body.sum() * CELL * CELL:.0f} m2, up to {level - np.nanmin(np.where(body, G, np.nan)):.2f} m deep")
+
+
+def stream_water(s):
+    w, bank = s['wide'], s.get('bank', 0.7)
+    W = np.full((NX, NZ), np.nan, np.float32); flow = np.zeros((NX, NZ, 2), np.float32)
+    was = None
+    for a, b, d, f, own in way_parts(s['path'], X2, Z2):
+        run = max(math.hypot(b[0] - a[0], b[2] - a[2]), 1e-6); ux, uz = (b[0] - a[0]) / run, (b[2] - a[2]) / run
+        if falling(a, b):
+            FALLS.append((a, b, w, (ux, uz) if run > 0.25 or was is None else was))
+            continue
+        was = (ux, uz)
+        on = own & (d < w / 2 + bank + 0.4)
+        W = np.where(on, f, W)
+        k = np.where(on, np.clip(1 - (d - w / 2) / 0.5, 0, 1), 0) * (0.45 + 4.0 * max((a[1] - b[1]) / run, 0))      # (m/s: faster where steeper)
+        flow[..., 0] += k * ux; flow[..., 1] += k * uz
+    for m in MOUTHS:                                      # (a stream ending at a mouth is the next room's too)
+        for end in (s['path'][0], s['path'][-1]):
+            if math.hypot(end[0] - m['at'][0], end[2] - m['at'][2]) < 2.0 and abs(end[1] - m['at'][1]) < 1.5:
+                m['stream'] = {'level': end[1], 'wide': w}
+    lay(W, flow)
+
+
+WATERWAYS = {'pool': pool_water, 'stream': stream_water}
+for piece in D.get('waterways', []):
+    (kind, s), = piece.items()
+    if kind not in WATERWAYS:
+        raise SystemExit(f'no such waterway: {kind} (WATERWAYS has: {", ".join(WATERWAYS)})')
+    WATERWAYS[kind](s)
+
+water_map = np.full(K * N2, -32768, np.int16)             # the water's surface over each span (cm), for her level
+wet_by = np.full(len(pts), np.nan, np.float32)            # every span's floor under (+) or over (-) the water beside it (m)
+WV, WI, WUV, WT = [], [], [], []                          # the water's mesh: points, info (depth, flow x, flow z, 0), uv, triangles
+parts = {}
+for S in SHEETS:
+    W = S['W']; G, wall = ground_under(W)
+    depth = np.where(np.isnan(G), np.where(wall & ~np.isnan(W), 0.6, np.nan), W - G)      # (into a wall: as if deep; off an edge: none)
+    real = ~np.isnan(G) & (depth > 0)
+    for sp in range(K):                                   # the spans it lies over (or beside: its shore)
+        flv = fl_map[sp * N2:(sp + 1) * N2].reshape(NX, NZ)
+        on = ~np.isnan(G) & (flv != -32768) & (np.abs(flv / 100.0 - G) < 0.6)
+        water_map[sp * N2:(sp + 1) * N2][on.reshape(-1)] = np.round(W[on] * 100).astype(np.int16)
+    have = ~np.isnan(depth)
+    quad = have[:-1, :-1] & have[1:, :-1] & have[:-1, 1:] & have[1:, 1:] & (real[:-1, :-1] | real[1:, :-1] | real[:-1, 1:] | real[1:, 1:])
+    use = np.zeros((NX, NZ), bool)
+    use[:-1, :-1] |= quad; use[1:, :-1] |= quad; use[:-1, 1:] |= quad; use[1:, 1:] |= quad
+    ids = np.full((NX, NZ), -1, np.int64); ids[use] = len(WV) + np.arange(use.sum())
+    ii, jj = np.nonzero(use)
+    WV.extend(np.stack([X0 + ii * CELL, W[ii, jj], Z0 + jj * CELL], 1).tolist())
+    WI.extend(np.stack([np.clip(depth[ii, jj], -0.6, 4.0), S['flow'][ii, jj, 0], S['flow'][ii, jj, 1], np.zeros(len(ii))], 1).tolist())
+    WUV.extend(np.stack([ii * CELL, jj * CELL], 1).tolist())
+    qi, qj = np.nonzero(quad)
+    a, b, c, d = ids[qi, qj], ids[qi + 1, qj], ids[qi, qj + 1], ids[qi + 1, qj + 1]
+    WT.extend(np.stack([a, c, b], 1).tolist()); WT.extend(np.stack([b, c, d], 1).tolist())      # (wound to face up)
+parts['surface'] = [0, len(WT) * 3]
+# every span by a water: how far its floor is under or over it
+wm = water_map[where]
+wet_by = np.where(wm != -32768, wm / 100.0 - pts[:, 1], np.nan)
+# the falls: water through the air from a lip to a foot, and the foam where it lands
+n0 = len(WT)
+for lip, foot, w, (ux, uz) in FALLS:
+    hit = water_map.reshape(K, NX, NZ)[:, int(round((foot[0] - X0) / CELL)), int(round((foot[2] - Z0) / CELL))]
+    if not ((hit != -32768) & (np.abs(hit / 100.0 - foot[1]) < 0.3)).any():
+        raise SystemExit(f'the fall from {lip} lands at {foot}, where there is no water at that height: end it on a pool at the pool\'s level')
+    px, pz = -uz, ux; n = 12; base = len(WV); fell = 0.0; prev = None
+    hx, hz = foot[0] - lip[0], foot[2] - lip[2]
+    for k in range(n + 1):
+        t = k / n
+        c = np.array([lip[0] + hx * t, lip[1] - (lip[1] - foot[1]) * t * t, lip[2] + hz * t])       # (out at an even pace, down faster and faster)
+        fell += 0.0 if prev is None else float(np.linalg.norm(c - prev)); prev = c
+        half = w / 2 * (0.92 + 0.16 * t)
+        for side in (-1, 1):
+            WV.append([c[0] + px * half * side, c[1], c[2] + pz * half * side]); WI.append([1.0, ux, uz, 0.0]); WUV.append([(side + 1) / 2, fell])
+        if k:
+            q = base + 2 * k
+            WT.extend([[q - 2, q - 1, q], [q - 1, q + 1, q]])
+parts['falls'] = [n0 * 3, (len(WT) - n0) * 3]
+n1 = len(WT)
+for lip, foot, w, (ux, uz) in FALLS:
+    base = len(WV); R = max(0.9, w * 1.25); m = 18
+    WV.append([foot[0], foot[1] + 0.025, foot[2]]); WI.append([1.0, 0.0, 0.0, 0.0]); WUV.append([0.0, 0.0])
+    for k in range(m + 1):
+        an = 2 * math.pi * k / m
+        WV.append([foot[0] + R * math.cos(an), foot[1] + 0.025, foot[2] + R * math.sin(an)]); WI.append([1.0, 0.0, 0.0, 0.0]); WUV.append([k / m, 1.0])
+        if k:
+            WT.append([base, base + k + 1, base + k])
+parts['feet'] = [n1 * 3, (len(WT) - n1) * 3]
+if SHEETS:
+    log(f'water: {len(SHEETS)} sheets, {len(FALLS)} falls; {len(WV)} points, {len(WT)} triangles')
+
 paint = np.zeros((K * N2, 4), np.uint8)
 if len(pts):
     slab = at_field(BUILT, pts - np.array([0, 0.15, 0], np.float32)) > 0.5
@@ -602,7 +792,10 @@ if len(pts):
         if kind == 'earth': earth = np.maximum(earth, amount)
         elif kind == 'sand': sand = np.maximum(sand, amount)
         else: raise SystemExit(f'no such paint: {kind}')
-    moss = np.clip((lum - 0.16) * 3.2 + rag * 0.25, 0, 1) * (1 - earth) * (1 - sand)
+    # by a water: sand on its bed and up its shore, more moss on its banks
+    sand = np.maximum(sand, np.nan_to_num(np.clip((wet_by + 0.22 + rag * 0.08) / 0.22, 0, 1), nan=0.0))
+    damp = np.nan_to_num(np.clip(1 + wet_by / 1.0, 0, 1) * (wet_by < 0), nan=0.0)
+    moss = np.clip((lum - 0.16) * 3.2 + rag * 0.25 + damp * 0.55, 0, 1) * (1 - earth) * (1 - sand)
     paint[where, 0] = np.where(slab, 0, earth * 255)
     paint[where, 1] = np.where(slab, 0, sand * 255)
     paint[where, 2] = np.where(slab, 0, moss * 255)
@@ -636,6 +829,14 @@ info8 = np.zeros((len(verts), 4), np.uint8); info8[:, 0] = built * 255; info8[:,
 mesh = {'vertices': int(len(verts)), 'indices': int(faces.size), 'pos': put(verts), 'nrm': put(nrm8), 'light': put(light8), 'info': put(info8),
         'idx': put(faces.astype(np.uint32).reshape(-1))}
 floor = {'nx': NX, 'nz': NZ, 'x0': X0, 'z0': Z0, 'cell': CELL, 'layers': K, 'floor': put(fl_map), 'ceil': put(ce_map), 'paint': put(paint)}
+water = None
+if WT:
+    floor['water'] = put(water_map)
+    wv = np.array(WV, np.float32)
+    wl = AMBIENT[None, :] * 0.8 + lamp_light(wv + np.array([0, 0.05, 0], np.float32), np.tile(np.array([[0, 1, 0]], np.float32), (len(wv), 1)))
+    wl8 = np.zeros((len(wv), 4), np.uint8); wl8[:, :3] = np.clip(wl / LIGHT_SCALE * 255, 0, 255); wl8[:, 3] = 255
+    water = {'vertices': int(len(wv)), 'indices': int(len(WT) * 3), 'pos': put(wv), 'info': put(np.array(WI, np.float32)), 'uv': put(np.array(WUV, np.float32)),
+             'light': put(wl8), 'idx': put(np.array(WT, np.uint32).reshape(-1)), 'parts': parts}
 volume = {'nx': VNX, 'ny': VNY, 'nz': VNZ, 'x0': X0, 'y0': Y0, 'z0': Z0, 'cell': VC, 'data': put(vol8)}
 
 
@@ -645,8 +846,9 @@ def stand(p):
 
 out = {
     'kit': 1, 'name': NAME, 'title': D.get('title', NAME), 'about': D.get('about', '') + ' (made by tools/make-cave-room.py from tools/cave-rooms/' + NAME + '.json; read by cave-room.js)',
-    'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE},
-    'bounds': [X0, Y0, Z0, X1, Y1, Z1], 'ambient': [float(v) for v in AMBIENT], 'lamps': LAMPS, 'pools': D.get('pools', []),
+    'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE, **({'water': water} if water else {})},
+    'bounds': [X0, Y0, Z0, X1, Y1, Z1], 'ambient': [float(v) for v in AMBIENT], 'lamps': LAMPS,
+    'water': D.get('water', 'clear'), 'falls': [{'lip': list(a), 'foot': list(b), 'wide': w} for a, b, w, _ in FALLS],
     'look': D.get('look', {}), 'land': D.get('land', 'rolling'), 'mouths': MOUTHS,
     'spawn': stand(D['spawn']), 'places': [stand(p) for p in D.get('places', [])],
 }
