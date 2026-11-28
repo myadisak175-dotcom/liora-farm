@@ -22,9 +22,14 @@
 #   4. a few twigs, dark with a lighter top;
 #   5. a little grain of the paper.
 #
+#   turf   assets/ground/cave-turf-paint.webp: a cave's turf, the ground grass grows from where a cave has light enough
+#          (the caves' kit: cave-ground.js lays it where tools/make-cave-room.py says): the moss set in the meadow's own
+#          greens, a step deeper, nearly no leaves
+#
 #   python3 tools/make-forest-paint.py            (the path set; Termux: pip install numpy scipy pillow)
 #   python3 tools/make-forest-paint.py damp
 #   python3 tools/make-forest-paint.py moss
+#   python3 tools/make-forest-paint.py turf
 #
 # To change the colours: EARTH, LEAVES, MOSS, TWIG (each look's own, in LOOKS). To change how much of each: MOSS_SHARE,
 # LEAF_COUNT, TWIG_COUNT; how dark a leaf's shadow: SHADOW.
@@ -59,6 +64,13 @@ LOOKS = {
         MOSS=('#36502a', '#435f2e', '#517034', '#62833c', '#789a48'),                      # deeper and duller than the meadow's (it lies in the shade)
         TWIG=('#4a3726', '#7d624a'),
         MOSS_SHARE=0.2, LEAF_COUNT=640, TWIG_COUNT=18, SHADOW=0.32),
+    'turf': dict(                                                     # a cave's turf: the ground under grass (the caves' kit)
+        out='cave-turf-paint.webp', seed=73,
+        EARTH=('#33301f', '#403a26', '#4d452c', '#5c5234', '#6b5f3c'),                     # dark soil where the turf leaves it
+        LEAVES=(('#8f6a3e', 0.4), ('#7a5a36', 0.3), ('#8e9a4c', 0.3)),
+        MOSS=('#4f7430', '#5f8936', '#719d3e', '#86b148', '#a0c658'),                      # deep .. lit: the meadow's own greens (#7a9b3c .. #a5c04b), a step deeper
+        TWIG=('#3d2f22', '#6a5640'),
+        MOSS_SHARE=0.93, LEAF_COUNT=16, TWIG_COUNT=2, SHADOW=0.28),
 }
 look = LOOKS[sys.argv[1] if len(sys.argv) > 1 else 'path']
 OUT = Path(__file__).resolve().parent.parent / 'assets/ground' / look['out']

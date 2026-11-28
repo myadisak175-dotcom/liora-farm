@@ -1,11 +1,12 @@
 {
  "title": "ห้องทดสอบระบบถ้ำ",
- "about": "The kit's test room: every piece the kit knows, once, to try it on (not a room of the game). A hall with the way in; a round well 10.5 m deep beside it with a built stair winding a turn and a half down round it, over itself; a built bridge across the well to an alcove; under the hall a tunnel from the well's floor to a lower chamber; a nook drawn as a picture; pillars, lamps. Its land: floors that roll and rise into the walls' feet; in the hall two tiers of ledges with a slope up to the first, a mound, a hollow, two boulders; in the lower chamber a drawn picture of heights; two mouths (the way in, the way on).",
+ "about": "The kit's test room: every piece the kit knows, once, to try it on (not a room of the game). A hall with the way in; a round well 10.5 m deep beside it with a built stair winding a turn and a half down round it, over itself; a built bridge across the well to an alcove; under the hall a tunnel from the well's floor to a lower chamber; a nook drawn as a picture; pillars, lamps. Its land: floors that roll and rise into the walls' feet; in the hall two tiers of ledges with a slope up to the first, a mound, a hollow, two boulders; in the lower chamber a drawn picture of heights; two mouths (the way in, the way on). Its ground: the room's by rule the caves' own (moss in the light, gravel at the feet of faces, sand by the water), the drawn nook's a ruin's (old paving, broken), the lower chamber's a grove's (turf under its lamp, moss, leaves in the dim); by hand two earth ways, a gravel way to the lower mouth, turf on the first ledge's top and, from a drawn picture, on the mound, leaves in an outline round the west boulder, a round of bare stone between the pillars.",
  "cell": 0.4,
  "bounds": [-1, -13.6, -1, 46.2, 13.2, 37],
  "rough": 0.45,
  "seed": 11,
  "land": "rolling",
+ "ground": "cave",
  "water": "clear",
  "mouths": [
   {"name": "ทางเข้า", "at": [14, 0, 35.6], "toward": 90, "wide": 3.4, "high": 3.4},
@@ -17,10 +18,10 @@
   {"shaft": {"at": [31, 18], "r": 7.2, "floor": -10.5, "roof": 10.5}},
   {"hall": {"at": [41.5, 18], "r": [3.6, 3.6], "floor": 0, "roof": 4.2}},
   {"tunnel": {"path": [[27, -10.5, 18], [14, -10.5, 18], [7, -10.5, 14]], "wide": 3.6, "high": 3.2}},
-  {"hall": {"at": [6, 13], "r": [4.8, 4.2], "floor": -10.5, "roof": -6.0}},
+  {"hall": {"at": [6, 13], "r": [4.8, 4.2], "floor": -10.5, "roof": -6.0, "ground": "grove"}},
   {"tunnel": {"path": [[2.5, -10.5, 13], [-0.4, -10.5, 13]], "wide": 3.2, "high": 3.0}},
   {"tunnel": {"path": [[22.6, 4.3, 28.8], [20.9, 4.3, 25.5]], "wide": 1.8, "high": 1.5, "land": "flat"}},
-  {"picture": {"plan": "test-nook-plan.png", "at": [8, 3], "size": [10, 8], "floor": 0.5, "roof": 3.6}}
+  {"picture": {"plan": "test-nook-plan.png", "at": [8, 3], "size": [10, 8], "floor": 0.5, "roof": 3.6, "ground": "ruins"}}
  ],
  "terrain": [
   {"ledge": {"outline": [[2.5, 18.6], [8.6, 18.2], [10.6, 21.0], [9.8, 24.6], [6.5, 26.5], [2.5, 25.5]], "floor": 0, "top": 1.7, "broken": 0.5}},
@@ -68,7 +69,12 @@
  ],
  "paint": [
   {"earth": {"path": [[14, 0, 35], [14, 0, 24], [19, 0, 19], [23.5, 0, 18]], "wide": 2.6}},
-  {"earth": {"path": [[27, -10.5, 18], [14, -10.5, 18], [7, -10.5, 14]], "wide": 2.2}}
+  {"earth": {"path": [[27, -10.5, 18], [14, -10.5, 18], [7, -10.5, 14]], "wide": 2.2}},
+  {"gravel": {"path": [[3.6, -10.5, 13], [-0.4, -10.5, 13]], "wide": 2.4}},
+  {"turf": {"at": [8.9, 21.6], "r": [1.3, 2.6], "floor": 1.7}},
+  {"turf": {"picture": "test-turf.png", "at": [17.4, 11.0], "size": [5.2, 5.2], "floor": 0}},
+  {"leaves": {"outline": [[3.8, 14.0], [6.0, 13.2], [8.4, 13.8], [8.9, 16.2], [7.6, 17.8], [4.6, 17.6]], "floor": 0}},
+  {"stone": {"at": [11.6, 16.8], "r": 1.3, "floor": 0}}
  ],
  "spawn": {"x": 14, "y": 0, "z": 32, "yaw": 3.1416},
  "places": [

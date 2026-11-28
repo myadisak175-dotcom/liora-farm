@@ -27,6 +27,12 @@
 #                                         far it rises into the walls' feet), skirt_wide (m: from how far out). Any air piece
 #                                         may carry its own "land". Held level along ways of stone and at mouths, flatter
 #                                         along painted ways
+#   "ground": "cave"                     THE GROUND BY RULE: what lies on every natural floor of the room, said by a word from
+#                                         RULES (below: "bare": nothing; "cave": the caves' own: moss where a lamp's light
+#                                         falls and on a water's banks, gravel at the feet of faces and on scree; "grove":
+#                                         a cave where things grow: turf in the light, moss round it, fallen leaves in the
+#                                         dim; "ruins": old paving, broken, leaves blown to the walls' feet, moss). Any air
+#                                         piece may carry its own "ground" (a chamber that is a grove in a room of bare caves)
 #   "mouths": [ { "name": "...", "at": [x, y, z], "toward": angle, "wide": w, "high": h } ]   where the next room joins
 #   "air": [ ... ]                       taken out of the rock, in order:
 #     { "hall":   { "at": [x, z], "r": [rx, rz], "turn": 0, "floor": y, "roof": y, "walls": h } }    a round or long hall under a dome
@@ -80,8 +86,17 @@
 #   "lights": [ { "lamp": { "at": [x, y, z], "colour": "blue" | "warm" | "teal" | "white" | [r, g, b], "reach": 8, "power": 1 } } ]
 #   "ambient": [r, g, b]                 the dark's own light
 #   "look": { "built": [r, g, b], "fog": "#0a1420", ... }      the room's own colours (cave-ground.js, GROUND_LOOK: any of them)
-#   "paint": [ { "earth": { "path": [[x, y, z], ...], "wide": w } }, { "sand": { ... } } ]   what lies on natural floors (moss comes
-#                                         by itself where a lamp's light falls)
+#   "paint": [ ... ]                     THE GROUND BY HAND: a kind from GROUNDS (below: "gravel", "paving", "leaves", "moss",
+#                                         "turf", "earth", "sand"; or "stone": nothing, the bare floor) laid, in order, over
+#                                         what the rule gave. Each says where in one of four ways:
+#     { "earth":  { "path": [[x, y, z], ...], "wide": w } }                                along a line (a trodden way: the land
+#                                         is flatter along it too)
+#     { "turf":   { "at": [x, z], "r": r | [rx, rz], "floor": y } }                        a round or long patch
+#     { "leaves": { "outline": [[x, z], ...], "floor": y } }                               inside a drawn outline
+#     { "moss":   { "picture": "file.png", "at": [x, z], "size": [w, d], "floor": y } }    DRAWN BY HAND: a grey picture laid on
+#                                         the floor (its left edge at x, its top at z), white: all of it, black: none
+#                                         "floor": the height of the storey it lies on (it takes the ground within 1.5 m of
+#                                         that; "reach" to change). A water's bed and shore stay the water's own
 #   "spawn": { "x", "y", "z", "yaw" }, "places": [ { "name", "x", "y", "z", "heading" } ]
 #
 # WHAT IS BAKED (NAME.json's "bin" says where each lies in NAME.bin):
@@ -89,9 +104,12 @@
 #            it (rgb: the lamps, with their shadows, and the dark's own light, less in corners; a: a step's own tone, 128 none),
 #            info (r: built stone; g: how open to the room; b: on a step, from its back, 0, to its edge, 255; a: 255 a step)
 #   floor    the floor map with SPANS (cave-level.js' header): every column's stretches of air a metre high or more, their
-#            floors, roofs and paint (r earth, g sand, b moss, a 150: stone slabs underfoot), "layers" of them; and, in a
-#            room with water, the water's surface over each span ("water": cm; -32768: none): what she wades and swims in.
-#            Sand comes by itself on a water's bed and shore, more moss on its banks
+#            floors and roofs, "layers" of them; and, in a room with water, the water's surface over each span ("water":
+#            cm; -32768: none): what she wades and swims in. What lies on each span: "kinds" lists the kinds of ground
+#            this room has (name, picture, tile: metres a repeat, tint, ragged, and "at": which byte holds how much of
+#            it lies there: 0..2 "paint"'s r, g, b; 3..6 "paint2"'s r, g, b, a, written only when a room has more than
+#            three kinds); "paint"'s a is 150 on laid stone; "step" (a byte a span, into "steps") is what is underfoot
+#            there, for her steps
 #   water    the water as one mesh (cave-water.js draws it): its surface (every water that meets at one height is one
 #            sheet, cut to its shore per pixel by its depth), then the falls, then the foam at their feet ("parts"):
 #            position, info (depth under it in m, under 0 past the shore; the flow's x and z in m/s), uv (a fall: across,
@@ -104,6 +122,10 @@
 # ground with ground_at and lays or takes rock with put_rock / take_rock), a line in this header, and what it promises in
 # tools/check-cave-level.mjs (PIECES). TO ADD TO THE WATER: a new kind of water is a line in cave-water.js' WATERS; a new
 # waterway is a function in BEDS (if it digs) and in WATERWAYS (it lays its surface with lay), and its promise in PIECES.
+# TO ADD TO THE GROUND: a new kind is a line in GROUNDS and its picture in assets/ground/ (painted by tools/make-path-paint.py
+# or tools/make-forest-paint.py: a new look there); a new word for a room's ground is a function in RULES (it reads a
+# span's FACTS: the light on it, its tilt, how near a face's foot, how near water). cave-ground.js draws whatever kinds a
+# room has: nothing to add there.
 
 import json, math, os, sys
 import numpy as np
@@ -164,6 +186,19 @@ LANDS = {                     # a room's land by a word (add one here and every 
     'rolling': {'relief': 0.14, 'skirt': 0.45, 'skirt_wide': 2.4},           # the caves' own: floors that roll a little and rise into the walls' feet
     'rough':   {'relief': 0.30, 'skirt': 0.80, 'skirt_wide': 3.0},
 }
+GROUNDS = {                   # what may lie on a natural floor, in the order it is laid (a later one lies over an earlier). Add one
+    # here, with its picture, and every room may ask for it. picture: in assets/ground/; tile: metres a repeat; tint: its
+    # colour under the cave's light (a word: the room's look of that name); grey: the picture is read for its light and
+    # dark only (divided by this, its mean); ragged: how far its edge follows the stone under it; step: what her steps
+    # sound like on it (step-sounds.js' grounds)
+    'gravel': dict(picture='cave-gravel-paint.webp', tile=2.4,  tint=[1.0, 1.02, 1.1],     ragged=0.3,  step='earth'),
+    'paving': dict(picture='boss-slabs-paint.webp',  tile=2.38, tint='built', grey=0.187,  ragged=0.12, step='stone'),
+    'leaves': dict(picture='forest-damp-paint.webp', tile=3.6,  tint=[1.0, 1.0, 1.0],      ragged=0.35, step='grass'),
+    'moss':   dict(picture='cave-moss-paint.webp',   tile=3.6,  tint=[1.0, 1.0, 1.0],      ragged=0.35, step='grass'),
+    'turf':   dict(picture='cave-turf-paint.webp',   tile=3.6,  tint=[0.86, 0.9, 0.86],    ragged=0.35, step='grass'),
+    'earth':  dict(picture='path-dirt.webp',         tile=2.6,  tint=[0.66, 0.68, 0.76],   ragged=0.3,  step='earth'),
+    'sand':   dict(picture='path-sand.webp',         tile=2.3,  tint=[0.6, 0.63, 0.7],     ragged=0.2,  step='sand'),
+}
 BIG = 1e3
 
 
@@ -223,7 +258,8 @@ for piece in D.get('stone', []):
         EASE = np.minimum(EASE, held(s['path'] if 'path' in s else helix_path(s['helix']), s['wide'], round_ends=False))
 for piece in D.get('paint', []):
     (kind, s), = piece.items()
-    EASE = np.minimum(EASE, 0.35 + 0.65 * held(s['path'], s['wide']))      # (a trodden way: flatter, not flat)
+    if 'path' in s:
+        EASE = np.minimum(EASE, 0.35 + 0.65 * held(s['path'], s['wide']))  # (a trodden way: flatter, not flat)
 for m in MOUTHS:
     t = np.clip((np.hypot(GX - m['at'][0], GZ - m['at'][2]) - m.get('wide', 3.2) / 2) / 2.5, 0, 1)
     EASE = np.minimum(EASE, np.maximum(t * t * (3 - 2 * t), np.clip((np.abs(GY - m['at'][1]) - 1.5) / 1.5, 0, 1)))
@@ -297,9 +333,12 @@ AIR = {'hall': hall_sd, 'tunnel': tunnel_sd, 'shaft': shaft_sd, 'picture': pictu
 # ---------------------------------------------------------------- the rock, everywhere (> 0 in rock), and where it is built
 log(f'{NAME}: {NX} x {NY} x {NZ} cells of {CELL} m')
 F = np.full((NX, NY, NZ), 50.0, np.float32)
-for piece in D['air']:
+OWNER = np.full((NX, NY, NZ), -1, np.int16)          # which air piece a cell is deepest in (-1: none's): a piece's own "ground" goes by it
+for n, piece in enumerate(D['air']):
     (kind, s), = piece.items()
-    F = np.minimum(F, AIR[kind](s))
+    sd = AIR[kind](s)
+    OWNER[sd < np.minimum(F, 0)] = n
+    F = np.minimum(F, sd)
 
 
 # ---------------------------------------------------------------- the land by hand: pieces laid on a storey's ground as it is
@@ -773,33 +812,139 @@ parts['feet'] = [n1 * 3, (len(WT) - n1) * 3]
 if SHEETS:
     log(f'water: {len(SHEETS)} sheets, {len(FALLS)} falls; {len(WV)} points, {len(WT)} triangles')
 
-paint = np.zeros((K * N2, 4), np.uint8)
-if len(pts):
-    slab = at_field(BUILT, pts - np.array([0, 0.15, 0], np.float32)) > 0.5
-    lum = (lamp_light(pts + np.array([0, 0.3, 0], np.float32)) * np.array([0.3, 0.59, 0.11], np.float32)).sum(1)
-    rag = fbm(pts[:, 0], pts[:, 1] * 0, pts[:, 2], SEED + 9, 1.7, 2)
-    earth = np.zeros(len(pts), np.float32); sand = np.zeros(len(pts), np.float32)
-    for piece in D.get('paint', []):
-        (kind, s), = piece.items()
+# ---------------------------------------------------------------- the ground: what lies on the floors
+# BY RULE. A rule reads every span's FACTS and says how much of each kind lies there (0..1; a kind it does not name: none):
+#   lum    the lamps' light on it            tilt   how steep it is (degrees)     level  1 on level ground, 0 past 16 degrees
+#   foot   1 at the foot of a face or a wall, 0 a metre and a half out            rag, patch   the underground's own noise, small and large
+#   shore  1 on a water's bed and up its shore                                    damp   1 at a water's edge, 0 a metre over it
+def bare_ground(f):
+    return {}
+
+
+def cave_ground(f):
+    gravel = np.clip(np.maximum(f['foot'] * (0.85 + 1.5 * f['patch']), (f['tilt'] - 20) / 14) + f['rag'] * 0.3, 0, 1)        # at the feet of faces, in stretches; on scree
+    return {
+        'gravel': gravel,
+        'moss': np.clip((f['lum'] - 0.16) * 3.2 + f['rag'] * 0.25 + f['damp'] * 0.55, 0, 1) * (1 - 0.85 * gravel),           # where a lamp's light falls, and on a water's banks; not on loose stones
+        'sand': f['shore'],
+    }
+
+
+def grove_ground(f):
+    leaves = np.clip(np.maximum(1.15 - f['lum'] * 3.2 + f['patch'] * 0.9, f['foot'] * 1.4 - 0.3 + f['patch'] * 0.8), 0, 1)   # in the dim, and blown to the walls' feet
+    return {
+        'gravel': np.clip((f['tilt'] - 22) / 14 + f['rag'] * 0.3, 0, 1),
+        'leaves': leaves,
+        'moss': np.clip((f['lum'] - 0.08) * 4.0 + f['rag'] * 0.25 + f['damp'] * 0.55, 0, 1) * (1 - 0.8 * leaves),
+        'turf': np.clip((f['lum'] - 0.2) * 4.0 + f['rag'] * 0.3, 0, 1) * f['level'],                                         # where the light is strong, on level ground
+        'sand': f['shore'],
+    }
+
+
+def ruins_ground(f):
+    return {
+        'gravel': np.clip(np.maximum(0.05 - f['patch'] * 2.2, (f['tilt'] - 20) / 14) + f['rag'] * 0.3, 0, 1),                # rubble, where the paving is gone
+        'paving': np.clip(1.0 + f['patch'] * 2.2 + f['rag'] * 0.3, 0, 1) * np.clip((22 - f['tilt']) / 8, 0, 1),              # old slabs, in broken stretches
+        'leaves': np.clip(f['foot'] * 1.3 - 0.2 + f['rag'] * 0.4, 0, 1),                                                     # blown to the walls' feet
+        'moss': np.clip((f['lum'] - 0.5) * 3.0 + f['rag'] * 0.25 + f['damp'] * 0.7, 0, 1),                                   # right under a lamp, and on a water's banks
+        'sand': f['shore'],
+    }
+
+
+RULES = {'bare': bare_ground, 'cave': cave_ground, 'grove': grove_ground, 'ruins': ruins_ground}
+
+
+# BY HAND. How much of a painted thing lies on every span (0..1), from where its entry says
+def lies_on(kind, s, rag):
+    if 'path' in s:                                                       # along a line, on that way's own floor
         best = np.full(len(pts), 1e9, np.float32)
         for a, b in zip(s['path'][:-1], s['path'][1:]):
             ab = np.array([b[0] - a[0], b[2] - a[2]], np.float32)
             t = np.clip(((pts[:, 0] - a[0]) * ab[0] + (pts[:, 2] - a[2]) * ab[1]) / max(float(ab @ ab), 1e-6), 0, 1)
             d = np.hypot(pts[:, 0] - (a[0] + t * ab[0]), pts[:, 2] - (a[2] + t * ab[1]))
-            d = np.where(np.abs(pts[:, 1] - (a[1] + t * (b[1] - a[1]))) < 1.5, d, 1e9)      # (on that way's own floor)
-            best = np.minimum(best, d)
-        amount = np.clip(1.15 - (best + rag * 0.5) / (s['wide'] / 2), 0, 1)
-        if kind == 'earth': earth = np.maximum(earth, amount)
-        elif kind == 'sand': sand = np.maximum(sand, amount)
-        else: raise SystemExit(f'no such paint: {kind}')
-    # by a water: sand on its bed and up its shore, more moss on its banks
-    sand = np.maximum(sand, np.nan_to_num(np.clip((wet_by + 0.22 + rag * 0.08) / 0.22, 0, 1), nan=0.0))
-    damp = np.nan_to_num(np.clip(1 + wet_by / 1.0, 0, 1) * (wet_by < 0), nan=0.0)
-    moss = np.clip((lum - 0.16) * 3.2 + rag * 0.25 + damp * 0.55, 0, 1) * (1 - earth) * (1 - sand)
-    paint[where, 0] = np.where(slab, 0, earth * 255)
-    paint[where, 1] = np.where(slab, 0, sand * 255)
-    paint[where, 2] = np.where(slab, 0, moss * 255)
+            best = np.minimum(best, np.where(np.abs(pts[:, 1] - (a[1] + t * (b[1] - a[1]))) < 1.5, d, 1e9))
+        return np.clip(1.15 - (best + rag * 0.5) / (s['wide'] / 2), 0, 1)
+    if 'floor' not in s:
+        raise SystemExit(f'a painted {kind} that is not along a "path" says which storey it lies on: "floor": y')
+    on = np.abs(pts[:, 1] - s['floor']) < s.get('reach', 1.5)
+    ci, cj = (where % N2) // NZ, (where % N2) % NZ
+    if 'picture' in s:                                                    # a drawn picture: its grey is how much
+        return np.where(on, ndi.gaussian_filter(picture_on_grid(s['picture'], s['at'], s['size']), 0.6)[ci, cj], 0).astype(np.float32)
+    if 'outline' in s:                                                    # inside a drawn outline
+        inside = inside_of(s)[ci, cj]
+    elif 'at' in s:                                                       # a round or long patch
+        r = s['r']; rx, rz = r if isinstance(r, list) else (r, r)
+        inside = (1 - np.hypot((pts[:, 0] - s['at'][0]) / rx, (pts[:, 2] - s['at'][1]) / rz)) * min(rx, rz)
+    else:
+        raise SystemExit(f'a painted {kind} says nowhere to lie: give it "path", "at", "outline" or "picture"')
+    return np.where(on, np.clip(0.5 + (inside + rag * 0.4) / 0.6, 0, 1), 0).astype(np.float32)
+
+
+def rule_word(s=None):
+    word = (s or {}).get('ground', D.get('ground', 'cave'))
+    if word not in RULES:
+        raise SystemExit(f'no such ground: {word} (RULES has: {", ".join(RULES)})')
+    return word
+
+
+paint = np.zeros((K * N2, 4), np.uint8); paint2 = np.zeros((K * N2, 4), np.uint8); step = np.zeros(K * N2, np.uint8)
+STEPS = ['stone'] + sorted({g['step'] for g in GROUNDS.values()} - {'stone'})      # what "step"'s bytes name
+KINDS = []                                                                # the kinds this room has, as the game reads them
+if len(pts):
+    up = np.array([0, 1, 0], np.float32)
+    slab = at_field(BUILT, pts - up * 0.15) > 0.5
+    # ---- every span's facts
+    rag = fbm(pts[:, 0], pts[:, 1] * 0, pts[:, 2], WORLD_SEED + 9, 1.7, 2)
+    grad = np.stack([at_field(c, pts) for c in np.gradient(ndi.gaussian_filter(F, 0.8), CELL)], 1)
+    tilt = np.degrees(np.arccos(np.clip(-grad[:, 1] / (np.linalg.norm(grad, axis=1) + 1e-6), -1, 1)))
+    clear = np.full(len(pts), 9.0, np.float32)                            # the air a metre up, 0.8 m out every way: how far from rock
+    for an in np.arange(8) * math.pi / 4:
+        clear = np.minimum(clear, -at_field(F, pts + np.array([0.8 * math.cos(an), 1.0, 0.8 * math.sin(an)], np.float32)))
+    f = dict(
+        lum=(lamp_light(pts + up * 0.3) * np.array([0.3, 0.59, 0.11], np.float32)).sum(1), rag=rag,
+        patch=fbm(pts[:, 0], pts[:, 1] * 0, pts[:, 2], WORLD_SEED + 11, 5.5, 2),
+        tilt=tilt, level=np.clip((16 - tilt) / 8, 0, 1), foot=np.clip(1 - (clear + 0.5) / 1.2, 0, 1),
+        shore=np.nan_to_num(np.clip((wet_by + 0.22 + rag * 0.08) / 0.22, 0, 1), nan=0.0),
+        damp=np.nan_to_num(np.clip(1 + wet_by / 1.0, 0, 1) * (wet_by < 0), nan=0.0))
+    # ---- by rule: the room's word, or the word of the air piece a span is in (eased from one to the next over a metre)
+    words = [rule_word(next(iter(piece.values()))) for piece in D['air']]
+    said = sorted(set(words) | {rule_word()})
+    if len(said) == 1:
+        share = {said[0]: 1.0}
+    else:
+        near = ndi.distance_transform_edt(OWNER < 0, return_distances=False, return_indices=True)
+        whose = np.array([said.index(w) for w in words])[OWNER[tuple(near)]]          # every cell: the rule of the air nearest it
+        share = {w: at_field(ndi.gaussian_filter((whose == n).astype(np.float32), 1.5), pts + up * 0.4) for n, w in enumerate(said)}
+        tot = sum(share.values()) + 1e-6
+        share = {w: v / tot for w, v in share.items()}
+    amt = {name: np.zeros(len(pts), np.float32) for name in GROUNDS}
+    for w in said:
+        for name, v in RULES[w](f).items():
+            amt[name] += share[w] * v
+    # ---- by hand, over the rule's: each entry over what lay there before it (a water's bed and shore stay the water's own)
+    for piece in D.get('paint', []):
+        (kind, s), = piece.items()
+        if kind != 'stone' and kind not in GROUNDS:
+            raise SystemExit(f'no such ground to paint: {kind} (GROUNDS has: {", ".join(GROUNDS)}; "stone": the bare floor)')
+        a = lies_on(kind, s, rag) * (1 - f['shore'])
+        for name in amt:
+            amt[name] = np.maximum(amt[name], a) if name == kind else amt[name] * (1 - a)
+    # ---- baked: each kind the room has takes a byte of every span; what is underfoot (the topmost kind there)
+    used = [name for name in GROUNDS if (amt[name] * ~slab).max() > 0.3]
+    if len(used) > 7:
+        raise SystemExit(f'this room has {len(used)} kinds of ground ({", ".join(used)}): a floor\'s paint holds 7')
+    top = np.zeros(len(pts), np.uint8); topk = np.full(len(pts), -1)
+    for ch, name in enumerate(used):
+        g = GROUNDS[name]
+        (paint if ch < 3 else paint2)[where, ch if ch < 3 else ch - 3] = np.where(slab, 0, np.clip(amt[name], 0, 1) * 255)
+        KINDS.append({'name': name, 'picture': g['picture'], 'tile': g['tile'], 'tint': g['tint'], **({'grey': g['grey']} if 'grey' in g else {}),
+                      'ragged': g['ragged'], 'step': g['step'], 'at': ch})
+        on = (amt[name] > 0.5) & ~slab
+        top[on] = STEPS.index(g['step']); topk[on] = ch
     paint[where, 3] = np.where(slab, 150, 0)
+    step[where] = top
+    nat = max(int((~slab).sum()), 1)
+    log(f"ground ({', '.join(said)}): " + ', '.join([f"{k['name']} {100 * (topk == k['at']).sum() / nat:.0f} %" for k in KINDS] + [f"bare stone {100 * ((topk < 0) & ~slab).sum() / nat:.0f} %"]))
 log(f'floor: {NX} x {NZ} columns, up to {K} spans a column ({len(pts)} spans)')
 
 # ---------------------------------------------------------------- the light in the air: 1 m cells
@@ -828,7 +973,8 @@ light8 = np.zeros((len(verts), 4), np.uint8); light8[:, :3] = np.clip(light / LI
 info8 = np.zeros((len(verts), 4), np.uint8); info8[:, 0] = built * 255; info8[:, 1] = open_to * 255; info8[:, 2] = step_along * 255; info8[:, 3] = step_is * 255
 mesh = {'vertices': int(len(verts)), 'indices': int(faces.size), 'pos': put(verts), 'nrm': put(nrm8), 'light': put(light8), 'info': put(info8),
         'idx': put(faces.astype(np.uint32).reshape(-1))}
-floor = {'nx': NX, 'nz': NZ, 'x0': X0, 'z0': Z0, 'cell': CELL, 'layers': K, 'floor': put(fl_map), 'ceil': put(ce_map), 'paint': put(paint)}
+floor = {'nx': NX, 'nz': NZ, 'x0': X0, 'z0': Z0, 'cell': CELL, 'layers': K, 'floor': put(fl_map), 'ceil': put(ce_map), 'paint': put(paint),
+         **({'paint2': put(paint2)} if len(KINDS) > 3 else {}), 'kinds': KINDS, 'step': put(step), 'steps': STEPS}
 water = None
 if WT:
     floor['water'] = put(water_map)
@@ -849,7 +995,7 @@ out = {
     'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE, **({'water': water} if water else {})},
     'bounds': [X0, Y0, Z0, X1, Y1, Z1], 'ambient': [float(v) for v in AMBIENT], 'lamps': LAMPS,
     'water': D.get('water', 'clear'), 'falls': [{'lip': list(a), 'foot': list(b), 'wide': w} for a, b, w, _ in FALLS],
-    'look': D.get('look', {}), 'land': D.get('land', 'rolling'), 'mouths': MOUTHS,
+    'look': D.get('look', {}), 'land': D.get('land', 'rolling'), 'ground': D.get('ground', 'cave'), 'mouths': MOUTHS,
     'spawn': stand(D['spawn']), 'places': [stand(p) for p in D.get('places', [])],
 }
 os.makedirs(os.path.join(ROOT, 'assets', 'caves'), exist_ok=True)

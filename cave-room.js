@@ -11,12 +11,13 @@
    As the hill village is laid out by one file from one description, so is every room of the caves from here on (the
    user: "ตอนนี้ต้องวางระบบไว้ก่อน เหมือนที่เราวางระบบ heightmap hill village"): a room is its description
    (tools/cave-rooms/NAME.json), baked by the one tool, and built here by the kit's parts, each with one job:
-     cave-ground.js   its rock, its laid stone, what lies on its floors (floors over one another too)
+     cave-ground.js   its rock, its laid stone, what lies on its floors: whatever kinds of ground the bake lists
+                      (floors over one another too)
      cave-water.js    its water: pools, streams, falls
      cave-light.js    its light on her and on plants (a picture of the air)
      cave-level.js    where she may stand, climb, wade, swim; her camera
-     (to come, the kit's next pieces: its air and things — mist by storey, lamps that wake, crystals, mushrooms, fangs,
-     ruins' pieces; its map with a picture a storey)
+     (to come, the kit's next pieces: its grass; its air and things — mist by storey, lamps that wake, crystals,
+     mushrooms, fangs, ruins' pieces; its map with a picture a storey)
    This file itself: reads the bake, makes the rock's mesh, and shows where each lamp hangs (a soft light in the air:
    the lamps' light on the rock is baked). The three rooms made before the kit (fang-hall.js, cave-hall.js, boss-hall.js)
    are as they were, each with its own code: to be made anew on the kit.
@@ -41,10 +42,13 @@ export async function createCaveRoom({ name = 'test', base = './assets/caves/', 
   const group = new THREE.Group();
   group.name = 'cave-room-' + L.name;
 
-  // ---- what cave-level.js reads: the floor map (spans; the water over them), and the light in the air
+  // ---- what cave-level.js and cave-ground.js read: the floor map (spans; what lies on them; what is underfoot; the
+  // water over them), and the light in the air
   const floorMap = {
     nx: F.nx, nz: F.nz, x0: F.x0, z0: F.z0, cell: F.cell, layers: F.layers || 1, bare: 'stone',     // (her steps where no paint lies)
     fl: new Int16Array(bin, F.floor, spans), ce: new Int16Array(bin, F.ceil, spans), paint: new Uint8Array(bin, F.paint, spans * 4),
+    kinds: F.kinds || [], ...(F.paint2 !== undefined ? { paint2: new Uint8Array(bin, F.paint2, spans * 4) } : {}),
+    ...(F.step !== undefined ? { step: new Uint8Array(bin, F.step, spans), steps: F.steps } : {}),
     ...(F.water !== undefined ? { water: new Int16Array(bin, F.water, spans) } : {}),
   };
   const light = createCaveLight({ volume: { data: new Uint8Array(bin, V.data, V.nx * V.ny * V.nz * 4), nx: V.nx, ny: V.ny, nz: V.nz, x0: V.x0, y0: V.y0, z0: V.z0, cell: V.cell }, scale: B.lightScale });
@@ -95,7 +99,7 @@ export async function createCaveRoom({ name = 'test', base = './assets/caves/', 
   return {
     group, light, layout: L, rock, glow, water, floorMap, colliders: (L.colliders || []).map((c) => c.slice()), crowns: [], trunks: [],
     look, fogColor: floorPaint.fogColor, name: L.name,
-    stats: { vertices: M.vertices, triangles: M.indices / 3, layers: floorMap.layers, lamps: lamps.length, water: B.water ? B.water.indices / 3 : 0 },
+    stats: { vertices: M.vertices, triangles: M.indices / 3, layers: floorMap.layers, lamps: lamps.length, water: B.water ? B.water.indices / 3 : 0, ground: floorPaint.kinds },
     ...(water ? { ripple: (x, y, z, strength, radius, mode) => water.ripple(x, y, z, strength, radius, mode) } : {}),
     update(dt) { clock += dt; if (glow) glow.material.size = 1.5 + 0.08 * Math.sin(clock * 1.7); if (water) water.update(dt); },
     dispose() { g.dispose(); floorPaint.dispose(); light.dispose(); if (water) water.dispose(); if (glow) { glow.geometry.dispose(); glow.material.map.dispose(); glow.material.dispose(); } },

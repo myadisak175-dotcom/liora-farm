@@ -9,11 +9,12 @@
 //   4. The kit's rooms (tools/make-cave-room.py): every place of a room stands on ground at its own height, every way of
 //      stone in its description is walked from end to end with her feet on its line, her camera at every place's height;
 //      every piece of its land and every waterway does what its kind promises (PIECES, below: a new kind gets its line
-//      there), and she stands level at every mouth.
+//      there), and she stands level at every mouth; its ground: every kind on its floors has a picture and a sound for
+//      her steps, and every thing painted by hand lies on top where it was drawn (and sounds as its kind does).
 // Run it after changing cave-level.js, and after baking a room (one of the first three: its name is in ROOMS; a room of
 // the kit: add its name to KIT).
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createCaveLevel } from '../cave-level.js';
@@ -31,6 +32,8 @@ function loadRoom(name) {
   const bin = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), F = L.bin.floor, n = F.nx * F.nz * (F.layers || 1);
   const floorMap = { nx: F.nx, nz: F.nz, x0: F.x0, z0: F.z0, cell: F.cell, layers: F.layers,
     fl: new Int16Array(bin, F.floor, n), ce: new Int16Array(bin, F.ceil, n), paint: new Uint8Array(bin, F.paint, n * 4),
+    kinds: F.kinds || [], ...(F.paint2 !== undefined ? { paint2: new Uint8Array(bin, F.paint2, n * 4) } : {}),
+    ...(F.step !== undefined ? { step: new Uint8Array(bin, F.step, n), steps: F.steps } : {}),
     ...(F.water !== undefined ? { water: new Int16Array(bin, F.water, n) } : {}) };
   return { floorMap, layout: L, colliders: [], trunks: [], crowns: [] };
 }
@@ -318,6 +321,44 @@ const PIECES = {
     return [(hi <= 0 || most > 0.6 * hi) && (lo >= 0 || least < 0.6 * lo), `the ground under its picture from ${least.toFixed(2)} to ${most.toFixed(2)} m over the floor (drawn ${lo} to ${hi})`];
   },
 };
+// what lies on top at a spot of a kit room's floor (tools/make-cave-room.py, GROUNDS): the last of the room's kinds with
+// more than half there; 'stone': none (the bare floor, or laid stone)
+const groundAt = (M, x, z, y) => {
+  const i = Math.round((x - M.x0) / M.cell), j = Math.round((z - M.z0) / M.cell), n = M.nx * M.nz;
+  if (i < 0 || j < 0 || i >= M.nx || j >= M.nz) return 'stone';
+  let q = i * M.nz + j;
+  if (M.fl[q] === NONE) return 'stone';
+  for (let r = q + n; r < n * (M.layers || 1) && M.fl[r] !== NONE && M.fl[r] / 100 <= y + 0.6; r += n) q = r;
+  let top = 'stone';
+  for (const k of M.kinds) if ((k.at < 3 ? M.paint[q * 4 + k.at] : M.paint2[q * 4 + k.at - 3]) > 128) top = k.name;
+  return top;
+};
+// the spots a thing painted by hand should lie on (tools/make-cave-room.py, "paint"): [x, y, z], well inside its edge
+const paintedSpots = (s) => {
+  const out = [];
+  if (s.path) {
+    for (let i = 1; i < s.path.length; i++) {
+      const a = s.path[i - 1], b = s.path[i], run = Math.hypot(b[0] - a[0], b[2] - a[2]);
+      for (let u = 0.3; u <= run - 0.3; u += 0.3) { const t = u / run; out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]); }
+    }
+  } else if (s.outline) {
+    const o = s.outline, xs = o.map((p) => p[0]), zs = o.map((p) => p[1]);
+    const toEdge = (x, z) => o.reduce((m, a, i) => {                      // (how far from the outline's nearest side)
+      const b = o[(i + 1) % o.length], dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz)));
+      return Math.min(m, Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz));
+    }, 1e9);
+    for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.4) for (let z = Math.min(...zs); z <= Math.max(...zs); z += 0.4) {
+      if (inOutline(o, x, z) && toEdge(x, z) >= 0.45) out.push([x, s.floor, z]);
+    }
+  } else if (s.picture) {
+    for (let x = s.at[0]; x <= s.at[0] + s.size[0]; x += 0.4) for (let z = s.at[1]; z <= s.at[1] + s.size[1]; z += 0.4) out.push([x, s.floor, z]);
+  } else if (s.at) {
+    const [rx, rz] = Array.isArray(s.r) ? s.r : [s.r, s.r];
+    for (let x = s.at[0] - rx; x <= s.at[0] + rx; x += 0.4) for (let z = s.at[1] - rz; z <= s.at[1] + rz; z += 0.4) if (Math.hypot((x - s.at[0]) / rx, (z - s.at[1]) / rz) < 0.7) out.push([x, s.floor, z]);
+  }
+  return out;
+};
+const SOUNDS = ['stone', 'earth', 'grass', 'sand', 'wood', 'water'];       // (step-sounds.js' grounds)
 for (const name of KIT) {
   const hall = loadRoom(name), level = createCaveLevel(hall), L = hall.layout;
   const D = JSON.parse(readFileSync(join(ROOT, 'tools/cave-rooms', name + '.json'), 'utf8'));
@@ -354,6 +395,30 @@ for (const name of KIT) {
     const [kept, words] = PIECES[kind](d, level);
     check(`${name}: water ${n + 1}, a ${kind}`, kept, words);
   });
+  // the ground: the room's kinds each have a picture and a sound; every thing painted by hand lies where it was drawn
+  {
+    const M = hall.floorMap, noPic = M.kinds.filter((k) => !existsSync(join(ROOT, 'assets/ground', k.picture))).map((k) => k.name);
+    const noStep = M.kinds.filter((k) => !SOUNDS.includes(k.step) || !(M.steps || []).includes(k.step)).map((k) => k.name);
+    check(`${name}: ground "${L.ground}", ${M.kinds.length} kinds on its floors`, M.kinds.length <= 7 && noPic.length === 0 && noStep.length === 0 && !!M.step,
+      M.kinds.map((k) => `${k.name} (${k.step})`).join(', ') + (noPic.length ? '; no picture: ' + noPic.join(', ') : '') + (noStep.length ? '; no sound: ' + noStep.join(', ') : ''));
+    (D.paint || []).forEach((piece, n) => {
+      const [kind, d] = Object.entries(piece)[0], step = kind === 'stone' ? 'stone' : (M.kinds.find((k) => k.name === kind) || {}).step;
+      // (looked for on dry natural ground it reaches: a water's bed and shore are the water's own, laid stone is stone)
+      let on = 0, sound = 0, natural = 0;
+      for (const [x, y, z] of paintedSpots(d)) {
+        if (level.footing(x, z, y) !== 'ground' || level.waterDepthAt(x, z, y) > 0) continue;
+        const h = level.standAt(x, z, y);
+        if (Math.abs(h - y) >= (d.reach || 1.5)) continue;
+        const top = groundAt(M, x, z, h);
+        if (top === 'sand' && kind !== 'sand') continue;                 // (a shore)
+        natural++;
+        if (top === kind) { on++; if (level.surfaceAt(x, z, h) === step) sound++; }
+      }
+      const where = d.path ? 'along a line' : d.outline ? 'in an outline' : d.picture ? 'from a picture' : 'a patch';
+      const kept = sound === on && (d.picture ? on >= 6 : natural >= 3 && on >= 0.6 * natural);      // (a picture: wherever it is white; 6 spots: a square metre)
+      check(`${name}: paint ${n + 1}, ${kind} ${where}`, kept, `${kind} on top at ${on} of ${natural} spots ${d.picture ? 'under its picture' : 'inside it'}, her steps there: ${step || '?'}`);
+    });
+  }
   (D.mouths || []).forEach((m) => {
     const a = (m.toward || 0) * Math.PI / 180, x = m.at[0] - 1.2 * Math.cos(a), z = m.at[2] - 1.2 * Math.sin(a), h = level.standAt(x, z, m.at[1]);
     check(`${name}: mouth "${m.name}"`, level.footing(x, z, m.at[1]) === 'ground' && Math.abs(h - m.at[1]) < 0.1, `she stands level in it, at ${h.toFixed(2)} (drawn ${m.at[1]})`);
