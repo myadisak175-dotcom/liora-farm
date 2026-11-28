@@ -1,5 +1,6 @@
 /* ==========================================================================
-   old-farm.js  —  the hero's old farm round her farm (a trial, ?oldfarm=1): what he left there, a hundred years on
+   old-farm.js  —  the hero's old farm round her farm (in the game for good since 28 Nov 2026; ?oldfarm=0: none; a trial
+   behind ?oldfarm=1 before): what he left there, a hundred years on
 
    The user, 27 Nov 2026: "ไม่มีแปลงผัก ไม่มีบ้าน ไม่มีรั้ว ไม่มีอะไรเลยเหรอ เริ่มเกมตัวเปล่า" - so the farm she finds is
    his, run down, not an empty field: his cottage west of it (its roof fallen in on the side toward the farm, the rafters
@@ -254,7 +255,7 @@ export function createOldFarm({ farm, heightAt: H }) {
   const key = ([i, j]) => i + ',' + j;
   const clear = [[12, 7], [13, 7], [12, 8], [13, 8], [14, 8]].map(key);    // round where she starts
   const blocked = { [key(SEED)]: 'มีอะไรบางอย่างฝังอยู่ตรงนี้… ยังไม่ต้องขุด', [key(SCARE)]: 'หุ่นไล่กาตัวเก่ายืนอยู่ตรงนี้' };
-  const fresh = new URLSearchParams(location.search).get('oldfarm') === 'new';
+  const q = new URLSearchParams(location.search), fresh = q.get('oldfarm') === 'new' || q.get('farm') === 'new';      // (the farm from the start again)
   const tools = { saveKey: 'liora.oldfarm.v1', fresh, beds, clear, blocked };
 
   // where the land's ferns and tufts should not come up through what he built: [x, z, radius]
