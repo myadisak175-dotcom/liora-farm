@@ -16,9 +16,12 @@
 #   5. bushes and trees (a shadow, a crown, a light on it), the crystals, the crystals across the ways in and on.
 #
 #   python3 tools/make-cave-map.py            (Termux: pip install numpy scipy pillow)
+#   python3 tools/make-cave-map.py fang-hall  the fang hall's (room ①, tools/make-fang-hall.py): assets/maps/fang-hall-map.*,
+#                                             its floor bare stone (moss where the daylight or a crystal's glow reaches), the
+#                                             daylight at the mouth, the stalagmites, the curtain of the fall at the ledge
 #
 # To change its look: PPM (pixels to a metre), MARGIN (rock shown round the hall), COL.
-import json
+import json, sys
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
@@ -26,7 +29,8 @@ from scipy import ndimage as ndi
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC, OUT = ROOT / 'assets/caves', ROOT / 'assets/maps'
-NAME = 'cave-hall-map'
+HALL = sys.argv[1] if len(sys.argv) > 1 else 'cave-hall'
+NAME = HALL + '-map'
 PPM, MARGIN, SS = 10, 3.0, 2                       # pixels to a metre; metres of rock shown round the hall; drawn this much larger, then made small
 COL = {
     'rock_out': '#2b3940', 'rock_out2': '#36474f', 'edge': '#18232a', 'wall_in': '#56666c',
@@ -38,11 +42,13 @@ COL = {
              'sapling': ('#78bb44', '#a5d75f')},
     'tree_r': {'oak': 2.5, 'broadleaf': 2.3, 'birch': 1.5, 'bush': 0.8, 'sapling': 1.2}, 'shadow': (10, 20, 15, 90),
 }
+if HALL == 'fang-hall':                            # bare stone underfoot; the paint's third: moss; the daylight at the mouth
+    COL.update({'floor_low': '#6f7e86', 'floor_high': '#b9c2c2', 'leaves': '#6e9a48', 'sun': '#eaf6ff', 'rock_out': '#26313a', 'rock_out2': '#303c46'})
 rgb = lambda c: np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)], float)
 sm = lambda a, b, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - a) / (b - a), 0, 1))
 
-J = json.loads((SRC / 'cave-hall.json').read_text())
-B = (SRC / 'cave-hall.bin').read_bytes()
+J = json.loads((SRC / f'{HALL}.json').read_text())
+B = (SRC / f'{HALL}.bin').read_bytes()
 F = J['bin']['floor']; nx, nz, cell, fx0, fz0 = F['nx'], F['nz'], F['cell'], F['x0'], F['z0']
 fl = np.frombuffer(B, '<i2', nx * nz, F['floor']).reshape(nx, nz).astype(float)
 ce = np.frombuffer(B, '<i2', nx * nz, F['ceil']).reshape(nx, nz).astype(float)
@@ -74,7 +80,7 @@ m = 1 / K
 dz, dx = np.gradient(ndi.gaussian_filter(h, 1.4), m)
 slope = np.hypot(dx, dz)
 light = np.clip(1.0 + (dx * 0.62 + dz * 0.62) * 0.5, 0.55, 1.35)              # lit from the north-west: a face that falls toward the south-east is in shade
-high = sm(-1.0, 12.0, h)
+high = sm(-1.0, 12.0, h) if HALL != 'fang-hall' else sm(-11.5, -6.5, h)
 img = rgb(COL['floor_low']) * (1 - high[..., None]) + rgb(COL['floor_high']) * high[..., None]
 img *= (0.94 + 0.12 * drift)[..., None]
 face = sm(0.6, 1.1, slope)[..., None]
@@ -116,8 +122,14 @@ for grow, colour in ((0.35, COL['water_edge']), (0.0, COL['water']), (-1.6, COL[
     n = int(round(abs(grow) * K)); msk = ndi.binary_dilation(basin, iterations=n) if grow > 0 else ndi.binary_erosion(basin, iterations=n) if grow < 0 else basin
     canvas.paste(colour, (0, 0), Image.fromarray((msk * 255).astype(np.uint8)))
 d = ImageDraw.Draw(canvas)
-t = J['trickle']['bottom']; cx, cy = Pt(t[0], t[2]); r = 0.6 * K
-d.ellipse([cx - r, cy - r, cx + r, cy + r], fill='#ffffff')                   # foam where the thin fall from the crack lands
+if 'trickle' in J:
+    t = J['trickle']['bottom']; cx, cy = Pt(t[0], t[2]); r = 0.6 * K
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill='#ffffff')               # foam where the thin fall from the crack lands
+if 'curtain' in J:                                                            # the curtain of the fall, at the ledge's edge
+    c = J['curtain']; foot = c['rows'][-1]; ax, az = c['across'][0], c['across'][2]
+    a_, b_ = Pt(foot[0] - ax * c['half'], foot[2] - az * c['half']), Pt(foot[0] + ax * c['half'], foot[2] + az * c['half'])
+    d.line([a_, b_], fill='#f4fbff', width=int(0.9 * K))
+    d.line([a_, b_], fill='#b9e3f5', width=int(0.35 * K))
 
 # ---- 5. bushes and trees (shadows first, all of them), the crystals, the ways closed
 shade = Image.new('RGBA', canvas.size, (0, 0, 0, 0)); ds = ImageDraw.Draw(shade)
@@ -138,6 +150,11 @@ def diamond(x, z, s, fill, outline):
     d.polygon([(cx, cy - b), (cx + a, cy), (cx, cy + b), (cx - a, cy)], fill=fill, outline=outline)
 
 
+for f in J.get('fangs', []):                                                  # the stalagmites (fangs rising from the floor)
+    if not f.get('up'): continue
+    cx, cy = Pt(f['x'], f['z']); r = max(0.35, f['r'] * 0.9) * K
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill='#d9d2c2', outline='#5b5a55', width=max(1, int(0.12 * K)))
+    d.ellipse([cx - r * 0.45, cy - r * 0.45, cx + r * 0.1, cy + r * 0.1], fill='#f4f0e6')
 for c in J['crystals']:
     if c['kind'] == 'float': continue
     x, z = c['p'][0], c['p'][2]

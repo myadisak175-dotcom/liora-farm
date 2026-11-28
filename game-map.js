@@ -3,6 +3,7 @@
 
      const map = await createGameMap({ url: level.map, player, places, overlay: level.mapOverlay });      // places: teleportPlaces(level)
      every frame: map.update()
+     map.hidden = true      put away, and back (false)
 
    One job: show where she is on a picture of the land, and take her to a place she picks on it.
    The picture is painted from the level's own plan (tools/make-hill-village-map.py); its .json says which part of the
@@ -162,6 +163,9 @@ export async function createGameMap({ url, player, places = [], onGo = null, ove
   return {
     info, open, close,
     get isOpen() { return full.classList.contains('open'); },
+    // put away (the small map gone, the whole map shut) and back: the game's dungeon shows its own map in the village's place
+    get hidden() { return mini.hidden; },
+    set hidden(v) { mini.hidden = !!v; if (v) close(); },
     // every frame: the land slides under her on the small map; her arrow turns on both (only when something has changed)
     update() {
       const now = player.position.x.toFixed(1) + ',' + player.position.z.toFixed(1) + ',' + player.heading.toFixed(2) + ',' + player.camYaw.toFixed(2);

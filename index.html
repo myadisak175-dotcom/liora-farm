@@ -139,6 +139,9 @@
   body.sound #weightBtn { top: 390px; }
   body.sound:not(.dev) #weightBtn { top: 366px; }
   #loading small { position:absolute; bottom:max(12px, env(safe-area-inset-bottom)); left:12px; right:12px; text-align:center; font-size:10px; color:#8aa070; }
+  /* ?cave=1, in the dungeon (dungeon-in-game.js): the village's own tools put away while she is in there (the map is the cave's) */
+  body.in-cave :is(#timeBtn, #timeRun, #tpBtn, #tpSheet, #warpBtn, #warpSheet, #charBtn, #charSheet, #editBtn, #rockEditBtn, #placeEditBtn, #pathBrushBtn,
+    #foliageEditBtn, #farmTools, #farmSay, #worldBtn, #curseBtn, #curseTuner, #weightBtn, #style, #tune, #skyBtn, #tuner, #skyTuner, #waterView, #splashTest, #animeBtn, #hint) { display: none !important; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -168,6 +171,13 @@
   "./farm-tools.js": "./farm-tools.js?v=2",
   "./old-farm.js": "./old-farm.js?v=1",
   "./sky-islands.js": "./sky-islands.js?v=1",
+  "./cave-mouth.js": "./cave-mouth.js?v=2",
+  "./dungeon-in-game.js": "./dungeon-in-game.js?v=1",
+  "./fang-hall.js": "./fang-hall.js?v=2",
+  "./fang-hall-sounds.js": "./fang-hall-sounds.js?v=2",
+  "./boss-hall-sounds.js": "./boss-hall-sounds.js?v=8",
+  "./cave-level.js": "./cave-level.js?v=1",
+  "./cave-light.js": "./cave-light.js?v=2",
   "./west-fringe.js": "./west-fringe.js?v=7",
   "./west-fringe-water.js": "./west-fringe-water.js?v=1",
   "./plant-boss.js": "./plant-boss.js?v=3",
@@ -219,7 +229,7 @@
   "./valley-level.js": "./valley-level.js?v=skin2j1rocks2o1t4",
   "./depths-level.js": "./depths-level.js?v=2j1rocks1t4",
   "./teleport-menu.js": "./teleport-menu.js?v=19",
-  "./game-map.js": "./game-map.js?v=2",
+  "./game-map.js": "./game-map.js?v=3",
   "./warp-ui.js": "./warp-ui.js?v=2j1",
   "./valley-edits.js": "./valley-edits.js?v=1",
   "./scene-editor.js": "./scene-editor.js?v=2",
@@ -255,7 +265,7 @@
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=4",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
-  "./step-sounds.js": "./step-sounds.js?v=15",
+  "./step-sounds.js": "./step-sounds.js?v=18",
   "./ambience.js": "./ambience.js?v=8",
   "./ambience-places.js": "./ambience-places.js?v=7",
   "./music.js": "./music.js?v=6",
@@ -432,6 +442,14 @@ const MAP = Q.get('map') || 'hillvillage';      // the game's map is the hill vi
 const buildLevel = { valley: buildValleyLevel, meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel, rocks: buildRocksLevel, blockout: buildBlockoutLevel, pit: buildPitLevel, village: buildVillageLevel, hillvillage: buildHillVillageLevel }[MAP] || buildHillVillageLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone); ?map=rocks: the rock test map; ?map=village: the terraced village island; ?map=hillvillage: the hill village on a heightmap, its houses from the building kit (&look=flat: in flat colours; &cliff=strata: its cliffs in the valley's strata, not painted)
 const level = await buildLevel({ layer: +Q.get('layer') || 1, far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000, sun: sky.userData.sun ? sky.userData.sun.toArray() : undefined });
 scene.add(level.group);
+// ---- 🕳 ?cave=1 (a trial): the dungeon's mouth behind the big fall's middle strand (cave-mouth.js): a ledge between the ribs
+// of rock there, the dark of a cave behind it; walking into the dark she is in the dungeon, in this page (dungeon-in-game.js,
+// below), and coming out of it she is on the ledge again. Made here, before her: the ledge is the level's ground, and while she
+// is in the dungeon the level she plays on is the cave's (through the mouth). Without it nothing of it is loaded
+const caveMouth = Q.has('cave') && Q.get('cave') !== '0' && MAP === 'hillvillage'
+  ? await (await import('./cave-mouth.js')).createCaveMouth({ level })
+  : null;
+if (caveMouth) scene.add(caveMouth.group);
 if (level.horizon && level.horizon.layers) {             // a map with far hills of its own (the hill village: mountains with snow on them) in place of the usual ones
   const old = scene.getObjectByName('distantMountains');
   if (old) { scene.remove(old); old.userData.dispose(); }
@@ -656,7 +674,7 @@ if (skyIslands) { scene.add(skyIslands.object); player.setView(level.spawn.yaw -
 // not load, the game goes on without it
 let sprite = null;
 if (Q.get('sprite') !== '0') {
-  try { sprite = await (await import('./sprite-companion.js')).createSpriteCompanion({ level, scene, player }); }
+  try { sprite = await (await import('./sprite-companion.js')).createSpriteCompanion({ level: caveMouth ? caveMouth.floating : level, scene, player }); }      // (?cave=1: over the cave's floor too, cave-mouth.js)
   catch (err) { console.warn('[sprite]', err); }
 }
 // ---- 👩 ?npc=1 (a trial): the first NPC (npc.js), from a model the user sent: she tends the west fields of the hill village,
@@ -1045,6 +1063,16 @@ if (typeof level.map === 'string') try {                    // (only a level tha
 } catch (err) { console.warn('[map]', err); }
 // ---- 🌀 warp stones: by one, a button offers the others (the rim of the abyss and the stones down it)
 const warpUI = createWarpUI({ level, player });
+// ---- 🕳 ?cave=1: the dungeon in the game (dungeon-in-game.js): its first room, the fang hall, loaded into this page as she
+// comes near the big fall (its files only: some 4 MB), built behind a moment of dark the first time she walks into the dark
+// behind the fall, then kept; she, the sprite and her spells' light go in and out of it, and this page draws it instead of
+// the village while she is in there (frame, below). Out onto the ledge, the village at once
+const dungeon = caveMouth ? (await import('./dungeon-in-game.js')).createDungeonInGame({
+  renderer, camera, village: scene, player, mouth: caveMouth, sprite, sounds, shadows, map: gameMap,
+  carry: [player.object, circles.object, spellKit && spellKit.comboFx.object, spellKit && spellKit.rainFx && spellKit.rainFx.object, blinkKit && blinkKit.fx.object].filter(Boolean),
+  night: [circles, spellKit && spellKit.comboFx, spellKit && spellKit.rainFx, blinkKit && blinkKit.fx].filter(Boolean),
+  airVolume: () => (air ? air.volume : soundVol),
+}) : null;
 const farHills = scene.getObjectByName('distantMountains'); let lastZone = -1;
 if (farHills && level.horizon) { farHills.position.set(level.horizon.center[0], 0, level.horizon.center[1]); farHills.scale.setScalar(level.horizon.scale); }      // a long map: the far hills stand round its middle, further out
 
@@ -1055,10 +1083,41 @@ const clock = new THREE.Clock();
 let moved = false;
 // an editor is open (the scene's, the rocks', move-things, the path brush): its own camera, and its own pace (below)
 const editing = () => !!((sceneEditor && sceneEditor.active) || (rockEditor && rockEditor.active) || (placeEditor && placeEditor.active) || (foliageEditor && foliageEditor.active) || (pathBrush && pathBrush.active));
+// the piece of music the hour calls for (or the curse's), music.js
+const musicWhen = () => (level.heard && level.heard.cursed ? 'curse' : (tod ? tod.daylight : 1) > 0.5 ? 'day' : 'night');
+// a frame drawn (the village's scene, or the dungeon's), and counted for the readout (?dev=1)
+function drawFrame(what, dt, raw) {
+  const d0 = performance.now();
+  renderer.render(what, camera);
+  drawT.push(performance.now() - d0);
+  gpuFence(fenceKind); fenceKind = 'f';                                          // (?dev=1: when the GPU has done this frame, for the readout)
+  drawn = [renderer.info.render.calls, renderer.info.render.triangles]; if (!measuring) renderer.info.reset();      // (every pass of the frame: autoReset is off, below; ?measure counts its own)
+  if (editing()) { fpsN = 0; fpsT = 0; rawT = 0; gapT.length = 0; workT.length = 0; drawT.length = 0; } else tune(dt, raw);      // (an editor draws fewer frames on purpose: not counted)
+}
+// ?cave=1, in the dungeon (dungeon-in-game.js): her, the sprite, the circles and her spells' light, and the room; none of the
+// village is worked out or drawn meanwhile. Its air is let down to nothing (the room's own is heard: the fall from behind,
+// the cave's water, the drops), the music goes on, let down by the fall as it is out here
+function caveFrame(dt, raw) {
+  player.update(dt);
+  A.updateAnimals(dt);                                                    // (the sprite with her)
+  circles.update(dt, camera);
+  if (blinkKit) {
+    blinkKit.fx.update(dt, camera);
+    if (blinkKit.heard && sounds && blinkKit.heard.volume !== sounds.volume) blinkKit.heard.volume = sounds.volume;
+    if (blinkBtn) blinkBtn.classList.toggle('wait', !blinkKit.blink.ready);
+  }
+  if (rainBtn && player.spells) rainBtn.classList.toggle('on', player.spells.skyReady);
+  dungeon.update(dt);                                                     // (the room, its sounds, her camera kept in it, the way out)
+  if (music) music.update(dt, { when: musicWhen(), drowned: dungeon.drowned });
+  if (air) { air.under = 1; air.update(dt, player.position, { daylight: tod ? tod.daylight : 1, speed: 0, mode: player.mode }); }
+  drawFrame(dungeon.scene, dt, raw);
+}
 const frame = (dt = clock.getDelta()) => {
   const raw = Math.max(dt, 0);                       // (how long the frame really took: the tuner counts the hitches)
   dt = Math.min(raw, 0.05);
   if (dprDue) { dprDue = false; renderer.setPixelRatio(renderDPR); fit(); }
+  if (dungeon && dungeon.busy) return;               // (?cave=1, going in or coming out: the screen is dark, nothing is drawn)
+  if (dungeon && dungeon.inside) { caveFrame(dt, raw); return; }
   N.update(dt);
   A.updateAnimals(dt);
   player.update(dt);
@@ -1107,6 +1166,7 @@ const frame = (dt = clock.getDelta()) => {
   }
   if (sky.userData.update) sky.userData.update(renderer, dt);
   if (skyIslands) skyIslands.update(dt);                                  // (?islands=1: their slow bobbing)
+  if (caveMouth) caveMouth.update(dt, player);                            // (?cave=1: near the fall the dungeon begins to load; walking into the dark behind it, she is in it)
   if (tod) tod.update(dt);
   if (shadows) shadows.update();
   if (curse) curse.update(renderer);
@@ -1114,16 +1174,11 @@ const frame = (dt = clock.getDelta()) => {
   if (air) air.update(dt, player.position, { daylight: tod ? tod.daylight : 1, speed: player.speed, mode: player.mode });      // (what is heard from where she stands, at this hour, and the grass she goes through)
   if (music) {      // (a piece by the hour, or none in the cursed land; the air let down under it, not by a waterfall)
     const drowned = air ? air.drowned : 0;
-    music.update(dt, { when: level.heard && level.heard.cursed ? 'curse' : (tod ? tod.daylight : 1) > 0.5 ? 'day' : 'night', drowned });
+    music.update(dt, { when: musicWhen(), drowned });
     if (air) air.under = music.under * (1 - drowned);
-  }
+  } else if (air && air.under) air.under = 0;                            // (?cave=1: as it was, out of the dungeon)
   level.update(renderer, dt, scene, camera);
-  const d0 = performance.now();
-  renderer.render(scene, camera);
-  drawT.push(performance.now() - d0);
-  gpuFence(fenceKind); fenceKind = 'f';                                          // (?dev=1: when the GPU has done this frame, for the readout)
-  drawn = [renderer.info.render.calls, renderer.info.render.triangles]; if (!measuring) renderer.info.reset();      // (every pass of the frame: autoReset is off, below; ?measure counts its own)
-  if (editing()) { fpsN = 0; fpsT = 0; rawT = 0; gapT.length = 0; workT.length = 0; drawT.length = 0; } else tune(dt, raw);      // (an editor draws fewer frames on purpose: not counted)
+  drawFrame(scene, dt, raw);
   if (!moved && player.speed > 0.5) { moved = true; setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 2500); }
 };
 // No more frames than the target. A 120 Hz screen calls this 120 times a second, and drawing every one of them is work the
@@ -1184,7 +1239,7 @@ barEl.style.width = '100%';
 document.getElementById('loading').style.opacity = 0;
 setTimeout(() => document.getElementById('loading').remove(), 700);
 if (measuring) (await import('./frame-measure.js')).createFrameMeasure({ frame, renderer, scene, camera, level, player, sky, charShadow, setDPR, dpr: () => renderDPR, sounds });
-window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, farmTools, sounds, air, music, soundSettings, pictureSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
+window.__game = { curse, bossTrial, spriteTrial, sprite, npcs, goblin, farmTools, caveMouth, dungeon, sounds, air, music, soundSettings, pictureSettings, spellKit, blinkKit, sceneEditor, rockEditor, placeEditor, foliageEditor, pathBrush, visitWater, THREE, N, scene, camera, renderer, level, player, get hero() { return hero; }, get vivi() { return hero; }, picker, frame, sky, shadows, tod, charShadow, warpUI, gameMap };
 </script>
 </body>
 </html>
