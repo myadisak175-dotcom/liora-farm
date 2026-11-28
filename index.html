@@ -163,14 +163,14 @@
   "./blockout-level.js": "./blockout-level.js?v=5",
   "./pit-level.js": "./pit-level.js?v=6",
   "./village-level.js": "./village-level.js?v=4",
-  "./hill-village-level.js": "./hill-village-level.js?v=78",
+  "./hill-village-level.js": "./hill-village-level.js?v=79",
   "./east-ruins.js": "./east-ruins.js?v=3",
   "./forest-floor.js": "./forest-floor.js?v=2",
   "./farm-soil.js": "./farm-soil.js?v=3",
   "./farm-debris.js": "./farm-debris.js?v=3",
   "./farm-tools.js": "./farm-tools.js?v=2",
-  "./old-farm.js": "./old-farm.js?v=1",
-  "./sky-islands.js": "./sky-islands.js?v=1",
+  "./old-farm.js": "./old-farm.js?v=2",
+  "./sky-islands.js": "./sky-islands.js?v=2",
   "./cave-mouth.js": "./cave-mouth.js?v=3",
   "./dungeon-in-game.js": "./dungeon-in-game.js?v=2",
   "./fang-hall.js": "./fang-hall.js?v=2",
@@ -580,12 +580,13 @@ if (weighs && player.setWeight) {
 }
 scene.add(player.object);
 level.addUnderwater(player.object);
-// ---- 🌱 her farm (a trial, ?farm=1): south of the road in, a step from where she starts, overgrown to begin with: cleared
-// with magic, dug, watered, rained on, given magic, the curse lifted off it (farm-tools.js: the tools, and the farm kept on
-// this device; ?farm=new: from the start again). Its ground and what lies on it are the level's (level.farm). Made before the
+// ---- 🌱 her farm, in the hero's old farm (in the game for good since 28 Nov 2026; ?oldfarm=0: neither, ?oldfarm=0&farm=1:
+// hers alone): south of the road in, where she starts, overgrown to begin with: cleared with magic, dug, watered, rained on,
+// given magic, the curse lifted off it (farm-tools.js: the tools, and the farm kept on this device; ?oldfarm=new or
+// ?farm=new: from the start again). Its ground and what lies on it are the level's (level.farm). Made before the
 // clouds' shade is given to the scene's materials (below), so its things have it; its splash is her spells' (or its own)
 if (level.farm) {
-  farmTools = await (await import('./farm-tools.js')).createFarmTools({ farm: level.farm, scene, player, camera, heightAt: level.heightAt, fx: spellKit ? spellKit.comboFx : null, ...(level.oldFarm ? level.oldFarm.tools : {}) });      // (?oldfarm=1: the hero's old farm begins it: its old beds dug, its own save)
+  farmTools = await (await import('./farm-tools.js')).createFarmTools({ farm: level.farm, scene, player, camera, heightAt: level.heightAt, fx: spellKit ? spellKit.comboFx : null, ...(level.oldFarm ? level.oldFarm.tools : {}) });      // (the hero's old farm begins it: its old beds dug, its own save)
 }
 // the jump button: pressed, not clicked (a click waits for the finger to lift). Space does the same on a keyboard (player.js)
 const jumpBtn = document.getElementById('jumpBtn');
