@@ -39,7 +39,8 @@
 //     level.ceilAt(x, z, y)          the roof over her: the lowest of her span's roof round where she is (in the air her
 //                                    head stops under it: player-moves.js). Under a bridge: the bridge's underside
 //     level.surfaceAt(x, z, y)       what is underfoot, for her steps (step-sounds.js): 'grass' (moss, fallen leaves: soft),
-//                                    'earth', 'sand', 'stone' (the faces, their edges, the stones' tops)
+//                                    'earth', 'sand', 'stone' (the faces, their edges, the stones' tops). Where no paint
+//                                    lies: floorMap.bare ('stone' in the kit's rooms, cave-room.js), else 'grass'
 //     level.confine(p, from)         a step onto a face or into a wall: along its edge, or stopped (the hill village's own)
 //     level.cameraReach(ox, oy, oz, dx, dy, dz, far)
 //                                    her camera (player-camera.js): how far it may go from (ox, oy, oz), over her shoulders,
@@ -119,6 +120,7 @@ export function createCaveLevel(hall) {
       near[q] = by;
     }
   }
+  const BARE = M.bare || 'grass';       // what is underfoot where no paint lies (the kit's rooms: 'stone'; the first three rooms' floors are moss)
   const pools = (L.pools || (L.pool ? [L.pool] : [])).map((p) => ({ x: p.c[0], z: p.c[1], r2: (p.r + 2.0) * (p.r + 2.0), level: p.level }));
 
   // the floor at a spot, from the four columns round it: those in the rock left out (the rest weighed as they are near)
@@ -198,6 +200,7 @@ export function createCaveLevel(hall) {
     if (p[k + 3] >= 128) return 'stone';
     if (p[k + 1] > 128) return 'sand';
     if (p[k] > 128) return 'earth';
+    if (p[k + 2] <= 128) return BARE;                   // (nothing lying on it: the room says what its floor is)
     return 'grass';                                     // (moss and fallen leaves: soft underfoot)
   };
   // a step she may not take (a face, a wall: player-moves.js asks once the land has had its say): along the edge with the
