@@ -238,23 +238,11 @@ export function createDungeonInGame({ renderer, camera, village, player, mouth, 
   mouth.onNear = () => { prepare(); };
   mouth.onEnter = () => { enter(); };
 
-  // ---- her camera is the game's; in here it is also kept under the roof, out of the rock, and this side of the falling
-  // water (beyond it nothing is made: it would hide her behind the curtain). As dungeon.html
-  const look = new THREE.Vector3(), ray = new THREE.Vector3(), lamp = new THREE.Vector3();
-  function keepCameraInAir() {
-    const p = player.position, h = (player.character && player.character.height) || 1.75;
-    look.set(p.x, p.y + h * 0.82, p.z);
-    ray.subVectors(camera.position, look);
-    const len = ray.length();
-    if (len < 1e-3) return;
-    ray.divideScalar(len);
-    let ok = len;
-    for (let t = 0.25; t <= len; t += 0.2) {
-      const x = look.x + ray.x * t, y = look.y + ray.y * t, z = look.z + ray.z * t;
-      if (y < level.heightAt(x, z) + 0.3 || y > level.ceilAt(x, z) - 0.4 || hall.inward(x, z) < hall.curtainAt(y) + 0.45) { ok = Math.max(0.35, t - 0.3); break; }
-    }
-    if (ok < len) camera.position.copy(look).addScaledVector(ray, ok);
-  }
+  // ---- her camera is the game's (player-camera.js): in here the room's level says how far it may go (cave-level.js:
+  // cameraReach, through the mouth), and the room draws thin what would hide her (hall.seeThrough: fangs, crystals). Until
+  // 28 Nov 2026 the camera was brought in here, after it had moved, to 0.35 m from her shoulders the moment its line met a
+  // fang's tip or came within a column of a wall: in her head, and jumping from frame to frame
+  const lamp = new THREE.Vector3();
   // the sprite's light: where its body is (or, without it, over her shoulder)
   function lampAt() {
     if (body) body.getWorldPosition(lamp); else lamp.set(player.position.x, player.position.y + 1.9, player.position.z);
@@ -279,7 +267,7 @@ export function createDungeonInGame({ renderer, camera, village, player, mouth, 
       if (renderer.getPixelRatio() !== ratio) hall.setPixelRatio(ratio = renderer.getPixelRatio());      // (the picture's setting changed meanwhile)
       N.setWalker(player.position, 0.55);
       hall.update(dt, camera);                              // (the plants' time and wind too: N.update)
-      keepCameraInAir();
+      hall.seeThrough(player.position, (player.character && player.character.height) || 1.75);
       lampAt();
       caveMap.update();
       if (heard) { heard.volume = airVolume(); heard.update(dt, camera); }
