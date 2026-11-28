@@ -14,6 +14,11 @@
      hall.curtainAt(y)      how far in the fall's line is at a height (it hangs further out lower down): her camera keeps
                             this side of it
      hall.setPixelRatio(r)  the renderer's pixel ratio changed (the glowworms are sized in pixels)
+     hall.seeThrough(p, h)  every frame: where she stands and how tall she is. What is thin and stands between the eye and
+                            her is drawn thinned out, in dots, along the way to her: the fangs (hanging, rising, the broken
+                            ones, the column) and the crystals; her camera goes past such things (cave-level.js:
+                            cameraReach), so without this a fang or a cluster of crystals hid her (her clip of 28 Nov 2026:
+                            a big crystal on a wall across her). seeThrough(null): nothing thinned
      onDrip(x, y, z)        a drop landing in the pool (the page's sounds)
 
    One job: build the room from what tools/make-fang-hall.py baked (assets/caves/fang-hall.bin + .json):
@@ -65,6 +70,20 @@ const NOISE = /* glsl */`
 float h2(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
 float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+`;
+// what stands between the eye and her, thinned out in dots (the fangs, the crystals): 1 drawn whole, 0 not at all. The way
+// kept clear is a cone from the eye (narrow) to her chest (uSee.w wide there), stopping just short of her
+const SEE = /* glsl */`
+uniform vec4 uSee;               // her chest (world); how wide the way to her is kept clear there (m; 0: nothing thinned)
+float seeHash(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+float seeKeep(vec3 w) {
+  if (uSee.w <= 0.0) return 1.0;
+  vec3 ab = uSee.xyz - cameraPosition;
+  float t = dot(w - cameraPosition, ab) / max(dot(ab, ab), 1e-4);
+  if (t <= 0.0 || t >= 0.94) return 1.0;
+  float d = length(w - (cameraPosition + ab * t));
+  return smoothstep(0.55, 1.0, d / (uSee.w * (0.3 + 0.7 * t)));
+}
 `;
 // where a point under the pool's level shows on its still water, seen from the eye (a flat mirror: the point mirrored up
 // is seen where the line from the eye to it meets the water), and how much the water gives back there; off the pool: none
@@ -121,7 +140,9 @@ varying vec3 vW, vN, vL;
 varying vec4 vI, vP;
 varying float vD;
 ${NOISE}
+${SEE}
 void main() {
+  if (vP.a > 0.25) { float keep = seeKeep(vW); if (keep < 1.0 && keep <= seeHash(gl_FragCoord.xy)) discard; }      // (a fang between the eye and her)
   vec3 n = normalize(vN);
   float fang = smoothstep(0.12, 0.42, vP.a);                  // calcite: a fang, a broken one, the column (0 rock)
   // the walls' picture laid on from the room's own two sides (the way in and across it), not the world's: the tunnel runs
@@ -245,10 +266,11 @@ void main() {
 // ---------------------------------------------------------------- crystals, mushroom caps: they light themselves (as the forest hall's)
 const GLOW_VS = /* glsl */`
 attribute float aPhase;
-varying vec3 vC, vNv, vV;
+varying vec3 vC, vNv, vV, vWp;
 varying float vY, vPh, vD;
 void main() {
   vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0);
+  vWp = w.xyz;
   vec4 mv = viewMatrix * w;
   vC = instanceColor; vY = position.y; vPh = aPhase;
   vNv = normalize(normalMatrix * mat3(instanceMatrix) * normal);
@@ -259,9 +281,11 @@ void main() {
 const GLOW_FS = /* glsl */`
 uniform float uTime, uCore, uFogD;
 uniform vec3 uFogCol;
-varying vec3 vC, vNv, vV;
+varying vec3 vC, vNv, vV, vWp;
 varying float vY, vPh, vD;
+${SEE}
 void main() {
+  { float keep = seeKeep(vWp); if (keep < 1.0 && keep <= seeHash(gl_FragCoord.xy)) discard; }      // (a crystal between the eye and her)
   float fres = pow(1.0 - abs(dot(normalize(vNv), vV)), 2.0);
   float pulse = 0.88 + 0.12 * sin(uTime * 1.4 + vPh * 6.28);
   vec3 col = mix(vC * 0.45, vC * 1.35 + 0.18, smoothstep(0.0, 1.0, vY * uCore)) * pulse + vC * fres * 0.9;
@@ -591,6 +615,7 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
     t.magFilter = t.minFilter = t === paintMap ? THREE.LinearFilter : THREE.NearestFilter;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.colorSpace = THREE.NoColorSpace; t.needsUpdate = true;
   }
+  const see = { value: new THREE.Vector4(0, 0, 0, 0) };      // (hall.seeThrough: her chest, and the width kept clear to her)
   const rockMat = new THREE.ShaderMaterial({
     vertexShader: ROCK_VS, fragmentShader: ROCK_FS,
     uniforms: {
@@ -606,7 +631,7 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
       uMouth: { value: MOUTH.clone() }, uIn: { value: IN.clone() }, uTime: time,
       uFogCol: { value: fogCol }, uMistCol: { value: hex3(look.mist) }, uRim: { value: hex3(look.rim) },
       uFog: { value: new THREE.Vector3(look.fogDensity, P.level + look.mistHeight + 0.4, 0.35) },
-      uSprPos: U.uSprPos, uSprCol: U.uSprCol,
+      uSprPos: U.uSprPos, uSprCol: U.uSprCol, uSee: see,
     },
   });
   rockMat.userData.noCave = true;
@@ -641,7 +666,7 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
   await onStep('ปลูกคริสตัล');
   const glowMat = new THREE.ShaderMaterial({
     vertexShader: GLOW_VS, fragmentShader: GLOW_FS,
-    uniforms: { uTime: time, uCore: { value: 1.0 }, uFogCol: { value: fogCol }, uFogD: { value: look.fogDensity } },
+    uniforms: { uTime: time, uCore: { value: 1.0 }, uFogCol: { value: fogCol }, uFogD: { value: look.fogDensity }, uSee: see },
   });
   glowMat.userData.noCave = true;
   const halos = [];
@@ -693,6 +718,7 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
   for (const s of L.shrooms) sn += s.count;
   const shroomMat = glowMat.clone();
   shroomMat.uniforms.uTime = time; shroomMat.uniforms.uCore = { value: 4.2 };
+  shroomMat.uniforms.uSee = { value: new THREE.Vector4(0, 0, 0, 0) };      // (the caps are small, at the walls' feet: never thinned)
   shroomMat.userData.noCave = true;
   const shrooms = new THREE.InstancedMesh(sg, shroomMat, sn);
   shrooms.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(sn * 3), 3);
@@ -897,6 +923,7 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
     group, light, layout: L, rock, colliders, floorMap, crowns: [], trunks: [],
     pool: P, look, fogColor: fogCol, frame: Fr, inward, curtainAt, haze, sun: toward,
     setPixelRatio(r) { pix.value = 52 * r; },          // (the glowworms and the drops are sized in pixels: the game's picture setting can change it)
+    seeThrough(p, h = 1.75) { if (p) see.value.set(p.x, p.y + h * 0.55, p.z, 1.0); else see.value.w = 0; },
     update(dt, camera) {
       clock += dt;
       time.value = clock;

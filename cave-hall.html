@@ -187,7 +187,7 @@
   "./magic-jump.js": "./magic-jump.js?v=16",
   "./magic-circle-fx.js": "./magic-circle-fx.js?v=6",
   "./player-input.js": "./player-input.js?v=5",
-  "./player-camera.js": "./player-camera.js?v=4",
+  "./player-camera.js": "./player-camera.js?v=5",
   "./player-climb.js": "./player-climb.js?v=2",
   "./player-hurdle.js": "./player-hurdle.js?v=4",
   "./player-footsteps.js": "./player-footsteps.js?v=3",
@@ -209,7 +209,7 @@
   "./drought.js": "./drought.js?v=3",
   "./dark-mist.js": "./dark-mist.js?v=2",
   "./cave-hall.js": "./cave-hall.js?v=2",
-  "./cave-level.js": "./cave-level.js?v=1",
+  "./cave-level.js": "./cave-level.js?v=2",
   "./cave-light.js": "./cave-light.js?v=2"
 } }
 </script>
@@ -366,22 +366,8 @@ const patched = hall.light.apply(scene);
 const spritePos = new THREE.Vector3();
 const lampAt = () => { body.getWorldPosition(spritePos); spritePos.y += 0.25; hall.light.setSprite(spritePos, lampOn); halo.position.copy(spritePos); halo.visible = lampOn; };
 
-// ---- her camera is the game's (player-camera.js, inside the player); in here it is also kept under the roof and out of the
-// rock: brought in along its line to her where that line meets either
-const look = new THREE.Vector3(), ray = new THREE.Vector3();
-function keepCameraInAir() {
-  look.set(player.position.x, player.position.y + hero.height * 0.82, player.position.z);
-  ray.subVectors(camera.position, look);
-  const len = ray.length();
-  if (len < 1e-3) return;
-  ray.divideScalar(len);
-  let ok = len;
-  for (let t = 0.25; t <= len; t += 0.2) {
-    const x = look.x + ray.x * t, y = look.y + ray.y * t, z = look.z + ray.z * t;
-    if (y < level.heightAt(x, z) + 0.3 || y > level.ceilAt(x, z) - 0.4) { ok = Math.max(0.35, t - 0.3); break; }
-  }
-  if (ok < len) camera.position.copy(look).addScaledVector(ray, ok);
-}
+// ---- her camera is the game's (player-camera.js, inside the player): in here the room's level says how far it may go
+// (cave-level.js: cameraReach), so it comes in softly before a wall or under the roof and never into her head
 
 // ---- the buttons: each level, and the sprite's light
 const bar = document.getElementById('bar');
@@ -413,7 +399,6 @@ function step(dt) {
   blinkBtn.classList.toggle('wait', !blink.ready);           // (not again yet)
   rainBtn.classList.toggle('on', !!player.spells.skyReady);  // (she holds the lance: it may be thrown up)
   hall.update(dt, camera);
-  keepCameraInAir();
   lampAt();
   gameMap.update();
   if (music) music.update(dt, { when: 'day', drowned: 0 });

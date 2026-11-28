@@ -37,7 +37,7 @@ const BAND = 0.4;            // m past its outer edge: a face from the water up 
 const NEAR = 60;             // m from the mouth: the dungeon begins to load (onNear)
 // what the player asks of the level as it goes (player-moves.js), swapped for the cave's while she is in it (the water's
 // rings: none, the cave's pool keeps its own)
-const SWAP = ['confine', 'ceilAt', 'ripple', 'colliders', 'cameraTrunks', 'crowns', 'radius'];
+const SWAP = ['confine', 'ceilAt', 'ripple', 'colliders', 'cameraTrunks', 'crowns', 'radius', 'cameraReach'];
 
 const MOUTH_VS = /* glsl */`
 varying vec2 vUv;

@@ -20,6 +20,17 @@
 //     level.surfaceAt(x, z, y)       what is underfoot, for her steps (step-sounds.js): 'grass' (moss, fallen leaves: soft),
 //                                    'earth', 'sand', 'stone' (the faces, their edges, the stones' tops)
 //     level.confine(p, from)         a step onto a face or into a wall: along its edge, or stopped (the hill village's own)
+//     level.cameraReach(ox, oy, oz, dx, dy, dz, far)
+//                                    her camera (player-camera.js): how far it may go from (ox, oy, oz), over her shoulders,
+//                                    along (dx, dy, dz), up to far, and still be in the room's air: over the floor, under the
+//                                    roof, clear of the walls (and, where the hall has one, this side of the falling water:
+//                                    hall.inward, hall.curtainAt). Thin things are no wall and no roof to it: a fang hanging
+//                                    from the roof or rising from the floor, a column, a boulder (narrower than ~2.4 m); the
+//                                    camera goes past them, and the room draws them thin where they would hide her
+//                                    (fang-hall.js: hall.seeThrough). Until 28 Nov 2026 each page did this itself after the
+//                                    camera had moved, with heightAt and ceilAt (every fang's tip a low roof, the rock's
+//                                    60 m bleeding a column out from every wall), and brought the camera to 0.35 m from her
+//                                    shoulders at once: in her head, and jumping metres from one frame to the next
 //     level.colliders, cameraTrunks, crowns, spawn, radius
 //   level.places                     where the page's buttons put her: [{ name, x, z, heading, y }], the first where she begins
 
@@ -30,6 +41,14 @@ const CLIFF = 0.9;            // a slope this steep is a face (the hill village'
 const E = 0.35;               // m either side the slope is measured over
 const SWIM = 1.05;            // water this deep she swims (player-moves.js' own, at 1.75 m)
 const HEAD = 0.3;             // m round her the roof is looked for (the lowest of it)
+// her camera's own picture of the room (cameraReach)
+const CAM_SLIT = 0.8;         // m between floor and roof: lower than this, no room for a camera (rock, to it)
+const CAM_THIN = 3;           // columns (1.2 m): rock narrower than twice this is no wall to her camera
+const CAM_HANG = 4;           // columns (1.6 m): what hangs from the roof narrower than twice this is no roof to it
+const CAM_WALL = 0.35;        // m it keeps from a wall,
+const CAM_FLOOR = 0.3;        // over the floor,
+const CAM_ROOF = 0.4;         // and under the roof
+const CAM_STEP = 0.2;         // m: how finely its line is walked (then halved four times where it first meets rock)
 
 export function createCaveLevel(hall) {
   const M = hall.floorMap, L = hall.layout;
@@ -107,6 +126,117 @@ export function createCaveLevel(hall) {
     return w > 1e-6 ? s / w : Infinity;
   };
   const ceilAt = (x, z) => Math.min(roofAt(x, z), roofAt(x + HEAD, z), roofAt(x - HEAD, z), roofAt(x, z + HEAD), roofAt(x, z - HEAD));
+
+  // ---- her camera's picture of the room: walls without the thin rock standing in the hall, a roof without what hangs
+  // thin from it, and a floor under both (made once)
+  // how far (columns) each column is from the nearest one marked (two sweeps: straight 1, diagonal root 2)
+  const farFrom = (mark) => {
+    const d = new Float32Array(n).fill(1e9), D = Math.SQRT2;
+    for (let k = 0; k < n; k++) if (mark[k]) d[k] = 0;
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const k = i * nz + j; let v = d[k];
+      if (i > 0) { v = Math.min(v, d[k - nz] + 1); if (j > 0) v = Math.min(v, d[k - nz - 1] + D); if (j < nz - 1) v = Math.min(v, d[k - nz + 1] + D); }
+      if (j > 0) v = Math.min(v, d[k - 1] + 1);
+      d[k] = v;
+    }
+    for (let i = nx - 1; i >= 0; i--) for (let j = nz - 1; j >= 0; j--) {
+      const k = i * nz + j; let v = d[k];
+      if (i < nx - 1) { v = Math.min(v, d[k + nz] + 1); if (j > 0) v = Math.min(v, d[k + nz - 1] + D); if (j < nz - 1) v = Math.min(v, d[k + nz + 1] + D); }
+      if (j < nz - 1) v = Math.min(v, d[k + 1] + 1);
+      d[k] = v;
+    }
+    return d;
+  };
+  // the walls: rock (or a slit too low for a camera) thicker than a fang, a column, a boulder; the map's own edge always
+  const solid = new Uint8Array(n), open = new Uint8Array(n), core = new Uint8Array(n), wall = new Uint8Array(n);
+  for (let k = 0; k < n; k++) { solid[k] = fl[k] !== fl[k] || !(ce[k] - fl[k] >= CAM_SLIT) ? 1 : 0; open[k] = 1 - solid[k]; }
+  const toAir = farFrom(open);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+    const k = i * nz + j, edge = i <= CAM_THIN || j <= CAM_THIN || i >= nx - 1 - CAM_THIN || j >= nz - 1 - CAM_THIN;
+    core[k] = solid[k] && (toAir[k] > CAM_THIN || edge) ? 1 : 0;
+  }
+  const toCore = farFrom(core);
+  for (let k = 0; k < n; k++) wall[k] = solid[k] && toCore[k] <= CAM_THIN + 0.5 ? 1 : 0;
+  const toWall = farFrom(wall);
+  for (let k = 0; k < n; k++) toWall[k] *= cell;                       // (m)
+  // the floor and the roof for it: the room's own; under the thin rock taken away, what is round it
+  const camFl = new Float32Array(n), camCe = new Float32Array(n);
+  for (let k = 0; k < n; k++) { const has = fl[k] === fl[k] && ce[k] === ce[k] && !wall[k]; camFl[k] = has ? fl[k] : NaN; camCe[k] = has ? ce[k] : NaN; }
+  const fillIn = (a) => {                                              // (a hole in it that is no wall: the mean of what is round it, ring by ring)
+    for (let pass = 0; pass < 12; pass++) {
+      const got = [];
+      for (let i = 1; i < nx - 1; i++) for (let j = 1; j < nz - 1; j++) {
+        const k = i * nz + j;
+        if (a[k] === a[k] || wall[k]) continue;
+        let s = 0, w = 0;
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const v = a[k + di * nz + dj]; if (v === v) { s += v; w++; } }
+        if (w) got.push(k, s / w);
+      }
+      if (!got.length) break;
+      for (let q = 0; q < got.length; q += 2) a[got[q]] = got[q + 1];
+    }
+  };
+  // the roof without what hangs thin from it: over every column the highest roof within CAM_HANG, then of that the lowest
+  // within CAM_HANG (a dip narrower than twice that is gone; a wide one stays); by a wall (rock: as low as can be) the
+  // room's own roof, fangs and all. Then smoothed a little, so the camera's reach does not step as she walks
+  {
+    const R = CAM_HANG, offs = [];
+    for (let di = -R; di <= R; di++) for (let dj = -R; dj <= R; dj++) if (di * di + dj * dj <= R * R + 1) offs.push(di, dj);
+    const hi = new Float32Array(n).fill(NaN), lo = new Float32Array(n).fill(NaN);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const k = i * nz + j; if (camCe[k] !== camCe[k]) continue;
+      let m = -Infinity;
+      for (let q = 0; q < offs.length; q += 2) { const a = i + offs[q], b = j + offs[q + 1]; if (a < 0 || b < 0 || a >= nx || b >= nz) continue; const v = camCe[a * nz + b]; if (v === v && v > m) m = v; }
+      hi[k] = m;
+    }
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const k = i * nz + j; if (hi[k] !== hi[k]) continue;
+      let m = Infinity;
+      for (let q = 0; q < offs.length; q += 2) {
+        const a = i + offs[q], b = j + offs[q + 1];
+        if (a < 0 || b < 0 || a >= nx || b >= nz || wall[a * nz + b]) { m = -Infinity; break; }
+        const v = hi[a * nz + b]; if (v === v && v < m) m = v;
+      }
+      lo[k] = Math.max(camCe[k], m);
+    }
+    for (let k = 0; k < n; k++) camCe[k] = lo[k];
+    fillIn(camFl); fillIn(camCe);
+    const sm = camCe.slice();
+    for (let i = 1; i < nx - 1; i++) for (let j = 1; j < nz - 1; j++) {
+      const k = i * nz + j; if (camCe[k] !== camCe[k]) continue;
+      let s = 0, w = 0;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const v = camCe[k + di * nz + dj]; if (v === v) { s += v; w++; } }
+      sm[k] = s / w;
+    }
+    camCe.set(sm);
+  }
+  const curtain = hall.inward && hall.curtainAt ? (x, y, z) => hall.inward(x, z) < hall.curtainAt(y) + 0.45 : null;      // (the falling water in the mouth: beyond it nothing is made)
+  // no place for a camera: in a wall or by it, under the floor, in the roof, past the falling water. m (0..1): how much of
+  // the room it keeps from each (little right by her, where she herself stands by a wall or under a low roof; all of it
+  // from a metre out)
+  const noAir = (x, y, z, m) => {
+    const fx = (x - x0) / cell, fz = (z - z0) / cell, i = Math.floor(fx), j = Math.floor(fz);
+    if (i < 0 || j < 0 || i >= nx - 1 || j >= nz - 1) return true;
+    const u = fx - i, v = fz - j, k = i * nz + j;
+    const qa = (1 - u) * (1 - v), qb = u * (1 - v), qc = (1 - u) * v, qd = u * v;
+    if (toWall[k] * qa + toWall[k + nz] * qb + toWall[k + 1] * qc + toWall[k + nz + 1] * qd < CAM_WALL * m) return true;
+    let f = 0, c = 0, w = 0;
+    if (camFl[k] === camFl[k]) { f += camFl[k] * qa; c += camCe[k] * qa; w += qa; }
+    if (camFl[k + nz] === camFl[k + nz]) { f += camFl[k + nz] * qb; c += camCe[k + nz] * qb; w += qb; }
+    if (camFl[k + 1] === camFl[k + 1]) { f += camFl[k + 1] * qc; c += camCe[k + 1] * qc; w += qc; }
+    if (camFl[k + nz + 1] === camFl[k + nz + 1]) { f += camFl[k + nz + 1] * qd; c += camCe[k + nz + 1] * qd; w += qd; }
+    if (w < 1e-6) return true;
+    return y < f / w + CAM_FLOOR * m || y > c / w - CAM_ROOF * m || (curtain !== null && curtain(x, y, z));
+  };
+  const rockAt = (ox, oy, oz, dx, dy, dz, t) => noAir(ox + dx * t, oy + dy * t, oz + dz * t, Math.min(1, t));
+  const cameraReach = (ox, oy, oz, dx, dy, dz, far) => {
+    let t = CAM_STEP;
+    for (; t < far; t += CAM_STEP) if (rockAt(ox, oy, oz, dx, dy, dz, t)) break;
+    if (t >= far) { if (!rockAt(ox, oy, oz, dx, dy, dz, far)) return far; t = far; }
+    let a = Math.max(0, t - CAM_STEP), b = t;                          // (clear at a, rock at b)
+    for (let q = 0; q < 4; q++) { const h = (a + b) / 2; if (rockAt(ox, oy, oz, dx, dy, dz, h)) b = h; else a = h; }
+    return a;
+  };
   const surfaceAt = (x, z) => {
     const i = Math.round((x - x0) / cell), j = Math.round((z - z0) / cell);
     if (i < 0 || j < 0 || i >= nx || j >= nz) return 'stone';
@@ -147,7 +277,7 @@ export function createCaveLevel(hall) {
   for (const [x, z, r] of L.gates || []) colliders.push([x, z, r]);      // (the crystals across the ways in and on)
 
   return {
-    heightAt, standAt, footing, waterDepthAt, ceilAt, surfaceAt, confine,
+    heightAt, standAt, footing, waterDepthAt, ceilAt, surfaceAt, confine, cameraReach,
     colliders, cameraTrunks: hall.trunks, crowns: hall.crowns,
     spawn: { x: L.spawn.x, z: L.spawn.z, yaw: L.spawn.yaw },
     radius: 1e4,

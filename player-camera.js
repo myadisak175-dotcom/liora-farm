@@ -16,6 +16,12 @@
 // and take her off cliffs, up faces and into the water, so player-moves.js says what height the view should stand on
 // (her feet; in a jump, the ground she left and a little of the hop; swimming, a little under the water's surface), and
 // the camera follows it as softly as the walker's ground did (steady: on the ground or a face), or at once (in the air).
+//
+// Under a roof (a cave: cave-level.js) the level itself says how far the camera may go: level.cameraReach(ox, oy, oz, dx, dy,
+// dz, far), from over her shoulders along the camera's line. Then that takes the place of the wall of rock at her back and
+// of the rule about the ground under the camera (both read the land's height, and a cave's is the rock's top inside a wall):
+// the camera comes in as softly as before a cliff, never nearer than before one (0.7 m: before a trunk too, in there),
+// and goes back out slowly. A level without it: as it was. (Asked every frame: the game's level is the village's or the cave's as she goes in and out.)
 
 import * as THREE from 'three';
 import { cameraTrunkFraction } from './player.js';      // (a trunk between her and the camera: the same clip)
@@ -27,6 +33,12 @@ export function createFollowCamera({ camera, level }) {
   let yaw = 0, pitch = 0.17, dist = 4.3;      // what the player has chosen
   let ready = false, reach = dist, base = 0;
   const look = new THREE.Vector3(), target = new THREE.Vector3(), camPos = new THREE.Vector3(), lookDir = new THREE.Vector3(0, 0, -1);
+  // how much of the way from her shoulders to p is clear of trunks (player.js). Under a roof never so little that the
+  // camera is nearer than before a wall (0.7 m): a trunk at her elbow brought it into her head (out of doors: as it was)
+  const beforeTrunk = (p, roofed) => {
+    const f = cameraTrunkFraction(look, p, level.cameraTrunks);
+    return roofed ? Math.max(f, Math.min(1, 0.7 / Math.max(1e-3, look.distanceTo(p)))) : f;
+  };
   return {
     get yaw() { return yaw; }, get pitch() { return pitch; }, get dist() { return dist; }, lookDir,
     turn(dYaw, dPitch) { yaw += dYaw; pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, pitch + dPitch)); },
@@ -57,17 +69,23 @@ export function createFollowCamera({ camera, level }) {
       }
       // a wall of rock behind her (a cliff she has her back to): the camera comes in close too, instead of being lifted over it
       let walled = false;
-      for (let r = 0.6; r < far; r += 0.4) {
+      const reachOf = level.cameraReach;               // (a cave: the room's own say, in place of the land's height)
+      if (reachOf) {
+        const r = reachOf(look.x, look.y + 0.25, look.z, dx, dy, dz, far);
+        if (r < far - 1e-3) { far = Math.max(0.7, r); walled = true; }
+      } else for (let r = 0.6; r < far; r += 0.4) {
         if (level.heightAt(look.x + dx * r, look.z + dz * r) + 0.45 - (look.y + dy * r + 0.25) > 2.5) { far = Math.max(0.7, r - 0.4); walled = true; break; }
       }
       reach += (Math.max(walled ? 0.7 : 1.3, far - (walled ? 0 : 0.25)) - reach) * Math.min(1, dt * (far < reach ? 16 : 3.5));   // in fast, out slowly
       camPos.set(look.x + dx * reach, look.y + dy * reach + 0.25, look.z + dz * reach);
-      const floor = level.heightAt(camPos.x, camPos.z) + 0.45;
-      if (camPos.y < floor) camPos.y = Math.min(floor, camPos.y + 2.5);      // over a rise in the ground, never up a cliff
-      camPos.lerpVectors(look, camPos, cameraTrunkFraction(look, camPos, level.cameraTrunks));
+      if (!reachOf) {
+        const floor = level.heightAt(camPos.x, camPos.z) + 0.45;
+        if (camPos.y < floor) camPos.y = Math.min(floor, camPos.y + 2.5);    // over a rise in the ground, never up a cliff
+      }
+      camPos.lerpVectors(look, camPos, beforeTrunk(camPos, reachOf));
       if (!ready) { camera.position.copy(camPos); target.copy(look); ready = true; }
       camera.position.lerp(camPos, Math.min(1, dt * 14));
-      camera.position.lerpVectors(look, camera.position, cameraTrunkFraction(look, camera.position, level.cameraTrunks));
+      camera.position.lerpVectors(look, camera.position, beforeTrunk(camera.position, reachOf));
       target.lerp(look, Math.min(1, dt * 16));
       camera.lookAt(target);
       lookDir.set(-Math.sin(yaw), 0, -Math.cos(yaw));
