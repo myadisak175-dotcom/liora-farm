@@ -1,5 +1,5 @@
 /* ==========================================================================
-   cave-mouth.js  —  the dungeon's mouth behind the big fall's middle strand, in the hill village (a trial: index.html ?cave=1)
+   cave-mouth.js  —  the dungeon's mouth behind the big fall's middle strand, in the hill village (index.html; in the game for good since 28 Nov 2026, ?cave=0: none)
 
      const mouth = await createCaveMouth({ level })      // before the player is made: the ledge is the level's ground there
      scene.add(mouth.group)                              // before shadows.apply and the warm-up (it takes the hour's light)

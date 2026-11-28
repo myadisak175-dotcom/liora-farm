@@ -1,5 +1,5 @@
 /* ==========================================================================
-   dungeon-in-game.js  —  the dungeon in the game itself (index.html ?cave=1): its first room, the fang hall, loaded into the
+   dungeon-in-game.js  —  the dungeon in the game itself (index.html; ?cave=0: none): its first room, the fang hall, loaded into the
    page beside the hill village. She walks into it from behind the big fall and back out; the village is never left
 
      const dungeon = createDungeonInGame({ renderer, camera, village: scene, player, mouth, sprite, carry, night, sounds,
@@ -38,10 +38,11 @@ import * as THREE from 'three';
 import * as N from './stylized-nature.js';
 import { setGroundCoverSun } from './ground-cover.js';
 import { createGameMap } from './game-map.js';
-import { MADE as BOSS_MADE } from './boss-hall-sounds.js';
 
 const IN_AT = 1.4;                 // m in from the mouth: where she is put going in, facing in (as dungeon.html)
-const STONE = [1, 2, 3, 4, 5, 6].map((i) => `boss/step-${i}.mp3?v=${BOSS_MADE}`);      // her steps on bare rock (step-sounds.js' own)
+// her steps on bare rock (step-sounds.js' own): the boss hall's, as its sounds are made (boss-hall-sounds.js' MADE, read as
+// the room begins to load: nothing of it is loaded before)
+const stoneSteps = (made) => [1, 2, 3, 4, 5, 6].map((i) => `boss/step-${i}.mp3?v=${made}`);
 const MAP = './assets/maps/fang-hall-map.json';
 const ICON = { 'ทางเข้า': '📍', 'ปากเขี้ยว': '🦷', 'ริมสระ': '💧', 'หิ้งหิน': '🪨' };
 const IN_FADE = 500, OUT_FADE = 300, SHOW_FADE = 450;      // ms: the dark coming down going in, coming out; and lifting
@@ -51,7 +52,7 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 export function createDungeonInGame({ renderer, camera, village, player, mouth, sprite = null, carry = [], night = [], sounds = null, airVolume = () => 1, shadows = null, map = null }) {
   let mods = null, hall = null, level = null, scene = null, heard = null, caveMap = null, halo = null, body = null, fernSun = null;
-  let inside = false, busy = false, going = false, built = false, warmed = false, kept = null, ratio = 1;
+  let inside = false, busy = false, going = false, built = false, warmed = false, kept = null, ratio = 1, STONE = null;
   const took = { files: 0, build: 0, warm: 0, enter: 0, exit: 0 };      // ms each took, the last time (for a test, or the console: dungeon.took)
 
   // ---- the dark between the two (with a word on it)
@@ -72,13 +73,15 @@ export function createDungeonInGame({ renderer, camera, village, player, mouth, 
     if (loading) return loading;
     loading = (async () => {
       const t0 = performance.now();
-      const [hallMod, levelMod, soundsMod] = await Promise.all([import('./fang-hall.js'), import('./cave-level.js'), sounds ? import('./fang-hall-sounds.js') : null]);
+      const [hallMod, levelMod, soundsMod, bossSounds] = await Promise.all([import('./fang-hall.js'), import('./cave-level.js'),
+        sounds ? import('./fang-hall-sounds.js') : null, sounds ? import('./boss-hall-sounds.js') : null]);
+      if (bossSounds) STONE = stoneSteps(bossSounds.MADE);
       const files = hallMod.fetchFangHall();
       const [L] = await files;
       // the room's sounds: made now (from its plan alone), so their files are on their way; her steps on rock and the
       // map's picture fetched too, into the browser's cache (step-sounds.js and game-map.js ask for them going in)
       if (soundsMod) heard = soundsMod.createFangSounds({ context: () => sounds.context, volume: airVolume(), hall: { frame: L.frame, layout: L } });
-      for (const f of STONE) fetch('./assets/audio/' + f).then((r) => r.arrayBuffer()).catch(() => {});
+      if (STONE) for (const f of STONE) fetch('./assets/audio/' + f).then((r) => r.arrayBuffer()).catch(() => {});
       fetch(MAP).then((r) => r.json()).then((m) => fetch(new URL(m.file, new URL(MAP, location.href)).href)).then((r) => r.blob()).catch(() => {});
       await files;
       took.files = performance.now() - t0;
@@ -166,7 +169,7 @@ export function createDungeonInGame({ renderer, camera, village, player, mouth, 
     hall.setPixelRatio(ratio = renderer.getPixelRatio());
     const F = FR(), LW = hall.layout.curtain.ledge, w = (LW[0] + LW[1]) / 2;
     player.teleport(F.mouth[0] + F.in[0] * IN_AT + F.right[0] * w, F.mouth[2] + F.in[1] * IN_AT + F.right[1] * w, Math.atan2(F.in[0], F.in[1]));
-    if (sounds && sounds.own) sounds.own({ stone: STONE });
+    if (sounds && sounds.own && STONE) sounds.own({ stone: STONE });
     if (heard) heard.air(true);
     if (map) map.hidden = true;
     caveMap.hidden = false;
