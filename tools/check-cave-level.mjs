@@ -243,5 +243,35 @@ const about = (a, b, e = 0.02) => Math.abs(a - b) <= e;
   cameraCheck('tunnel', hall, T, [0, 6]);
 }
 
+// ---------------------------------------------------------------- 4. the kit's rooms (tools/make-cave-room.py): what their descriptions promise
+// every place stands on ground at its own height; every way of stone in the description can be walked from end to end
+// (a bridge, a stair winding over itself), her feet on its line; her camera at every place's height
+const KIT = ['test'];
+for (const name of KIT) {
+  const hall = loadRoom(name), level = createCaveLevel(hall), L = hall.layout;
+  const D = JSON.parse(readFileSync(join(ROOT, 'tools/cave-rooms', name + '.json'), 'utf8'));
+  const lost = L.places.filter((p) => level.footing(p.x, p.z, p.y) !== 'ground' || Math.abs(level.standAt(p.x, p.z, p.y) - p.y) > 0.3).map((p) => p.name);
+  check(`${name}: every place stands on ground at its height`, lost.length === 0, `${L.places.length} places, up to ${hall.floorMap.layers} floors over one spot${lost.length ? '; not: ' + lost.join(', ') : ''}`);
+  (D.stone || []).forEach((piece, n) => {
+    const w = piece.way; if (!w) return;
+    let path = w.path;
+    if (w.helix) { const h = w.helix, [a0, ya] = h.from, [a1, yb] = h.to, m = Math.max(2, Math.floor(Math.abs(a1 - a0) / 2) + 1); path = [];
+      for (let i = 0; i < m; i++) { const a = (a0 + (a1 - a0) * i / (m - 1)) * Math.PI / 180; path.push([h.at[0] + h.r * Math.cos(a), ya + (yb - ya) * i / (m - 1), h.at[1] + h.r * Math.sin(a)]); } }
+    let len = 0; for (let i = 1; i < path.length; i++) len += Math.hypot(path[i][0] - path[i - 1][0], path[i][2] - path[i - 1][2]);
+    let gone = 0, steps = 0, off = 0, worst = 0, first = '';
+    for (let i = 1; i < path.length; i++) for (let t = 0; t < 1; t += 0.25) {
+      const x = path[i - 1][0] + (path[i][0] - path[i - 1][0]) * t, y = path[i - 1][1] + (path[i][1] - path[i - 1][1]) * t, z = path[i - 1][2] + (path[i][2] - path[i - 1][2]) * t;
+      gone = (i - 1 + t) / (path.length - 1);
+      if (gone * len < 1.5 || (1 - gone) * len < 1.5) continue;       // (its ends run into the rock or the floor they meet)
+      steps++;
+      const f = level.footing(x, z, y), h = level.standAt(x, z, y);
+      worst = Math.max(worst, Math.abs(h - y));
+      if (f !== 'ground' || Math.abs(h - y) > 0.3) { off++; if (!first) first = `${f} at ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)} (floor ${h.toFixed(2)})`; }
+    }
+    check(`${name}: way ${n + 1} (${w.helix ? 'winding' : 'straight'}, ${len.toFixed(0)} m) is walked end to end`, off === 0 && steps > 0, `${steps} spots, her feet within ${worst.toFixed(2)} m of its line${first ? '; first off: ' + first : ''}`);
+  });
+  cameraCheck(name, hall, level, [...new Set(L.places.map((p) => p.y))]);
+}
+
 console.log(failed ? `\n${failed} FAILED` : '\nall as it should be');
 process.exit(failed ? 1 : 0);
