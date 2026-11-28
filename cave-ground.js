@@ -4,7 +4,8 @@
      const ground = await createCaveGround({ floor, scale, sprite, look })
        floor    the room's floor map (cave-level.js' header: spans; fl in cm) with what lies on it: `kinds` (the kinds of
                 ground this room has, as tools/make-cave-room.py baked them from its GROUNDS: name, picture, tile, tint,
-                grey, ragged, at), `paint` and, with more than three kinds, `paint2` (how much of each kind on each span)
+                grey, ragged, grows, mean, at), `paint` and, with more than three kinds, `paint2` (how much of each kind
+                on each span)
        scale    what the baked light was divided by (bin.lightScale)
        sprite   { uSprPos, uSprCol }: the one light that moves (cave-light.js' uniforms, shared)
        look     the room's own colours (GROUND_LOOK, below; a room's description may change any of them, and may give a
@@ -12,6 +13,7 @@
      new THREE.Mesh(geometry, ground.material)
        geometry: position, normal, aLight (rgb: the light baked on it; a: a step's own tone, 0.5 none),
                  aInfo (r: laid stone, g: how open to the room, b: on a step, from its back, 0, to its edge, 1; a: 1 a step)
+     ground.reads     for whatever grows from the ground (cave-grass.js): see THE GROUND READ BY WHAT GROWS, below
 
    One job: one material for the whole rock of any kit room (tools/make-cave-room.py bakes the mesh), so a room brings no
    drawing code of its own. (Until the kit each room had its own: fang-hall.js, cave-hall.js, boss-hall.js; their looks are
@@ -28,11 +30,19 @@
                     the next, dark at its back under the step above, a light line along its edge
      the light      baked (the lamps with their shadows, the dark's own); the sprite's; a faint edge where the rock turns
                     away from the eye; the dark of the cave far off
-   The water is cave-water.js'; the grass, the mist and the things in a room are other files' (the kit's next pieces).
+   The water is cave-water.js', the grass cave-grass.js'; the mist and the things in a room are other files' (to come).
 
    A KIND OF GROUND is not written here: the shader is made for the kinds the room's bake lists, so a new kind is a line
    in the tool's GROUNDS and a picture in assets/ground/ (a room may have seven at once: three in `paint`'s r, g, b, four
    in `paint2`).
+
+   THE GROUND READ BY WHAT GROWS. Above the ground the meadow and its grass read one map (stylized-grassfield.js: the
+   ground's colour at a spot, and how much grass grows there), so a blade has no root to be seen and the grass thins out
+   into earth instead of stopping at a line. Here the same: what grows reads THIS ground, the very paint and pictures its
+   own shader reads, by the very same lines of shader. READ (below) is those lines, written once: where a spot's paint
+   lies in the sheets' pictures, the stone under everything, how much of a kind shows at a spot, its picture's colour
+   there. This file's fragment shader is put together from them, and so is cave-grass.js' vertex shader (with `reads`:
+   the kinds, the uniforms themselves, their declarations, and which sheet a spot's floor is on).
 
    FLOORS OVER ONE ANOTHER. The floor map keeps a column's spans lowest first, so one floor is span 0 here and span 1
    three columns on, where a tunnel runs under it. Read smooth (between columns) from that, a floor's paint would mix
@@ -58,7 +68,41 @@ const loadTex = (url) => new Promise((res) => {
   }, undefined, () => res(null));
 });
 const hex3 = (h) => { const c = new THREE.Color(h); return new THREE.Vector3(c.r, c.g, c.b); };
-const num = (v) => { const s = String(+(+v).toFixed(5)); return /[.e]/.test(s) ? s : s + '.0'; };      // a figure as the shader reads one
+export const num = (v) => { const s = String(+(+v).toFixed(5)); return /[.e]/.test(s) ? s : s + '.0'; };      // a figure as a shader reads one
+
+// ---- READ: the ground at a spot, in shader text, written once (see THE GROUND READ BY WHAT GROWS). In scope where these
+// are used: `xz` (the spot), `sheet` (which sheet its floor is on), `pc` and `pd` (the paint there), `rag` (the stone's
+// own, for a ragged edge), LUM. `read(sampler, uv)` is how a picture is read there: plainly in a fragment shader; from a
+// smaller copy of it in a vertex shader (one read stands for a whole tuft's foot)
+const AT = ['pc.r', 'pc.g', 'pc.b', 'pd.r', 'pd.g', 'pd.b', 'pd.a'];
+const plain = (s, uv) => `texture2D(${s}, ${uv})`;
+export const READ = {
+  // where the spot's paint lies in the sheets' pictures
+  where: 'vec2((clamp((xz.y - uMapBox.y) * uMapBox.z, uHalf, 1.0 - uHalf) + sheet) / float(SHEETS), (xz.x - uMapBox.x) * uMapBox.w)',
+  // the paint there
+  paint: (kinds, at) => `vec4 pc = texture2D(uFloorP, ${at});${kinds.some((k) => k.at > 2) ? ` vec4 pd = texture2D(uFloorP2, ${at});` : ''}`,
+  // the damp stone under everything, and what it does to an edge
+  stone: (read = plain) => `${read('uCliff', 'xz * uCliffTile.x * 1.9 + 0.11')}.rgb * uFloorTint * (0.6 + 0.8 * ${read('uCliff', 'xz * uCliffTile.x * 7.0 + 0.71')}.r)`,
+  rag: '(dot(stone, LUM) - 0.3) * 1.8',
+  // how much of a kind shows at the spot (0: none of it; 1: all)
+  shows: (k) => `smoothstep(0.32, 0.62, ${AT[k.at]} + rag * ${num(k.ragged)})`,
+  // its picture's colour there, tinted (kind number i of the room's)
+  colour: (k, i, read = plain) => {
+    const tex = `${read(`uK${i}`, `xz * ${num(1 / k.tile)}`)}.rgb`;
+    return `${k.grey ? `vec3(dot(${tex}, LUM) / ${num(k.grey)})` : tex} * uKT${i}`;
+  },
+  // what a shader that reads the ground declares
+  pars: (kinds) => `
+uniform sampler2D uCliff;
+${kinds.map((k, i) => `uniform sampler2D uK${i}; uniform vec3 uKT${i};      // ${k.name}`).join('\n')}
+uniform sampler2D uFloorP;                  // the sheets side by side: their paint
+${kinds.some((k) => k.at > 2) ? 'uniform sampler2D uFloorP2;' : ''}
+uniform vec4 uMapBox;                       // the floor map: x0, z0 (less half a cell), 1 / (nz * cell), 1 / (nx * cell)
+uniform float uHalf;                        // half a column, of one sheet's width
+uniform vec2 uCliffTile;
+uniform vec3 uFloorTint;
+const vec3 LUM = vec3(0.3, 0.59, 0.11);`,
+};
 
 // the floor map's spans as sheets (see FLOORS OVER ONE ANOTHER): pictures of K sheets side by side (u along z, v along x)
 function sheetsOf(floor) {
@@ -117,7 +161,14 @@ function sheetsOf(floor) {
   }
   const P = new Uint8Array(W * nx * 4), P2 = two ? new Uint8Array(W * nx * 4) : null;
   for (let t = 0; t < W * nx; t++) for (let c = 0; c < 4; c++) { P[t * 4 + c] = A[t * C + c]; if (two) P2[t * 4 + c] = A[t * C + 4 + c]; }
-  return { H, P, P2, W, K };
+  // which sheet the floor at a spot is on (the sheet whose floor there is nearest that height), as the shader finds it
+  const sheetOf = (x, y, z) => {
+    const i = Math.min(nx - 1, Math.max(0, Math.round((x - floor.x0) / floor.cell))), j = Math.min(nz - 1, Math.max(0, Math.round((z - floor.z0) / floor.cell)));
+    let best = 1e9, at = 0;
+    for (let s = 0; s < K; s++) { const d = Math.abs(H[i * W + s * nz + j] - y); if (d < best) { best = d; at = s; } }
+    return at;
+  };
+  return { H, P, P2, W, K, sheetOf };
 }
 
 const VS = /* glsl */`
@@ -137,31 +188,22 @@ void main() {
 }`;
 
 // the fragment shader for a room's kinds of ground: each laid over the ones before it, where its byte of the paint says
-const AT = ['pc.r', 'pc.g', 'pc.b', 'pd.r', 'pd.g', 'pd.b', 'pd.a'];
 const fragmentFor = (kinds) => {
-  const two = kinds.some((k) => k.at > 2);
-  const lay = kinds.map((k, i) => {
-    const tex = `texture2D(uK${i}, vW.xz * ${num(1 / k.tile)}).rgb`;
-    return `
-        a = smoothstep(0.32, 0.62, ${AT[k.at]} + rag * ${num(k.ragged)}) * onFloor;      // ${k.name}
-        if (a > 0.0) ground = mix(ground, ${k.grey ? `vec3(dot(${tex}, LUM) / ${num(k.grey)})` : tex} * uKT${i}, a);`;
-  }).join('');
+  const lay = kinds.map((k, i) => `
+        a = ${READ.shows(k)} * onFloor;      // ${k.name}
+        if (a > 0.0) ground = mix(ground, ${READ.colour(k, i)}, a);`).join('');
   return /* glsl */`
-uniform sampler2D uCliff, uBlocks, uSlabs;
-${kinds.map((k, i) => `uniform sampler2D uK${i}; uniform vec3 uKT${i};      // ${k.name}`).join('\n')}
-uniform sampler2D uFloorH, uFloorP;         // the sheets side by side: their floors' heights (m), their paint
-${two ? 'uniform sampler2D uFloorP2;' : ''}
-uniform vec4 uMapBox;                       // the floor map: x0, z0 (less half a cell), 1 / (nz * cell), 1 / (nx * cell)
-uniform float uHalf;                        // half a column, of one sheet's width
-uniform vec2 uCliffTile, uBuiltTile;        // (uBuiltTile: repeats a metre of the blocks, of the slabs)
-uniform vec3 uTint, uFloorTint, uBuilt, uFogCol, uRim;
+uniform sampler2D uBlocks, uSlabs;
+uniform sampler2D uFloorH;                  // the sheets side by side: their floors' heights (m)
+${READ.pars(kinds)}
+uniform vec2 uBuiltTile;                    // repeats a metre of the blocks, of the slabs
+uniform vec3 uTint, uBuilt, uFogCol, uRim;
 uniform float uFogD;
 uniform vec4 uSprPos;
 uniform vec3 uSprCol;
 varying vec3 vW, vN, vL;
 varying vec4 vI;
 varying float vD, vTone;
-const vec3 LUM = vec3(0.3, 0.59, 0.11);
 void main() {
   vec3 n = normalize(vN);
   float built = smoothstep(0.35, 0.65, vI.r);
@@ -186,11 +228,11 @@ void main() {
     alb = mix(wall * uTint, roof * uTint * 0.9, down);
     if (up > 0.002) {
       // underfoot: damp stone, and over it what the bake's paint says lies there, each kind's edge ragged by the stone
-      vec3 stone = texture2D(uCliff, vW.xz * uCliffTile.x * 1.9 + 0.11).rgb * uFloorTint;
-      stone *= 0.6 + 0.8 * texture2D(uCliff, vW.xz * uCliffTile.x * 7.0 + 0.71).r;
+      vec2 xz = vW.xz;
+      vec3 stone = ${READ.stone()};
       vec3 ground = stone;
       // the sheet whose floor is at this height: its paint
-      float u = (vW.z - uMapBox.y) * uMapBox.z, v = (vW.x - uMapBox.x) * uMapBox.w;
+      float u = (xz.y - uMapBox.y) * uMapBox.z, v = (xz.x - uMapBox.x) * uMapBox.w;
       float best = 1e3, sheet = 0.0;
       for (int s = 0; s < SHEETS; s++) {
         float d = abs(vW.y - texture2D(uFloorH, vec2((clamp(u, 0.0, 1.0) + float(s)) / float(SHEETS), v)).r);
@@ -198,10 +240,8 @@ void main() {
       }
       float onFloor = 1.0 - smoothstep(0.5, 1.1, best);
       if (onFloor > 0.0) {
-        vec2 at = vec2((clamp(u, uHalf, 1.0 - uHalf) + sheet) / float(SHEETS), v);
-        vec4 pc = texture2D(uFloorP, at);
-        ${two ? 'vec4 pd = texture2D(uFloorP2, at);' : ''}
-        float rag = (dot(stone, LUM) - 0.3) * 1.8, a;${lay}
+        ${READ.paint(kinds, READ.where)}
+        float rag = ${READ.rag}, a;${lay}
       }
       alb = mix(alb, ground, up);
     }
@@ -241,7 +281,7 @@ export async function createCaveGround({ ground = './assets/ground/', floor, sca
   const picture = (file) => { if (!pictures.has(file)) pictures.set(file, loadTex(ground + file)); return pictures.get(file); };
   const [cliff, blocks, slabs, ...kindTex] = await Promise.all(['cliff-paint.webp', 'boss-blocks-paint.webp', 'boss-slabs-paint.webp', ...kinds.map((k) => k.picture)].map(picture));
   const { nx, nz, x0, z0, cell } = floor;
-  const { H, P, P2, W, K } = sheetsOf(floor);
+  const { H, P, P2, W, K, sheetOf } = sheetsOf(floor);
   const floorH = new THREE.DataTexture(H, W, nx, THREE.RedFormat, THREE.FloatType);
   const floorP = new THREE.DataTexture(P, W, nx, THREE.RGBAFormat);
   const floorP2 = P2 ? new THREE.DataTexture(P2, W, nx, THREE.RGBAFormat) : null;
@@ -254,21 +294,26 @@ export async function createCaveGround({ ground = './assets/ground/', floor, sca
   const fogCol = hex3(look.fog), v3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
   // a kind's tint: the room's own for it (look[its name]), else the bake's (a word there: the look of that name)
   const tintOf = (k) => v3(look[k.name] || (typeof k.tint === 'string' ? look[k.tint] : k.tint) || [1, 1, 1]);
-  const uniforms = {
-    uScale: { value: scale }, uCliff: { value: cliff }, uBlocks: { value: blocks }, uSlabs: { value: slabs },
-    uFloorH: { value: floorH }, uFloorP: { value: floorP }, ...(floorP2 ? { uFloorP2: { value: floorP2 } } : {}),
+  // what a reading of the ground needs (READ.pars): shared, the very same, with whatever grows from it
+  const read = {
+    uCliff: { value: cliff }, uFloorP: { value: floorP }, ...(floorP2 ? { uFloorP2: { value: floorP2 } } : {}),
     uMapBox: { value: new THREE.Vector4(x0 - cell / 2, z0 - cell / 2, 1 / (nz * cell), 1 / (nx * cell)) }, uHalf: { value: 0.5 / nz },
-    uCliffTile: { value: new THREE.Vector2(1 / 13, 1 / 7) }, uBuiltTile: { value: new THREE.Vector2(0.3, 0.42) },
-    uTint: { value: v3(look.rock) }, uFloorTint: { value: v3(look.floor) }, uBuilt: { value: v3(look.built) },
+    uCliffTile: { value: new THREE.Vector2(1 / 13, 1 / 7) }, uFloorTint: { value: v3(look.floor) },
+  };
+  kinds.forEach((k, i) => { read['uK' + i] = { value: kindTex[i] }; read['uKT' + i] = { value: tintOf(k) }; });
+  const uniforms = {
+    ...read,
+    uScale: { value: scale }, uBlocks: { value: blocks }, uSlabs: { value: slabs }, uFloorH: { value: floorH },
+    uBuiltTile: { value: new THREE.Vector2(0.3, 0.42) }, uTint: { value: v3(look.rock) }, uBuilt: { value: v3(look.built) },
     uFogCol: { value: fogCol }, uFogD: { value: look.fogDensity }, uRim: { value: hex3(look.rim) },
     uSprPos: sprite ? sprite.uSprPos : { value: new THREE.Vector4(0, -999, 0, 0) },
     uSprCol: sprite ? sprite.uSprCol : { value: new THREE.Vector3(0, 0, 0) },
   };
-  kinds.forEach((k, i) => { uniforms['uK' + i] = { value: kindTex[i] }; uniforms['uKT' + i] = { value: tintOf(k) }; });
   const material = new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: fragmentFor(kinds), uniforms, defines: { SHEETS: K } });
   material.userData.noCave = true;                       // (its light is its own: baked, and the sprite's read here)
   return {
     material, uniforms, fogColor: fogCol, sheets: K, kinds: kinds.map((k) => k.name),
+    reads: { kinds, uniforms: read, pars: READ.pars(kinds), defines: { SHEETS: K }, sheetOf },
     dispose() { material.dispose(); for (const t of made) t.dispose(); for (const p of pictures.values()) p.then((t) => t && t.dispose()); },
   };
 }

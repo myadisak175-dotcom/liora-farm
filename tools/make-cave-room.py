@@ -112,17 +112,18 @@
 #   floor    the floor map with SPANS (cave-level.js' header): every column's stretches of air a metre high or more, their
 #            floors and roofs, "layers" of them; and, in a room with water, the water's surface over each span ("water":
 #            cm; -32768: none): what she wades and swims in. What lies on each span: "kinds" lists the kinds of ground
-#            this room has (name, picture, tile: metres a repeat, tint, ragged, and "at": which byte holds how much of
-#            it lies there: 0..2 "paint"'s r, g, b; 3..6 "paint2"'s r, g, b, a, written only when a room has more than
-#            three kinds); "paint"'s a is 150 on laid stone; "step" (a byte a span, into "steps") is what is underfoot
+#            this room has (name, picture, tile: metres a repeat, tint, ragged, grows, mean: its picture's own mean
+#            colour, and "at": which byte holds how much of it lies there: 0..2 "paint"'s r, g, b; 3..6 "paint2"'s r, g,
+#            b, a, written only when a room has more than three kinds); "paint"'s a is 150 on laid stone; "step" (a byte a span, into "steps") is what is underfoot
 #            there, for her steps
 #   water    the water as one mesh (cave-water.js draws it): its surface (every water that meets at one height is one
 #            sheet, cut to its shore per pixel by its depth), then the falls, then the foam at their feet ("parts"):
 #            position, info (depth under it in m, under 0 past the shore; the flow's x and z in m/s), uv (a fall: across,
 #            metres fallen; a foot: angle, how far out), the light baked on it
 #   grass    the grass as tufts (cave-grass.js draws them): each one's foot on the rock (root), its own dice (rnd: turn,
-#            how tall / 2, phase, tint), the ground's colour under it and how the ground slopes there in x (col), the
-#            light baked on it and the slope in z (light)
+#            how tall / 2, phase, tint), how the ground slopes there in x and in z (lie), the light baked on it (light).
+#            Its colour and how tall it stands at its patch's edge are NOT baked: cave-grass.js reads the ground itself at
+#            every tuft's foot (the very paint and pictures cave-ground.js draws), as the meadow's grass reads its ground
 #   volume   the light in the air, 1 m cells (cave-light.js: on her and on plants)
 # and NAME.json says the room's "land", its "water" and its "mouths" (each with the "stream" that ends in it, if one does),
 # and its "falls" (lip, foot, width: for what is heard and thrown up there, later).
@@ -958,8 +959,10 @@ if len(pts):
     for ch, name in enumerate(used):
         g = GROUNDS[name]
         (paint if ch < 3 else paint2)[where, ch if ch < 3 else ch - 3] = np.where(slab, 0, np.clip(amt[name], 0, 1) * 255)
+        mean = np.asarray(Image.open(os.path.join(ROOT, 'assets', 'ground', g['picture'])).convert('RGB'), np.float32).reshape(-1, 3).mean(0) / 255
         KINDS.append({'name': name, 'picture': g['picture'], 'tile': g['tile'], 'tint': g['tint'], **({'grey': g['grey']} if 'grey' in g else {}),
-                      'ragged': g['ragged'], 'step': g['step'], **({'grows': g['grows']} if g.get('grows') else {}), 'at': ch})
+                      'ragged': g['ragged'], 'step': g['step'], **({'grows': g['grows']} if g.get('grows') else {}),
+                      'mean': [round(float(v), 4) for v in mean], 'at': ch})
         on = (amt[name] > 0.5) & ~slab
         top[on] = STEPS.index(g['step']); topk[on] = ch
     paint[where, 3] = np.where(slab, 150, 0)
@@ -1002,38 +1005,33 @@ GRASS = {'kind': GRASS} if isinstance(GRASS, str) else dict(GRASS)
 TUFTS = 40.0                  # tufts of grass a square metre where it stands thickest
 grass = None
 if len(pts) and GRASS.get('kind', 'green') != 'none':
-    # how much of each kind of ground shows on a span (what the kinds laid over it leave of it: as cave-ground.js lays a
-    # kind in, none under 0.32 of it, all of it past 0.62), and so how thick grass stands there: by the grounds that
-    # grow it, not in water (thin at its very edge), not on steep ground, not on laid stone
+    # WHERE its tufts stand: on every span where a ground that grows grass shows (how much of each kind shows: what the
+    # kinds laid over it leave of it, as cave-ground.js lays a kind in: none under 0.32 of it, all of it past 0.62), not
+    # in water (thin at its very edge), not on steep ground, not on laid stone. As thick as that ground grows it wherever
+    # a third of the ground or more is such ground; thinner only toward the patch's very edge. How TALL each stands
+    # there, and its colour, the drawing reads from the ground itself (cave-grass.js): nothing of that is decided here
     seen = {}; left = np.ones(len(pts), np.float32)
     for name in reversed(list(GROUNDS)):
         t = np.clip((amt[name] - 0.32) / 0.3, 0, 1); t = t * t * (3 - 2 * t)
         seen[name] = t * left; left = left * (1 - t)
     grown = [name for name in GROUNDS if GROUNDS[name].get('grows')]
-    thick = sum(GROUNDS[name]['grows'] * seen[name] for name in grown) * GRASS.get('thick', 1.0)
+    thick = sum(GROUNDS[name]['grows'] * np.clip(seen[name] / 0.35, 0, 1) for name in grown) * GRASS.get('thick', 1.0)
     thick = thick * np.where(np.isnan(wet_by), 1.0, np.clip((-wet_by - 0.03) / 0.12, 0, 1)) * np.clip((38 - f['tilt']) / 10, 0, 1) * ~slab
     P, span, dice = scatter(thick, TUFTS, 31)
     if len(P):
-        # each tuft: taller in clumps and where it stands thick, shorter toward its patch's edge
+        # each tuft's own height: taller in clumps
         clump = fbm(P[:, 0], P[:, 1] * 0, P[:, 2], WORLD_SEED + 13, 1.6, 2)
-        tall = np.clip((0.66 + 0.9 * clump) * (0.8 + 0.4 * dice[:, 0]) * (0.4 + 0.6 * np.clip(thick[span], 0, 1)) * GRASS.get('tall', 1.0), 0.2, 2.0)
-        # the colour of the ground it rises from (the growing kinds showing there: their pictures' own colour, tinted), so
-        # a blade has no root to be seen
-        def colour_of(name):
-            g = GROUNDS[name]; tint = D.get('look', {}).get(name, g['tint'])
-            return np.asarray(Image.open(os.path.join(ROOT, 'assets', 'ground', g['picture'])).convert('RGB'), np.float32).reshape(-1, 3).mean(0) / 255 * np.array(tint, np.float32)
-        share = np.stack([seen[name][span] * GROUNDS[name]['grows'] for name in grown], 1) + 1e-4
-        ground = (share[:, :, None] * np.stack([colour_of(name) for name in grown])[None]).sum(1) / share.sum(1, keepdims=True)
+        tall = np.clip((0.66 + 0.9 * clump) * (0.8 + 0.4 * dice[:, 0]) * GRASS.get('tall', 1.0), 0.2, 2.0)
         # the rock's own face there: its light (as the rock under it is lit), and how it slopes (a tuft's blades stand a
         # hand apart)
         N = -np.stack([at_field(c, P) for c in GRAD], 1); N /= np.linalg.norm(N, axis=1, keepdims=True) + 1e-6
         lit, _ = light_on(P, N.astype(np.float32))
         lean = np.clip(-N[:, [0, 2]] / np.maximum(N[:, 1:2], 0.3), -1, 1)
-        rnd8 = np.zeros((len(P), 4), np.uint8); col8 = np.zeros((len(P), 4), np.uint8); lit8 = np.zeros((len(P), 4), np.uint8)
+        rnd8 = np.zeros((len(P), 4), np.uint8); lie8 = np.zeros((len(P), 4), np.uint8); lit8 = np.zeros((len(P), 4), np.uint8)
         rnd8[:, 0] = dice[:, 1] * 255; rnd8[:, 1] = tall / 2 * 255; rnd8[:, 2] = dice[:, 2] * 255; rnd8[:, 3] = dice[:, 3] * 255
-        col8[:, :3] = np.clip(ground, 0, 1) * 255; col8[:, 3] = (lean[:, 0] * 0.5 + 0.5) * 255
-        lit8[:, :3] = np.clip(lit / LIGHT_SCALE * 255, 0, 255); lit8[:, 3] = (lean[:, 1] * 0.5 + 0.5) * 255
-        grass = (P.astype(np.float32), rnd8, col8, lit8)
+        lie8[:, :2] = (lean * 0.5 + 0.5) * 255
+        lit8[:, :3] = np.clip(lit / LIGHT_SCALE * 255, 0, 255); lit8[:, 3] = 255
+        grass = (P.astype(np.float32), rnd8, lie8, lit8)
         log(f"grass ({GRASS.get('kind', 'green')}): {len(P)} tufts on {(thick > 0.5).sum() * CELL * CELL:.0f} m2 ({', '.join(grown)})")
 
 # ---------------------------------------------------------------- the light in the air: 1 m cells
@@ -1074,7 +1072,7 @@ if WT:
              'light': put(wl8), 'idx': put(np.array(WT, np.uint32).reshape(-1)), 'parts': parts}
 grown = None
 if grass:
-    grown = {'tufts': int(len(grass[0])), 'root': put(grass[0]), 'rnd': put(grass[1]), 'col': put(grass[2]), 'light': put(grass[3])}
+    grown = {'tufts': int(len(grass[0])), 'root': put(grass[0]), 'rnd': put(grass[1]), 'lie': put(grass[2]), 'light': put(grass[3])}
 volume = {'nx': VNX, 'ny': VNY, 'nz': VNZ, 'x0': X0, 'y0': Y0, 'z0': Z0, 'cell': VC, 'data': put(vol8)}
 
 

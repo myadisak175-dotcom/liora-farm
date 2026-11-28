@@ -15,7 +15,7 @@
      cave-ground.js   its rock, its laid stone, what lies on its floors: whatever kinds of ground the bake lists
                       (floors over one another too)
      cave-water.js    its water: pools, streams, falls
-     cave-grass.js    its grass: the tufts the bake scattered
+     cave-grass.js    its grass: the tufts the bake scattered, reading the ground they stand on (as the meadow's does)
      cave-light.js    its light on her and on plants (a picture of the air)
      cave-level.js    where she may stand, climb, wade, swim; her camera
      (to come, the kit's next pieces: its air and things — mist by storey, lamps that wake, ferns, crystals,
@@ -78,11 +78,11 @@ export async function createCaveRoom({ name = 'test', base = './assets/caves/', 
     group.add(water.object);
   }
 
-  // ---- the grass: the tufts the bake scattered
+  // ---- the grass: the tufts the bake scattered; it reads the ground itself for its colour and its patches' edges
   let grass = null;
   if (B.grass && B.grass.tufts) {
     await onStep('ปลูกหญ้า');
-    grass = createCaveGrass({ bin, grass: B.grass, scale: B.lightScale, sprite: light.uniforms, kind: L.grass || 'green', fog: floorPaint.fogColor, fogDensity: look.fogDensity });
+    grass = createCaveGrass({ bin, grass: B.grass, ground: floorPaint, scale: B.lightScale, sprite: light.uniforms, kind: L.grass || 'green', fog: floorPaint.fogColor, fogDensity: look.fogDensity });
     group.add(grass.object);
   }
 
