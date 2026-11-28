@@ -10,7 +10,9 @@
 //      stone in its description is walked from end to end with her feet on its line, her camera at every place's height;
 //      every piece of its land and every waterway does what its kind promises (PIECES, below: a new kind gets its line
 //      there), and she stands level at every mouth; its ground: every kind on its floors has a picture and a sound for
-//      her steps, and every thing painted by hand lies on top where it was drawn (and sounds as its kind does).
+//      her steps, and every thing painted by hand lies on top where it was drawn (and sounds as its kind does); its
+//      grass: every tuft stands on a floor, on ground that grows grass, out of the water and off laid stone, about as
+//      thick as the tool means it to.
 // Run it after changing cave-level.js, and after baking a room (one of the first three: its name is in ROOMS; a room of
 // the kit: add its name to KIT).
 
@@ -35,7 +37,8 @@ function loadRoom(name) {
     kinds: F.kinds || [], ...(F.paint2 !== undefined ? { paint2: new Uint8Array(bin, F.paint2, n * 4) } : {}),
     ...(F.step !== undefined ? { step: new Uint8Array(bin, F.step, n), steps: F.steps } : {}),
     ...(F.water !== undefined ? { water: new Int16Array(bin, F.water, n) } : {}) };
-  return { floorMap, layout: L, colliders: [], trunks: [], crowns: [] };
+  const G = L.bin.grass, grass = G ? { tufts: G.tufts, root: new Float32Array(bin, G.root, G.tufts * 3) } : null;
+  return { floorMap, layout: L, colliders: [], trunks: [], crowns: [], grass };
 }
 // the level as it read a room with one floor under every spot (cave-level.js until 28 Nov 2026, its own lines)
 function singleFloor(hall) {
@@ -418,6 +421,35 @@ for (const name of KIT) {
       const kept = sound === on && (d.picture ? on >= 6 : natural >= 3 && on >= 0.6 * natural);      // (a picture: wherever it is white; 6 spots: a square metre)
       check(`${name}: paint ${n + 1}, ${kind} ${where}`, kept, `${kind} on top at ${on} of ${natural} spots ${d.picture ? 'under its picture' : 'inside it'}, her steps there: ${step || '?'}`);
     });
+  }
+  // the grass: every tuft on a floor, on ground that grows it, dry, not on laid stone; about as thick as it is meant to be
+  {
+    const M = hall.floorMap, n2 = M.nx * M.nz, grows = M.kinds.filter((k) => k.grows), want = (D.grass && D.grass.kind) || D.grass || 'green';
+    const amount = (k, q) => (k.at < 3 ? M.paint[q * 4 + k.at] : M.paint2[q * 4 + k.at - 3]);
+    const spanAt = (x, z, y) => {                                         // the span of the nearest column whose floor is at that height
+      const i = Math.round((x - M.x0) / M.cell), j = Math.round((z - M.z0) / M.cell);
+      if (i < 0 || j < 0 || i >= M.nx || j >= M.nz) return -1;
+      for (let q = i * M.nz + j; q < n2 * (M.layers || 1) && M.fl[q] !== NONE; q += n2) if (Math.abs(M.fl[q] / 100 - y) < 0.35) return q;
+      return -1;
+    };
+    if (want === 'none') check(`${name}: grass: none asked, none baked`, !hall.grass);
+    else if (!grows.length) check(`${name}: grass: no ground here grows it, none baked`, !hall.grass);
+    else {
+      const R = hall.grass ? hall.grass.root : [], T = hall.grass ? hall.grass.tufts : 0;
+      let off = 0, bare = 0, wet = 0, laid = 0;
+      for (let t = 0; t < T; t++) {
+        const x = R[t * 3], y = R[t * 3 + 1], z = R[t * 3 + 2], q = spanAt(x, z, y);
+        if (q < 0) { off++; continue; }
+        if (M.paint[q * 4 + 3] > 100) laid++;
+        if (M.water && M.water[q] !== NONE && M.water[q] / 100 > y + 0.03) wet++;
+        if (!grows.some((k) => amount(k, q) > 60)) bare++;
+      }
+      let area = 0;                                                       // (the floor where a growing kind lies thick)
+      for (let q = 0; q < n2 * (M.layers || 1); q++) if (M.fl[q] !== NONE && M.paint[q * 4 + 3] < 100 && grows.some((k) => amount(k, q) > 160)) area += M.cell * M.cell;
+      const per = area ? T / area : 0;
+      check(`${name}: grass "${want}", ${T} tufts`, T > 0 && off === 0 && laid === 0 && wet === 0 && bare <= 0.03 * T && per > 12 && per < 70,
+        `every one on a floor${off ? ' (NOT ' + off + ')' : ''}, ${T - bare} on ground that grows it (${grows.map((k) => k.name).join(', ')}), ${wet} in water, ${laid} on laid stone; about ${per.toFixed(0)} a m2 of the ${area.toFixed(0)} m2 where it lies thick`);
+    }
   }
   (D.mouths || []).forEach((m) => {
     const a = (m.toward || 0) * Math.PI / 180, x = m.at[0] - 1.2 * Math.cos(a), z = m.at[2] - 1.2 * Math.sin(a), h = level.standAt(x, z, m.at[1]);
