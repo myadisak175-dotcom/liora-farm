@@ -23,7 +23,7 @@
 
    Where they are (metres, the hill village's own frame; its middle is about x -20, z 30): a big island and three small ones
    east-south-east, over the trees where she looks from where she starts (index.html tilts her look up a little to begin
-   with); one big and one small south over the valley; two west over the dead fringe (from the hero's farm, ?oldfarm=1, over
+   with); one big and one small south over the valley; two west over the dead fringe (from the hero's farm, over
    his cottage's roof); one north beyond the castle. ISLANDS below.
    ========================================================================== */
 import * as THREE from 'three';
