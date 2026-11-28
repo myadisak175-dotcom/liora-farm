@@ -35,7 +35,12 @@
 //                                    (the walls' feet, the columns, boulders, stalagmites, the ways closed), a roof lower
 //                                    than she stands, or (a room of several floors) a face whose top is under a roof too
 //                                    low to come up under: a tunnel's end under the floor above it; 'out' past the room
-//     level.waterDepthAt(x, z, y)    a pool's depth there (0 elsewhere, and on a floor over or under the pool's own)
+//     level.waterDepthAt(x, z, y)    a pool's depth there (0 elsewhere, and on a floor over or under the pool's own). A room
+//                                    of the kit says its water in the floor map instead (floorMap.water: the water's
+//                                    surface over each span, cm; -32768 none): a stream's slopes, a pool has its hollow's
+//                                    shape, and each is on its own span
+//     level.ripple(x, z, size, life, kind)   only where the room draws rings on its water (hall.ripple: cave-room.js): the
+//                                    player's own call (a step in the water, a splash), handed on with the water's height there
 //     level.ceilAt(x, z, y)          the roof over her: the lowest of her span's roof round where she is (in the air her
 //                                    head stops under it: player-moves.js). Under a bridge: the bridge's underside
 //     level.surfaceAt(x, z, y)       what is underfoot, for her steps (step-sounds.js): 'grass' (moss, fallen leaves: soft),
@@ -122,6 +127,9 @@ export function createCaveLevel(hall) {
   }
   const BARE = M.bare || 'grass';       // what is underfoot where no paint lies (the kit's rooms: 'stone'; the first three rooms' floors are moss)
   const pools = (L.pools || (L.pool ? [L.pool] : [])).map((p) => ({ x: p.c[0], z: p.c[1], r2: (p.r + 2.0) * (p.r + 2.0), level: p.level }));
+  // the kit's water: its surface over each span (NaN: none)
+  let wl = null;
+  if (M.water) { wl = new Float32Array(N); for (let i = 0; i < N; i++) wl[i] = M.water[i] === NONE ? NaN : M.water[i] / 100; }
 
   // the floor at a spot, from the four columns round it: those in the rock left out (the rest weighed as they are near)
   // (none of them in the air: `none`)
@@ -167,8 +175,21 @@ export function createCaveLevel(hall) {
     return w > 1e-6 ? s / w : Infinity;
   };
   const ceilAt = (x, z, y) => { const h = at(y); return Math.min(roofAt(x, z, h), roofAt(x + HEAD, z, h), roofAt(x - HEAD, z, h), roofAt(x, z + HEAD, h), roofAt(x, z - HEAD, h)); };
+  // the kit's water at a spot: its surface from the columns round it that have any (NaN: none there)
+  const waterAt = (x, z, y) => {
+    const fx = (x - x0) / cell, fz = (z - z0) / cell, i = Math.floor(fx), j = Math.floor(fz);
+    if (i < 0 || j < 0 || i >= nx - 1 || j >= nz - 1) return NaN;
+    const u = fx - i, v = fz - j, k = i * nz + j;
+    const a = spanAt(k, y), b = spanAt(k + nz, y), c = spanAt(k + 1, y), d = spanAt(k + nz + 1, y);
+    let s = 0, w = 0, q;
+    if (a >= 0 && wl[a] === wl[a]) { q = (1 - u) * (1 - v); s += wl[a] * q; w += q; }
+    if (b >= 0 && wl[b] === wl[b]) { q = u * (1 - v); s += wl[b] * q; w += q; }
+    if (c >= 0 && wl[c] === wl[c]) { q = (1 - u) * v; s += wl[c] * q; w += q; }
+    if (d >= 0 && wl[d] === wl[d]) { q = u * v; s += wl[d] * q; w += q; }
+    return w > 1e-6 ? s / w : NaN;
+  };
   // a pool is on one floor: on a floor over it or under it there is no water
-  const depthAt = (x, z, y) => {
+  const depthAt = wl ? (x, z, y) => { const w = waterAt(x, z, y); return w === w ? Math.max(0, w - floorOnly(x, z, y, w)) : 0; } : (x, z, y) => {
     for (let i = 0; i < pools.length; i++) {
       const p = pools[i], dx = x - p.x, dz = z - p.z;
       if (dx * dx + dz * dz > p.r2) continue;
@@ -329,5 +350,6 @@ export function createCaveLevel(hall) {
     places: L.places || [],
     layers: K,
     slope,
+    ...(hall.ripple ? { ripple: (x, z, size, life, kind) => { const w = wl ? waterAt(x, z, here) : NaN; if (w === w) hall.ripple(x, w, z, size, life, kind); } } : {}),
   };
 }

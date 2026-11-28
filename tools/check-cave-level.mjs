@@ -8,8 +8,8 @@
 //   3. Her camera in all of them: never through a floor, a roof or a wall.
 //   4. The kit's rooms (tools/make-cave-room.py): every place of a room stands on ground at its own height, every way of
 //      stone in its description is walked from end to end with her feet on its line, her camera at every place's height;
-//      every piece of its land does what its kind promises (PIECES, below: a new kind of piece gets its line there), and
-//      she stands level at every mouth.
+//      every piece of its land and every waterway does what its kind promises (PIECES, below: a new kind gets its line
+//      there), and she stands level at every mouth.
 // Run it after changing cave-level.js, and after baking a room (one of the first three: its name is in ROOMS; a room of
 // the kit: add its name to KIT).
 
@@ -30,7 +30,8 @@ function loadRoom(name) {
   const buf = readFileSync(join(ROOT, 'assets/caves', name + '.bin'));
   const bin = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), F = L.bin.floor, n = F.nx * F.nz * (F.layers || 1);
   const floorMap = { nx: F.nx, nz: F.nz, x0: F.x0, z0: F.z0, cell: F.cell, layers: F.layers,
-    fl: new Int16Array(bin, F.floor, n), ce: new Int16Array(bin, F.ceil, n), paint: new Uint8Array(bin, F.paint, n * 4) };
+    fl: new Int16Array(bin, F.floor, n), ce: new Int16Array(bin, F.ceil, n), paint: new Uint8Array(bin, F.paint, n * 4),
+    ...(F.water !== undefined ? { water: new Int16Array(bin, F.water, n) } : {}) };
   return { floorMap, layout: L, colliders: [], trunks: [], crowns: [] };
 }
 // the level as it read a room with one floor under every spot (cave-level.js until 28 Nov 2026, its own lines)
@@ -267,7 +268,7 @@ const walked = (L, path, ends = 0.6) => {
 const inOutline = (o, x, z) => { let c = false; for (let i = 0, j = o.length - 1; i < o.length; j = i++) if ((o[i][1] > z) !== (o[j][1] > z) && x < (o[j][0] - o[i][0]) * (z - o[i][1]) / (o[j][1] - o[i][1]) + o[i][0]) c = !c; return c; };
 const PIECES = {
   mound: (s, L) => { const y = s.floor + s.high, h = L.standAt(s.at[0], s.at[1], y); return [L.footing(s.at[0], s.at[1], y) === 'ground' && Math.abs(h - y) < 0.35, `its top at ${h.toFixed(2)} (drawn ${y.toFixed(2)}), walked over`]; },
-  hollow: (s, L) => { const y = s.floor - s.deep, h = L.standAt(s.at[0], s.at[1], y); return [L.footing(s.at[0], s.at[1], y) === 'ground' && Math.abs(h - y) < 0.35, `its bed at ${h.toFixed(2)} (drawn ${y.toFixed(2)}), walked into`]; },
+  hollow: (s, L) => { const y = s.floor - s.deep, h = L.standAt(s.at[0], s.at[1], y), f = L.footing(s.at[0], s.at[1], y); return [(f === 'ground' || f === 'water') && Math.abs(h - y) < 0.35, `its bed at ${h.toFixed(2)} (drawn ${y.toFixed(2)}), ${f === 'water' ? 'under water too deep to wade' : 'walked into'}`]; },
   slope: (s, L) => walked(L, s.path),
   ledge: (s, L) => {
     if (!s.outline) return [true, 'drawn as a picture: not walked here'];
@@ -287,6 +288,27 @@ const PIECES = {
     let stops = 0;                                                       // (round its flank, at the floor's height: a face or a wall, not ground)
     for (let k = 0; k < 12; k++) if (L.footing(s.at[0] + 0.85 * rx * Math.cos(k * Math.PI / 6), s.at[1] + 0.85 * rz * Math.sin(k * Math.PI / 6), s.floor) !== 'ground') stops++;
     return [h > s.floor + 0.6 * ry && stops >= 8, `it stands ${(Math.min(h, s.floor + 2 * ry) - s.floor).toFixed(1)} m over the floor, its flank stops her on ${stops} sides of 12`];
+  },
+  pool: (s, L) => {
+    const d = L.waterDepthAt(s.at[0], s.at[1], s.level), top = L.standAt(s.at[0], s.at[1], s.level) + d;
+    let deepest = 0, area = 0;                                           // (round its spot: how deep it gets, how much of it there is)
+    for (let x = s.at[0] - 8; x <= s.at[0] + 8; x += 0.4) for (let z = s.at[1] - 8; z <= s.at[1] + 8; z += 0.4) {
+      const e = L.waterDepthAt(x, z, s.level); if (e > 0.02 && Math.abs(L.standAt(x, z, s.level) + e - s.level) < 0.06) { area += 0.16; deepest = Math.max(deepest, e); }
+    }
+    return [d > 0.1 && Math.abs(top - s.level) < 0.06, `${area.toFixed(0)} m2 of water at ${top.toFixed(2)} (drawn ${s.level}), up to ${deepest.toFixed(2)} m deep: she ${deepest >= 1.05 ? 'swims in its middle' : 'wades it'}`];
+  },
+  stream: (s, L) => {
+    const falls = (a, b) => a[1] - b[1] > Math.max(0.5, Math.hypot(b[0] - a[0], b[2] - a[2]));
+    let n = 0, dry = 0, off = 0, most = 0, fell = 0, missed = 0;
+    for (let i = 1; i < s.path.length; i++) {
+      const a = s.path[i - 1], b = s.path[i], run = Math.hypot(b[0] - a[0], b[2] - a[2]);
+      if (falls(a, b)) { fell++; if (!(L.waterDepthAt(b[0], b[2], b[1]) > 0.05)) missed++; continue; }
+      for (let u = 0.4; u <= run - 0.4; u += 0.3) {
+        const t = u / run, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, z = a[2] + (b[2] - a[2]) * t, d = L.waterDepthAt(x, z, y);
+        n++; most = Math.max(most, d); if (!(d > 0.03)) dry++; else if (Math.abs(L.standAt(x, z, y) + d - y) > 0.1) off++;
+      }
+    }
+    return [n > 0 && dry === 0 && off === 0 && missed === 0, `water all along its line (${n} spots, up to ${most.toFixed(2)} m deep, its surface on the line)${fell ? `, ${fell} fall${fell > 1 ? 's' : ''} landing on water` : ''}${dry ? `; ${dry} spots dry` : ''}${off ? `; ${off} off its line` : ''}${missed ? `; ${missed} falls landing on no water` : ''}`];
   },
   heights: (s, L) => {
     const lo = s.low || 0, hi = s.high === undefined ? 1 : s.high; let most = -9, least = 9;
@@ -325,6 +347,12 @@ for (const name of KIT) {
     if (!PIECES[kind]) { check(`${name}: land ${n + 1} (${kind})`, false, 'no line for this kind in PIECES'); return; }
     const [kept, words] = PIECES[kind](d, level);
     check(`${name}: land ${n + 1}, a ${kind}`, kept, words);
+  });
+  (D.waterways || []).forEach((piece, n) => {
+    const [kind, d] = Object.entries(piece)[0];
+    if (!PIECES[kind]) { check(`${name}: water ${n + 1} (${kind})`, false, 'no line for this kind in PIECES'); return; }
+    const [kept, words] = PIECES[kind](d, level);
+    check(`${name}: water ${n + 1}, a ${kind}`, kept, words);
   });
   (D.mouths || []).forEach((m) => {
     const a = (m.toward || 0) * Math.PI / 180, x = m.at[0] - 1.2 * Math.cos(a), z = m.at[2] - 1.2 * Math.sin(a), h = level.standAt(x, z, m.at[1]);
