@@ -40,7 +40,7 @@ export async function createCaveRoom({ name = 'test', base = './assets/caves/', 
 
   // ---- what cave-level.js reads: the floor map (spans), and the light in the air
   const floorMap = {
-    nx: F.nx, nz: F.nz, x0: F.x0, z0: F.z0, cell: F.cell, layers: F.layers || 1,
+    nx: F.nx, nz: F.nz, x0: F.x0, z0: F.z0, cell: F.cell, layers: F.layers || 1, bare: 'stone',     // (her steps where no paint lies)
     fl: new Int16Array(bin, F.floor, spans), ce: new Int16Array(bin, F.ceil, spans), paint: new Uint8Array(bin, F.paint, spans * 4),
   };
   const light = createCaveLight({ volume: { data: new Uint8Array(bin, V.data, V.nx * V.ny * V.nz * 4), nx: V.nx, ny: V.ny, nz: V.nz, x0: V.x0, y0: V.y0, z0: V.z0, cell: V.cell }, scale: B.lightScale });

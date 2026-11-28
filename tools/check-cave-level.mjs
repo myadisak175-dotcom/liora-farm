@@ -6,7 +6,10 @@
 //   2. Three made-up rooms with floors over one another, walked: a bridge over a hall, a stair winding down two turns over
 //      itself, a tunnel under a floor (with a pit down into it, a dead end, a pool on each floor).
 //   3. Her camera in all of them: never through a floor, a roof or a wall.
-// Run it after changing cave-level.js, and after baking a room (add the room's name to ROOMS).
+//   4. The kit's rooms (tools/make-cave-room.py): every place of a room stands on ground at its own height, every way of
+//      stone in its description is walked from end to end with her feet on its line, her camera at every place's height.
+// Run it after changing cave-level.js, and after baking a room (one of the first three: its name is in ROOMS; a room of
+// the kit: add its name to KIT).
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -257,12 +260,13 @@ for (const name of KIT) {
     let path = w.path;
     if (w.helix) { const h = w.helix, [a0, ya] = h.from, [a1, yb] = h.to, m = Math.max(2, Math.floor(Math.abs(a1 - a0) / 2) + 1); path = [];
       for (let i = 0; i < m; i++) { const a = (a0 + (a1 - a0) * i / (m - 1)) * Math.PI / 180; path.push([h.at[0] + h.r * Math.cos(a), ya + (yb - ya) * i / (m - 1), h.at[1] + h.r * Math.sin(a)]); } }
-    let len = 0; for (let i = 1; i < path.length; i++) len += Math.hypot(path[i][0] - path[i - 1][0], path[i][2] - path[i - 1][2]);
-    let gone = 0, steps = 0, off = 0, worst = 0, first = '';
-    for (let i = 1; i < path.length; i++) for (let t = 0; t < 1; t += 0.25) {
+    const runs = [0]; for (let i = 1; i < path.length; i++) runs.push(runs[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][2] - path[i - 1][2]));
+    const len = runs[runs.length - 1];
+    let steps = 0, off = 0, worst = 0, first = '';
+    for (let u = 1.5, i = 1; u <= len - 1.5; u += 0.2) {                // (its ends run into the rock or the floor they meet)
+      while (runs[i] < u) i++;
+      const t = (u - runs[i - 1]) / Math.max(runs[i] - runs[i - 1], 1e-6);
       const x = path[i - 1][0] + (path[i][0] - path[i - 1][0]) * t, y = path[i - 1][1] + (path[i][1] - path[i - 1][1]) * t, z = path[i - 1][2] + (path[i][2] - path[i - 1][2]) * t;
-      gone = (i - 1 + t) / (path.length - 1);
-      if (gone * len < 1.5 || (1 - gone) * len < 1.5) continue;       // (its ends run into the rock or the floor they meet)
       steps++;
       const f = level.footing(x, z, y), h = level.standAt(x, z, y);
       worst = Math.max(worst, Math.abs(h - y));

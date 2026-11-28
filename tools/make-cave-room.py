@@ -13,6 +13,7 @@
 # make-fang-hall.py, make-boss-hall.py, each with its own drawing code, are as they were: to be made anew on the kit.)
 #
 # THE DESCRIPTION (metres; x east, z south, y up; angles in degrees, 0 toward +x, turning toward +z):
+#   "title": "..."                       its name, as the page shows it
 #   "bounds": [x0, y0, z0, x1, y1, z1]   the block of rock the room is cut in        "cell": 0.4 (the grid)
 #   "rough": 0.45, "seed": 7             how far natural rock wanders from its drawn lines (walls and roofs: never floors)
 #   "air": [ ... ]                       taken out of the rock, in order:
@@ -25,22 +26,26 @@
 #                                         grey for height: black "low", white "high"
 #   "stone": [ ... ]                     put back, in order ("built": true: laid stone, blocks and slabs; else natural rock):
 #     { "way":    { "path": [[x, y, z], ...]  or  "helix": { "at": [x, z], "r": r, "from": [angle, y], "to": [angle, y] },
-#                   "wide": w, "thick": t, "room": h, "built": true } }                    a way of stone: a slab t thick under the
+#                   "wide": w, "thick": t, "room": h, "built": true, "steps": 0.16 } }     a way of stone: a slab t thick under the
 #                                         line, the air over it cleared h high. Over air it is a bridge; a helix of more than a
 #                                         turn is a stair winding over itself. Keep it wider than 2.4 m (her camera goes
-#                                         through thinner rock) and its flights 3 m apart or more
+#                                         through thinner rock) and its flights 3 m apart or more. "steps": where the line
+#                                         slopes, real steps of that rise are laid on it (level where it is level: a landing);
+#                                         she walks the slope under them (her feet within half a rise of a step's top)
 #     { "pillar": { "at": [x, z], "r": r, "from": y, "to": y, "built": true } }
 #     { "block":  { "box": [x0, y0, z0, x1, y1, z1], "built": true } }
-#   "lights": [ { "lamp": { "at": [x, y, z], "colour": "blue" | "warm" | "teal" | [r, g, b], "reach": 8, "power": 1 } } ]
+#   "lights": [ { "lamp": { "at": [x, y, z], "colour": "blue" | "warm" | "teal" | "white" | [r, g, b], "reach": 8, "power": 1 } } ]
 #   "ambient": [r, g, b]                 the dark's own light
+#   "look": { "built": [r, g, b], "fog": "#0a1420", ... }      the room's own colours (cave-ground.js, GROUND_LOOK: any of them)
 #   "paint": [ { "earth": { "path": [[x, y, z], ...], "wide": w } }, { "sand": { ... } } ]   what lies on natural floors (moss comes
 #                                         by itself where a lamp's light falls)
 #   "pools": [ { "c": [x, z], "r": r, "level": y } ]      (handed on as they are: the water is the kit's next piece)
 #   "spawn": { "x", "y", "z", "yaw" }, "places": [ { "name", "x", "y", "z", "heading" } ]
 #
 # WHAT IS BAKED (NAME.json's "bin" says where each lies in NAME.bin):
-#   mesh     the rock, one mesh (marching cubes of the field): position, normal, the light baked on it (the lamps, with
-#            their shadows; the dark's own light, less in corners), info (r: built stone; g: how open to the room)
+#   mesh     the rock, one mesh (marching cubes of the field, then the steps' faces): position, normal, the light baked on
+#            it (rgb: the lamps, with their shadows, and the dark's own light, less in corners; a: a step's own tone, 128 none),
+#            info (r: built stone; g: how open to the room; b: on a step, from its back, 0, to its edge, 255; a: 255 a step)
 #   floor    the floor map with SPANS (cave-level.js' header): every column's stretches of air a metre high or more, their
 #            floors, roofs and paint (r earth, g sand, b moss, a 150: stone slabs underfoot), "layers" of them
 #   volume   the light in the air, 1 m cells (cave-light.js: on her and on plants)
@@ -90,13 +95,34 @@ WOB2 = ROUGH * 0.8 * fbm(GX, GY, GZ, SEED + 50, 2.6)  # a roof's
 
 
 # ---------------------------------------------------------------- the pieces: each a distance, < 0 inside it
-def seg_plan(a, b):
-    # along a segment a -> b, seen from above: how far along (0..1) every column is, how far off, and the line's height there
-    ax, ay, az = a; bx, by, bz = b
-    dx, dz = bx - ax, bz - az
-    t = np.clip(((GX - ax) * dx + (GZ - az) * dz) / max(dx * dx + dz * dz, 1e-6), 0, 1)
-    d = np.hypot(GX - (ax + t * dx), GZ - (az + t * dz))
-    return d, ay + t * (by - ay)
+def way_parts(path, X, Z, round_ends=True):
+    # a line's stretches, seen from above, at spots (X, Z): for each stretch (a, b, d, f, own): how far off the spot is, the
+    # line's height there, and whether the spot is that stretch's own (no nearer the stretch before or after: so where a
+    # level stretch meets a slope neither lies over the other, and a line may wind over itself). round_ends: the line's two
+    # ends reach half its width on (a tunnel's); without it they are cut square (a way of stone's)
+    segs = []
+    for a, b in zip(path[:-1], path[1:]):
+        dx, dz = b[0] - a[0], b[2] - a[2]
+        raw = ((X - a[0]) * dx + (Z - a[2]) * dz) / max(dx * dx + dz * dz, 1e-6)
+        t = np.clip(raw, 0, 1)
+        segs.append((a, b, np.hypot(X - (a[0] + t * dx), Z - (a[2] + t * dz)), a[1] + t * (b[1] - a[1]), raw))
+    out = []
+    for i, (a, b, d, f, raw) in enumerate(segs):
+        own = np.ones(np.shape(d), bool)
+        if i > 0:
+            own &= d <= segs[i - 1][2] + 1e-4
+        elif not round_ends:
+            own &= raw >= 0
+        if i + 1 < len(segs):
+            own &= d <= segs[i + 1][2] + 1e-4
+        elif not round_ends:
+            own &= raw <= 1
+        out.append((a, b, d, f, own))
+    return out
+
+
+def sloped(a, b):
+    return abs(b[1] - a[1]) > 0.04 * math.hypot(b[0] - a[0], b[2] - a[2])
 
 
 def helix_path(h):
@@ -118,8 +144,8 @@ def hall_sd(s):
 
 def tunnel_sd(s):
     out = None
-    for a, b in zip(s['path'][:-1], s['path'][1:]):
-        d, f = seg_plan(a, b)
+    for a, b, d, f, own in way_parts(s['path'], GX, GZ):
+        d = np.where(own, d, 1e3)
         roof = f + s['high'] * (1 - 0.3 * np.clip(d / (s['wide'] / 2), 0, 1) ** 2)
         sd = np.maximum(np.maximum(d - s['wide'] / 2 + WOB * 0.6, f - GY), GY - roof + WOB2 * 0.5)
         out = sd if out is None else np.minimum(out, sd)
@@ -161,13 +187,20 @@ for piece in D['air']:
     (kind, s), = piece.items()
     F = np.minimum(F, AIR[kind](s))
 BUILT = np.zeros((NX, NY, NZ), np.float32)
+UNDER = 0.1                   # m: under its steps a slope's own stone lies this much lower (the steps cover it)
+STEPPED = []                  # the ways with steps: (path, wide, rise)
 for piece in D.get('stone', []):
     (kind, s), = piece.items()
     if kind == 'way':
         path = s['path'] if 'path' in s else helix_path(s['helix'])
+        rise = float(s.get('steps', 0))
+        if rise > 0:
+            STEPPED.append((path, s['wide'], rise))
         head = slab = None
-        for a, b in zip(path[:-1], path[1:]):
-            d, f = seg_plan(a, b)
+        for a, b, d, f, own in way_parts(path, GX, GZ, round_ends=False):
+            d = np.where(own, d, 1e3)
+            if rise > 0 and sloped(a, b):
+                f = f - UNDER
             h = np.maximum(np.maximum(d - (s['wide'] / 2 + 0.15), f - GY), GY - (f + s.get('room', 3.2)))
             sl = np.maximum(np.maximum(d - s['wide'] / 2, GY - f), (f - s.get('thick', 0.8)) - GY)
             head = h if head is None else np.minimum(head, h)
@@ -242,13 +275,79 @@ if (fn * normals[faces[:, 0]]).sum() < 0:
     faces = faces[:, ::-1]
 normals = normals.astype(np.float32)
 normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-9
+
+
+# ---------------------------------------------------------------- the steps: real ones, laid on a way's slopes
+def way_steps(path, wide, rise):
+    # the faces of the steps along one way: points, normals, triangles, along (0 a step's back .. 1 its edge), tone (a step's own)
+    P = np.array(path, np.float64)
+    run = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(P[:, 0]), np.diff(P[:, 2])))])
+    ss = np.arange(0.0, run[-1] + 1e-6, 0.05)
+    x, y, z = (np.interp(ss, run, P[:, k]) for k in range(3))
+    V, Nn, T, A, Tn = [], [], [], [], []
+    rnd = np.random.default_rng(SEED + 31)
+    half = wide / 2 + 0.06
+
+    def quad(c, n, along, tone):
+        # four corners in order round the face, wound to face n
+        c = np.array(c, np.float64); n = np.array(n, np.float64)
+        if np.dot(np.cross(c[1] - c[0], c[2] - c[0]), n) < 0:
+            c = c[::-1]; along = along[::-1]
+        i = len(V)
+        V.extend(c.tolist()); Nn.extend([n.tolist()] * 4); A.extend(along); Tn.extend([tone] * 4)
+        T.extend([[i, i + 1, i + 2], [i, i + 2, i + 3]])
+
+    slope = np.gradient(y, ss)
+    sloped = np.abs(slope) > 0.04
+    i = 0
+    while i < len(ss):
+        if not sloped[i]:
+            i += 1; continue
+        j = i
+        while j + 1 < len(ss) and sloped[j + 1] and (slope[j + 1] > 0) == (slope[i] > 0):
+            j += 1
+        # one flight, taken from its top down
+        idx = np.arange(i, j + 1) if y[i] > y[j] else np.arange(j, i - 1, -1)
+        fs, fy, fx, fz = np.abs(ss[idx] - ss[idx[0]]), y[idx], x[idx], z[idx]
+        n = max(1, int(round((fy[0] - fy[-1]) / rise)))
+        r = (fy[0] - fy[-1]) / n
+        at = np.interp(fy[0] - r * np.arange(n + 1), fy[::-1], fs[::-1])        # where the line has come down k rises
+        for k in range(n):
+            ends = []
+            for q in (at[k], at[k + 1]):
+                cx, cz = np.interp(q, fs, fx), np.interp(q, fs, fz)
+                tx, tz = np.interp(min(q + 0.1, fs[-1]), fs, fx) - np.interp(max(q - 0.1, 0), fs, fx), np.interp(min(q + 0.1, fs[-1]), fs, fz) - np.interp(max(q - 0.1, 0), fs, fz)
+                tl = math.hypot(tx, tz) or 1.0; tx, tz = tx / tl, tz / tl
+                ends.append(((cx - tz * half, cz + tx * half), (cx + tz * half, cz - tx * half), (tx, tz)))
+            (l0, r0, _), (l1, r1, (tx, tz)) = ends
+            top = fy[0] - r * k + 0.02
+            tone = float(0.5 + 0.22 * (rnd.random() - 0.5))
+            quad([[l0[0], top, l0[1]], [r0[0], top, r0[1]], [r1[0], top, r1[1]], [l1[0], top, l1[1]]], [0, 1, 0], [0.0, 0.0, 1.0, 1.0], tone)      # where she treads
+            quad([[l1[0], top, l1[1]], [r1[0], top, r1[1]], [r1[0], top - r - 0.02, r1[1]], [l1[0], top - r - 0.02, l1[1]]], [tx, 0, tz], [1.0, 1.0, 0.0, 0.0], tone)   # its front
+            for (p0, p1), sgn in (((l0, l1), -1.0), ((r0, r1), 1.0)):                # its two ends
+                quad([[p0[0], top, p0[1]], [p1[0], top, p1[1]], [p1[0], top - r - 0.4, p1[1]], [p0[0], top - r - 0.4, p0[1]]], [sgn * tz, 0, -sgn * tx], [0.6, 0.6, 0.6, 0.6], tone)
+        i = j + 1
+    return V, Nn, T, A, Tn
+
+
+step_along = np.zeros(len(verts), np.float32); step_is = np.zeros(len(verts), np.float32); tone = np.full(len(verts), 0.5, np.float32)
+nsteps = 0
+for path, wide, rise in STEPPED:
+    V, Nn, T, A, Tn = way_steps(path, wide, rise)
+    if not V:
+        continue
+    faces = np.concatenate([faces, np.array(T, faces.dtype) + len(verts)])
+    verts = np.concatenate([verts, np.array(V, np.float32)]); normals = np.concatenate([normals, np.array(Nn, np.float32)])
+    step_along = np.concatenate([step_along, np.array(A, np.float32)]); step_is = np.concatenate([step_is, np.ones(len(V), np.float32)])
+    tone = np.concatenate([tone, np.array(Tn, np.float32)])
+    nsteps += len(V) // 16
 open_to = np.ones(len(verts), np.float32)            # how open to the room a point is (corners and cracks: less)
 for d, w in ((0.5, 0.5), (1.1, 0.3), (2.2, 0.2)):
     open_to -= w * np.clip((d + at_field(F, verts + normals * d)) / d, 0, 1)
 open_to = np.clip(open_to, 0.15, 1)
 light = AMBIENT[None, :] * (0.35 + 0.65 * open_to)[:, None] + lamp_light(verts, normals) * (0.5 + 0.5 * open_to)[:, None]
-built = np.clip(at_field(BUILT, verts - normals * 0.1), 0, 1)
-log(f'mesh: {len(verts)} points, {len(faces)} triangles; light up to {light.max():.2f}')
+built = np.maximum(np.clip(at_field(BUILT, verts - normals * 0.1), 0, 1), step_is)
+log(f'mesh: {len(verts)} points, {len(faces)} triangles ({nsteps} steps); light up to {light.max():.2f}')
 
 # ---------------------------------------------------------------- the floor map: every column's spans
 Yn = Y0 + np.arange(NY) * CELL
@@ -279,6 +378,16 @@ for k, spans in enumerate(cols):
         fl_map[s * N2 + k] = int(round(fl * 100)); ce_map[s * N2 + k] = int(round(ce * 100))
         pts.append([X0 + (k // NZ) * CELL, fl, Z0 + (k % NZ) * CELL]); where.append(s * N2 + k)
 pts = np.array(pts, np.float32); where = np.array(where)
+# under steps she walks the slope through their middles (the stone itself lies UNDER lower, the steps up to a rise over it)
+raised = np.zeros(len(pts), bool)
+for path, wide, rise in STEPPED:
+    for a, b, d, f, own in way_parts(path, pts[:, 0], pts[:, 2], round_ends=False):
+        if not sloped(a, b):
+            continue
+        on = own & (d < wide / 2 + 0.1) & (np.abs(pts[:, 1] - (f - UNDER)) < 0.45) & ~raised
+        pts[on, 1] += UNDER + rise / 2
+        raised |= on
+fl_map[where[raised]] = np.round(pts[raised, 1] * 100).astype(np.int16)
 paint = np.zeros((K * N2, 4), np.uint8)
 if len(pts):
     slab = at_field(BUILT, pts - np.array([0, 0.15, 0], np.float32)) > 0.5
@@ -327,8 +436,8 @@ def put(arr):
 
 
 nrm8 = np.zeros((len(verts), 4), np.int8); nrm8[:, :3] = np.clip(np.round(normals * 127), -127, 127)
-light8 = np.zeros((len(verts), 4), np.uint8); light8[:, :3] = np.clip(light / LIGHT_SCALE * 255, 0, 255); light8[:, 3] = 255
-info8 = np.zeros((len(verts), 4), np.uint8); info8[:, 0] = built * 255; info8[:, 1] = open_to * 255
+light8 = np.zeros((len(verts), 4), np.uint8); light8[:, :3] = np.clip(light / LIGHT_SCALE * 255, 0, 255); light8[:, 3] = np.clip(tone * 255, 0, 255)
+info8 = np.zeros((len(verts), 4), np.uint8); info8[:, 0] = built * 255; info8[:, 1] = open_to * 255; info8[:, 2] = step_along * 255; info8[:, 3] = step_is * 255
 mesh = {'vertices': int(len(verts)), 'indices': int(faces.size), 'pos': put(verts), 'nrm': put(nrm8), 'light': put(light8), 'info': put(info8),
         'idx': put(faces.astype(np.uint32).reshape(-1))}
 floor = {'nx': NX, 'nz': NZ, 'x0': X0, 'z0': Z0, 'cell': CELL, 'layers': K, 'floor': put(fl_map), 'ceil': put(ce_map), 'paint': put(paint)}
@@ -340,7 +449,7 @@ def stand(p):
 
 
 out = {
-    'kit': 1, 'name': NAME, 'about': D.get('about', '') + ' (made by tools/make-cave-room.py from tools/cave-rooms/' + NAME + '.json; read by cave-room.js)',
+    'kit': 1, 'name': NAME, 'title': D.get('title', NAME), 'about': D.get('about', '') + ' (made by tools/make-cave-room.py from tools/cave-rooms/' + NAME + '.json; read by cave-room.js)',
     'bin': {'mesh': mesh, 'floor': floor, 'volume': volume, 'lightScale': LIGHT_SCALE},
     'bounds': [X0, Y0, Z0, X1, Y1, Z1], 'ambient': [float(v) for v in AMBIENT], 'lamps': LAMPS, 'pools': D.get('pools', []),
     'look': D.get('look', {}),
