@@ -833,7 +833,7 @@ The user, the same night as the forest hall's map: the underground world "แผ
 - **Checked headless**: no errors; full screen in and out (the button's words follow, the picture fills it); both scenes played through (the door's from 7.1 m; walking on through the door after it; the circle's), her walking up the dais to the throne (2.4 m), stopped at a pillar's plinth and at the walls, every sound played once; phone sizes both ways.
 - **Not yet**: the boss and the fight; the way in from the dungeon's other rooms (the tunnel's fallen end); the one underground map it will be part of; a real phone.
 
-## Floating islands in the hill village's sky (a trial since 28 Nov 2026: `?islands=1`; `sky-islands.js`)
+## Floating islands in the hill village's sky (`sky-islands.js`; a trial behind `?islands=1` at first, in the game for good since 28 Nov 2026, `?islands=0`: none)
 
 The user sent a picture of anime floating islands (a big one with a village and a lake on it, smaller ones round it, cliffs of tan and blue-grey rock tapering down under them, little rocks adrift) and asked whether a heightmap is needed ("ต้อง heightmap ไหม"); of putting a few in the sky where the village sees them first: "อยากค่ะ". No heightmap: they are only to be seen, never walked on. Without `?islands=1` nothing of them is loaded; only on the hill village.
 
@@ -843,6 +843,7 @@ The user sent a picture of anime floating islands (a big one with a village and 
 - **Drawn** as the props are (three bands of light, the sun's bearing lower, so their sides take it), a bluer shade under them; the haze laid on them more gently than on the land. They are in the scene before `shadows.apply` and the warm-up, so they take the hour's light (warm at dusk, pale under the moon) and the clouds' shadows, and their shader is made behind the loading screen. Everything bobs slowly, each island in its own time, in the vertex shader (`aBob`, `uTime`): nothing moved on the CPU.
 - **Cost**: one mesh, one draw (one more program), 30,829 triangles in all.
 - Checked headless: no errors; the islands from where she starts, the bridge, the south road, the west fringe and the hero's farm, at noon, dusk and night; the plain game as it was.
+- **In the game for good** (28 Nov 2026, the user: "มันมีเกาะลอยฟ้าด้วย ขึ้นเมนหลักได้ไหม"): `index.html` makes them unless `?islands=0`; the game begins with her look tilted up a little, as it did with the flag. She begins by the hero's last seed now (the old farm, in for good the same day), looking west over his cottage, where two of them hang.
 
 ## The buildings of Loria made by hand (`loria-buildings.html`: a page of its own since 28 Nov 2026; nothing of the game is changed by it)
 

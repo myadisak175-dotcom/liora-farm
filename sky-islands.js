@@ -1,5 +1,6 @@
 /* ==========================================================================
-   sky-islands.js  —  floating islands in the hill village's sky (a trial, ?islands=1)
+   sky-islands.js  —  floating islands in the hill village's sky (in the game for good since 28 Nov 2026, "มันมีเกาะลอยฟ้า
+   ด้วย ขึ้นเมนหลักได้ไหม"; ?islands=0: none; a trial behind ?islands=1 before)
 
    The user, 28 Nov 2026, with a picture of anime floating islands (a big one with a village and a lake on it, smaller ones
    round it, cliffs of tan and blue-grey rock tapering down under them, little rocks adrift, clouds): "ถ้าจะทำเกาะลอยฟ้า
