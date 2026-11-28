@@ -15,8 +15,11 @@
 #                                 ferns, the places she can be put at; and where in the .bin each part is
 #
 # In the hill village's own frame (metres; x east, z south, y up; the village's heights): the dungeon lies under the
-# village, its mouth at the foot of the cliff behind the big fall's middle (falls[2] of hill-village.json: its lip at
-# 35.6, 45.2, 6.9 m; it lands 3.4 m out, in the lake at -11.4 m). So the way in and out of it is the same spot in both.
+# village, its mouth at the foot of the cliff behind the big fall (falls[2] of hill-village.json: its lip at 6.9 m, the
+# water landing ~3.4 m out in the lake at -11.4 m). The land parts that fall into three strands (land-water.js: one from
+# each run of its lip; seen in the game: their lips' middles at 38.44, 42.24 / 35.85, 44.46 / 32.99, 47.53); the mouth is
+# behind the middle one, so the way in and out of it is the same spot in both, and the cave's mouth seen from outside is
+# the dark behind the middle strand, its edges showing either side of it.
 # The room is laid out along the way in: s metres in from the mouth (into the mountain, north-west), w metres to her right.
 #   the ledge   behind the curtain of the fall, 0.8 m over the lake; the daylight comes in through the falling water
 #   the tunnel  ~21 m, 4.7 m wide, 5.3 m tall, bending a little right and climbing 3.6 m; its end opened wide: the jaw,
@@ -137,7 +140,7 @@ def wob2(ps, pw, f, s, amp):
 
 
 # ---------------------------------------------------------------- the frame: the hill village's, the room laid out from its mouth
-MOUTH = (36.25, 45.85)                    # x, z: the foot of the cliff behind the big fall's middle
+MOUTH = (36.745, 45.355)                  # x, z: the foot of the cliff behind the big fall's middle strand
 D = (-0.70711, -0.70711)                  # into the mountain (north-west)
 R = (0.70711, -0.70711)                   # to her right as she walks in
 YAW_IN = math.atan2(D[0], D[1])           # (the game's yaw: atan2 of the way she faces, x then z)
@@ -155,7 +158,12 @@ def yaw_to(s0, w0, s1, w1):
 
 LEDGE = -10.6                             # the ledge behind the curtain
 LAKE = -11.4                              # the lake the fall drops into, and the pool in the hall: one water
-FALL = dict(lip=0.9, top=6.9, out=3.4, half=5.3)      # the curtain: leaves the lip (s 0.9, 6.9 m), lands `out` m further out
+FALL = dict(lip=0.9, top=6.9, out=3.4, half=5.3)      # the fall's line: leaves the lip (s 0.9, 6.9 m), lands `out` m further out
+STRANDS = [dict(w=0.0, lip=1.27, half=1.2), dict(w=3.4, lip=1.0, half=1.15), dict(w=-4.19, lip=1.12, half=1.2)]   # (the game's three)
+# the ribs of rock between the strands' channels (the village's land: they stand out from the cliff ~2.5 m at their foot,
+# rising steeply to it): the ledge behind the middle strand lies between two of them, so the way out is a cleft
+FINS = [dict(w=-2.05, half=0.55, foot=-2.5), dict(w=1.65, half=0.9, foot=-2.8)]
+LEDGE_W = (-1.45, 0.65)                   # the ledge between them (and so in the village too: cave-mouth.js)
 
 
 def curtain_s(y):
@@ -189,7 +197,7 @@ log('frame: mouth', MOUTH, 'in toward', D)
 
 # ---------------------------------------------------------------- the grid (world x, z; the room's s, w worked out for every column)
 H = 0.4
-corners = [world(s, w) for s in (-4.2, 59.0) for w in (-12.0, 22.0)]
+corners = [world(s, w) for s in (-5.2, 59.0) for w in (-12.0, 22.0)]
 X0 = math.floor(min(c[0] for c in corners)); X1 = math.ceil(max(c[0] for c in corners))
 Z0 = math.floor(min(c[1] for c in corners)); Z1 = math.ceil(max(c[1] for c in corners))
 Y0, Y1 = -15.0, 9.0
@@ -300,9 +308,14 @@ js, jw = JAW['c']; ra, rb, rc = JAW['r']
 Sj = (np.sqrt(((Qs - js) / ra) ** 2 + ((Qw - jw) / rb) ** 2 + ((Yg - JAW['y']) / rc) ** 2) - 1.0) * min(ra, rb, rc)
 S = smin(S, Sj, 1.4)
 # the ledge behind the curtain: open up to the lip (only the curtain is beyond it)
-alc = np.maximum(np.maximum(-3.6 - Sg, Sg - face_s(Yg)), np.abs(Wg) - 5.7 - 0.5 * (fbm3(Yg * 0.2, Wg * 0.2, 2.2 + 0 * Yg, 63) - 0.5))
+alc = np.maximum(np.maximum(-4.8 - Sg, Sg - face_s(Yg)), np.abs(Wg) - 5.7 - 0.5 * (fbm3(Yg * 0.2, Wg * 0.2, 2.2 + 0 * Yg, 63) - 0.5))
 S = smin(S, alc, 0.6)
-log('hall, tunnels, jaw, ledge')
+for fn in FINS:                            # the ribs, rock out to their foot (only outside the cliff: the tunnel's air is behind it)
+    rise = LEDGE - 0.4 + (Sg - fn['foot']) * 4.2
+    fsd = np.maximum(np.abs(Wg - fn['w']) - fn['half'] - 0.25 * (fbm3(Yg * 0.4, Sg * 0.4, 5.5 + 0 * Yg, 64) - 0.5), (Yg - rise) * 0.24)
+    fsd = np.maximum(fsd, Sg - 0.15)
+    S = smax(S, -fsd, 0.45)
+log('hall, tunnels, jaw, ledge, ribs')
 # rock lumps and strata on the walls and the roof (none on the floor: that stays as laid out); the cliff behind the curtain
 # gets its own ledges (the village's cliffs are strata too)
 lump = (0.5 - worley3(Qs * 0.17, Qy * 0.17, Qw * 0.17, 41)) * 2.0 + (fbm3(Xg * 0.34, Yg * 0.34, Zg * 0.34, 42, 2) - 0.5) * 1.1 \
@@ -537,6 +550,13 @@ inside_fang = sample(SL, verts[:, 0], verts[:, 1], verts[:, 2]) > 0.25
 keep = ~inside_fang[faces].all(1)
 faces = faces[keep]
 log('rock triangles hidden in fang roots taken away:', int((~keep).sum()))
+# out past the ledge is the day (the lake, the far bank, the sky: the page draws it): the rock the grid closes there with,
+# and the lake's bed far out, taken away
+vs_ = (verts[:, 0] - MOUTH[0]) * D[0] + (verts[:, 2] - MOUTH[1]) * D[1]
+out_ = vs_ < -3.3
+keep = ~out_[faces].all(1)
+faces = faces[keep]
+log('rock beyond the ledge taken away:', int((~keep).sum()), 'triangles')
 
 
 def fang_mesh(f):
@@ -993,6 +1013,15 @@ for y in np.linspace(FALL['top'], LAKE - 0.2, 30):
     x, z = world(s, 0.0)
     rows.append([round(x, 3), round(float(y), 3), round(z, 3)])
 pc = world(*POOL['c'])
+
+
+def strand_rows(st):
+    out = []
+    for y in np.linspace(FALL['top'], LAKE - 0.2, 30):
+        x, z = world(float(curtain_s(np.array(y))) + (st['lip'] - FALL['lip']), st['w'])
+        out.append([round(x, 3), round(float(y), 3), round(z, 3)])
+    return out
+
 fl16 = np.where(np.isnan(floorY), -32768, np.round(floorY * 100)).astype(np.int16)
 ce16 = np.where(np.isnan(ceilY), -32768, np.round(np.minimum(ceilY, 300) * 100)).astype(np.int16)
 parts, off = [], 0
@@ -1030,7 +1059,10 @@ layout = {
     # in the hill village's frame: the mouth (the foot of the cliff behind the fall), the way in, the way to her right
     'frame': {'mouth': [MOUTH[0], LEDGE, MOUTH[1]], 'in': [D[0], D[1]], 'right': [R[0], R[1]], 'yawIn': round(YAW_IN, 4)},
     # the curtain of the fall, seen from behind: its middle from the lip down to the lake (x, y, z), how wide either side
-    'curtain': {'rows': rows, 'half': FALL['half'], 'across': [R[0], 0.0, R[1]], 'lake': LAKE, 'exit': -1.2},
+    'curtain': {'rows': rows, 'half': FALL['half'], 'across': [R[0], 0.0, R[1]], 'lake': LAKE, 'exit': -1.2, 'ledge': list(LEDGE_W)},
+    # the big fall's three strands, as the game has them (seen from behind): each one's middle from its lip down (x, y, z),
+    # how wide either side of it
+    'strands': [dict(half=st['half'], rows=strand_rows(st)) for st in STRANDS],
     'pool': {'c': [round(pc[0], 3), round(pc[1], 3)], 'r': POOL['r'][0] + 0.2, 'level': LAKE,
              'ellipse': {'a': POOL['r'][0], 'b': POOL['r'][1], 'along': [D[0], D[1]]}},
     'crystals': crystals, 'shrooms': shrooms, 'cover': cover, 'drips': DRIPS,

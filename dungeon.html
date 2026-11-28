@@ -11,14 +11,17 @@
 <!--
   dungeon.html  —  the dungeon under the waterfall cliff: its way in from behind the big fall and its first room, the fang
   hall (room ① of the plan), the start of the one underground map (the user, 28 Nov 2026: "แล้วถ้ำเรา ทำอะไรต่อดี";
-  chosen: "ทางเข้าหลังน้ำตก + ห้องแรก"). She begins on the ledge behind the curtain of the fall, the daylight coming in
-  through the falling water; a tunnel climbs into the mountain to the jaw, where big fangs hang over the way into the
+  chosen: "ทางเข้าหลังน้ำตก + ห้องแรก"). She begins just inside the mouth behind the big fall's middle strand, the
+  daylight coming in past the falling water; a tunnel climbs into the mountain to the jaw, where big fangs hang over the way into the
   hall and rise beside it; the hall's roof bristles with pale fangs and glowworms, a still pool mirrors them, broken fangs
   standing in it are a hop apart up to the shelf at the far end, where the way on is (closed by crystals: room ② is not
   made). The room: fang-hall.js (baked by tools/make-fang-hall.py, in the hill village's own frame: the mouth is under the
   big fall's lip); her level in it: cave-level.js (as the forest hall's); its light on the ferns and on her: cave-light.js;
   its sounds: fang-hall-sounds.js. Vivi plays as in the game (as cave-hall.html: the game's player, touch screen, skills,
   music; the sprite is the light where she goes); the map is game-map.js on tools/make-cave-map.py's picture.
+  In and out: the game's ?cave=1 (cave-mouth.js) opens this page as she walks into the dark behind the fall (?from=village:
+  she is just inside the mouth, facing in); walking back out onto the ledge, the village again (history.back, or the
+  village loaded with ?cave=1&view=cavemouth when this page was opened by itself).
   ?sound=0: no sound; ?music=0: no music.
 -->
 <style>
@@ -430,6 +433,38 @@ bar.append(fullBtn);
 // the room's sounds from her first touch (the AudioContext is made then)
 if (heard) addEventListener('pointerdown', () => setTimeout(() => heard.air(true), 50), { once: true });
 
+// ---- the way in and out, behind the big fall (the village's ?cave=1: cave-mouth.js): from the village she is just inside the
+// mouth, facing in; walking back out onto the ledge (past the curtain's exit line) the screen goes black and she is in the
+// village again, on the ledge, facing out: the village page as it was if the browser kept it (history.back), else loaded
+// again (it reads liora.cave.out and puts her there). Opened by itself (not from the village), out is the village with the
+// trial on, at the ledge
+const IN_KEY = 'liora.cave', OUT_KEY = 'liora.cave.out';
+const FR = hall.frame, LW = hall.layout.curtain.ledge, WM = (LW[0] + LW[1]) / 2;
+const at = (s, w) => [FR.mouth[0] + FR.in[0] * s + FR.right[0] * w, FR.mouth[2] + FR.in[1] * s + FR.right[1] * w];
+const inside = () => { const [x, z] = at(1.4, WM); player.teleport(x, z, Math.atan2(FR.in[0], FR.in[1])); };
+if (Q.get('from') === 'village') inside();
+const veil = document.createElement('div');
+veil.style.cssText = 'position:fixed;inset:0;background:#05080a;opacity:0;pointer-events:none;transition:opacity .6s;z-index:60;display:grid;place-items:center;color:#cfeff2;font:600 15px system-ui';
+veil.textContent = 'ออกจากถ้ำ…';
+document.body.append(veil);
+let leaving = false;
+function goOut() {
+  if (leaving) return;
+  leaving = true;
+  veil.style.opacity = '1';
+  let back = null;
+  try { sessionStorage.setItem(OUT_KEY, '1'); back = JSON.parse(sessionStorage.getItem(IN_KEY) || 'null'); } catch (e) { /* not kept */ }
+  const village = back && back.back ? back.back : './index.html?cave=1&view=cavemouth';
+  setTimeout(() => {
+    if (back && history.length > 1) {
+      history.back();
+      setTimeout(() => { location.href = village; }, 2500);          // (no page to go back to after all)
+    } else location.href = village;
+  }, 650);
+}
+addEventListener('pageshow', (e) => { if (e.persisted) { veil.style.opacity = '0'; leaving = false; inside(); } });
+const outLine = hall.layout.curtain.exit;
+
 // ---- 🗺 the map, as the hill village's (game-map.js)
 const gameMap = await createGameMap({ url: './assets/maps/fang-hall-map.json', player,
   places: level.places.map((p, i) => ({ key: 'fang' + i, label: `${ICON[p.name] || '📍'} ${p.name}`, x: p.x, z: p.z, yaw: p.heading })) });
@@ -449,6 +484,7 @@ function step(dt) {
   lampAt();
   gameMap.update();
   if (heard) heard.update(dt, camera);
+  if (!leaving && player.mode === 'ground' && hall.inward(player.position.x, player.position.z) < outLine) goOut();      // (out onto the ledge: the village)
   if (music) music.update(dt, { when: 'day', drowned: heard ? heard.drowned : 0 });
 }
 let fixedCam = null;
@@ -459,7 +495,7 @@ function draw() {
 
 // for a test (or the console): run(s) steps the game without drawing (then draws once); keys('KeyW', true) holds a key
 window.dungeonTrial = {
-  ready: false, held: false, player, level, hall, hero, camera, renderer, scene, patched, sounds, music, heard, gameMap, spellKit, blink,
+  ready: false, held: false, player, level, hall, hero, camera, renderer, scene, patched, sounds, music, heard, gameMap, spellKit, blink, get leaving() { return leaving; },
   run(seconds, { fps = 30, show = true, each = null } = {}) { this.held = true; for (let u = 0; u < seconds - 1e-6; u += 1 / fps) { step(1 / fps); if (each) each(); } if (show) draw(); },
   place(i) { const p = level.places[i]; player.teleport(p.x, p.z, p.heading); },
   keys(code, down) { dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code })); },

@@ -168,6 +168,7 @@
   "./farm-tools.js": "./farm-tools.js?v=2",
   "./old-farm.js": "./old-farm.js?v=1",
   "./sky-islands.js": "./sky-islands.js?v=1",
+  "./cave-mouth.js": "./cave-mouth.js?v=1",
   "./west-fringe.js": "./west-fringe.js?v=7",
   "./west-fringe-water.js": "./west-fringe-water.js?v=1",
   "./plant-boss.js": "./plant-boss.js?v=3",
@@ -432,6 +433,13 @@ const MAP = Q.get('map') || 'hillvillage';      // the game's map is the hill vi
 const buildLevel = { valley: buildValleyLevel, meadow: buildMeadowLevel, hills: buildHillsLevel, depths: buildDepthsLevel, rocks: buildRocksLevel, blockout: buildBlockoutLevel, pit: buildPitLevel, village: buildVillageLevel, hillvillage: buildHillVillageLevel }[MAP] || buildHillVillageLevel;      // ?map=hills or ?map=meadow for the other maps; ?map=depths&layer=1|2: a layer down the abyss (&view=stone-meadow: by the meadow's stone); ?map=rocks: the rock test map; ?map=village: the terraced village island; ?map=hillvillage: the hill village on a heightmap, its houses from the building kit (&look=flat: in flat colours; &cliff=strata: its cliffs in the valley's strata, not painted)
 const level = await buildLevel({ layer: +Q.get('layer') || 1, far: HAZE, deer: b64ToBuffer(DEER_GLB), onStep, grassCount: +Q.get('grass') || 150000, sun: sky.userData.sun ? sky.userData.sun.toArray() : undefined });
 scene.add(level.group);
+// ---- 🕳 ?cave=1 (a trial): the dungeon's mouth behind the big fall's middle strand (cave-mouth.js): a ledge between the ribs
+// of rock there, the dark of a cave behind it; walking into the dark opens the dungeon (dungeon.html), and coming out of it she
+// is on the ledge again. Made here, before her: the ledge is the level's ground. Without it nothing of it is loaded
+const caveMouth = Q.has('cave') && Q.get('cave') !== '0' && MAP === 'hillvillage'
+  ? await (await import('./cave-mouth.js')).createCaveMouth({ level })
+  : null;
+if (caveMouth) scene.add(caveMouth.group);
 if (level.horizon && level.horizon.layers) {             // a map with far hills of its own (the hill village: mountains with snow on them) in place of the usual ones
   const old = scene.getObjectByName('distantMountains');
   if (old) { scene.remove(old); old.userData.dispose(); }
@@ -725,6 +733,7 @@ if (level.views && level.views[Q.get('view')]) { const v = level.views[Q.get('vi
 else if (bossTrial) player.teleport(bossTrial.spot.x, bossTrial.spot.z, bossTrial.spot.yaw);      // ?boss=1: she starts before it
 else if (spriteTrial) player.teleport(spriteTrial.spot.x, spriteTrial.spot.z, spriteTrial.spot.yaw);      // ?sprite=1: she starts where she does, turned to look down the way at them
 else if (npcs && npcs.spot) player.teleport(npcs.spot.x, npcs.spot.z, npcs.spot.yaw);      // ?npc=1: she starts on the road by the fields' gate, looking in at her work
+if (caveMouth && caveMouth.back()) player.teleport(caveMouth.spot.x, caveMouth.spot.z, caveMouth.spot.yaw);      // ?cave=1, just out of the dungeon: on the ledge behind the fall
 // ---- an editor's "save" loads the map again: she comes back where she stood, not at the map's start. The page going away while
 // an editor is open notes her spot (this tab only); the map loading again puts her back on it, once
 const SPOT_KEY = 'liora.player.spot';
@@ -1107,6 +1116,7 @@ const frame = (dt = clock.getDelta()) => {
   }
   if (sky.userData.update) sky.userData.update(renderer, dt);
   if (skyIslands) skyIslands.update(dt);                                  // (?islands=1: their slow bobbing)
+  if (caveMouth) caveMouth.update(dt, player);                            // (?cave=1: walking into the dark behind the fall opens the dungeon)
   if (tod) tod.update(dt);
   if (shadows) shadows.update();
   if (curse) curse.update(renderer);

@@ -6,24 +6,27 @@
      scene.add(hall.group); ...; hall.light.apply(scene)     // the cave's light on the ferns and on her (cave-light.js)
      every frame: hall.update(dt, camera)                    // the falling water, its light, the glowworms, the drips
      hall.floorMap, hall.colliders, hall.crowns, hall.trunks, hall.layout   (as cave-hall.js': cave-level.js reads them)
-     hall.inward(x, z)      how far in from the mouth a spot is (m; < 0 out on the ledge behind the curtain)
-     hall.curtainAt(y)      how far in the curtain of the fall is at a height (it hangs further out lower down)
+     hall.inward(x, z)      how far in from the mouth a spot is (m; < 0 out on the ledge behind the falling water)
+     hall.curtainAt(y)      how far in the fall's line is at a height (it hangs further out lower down): her camera keeps
+                            this side of it
      onDrip(x, y, z)        a drop landing in the pool (the page's sounds)
 
    One job: build the room from what tools/make-fang-hall.py baked (assets/caves/fang-hall.bin + .json):
      the rock      one mesh with the fangs in it: the rock painted with the game's own pictures (the cliffs' brush-painted
-                   rock; underfoot damp stone, and over it moss where the daylight or a crystal's glow reaches, earth on
-                   the ways, sand round the pool, as the bake's paint says); the fangs pale calcite, ring on ring, whiter
-                   and a little see-through toward their sharp tips, wet and glossy; the light baked into all of it, and the
-                   daylight that comes in through the falling water rippling over the ledge and the tunnel as the water
-                   falls; the sprite's light (cave-light.js' uniforms) where she goes
+                   rock, laid on from the room's own two sides; underfoot damp stone, and over it moss where the daylight
+                   or a crystal's glow reaches, earth on the ways, sand round the pool, read from the floor map's paint);
+                   the fangs (and the broken ones in the pool, the column) pale calcite, ring on ring, whiter and a little
+                   see-through toward their sharp tips, wet and glossy; the light baked into all of it, and the daylight
+                   that comes in past the falling water rippling over the ledge and the tunnel as the water falls; the
+                   sprite's light (cave-light.js' uniforms) where she goes
      glowworms     points of blue-green light all over the hall's roof between the fangs, twinkling; mirrored in the pool
      crystals      clusters on the walls and the floor, teal and cyan, each with its own soft halo, mirrored in the pool;
                    big white ones across the way on (closed for now: room ② is not made)
      mushrooms     small glowing caps in clumps along the walls, round the column and the stalagmites
      the pool      still and dark, the lake's own level; drops falling from the big fangs' tips over it, rings where they land
-     the curtain   the big fall seen from behind: a wall of falling water lit by the day outside, white where it is thin;
-                   foam and spray at its foot, a haze of its light reaching into the tunnel, drops of spray drifting in it
+     the way out   the big fall seen from behind, as the village has it: its three strands (the middle one before the
+                   cleft between the two ribs of rock), the day coming through them; past the ledge the lake, the far
+                   bank, trees and sky, too bright to see well from in here; spray, a haze of the day in the mouth
      mist          a low veil over the hall's floor, lit by whatever light is where it hangs
      ferns         where the daylight reaches, along the ledge and the tunnel's first walls (ground-cover.js)
    ========================================================================== */
@@ -383,40 +386,72 @@ void main() {
   vW = (modelMatrix * vec4(p, 1.0)).xyz;
   gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.0);
 }`;
-const CURTAIN_FS = /* glsl */`
+const STRAND_FS = /* glsl */`
 uniform float uTime;
-uniform vec3 uDay, uThick, uFogCol;
+uniform vec3 uBody, uDeep;
 varying vec2 vUv;
 varying vec3 vW;
 ${NOISE}
 void main() {
-  // u across, v down (0 at the lip); the water speeds up as it falls: the pattern runs faster lower down
+  // u across, v down (0 at the lip); the water speeds up as it falls: its pattern runs faster lower down
   float v = vUv.y, u = vUv.x;
   float fall = v * v * 3.2 + v * 1.4;
-  float s1 = n2(vec2(u * 38.0, fall * 3.0 - uTime * 2.4));
-  float s2 = n2(vec2(u * 15.0 + 3.1, fall * 1.6 - uTime * 1.7));
-  float s3 = n2(vec2(u * 90.0 + 7.7, fall * 9.0 - uTime * 4.6));
-  float thick = smoothstep(0.25, 0.85, s2 * 0.65 + s1 * 0.35);                         // where the water runs thick (darker)
-  float foam = smoothstep(0.62, 0.95, s1 * 0.55 + s3 * 0.55);                          // white threads
-  float edge = smoothstep(0.0, 0.12, u) * smoothstep(1.0, 0.88, u);
-  // the day behind it: brighter up toward the sky, a glare off the lake low down
-  float sky = 0.82 + 0.3 * smoothstep(0.75, 0.0, v) + 0.12 * smoothstep(0.82, 1.0, v);
-  vec3 col = mix(uDay * sky, uThick, thick * 0.55 * edge);
-  col = mix(col, vec3(1.0), foam * 0.6);
-  col *= 0.92 + 0.12 * s3;
-  // at its sides, thinner, the cliff's dark coming through
-  col = mix(uFogCol * 1.6, col, 0.35 + 0.65 * edge);
+  float s1 = n2(vec2(u * 16.0, fall * 3.0 - uTime * 2.4));
+  float s2 = n2(vec2(u * 7.0 + 3.1, fall * 1.6 - uTime * 1.7));
+  float s3 = n2(vec2(u * 34.0 + 7.7, fall * 9.0 - uTime * 4.6));
+  float mid = 1.0 - pow(abs(u - 0.5) * 2.0, 2.0);
+  float thick = smoothstep(0.2, 0.9, s2 * 0.6 + s1 * 0.4) * mid;
+  float foam = smoothstep(0.6, 0.95, s1 * 0.5 + s3 * 0.6);
+  // seen from behind, the day coming through it: pale where it is thin, turquoise where it runs thick, threads of white
+  vec3 col = mix(vec3(0.9, 0.98, 1.0), uBody, thick * 0.75);
+  col = mix(col, uDeep, thick * thick * 0.35);
+  col = mix(col, vec3(1.0), foam * 0.55);
+  float a = (0.5 + 0.42 * thick + 0.3 * foam) * smoothstep(0.0, 0.3, mid) * smoothstep(0.0, 0.03, v);
+  gl_FragColor = vec4(col, clamp(a, 0.0, 0.95));
+}`;
+const LAKE_FS = /* glsl */`
+uniform float uTime;
+uniform vec4 uF0, uF1, uF2;     // where each strand lands (x, z), how wide its churn
+varying vec2 vUv;
+varying vec3 vW;
+${NOISE}
+float churn(vec4 f) { return 1.0 - smoothstep(f.z * 0.4, f.z, distance(vW.xz, f.xy)); }
+void main() {
+  vec3 v = normalize(cameraPosition - vW);
+  float glance = pow(1.0 - max(v.y, 0.0), 3.0);
+  vec2 q = vW.xz * 0.9;
+  float rip = n2(q + vec2(uTime * 0.3, -uTime * 0.2)) * 0.6 + n2(q * 2.7 - uTime * 0.5) * 0.4;
+  vec3 col = mix(vec3(0.33, 0.78, 0.86), vec3(0.62, 0.92, 0.98), smoothstep(0.3, 0.8, rip));
+  col = mix(col, vec3(0.9, 0.97, 1.0), glance * 0.65);                                       // the bright sky in it, far off
+  float glint = smoothstep(0.82, 0.95, n2(vW.xz * 6.0 + uTime * 1.3)) * 0.6;
+  float c = max(churn(uF0), max(churn(uF1), churn(uF2)));
+  float foam = c * smoothstep(0.35, 0.8, n2(vW.xz * 4.0 + vec2(0.0, uTime * 2.5)) * 0.6 + n2(vW.xz * 9.0 - uTime * 3.0) * 0.5);
+  col = mix(col + glint, vec3(0.97, 1.0, 1.0), clamp(foam + c * 0.35, 0.0, 1.0));
   gl_FragColor = vec4(col, 1.0);
 }`;
-const FOAM_FS = /* glsl */`
-uniform float uTime;
+// the day beyond the ledge, seen from the dark: the lake's far side, its green bank, trees, the sky, all a little too bright
+const DAYOUT_FS = /* glsl */`
+uniform float uTime, uLake;
+uniform vec2 uOut;              // the way out (x, z)
 varying vec2 vUv;
 varying vec3 vW;
 ${NOISE}
 void main() {
-  float a = n2(vec2(vUv.x * 30.0 + uTime * 0.7, vUv.y * 6.0 - uTime * 2.0)) * 0.6 + n2(vec2(vUv.x * 70.0 - uTime, vUv.y * 13.0 + uTime * 1.3)) * 0.5;
-  a = smoothstep(0.35, 0.85, a) * smoothstep(1.0, 0.3, vUv.y) * smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
-  gl_FragColor = vec4(vec3(0.95, 0.99, 1.0) * (0.55 + 0.45 * a), 0.25 + 0.7 * a);
+  vec2 dir = normalize(vW.xz - cameraPosition.xz);
+  float side = dir.x * uOut.y - dir.y * uOut.x;                                                // left .. right, as she looks out
+  float y = vW.y - uLake;
+  float bank = 3.2 + 2.2 * n2(vec2(side * 3.0, 1.7)) + 1.5 * n2(vec2(side * 9.0, 4.1));        // the grass bank's top
+  float trees = bank + 3.0 + 4.5 * smoothstep(0.35, 0.75, n2(vec2(side * 5.0, 7.3))) + 1.5 * n2(vec2(side * 17.0, 2.2));
+  vec3 sky = mix(vec3(0.93, 0.98, 1.0), vec3(0.64, 0.84, 0.98), smoothstep(trees, trees + 14.0, y));
+  vec3 grass = mix(vec3(0.55, 0.83, 0.36), vec3(0.75, 0.93, 0.5), n2(vec2(side * 20.0, y * 2.0)) * 0.6 + 0.2);
+  vec3 tree = mix(vec3(0.28, 0.55, 0.26), vec3(0.42, 0.7, 0.32), n2(vec2(side * 26.0, y * 1.7)));
+  vec3 water = vec3(0.4, 0.85, 0.92);
+  vec3 col = sky;
+  col = mix(col, tree, 1.0 - smoothstep(trees - 0.4, trees + 0.4, y));
+  col = mix(col, grass, 1.0 - smoothstep(bank - 0.25, bank + 0.25, y));
+  col = mix(col, water, 1.0 - smoothstep(0.35, 0.7, y));
+  col = mix(col, vec3(1.0), 0.28);                                                            // too bright to see well from in here
+  gl_FragColor = vec4(col, 1.0);
 }`;
 // spray and its haze: soft points drifting up out of the foam and in under the cliff, lit by the day
 const SPRAY_VS = /* glsl */`
@@ -606,7 +641,7 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
   // (the haze of daylight in the mouth: soft puffs of its light in the air, fading as they go in)
   {
     const dc = new THREE.Color(look.day);
-    for (const [s_, w_, h_, size, k_] of [[-1.0, 0.0, 2.2, 5.0, 0.07], [0.8, 0.2, 2.6, 4.6, 0.06], [2.6, 0.3, 2.3, 4.2, 0.045], [4.6, 0.4, 2.8, 4.0, 0.035], [7.0, 0.8, 2.6, 3.6, 0.025]]) {
+    for (const [s_, w_, h_, size, k_] of [[-3.0, -1.9, 3.0, 6.0, 0.08], [-3.0, 1.9, 3.0, 6.0, 0.08], [-1.0, 0.0, 2.2, 5.0, 0.07], [0.8, 0.2, 2.6, 4.6, 0.06], [2.6, 0.3, 2.3, 4.2, 0.045], [4.6, 0.4, 2.8, 4.0, 0.035], [7.0, 0.8, 2.6, 3.6, 0.025]]) {
       halos.push([MOUTH.x + IN.x * s_ + RIGHT.x * w_, Fr.mouth[1] + h_, MOUTH.z + IN.y * s_ + RIGHT.z * w_, size, dc.r * k_, dc.g * k_, dc.b * k_, rnd()]);
     }
   }
@@ -732,56 +767,64 @@ export async function createFangHall({ base = './assets/caves/fang-hall', ground
     group.add(drops);
   }
 
-  // ---- the curtain of the fall, seen from behind; its foam; spray
+  // ---- the big fall's three strands, seen from behind; the lake out past the ledge; the day beyond; spray at their feet
   await onStep('เปิดม่านน้ำตก');
-  const C = L.curtain, rows = C.rows, cols = 24;
-  const cgeo = new THREE.BufferGeometry(), cpos = [], cuv = [], cidx = [];
-  rows.forEach((rw, i) => {
-    for (let j = 0; j <= cols; j++) {
-      const u = j / cols, a = (u - 0.5) * 2 * C.half;
-      const bow = 0.12 + 0.25 * (1 - (2 * u - 1) ** 2);          // the sheet bows out a little in its middle (and keeps off the cliff at the lip)
-      cpos.push(rw[0] + C.across[0] * a - IN.x * bow, rw[1], rw[2] + C.across[2] * a - IN.y * bow);
-      cuv.push(u, i / (rows.length - 1));
+  const C = L.curtain, rows = C.rows, OUT = new THREE.Vector3(-IN.x, 0, -IN.y);
+  const strandMat = new THREE.ShaderMaterial({
+    vertexShader: CURTAIN_VS, fragmentShader: STRAND_FS,
+    uniforms: { uTime: time, uBody: { value: hex3('#7fd8ea') }, uDeep: { value: hex3('#3fa9c9') } },
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  });
+  strandMat.userData.noCave = true;
+  const feet = [];
+  for (const st of L.strands || []) {
+    const sr = st.rows, cols = 10, pos = [], uv = [], idx = [];
+    sr.forEach((rw, i) => {
+      for (let j = 0; j <= cols; j++) {
+        const u = j / cols, a = (u - 0.5) * 2 * st.half, bow = 0.12 + 0.18 * (1 - (2 * u - 1) ** 2);
+        pos.push(rw[0] + C.across[0] * a + OUT.x * bow, rw[1], rw[2] + C.across[2] * a + OUT.z * bow);
+        uv.push(u, i / (sr.length - 1));
+      }
+    });
+    for (let i = 0; i < sr.length - 1; i++) for (let j = 0; j < cols; j++) {
+      const a = i * (cols + 1) + j, b = a + 1, c = a + cols + 1, d = c + 1;
+      idx.push(a, c, b, b, c, d);
     }
-  });
-  for (let i = 0; i < rows.length - 1; i++) for (let j = 0; j < cols; j++) {
-    const a = i * (cols + 1) + j, b = a + 1, c = a + cols + 1, d = c + 1;
-    cidx.push(a, c, b, b, c, d);
+    const sg2 = new THREE.BufferGeometry();
+    sg2.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    sg2.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    sg2.setIndex(idx);
+    const m = new THREE.Mesh(sg2, strandMat);
+    m.name = 'strand'; m.renderOrder = 4; m.frustumCulled = false;
+    group.add(m);
+    const f = sr[sr.length - 1];
+    feet.push(new THREE.Vector4(f[0], f[2], st.half * 1.6, 0));
   }
-  cgeo.setAttribute('position', new THREE.Float32BufferAttribute(cpos, 3));
-  cgeo.setAttribute('uv', new THREE.Float32BufferAttribute(cuv, 2));
-  cgeo.setIndex(cidx);
-  cgeo.computeBoundingSphere();
-  const curtainMat = new THREE.ShaderMaterial({
-    vertexShader: CURTAIN_VS, fragmentShader: CURTAIN_FS,
-    uniforms: { uTime: time, uDay: { value: hex3('#eef8ff') }, uThick: { value: hex3('#8fc4dd') }, uFogCol: { value: fogCol } },
-    side: THREE.DoubleSide,
-  });
-  curtainMat.userData.noCave = true;
-  const curtain = new THREE.Mesh(cgeo, curtainMat);
-  curtain.name = 'curtain'; curtain.frustumCulled = false;
-  group.add(curtain);
-  // foam where it lands, between its foot and the ledge
-  const foot = rows[rows.length - 1];
-  const fgeo = new THREE.PlaneGeometry(2 * C.half + 1.0, 1.2, 1, 1).rotateX(-Math.PI / 2);
-  const foamMat = new THREE.ShaderMaterial({
-    vertexShader: CURTAIN_VS, fragmentShader: FOAM_FS, uniforms: { uTime: time },
-    transparent: true, depthWrite: false,
-  });
-  foamMat.userData.noCave = true;
-  const foam = new THREE.Mesh(fgeo, foamMat);
-  foam.position.set(foot[0] + IN.x * 0.35, C.lake + 0.05, foot[2] + IN.y * 0.35);
-  foam.rotation.y = Math.atan2(-C.across[2], C.across[0]);
-  foam.name = 'foam'; foam.renderOrder = 3;
-  group.add(foam);
+  while (feet.length < 3) feet.push(new THREE.Vector4(0, 0, 0.001, 0));
+  // the lake out past the ledge's edge (only seen beyond it: the rock's floor hides it under the ledge)
+  const lakeMat = new THREE.ShaderMaterial({ vertexShader: CURTAIN_VS, fragmentShader: LAKE_FS, uniforms: { uTime: time, uF0: { value: feet[0] }, uF1: { value: feet[1] }, uF2: { value: feet[2] } } });
+  lakeMat.userData.noCave = true;
+  const lake = new THREE.Mesh(new THREE.PlaneGeometry(40, 24).rotateX(-Math.PI / 2), lakeMat);
+  lake.position.copy(MOUTH).addScaledVector(OUT, 13.5); lake.position.y = C.lake;
+  lake.rotation.y = Math.atan2(OUT.x, OUT.z);
+  lake.name = 'lake';
+  group.add(lake);
+  // the day beyond: a wide band round the mouth, painted from inside
+  const dayMat = new THREE.ShaderMaterial({ vertexShader: CURTAIN_VS, fragmentShader: DAYOUT_FS, uniforms: { uTime: time, uLake: { value: C.lake }, uOut: { value: new THREE.Vector2(OUT.x, OUT.z) } }, side: THREE.BackSide });
+  dayMat.userData.noCave = true;
+  const outAng = Math.atan2(OUT.x, OUT.z);
+  const day = new THREE.Mesh(new THREE.CylinderGeometry(24, 24, 40, 40, 1, true, outAng - 1.9, 3.8), dayMat);
+  day.position.set(MOUTH.x, C.lake + 16, MOUTH.z);
+  day.name = 'day-outside'; day.frustumCulled = false;
+  group.add(day);
   const nSpray = 260, spg = new THREE.BufferGeometry(), sseed = new Float32Array(nSpray * 4);
   for (let i = 0; i < nSpray * 4; i++) sseed[i] = rnd();
   spg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nSpray * 3), 3));
   spg.setAttribute('aSeed', new THREE.BufferAttribute(sseed, 4));
   const sprayMat = new THREE.ShaderMaterial({
     vertexShader: SPRAY_VS, fragmentShader: SPRAY_FS,
-    uniforms: { uTime: time, uPix: { value: 90 * Math.min(2, devicePixelRatio || 1) }, uDay: { value: dayCol },
-      uFoot: { value: new THREE.Vector3(foot[0], C.lake + 0.1, foot[2]) }, uAcross: { value: RIGHT.clone() }, uIn3: { value: new THREE.Vector3(IN.x, 0, IN.y) } },
+    uniforms: { uTime: time, uPix: { value: 90 * pixelRatio }, uDay: { value: dayCol },
+      uFoot: { value: new THREE.Vector3(rows[rows.length - 1][0], C.lake + 0.1, rows[rows.length - 1][2]) }, uAcross: { value: RIGHT.clone() }, uIn3: { value: new THREE.Vector3(IN.x, 0, IN.y) } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   sprayMat.userData.noCave = true;
