@@ -28,11 +28,19 @@
 # whatever breaks this earth into pieces, so it breaks along the cracks that are drawn (broken-earth.js, the plant
 # boss's thicket).
 #
+# `gravel` writes assets/ground/cave-gravel-paint.webp: a cave's gravel, the stones that lie at the foot of a face and on
+# a slope of scree (the caves' kit: cave-ground.js lays it where tools/make-cave-room.py says). The same brush: the
+# ways' pebble, a dark dot with a light side, but many of them and larger, each its own grey, lying on one another over
+# dark damp grit (so of this one it is right that it reads as gravel).
+#
 #   python3 tools/make-path-paint.py            (Termux: pip install numpy scipy pillow)
 #   python3 tools/make-path-paint.py sand
 #   python3 tools/make-path-paint.py dry
+#   python3 tools/make-path-paint.py gravel     (a minute: every stone is laid over the whole picture)
 #
-# To change the colours: PALETTE, dark to light. To change how it is laid on: DABS, DAMP, PEBBLES, GRAINS, CRACKS (each look's own, in LOOKS).
+# To change the colours: PALETTE, dark to light. To change how it is laid on: DABS, DAMP, PEBBLES, GRAINS, CRACKS (each look's own, in LOOKS;
+# a look may also say CLIP: between which tones the ground under the pebbles is kept, STONE: a pebble's own tone and how
+# much lighter its lit side, VARY: how far one pebble's tone is from another's, SHADOW: how dark the shadow it throws).
 import sys
 from pathlib import Path
 import numpy as np
@@ -63,6 +71,14 @@ LOOKS = {
         PEBBLES=(46, (3.0, 8.5)),
         GRAINS=[(170, (1.2, 2.4), 0.2), (190, (1.0, 2.0), -0.22)],
         CRACKS=(150, (2.4, 4.6), 0.3)),                                      # how many plates, how wide a crack (px), the share of each crack's length left out
+    'gravel': dict(                                                   # a cave's gravel
+        out='cave-gravel-paint.webp', seed=91,
+        PALETTE=['#33343a', '#515258', '#74757a', '#9a9a9b', '#c2c1bd'],      # the dark between the stones, damp grit, a stone's shaded side, a stone, its lit side
+        DABS=(200, (36, 150), (16, 46), (0.05, 0.12)),
+        DAMP=(6, (110, 220), 0.05),
+        CLIP=(0.14, 0.34),                                                   # (the grit under the stones: dark)
+        PEBBLES=(1400, (7.0, 26.0)), STONE=(0.40, 0.48), VARY=0.14, SHADOW=0.16,
+        GRAINS=[(500, (1.4, 3.0), 0.22), (300, (1.2, 2.4), -0.1)]),
 }
 look = LOOKS[sys.argv[1] if len(sys.argv) > 1 else 'path']
 OUT = Path(__file__).resolve().parent.parent / 'assets/ground' / look['out']
@@ -113,16 +129,18 @@ n, size, dark = DAMP
 for _ in range(n):
     a = rng.uniform(*size) / 2; r = blob(rng.uniform(0, N), rng.uniform(0, N), a, a * rng.uniform(0.5, 0.9), rng.uniform(0, np.pi), waver * 1.6)
     t -= dark * (1 - sm(0.3, 1.0, r))
-t = np.clip(t, 0.30, 0.78)                                            # (kept between damp earth and dry: the pebbles and grains go beyond)
+t = np.clip(t, *look.get('CLIP', (0.30, 0.78)))                       # (kept between damp earth and dry: the pebbles and grains go beyond)
 # ---- 4. pebbles and grains
 n, size = PEBBLES
+stone, lighter = look.get('STONE', (0.12, 0.5)); vary = look.get('VARY'); shade = look.get('SHADOW', 0.10)
 for _ in range(n):
     cx, cy, a = rng.uniform(0, N), rng.uniform(0, N), rng.uniform(*size) / 2; ang = rng.uniform(0, np.pi)
     body = 1 - sm(0.7, 1.05, blob(cx, cy, a * rng.uniform(1.0, 1.5), a, ang))
     lit = 1 - sm(0.5, 1.0, blob(cx - a * 0.45, cy - a * 0.45, a * 0.75, a * 0.6, ang))      # light from the upper left
-    t = t * (1 - body) + body * (0.12 + 0.5 * lit)
+    tone = stone + (rng.uniform(-vary, vary) if vary else 0.0)                              # (a look with VARY: each pebble its own tone)
+    t = t * (1 - body) + body * (tone + lighter * lit)
     shadow = (1 - sm(0.6, 1.3, blob(cx + a * 0.7, cy + a * 0.8, a * 1.3, a * 1.0, ang))) * (1 - body)
-    t -= 0.10 * shadow
+    t -= shade * shadow
 for n, size, tone in GRAINS:
     for _ in range(n):
         a = rng.uniform(*size)

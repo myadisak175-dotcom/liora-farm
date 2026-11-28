@@ -20,6 +20,9 @@
 //                                 more (rock and air between them): then a floor 0.6 m over her feet is always her own
 //   paint (Uint8 x 4, a span)     what lies on that floor: r earth, g sand (over 128: yes), else moss; a 200 or more:
 //                                 nowhere to stand (a wall's foot, a rock, a way closed); 128 or more: stone underfoot
+//   step (Uint8, a span), steps   a room of the kit says what is underfoot itself (its paint's bytes are whatever kinds
+//                                 of ground that room has: cave-ground.js): step is a number into steps, the names
+//                                 step-sounds.js knows ('stone', 'earth', 'grass', 'sand'). Then paint's r, g, b are not read here
 //   One floor under every spot is the same map with layers 1: such a room is read exactly as it was (checked, figure for
 //   figure, against the three rooms: tools/check-cave-level.mjs).
 //
@@ -45,7 +48,8 @@
 //                                    head stops under it: player-moves.js). Under a bridge: the bridge's underside
 //     level.surfaceAt(x, z, y)       what is underfoot, for her steps (step-sounds.js): 'grass' (moss, fallen leaves: soft),
 //                                    'earth', 'sand', 'stone' (the faces, their edges, the stones' tops). Where no paint
-//                                    lies: floorMap.bare ('stone' in the kit's rooms, cave-room.js), else 'grass'
+//                                    lies: floorMap.bare ('stone' in the kit's rooms, cave-room.js), else 'grass'. A room
+//                                    with floorMap.step: what that says (gravel 'earth', turf 'grass', old paving 'stone')
 //     level.confine(p, from)         a step onto a face or into a wall: along its edge, or stopped (the hill village's own)
 //     level.cameraReach(ox, oy, oz, dx, dy, dz, far)
 //                                    her camera (player-camera.js): how far it may go from (ox, oy, oz), over her shoulders,
@@ -217,6 +221,7 @@ export function createCaveLevel(hall) {
     const i = Math.round((x - x0) / cell), j = Math.round((z - z0) / cell);
     if (i < 0 || j < 0 || i >= nx || j >= nz) return 'stone';
     const col = i * nz + j, q = K === 1 ? col : spanAt(col, at(y));
+    if (M.step) return M.steps[M.step[q < 0 ? col : q]] || 'stone';      // (a room that says what is underfoot itself)
     const k = (q < 0 ? col : q) * 4, p = M.paint;
     if (p[k + 3] >= 128) return 'stone';
     if (p[k + 1] > 128) return 'sand';
