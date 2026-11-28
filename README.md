@@ -844,7 +844,7 @@ Of the fang hall in the game, from her phone (a clip): "เก็บงานถ
 - **Measured after**: the fang hall 0 of 6 408 views within 0.6 m (nearest 0.78), the largest move from one frame to the next 0.44 m (her dropping off the balcony with it behind her: the rock is then between them, as a cliff would be); the forest hall 0 of 8 832 (nearest 0.70); the boss hall 0 of 13 392 (nearest 0.78).
 - **Not done**: the forest hall's and the boss hall's own thin things (hanging roots, pillars) are not thinned where they hide her (only the fang hall's are); a real phone.
 
-## Floating islands in the hill village's sky (a trial since 28 Nov 2026: `?islands=1`; `sky-islands.js`)
+## Floating islands in the hill village's sky (`sky-islands.js`; a trial behind `?islands=1` at first, in the game for good since 28 Nov 2026, `?islands=0`: none)
 
 The user sent a picture of anime floating islands (a big one with a village and a lake on it, smaller ones round it, cliffs of tan and blue-grey rock tapering down under them, little rocks adrift) and asked whether a heightmap is needed ("ต้อง heightmap ไหม"); of putting a few in the sky where the village sees them first: "อยากค่ะ". No heightmap: they are only to be seen, never walked on. Without `?islands=1` nothing of them is loaded; only on the hill village.
 
@@ -854,6 +854,7 @@ The user sent a picture of anime floating islands (a big one with a village and 
 - **Drawn** as the props are (three bands of light, the sun's bearing lower, so their sides take it), a bluer shade under them; the haze laid on them more gently than on the land. They are in the scene before `shadows.apply` and the warm-up, so they take the hour's light (warm at dusk, pale under the moon) and the clouds' shadows, and their shader is made behind the loading screen. Everything bobs slowly, each island in its own time, in the vertex shader (`aBob`, `uTime`): nothing moved on the CPU.
 - **Cost**: one mesh, one draw (one more program), 30,829 triangles in all.
 - Checked headless: no errors; the islands from where she starts, the bridge, the south road, the west fringe and the hero's farm, at noon, dusk and night; the plain game as it was.
+- **In the game for good** (28 Nov 2026, the user: "มันมีเกาะลอยฟ้าด้วย ขึ้นเมนหลักได้ไหม"): `index.html` makes them unless `?islands=0`; the game begins with her look tilted up a little, as it did with the flag. She begins by the hero's last seed now (the old farm, in for good the same day), looking west over his cottage, where two of them hang.
 
 ## The buildings of Loria made by hand (`loria-buildings.html`: a page of its own since 28 Nov 2026; nothing of the game is changed by it)
 
