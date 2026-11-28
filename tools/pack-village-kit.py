@@ -6,6 +6,8 @@
 # happy with. One node for each piece, named as in the kit; one primitive for each material of a piece.
 #
 #   python3 tools/pack-village-kit.py <the kit's glTF folder> [--size 1024]
+#   python3 tools/pack-village-kit.py <the kit's glTF folder> --all      every piece of the kit (176), for the house builder of
+#                                                                       kit-houses.js: assets/models/village-kit-all.glb
 #
 # The kit: https://quaternius.com/packs/medievalvillagemegakit.html  (the free Standard set; glTF folder)
 import io, json, struct, sys
@@ -34,6 +36,9 @@ Stairs_Exterior_Straight Stairs_Exterior_Platform Balcony_Cross_Straight
 src = Path(sys.argv[1])
 size = int(sys.argv[sys.argv.index('--size') + 1]) if '--size' in sys.argv else 1024
 out = Path(__file__).resolve().parent.parent / 'assets/models/village-kit.glb'
+if '--all' in sys.argv:                                                   # every piece there is, in the kit's own order
+    PIECES = sorted(f.stem for f in src.glob('*.gltf'))
+    out = out.with_name('village-kit-all.glb')
 CT = {5120: 'i1', 5121: 'u1', 5122: '<i2', 5123: '<u2', 5125: '<u4', 5126: '<f4'}
 NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}
 
